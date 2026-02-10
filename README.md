@@ -6,3 +6,10 @@
 
 * 完全兼容  Claude Code Agent Skills 规范
 
+
+### 下载 skills 参考：
+
+* https://github.com/zrt-ai-lab/opencode-skills
+* https://github.com/openclaw/skills
+* https://github.com/ComposioHQ/awesome-claude-skills
+
