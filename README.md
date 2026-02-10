@@ -1,0 +1,5 @@
+
+# SolonCodeCLI
+
+基于 solon-ai（Java8 ~ Java25） 实现 OpenCode 或 Claude Code 类似应用
+
