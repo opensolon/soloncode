@@ -30,6 +30,7 @@ import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.skills.cli.CliSkill;
 import org.noear.solon.core.handle.Context;
@@ -374,6 +375,9 @@ public class CodeCLI implements Handler, Runnable {
             // 处理用户手动中断
             if (isInterrupted.get()) {
                 cleanInputBuffer();
+                session.addMessage(ChatMessage.ofAssistant(
+                        "【执行摘要】：该任务已被用户手动中断。当前上下文已冻结，我将不再主动执行此任务的后续逻辑。已就绪，请下达新指令。"
+                ));
                 return;
             }
 
