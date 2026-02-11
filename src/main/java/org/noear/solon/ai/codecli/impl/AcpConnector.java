@@ -123,7 +123,7 @@ public class AcpConnector {
             if (cp instanceof AcpSchema.TextContent) {
                 AcpSchema.TextContent text = (AcpSchema.TextContent) cp;
 
-                contents.addBlock(TextBlock.of(false, text.text()));
+                contents.addBlock(TextBlock.of(text.text()));
             } else if (cp instanceof AcpSchema.ImageContent) {
                 AcpSchema.ImageContent image = (AcpSchema.ImageContent) cp;
 

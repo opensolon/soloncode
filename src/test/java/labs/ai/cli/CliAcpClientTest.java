@@ -2,7 +2,7 @@ package labs.ai.cli;
 
 import com.agentclientprotocol.sdk.client.AcpClient;
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
-import com.agentclientprotocol.sdk.client.transport.WebSocketAcpClientTransport;
+import com.agentclientprotocol.sdk.client.transport.WebSocketSolonAcpClientTransport;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
@@ -18,7 +18,7 @@ import java.util.Collections;
  */
 public class CliAcpClientTest {
     public static void main(String[] args) {
-        WebSocketAcpClientTransport transport = new WebSocketAcpClientTransport(
+        WebSocketSolonAcpClientTransport transport = new WebSocketSolonAcpClientTransport(
                 URI.create("ws://localhost:8080/acp"),
                 McpJsonMapper.getDefault());
 
