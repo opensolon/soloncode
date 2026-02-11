@@ -10,6 +10,8 @@ solon.code.cli:
   maxSteps: 30 # ReAct 最大循环步数
   sessionWindowSize: 10 # 会话历史窗口大小（即，新指令时使用几条历史消息）
 
+  planningMode: false
+
   enableConsole: true # 是否启用控制台
   enableHitl: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
 

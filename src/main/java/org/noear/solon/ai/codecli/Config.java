@@ -41,6 +41,8 @@ public class Config {
     public String acpTransport = "stdio";
     public String acpEndpoint = "/acp";
 
+    public boolean planningMode = false;
+
     public boolean enableConsole = true;
     public boolean enableWeb = false;
     public boolean enableAcp = false;

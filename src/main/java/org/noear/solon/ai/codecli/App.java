@@ -75,6 +75,8 @@ public class App {
                 .enableConsole(config.enableConsole)
                 .enableHitl(config.enableHitl)
                 .config(agent -> {
+                    // 启用规划模式
+                    agent.planningMode(config.planningMode);
                     // 添加步数扩展
                     agent.maxStepsExtensible(config.enableHitl);
                     //添加步数
