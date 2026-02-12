@@ -1,12 +1,17 @@
 @echo off
-:: 切换到脚本所在的磁盘分区
 chcp 65001 > nul
-%~d0
-:: 切换到脚本所在的文件夹路径
-cd %~dp0
+
+:: 使用 /d 彻底切换目录，并用双引号包裹路径以防空格报错
+cd /d "%~dp0"
+
+:: 检查 jar 包是否存在，避免低级报错
+if not exist "SolonCodeCLI.jar" (
+    echo [错误] 找不到 SolonCodeCLI.jar，请确保脚本和程序在同一目录下。
+    pause
+    exit
+)
 
 :: 执行 Java 命令
-java -Dfile.encoding=UTF-8 -jar SolonCodeCLI.jar
+java -Dfile.encoding=UTF-8 -jar "SolonCodeCLI.jar"
 
-:: 运行结束后暂停，防止窗口直接闪退，方便看报错或结果
 pause
