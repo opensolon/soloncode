@@ -6,8 +6,8 @@
 
     <parent>
         <groupId>org.noear</groupId>
-        <artifactId>solon-ai-parent</artifactId>
-        <version>3.9.3-SNAPSHOT</version>
+        <artifactId>solon-parent</artifactId>
+        <version>3.9.3</version>
         <relativePath />
     </parent>
 
