@@ -167,7 +167,7 @@ public class CodeCLI implements Handler, Runnable {
                     .role("你的名字叫 " + name + "。")
                     .instruction(
                             "你是一个具备深度工程能力的 AI 协作终端。请遵循以下准则：\n" +
-                                    "1.【行动原则】：不要假设，要验证。在修改代码前必须先阅读文件；在交付任务前必须验证执行结果。\n" +
+                                    "1.【行动原则】：不要假设，要验证。在修改文件前必须先阅读文件；在交付任务前必须验证执行结果。\n" +
                                     "2.【自主性】：bash 是你的万能工具。当内置技能不足时，应自主编写脚本或调用系统命令解决环境问题。\n" +
                                     "3.【上下文感知】：遇到 @pool 路径时，必须先同步阅读其 SKILL.md；遵循项目根目录的开发规范。\n" +
                                     "4.【交互风格】：像资深工程师一样沟通——简洁、直接、结果导向。避免 AI 废话（如：'作为一个 AI...'）。\n" +
@@ -326,47 +326,86 @@ public class CodeCLI implements Handler, Runnable {
         while (true) {
             CountDownLatch latch = new CountDownLatch(1);
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
+            // [优化点] 状态位：用于追踪是否为本次流式输出的第一行有效内容
+            final AtomicBoolean isFirstChunk = new AtomicBoolean(true);
 
             reactor.core.Disposable disposable = stream(session.getSessionId(), Prompt.of(currentInput))
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReasonChunk) {
                             if (chunk.hasContent() && !((ReasonChunk) chunk).isToolCalls()) {
-                                terminal.writer().print(GRAY + clearThink(chunk.getContent()) + RESET);
-                                terminal.flush();
+                                String content = clearThink(chunk.getContent());
+
+                                // [核心优化] 消除首行空行：若是第一块内容，剔除其开头的换行和空格
+                                if (isFirstChunk.get()) {
+                                    content = content.replaceAll("^[\\s\\n]+", "");
+                                    if (Assert.isNotEmpty(content)) {
+                                        isFirstChunk.set(false);
+                                    }
+                                }
+
+                                if (Assert.isNotEmpty(content)) {
+                                    terminal.writer().print(GRAY + content + RESET);
+                                    terminal.flush();
+                                }
                             }
                         } else if (chunk instanceof ActionChunk) {
                             ActionChunk actionChunk = (ActionChunk) chunk;
                             if (Assert.isNotEmpty(actionChunk.getToolName())) {
-                                terminal.writer().println("\n" + YELLOW + " ❯ " + actionChunk.getToolName() + RESET);
+                                // [优化点] 工具调用前，仅在非首行时才额外换行，保持布局紧凑
+                                if (!isFirstChunk.get()) {
+                                    terminal.writer().println();
+                                }
+                                terminal.writer().println(YELLOW + " ❯ " + actionChunk.getToolName() + RESET);
+
                                 if (Assert.isNotEmpty(chunk.getContent())) {
                                     terminal.writer().println(GRAY + "   " + chunk.getContent().replace("\n", "\n   ") + RESET);
                                 }
+                                isFirstChunk.set(false);
+                                terminal.flush();
+                            }
+                        } else if (chunk instanceof ReActChunk) {
+                            // [优化点] 最终回复区域：增加明显的视觉边界
+                            terminal.writer().println("\n" + GREEN + "━━ " + name + " 回复 ━━━━━━━━━━━━━━━━━━━━" + RESET);
+                            String finalContent = chunk.getContent();
+                            if (finalContent != null) {
+                                terminal.writer().println(finalContent.replaceAll("^[\\s\\n]+", ""));
                             }
                             terminal.flush();
-                        } else if (chunk instanceof ReActChunk) {
-                            terminal.writer().println("\n" + GREEN + "━━ " + name + " 回复 ━━━━━━━━━━━━━━━━━━━━" + RESET);
-                            terminal.writer().println(chunk.getContent());
-                            terminal.flush();
+                            isFirstChunk.set(false);
                         }
                     })
-                    .doFinally(signal -> latch.countDown())
+                    .doOnError(e -> {
+                        terminal.writer().println();
+                        terminal.writer().println(RED + "[ERROR] 任务执行异常: " + e.getMessage() + RESET);
+                    })
+                    .doFinally(signal -> {
+                        terminal.writer().println();
+                        terminal.flush();
+                        latch.countDown();
+                    })
                     .subscribe();
 
-            if (isSubmittingDecision) { Thread.sleep(100); isSubmittingDecision = false; }
+            if (isSubmittingDecision) {
+                Thread.sleep(100);
+                isSubmittingDecision = false;
+            }
 
-            // [优化点] 关键：利用 JLine 的非阻塞读取捕获中断按键
+            // 阻塞监控：监听键盘中断和 HITL
             while (latch.getCount() > 0) {
-                if (terminal.reader().peek(10) != -2) { // 如果 10ms 内有按键
+                if (terminal.reader().peek(10) != -2) {
                     int c = terminal.reader().read();
-                    if (c == '\r' || c == '\n') { // 回车中断
+                    if (c == '\r' || c == '\n') {
                         disposable.dispose();
                         isInterrupted.set(true);
                         latch.countDown();
                         break;
                     }
                 }
-                if (HITL.isHitl(session)) { latch.countDown(); break; }
+                if (HITL.isHitl(session)) {
+                    latch.countDown();
+                    break;
+                }
                 Thread.sleep(30);
             }
             latch.await();
@@ -377,20 +416,26 @@ public class CodeCLI implements Handler, Runnable {
                 return;
             }
 
+            // HITL 交互处理
             if (HITL.isHitl(session)) {
                 HITLTask task = HITL.getPendingTask(session);
                 terminal.writer().println("\n" + RED + " ⚠ 需要授权 " + RESET);
-                if (Assert.isNotEmpty(task.getComment())) terminal.writer().println(GRAY + "   原因: " + task.getComment() + RESET);
-                if ("bash".equals(task.getToolName())) terminal.writer().println(CYAN + "   执行: " + RESET + task.getArgs().get("command"));
+                if (Assert.isNotEmpty(task.getComment())) {
+                    terminal.writer().println(GRAY + "   原因: " + task.getComment() + RESET);
+                }
+                if ("bash".equals(task.getToolName())) {
+                    terminal.writer().println(CYAN + "   执行: " + RESET + task.getArgs().get("command"));
+                }
 
-                // [优化点] HITL 授权同样使用 LineReader 以获得更好的输入体验
                 String choice = reader.readLine(GREEN + "   确认执行？(y/n) " + RESET).trim().toLowerCase();
+
                 if (choice.equals("y") || choice.equals("yes")) {
                     HITL.approve(session, task.getToolName());
                 } else {
                     terminal.writer().println(RED + "   已拒绝操作。" + RESET);
                     HITL.reject(session, task.getToolName());
                 }
+
                 currentInput = null;
                 isSubmittingDecision = true;
                 continue;
