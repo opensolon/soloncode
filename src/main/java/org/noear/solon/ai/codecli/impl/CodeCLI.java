@@ -42,8 +42,8 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.chat.skill.Skill;
 import org.noear.solon.ai.skills.cli.CliSkill;
+import org.noear.solon.ai.skills.diff.DiffSkill;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Handler;
@@ -170,6 +170,12 @@ public class CodeCLI implements Handler, Runnable {
         });
     }
 
+    protected DiffSkill getDiffSkill(AgentSession session) {
+        return (DiffSkill) session.attrs().computeIfAbsent("DiffSkill", x -> {
+            return new DiffSkill(workDir);
+        });
+    }
+
     protected void prepare() {
         if (agent == null) {
             if (sessionProvider == null) {
@@ -239,6 +245,7 @@ public class CodeCLI implements Handler, Runnable {
                 .options(o -> {
                     o.skillAdd(getCliSkill(session));
                     o.skillAdd(getLuceneSkill(session));
+                    o.skillAdd(getDiffSkill(session));
                 });
     }
 
@@ -393,11 +400,22 @@ public class CodeCLI implements Handler, Runnable {
                                 terminal.flush();
                             }
                         } else if (chunk instanceof ReActChunk) {
+                            ReActChunk reActChunk = (ReActChunk) chunk;
+
                             terminal.writer().println("\n" + GREEN + "━━ " + name + " 回复 ━━━━━━━━━━━━━━━━━━━━" + RESET);
                             String finalContent = chunk.getContent();
                             if (finalContent != null) {
                                 terminal.writer().println(finalContent.replaceAll("^[\\s\\n]+", ""));
                             }
+
+                            if (reActChunk.getTrace().getMetrics() != null) {
+                                long total = reActChunk.getTrace().getMetrics().getTotalTokens();
+                                long prompt = reActChunk.getTrace().getMetrics().getPromptTokens();
+                                long completion = reActChunk.getTrace().getMetrics().getCompletionTokens();
+                                // 使用调色盘中的灰色 (GRAY) 打印，保持低调不干扰视觉
+                                terminal.writer().println(GRAY + String.format(" tokens: %d (in: %d, out: %d)", total, prompt, completion) + RESET);
+                            }
+
                             terminal.flush();
                             isFirstChunk.set(false);
                         }
