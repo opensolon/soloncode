@@ -22,6 +22,7 @@ import org.jline.reader.UserInterruptException;
 import org.jline.reader.impl.completer.FileNameCompleter;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.jline.utils.InfoCmp;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentResponse;
@@ -41,7 +42,9 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.chat.skill.Skill;
 import org.noear.solon.ai.skills.cli.CliSkill;
+import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Handler;
 import org.noear.solon.core.util.Assert;
@@ -54,6 +57,8 @@ import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
 import java.io.Serializable;
+import java.util.Arrays;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -149,12 +154,19 @@ public class CodeCLI implements Handler, Runnable {
 
     private ReActAgent agent;
 
-    protected CliSkill getSkill(AgentSession session) {
+    protected CliSkill getCliSkill(AgentSession session) {
         String boxId = session.getSessionId();
+
         return (CliSkill) session.attrs().computeIfAbsent("CliSkill", x -> {
-            CliSkill skill = new CliSkill(boxId, workDir + "/boxes/" + boxId);
+            CliSkill skill = new CliSkill(boxId, workDir);
             extraPools.forEach(skill::mountPool);
             return skill;
+        });
+    }
+
+    protected LuceneSkill getLuceneSkill(AgentSession session) {
+        return (LuceneSkill) session.attrs().computeIfAbsent("LuceneSkill", x -> {
+            return new LuceneSkill(workDir);
         });
     }
 
@@ -225,7 +237,8 @@ public class CodeCLI implements Handler, Runnable {
         return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
-                    o.skillAdd(getSkill(session));
+                    o.skillAdd(getCliSkill(session));
+                    o.skillAdd(getLuceneSkill(session));
                 });
     }
 
@@ -309,18 +322,22 @@ public class CodeCLI implements Handler, Runnable {
                 String input;
                 try {
                     input = reader.readLine(promptStr); // 支持历史记录、Tab 补全
-                } catch (UserInterruptException e) { continue; } // Ctrl+C
-                catch (EndOfFileException e) { break; }      // Ctrl+D
+                } catch (UserInterruptException e) {
+                    continue;
+                } // Ctrl+C
+                catch (EndOfFileException e) {
+                    break;
+                }      // Ctrl+D
 
                 if (input == null || input.trim().isEmpty()) continue;
-                if (isSystemCommand(input)) break;
 
-                // [优化点] 使用 \r 清行，确保 Agent 输出前缀整洁
-                terminal.writer().print("\r" + name + ": ");
-                terminal.flush();
+                if (isSystemCommand(session, input) == false) {
+                    // [优化点] 使用 \r 清行，确保 Agent 输出前缀整洁
+                    terminal.writer().print("\r" + name + ": ");
+                    terminal.flush();
 
-                performAgentTask(session, input);
-
+                    performAgentTask(session, input);
+                }
             } catch (Throwable e) {
                 terminal.writer().println("\n" + RED + "[错误] " + RESET + e.getMessage());
             }
@@ -454,23 +471,45 @@ public class CodeCLI implements Handler, Runnable {
         }
     }
 
-    private String clearThink(String chunk) { return chunk.replaceAll("(?s)<\\s*/?think\\s*>", ""); }
+    private String clearThink(String chunk) {
+        return chunk.replaceAll("(?s)<\\s*/?think\\s*>", "");
+    }
 
     private void cleanInputBuffer() throws Exception {
         // [优化点] 使用 terminal 刷新代替原始 sleep
         terminal.flush();
     }
 
-    private boolean isSystemCommand(String input) {
+    private boolean isSystemCommand(AgentSession session, String input) {
         String cmd = input.trim().toLowerCase();
-        if ("exit".equals(cmd) || "quit".equals(cmd)) { terminal.writer().println("再见！"); return true; }
-        if ("clear".equals(cmd)) { terminal.puts(org.jline.utils.InfoCmp.Capability.clear_screen); return false; }
+        if ("exit".equals(cmd) || "quit".equals(cmd)) {
+            terminal.writer().println("再见！");
+            System.exit(0);
+            return true;
+        }
+
+        if ("init".equals(cmd)) {
+            terminal.writer().println(CYAN + "🔍 正在构建工作区索引..." + RESET);
+            terminal.flush();
+            String result = getLuceneSkill(session).refreshIndex();
+            terminal.writer().println(GREEN + "✅ " + result + RESET);
+            return true;
+        }
+
+        if ("clear".equals(cmd)) {
+            terminal.puts(InfoCmp.Capability.clear_screen);
+            return false;
+        }
         return false;
     }
 
     protected void printWelcome() {
         String absolutePath;
-        try { absolutePath = new File(workDir).getCanonicalPath(); } catch (Exception e) { absolutePath = new File(workDir).getAbsolutePath(); }
+        try {
+            absolutePath = new File(workDir).getCanonicalPath();
+        } catch (Exception e) {
+            absolutePath = new File(workDir).getAbsolutePath();
+        }
         terminal.writer().println("==================================================");
         terminal.writer().println("🚀 " + name + " 已就绪");
         terminal.writer().println("--------------------------------------------------");
@@ -484,6 +523,10 @@ public class CodeCLI implements Handler, Runnable {
     public static class Chunk implements Serializable {
         public final String type;
         public final String text;
-        public Chunk(String type, String text) { this.type = type; this.text = text; }
+
+        public Chunk(String type, String text) {
+            this.type = type;
+            this.text = text;
+        }
     }
 }
