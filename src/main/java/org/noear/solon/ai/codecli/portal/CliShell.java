@@ -131,25 +131,30 @@ public class CliShell implements Runnable {
                         if (chunk instanceof ReasonChunk) {
                             ReasonChunk reason = (ReasonChunk) chunk;
                             if (!reason.isToolCalls()) {
-                                String content = clearThink(reason.getContent());
+                                String fullContent = clearThink(reason.getContent());
 
-                                if (content.length() > printedLength.get()) {
-                                    String delta = content.substring(printedLength.get());
+                                if (fullContent.length() > printedLength.get()) {
+                                    String delta = fullContent.substring(printedLength.get());
 
                                     if (isFirstReasonChunk.get()) {
                                         delta = delta.replaceAll("^[\\s\\n]+", "");
-                                        if (Assert.isNotEmpty(delta)) isFirstReasonChunk.set(false);
+                                        if (Assert.isNotEmpty(delta)) {
+                                            isFirstReasonChunk.set(false);
+                                        }
                                     }
 
-                                    terminal.writer().print(delta);
-                                    terminal.flush();
-                                    printedLength.set(content.length());
+                                    if (Assert.isNotEmpty(delta)) {
+                                        terminal.writer().print(delta);
+                                        terminal.flush();
+                                        printedLength.set(fullContent.length());
+                                    }
                                 }
                             }
                         } else if (chunk instanceof ActionChunk) {
                             ActionChunk action = (ActionChunk) chunk;
                             if (Assert.isNotEmpty(action.getToolName())) {
-                                terminal.writer().print("\r" + YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET);
+                                terminal.writer().println();
+                                terminal.writer().print(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET);
                                 if (Assert.isNotEmpty(action.getContent())) {
                                     String args = action.getContent().trim().replace("\n", " ");
                                     if (args.length() > 80) args = args.substring(0, 77) + "...";
