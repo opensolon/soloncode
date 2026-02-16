@@ -32,6 +32,7 @@ import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.codecli.core.AgentNexus;
+import org.noear.solon.ai.codecli.core.skills.CodeSkill;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
@@ -85,6 +86,14 @@ public class CliShell implements  Runnable {
         codeAgent.prepare();
         printWelcome();
         AgentSession session = codeAgent.getSession("cli");
+
+        CodeSkill codeSkill = codeAgent.getCodeSkill(session);
+        if(codeSkill.isSupported(null)) {
+            terminal.writer().println(GRAY + "✨ 正在对齐项目规约与索引..." + RESET);
+            codeAgent.init(session);
+            // 只打印简要的一行，不破坏终端的美感
+            terminal.writer().println(GRAY + "  ❯ 已就绪 (Project Contract & Indexing)" + RESET);
+        }
 
         while (true) {
             try {
@@ -280,10 +289,17 @@ public class CliShell implements  Runnable {
         }
 
         if ("init".equals(cmd)) {
-            terminal.writer().println(CYAN + "🔍 正在构建工作区索引..." + RESET);
+            terminal.writer().println(CYAN + "🏗️  正在初始化工作空间 (Pool-Box)..." + RESET);
             terminal.flush();
-            String result = codeAgent.getLuceneSkill(session).refreshSearchIndex();
-            terminal.writer().println(GREEN + "✅ " + result + RESET);
+
+            // 直接调用核心层封装
+            String result = codeAgent.init(session);
+
+            // 格式化输出
+            for (String line : result.split("\n")) {
+                terminal.writer().println(GRAY + "  ❯ " + line + RESET);
+            }
+            terminal.writer().println(GREEN + "✅ 初始化完成！" + RESET);
             return true;
         }
 

@@ -26,7 +26,9 @@ import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
 import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.codecli.core.skills.CodeSkill;
 import org.noear.solon.ai.skills.cli.CliSkill;
 import org.noear.solon.ai.skills.diff.DiffSkill;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
@@ -122,6 +124,16 @@ public class AgentNexus {
         });
     }
 
+    public CodeSkill getCodeSkill(AgentSession session) {
+        String effectiveWorkDir = (String) session.attrs().getOrDefault("context:cwd", this.workDir);
+        String boxId = session.getSessionId();
+
+        return (CodeSkill) session.attrs().computeIfAbsent("CodeSkill", x -> {
+            CodeSkill skill = new CodeSkill(effectiveWorkDir);
+            return skill;
+        });
+    }
+
     public LuceneSkill getLuceneSkill(AgentSession session) {
         String effectiveWorkDir = (String) session.attrs().getOrDefault("context:cwd", this.workDir);
         String boxId = session.getSessionId();
@@ -203,6 +215,34 @@ public class AgentNexus {
                     o.skillAdd(getLuceneSkill(session));
                     o.skillAdd(getDiffSkill(session));
                 });
+    }
+
+    public String init(AgentSession session) {
+        StringBuilder report = new StringBuilder();
+
+        // 1. 物理层索引 (LuceneSkill)
+        // 产生文件索引，方便 AI 以后搜索文件
+        String luceneMsg = getLuceneSkill(session).refreshSearchIndex();
+        report.append("物理索引: ").append(luceneMsg).append("\n");
+
+        // 2. 逻辑层规约 (CodeSkill)
+        // 产生 .claudecode.md 规约文件，并识别技术栈
+        CodeSkill codeSkill = getCodeSkill(session);
+        if (codeSkill.isSupported(null)) {
+            String codeMsg = codeSkill.init();
+            report.append("逻辑规约: ").append(codeMsg).append("\n");
+
+            // 3. 注入系统上下文
+            // 直接把刚生成的规约内容塞进 Session，让 AI 立即“清醒”过来
+            session.addMessage(ChatMessage.ofSystem(
+                    "【PROJECT CONTRACT】\n" +
+                            "1. 已检测到项目契约文件: CLAUDE.md。\n" +
+                            "2. 你在执行任何 bash 指令或写文件前，必须参考 CLAUDE.md 中的 Build/Test 命令。\n" +
+                            "3. 严禁询问用户‘我应该运行什么测试’，直接从规约中提取命令并执行。"
+            ));
+        }
+
+        return report.toString();
     }
 
     public Flux<AgentChunk> stream(String sessionId, Prompt prompt) {
