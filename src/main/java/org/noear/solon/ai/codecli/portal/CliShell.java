@@ -123,7 +123,6 @@ public class CliShell implements Runnable {
             CountDownLatch latch = new CountDownLatch(1);
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
-            printedLength.set(0);
 
             reactor.core.Disposable disposable = codeAgent.stream(session.getSessionId(), Prompt.of(currentInput))
                     .subscribeOn(Schedulers.boundedElastic())
@@ -131,40 +130,46 @@ public class CliShell implements Runnable {
                         if (chunk instanceof ReasonChunk) {
                             ReasonChunk reason = (ReasonChunk) chunk;
                             if (!reason.isToolCalls()) {
-                                String fullContent = clearThink(reason.getContent());
+                                String delta = clearThink(reason.getContent());
 
-                                if (fullContent.length() > printedLength.get()) {
-                                    String delta = fullContent.substring(printedLength.get());
+                                if (Assert.isNotEmpty(delta)) {
+                                    delta = delta.replace("\n", "\n  ");
 
                                     if (isFirstReasonChunk.get()) {
-                                        delta = delta.replaceAll("^[\\s\\n]+", "");
-                                        if (Assert.isNotEmpty(delta)) {
+                                        String trimmed = delta.replaceAll("^[\\s\\n]+", "");
+                                        if (Assert.isNotEmpty(trimmed)) {
+                                            // 2. 针对首行，手动补齐因为 replace 没覆盖到的初始缩进
+                                            delta = "  " + trimmed;
                                             isFirstReasonChunk.set(false);
+                                        } else {
+                                            return;
                                         }
                                     }
 
-                                    if (Assert.isNotEmpty(delta)) {
-                                        terminal.writer().print(delta);
-                                        terminal.flush();
-                                        printedLength.set(fullContent.length());
-                                    }
+                                    terminal.writer().print(delta);
+                                    terminal.flush();
                                 }
                             }
                         } else if (chunk instanceof ActionChunk) {
                             ActionChunk action = (ActionChunk) chunk;
                             if (Assert.isNotEmpty(action.getToolName())) {
-                                terminal.writer().println();
+                                terminal.writer().println(); // 指令块上方的留白
                                 terminal.writer().print(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET);
+
                                 if (Assert.isNotEmpty(action.getContent())) {
-                                    String args = action.getContent().trim().replace("\n", " ");
-                                    if (args.length() > 80) args = args.substring(0, 77) + "...";
+                                    String args = action.getContent().trim()
+                                            .replace("\n", " ")
+                                            .replace("[DIR] ", "")
+                                            .replace("[FILE] ", "");
+
+                                    if (args.length() > 60) args = args.substring(0, 57) + "...";
                                     terminal.writer().print(DIM + " " + args + RESET);
                                 }
-                                terminal.writer().println();
+
+                                terminal.writer().println(); // 强制换行，确保指令独占一行
                                 terminal.flush();
 
                                 isFirstReasonChunk.set(true);
-                                printedLength.set(0);
                             }
                         } else if (chunk instanceof ReActChunk) {
                             isTaskCompleted.set(true);
