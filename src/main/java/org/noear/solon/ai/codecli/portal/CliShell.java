@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.ai.codecli.impl;
+package org.noear.solon.ai.codecli.portal;
 
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -23,48 +23,24 @@ import org.jline.reader.impl.completer.FileNameCompleter;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.jline.utils.InfoCmp;
-import org.noear.snack4.ONode;
-import org.noear.solon.ai.agent.AgentChunk;
-import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
-import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.intercept.HITL;
-import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
-import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
-import org.noear.solon.ai.agent.session.InMemoryAgentSession;
-import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.skills.cli.CliSkill;
-import org.noear.solon.ai.skills.diff.DiffSkill;
-import org.noear.solon.ai.skills.lucene.LuceneSkill;
-import org.noear.solon.core.handle.Context;
-import org.noear.solon.core.handle.Handler;
+import org.noear.solon.ai.codecli.core.AgentNexus;
 import org.noear.solon.core.util.Assert;
-import org.noear.solon.core.util.MimeType;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
-import java.io.Serializable;
-import java.util.Arrays;
-import java.util.List;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 /**
  * Code CLI 终端 (Pool-Box 模型)
@@ -74,258 +50,41 @@ import java.util.function.Consumer;
  * @since 3.9.1
  */
 @Preview("3.9.1")
-public class CodeCLI implements Handler, Runnable {
-    private final static Logger LOG = LoggerFactory.getLogger(CodeCLI.class);
-    private final static String SESSION_DEFAULT = "cli";
-
-    private final ChatModel chatModel;
-    private AgentSessionProvider sessionProvider;
-    private String name = "CodeCLI";
-    private String workDir = ".";
-    private final Map<String, String> extraPools = new LinkedHashMap<>();
-    private Consumer<ReActAgent.Builder> configurator;
-    private boolean enableWeb = true;
-    private boolean enableConsole = true;
-    private boolean enableHitl = false;
+public class CliShell implements  Runnable {
+    private final static Logger LOG = LoggerFactory.getLogger(CliShell.class);
 
     // JLine 3 终端与行读取器句柄
     private Terminal terminal;
     private LineReader reader;
 
-    public CodeCLI(ChatModel chatModel) {
-        this.chatModel = chatModel;
-    }
+    private final AgentNexus codeAgent;
 
-    /**
-     * 设置 Agent 名称 (同时也作为控制台输出前缀)
-     */
-    public CodeCLI name(String name) {
-        if (name != null && !name.isEmpty()) {
-            this.name = name;
-        }
-        return this;
-    }
+    public CliShell(AgentNexus codeAgent) {
+        this.codeAgent = codeAgent;
 
-    public CodeCLI workDir(String workDir) {
-        this.workDir = workDir;
-        return this;
-    }
+        // [优化点] 初始化 JLine 终端，启用文件名补全
+        try {
+            this.terminal = TerminalBuilder.builder()
+                    .jna(true)    // 尝试使用 JNA 提升兼容性
+                    .jansi(true)  // 尝试使用 Jansi 提升兼容性
+                    .system(true)
+                    .dumb(true)
+                    .build();
 
-    public CodeCLI mountPool(String alias, String dir) {
-        if (dir != null) {
-            this.extraPools.put(alias, dir);
-        }
-        return this;
-    }
-
-    public CodeCLI session(AgentSessionProvider sessionProvider) {
-        this.sessionProvider = sessionProvider;
-        return this;
-    }
-
-    public CodeCLI config(Consumer<ReActAgent.Builder> configurator) {
-        this.configurator = configurator;
-        return this;
-    }
-
-    /**
-     * 是否启用 Web 交互
-     */
-    public CodeCLI enableWeb(boolean enableWeb) {
-        this.enableWeb = enableWeb;
-        return this;
-    }
-
-    /**
-     * 是否启用控制台交互
-     */
-    public CodeCLI enableConsole(boolean enableConsole) {
-        this.enableConsole = enableConsole;
-        return this;
-    }
-
-    /**
-     * 是否启用 HITL 交互
-     */
-    public CodeCLI enableHitl(boolean enableHitl) {
-        this.enableHitl = enableHitl;
-        return this;
-    }
-
-    private ReActAgent agent;
-
-    protected CliSkill getCliSkill(AgentSession session) {
-        String boxId = session.getSessionId();
-
-        return (CliSkill) session.attrs().computeIfAbsent("CliSkill", x -> {
-            CliSkill skill = new CliSkill(boxId, workDir);
-            extraPools.forEach(skill::mountPool);
-            return skill;
-        });
-    }
-
-    protected LuceneSkill getLuceneSkill(AgentSession session) {
-        return (LuceneSkill) session.attrs().computeIfAbsent("LuceneSkill", x -> {
-            return new LuceneSkill(workDir);
-        });
-    }
-
-    protected DiffSkill getDiffSkill(AgentSession session) {
-        return (DiffSkill) session.attrs().computeIfAbsent("DiffSkill", x -> {
-            return new DiffSkill(workDir);
-        });
-    }
-
-    protected void prepare() {
-        if (agent == null) {
-            if (sessionProvider == null) {
-                Map<String, AgentSession> store = new ConcurrentHashMap<>();
-                sessionProvider = (k) -> store.computeIfAbsent(k, InMemoryAgentSession::new);
-            }
-
-            ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel)
-                    .role("你的名字叫 " + name + "。")
-                    .instruction(
-                            "你是一个具备深度工程能力的 AI 协作终端。请遵循以下准则：\n" +
-                                    "1.【行动原则】：不要假设，要验证。修改前必读，交付前必测。\n" +
-                                    "2.【任务管理】：面对复杂任务，应在工作目录创建 `.todo.md`。必须包含：\n" +
-                                    "   - [ ] 任务清单（Task List）\n" +
-                                    "   - 当前阻塞点与关键点（Blocking issues）\n" +
-                                    "   - 下一步计划（Next actions）\n" +
-                                    "   每完成一个阶段性目标，必须更新此文件。若任务中断，重启后必须先读取此文件以恢复状态。\n"+
-                                    "3.【权限边界】：写操作（创建/修改/删除）仅限在当前盒子（Box）路径内。严禁修改盒子外的文件。\n" +
-                                    "4.【自主性】：bash 是你的核心工具，用于构建、测试及自动化任务。当内置工具不足时，应自主编写脚本解决。\n" +
-                                    "5.【规范对齐】：遇到 @pool 路径时，必读其 SKILL.md；所有相对路径严禁使用 './' 前缀。\n" +
-                                    "6.【交互风格】：资深工程师风格——简洁、直接、结果导向。避免 AI 废话。\n" +
-                                    "7.【安全性】：保护环境安全，不泄露密钥，不访问盒子外的绝对路径。"
-                    );
-
-            //上下文摘要
-            CompositeSummarizationStrategy compositeStrategy = new CompositeSummarizationStrategy();
-            compositeStrategy.addStrategy(new KeyInfoExtractionStrategy(chatModel));
-            compositeStrategy.addStrategy(new HierarchicalSummarizationStrategy(chatModel));
-            SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(12, compositeStrategy);
-
-            agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
-
-            if (enableHitl) {
-                agentBuilder.defaultInterceptorAdd(new HITLInterceptor()
-                        .onTool("bash", new CodeHITLStrategy()));
-            }
-
-            if (configurator != null) {
-                configurator.accept(agentBuilder);
-            }
-
-            agent = agentBuilder.build();
-
-            // [优化点] 初始化 JLine 终端，启用文件名补全
-            try {
-                this.terminal = TerminalBuilder.builder()
-                        .jna(true)    // 尝试使用 JNA 提升兼容性
-                        .jansi(true)  // 尝试使用 Jansi 提升兼容性
-                        .system(true)
-                        .dumb(true)
-                        .build();
-
-                this.reader = LineReaderBuilder.builder()
-                        .terminal(terminal)
-                        .completer(new FileNameCompleter()) // 路径自动补全
-                        .build();
-            } catch (Exception e) {
-                LOG.error("JLine 初始化失败", e);
-            }
-        }
-    }
-
-    private ReActRequest buildRequest(String sessonId, Prompt prompt) {
-        if (sessonId == null) {
-            sessonId = SESSION_DEFAULT;
-        }
-
-        AgentSession session = sessionProvider.getSession(sessonId);
-
-        return agent.prompt(prompt)
-                .session(session)
-                .options(o -> {
-                    o.skillAdd(getCliSkill(session));
-                    o.skillAdd(getLuceneSkill(session));
-                    o.skillAdd(getDiffSkill(session));
-                });
-    }
-
-    public Flux<AgentChunk> stream(String sessionId, Prompt prompt) {
-        return buildRequest(sessionId, prompt)
-                .stream();
-    }
-
-    public AgentResponse call(String sessionId, Prompt prompt) throws Throwable {
-        return buildRequest(sessionId, prompt).call();
-    }
-
-    @Override
-    public void handle(Context ctx) throws Throwable {
-        if (!enableWeb) {
-            ctx.status(404); // 如果未启用，直接返回 404
-            return;
-        }
-
-        prepare();
-
-        String input = ctx.param("input");
-        String mode = ctx.param("m");
-        String sessionId = ctx.headerOrDefault("X-Session-Id", SESSION_DEFAULT);
-
-        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
-            ctx.status(400);
-            ctx.output("Invalid Session ID");
-            return;
-        }
-
-        if (Assert.isNotEmpty(input)) {
-            if ("call".equals(mode)) {
-                ctx.contentType(MimeType.TEXT_PLAIN_UTF8_VALUE);
-                String result = call(sessionId, Prompt.of(input))
-                        .getContent();
-
-                ctx.output(result);
-            } else {
-                ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-
-
-                Flux<String> stringFlux = stream(sessionId, Prompt.of(input))
-                        .map(chunk -> {
-                            if (chunk.hasContent()) {
-                                if (chunk instanceof ReasonChunk) {
-                                    return ONode.serialize(new Chunk("reason", chunk.getContent()));
-                                } else if (chunk instanceof ActionChunk) {
-                                    return ONode.serialize(new Chunk("action", chunk.getContent()));
-                                } else if (chunk instanceof ReActChunk) {
-                                    return ONode.serialize(new Chunk("agent", chunk.getContent()));
-                                }
-                            }
-
-                            return "";
-                        })
-                        .filter(Assert::isNotEmpty)
-                        .onErrorResume(e -> Flux.just(ONode.serialize(new Chunk("error", e.getMessage()))))
-                        .concatWithValues("[DONE]");
-
-                ctx.returnValue(stringFlux);
-            }
+            this.reader = LineReaderBuilder.builder()
+                    .terminal(terminal)
+                    .completer(new FileNameCompleter()) // 路径自动补全
+                    .build();
+        } catch (Exception e) {
+            LOG.error("JLine 初始化失败", e);
         }
     }
 
     @Override
     public void run() {
-        if (!enableConsole) {
-            LOG.warn("SolonCodeCLI 控制台交互已禁用");
-            return;
-        }
-
-        prepare();
+        codeAgent.prepare();
         printWelcome();
-        AgentSession session = sessionProvider.getSession("cli");
+        AgentSession session = codeAgent.getSession("cli");
 
         while (true) {
             try {
@@ -344,7 +103,7 @@ public class CodeCLI implements Handler, Runnable {
                 if (input == null || input.trim().isEmpty()) continue;
 
                 if (isSystemCommand(session, input) == false) {
-                    terminal.writer().print("\r" + name + ": "); // \r 清除当前的输入行
+                    terminal.writer().print("\r" + codeAgent.getName() + ": "); // \r 清除当前的输入行
                     terminal.flush();
 
                     performAgentTask(session, input);
@@ -372,7 +131,7 @@ public class CodeCLI implements Handler, Runnable {
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstChunk = new AtomicBoolean(true);
 
-            reactor.core.Disposable disposable = stream(session.getSessionId(), Prompt.of(currentInput))
+            reactor.core.Disposable disposable = codeAgent.stream(session.getSessionId(), Prompt.of(currentInput))
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReasonChunk) {
@@ -410,7 +169,7 @@ public class CodeCLI implements Handler, Runnable {
                             isTaskCompleted.set(true);
 
                             ReActChunk reActChunk = (ReActChunk) chunk;
-                            terminal.writer().println("\n" + GREEN + "━━ " + name + " 回复 ━━━━━━━━━━━━━━━━━━━━" + RESET);
+                            terminal.writer().println("\n" + GREEN + "━━ " + codeAgent.getName() + " 回复 ━━━━━━━━━━━━━━━━━━━━" + RESET);
                             String finalContent = chunk.getContent();
                             if (finalContent != null) {
                                 terminal.writer().println(finalContent.replaceAll("^[\\s\\n]+", ""));
@@ -523,7 +282,7 @@ public class CodeCLI implements Handler, Runnable {
         if ("init".equals(cmd)) {
             terminal.writer().println(CYAN + "🔍 正在构建工作区索引..." + RESET);
             terminal.flush();
-            String result = getLuceneSkill(session).refreshSearchIndex();
+            String result = codeAgent.getLuceneSkill(session).refreshSearchIndex();
             terminal.writer().println(GREEN + "✅ " + result + RESET);
             return true;
         }
@@ -538,27 +297,17 @@ public class CodeCLI implements Handler, Runnable {
     protected void printWelcome() {
         String absolutePath;
         try {
-            absolutePath = new File(workDir).getCanonicalPath();
+            absolutePath = new File(codeAgent.getWorkDir()).getCanonicalPath();
         } catch (Exception e) {
-            absolutePath = new File(workDir).getAbsolutePath();
+            absolutePath = new File(codeAgent.getWorkDir()).getAbsolutePath();
         }
         terminal.writer().println("==================================================");
-        terminal.writer().println("🚀 " + name + " 已就绪");
+        terminal.writer().println("🚀 " + codeAgent.getName() + " 已就绪");
         terminal.writer().println("--------------------------------------------------");
         terminal.writer().println("📂 工作空间: " + absolutePath);
         terminal.writer().println("💡 支持 Tab 补全、方向键历史记录");
         terminal.writer().println("🛑 输出时按回车(Enter)中断");
         terminal.writer().println("==================================================");
         terminal.flush();
-    }
-
-    public static class Chunk implements Serializable {
-        public final String type;
-        public final String text;
-
-        public Chunk(String type, String text) {
-            this.type = type;
-            this.text = text;
-        }
     }
 }

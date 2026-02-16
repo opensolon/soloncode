@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.ai.codecli.impl;
+package org.noear.solon.ai.codecli.core;
 
 import org.noear.solon.Utils;
 import org.slf4j.Logger;

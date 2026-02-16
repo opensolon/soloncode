@@ -15,7 +15,6 @@
  */
 package org.noear.solon.ai.codecli;
 
-import com.agentclientprotocol.sdk.agent.AcpAsyncAgent;
 import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
 import com.agentclientprotocol.sdk.agent.transport.WebSocketSolonAcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
@@ -25,8 +24,10 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.codecli.impl.AcpConnector;
-import org.noear.solon.ai.codecli.impl.CodeCLI;
+import org.noear.solon.ai.codecli.portal.AcpLink;
+import org.noear.solon.ai.codecli.core.AgentNexus;
+import org.noear.solon.ai.codecli.portal.CliShell;
+import org.noear.solon.ai.codecli.portal.WebGate;
 import org.noear.solon.core.util.Assert;
 
 import java.util.Map;
@@ -66,12 +67,10 @@ public class App {
         Map<String, AgentSession> store = new ConcurrentHashMap<>();
         AgentSessionProvider sessionProvider = (sessionId) -> store.computeIfAbsent(sessionId, key -> new FileAgentSession(key, config.workDir + "/.system/sessions/" + key));
 
-        CodeCLI solonCodeCLI = new CodeCLI(chatModel)
+        AgentNexus codeAgent = new AgentNexus(chatModel)
                 .name(config.name)
                 .workDir(config.workDir)
                 .session(sessionProvider)
-                .enableWeb(config.enableWeb)
-                .enableConsole(config.enableConsole)
                 .enableHitl(config.enableHitl)
                 .config(agent -> {
                     // 启用规划模式
@@ -87,33 +86,28 @@ public class App {
 
         if (Assert.isNotEmpty(config.mountPool)) {
             config.mountPool.forEach((alias, dir) -> {
-                solonCodeCLI.mountPool(alias, dir);
+                codeAgent.mountPool(alias, dir);
             });
         }
 
         if (config.enableConsole) {
-            new Thread(solonCodeCLI, "CLI-Interactive-Thread").start();
+            new Thread(new CliShell(codeAgent), "CLI-Interactive-Thread").start();
         }
 
         if (config.enableWeb) {
-            Solon.app().router().get(config.webEndpoint, solonCodeCLI);
+            Solon.app().router().get(config.webEndpoint, new WebGate(codeAgent));
         }
 
         if (config.enableAcp) {
-            AcpConnector acpConnector = new AcpConnector(solonCodeCLI);
             AcpAgentTransport agentTransport;
             if ("stdio".equals(config.acpTransport)) {
                 agentTransport = new StdioAcpAgentTransport();
             } else {
-                agentTransport = new WebSocketSolonAcpAgentTransport(config.acpEndpoint, McpJsonMapper.getDefault());
+                agentTransport = new WebSocketSolonAcpAgentTransport(
+                        config.acpEndpoint, McpJsonMapper.getDefault());
             }
 
-
-            AcpAsyncAgent acpAgent = acpConnector.createAgent(agentTransport);
-
-            acpAgent.start().subscribe();
+            new AcpLink(codeAgent, agentTransport).run();
         }
-
-        System.out.println(">>> Solon Code CLI 节点已全面启动。");
     }
 }

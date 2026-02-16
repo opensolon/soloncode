@@ -1,9 +1,10 @@
-package org.noear.solon.ai.codecli.impl;
+package org.noear.solon.ai.codecli.portal;
 
 import com.agentclientprotocol.sdk.agent.AcpAgent;
 import com.agentclientprotocol.sdk.agent.AcpAsyncAgent;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.PlanChunk;
@@ -13,18 +14,31 @@ import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.codecli.core.AgentNexus;
 import org.noear.solon.core.util.Assert;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class AcpConnector {
-    private final CodeCLI codeCLI; // CodeCLI 内部的 Agent
+public class AcpLink implements Runnable{
+    private final AgentNexus codeAgent; // CodeCLI 内部的 Agent
+    private final AcpAgentTransport agentTransport;
 
-    public AcpConnector(CodeCLI codeCLI) {
-        this.codeCLI = codeCLI;
+    public AcpLink(AgentNexus codeAgent, AcpAgentTransport agentTransport) {
+        this.codeAgent = codeAgent;
+        this.agentTransport = agentTransport;
+    }
+
+    private final Map<String, AcpSessionContext> sessionStates = new ConcurrentHashMap<>();
+
+    public void run(){
+        AcpAsyncAgent acpAgent = createAgent(agentTransport);
+
+        acpAgent.start().subscribe();
     }
 
     public AcpAsyncAgent createAgent(AcpAgentTransport transport) {
@@ -40,14 +54,23 @@ public class AcpConnector {
                     ));
                 })
                 .newSessionHandler(req -> {
-                    return Mono.just(new AcpSchema.NewSessionResponse(UUID.randomUUID().toString(), null, null));
+                    String sessionId = UUID.randomUUID().toString();
+                    String cwd = req.cwd(); // 拿到初始化时的路径
+
+                    sessionStates.put(sessionId, new AcpSessionContext(cwd));
+
+                    return Mono.just(new AcpSchema.NewSessionResponse(sessionId, null, null));
                 })
                 .promptHandler((request, acpContext) -> {
-                    Prompt userInput = toPrompt(request);
                     String sessionId = request.sessionId();
+                    AcpSessionContext context = sessionStates.get(sessionId);
+
+                    Prompt userInput = toPrompt(request);
+                    AgentSession session = codeAgent.getSession(sessionId);
+                    session.attrs().put("context:cwd", context.getCwd());
 
                     // 将 ACP 的 Prompt 转发给 Solon ReActAgent
-                    return codeCLI.stream(request.sessionId(), userInput)
+                    return codeAgent.stream(request.sessionId(), userInput)
                             .concatMap(chunk -> {
 
                                 // --- 规划阶段 ---
@@ -136,5 +159,11 @@ public class AcpConnector {
         }
 
         return prompt.addMessage(ChatMessage.ofUser(contents));
+    }
+
+    public static class AcpSessionContext {
+        private final String cwd;
+        public AcpSessionContext(String cwd) { this.cwd = cwd; }
+        public String getCwd() { return cwd; }
     }
 }
