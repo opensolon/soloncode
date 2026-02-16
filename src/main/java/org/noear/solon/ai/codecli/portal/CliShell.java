@@ -41,6 +41,7 @@ import reactor.core.scheduler.Schedulers;
 import java.io.File;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Code CLI 终端 (Claude Code 风格对齐版)
@@ -116,24 +117,29 @@ public class CliShell implements Runnable {
     private void performAgentTask(AgentSession session, String input) throws Exception {
         String currentInput = input;
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
+        final AtomicInteger printedLength = new AtomicInteger(0);
 
         while (true) {
             CountDownLatch latch = new CountDownLatch(1);
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
+            printedLength.set(0);
 
             reactor.core.Disposable disposable = codeAgent.stream(session.getSessionId(), Prompt.of(currentInput))
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReasonChunk) {
-                            String content = clearThink(chunk.getContent());
-                            if (Assert.isNotEmpty(content)) {
-                                if (isFirstReasonChunk.get()) {
-                                    content = content.replaceAll("^[\\s\\n]+", "");
-                                    if (Assert.isNotEmpty(content)) isFirstReasonChunk.set(false);
+                            ReasonChunk reason = (ReasonChunk) chunk;
+                            if (!reason.isToolCalls()) {
+                                String content = clearThink(chunk.getContent());
+                                if (Assert.isNotEmpty(content)) {
+                                    if (isFirstReasonChunk.get()) {
+                                        content = content.replaceAll("^[\\s\\n]+", "");
+                                        if (Assert.isNotEmpty(content)) isFirstReasonChunk.set(false);
+                                    }
+                                    terminal.writer().print(content);
+                                    terminal.flush();
                                 }
-                                terminal.writer().print(content);
-                                terminal.flush();
                             }
                         } else if (chunk instanceof ActionChunk) {
                             ActionChunk action = (ActionChunk) chunk;
