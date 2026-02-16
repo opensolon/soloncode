@@ -339,11 +339,14 @@ public class CodeCLI implements Handler, Runnable {
                 if (input == null || input.trim().isEmpty()) continue;
 
                 if (isSystemCommand(session, input) == false) {
-                    // [优化点] 使用 \r 清行，确保 Agent 输出前缀整洁
-                    terminal.writer().print("\r" + name + ": ");
+                    terminal.writer().print("\r" + name + ": "); // \r 清除当前的输入行
                     terminal.flush();
 
                     performAgentTask(session, input);
+
+                    // 任务结束后，确保新的一行干净利落
+                    terminal.writer().println();
+                    terminal.flush();
                 }
             } catch (Throwable e) {
                 terminal.writer().println("\n" + RED + "[错误] " + RESET + e.getMessage());
@@ -357,11 +360,11 @@ public class CodeCLI implements Handler, Runnable {
     private void performAgentTask(AgentSession session, String input) throws Exception {
         String currentInput = input;
         boolean isSubmittingDecision = false;
+        final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
 
         while (true) {
             CountDownLatch latch = new CountDownLatch(1);
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
-            // [优化点] 状态位：用于追踪是否为本次流式输出的第一行有效内容
             final AtomicBoolean isFirstChunk = new AtomicBoolean(true);
 
             reactor.core.Disposable disposable = stream(session.getSessionId(), Prompt.of(currentInput))
@@ -387,7 +390,6 @@ public class CodeCLI implements Handler, Runnable {
                         } else if (chunk instanceof ActionChunk) {
                             ActionChunk actionChunk = (ActionChunk) chunk;
                             if (Assert.isNotEmpty(actionChunk.getToolName())) {
-                                // [优化点] 工具调用前，仅在非首行时才额外换行，保持布局紧凑
                                 if (!isFirstChunk.get()) {
                                     terminal.writer().println();
                                 }
@@ -400,8 +402,9 @@ public class CodeCLI implements Handler, Runnable {
                                 terminal.flush();
                             }
                         } else if (chunk instanceof ReActChunk) {
-                            ReActChunk reActChunk = (ReActChunk) chunk;
+                            isTaskCompleted.set(true);
 
+                            ReActChunk reActChunk = (ReActChunk) chunk;
                             terminal.writer().println("\n" + GREEN + "━━ " + name + " 回复 ━━━━━━━━━━━━━━━━━━━━" + RESET);
                             String finalContent = chunk.getContent();
                             if (finalContent != null) {
@@ -423,6 +426,7 @@ public class CodeCLI implements Handler, Runnable {
                     .doOnError(e -> {
                         terminal.writer().println();
                         terminal.writer().println(RED + "[ERROR] 任务执行异常: " + e.getMessage() + RESET);
+                        isTaskCompleted.set(true);
                     })
                     .doFinally(signal -> {
                         terminal.writer().println();
@@ -484,6 +488,11 @@ public class CodeCLI implements Handler, Runnable {
                 currentInput = null;
                 isSubmittingDecision = true;
                 continue;
+            }
+
+            if (isTaskCompleted.get()) {
+                terminal.writer().flush();
+                return;
             }
             break;
         }
