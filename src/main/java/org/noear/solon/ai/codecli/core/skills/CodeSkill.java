@@ -1,6 +1,5 @@
 package org.noear.solon.ai.codecli.core.skills;
 
-import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
 import org.slf4j.Logger;
@@ -68,27 +67,29 @@ public class CodeSkill extends AbsSkill {
         return false;
     }
 
+    private String cachedMsg;
+
     @Override
     public String getInstruction(Prompt prompt) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("### 代码专家引导规范 (Code Specialist Guidelines)\n\n");
-        sb.append("你现在的角色是一个具备工程思维的代码专家。在使用 CLI 工具操作代码库时，必须遵循以下逻辑：\n\n");
+        // 自动探测并初始化（或更新）规约文件
+        if(cachedMsg == null) {
+            String result = init();
+            cachedMsg = (result == null) ? "Initialization failed." : result;
+        }
 
-        sb.append("#### 1. 初始化优先策略\n");
-        sb.append("- **探测契约**: 进入项目后，优先检查根目录是否存在 `CLAUDE.md`。\n");
-        sb.append("- **主动初始化**: 如果文件不存在，**必须建议用户或主动调用** `code_init` 工具来识别技术栈并建立规约。\n\n");
+        StringBuilder buf = new StringBuilder();
+        buf.append("\n### 实时工程契约 (Active Project Contract)\n");
+        buf.append("> 状态汇报: ").append(cachedMsg).append("\n\n");
 
-        sb.append("#### 2. 工程质量闭环\n");
-        sb.append("- **上下文感知**: 在执行修改前，必须阅读 `CLAUDE.md` 以获取构建、测试命令和项目特定的编码风格。\n");
-        sb.append("- **原子化改动**: 遵循“读-改-验”流程。修改后优先使用规约中定义的测试命令（如 `mvn solon:test`）进行验证。\n\n");
+        // 强化约束：确保它意识到这是一个物理约束
+        buf.append("你当前处于受限的工程模式，必须遵守以下物理契约：\n")
+                .append("1. **规约依赖**: 必须先读取根目录的 `CLAUDE.md` 以获取构建和测试指令。\n")
+                .append("2. **原子追踪**: 所有逻辑步骤必须实时同步至 `TODO.md`，严禁口头承诺进度。\n")
+                .append("3. **验证闭环**: 修改文件后，必须根据 `CLAUDE.md` 提供的命令进行验证。\n");
 
-        sb.append("#### 3. 规约文件更新\n");
-        sb.append("- 如果你在开发过程中发现了项目的新特征（如路径约定或新的构建脚本），可以调用 `write_to_file` 更新 `CLAUDE.md`。\n");
-
-        return sb.toString();
+        return buf.toString();
     }
 
-    @ToolMapping(name = "code_init", description = "初始化项目规约。识别技术栈、测试框架并生成 CLAUDE.md。")
     public String init() {
         try {
             if (!Files.isWritable(rootPath)) {
@@ -171,7 +172,8 @@ public class CodeSkill extends AbsSkill {
                     Files.write(gitignore, ("\n" + fileName).getBytes(), java.nio.file.StandardOpenOption.APPEND);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private boolean exists(String path) {

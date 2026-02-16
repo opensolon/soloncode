@@ -175,7 +175,7 @@ public class AgentNexus {
                                     "3.【权限边界】：写操作（创建/修改/删除）仅限在当前盒子（Box）路径内。严禁修改盒子外的文件。\n" +
                                     "4.【自主性】：bash 是你的核心工具，用于构建、测试及自动化任务。当内置工具不足时，应自主编写脚本解决。\n" +
                                     "5.【规范对齐】：遇到 @pool 路径时，必读其 SKILL.md；所有相对路径严禁使用 './' 前缀。\n" +
-                                    "6.【交互风格】：资深工程师风格——简洁、直接、结果导向。避免 AI 废话。\n" +
+                                    "6.【交互风格】：资深工程师风格——简洁、直接、结果导向。禁止使用表情包（Emoji），禁止长篇大论的自我介绍。回答应以解决具体问题为目的。\n" +
                                     "7.【安全性】：保护环境安全，不泄露密钥，不访问盒子外的绝对路径。"
                     );
 
@@ -211,37 +211,14 @@ public class AgentNexus {
                 .session(session)
                 .options(o -> {
                     o.skillAdd(getCliSkill(session));
+                    o.skillAdd(getCodeSkill(session));
                     o.skillAdd(getLuceneSkill(session));
                     o.skillAdd(getDiffSkill(session));
                 });
     }
 
     public String init(AgentSession session) {
-        StringBuilder report = new StringBuilder();
-
-        // 1. 物理层索引 (LuceneSkill)
-        // 产生文件索引，方便 AI 以后搜索文件
-        String luceneMsg = getLuceneSkill(session).refreshSearchIndex();
-        report.append("物理索引: ").append(luceneMsg).append("\n");
-
-        // 2. 逻辑层规约 (CodeSkill)
-        // 产生 .claudecode.md 规约文件，并识别技术栈
-        CodeSkill codeSkill = getCodeSkill(session);
-        if (codeSkill.isSupported(null)) {
-            String codeMsg = codeSkill.init();
-            report.append("逻辑规约: ").append(codeMsg).append("\n");
-
-            // 3. 注入系统上下文
-            // 直接把刚生成的规约内容塞进 Session，让 AI 立即“清醒”过来
-            session.addMessage(ChatMessage.ofSystem(
-                    "【PROJECT CONTRACT】\n" +
-                            "1. 契约文件: CLAUDE.md (规约) 和 TODO.md (任务状态)。\n" +
-                            "2. 你必须在执行复杂任务前，将步骤拆解并写入 TODO.md。\n" +
-                            "3. 严禁询问用户进度，始终以 TODO.md 的标记 [x] 为准。"
-            ));
-        }
-
-        return report.toString();
+        return getLuceneSkill(session).refreshSearchIndex();
     }
 
     public Flux<AgentChunk> stream(String sessionId, Prompt prompt) {

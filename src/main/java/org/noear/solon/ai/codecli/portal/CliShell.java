@@ -85,18 +85,14 @@ public class CliShell implements Runnable {
         AgentSession session = codeAgent.getSession("cli");
 
         // 1. 初始化对齐
-        CodeSkill codeSkill = codeAgent.getCodeSkill(session);
-        if (codeSkill.isSupported(null)) {
-            terminal.writer().println(DIM + "Aligning project contract & indexing..." + RESET);
-            codeAgent.init(session);
-            terminal.writer().println(DIM + "❯ Ready (CLAUDE.md)" + RESET);
-        }
+        codeAgent.init(session);
 
         // 2. 主循环
         while (true) {
             try {
-                String promptStr = "\n" + BOLD + CYAN + "User" + RESET + " (type 'exit' to quit)\n" + BOLD + CYAN + "> " + RESET;
+                String promptStr = "\n" + BOLD + CYAN + "User" + RESET + "\n" + BOLD + CYAN + "> " + RESET;
                 String input;
+
                 try {
                     input = reader.readLine(promptStr);
                 } catch (UserInterruptException e) {
@@ -244,8 +240,10 @@ public class CliShell implements Runnable {
 
     protected void printWelcome() {
         String path = new File(codeAgent.getWorkDir()).getAbsolutePath();
-        terminal.writer().println(BOLD + codeAgent.getName() + RESET + DIM + " (v3.9.4)" + RESET);
-        terminal.writer().println(DIM + "Working directory: " + path + RESET);
+        // 连带版本号，紧凑排列
+        terminal.writer().println(BOLD + codeAgent.getName() + RESET + DIM + " v3.9.4" + RESET);
+        terminal.writer().println(DIM + path + RESET);
+        // 仅保留一个空行
         terminal.writer().println();
         terminal.flush();
     }
