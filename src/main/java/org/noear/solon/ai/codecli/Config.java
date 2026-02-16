@@ -34,6 +34,7 @@ public class Config {
     public String workDir = "./work";
 
     public int maxSteps = 30;
+    public boolean maxStepsExtensible = false;
     public int sessionWindowSize = 10;
 
 
