@@ -30,7 +30,7 @@ import java.util.Map;
 @Configuration
 @BindProps(prefix="solon.code.cli")
 public class Config {
-    public String name;
+    public String nickname;
     public String workDir = "./work";
 
     public int maxSteps = 30;

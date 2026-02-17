@@ -68,7 +68,7 @@ public class App {
         AgentSessionProvider sessionProvider = (sessionId) -> store.computeIfAbsent(sessionId, key -> new FileAgentSession(key, config.workDir + "/.system/sessions/" + key));
 
         AgentNexus codeAgent = new AgentNexus(chatModel)
-                .name(config.name)
+                .nickname(config.nickname)
                 .workDir(config.workDir)
                 .session(sessionProvider)
                 .enableHitl(config.hitlEnabled)

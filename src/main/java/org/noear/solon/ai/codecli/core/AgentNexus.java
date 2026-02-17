@@ -51,7 +51,7 @@ public class AgentNexus {
 
     private final ChatModel chatModel;
     private AgentSessionProvider sessionProvider;
-    private String name = "CodeCLI";
+    private String nickname = "CodeCLI";
     private String workDir = ".";
     private final Map<String, String> extraPools = new LinkedHashMap<>();
     private Consumer<ReActAgent.Builder> configurator;
@@ -64,9 +64,9 @@ public class AgentNexus {
     /**
      * 设置 Agent 名称 (同时也作为控制台输出前缀)
      */
-    public AgentNexus name(String name) {
-        if (name != null && !name.isEmpty()) {
-            this.name = name;
+    public AgentNexus nickname(String nickname) {
+        if (nickname != null && !nickname.isEmpty()) {
+            this.nickname = nickname;
         }
         return this;
     }
@@ -101,10 +101,13 @@ public class AgentNexus {
         return this;
     }
 
-    public String getName() {
-        return name;
+    public String getNickname() {
+        return nickname;
     }
 
+    public String getVersion() {
+        return "v0.0.10";
+    }
 
     public String getWorkDir() {
         return workDir;
@@ -163,19 +166,19 @@ public class AgentNexus {
             }
 
             ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel)
-                    .role("你的名字叫 " + name + "。")
+                    .role("你的名字叫 " + nickname + "。")
                     .instruction(
-                            "你是一个具备深度工程能力的 AI 协作终端。请遵循以下准则：\n" +
+                            "你是一个超级智能体。请遵循以下准则：\n" +
                                     "1.【行动原则】：不要假设，要验证。修改前必读，交付前必测。\n" +
-                                    "2.【任务管理】：面对复杂任务，必须在根目录维护 `TODO.md`。对齐 Moltbot 规范：\n" +
+                                    "2.【任务管理】：面对复杂任务，必须在根目录维护 `TODO.md`。规范：\n" +
                                     "   - 初始任务：收到指令后，先在 `TODO.md` 中列出所有逻辑步骤。\n" +
                                     "   - 状态追踪：使用 [ ] 表示待办，[x] 表示已完成。每完成一步必须物理更新文件。\n" +
                                     "   - 恢复上下文：任何时候开始工作前（包括每一轮思考开始），必须先读取 `TODO.md` 以确认进度。如果是新任务，必须先初始化 `TODO.md`。\n" +
                                     "3.【权限边界】：写操作（创建/修改/删除）仅限在当前盒子（Box）路径内。严禁修改盒子外的文件。\n" +
                                     "4.【自主性】：bash 是你的核心工具，用于构建、测试及自动化任务。当内置工具不足时，应自主编写脚本解决。\n" +
                                     "5.【规范对齐】：遇到 @pool 路径时，必读其 SKILL.md；所有相对路径严禁使用 './' 前缀。\n" +
-                                    "6.【交互风格】：资深工程师风格——简洁、直接、结果导向。禁止使用表情包（Emoji），禁止长篇大论的自我介绍。回答应以解决具体问题为目的。\n" +
-                                    "7.【安全性】：保护环境安全，不泄露密钥，不访问盒子外的绝对路径。\n"+
+                                    "6.【交互风格】：回复问题时——简洁、直接、结果导向，要拟人化。禁止使用表情包（Emoji），禁止长篇大论。\n" +
+                                    "7.【安全性】：保护环境安全，不泄露密钥，不访问盒子外的绝对路径。\n" +
                                     "8.【任务切换】：若用户中途改变任务方向，必须第一时间清空或重构 `TODO.md` 中的内容，以确保后续步骤与新目标一致。"
                     );
 

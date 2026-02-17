@@ -29,12 +29,14 @@ import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
+import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.codecli.core.AgentNexus;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
@@ -107,7 +109,7 @@ public class CliShell implements Runnable {
                 if (Assert.isEmpty(input)) continue;
 
                 if (!isSystemCommand(session, input)) {
-                    terminal.writer().println("\n" + BOLD + codeAgent.getName() + RESET);
+                    terminal.writer().println("\n" + BOLD + codeAgent.getNickname() + RESET);
                     performAgentTask(session, input);
                 }
             } catch (Throwable e) {
@@ -122,6 +124,7 @@ public class CliShell implements Runnable {
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
 
         while (true) {
+            // 简化状态提示：只在非首次且任务未完成时打印等待符
             if (currentInput == null && !isTaskCompleted.get()) {
                 terminal.writer().print("\r" + DIM + "  ... " + RESET);
                 terminal.flush();
@@ -132,108 +135,59 @@ public class CliShell implements Runnable {
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
 
-            reactor.core.Disposable disposable = codeAgent.stream(session.getSessionId(), Prompt.of(currentInput))
+            Disposable disposable = codeAgent.stream(session.getSessionId(), Prompt.of(currentInput))
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReasonChunk) {
                             // ReasonChunk 非工具调用时，为流式增量（工具调用时为全量，不需要打印）
-                            ReasonChunk reason = (ReasonChunk) chunk;
-                            if (!reason.isToolCalls()) {
-                                String delta = clearThink(reason.getContent());
-
-                                if (Assert.isNotEmpty(delta)) {
-                                    if (isFirstReasonChunk.get()) {
-                                        String trimmed = delta.replaceAll("^[\\s\\n]+", "");
-                                        if (Assert.isNotEmpty(trimmed)) {
-                                            if (isFirstConversation.get()) {
-                                                terminal.writer().print("  ");
-                                                isFirstConversation.set(false);
-                                            } else {
-                                                terminal.writer().print("\n  ");
-                                            }
-
-                                            terminal.writer().print(trimmed.replace("\n", "\n  "));
-                                            isFirstReasonChunk.set(false);
-                                        }
-                                    } else {
-                                        // 连续的思考内容，保持缩进替换即可
-                                        terminal.writer().print(delta.replace("\n", "\n  "));
-                                    }
-                                    terminal.flush();
-                                }
-                            }
+                            onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
                         } else if (chunk instanceof ActionChunk) {
                             //ActionChunk 为全量，一次工具调用一个 ActionChunk
-                            ActionChunk action = (ActionChunk) chunk;
-                            if (Assert.isNotEmpty(action.getToolName())) {
-                                onActionChunk(action);
-
-                                // 3. 接下来 AI 可能会针对这个结果进行分析 (Reasoning)，设置首行缩进标记
-                                isFirstReasonChunk.set(true);
-                            }
+                            onActionChunk((ActionChunk) chunk, isFirstReasonChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            isTaskCompleted.set(true);
-                            ReActChunk reAct = (ReActChunk) chunk;
-                            if (reAct.getTrace().getMetrics() != null) {
-                                terminal.writer().println(DIM + " (" + reAct.getTrace().getMetrics().getTotalTokens() + " tokens)" + RESET);
-                            }
+                            printMetrics((ReActChunk) chunk);
                         }
                     })
                     .doOnError(e -> {
                         terminal.writer().println("\n" + RED + "── Error ────────────────" + RESET);
                         terminal.writer().println(e.getMessage());
-                        isTaskCompleted.set(true);
+                        terminal.flush();
                     })
-                    .doFinally(signal -> latch.countDown())
+                    .doFinally(signal -> {
+                        isTaskCompleted.set(true);
+                        latch.countDown();
+                    })
                     .subscribe();
 
             // 监听回车中断
-            while (latch.getCount() > 0) {
-                if (terminal.reader().peek(10) != -2) {
-                    int c = terminal.reader().read();
-                    if (c == '\r' || c == '\n') {
-                        disposable.dispose();
-                        isInterrupted.set(true);
-                        latch.countDown();
-                        break;
-                    }
-                }
-                if (HITL.isHitl(session)) {
-                    latch.countDown();
-                    break;
-                }
-                Thread.sleep(30);
+            if (disposable == null || disposable.isDisposed()) {
+                // 处理订阅失败的情况
+                return;
             }
-            latch.await();
+
+            waitForTask(latch, disposable, session, isInterrupted);
 
             if (isInterrupted.get()) {
                 terminal.writer().println(DIM + "[Task interrupted]" + RESET);
-                session.addMessage(org.noear.solon.ai.chat.message.ChatMessage.ofAssistant("Task interrupted by user."));
+                terminal.flush();
+                session.addMessage(ChatMessage.ofAssistant("Task interrupted by user."));
                 return;
             }
 
             // HITL 处理 (授权交互)
             if (HITL.isHitl(session)) {
-                HITLTask task = HITL.getPendingTask(session);
-                terminal.writer().println("\n" + BOLD + YELLOW + "Permission Required" + RESET);
-                if ("bash".equals(task.getToolName())) {
-                    terminal.writer().println(DIM + "Command: " + RESET + task.getArgs().get("command"));
-                }
-
-                String choice = reader.readLine(BOLD + GREEN + "Approve? (y/n) " + RESET).trim().toLowerCase();
-                if ("y".equals(choice) || "yes".equals(choice)) {
-                    HITL.approve(session, task.getToolName());
-                    currentInput = null; // 触发 Agent 继续执行
+                if (handleHITL(session)) {
+                    currentInput = null;
                     continue;
                 } else {
-                    HITL.reject(session, task.getToolName());
-                    terminal.writer().println(DIM + "Action rejected." + RESET);
                     return;
                 }
             }
 
             if (isTaskCompleted.get()) {
+                terminal.writer().println();
+                terminal.flush();
                 return;
             }
 
@@ -241,74 +195,155 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void onActionChunk(ActionChunk action) {
-        // 1. 准备参数字符串
-        StringBuilder argsBuilder = new StringBuilder();
-        Map<String, Object> args = action.getArgs();
-        if (args != null && !args.isEmpty()) {
-            args.forEach((k, v) -> {
-                if (argsBuilder.length() > 0) argsBuilder.append(" ");
-                argsBuilder.append(k).append("=").append(v);
-            });
+    private void waitForTask(CountDownLatch latch, Disposable disposable,
+                             AgentSession session, AtomicBoolean isInterrupted) throws Exception {
+        while (latch.getCount() > 0) {
+            int available = terminal.reader().available();
+            if (available > 0) {
+                int c = terminal.reader().read();
+                if (c == '\r' || c == '\n') {
+                    disposable.dispose();
+                    isInterrupted.set(true);
+                    latch.countDown();
+                    break;
+                }
+            }
+
+            if (HITL.isHitl(session)) {
+                latch.countDown();
+                break;
+            }
+
+            Thread.sleep(50);
         }
-        String argsStr = argsBuilder.toString().replace("\n", " ");
-        boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
-        if (cliPrintSimplified) {
-            // --- 简化风格：单行摘要模式 ---
-            String content = action.getContent() == null ? "" : action.getContent().trim();
-            String summary;
+        latch.await();
+    }
 
-            if (Assert.isEmpty(content)) {
-                summary = "completed";
-            } else {
-                String[] lines = content.split("\n");
-                if (lines.length > 1) {
-                    summary = "returned " + lines.length + " lines";
-                } else {
-                    summary = content.length() > 40 ? content.substring(0, 37) + "..." : content;
-                }
-            }
+    private boolean handleHITL(AgentSession session){
+        HITLTask task = HITL.getPendingTask(session);
+        terminal.writer().println("\n" + BOLD + YELLOW + "Permission Required" + RESET);
+        if ("bash".equals(task.getToolName())) {
+            terminal.writer().println(DIM + "Command: " + RESET + task.getArgs().get("command"));
+        }
 
-            // 简化模式下，参数也进行极简压缩
-            String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
-
-            terminal.writer().println();
-            terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
-            terminal.flush();
-
+        String choice = reader.readLine(BOLD + GREEN + "Approve? (y/n) " + RESET).trim().toLowerCase();
+        if ("y".equals(choice) || "yes".equals(choice)) {
+            HITL.approve(session, task.getToolName());
+            return true;
         } else {
-            // --- 全量风格 ---
-            // 1. 打印指令行
-            terminal.writer().println();
-            if (!hasBigArgs) {
-                // 短参数直接跟在后面
-                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + argsStr + RESET);
-            } else {
-                // 大参数块，指令名独占一行，参数作为缩进内容打印（类似 write_file 的 content 部分）
-                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET);
-                if (args != null) {
-                    args.forEach((k, v) -> {
-                        String val = String.valueOf(v).trim();
-                        if ("content".equals(k) && val.split("\n").length > 10) {
-                            // 如果是写文件，且内容太长，只显示头尾
-                            String[] lines = val.split("\n");
-                            val = lines[0] + "\n    ...\n    " + lines[lines.length-1];
+            HITL.reject(session, task.getToolName());
+            terminal.writer().println(DIM + "Action rejected." + RESET);
+            return false;
+        }
+    }
+
+    private void printMetrics(ReActChunk reAct){
+        if (reAct.getTrace().getMetrics() != null) {
+            terminal.writer().println(DIM + " (" + reAct.getTrace().getMetrics().getTotalTokens() + " tokens)" + RESET);
+        }
+    }
+
+    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk,AtomicBoolean isFirstConversation ){
+        if (!reason.isToolCalls()) {
+            String delta = clearThink(reason.getContent());
+
+            if (Assert.isNotEmpty(delta)) {
+                if (isFirstReasonChunk.get()) {
+                    String trimmed = delta.replaceAll("^[\\s\\n]+", "");
+                    if (Assert.isNotEmpty(trimmed)) {
+                        if (isFirstConversation.get()) {
+                            terminal.writer().print("  ");
+                            isFirstConversation.set(false);
+                        } else {
+                            terminal.writer().print("\n  ");
                         }
-                        terminal.writer().println(DIM + "  [" + k + "]: " + val.replace("\n", "\n    ") + RESET);
-                    });
+
+                        terminal.writer().print(trimmed.replace("\n", "\n  "));
+                        isFirstReasonChunk.set(false);
+                    }
+                } else {
+                    // 连续的思考内容，保持缩进替换即可
+                    terminal.writer().print(delta.replace("\n", "\n  "));
                 }
+                terminal.flush();
+            }
+        }
+    }
+
+    private void onActionChunk(ActionChunk action, AtomicBoolean isFirstReasonChunk) {
+        if (Assert.isNotEmpty(action.getToolName())) {
+            // 1. 准备参数字符串
+            StringBuilder argsBuilder = new StringBuilder();
+            Map<String, Object> args = action.getArgs();
+            if (args != null && !args.isEmpty()) {
+                args.forEach((k, v) -> {
+                    if (argsBuilder.length() > 0) argsBuilder.append(" ");
+                    argsBuilder.append(k).append("=").append(v);
+                });
+            }
+            String argsStr = argsBuilder.toString().replace("\n", " ");
+            boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
+
+            if (cliPrintSimplified) {
+                // --- 简化风格：单行摘要模式 ---
+                String content = action.getContent() == null ? "" : action.getContent().trim();
+                String summary;
+
+                if (Assert.isEmpty(content)) {
+                    summary = "completed";
+                } else {
+                    String[] lines = content.split("\n");
+                    if (lines.length > 1) {
+                        summary = "returned " + lines.length + " lines";
+                    } else {
+                        summary = content.length() > 40 ? content.substring(0, 37) + "..." : content;
+                    }
+                }
+
+                // 简化模式下，参数也进行极简压缩
+                String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
+
+                terminal.writer().println();
+                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
+                terminal.flush();
+
+            } else {
+                // --- 全量风格 ---
+                // 1. 打印指令行
+                terminal.writer().println();
+                if (!hasBigArgs) {
+                    // 短参数直接跟在后面
+                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + argsStr + RESET);
+                } else {
+                    // 大参数块，指令名独占一行，参数作为缩进内容打印（类似 write_file 的 content 部分）
+                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET);
+                    if (args != null) {
+                        args.forEach((k, v) -> {
+                            String val = String.valueOf(v).trim();
+                            if ("content".equals(k) && val.split("\n").length > 10) {
+                                // 如果是写文件，且内容太长，只显示头尾
+                                String[] lines = val.split("\n");
+                                val = lines[0] + "\n    ...\n    " + lines[lines.length - 1];
+                            }
+                            terminal.writer().println(DIM + "  [" + k + "]: " + val.replace("\n", "\n    ") + RESET);
+                        });
+                    }
+                }
+
+                // 2. 处理工具返回的结果内容 (getContent)
+                if (Assert.isNotEmpty(action.getContent())) {
+                    // 在参数和结果之间如果内容较多，可以加个小分隔，或者直接缩进打印
+                    String indentedContent = "  " + action.getContent().trim().replace("\n", "\n  ");
+                    terminal.writer().println(DIM + indentedContent + RESET);
+                }
+
+                terminal.writer().println(DIM + "  (End of output)" + RESET);
+                terminal.flush();
             }
 
-            // 2. 处理工具返回的结果内容 (getContent)
-            if (Assert.isNotEmpty(action.getContent())) {
-                // 在参数和结果之间如果内容较多，可以加个小分隔，或者直接缩进打印
-                String indentedContent = "  " + action.getContent().trim().replace("\n", "\n  ");
-                terminal.writer().println(DIM + indentedContent + RESET);
-            }
-
-            terminal.writer().println(DIM + "  (End of output)" + RESET);
-            terminal.flush();
+            // 3. 接下来 AI 可能会针对这个结果进行分析 (Reasoning)，设置首行缩进标记
+            isFirstReasonChunk.set(true);
         }
     }
 
@@ -339,7 +374,7 @@ public class CliShell implements Runnable {
     protected void printWelcome() {
         String path = new File(codeAgent.getWorkDir()).getAbsolutePath();
         // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + codeAgent.getName() + RESET + DIM + " v0.0.10" + RESET);
+        terminal.writer().println(BOLD + codeAgent.getNickname() + RESET + DIM + " " + codeAgent.getVersion() + RESET);
         terminal.writer().println(DIM + path + RESET);
         // 仅保留一个空行
         terminal.writer().println();
