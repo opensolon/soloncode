@@ -13,7 +13,7 @@ import java.util.Map;
  * @author noear
  * @since 3.9.1
  */
-public class AgentHitlStrategy implements HITLInterceptor.InterventionStrategy {
+public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
 
     // 高危关键字：涵盖删除、移动、网络下载、系统权限、环境嗅探等
     private static final String DANGER_PATTERN =

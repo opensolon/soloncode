@@ -26,7 +26,6 @@ import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
 import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.codecli.core.skills.CodeSkill;
 import org.noear.solon.ai.skills.cli.CliSkill;
@@ -189,7 +188,7 @@ public class AgentNexus {
 
             if (enableHitl) {
                 agentBuilder.defaultInterceptorAdd(new HITLInterceptor()
-                        .onTool("bash", new AgentHitlStrategy()));
+                        .onTool("bash", new HitlStrategy()));
             }
 
             if (configurator != null) {
