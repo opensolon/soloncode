@@ -11,6 +11,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Claude Code 规范对齐的代码专精技能
@@ -22,6 +24,7 @@ import java.util.List;
 public class CodeSkill extends AbsSkill {
     private static final Logger LOG = LoggerFactory.getLogger(CodeSkill.class);
     private final Path rootPath;
+    private String cachedMsg;
 
     public CodeSkill(String workDir) {
         this.rootPath = Paths.get(workDir).toAbsolutePath().normalize();
@@ -39,147 +42,159 @@ public class CodeSkill extends AbsSkill {
 
     @Override
     public boolean isSupported(Prompt prompt) {
-        // 核心对齐：优先探测 CLAUDE.md
         if (exists("CLAUDE.md") || exists("pom.xml") || exists("package.json") ||
                 exists("go.mod") || exists(".git")) {
             return true;
         }
-
-        if (exists("Makefile") || exists("ffmpeg") || exists("scripts") || exists("assets")) {
-            return true;
-        }
-
         if (exists("src") || exists("lib") || exists(".github")) {
             return true;
         }
-
         if (prompt != null) {
             String cmd = prompt.getUserContent();
             if (cmd == null) return false;
-
             String cmdLower = cmd.toLowerCase();
-            String[] codeKeywords = {"代码", "编程", "构建", "测试", "项目", "init", "bug", "修复", "重构", "compile", "repo"};
+            String[] codeKeywords = {"代码", "编程", "构建", "测试", "项目", "init", "compile"};
             for (String kw : codeKeywords) {
                 if (cmdLower.contains(kw)) return true;
             }
         }
-
         return false;
     }
 
-    private String cachedMsg;
-
     @Override
     public String getInstruction(Prompt prompt) {
-        // 自动探测并初始化（或更新）规约文件
-        if(cachedMsg == null) {
-            String result = init();
-            cachedMsg = (result == null) ? "Initialization failed." : result;
+        if (cachedMsg == null) {
+            refresh();
         }
 
         StringBuilder buf = new StringBuilder();
-        buf.append("\n### 实时工程契约 (Active Project Contract)\n");
-        buf.append("> 状态汇报: ").append(cachedMsg).append("\n\n");
+        buf.append("\n### 核心工程规约 (Core Engineering Protocol)\n");
+        buf.append("> Project Context: ").append(cachedMsg).append("\n\n");
 
-        // 强化约束：确保它意识到这是一个物理约束
-        buf.append("你当前处于受限的工程模式，必须遵守以下物理契约：\n")
-                .append("1. **规约依赖**: 必须先读取根目录的 `CLAUDE.md` 以获取构建和测试指令。\n")
-                .append("2. **原子追踪**: 所有逻辑步骤必须实时同步至 `TODO.md`，严禁口头承诺进度。\n")
-                .append("3. **验证闭环**: 修改文件后，必须根据 `CLAUDE.md` 提供的命令进行验证。\n");
+        buf.append("为了确保工程质量，你必须严格执行以下操作：\n")
+                .append("1. **[必选] 动作前导**: 在开始任何任务前，必须调用 `read_file` 读取根目录的 `CLAUDE.md` 以获取构建和测试指令。\n")
+                .append("2. **[必选] 任务状态机**: 所有的任务进度必须实时同步到 `TODO.md`。在执行任何修改前，先在 `TODO.md` 中列出步骤清单。\n")
+                .append("3. **[必选] 验证驱动**: 修改代码后，必须根据 `CLAUDE.md` 中的指令运行测试，严禁未验证提交。\n");
 
         if (exists("TODO.md")) {
-            buf.append("4. **上下文恢复**: 检测到 `TODO.md`，请先通过阅读它来确认当前任务进度。\n");
+            buf.append("4. **[必选] 进度对齐**: 已检测到 `TODO.md`。请先读取它以恢复之前的任务上下文。\n");
         }
+
+        buf.append("5. **路径规范**: 严禁使用 `./` 前缀。使用相对于当前工作目录的纯净相对路径。\n");
 
         return buf.toString();
     }
 
     public String refresh() {
-        cachedMsg = null; // 清除缓存，强制下一轮 getInstruction 重新扫描
-        return init();
+        cachedMsg = init();
+        return cachedMsg;
     }
 
     public String init() {
         try {
-            if (!Files.isWritable(rootPath)) {
-                return "Error: Directory not writable. Please check permissions.";
-            }
+            if (!Files.isWritable(rootPath)) return "Error: Directory not writable.";
 
-            boolean alreadyExists = exists("CLAUDE.md");
-            List<String> detected = new ArrayList<>();
             StringBuilder newContent = new StringBuilder();
-            Path targetPath = rootPath.resolve("CLAUDE.md");
-
-            // 1. 标准头部定义 (Strict Claude Code style)
             newContent.append("# CLAUDE.md\n\n");
-            newContent.append("This file contains project-specific build, test, and style guidelines.\n");
-            newContent.append("AI assistants must consult this file before making any changes.\n\n");
-
-            // 2. 指令对齐 (针对不同技术栈提供具体的命令模版)
             newContent.append("## Build and Test Commands\n\n");
-            if (exists("pom.xml")) {
-                detected.add("Java/Maven");
-                newContent.append("- Build: `mvn clean compile`\n");
-                newContent.append("- Test all: `mvn test`\n");
-                newContent.append("- Test single class: `mvn test -Dtest=ClassName` (Replace with actual class)\n");
-                newContent.append("- Solon test: `mvn solon:test`\n\n");
-            } else if (exists("package.json")) {
-                detected.add("Node.js");
-                newContent.append("- Install dependencies: `npm install`\n");
-                newContent.append("- Build: `npm run build`\n");
-                newContent.append("- Test all: `npm test`\n\n");
-            } else if (exists("go.mod")) {
-                detected.add("Go");
-                newContent.append("- Build: `go build ./...`\n");
-                newContent.append("- Test all: `go test ./...`\n");
-                newContent.append("- Test single package: `go test ./path/to/pkg`\n\n");
-            } else {
-                // 通用兜底
-                newContent.append("- Build: [Specify build command]\n");
-                newContent.append("- Test: [Specify test command]\n\n");
+
+            List<String> detectedStacks = new ArrayList<>();
+            boolean rootHasMaven = exists("pom.xml");
+            boolean rootHasNode = exists("package.json");
+
+            if (rootHasMaven) {
+                detectedStacks.add("Maven(Root)");
+                appendMavenCommands(newContent, null);
+            }
+            if (rootHasNode) {
+                detectedStacks.add("Node(Root)");
+                appendNodeCommands(newContent, null);
             }
 
-            // 3. 核心准则 (Strictly align with Claude Code's "Read-Before-Edit" philosophy)
-            newContent.append("## Guidelines\n\n");
-            newContent.append("- **Read-Before-Edit**: Always read the full file content before applying any changes.\n");
-            newContent.append("- **Atomic Changes**: Implement one logical change at a time and verify immediately.\n");
-            newContent.append("- **Test-Driven**: Run relevant test commands from this file after every modification.\n");
-            newContent.append("- **Path Usage**: Use relative paths only (no './' prefix or absolute paths).\n");
-            newContent.append("- **Code Style**: Follow the existing project patterns and maintain Solon best practices.\n\n");
+            try (Stream<Path> stream = Files.list(rootPath)) {
+                List<Path> subDirs = stream.filter(Files::isDirectory)
+                        .filter(p -> !p.getFileName().toString().startsWith("."))
+                        .collect(Collectors.toList());
 
-            // 4. 环境保护
+                boolean hasSubModulesSection = false;
+
+                for (Path dir : subDirs) {
+                    String name = dir.getFileName().toString();
+                    boolean isMaven = Files.exists(dir.resolve("pom.xml"));
+                    boolean isNode = Files.exists(dir.resolve("package.json"));
+
+                    if (isMaven || isNode) {
+                        boolean isHeterogeneous = (isMaven && !rootHasMaven) || (isNode && !rootHasNode);
+
+                        if (isHeterogeneous) {
+                            detectedStacks.add(name + (isMaven ? "(Maven)" : "(Node)"));
+                            if (isMaven) appendMavenCommands(newContent, name);
+                            if (isNode) appendNodeCommands(newContent, name);
+                        } else {
+                            if (!hasSubModulesSection) {
+                                newContent.append("### Sub-modules / Sub-projects\n");
+                                hasSubModulesSection = true;
+                            }
+                            newContent.append("- ").append(name).append(": ")
+                                    .append(isMaven ? "Maven module" : "Node project")
+                                    .append(". Controlled by root project commands.\n");
+                        }
+                    }
+                }
+                if (hasSubModulesSection) newContent.append("\n");
+            }
+
+            appendGuidelines(newContent);
+
+            Path targetPath = rootPath.resolve("CLAUDE.md");
+            String finalContent = newContent.toString();
+            boolean updated = true;
+            if (Files.exists(targetPath)) {
+                updated = !finalContent.equals(new String(Files.readAllBytes(targetPath), StandardCharsets.UTF_8));
+            }
+            if (updated) Files.write(targetPath, finalContent.getBytes(StandardCharsets.UTF_8));
+
             ensureInGitignore("CLAUDE.md");
             ensureInGitignore("TODO.md");
+            if (!exists("TODO.md")) Files.write(rootPath.resolve("TODO.md"), "# TODO\n\n- [ ] Initial project scan\n".getBytes());
 
-            String finalStringContent = newContent.toString(); // 转换为 String 再对比
-            if (Files.exists(targetPath)) {
-                String existingContent = new String(Files.readAllBytes(targetPath), StandardCharsets.UTF_8);
-                if (finalStringContent.equals(existingContent)) {
-                    cachedMsg = "Project contract is already up-to-date."; // 更新缓存状态
-                    return cachedMsg;
-                }
-            }
-
-            // 5. 物理写入
-            Files.write(targetPath, finalStringContent.getBytes(StandardCharsets.UTF_8));
-
-            Path todoPath = rootPath.resolve("TODO.md");
-            if (!Files.exists(todoPath)) {
-                String initialTodo = "# TODO\n\n- [ ] Initial task identified\n";
-                Files.write(todoPath, initialTodo.getBytes(StandardCharsets.UTF_8));
-            }
-
-            // 返回结果：保持专业简洁，提供明确的下一行动指令
-            String status = alreadyExists ? "Updated" : "Initialized";
-            String stack = detected.isEmpty() ? "General" : String.join(", ", detected);
-
-            return String.format("%s CLAUDE.md for %s project.\n" +
-                    "[Instruction]: Please read CLAUDE.md to synchronize project rules.", status, stack);
-
+            return (updated ? "Updated" : "Verified") + " project contract. (" + String.join(", ", detectedStacks) + ")";
         } catch (Exception e) {
             LOG.error("Init failed", e);
-            return "Error: Failed to initialize CLAUDE.md: " + e.getMessage();
+            return "Error: " + e.getMessage();
         }
+    }
+
+    private void appendMavenCommands(StringBuilder buf, String moduleName) {
+        if (moduleName == null) {
+            buf.append("### Root Project (Maven)\n")
+                    .append("- Build: `mvn clean compile`\n")
+                    .append("- Test all: `mvn test`\n")
+                    .append("- Test single: `mvn test -Dtest=ClassName` (Replace with actual class)\n\n");
+        } else {
+            buf.append("### Heterogeneous Module: ").append(moduleName).append(" (Maven)\n")
+                    .append("- Build/Test: `cd ").append(moduleName).append(" && mvn clean compile test`\n\n");
+        }
+    }
+
+    private void appendNodeCommands(StringBuilder buf, String moduleName) {
+        if (moduleName == null) {
+            buf.append("### Root Project (Node)\n")
+                    .append("- Install: `npm install`\n")
+                    .append("- Build: `npm run build`\n\n");
+        } else {
+            buf.append("### Heterogeneous Project: ").append(moduleName).append(" (Node)\n")
+                    .append("- Run: `cd ").append(moduleName).append(" && npm install && npm run build`\n\n");
+        }
+    }
+
+    private void appendGuidelines(StringBuilder buf) {
+        buf.append("## Guidelines\n\n")
+                .append("- **Read-Before-Edit**: Always read the full file content before applying any changes.\n") // 增加读前必改
+                .append("- **Atomic Work**: Implement one feature/fix at a time.\n")
+                .append("- **Verification**: Run tests before considering a task complete.\n")
+                .append("- **Path Usage**: Use relative paths only (e.g., `src/main.java`, NOT `./src/main.java`).\n") // 明确路径格式
+                .append("- **Style**: Follow existing patterns in the codebase.\n\n");
     }
 
     private void ensureInGitignore(String fileName) {
@@ -188,14 +203,12 @@ public class CodeSkill extends AbsSkill {
             if (Files.exists(gitignore)) {
                 String content = new String(Files.readAllBytes(gitignore));
                 if (!content.contains(fileName)) {
-                    Files.write(gitignore, ("\n" + fileName).getBytes(), java.nio.file.StandardOpenOption.APPEND);
+                    String separator = content.endsWith("\n") ? "" : "\n";
+                    Files.write(gitignore, (separator + fileName + "\n").getBytes(), java.nio.file.StandardOpenOption.APPEND);
                 }
             }
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
     }
 
-    private boolean exists(String path) {
-        return Files.exists(rootPath.resolve(path));
-    }
+    private boolean exists(String path) { return Files.exists(rootPath.resolve(path)); }
 }

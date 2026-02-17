@@ -119,6 +119,7 @@ public class CliShell implements Runnable {
     private void performAgentTask(AgentSession session, String input) throws Exception {
         String currentInput = input;
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
+        final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
 
         while (true) {
             if (currentInput == null && !isTaskCompleted.get()) {
@@ -141,20 +142,22 @@ public class CliShell implements Runnable {
                                 String delta = clearThink(reason.getContent());
 
                                 if (Assert.isNotEmpty(delta)) {
-                                    // 对所有换行进行缩进处理
-                                    delta = delta.replace("\n", "\n  ");
-
                                     if (isFirstReasonChunk.get()) {
-                                        // 彻底裁剪掉首块前的所有前导换行（因为 ActionChunk 已经给过换行了）
                                         String trimmed = delta.replaceAll("^[\\s\\n]+", "");
                                         if (Assert.isNotEmpty(trimmed)) {
-                                            // 打印两个空格作为首行缩进，接上内容
-                                            terminal.writer().print("  " + trimmed);
+                                            if (isFirstConversation.get()) {
+                                                terminal.writer().print("  ");
+                                                isFirstConversation.set(false);
+                                            } else {
+                                                terminal.writer().print("\n  ");
+                                            }
+
+                                            terminal.writer().print(trimmed.replace("\n", "\n  "));
                                             isFirstReasonChunk.set(false);
                                         }
-                                        // 如果 trimmed 是空的，说明这块全是空白，等下一块内容
                                     } else {
-                                        terminal.writer().print(delta);
+                                        // 连续的思考内容，保持缩进替换即可
+                                        terminal.writer().print(delta.replace("\n", "\n  "));
                                     }
                                     terminal.flush();
                                 }
