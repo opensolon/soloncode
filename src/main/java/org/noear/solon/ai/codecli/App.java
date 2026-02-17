@@ -75,12 +75,11 @@ public class App {
                 .config(agent -> {
                     // 启用规划模式
                     agent.planningMode(config.planningMode);
-                    // 添加步数扩展
-                    agent.maxStepsExtensible(config.hitlEnabled);
-                    //添加步数
+                    // 添加步数
                     agent.maxSteps(config.maxSteps);
+                    // 添加步数自动扩展
                     agent.maxStepsExtensible(config.maxStepsAutoExtensible);
-                    //添加会话窗口大小
+                    // 添加会话窗口大小
                     agent.sessionWindowSize(config.sessionWindowSize);
                 });
 
