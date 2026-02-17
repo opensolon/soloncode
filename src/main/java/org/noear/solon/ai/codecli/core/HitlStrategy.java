@@ -15,46 +15,84 @@ import java.util.Map;
  */
 public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
 
-    // 高危关键字：涵盖删除、移动、网络下载、系统权限、环境嗅探等
-    private static final String DANGER_PATTERN =
-            ".*\\b(rm|mv|curl|wget|kill|chmod|chown|apt|yum|dnf|npm|pip|pnpm|sudo|su|lsof|netstat|nmap|env|printenv|export|ssh|scp|ftp|docker|kubectl)\\b.*";
+    // 1. 系统特权与身份篡改 (Claude 绝对禁止)
+    private static final String SYSTEM_DANGER =
+            ".*\\b(sudo|su|chown|chmod|chgrp|passwd|visudo|alias|unalias)\\b.*";
+
+    // 2. 进程与资源控制
+    private static final String PROCESS_DANGER =
+            ".*\\b(kill|pkill|xargs|nohup|disown|reboot|shutdown|init|systemctl|service)\\b.*";
+
+    // 3. 环境变更工具 (区分查询与变更)
+    private static final String ENV_MODIFIERS = "\\b(apt|yum|dnf|npm|pnpm|yarn|pip|docker|kubectl|git|brew|cargo)\\b";
+    // 拦截破坏性动词
+    private static final String MODIFY_SUB_CMDS = "\\b(install|i|add|remove|rm|publish|push|commit|checkout|update|upgrade|stop|prune|build|config|set)\\b";
 
     @Override
     public String evaluate(ReActTrace trace, Map<String, Object> args) {
         String cmd = (String) args.get("command");
+        if (Assert.isEmpty(cmd)) return null;
 
-        if (Assert.isEmpty(cmd)) {
-            return null;
+        cmd = cmd.trim();
+
+        // --- A. 注入与子 Shell 防御 (Claude 的最高优先级) ---
+        // 拦截反引号、$(...)、重定向到系统设备
+        if (cmd.contains("`") || cmd.contains("$(") || cmd.contains("/dev/")) {
+            return "检测到潜在的命令注入或设备重定向风险。";
         }
 
-        // 1. 路径越界探测 (防止 Agent 尝试跳出 Box)
+        // --- B. 系统级安全 (绝对黑名单) ---
+        if (cmd.matches(SYSTEM_DANGER) || cmd.matches(PROCESS_DANGER)) {
+            return "检测到系统特权或进程控制指令 [" + cmd + "]。";
+        }
+
+        // --- C. 路径边界检查 (Claude 严格限制) ---
+        // 1. 拦截路径回溯
         if (cmd.contains("../") || cmd.contains("..\\")) {
-            return "检测到路径回溯操作，禁止访问工作区以外的目录。";
+            return "检测到路径回溯操作，禁止访问工作区外目录。";
+        }
+        // 2. 拦截敏感目录访问 (即使是只读)
+        if (cmd.matches(".*\\b(/etc/|/var/|/root/|~/.ssh/|~/.bashrc|~/.zshrc).*")) {
+            return "禁止访问系统敏感配置文件。";
         }
 
-        // 2. 拦截敏感关键字
-        if (cmd.matches(DANGER_PATTERN)) {
-            return "检测到敏感系统指令 [" + cmd + "]，执行可能影响系统环境或导致信息泄露。";
-        }
-
-        // 3. 拦截命令拼接与不安全的管道
-        // 允许简单的查询管道，如 | grep, | head
-        if (cmd.contains(";") || cmd.contains("&") || cmd.contains("|")) {
-            if (!cmd.matches(".*\\|\\s*(grep|head|tail|awk|sort|uniq|wc).*")) {
-                return "检测到复杂的命令组合、多行指令或潜在危险的管道操作。";
+        // --- D. 包管理与环境变更 (Claude 的分级策略) ---
+        if (cmd.matches(".*" + ENV_MODIFIERS + ".*")) {
+            // 只要包含修改动词，就必须确认
+            if (cmd.matches(".*" + MODIFY_SUB_CMDS + ".*")) {
+                return "检测到环境变更或包管理修改操作。";
             }
         }
 
-        // 4. 严格控制重定向写入 (防止绕过文件编辑器的权限检查)
-        if (cmd.contains(">") || cmd.contains(">>")) {
-            return "检测到 shell 重定向写入操作，建议使用 write_to_file 工具以获得更安全的路径校验。";
+        // --- E. 网络行为 (Claude 的零信任原则) ---
+        // 任何非 --help / --version 的网络工具调用都需要拦截
+        if (cmd.matches(".*\\b(curl|wget|ssh|scp|ftp|nc|telnet|dig|nslookup|ping)\\b.*")) {
+            if (!cmd.matches(".*(--help|--version|-V).*")) {
+                return "检测到网络外连或远程探测指令。";
+            }
         }
 
-        // 5. 拦截特殊的反弹 shell 特征
-        if (cmd.contains("/dev/tcp") || cmd.contains("/dev/udp")) {
-            return "检测到疑似网络重定向/反弹 Shell 操作。";
+        // --- F. 管道与命令组合 (只读安全链) ---
+        // 允许单个管道流向安全工具，拦截多重管道或非法组合
+        if (cmd.contains(";") || cmd.contains("&")) {
+            return "禁止执行多条组合命令以确保审计追踪。";
         }
 
-        return null; // 安全指令，直接放行
+        if (cmd.contains("|")) {
+            // 严格对齐只读工具白名单
+            if (!cmd.matches(".*\\|\\s*\\b(grep|head|tail|awk|sort|uniq|wc|jq|column|less|sed|xxd)\\b.*")) {
+                return "检测到潜在风险的管道链操作。";
+            }
+        }
+
+        // --- G. 破坏性文件操作 ---
+        if (cmd.matches(".*\\b(rm|mv)\\b.*")) {
+            // 禁止在工作区根目录执行递归删除
+            if (cmd.matches(".*rm\\s+-rf\\s+.*") && (cmd.contains("*") || cmd.contains(" ."))) {
+                return "检测到大范围递归删除操作风险。";
+            }
+        }
+
+        return null; // 基础查询命令 (ls, cat, pwd, echo, find) 全数放行
     }
 }
