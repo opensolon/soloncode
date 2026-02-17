@@ -47,11 +47,11 @@ public class App {
 
             app.enableHttp(false); //默认不启用 http
 
-            if (c.enableWeb) {
+            if (c.webEnabled) {
                 app.enableHttp(true);
             }
 
-            if (c.enableAcp && "stdio".equals(c.acpTransport) == false) {
+            if (c.acpEnabled && "stdio".equals(c.acpTransport) == false) {
                 app.enableHttp(true);
                 app.enableWebSocket(true);
             }
@@ -71,12 +71,12 @@ public class App {
                 .name(config.name)
                 .workDir(config.workDir)
                 .session(sessionProvider)
-                .enableHitl(config.enableHitl)
+                .enableHitl(config.hitlEnabled)
                 .config(agent -> {
                     // 启用规划模式
                     agent.planningMode(config.planningMode);
                     // 添加步数扩展
-                    agent.maxStepsExtensible(config.enableHitl);
+                    agent.maxStepsExtensible(config.hitlEnabled);
                     //添加步数
                     agent.maxSteps(config.maxSteps);
                     agent.maxStepsExtensible(config.maxStepsAutoExtensible);
@@ -90,15 +90,15 @@ public class App {
             });
         }
 
-        if (config.enableConsole) {
+        if (config.cliEnabled) {
             new Thread(new CliShell(codeAgent, config.cliPrintSimplified), "CLI-Interactive-Thread").start();
         }
 
-        if (config.enableWeb) {
+        if (config.webEnabled) {
             Solon.app().router().get(config.webEndpoint, new WebGate(codeAgent));
         }
 
-        if (config.enableAcp) {
+        if (config.acpEnabled) {
             AcpAgentTransport agentTransport;
             if ("stdio".equals(config.acpTransport)) {
                 agentTransport = new StdioAcpAgentTransport();

@@ -12,14 +12,15 @@ solon.code.cli:
   sessionWindowSize: 10 # 会话历史窗口大小（即，新指令时使用几条历史消息）
 
   planningMode: true # 智能计划模式（复杂问题会自动分解任务和进度指引）
+  hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
 
-  enableConsole: true # 是否启用控制台
-  enableHitl: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
+  cliEnabled: true # 是否启用控制台
+  cliPrintSimplified: true
 
-  enableWeb: false # 是否启用 WebApi
+  webEnabled: false # 是否启用 WebApi
   webEndpoint: "/cli"
 
-  enableAcp: false # 是否启用 Acp 协议（一些支持 Acp 的 IDE 可以连接）
+  acpEnabled: false # 是否启用 Acp 协议（一些支持 Acp 的 IDE 可以连接）
   acpTransport: "websocket" # "stdio" or "websocket"
   acpEndpoint: "/acp"
 

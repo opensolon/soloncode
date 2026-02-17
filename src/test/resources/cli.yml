@@ -8,18 +8,19 @@ solon.code.cli:
   name: "小花"
   workDir: "work"
   maxSteps: 100
-  maxStepsExtensible: true
+  maxStepsAutoExtensible: true
   sessionWindowSize: 10
 
   planningMode: true
+  hitlEnabled: false
 
-  enableConsole: true
-  enableHitl: false
+  cliEnabled: true
+  cliPrintSimplified: true
 
-  enableWeb: false
+  webEnabled: false
   webEndpoint: "/cli"
 
-  enableAcp: false
+  acpEnabled: false
   acpTransport: "websocket" # "stdio" or "websocket"
   acpEndpoint: "/acp"
 

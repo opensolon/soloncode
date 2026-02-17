@@ -37,19 +37,19 @@ public class Config {
     public boolean maxStepsAutoExtensible = false;
     public int sessionWindowSize = 10;
 
+    public boolean cliEnabled = true;
     public boolean cliPrintSimplified = true;
 
+    public boolean webEnabled = false;
     public String webEndpoint = "/cli";
 
+    public boolean acpEnabled = false;
     public String acpTransport = "stdio";
     public String acpEndpoint = "/acp";
 
-    public boolean planningMode = true;
+    public boolean hitlEnabled = false;
 
-    public boolean enableConsole = true;
-    public boolean enableWeb = false;
-    public boolean enableAcp = false;
-    public boolean enableHitl = false;
+    public boolean planningMode = true;
 
     public ChatConfig chatModel;
     public Map<String, String> mountPool;
