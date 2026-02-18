@@ -88,7 +88,10 @@ public class CodeSkill extends AbsSkill {
     }
 
     public String refresh() {
-        cachedMsg = init();
+        if (isSupported(null)) {
+            cachedMsg = init();
+        }
+
         return cachedMsg;
     }
 
@@ -216,5 +219,7 @@ public class CodeSkill extends AbsSkill {
         } catch (Exception ignored) {}
     }
 
-    private boolean exists(String path) { return Files.exists(rootPath.resolve(path)); }
+    private boolean exists(String path) {
+        return Files.exists(rootPath.resolve(path));
+    }
 }

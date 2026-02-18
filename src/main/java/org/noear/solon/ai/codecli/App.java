@@ -69,6 +69,7 @@ public class App {
 
         AgentNexus codeAgent = new AgentNexus(chatModel)
                 .nickname(config.nickname)
+                .instruction(config.instruction)
                 .workDir(config.workDir)
                 .session(sessionProvider)
                 .enableHitl(config.hitlEnabled)
