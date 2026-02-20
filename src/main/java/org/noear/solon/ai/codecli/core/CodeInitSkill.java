@@ -1,4 +1,4 @@
-package org.noear.solon.ai.codecli.core.skills;
+package org.noear.solon.ai.codecli.core;
 
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;

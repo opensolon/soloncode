@@ -7,8 +7,7 @@ import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.codecli.core.AgentNexus;
-import org.noear.solon.core.util.Assert;
+import org.noear.solon.ai.codecli.core.CodeAgent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.scheduler.Schedulers;
@@ -22,13 +21,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class BotGate {
     private static final Logger log = LoggerFactory.getLogger(BotGate.class);
 
-    private final AgentNexus codeAgent;
+    private final CodeAgent codeAgent;
     private final Map<String, BotChannel> channels = new ConcurrentHashMap<>();
 
     // 关键：维护 Session 级别的 HITL 任务状态
     private final Map<String, HITLTask> pendingHitlTasks = new ConcurrentHashMap<>();
 
-    public BotGate(AgentNexus codeAgent) {
+    public BotGate(CodeAgent codeAgent) {
         this.codeAgent = codeAgent;
     }
 

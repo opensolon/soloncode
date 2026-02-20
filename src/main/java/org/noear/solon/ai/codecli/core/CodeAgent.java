@@ -27,10 +27,9 @@ import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.codecli.core.skills.CodeInitSkill;
-import org.noear.solon.ai.codecli.core.skills.CodeLuceneSkill;
 import org.noear.solon.ai.skills.cli.CliSkill;
 import org.noear.solon.ai.skills.diff.DiffSkill;
+import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import reactor.core.publisher.Flux;
@@ -47,7 +46,7 @@ import java.util.function.Consumer;
  * @since 3.9.1
  */
 @Preview("3.9.1")
-public class AgentNexus {
+public class CodeAgent {
     private final static String SESSION_DEFAULT = "cli";
 
     private final ChatModel chatModel;
@@ -59,43 +58,43 @@ public class AgentNexus {
     private Consumer<ReActAgent.Builder> configurator;
     private boolean enableHitl = false;
 
-    public AgentNexus(ChatModel chatModel) {
+    public CodeAgent(ChatModel chatModel) {
         this.chatModel = chatModel;
     }
 
     /**
      * 设置 Agent 名称 (同时也作为控制台输出前缀)
      */
-    public AgentNexus nickname(String nickname) {
+    public CodeAgent nickname(String nickname) {
         if (nickname != null && !nickname.isEmpty()) {
             this.nickname = nickname;
         }
         return this;
     }
 
-    public AgentNexus instruction(String instruction) {
+    public CodeAgent instruction(String instruction) {
         this.instruction = instruction;
         return this;
     }
 
-    public AgentNexus workDir(String workDir) {
+    public CodeAgent workDir(String workDir) {
         this.workDir = workDir;
         return this;
     }
 
-    public AgentNexus mountPool(String alias, String dir) {
+    public CodeAgent mountPool(String alias, String dir) {
         if (dir != null) {
             this.extraPools.put(alias, dir);
         }
         return this;
     }
 
-    public AgentNexus session(AgentSessionProvider sessionProvider) {
+    public CodeAgent session(AgentSessionProvider sessionProvider) {
         this.sessionProvider = sessionProvider;
         return this;
     }
 
-    public AgentNexus config(Consumer<ReActAgent.Builder> configurator) {
+    public CodeAgent config(Consumer<ReActAgent.Builder> configurator) {
         this.configurator = configurator;
         return this;
     }
@@ -103,7 +102,7 @@ public class AgentNexus {
     /**
      * 是否启用 HITL 交互
      */
-    public AgentNexus enableHitl(boolean enableHitl) {
+    public CodeAgent enableHitl(boolean enableHitl) {
         this.enableHitl = enableHitl;
         return this;
     }
@@ -143,12 +142,12 @@ public class AgentNexus {
         });
     }
 
-    public CodeLuceneSkill getLuceneSkill(AgentSession session) {
+    public LuceneSkill getLuceneSkill(AgentSession session) {
         String effectiveWorkDir = (String) session.attrs().getOrDefault("context:cwd", this.workDir);
         String boxId = session.getSessionId();
 
-        return (CodeLuceneSkill) session.attrs().computeIfAbsent("LuceneSkill", x -> {
-            return new CodeLuceneSkill(effectiveWorkDir);
+        return (LuceneSkill) session.attrs().computeIfAbsent("LuceneSkill", x -> {
+            return new LuceneSkill(effectiveWorkDir);
         });
     }
 

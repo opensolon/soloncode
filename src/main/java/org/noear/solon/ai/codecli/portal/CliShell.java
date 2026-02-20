@@ -32,7 +32,7 @@ import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.codecli.core.AgentNexus;
+import org.noear.solon.ai.codecli.core.CodeAgent;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
@@ -54,7 +54,7 @@ public class CliShell implements Runnable {
 
     private Terminal terminal;
     private LineReader reader;
-    private final AgentNexus codeAgent;
+    private final CodeAgent codeAgent;
     private final boolean cliPrintSimplified;
 
     // ANSI 颜色常量 - 严格对齐 Claude 极简风
@@ -67,7 +67,7 @@ public class CliShell implements Runnable {
             CYAN = "\033[36m",
             RESET = "\033[0m";
 
-    public CliShell(AgentNexus codeAgent, boolean cliPrintSimplified) {
+    public CliShell(CodeAgent codeAgent, boolean cliPrintSimplified) {
         this.codeAgent = codeAgent;
         this.cliPrintSimplified = cliPrintSimplified;
 

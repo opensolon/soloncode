@@ -14,7 +14,7 @@ import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.codecli.core.AgentNexus;
+import org.noear.solon.ai.codecli.core.CodeAgent;
 import org.noear.solon.core.util.Assert;
 import reactor.core.publisher.Mono;
 
@@ -25,10 +25,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class AcpLink implements Runnable{
-    private final AgentNexus codeAgent; // CodeCLI 内部的 Agent
+    private final CodeAgent codeAgent; // CodeCLI 内部的 Agent
     private final AcpAgentTransport agentTransport;
 
-    public AcpLink(AgentNexus codeAgent, AcpAgentTransport agentTransport) {
+    public AcpLink(CodeAgent codeAgent, AcpAgentTransport agentTransport) {
         this.codeAgent = codeAgent;
         this.agentTransport = agentTransport;
     }

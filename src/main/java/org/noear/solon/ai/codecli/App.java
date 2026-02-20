@@ -25,7 +25,7 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.codecli.portal.AcpLink;
-import org.noear.solon.ai.codecli.core.AgentNexus;
+import org.noear.solon.ai.codecli.core.CodeAgent;
 import org.noear.solon.ai.codecli.portal.CliShell;
 import org.noear.solon.ai.codecli.portal.WebGate;
 import org.noear.solon.core.util.Assert;
@@ -67,7 +67,7 @@ public class App {
         Map<String, AgentSession> store = new ConcurrentHashMap<>();
         AgentSessionProvider sessionProvider = (sessionId) -> store.computeIfAbsent(sessionId, key -> new FileAgentSession(key, config.workDir + "/.system/sessions/" + key));
 
-        AgentNexus codeAgent = new AgentNexus(chatModel)
+        CodeAgent codeAgent = new CodeAgent(chatModel)
                 .nickname(config.nickname)
                 .instruction(config.instruction)
                 .workDir(config.workDir)
