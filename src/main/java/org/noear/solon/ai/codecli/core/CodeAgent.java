@@ -112,7 +112,7 @@ public class CodeAgent {
     }
 
     public String getVersion() {
-        return "v0.0.11";
+        return "v0.0.12";
     }
 
     public String getWorkDir() {
@@ -217,8 +217,14 @@ public class CodeAgent {
     }
 
     public String init(AgentSession session) {
-        getInitSkill(session).refresh();
-        return getLuceneSkill(session).refreshSearchIndex();
+        String code = getInitSkill(session).refresh();
+        String search = getLuceneSkill(session).refreshSearchIndex();
+
+        if (Assert.isNotEmpty(code)) {
+            return search + "\n" + code;
+        } else {
+            return search;
+        }
     }
 
     public Flux<AgentChunk> stream(String sessionId, Prompt prompt) {
