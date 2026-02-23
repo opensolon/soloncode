@@ -1,27 +1,28 @@
 solon.logging.appender:
   console:
-    enable: false
+    enable: false # 是否启用控制台日志（启用后，会对 cli console 有干扰）
   file:
-    level: DEBUG
+    level: TRACE
 
 solon.code.cli:
-  name: "小花"
+  nickname: "小花" # 智能体昵称
   #  instruction: "你是一个超级智能体（什么问题都能解决），办事高效简洁，性格幽默风趣。" # 引导指令
-  workDir: "work"
-  maxSteps: 100
-  maxStepsAutoExtensible: true
-  sessionWindowSize: 10
 
-  planningMode: true
-  hitlEnabled: false
+  workDir: "work" # 工作区目录
+  maxSteps: 30 # ReAct 最大循环步数
+  maxStepsAutoExtensible: true #最大步数自动续航（由 LLM 反思控制）
+  sessionWindowSize: 10 # 会话历史窗口大小（即，新指令时使用几条历史消息）
 
-  cliEnabled: true
+  planningMode: true # 智能计划模式（复杂问题会自动分解任务和进度指引）
+  hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
+
+  cliEnabled: true # 是否启用控制台
   cliPrintSimplified: true
 
-  webEnabled: false
+  webEnabled: false # 是否启用 WebApi
   webEndpoint: "/cli"
 
-  acpEnabled: false
+  acpEnabled: false # 是否启用 Acp 协议（一些支持 Acp 的 IDE 可以连接）
   acpTransport: "websocket" # "stdio" or "websocket"
   acpEndpoint: "/acp"
 
