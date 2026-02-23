@@ -27,6 +27,9 @@ import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
+import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
+import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
 import org.noear.solon.ai.skills.cli.CliSkill;
 import org.noear.solon.ai.skills.diff.DiffSkill;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
@@ -176,7 +179,24 @@ public class CodeAgent {
 
             if (Assert.isNotEmpty(instruction)) {
                 agentBuilder.instruction(instruction);
+            } else {
+                agentBuilder.instruction("你是一个超级智能体（什么问题都能解决），办事高效简洁，性格幽默风趣。");
             }
+
+            agentBuilder.planningInstruction("#### 任务看板维护协议 (TODO.md Protocol)\n" +
+                    "1. **任务管理**：面对复杂任务，必须在根目录维护 `TODO.md`。规范：\n" +
+                    "   - 初始任务：收到指令后，先在 `TODO.md` 中列出所有逻辑步骤。\n" +
+                    "   - 状态追踪：使用 [ ] 表示待办，[x] 表示已完成。每完成一步必须物理更新文件。\n" +
+                    "   - 恢复上下文：任何时候开始工作前（包括每一轮思考开始），必须先读取 `TODO.md` 以确认进度。如果是新任务，必须先初始化 `TODO.md`。" +
+                    "2. **状态同步要求**：\n" +
+                    "   - **创建/重构**：当任务开始或目标变更时，先调用 `create_plan` 并在 `TODO.md` 中初始化详尽内容。\n" +
+                    "   - **进度更新**：每当你在 `TODO.md` 中打下一个 [x]，必须同步调用 `update_plan_progress`。\n" +
+                    "   - **自洽性**：严禁出现 `TODO.md` 显示已完成，但 `PlanSkill` 内存状态滞后的情况。\n" +
+                    "3. **任务切换**：若用户中途改变任务方向，必须第一时间清空或重构 `TODO.md` 中的内容，以确保后续步骤与新目标一致。");
+
+            agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
+            agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
+            agentBuilder.defaultToolAdd(CodeSearchTool.getInstance());
 
             //上下文摘要
             CompositeSummarizationStrategy compositeStrategy = new CompositeSummarizationStrategy();

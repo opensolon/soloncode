@@ -13,29 +13,76 @@ import org.slf4j.LoggerFactory;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Bot 门户网关 (OpenClaw/Moltbot 对齐版)
+ * 支持插件化通道管理和企业级功能
  */
 public class BotGate {
     private static final Logger log = LoggerFactory.getLogger(BotGate.class);
 
     private final CodeAgent codeAgent;
-    private final Map<String, BotChannel> channels = new ConcurrentHashMap<>();
+    private final ChannelRegistry channelRegistry;
 
     // 关键：维护 Session 级别的 HITL 任务状态
     private final Map<String, HITLTask> pendingHitlTasks = new ConcurrentHashMap<>();
 
+    // 认证管理器
+    private final AuthManager authManager;
+
     public BotGate(CodeAgent codeAgent) {
+        this(codeAgent, "data/sessions");
+    }
+    
+    public BotGate(CodeAgent codeAgent, String sessionStorePath) {
         this.codeAgent = codeAgent;
+        this.channelRegistry = new ChannelRegistry();
+        this.authManager = new AuthManager();
+        initializeBuiltinChannels();
     }
 
     /**
-     * 注册通道 (如 TelegramChannel, MoltbookChannel)
+     * 初始化内置通道类型
+     */
+    private void initializeBuiltinChannels() {
+        // 注册 Web 通道描述符
+        channelRegistry.registerDescriptor(
+            new ChannelRegistry.ChannelDescriptor(
+                ChannelRegistry.ChannelTypes.WEB,
+                "Web Channel",
+                "HTTP/WebSocket based channel for web applications"
+            )
+            .addFeature("markdown")
+            .addFeature("attachments")
+            .addFeature("typing")
+            .addConfigField("port", "integer")
+            .addConfigField("path", "string")
+        );
+    }
+
+    /**
+     * 注册通道工厂
+     */
+    public BotGate registerChannelFactory(String channelType, ChannelRegistry.ChannelFactory factory) {
+        channelRegistry.registerFactory(channelType, factory);
+        return this;
+    }
+
+    /**
+     * 创建并注册通道
+     */
+    public BotGate createChannel(String channelType, String channelId, Map<String, Object> config) {
+        BotChannel channel = channelRegistry.createChannel(channelType, channelId, config);
+        return this;
+    }
+
+    /**
+     * 注册通道实例 (兼容旧接口)
      */
     public BotGate register(BotChannel channel) {
-        channels.put(channel.getChannelId(), channel);
+        channelRegistry.registerChannel(channel);
         return this;
     }
 
@@ -43,18 +90,45 @@ public class BotGate {
      * 统一接收消息入口 (Webhook 或 Bot 监听器调用)
      */
     public void onIncomingMessage(String channelId, String senderId, String message, Map<String, Object> metadata) {
-        BotChannel channel = channels.get(channelId);
-        if (channel == null) return;
+        BotChannel channel = channelRegistry.getChannel(channelId);
+        if (channel == null) {
+            log.warn("Channel not found: {}", channelId);
+            return;
+        }
+
+        // 1. 认证检查
+        if (!authenticateUser(channelId, senderId, metadata)) {
+            channel.pushText(senderId, "🚫 Authentication failed", metadata);
+            return;
+        }
 
         String sessionId = channelId + ":" + senderId;
 
-        // 1. 拦截并处理审批指令 (y/n)
+        // 2. 拦截并处理审批指令 (y/n)
         if (handleHitlApproval(channel, senderId, sessionId, message, metadata)) {
             return;
         }
 
-        // 2. 正常任务分发
+        // 3. 正常任务分发
         processTask(channel, senderId, sessionId, message, metadata);
+    }
+
+    /**
+     * 用户认证
+     */
+    private boolean authenticateUser(String channelId, String senderId, Map<String, Object> metadata) {
+        AuthManager.UserSession session = authManager.getSession(senderId);
+        
+        // 如果会话不存在，创建新会话
+        if (session == null) {
+            session = authManager.createSession(senderId, metadata);
+        }
+        
+        // 更新活动时间
+        session.updateActivity();
+        
+        // 基础权限检查
+        return authManager.hasPermission(senderId, AuthManager.Permissions.SEND_MESSAGES);
     }
 
     /**
@@ -150,7 +224,38 @@ public class BotGate {
         return content == null ? "" : content.replaceAll("(?s)<\\s*/?think\\s*>", "");
     }
 
+    /**
+     * 启动所有通道
+     */
     public void startAll() {
-        channels.values().forEach(BotChannel::start);
+        channelRegistry.startAll();
+    }
+
+    /**
+     * 停止所有通道
+     */
+    public void stopAll() {
+        channelRegistry.stopAll();
+    }
+
+    /**
+     * 获取通道注册表
+     */
+    public ChannelRegistry getChannelRegistry() {
+        return channelRegistry;
+    }
+
+    /**
+     * 获取认证管理器
+     */
+    public AuthManager getAuthManager() {
+        return authManager;
+    }
+
+    /**
+     * 健康检查
+     */
+    public Map<String, BotChannel.HealthStatus> healthCheck() {
+        return channelRegistry.healthCheckAll();
     }
 }

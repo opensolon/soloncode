@@ -6,6 +6,7 @@ solon.logging.appender:
 
 solon.code.cli:
   name: "小花"
+  #  instruction: "你是一个超级智能体（什么问题都能解决），办事高效简洁，性格幽默风趣。" # 引导指令
   workDir: "work"
   maxSteps: 100
   maxStepsAutoExtensible: true
