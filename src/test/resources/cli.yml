@@ -2,7 +2,7 @@ solon.logging.appender:
   console:
     enable: false
   file:
-    level: INFO
+    level: DEBUG
 
 solon.code.cli:
   name: "小花"
@@ -26,8 +26,8 @@ solon.code.cli:
   acpEndpoint: "/acp"
 
   chatModel:
-    apiUrl: "https://api.deepseek.com/v1/chat/completions"
-    apiKey: "sk-***"
-    model: "deepseek-chat"
+    apiUrl: "https://apis.iflow.cn/v1/chat/completions"
+    apiKey: "sk-18e1e33e634969e5a3e13a01ebd2a907"
+    model: "glm-4.6"
   mountPool:
     "@shared": "${user.home}/WORK/work_github/solonlab/awesome-claude-skills"
