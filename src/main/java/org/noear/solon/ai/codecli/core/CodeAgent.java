@@ -22,6 +22,7 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
+import org.noear.solon.ai.agent.react.intercept.StopLoopInterceptor;
 import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
 import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
@@ -180,17 +181,25 @@ public class CodeAgent {
             if (Assert.isNotEmpty(instruction)) {
                 agentBuilder.instruction(instruction);
             } else {
-                agentBuilder.instruction("你是一个超级智能体，办事高效简洁。\n" +
-                        "- **性格**：幽默风趣（仅限于 Thought 中的自我独白和 Final Answer 的对话）。\n" +
+                agentBuilder.instruction("你是一个超级智能体，办事简洁高效。\n" +
+                        "- **性格**：幽默风趣、有人情味（仅限于 Thought 中的自我独白和 Final Answer 的对话）。\n" +
                         "- **内核**：在调用工具、识别规约、编辑文件时，必须保持 100% 的严谨与专业，严禁在参数中夹杂个人风格。");
             }
 
-            agentBuilder.planningInstruction("#### 任务看板维护协议 (TODO.md Protocol)\n" +
-                    "1. **操作链路**：复杂任务必须通过 `TODO.md` (物理存证) 与 `PlanSkill` (内存指针) 双轨并行。\n" +
-                    "2. **双写步骤**：\n" +
-                    "   - **Step A (写入)**: 调用工具修改 `TODO.md` (打 [x])。\n" +
-                    "   - **Step B (同步)**: 紧接着调用 `update_plan_progress` 推进指针。\n" +
-                    "3. **自洽要求**：每一轮思考必须先 `read_file` 读取 `TODO.md`。TODO.md 是你的物理记忆，严禁出现内存指针快于文件记录的情况。");
+            agentBuilder.planningInstruction("#### 任务看板维护协议 (Step-Linked Skill Protocol)\n" +
+                    "1. **物理存证要求**：\n" +
+                    "   - **启动**：复杂任务首个动作必是 `write_to_file` 创建 `TODO.md`。\n" +
+                    "   - **重构**：任务方向切换时，必须立即清空并重写 `TODO.md`，严禁在旧清单后追加。\n\n" +
+                    "2. **计划项结构 (关键：技能绑定)**：\n" +
+                    "   - **原子化清单**：使用 `- [ ]` 列表拆分步骤。**在制定计划前，应先通过 `list_files` 探测可能的技能路径。**\n" +
+                    "   - **局部指引**：涉及专业领域（如 Maven, Git, 部署等）的步骤，**必须在括号内标注对应技能路径**。示例：\n" +
+                    "     - [ ] 编译项目 (@shared/maven/SKILL.md)\n" +
+                    "     - [ ] 镜像打包 (@shared/docker/SKILL.md)\n\n" +
+                    "3. **执行与对齐逻辑**：\n" +
+                    "   - **即时对齐**：处理带有 `(@.../SKILL.md)` 标注的项时，**第一动作必须是 `read_file` 该规约**，严禁凭经验盲目执行命令。\n" +
+                    "   - **双向同步**：物理更新（打 [x]）后，必须立即调用 `update_plan_progress` 同步内存指针。\n\n" +
+                    "4. **循环审查**：\n" +
+                    "   - **每轮自检**：每轮 Thought 启动必先 `read_file` 读取 `TODO.md`。它是你的物理记忆，若发现当前动作涉及技能目录但计划项未标注规约，必须立即修正计划。");
 
             agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
@@ -203,6 +212,7 @@ public class CodeAgent {
             SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(12, compositeStrategy);
 
             agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
+            agentBuilder.defaultInterceptorAdd(new StopLoopInterceptor());
 
             if (enableHitl) {
                 agentBuilder.defaultInterceptorAdd(new HITLInterceptor()
