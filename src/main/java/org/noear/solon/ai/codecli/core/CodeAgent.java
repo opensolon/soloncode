@@ -186,12 +186,19 @@ public class CodeAgent {
                         "- **内核**：在调用工具、识别规约、编辑文件时，必须保持 100% 的严谨与专业，严禁在参数中夹杂个人风格。");
             }
 
-            agentBuilder.planningInstruction("#### 任务看板维护协议 (Step-Linked Skill Protocol)\n" +
+            agentBuilder.planningInstruction("\n#### 任务看板维护协议 (Step-Linked Skill Protocol)\n" +
                     "1. **物理存证要求**：\n" +
-                    "   - **启动**：复杂任务首个动作必是 `write_to_file` 创建 `TODO.md`。\n" +
+                    "   - **触发条件**（满足任一即创建 TODO.md）：\n" +
+                    "     * 任务描述中包含\"和\"、\"然后\"、\"接着\"等连接词\n" +
+                    "     * 预估需要调用 3 个以上不同类型的工具\n" +
+                    "     * 涉及 2 个以上的技能目录\n" +
+                    "     * 用户明确说\"帮我做一个...\"、\"创建一个...\"\n" +
+                    "   - **反例**（不需要 TODO.md）：\n" +
+                    "     * \"这个文件是干什么的？\" → 直接 read_file\n" +
+                    "     * \"帮我修复这个语法错误\" → 直接 str_replace_editor\n" +
                     "   - **重构**：任务方向切换时，必须立即清空并重写 `TODO.md`，严禁在旧清单后追加。\n\n" +
                     "2. **计划项结构 (关键：技能绑定)**：\n" +
-                    "   - **原子化清单**：使用 `- [ ]` 列表拆分步骤。**在制定计划前，应先通过 `list_files` 探测可能的技能路径。**\n" +
+                    "   - **原子化清单**：使用 `- [ ]` 列表拆分步骤。**在制定计划前，必须先通过 `list_files` 探测可能的技能路径。**\n" +
                     "   - **局部指引**：涉及专业领域（如 Maven, Git, 部署等）的步骤，**必须在括号内标注对应技能路径**。示例：\n" +
                     "     - [ ] 编译项目 (@shared/maven/SKILL.md)\n" +
                     "     - [ ] 镜像打包 (@shared/docker/SKILL.md)\n\n" +
@@ -199,7 +206,18 @@ public class CodeAgent {
                     "   - **即时对齐**：处理带有 `(@.../SKILL.md)` 标注的项时，**第一动作必须是 `read_file` 该规约**，严禁凭经验盲目执行命令。\n" +
                     "   - **双向同步**：物理更新（打 [x]）后，必须立即调用 `update_plan_progress` 同步内存指针。\n\n" +
                     "4. **循环审查**：\n" +
-                    "   - **每轮自检**：每轮 Thought 启动必先 `read_file` 读取 `TODO.md`。它是你的物理记忆，若发现当前动作涉及技能目录但计划项未标注规约，必须立即修正计划。");
+                    "   - **触发时机**: \n"+
+                    "     * 开始执行 TODO.md 中的新步骤前（必须） \n"+
+                    "     * 完成任一 TODO 项后（必须） \n"+
+                    "     * 同一步骤内连续调用工具时（可选） \n"+
+                    "   - **优化策略**: \n"+
+                    "     * 若在同一步骤内连续调用工具，无需重复读取 \n"+
+                    "     * 可在内存中缓存 TODO.md 内容，仅在必要时刷新 \n"+
+                    "   - **检查内容**: \n"+
+                    "     * 当前应该执行哪一步？ \n"+
+                    "     * 这一步是否标注了技能路径？ \n"+
+                    "     * 上一步是否已标记为完成？ \n"+
+                    "   - **修正机制**: 若发现不一致，先同步 TODO.md，再继续执行 \n");
 
             agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
@@ -212,7 +230,6 @@ public class CodeAgent {
             SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(12, compositeStrategy);
 
             agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
-            agentBuilder.defaultInterceptorAdd(new StopLoopInterceptor());
 
             if (enableHitl) {
                 agentBuilder.defaultInterceptorAdd(new HITLInterceptor()
