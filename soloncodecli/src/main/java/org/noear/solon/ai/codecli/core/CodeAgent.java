@@ -33,7 +33,6 @@ import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
 import org.noear.solon.ai.skills.cli.CliSkill;
-import org.noear.solon.ai.skills.diff.DiffSkill;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
@@ -156,15 +155,6 @@ public class CodeAgent {
         });
     }
 
-    public DiffSkill getDiffSkill(AgentSession session) {
-        String effectiveWorkDir = (String) session.attrs().getOrDefault("context:cwd", this.workDir);
-        String boxId = session.getSessionId();
-
-        return (DiffSkill) session.attrs().computeIfAbsent("DiffSkill", x -> {
-            return new DiffSkill(effectiveWorkDir);
-        });
-    }
-
     public AgentSession getSession(String instanceId) {
         return sessionProvider.getSession(instanceId);
     }
@@ -259,7 +249,6 @@ public class CodeAgent {
                     o.skillAdd(getCliSkill(session));
                     o.skillAdd(getInitSkill(session));
                     o.skillAdd(getLuceneSkill(session));
-                    o.skillAdd(getDiffSkill(session));
                 });
     }
 
