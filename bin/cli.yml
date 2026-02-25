@@ -30,7 +30,7 @@ solon.code.cli:
     apiUrl: "https://api.deepseek.com/v1/chat/completions"
     apiKey: "sk-******"
     model: "deepseek-chat"
-    userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude/1.0; +https://claude.ai/)"
+    userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
   mountPool: # 技能池（可以多个）
     "@shared": "${user.home}/WORK/work_github/solonlab/opencode-skills"
 
