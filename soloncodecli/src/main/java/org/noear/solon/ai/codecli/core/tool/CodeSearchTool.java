@@ -30,13 +30,21 @@ public class CodeSearchTool {
         this.mcpClient = ExaMcp.getMcpClient();
     }
 
-    @ToolMapping(name = "codesearch", description = "搜索并获取任何编程任务的相关上下文。" +
-            "为库、SDK 和 API 提供高质量、新鲜的上下文。适用于任何与编程相关的问题。" +
+    @ToolMapping(name = "codesearch", description = "通过互联网，使用 Exa Code API 远程搜索并获取任何编程任务的相关上下文。" +
+            "为库、SDK 和 API 提供最高质量、最及时的上下文。适用于任何与编程相关的问题或任务。" +
             "返回全面的代码示例、文档和 API 参考。优化用于查找特定编程模式和解决方案。"
     )
     public Document codesearch(
-            @Param(name = "query", description = "查找 API、库和 SDK 相关上下文的搜索查询。例如：'React useState hook examples', 'Python pandas dataframe filtering'") String query,
-            @Param(name = "tokensNum", required = false, defaultValue = "5000", description = "返回的 Token 数量 (1000-50000)。默认 5000。针对具体问题使用较小值，针对全面文档使用较大值。") Integer tokensNum
+            @Param(name = "query", description = "用于查找 API、库和 SDK 相关上下文的在线搜索查询。" +
+                    "例如：'React useState hook examples', 'Python pandas dataframe filtering', " +
+                    "'Express.js middleware usage', 'Next js partial prerendering configuration', " +
+                    "'Rust Tokio async spawn pattern', 'Stripe API payment intent creation Node.js'")
+            String query,
+
+            @Param(name = "tokensNum", required = false, defaultValue = "5000",
+                    description = "返回的 Token 数量 (1000-50000)。默认 5000。根据所需的上下文量调整此值 - " +
+                            "针对具体问题使用较小值，针对全面文档使用较大值。")
+            Integer tokensNum
     ) throws Exception {
 
         // 1. 参数校验与准备 (对齐参数范围约束)
