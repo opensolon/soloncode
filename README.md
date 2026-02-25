@@ -3,7 +3,7 @@
 
 Solon Code 是基于 Solon AI （支持 Java8 到 Java25）框架构建的高性能、自主式 AI 终端助手。
 
-它是用 Java8 实现的 Claude Code，几乎 100% 对齐 Claude Code 核心体验，允许 AI 智能体直接与你的本地开发环境交互：阅读代码、运行测试、修复 Bug 以及执行复杂的重构任务。
+它（相当于）是用 Java8 实现的 Claude Code，几乎 100% 对齐 Claude Code 核心体验，允许 AI 智能体直接与你的本地开发环境交互：阅读代码、运行测试、修复 Bug 以及执行复杂的重构任务。
 
 
 
