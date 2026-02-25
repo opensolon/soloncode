@@ -22,7 +22,6 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
-import org.noear.solon.ai.agent.react.intercept.StopLoopInterceptor;
 import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
 import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
@@ -33,7 +32,6 @@ import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
 import org.noear.solon.ai.skills.cli.CliSkill;
-import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import reactor.core.publisher.Flux;
@@ -246,6 +244,8 @@ public class CodeAgent {
         return reActAgent.prompt(prompt)
                 .session(session)
                 .options(o -> {
+                    o.toolContextPut("__workDir", workDir);
+
                     o.skillAdd(getCliSkill(session));
                     o.skillAdd(getInitSkill(session));
                     o.skillAdd(getLuceneSkill(session));
@@ -265,17 +265,11 @@ public class CodeAgent {
 
     public Flux<AgentChunk> stream(String sessionId, Prompt prompt) {
         return buildRequest(sessionId, prompt)
-                .options(o -> {
-                    o.toolContextPut("__workDir", workDir);
-                })
                 .stream();
     }
 
     public AgentResponse call(String sessionId, Prompt prompt) throws Throwable {
         return buildRequest(sessionId, prompt)
-                .options(o -> {
-                    o.toolContextPut("__workDir", workDir);
-                })
                 .call();
     }
 }
