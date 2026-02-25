@@ -117,7 +117,7 @@ public class CodeAgent {
     }
 
     public String getVersion() {
-        return "v0.0.13";
+        return "v0.0.14";
     }
 
     public String getWorkDir() {
