@@ -2,7 +2,7 @@ solon.logging.appender:
   console:
     enable: false # 是否启用控制台日志（启用后，会对 cli console 有干扰）
   file:
-    level: TRACE
+    level: INFO
 
 solon.code.cli:
   nickname: "小花" # 智能体昵称
@@ -26,9 +26,12 @@ solon.code.cli:
   acpTransport: "websocket" # "stdio" or "websocket"
   acpEndpoint: "/acp"
 
-  chatModel:
-    apiUrl: "https://apis.iflow.cn/v1/chat/completions"
-    apiKey: "sk-18e1e33e634969e5a3e13a01ebd2a907"
-    model: "glm-4.6"
-  mountPool:
-    "@shared": "${user.home}/WORK/work_github/solonlab/awesome-claude-skills"
+  chatModel: # llm 配置（参考 solon ai chatmodel 配置）
+    apiUrl: "https://api.deepseek.com/v1/chat/completions"
+    apiKey: "sk-******"
+    model: "deepseek-chat"
+  mountPool: # 技能池（可以多个）
+    "@shared": "${user.home}/WORK/work_github/solonlab/opencode-skills"
+
+# 1. chatModel 按需配置，不熟的看下 solon ai 官网资料
+# 2. SolonCodeCLI 兼容 Claude Code Agent Skills
