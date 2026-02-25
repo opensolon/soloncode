@@ -13,35 +13,49 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ApplyPatchTool - 性能极致优化版
- * 保持 ToolMapping 描述不变，内部采用非正则解析与高效字符串匹配
+ * 批量文件原子操作工具 - 最终工业级对齐版
  */
 public class ApplyPatchTool {
     @ToolMapping(
             name = "apply_patch",
-            description = "批量文件编辑原子工具。使用面向文件的 diff 格式进行多文件的创建、修改、重命名或删除。\n" +
-                    "所有操作必须包裹在 *** Begin Patch 和 *** End Patch 之间。\n" +
-                    "工具会验证 SEARCH 块的精确匹配以确保编辑安全。"
+            description = "Batch file editor for multi-file changes (3+ files). For single files, use str_replace_editor.\n\n" +
+                    "Use the `apply_patch` tool to edit files. Your patch language is a stripped‑down, file‑oriented diff format:\n" +
+                    "\n" +
+                    "*** Begin Patch\n" +
+                    "[ one or more file sections ]\n" +
+                    "*** End Patch\n" +
+                    "\n" +
+                    "Each operation starts with one of three headers:\n" +
+                    "*** Add File: <path> - create a new file. Every following line is a + line.\n" +
+                    "*** Delete File: <path> - remove an existing file.\n" +
+                    "*** Update File: <path> - patch an existing file (optionally with a rename).\n" +
+                    "\n" +
+                    "Example patch:\n" +
+                    "```\n" +
+                    "*** Begin Patch\n" +
+                    "*** Add File: hello.txt\n" +
+                    "+Hello world\n" +
+                    "*** Update File: src/app.py\n" +
+                    "*** Move to: src/main.py\n" +
+                    "<<<<<<< SEARCH\n" +
+                    "def greet():\n" +
+                    "    print(\"Hi\")\n" +
+                    "=======\n" +
+                    "def greet():\n" +
+                    "    print(\"Hello, world!\")\n" +
+                    ">>>>>>> REPLACE\n" +
+                    "*** Delete File: obsolete.txt\n" +
+                    "*** End Patch\n" +
+                    "```\n" +
+                    "\n" +
+                    "Rules:\n" +
+                    "- For 'Update', use SEARCH/REPLACE blocks. SEARCH must exactly match the file content (including indentation).\n" +
+                    "- For 'Add', prefix every line with '+'.\n" +
+                    "- You can move a file by adding '*** Move to:' immediately after '*** Update File:'.\n" +
+                    "- Trailing whitespace is automatically ignored for better matching."
     )
     public Document applyPatch(
-            @Param(name = "patchText", description =
-                    "完整补丁文本。必须遵循以下结构规范：\n\n" +
-                            "1. 容器：必须以 '*** Begin Patch' 开始，'*** End Patch' 结束。\n" +
-                            "2. 新增 (Add File)：\n" +
-                            "   *** Add File: <path>\n" +
-                            "   随后行必须以 + 开头表示内容。\n" +
-                            "3. 修改 (Update File)：\n" +
-                            "   *** Update File: <path>\n" +
-                            "   (可选) *** Move to: <new_path>\n" +
-                            "   必须使用精确匹配块：\n" +
-                            "   <<<<<<< SEARCH\n" +
-                            "   [原文件中完全一致的代码段]\n" +
-                            "   =======\n" +
-                            "   [替换后的代码段]\n" +
-                            "   >>>>>>> REPLACE\n" +
-                            "4. 删除 (Delete File)：\n" +
-                            "   *** Delete File: <path>\n\n" +
-                            "注意：Update 操作时，SEARCH 块内的空白符和缩进必须与源码严格一致。")
+            @Param(name = "patchText", description = "The full patch text with SEARCH/REPLACE blocks")
             String patchText,
             String __workDir) throws Exception {
 
@@ -49,18 +63,15 @@ public class ApplyPatchTool {
             throw new RuntimeException("patchText is required and must contain '*** Begin Patch'");
         }
 
-
-        // 1. 高效清洗与解析 (避免全量正则扫描)
         List<PatchHunk> hunks = parsePatchText(stripMarkdown(patchText));
-
         if (hunks.isEmpty()) {
-            throw new RuntimeException("apply_patch verification failed: no valid hunks found.");
+            throw new RuntimeException("apply_patch: no valid hunks found.");
         }
 
         Path worktree = Paths.get(__workDir).toAbsolutePath().normalize();
-
-        // 2. 预校验
         List<FileChange> fileChanges = new ArrayList<>();
+
+        // 1. 预校验阶段
         for (PatchHunk hunk : hunks) {
             Path filePath = worktree.resolve(hunk.path).normalize();
             assertExternalDirectory(worktree, filePath);
@@ -68,40 +79,56 @@ public class ApplyPatchTool {
             FileChange change = new FileChange(filePath, hunk.type);
             switch (hunk.type) {
                 case "add":
+                    if (Files.exists(filePath)) {
+                        throw new RuntimeException("Cannot add: file already exists: " + hunk.path);
+                    }
                     change.newContent = hunk.contents;
                     break;
                 case "update":
                 case "move":
-                    if (!Files.exists(filePath)) throw new RuntimeException("File not found: " + hunk.path);
+                    if (!Files.exists(filePath)) {
+                        throw new RuntimeException("File not found: " + hunk.path);
+                    }
                     change.newContent = applyChunks(readFile(filePath), hunk.chunks, hunk.path);
                     if (hunk.movePath != null) {
                         change.movePath = worktree.resolve(hunk.movePath).normalize();
                         assertExternalDirectory(worktree, change.movePath);
+                        if (Files.exists(change.movePath) && !change.movePath.equals(filePath)) {
+                            throw new RuntimeException("Cannot move: target exists: " + hunk.movePath);
+                        }
                         change.type = "move";
                     }
                     break;
                 case "delete":
-                    if (!Files.exists(filePath)) throw new RuntimeException("File not found: " + hunk.path);
+                    if (!Files.exists(filePath)) {
+                        throw new RuntimeException("File not found: " + hunk.path);
+                    }
                     change.newContent = "";
                     break;
             }
             fileChanges.add(change);
         }
 
-        // 3. 原子写入
+        // 2. 原子执行阶段
+        StringBuilder summary = new StringBuilder("Success. Changes applied:\n");
         for (FileChange change : fileChanges) {
+            // 补偿换行符 (TS对齐)
+            if (change.newContent != null && !change.newContent.isEmpty() && !change.newContent.endsWith("\n")) {
+                change.newContent += "\n";
+            }
+
             executeChange(change);
+
+            // 生成摘要报告
+            String relPath = worktree.relativize(change.movePath != null ? change.movePath : change.filePath)
+                    .toString().replace("\\", "/");
+            String statusChar = change.type.substring(0, 1).toUpperCase();
+            summary.append(statusChar).append(" ").append(relPath).append("\n");
         }
 
-        // 4. 结果生成
-        String resultMsg = "Success. Updated " + fileChanges.size() + " files.";
-        return new Document().title(resultMsg).content(resultMsg);
+        return new Document().title("Apply Patch Success").content(summary.toString().trim());
     }
 
-    /**
-     * 优化点 1：基于索引的文本清洗
-     * 避免在大文本（如 1MB+ 补丁）上运行复杂的非贪婪正则，减少 CPU 抖动
-     */
     private String stripMarkdown(String text) {
         String input = text.trim();
         if (input.startsWith("```")) {
@@ -114,45 +141,46 @@ public class ApplyPatchTool {
         return input;
     }
 
-    /**
-     * 优化点 2：低延迟字符串匹配
-     * 优先使用 indexOf 进行 O(n) 精确匹配，仅在失败时触发修剪逻辑
-     */
     private String applyChunks(String content, List<Chunk> chunks, String path) {
         String res = content;
-        for (Chunk chunk : chunks) {
-            if (chunk.search.isEmpty()) {
-                res = res + (res.endsWith("\n") ? "" : "\n") + chunk.replace;
+        for (int i = 0; i < chunks.size(); i++) {
+            Chunk chunk = chunks.get(i);
+
+            // 精确匹配
+            if (res.contains(chunk.search)) {
+                res = replaceFirst(res, chunk.search, chunk.replace);
                 continue;
             }
 
-            if (res.contains(chunk.search)) {
-                res = res.replace(chunk.search, chunk.replace);
-            } else {
-                // 仅在必要时执行正则/修剪，减少 GC 压力
-                String sTrimmed = stripTrailing(chunk.search);
-                if (res.contains(sTrimmed)) {
-                    res = res.replace(sTrimmed, stripTrailing(chunk.replace));
-                } else {
-                    throw new RuntimeException("apply_patch verification failed: SEARCH block mismatch in " + path);
-                }
+            // 模糊匹配（去除尾随空白）
+            String searchNorm = normalizeWhitespace(chunk.search);
+            String replaceNorm = normalizeWhitespace(chunk.replace);
+
+            if (res.contains(searchNorm)) {
+                res = replaceFirst(res, searchNorm, replaceNorm);
+                continue;
             }
+
+            // 匹配失败
+            throw new RuntimeException(String.format(
+                    "SEARCH block #%d not found in %s\nFirst 80 chars:\n%s",
+                    i + 1, path, chunk.search.substring(0, Math.min(80, chunk.search.length()))
+            ));
         }
         return res;
     }
 
-    /**
-     * 优化点 3：手动扫描实现修剪 (替代 replaceAll 正则)
-     */
-    private String stripTrailing(String s) {
-        int len = s.length();
-        while (len > 0 && s.charAt(len - 1) <= ' ') len--;
-        return s.substring(0, len);
+    private String normalizeWhitespace(String s) {
+        return s.replaceAll("[ \\t]+$", "")      // 去除行尾空白
+                .replaceAll("\\r\\n", "\n");     // 统一换行符
     }
 
-    /**
-     * 优化点 4：单次线性扫描解析器
-     */
+    private String replaceFirst(String text, String search, String replace) {
+        int pos = text.indexOf(search);
+        if (pos == -1) return text;
+        return text.substring(0, pos) + replace + text.substring(pos + search.length());
+    }
+
     private List<PatchHunk> parsePatchText(String patchText) {
         List<PatchHunk> hunks = new ArrayList<>();
         String[] lines = patchText.split("\\R");
@@ -161,9 +189,14 @@ public class ApplyPatchTool {
         boolean inS = false, inR = false;
 
         for (String line : lines) {
-            if (line.isEmpty()) continue;
+            // 跳过容器标记
+            if (line.trim().isEmpty() ||
+                    line.trim().equals("*** Begin Patch") ||
+                    line.trim().equals("*** End Patch")) {
+                continue;
+            }
 
-            // 通过前缀快速过滤指令行
+            // 解析指令行
             if (line.startsWith("*** ")) {
                 if (line.startsWith("*** Add File:")) {
                     current = new PatchHunk("add", line.substring(13).trim());
@@ -180,26 +213,28 @@ public class ApplyPatchTool {
                 continue;
             }
 
-            // 状态机处理块
+            // 状态机转换
             if (line.equals("<<<<<<< SEARCH")) {
-                inS = true;
-                sBuf = new StringBuilder();
-                continue;
+                inS = true; sBuf = new StringBuilder(); continue;
             } else if (line.equals("=======")) {
-                inS = false;
-                inR = true;
-                rBuf = new StringBuilder();
-                continue;
+                inS = false; inR = true; rBuf = new StringBuilder(); continue;
             } else if (line.equals(">>>>>>> REPLACE")) {
                 inR = false;
-                if (current != null) current.chunks.add(new Chunk(sBuf.toString(), rBuf.toString()));
+                if (current != null && sBuf != null && rBuf != null) {
+                    current.chunks.add(new Chunk(sBuf.toString(), rBuf.toString()));
+                }
+                sBuf = null; rBuf = null;
                 continue;
             }
 
-            if (inS) sBuf.append(line).append('\n');
-            else if (inR) rBuf.append(line).append('\n');
-            else if (current != null && "add".equals(current.type) && line.startsWith("+")) {
-                current.contents += line.substring(1) + "\n";
+            // 内容累加
+            if (inS) {
+                sBuf.append(line).append('\n');
+            } else if (inR) {
+                rBuf.append(line).append('\n');
+            } else if (current != null && "add".equals(current.type)) {
+                String content = line.startsWith("+") ? line.substring(1) : line;
+                current.contents += content + "\n";
             }
         }
         return hunks;
@@ -231,29 +266,17 @@ public class ApplyPatchTool {
     private static class PatchHunk {
         String type, path, movePath, contents = "";
         List<Chunk> chunks = new ArrayList<>();
-
-        PatchHunk(String t, String p) {
-            this.type = t;
-            this.path = p;
-        }
+        PatchHunk(String t, String p) { this.type = t; this.path = p; }
     }
 
     private static class Chunk {
         String search, replace;
-
-        Chunk(String s, String r) {
-            this.search = s;
-            this.replace = r;
-        }
+        Chunk(String s, String r) { this.search = s; this.replace = r; }
     }
 
     private static class FileChange {
         Path filePath, movePath;
         String newContent, type;
-
-        FileChange(Path p, String t) {
-            this.filePath = p;
-            this.type = t;
-        }
+        FileChange(Path p, String t) { this.filePath = p; this.type = t; }
     }
 }
