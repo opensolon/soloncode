@@ -19,9 +19,9 @@ import java.util.List;
 public class ApplyPatchTool {
     @ToolMapping(
             name = "apply_patch",
-            description = "批量文件编辑原子工具。使用剥离式的、面向文件的 diff 格式进行多文件新建、修改、移动或删除。\n" +
+            description = "批量文件编辑原子工具。使用面向文件的 diff 格式进行多文件的创建、修改、重命名或删除。\n" +
                     "所有操作必须包裹在 *** Begin Patch 和 *** End Patch 之间。\n" +
-                    "这是高风险操作，系统会验证 SEARCH 块的精确匹配以确保编辑安全。"
+                    "工具会验证 SEARCH 块的精确匹配以确保编辑安全。"
     )
     public Document applyPatch(
             @Param(name = "patchText", description =
@@ -41,7 +41,7 @@ public class ApplyPatchTool {
                             "   >>>>>>> REPLACE\n" +
                             "4. 删除 (Delete File)：\n" +
                             "   *** Delete File: <path>\n\n" +
-                            "注意：Update 操作时，SEARCH 块内的空白符必须与源码严格一致。")
+                            "注意：Update 操作时，SEARCH 块内的空白符和缩进必须与源码严格一致。")
             String patchText,
             String __workDir) throws Exception {
 
