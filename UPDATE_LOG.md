@@ -1,10 +1,11 @@
 
 ### v0.0.14
 
-* 添加 mcpServers 配置支持
+* 添加 mcpServers 配置支持（支持 mcp 配置）
 * 添加 apply_patch 内置工具（支持批量操作文件），替代 diff 工具
 * 添加 cli.yaml userAgent 默认配置（用于支持阿里云的 coding plan，它需要 UA） 
 * 优化 ssl 处理（方便支持任意证书）
+* 优化 codesearch 工具描述（避免 llm 错用）
 
 ### v0.0.13
 
