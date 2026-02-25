@@ -16,6 +16,7 @@
 package org.noear.solon.ai.codecli;
 
 import org.noear.solon.ai.chat.ChatConfig;
+import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.annotation.BindProps;
 import org.noear.solon.annotation.Configuration;
 
@@ -52,6 +53,7 @@ public class Config {
 
     public boolean planningMode = true;
 
+    public Map<String, McpServerParameters> mcpServers;
     public ChatConfig chatModel;
     public Map<String, String> mountPool;
 }

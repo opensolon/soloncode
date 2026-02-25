@@ -28,8 +28,11 @@ import org.noear.solon.ai.codecli.portal.AcpLink;
 import org.noear.solon.ai.codecli.core.CodeAgent;
 import org.noear.solon.ai.codecli.portal.CliShell;
 import org.noear.solon.ai.codecli.portal.WebGate;
+import org.noear.solon.ai.mcp.client.McpClientProvider;
+import org.noear.solon.ai.mcp.client.McpProviders;
 import org.noear.solon.core.util.Assert;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -67,6 +70,18 @@ public class App {
         Map<String, AgentSession> store = new ConcurrentHashMap<>();
         AgentSessionProvider sessionProvider = (sessionId) -> store.computeIfAbsent(sessionId, key -> new FileAgentSession(key, config.workDir + "/.system/sessions/" + key));
 
+        final McpProviders mcpProviders;
+
+        try {
+            if (Assert.isNotEmpty(config.mcpServers)) {
+                mcpProviders = McpProviders.fromMcpServers(config.mcpServers);
+            } else {
+                mcpProviders = null;
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Mcp servers load failure", e);
+        }
+
         CodeAgent codeAgent = new CodeAgent(chatModel)
                 .nickname(config.nickname)
                 .instruction(config.instruction)
@@ -74,6 +89,12 @@ public class App {
                 .session(sessionProvider)
                 .enableHitl(config.hitlEnabled)
                 .config(agent -> {
+                    if (mcpProviders != null) {
+                        for (McpClientProvider mcpProvider : mcpProviders.getProviders().values()) {
+                            agent.defaultToolAdd(mcpProvider);
+                        }
+                    }
+
                     // 启用规划模式
                     agent.planningMode(config.planningMode);
                     // 添加步数
