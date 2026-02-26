@@ -1,5 +1,5 @@
 
-# Solon Code（[Solon AI](../../../../opensolon/solon-ai) 框架的综合应用展示）
+# Solon Code（[Solon AI](../../../../opensolon/solon-ai) 框架综合应用展示）
 
 Solon Code 是基于 [Solon AI](../../../../opensolon/solon-ai) （支持 Java8 到 Java25）框架构建的高性能、自主式 AI 终端助手。
 
