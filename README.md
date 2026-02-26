@@ -1,7 +1,7 @@
 
-# Solon Code
+# Solon Code（[Solon AI](../../../../opensolon/solon-ai) 框架的综合应用展示）
 
-Solon Code 是基于 [Solon AI](../../../../opensolon/solon-ai) （支持 Java8 到 Java25）框架构建的高性能、自主式 AI 终端助手。（同时也是 Solon AI 的综合应用案例）
+Solon Code 是基于 [Solon AI](../../../../opensolon/solon-ai) （支持 Java8 到 Java25）框架构建的高性能、自主式 AI 终端助手。
 
 它（相当于）是用 Java8 实现的 Claude Code，100% 对齐 Claude Code 核心体验，允许 AI 智能体直接与你的本地开发环境交互：阅读代码、运行测试、修复 Bug 以及执行复杂的重构任务。
 
