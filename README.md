@@ -22,6 +22,15 @@ Solon Code 是基于 [Solon AI](../../../../opensolon/solon-ai) （支持 Java8 
 * Web API：标准化的 HTTP/JSON 接口，便于集成。
 * ACP 协议：支持 Agent Context Protocol，可作为插件接入各类现代 IDE。
 
+## 下载与入门
+
+* 下载程序包
+
+[发布包](../../../../opensolon/soloncode/releases)
+
+* Bilibili 入门视频
+
+[《Solon Code CLI 如何下载与运行？》](https://www.bilibili.com/video/BV1ArfjBiEU4/)
 
 ## 扩展技能 (Skills)：
 
