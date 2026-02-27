@@ -1,8 +1,7 @@
 package org.noear.solon.ai.codecli.core.tool;
 
-import org.noear.solon.ai.annotation.ToolMapping;
+import org.noear.solon.ai.chat.tool.AbsTool;
 import org.noear.solon.ai.rag.Document;
-import org.noear.solon.annotation.Param;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -11,53 +10,66 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 批量文件原子操作工具
  */
-public class ApplyPatchTool {
-    @ToolMapping(
-            name = "apply_patch",
-            description = "Batch file editor for multi-file changes or multiple changes within a single file.\n\n" +
-                    "Use the `apply_patch` tool to edit files. Your patch language is a stripped‑down, file‑oriented diff format:\n" +
-                    "\n" +
-                    "*** Begin Patch\n" +
-                    "[ one or more file sections ]\n" +
-                    "*** End Patch\n" +
-                    "\n" +
-                    "Each operation starts with one of three headers:\n" +
-                    "*** Add File: <path> - create a new file. Every following line is a + line.\n" +
-                    "*** Delete File: <path> - remove an existing file.\n" +
-                    "*** Update File: <path> - patch an existing file. You can provide multiple SEARCH/REPLACE blocks for one file.\n" +
-                    "\n" +
-                    "Example patch (Multiple changes in one file):\n" +
-                    "```\n" +
-                    "*** Begin Patch\n" +
-                    "*** Update File: src/app.py\n" +
-                    "<<<<<<< SEARCH\n" +
-                    "def old_func_one():\n" +
-                    "=======\n" +
-                    "def new_func_one():\n" +
-                    ">>>>>>> REPLACE\n" +
-                    "<<<<<<< SEARCH\n" +
-                    "def old_func_two():\n" +
-                    "=======\n" +
-                    "def new_func_two():\n" +
-                    ">>>>>>> REPLACE\n" +
-                    "*** End Patch\n" +
-                    "```\n" +
-                    "\n" +
-                    "Rules:\n" +
-                    "- For 'Update', use SEARCH/REPLACE blocks. SEARCH must exactly match the file content (including indentation).\n" +
-                    "- **Multiple Blocks**: You can use multiple SEARCH/REPLACE blocks under one '*** Update File' header. They will be applied in order.\n" +
-                    "- For 'Add', prefix every line with '+'.\n" +
-                    "- You can move a file by adding '*** Move to:' immediately after '*** Update File:'.\n" +
-                    "- Trailing whitespace is automatically ignored for better matching."
-    )
-    public Document applyPatch(
-            @Param(name = "patchText", description = "The full patch text with SEARCH/REPLACE blocks")
-            String patchText,
-            String __workDir) throws Exception {
+public class ApplyPatchTool extends AbsTool {
+    public ApplyPatchTool() {
+        addParam("patchText", String.class,
+                "The full patch text with SEARCH/REPLACE blocks");
+    }
+
+    @Override
+    public String name() {
+        return "apply_patch";
+    }
+
+    @Override
+    public String description() {
+        return "Batch file editor for multi-file changes or multiple changes within a single file.\n\n" +
+                "Use the `apply_patch` tool to edit files. Your patch language is a stripped‑down, file‑oriented diff format:\n" +
+                "\n" +
+                "*** Begin Patch\n" +
+                "[ one or more file sections ]\n" +
+                "*** End Patch\n" +
+                "\n" +
+                "Each operation starts with one of three headers:\n" +
+                "*** Add File: <path> - create a new file. Every following line is a + line.\n" +
+                "*** Delete File: <path> - remove an existing file.\n" +
+                "*** Update File: <path> - patch an existing file. You can provide multiple SEARCH/REPLACE blocks for one file.\n" +
+                "\n" +
+                "Example patch (Multiple changes in one file):\n" +
+                "```\n" +
+                "*** Begin Patch\n" +
+                "*** Update File: src/app.py\n" +
+                "<<<<<<< SEARCH\n" +
+                "def old_func_one():\n" +
+                "=======\n" +
+                "def new_func_one():\n" +
+                ">>>>>>> REPLACE\n" +
+                "<<<<<<< SEARCH\n" +
+                "def old_func_two():\n" +
+                "=======\n" +
+                "def new_func_two():\n" +
+                ">>>>>>> REPLACE\n" +
+                "*** End Patch\n" +
+                "```\n" +
+                "\n" +
+                "Rules:\n" +
+                "- For 'Update', use SEARCH/REPLACE blocks. SEARCH must exactly match the file content (including indentation).\n" +
+                "- **Multiple Blocks**: You can use multiple SEARCH/REPLACE blocks under one '*** Update File' header. They will be applied in order.\n" +
+                "- For 'Add', prefix every line with '+'.\n" +
+                "- You can move a file by adding '*** Move to:' immediately after '*** Update File:'.\n" +
+                "- Trailing whitespace is automatically ignored for better matching.";
+    }
+
+    @Override
+    public Object handle(Map<String, Object> args) throws Throwable {
+        String patchText = (String) args.get("patchText");
+        String __workDir = (String) args.get("__workDir");
+
 
         if (patchText == null || !patchText.contains("*** Begin Patch")) {
             throw new RuntimeException("patchText is required and must contain '*** Begin Patch'");
