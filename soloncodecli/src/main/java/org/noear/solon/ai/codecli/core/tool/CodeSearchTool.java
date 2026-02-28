@@ -13,6 +13,11 @@ import java.util.Map;
  * CodeSearchTool - 100% 对齐 OpenCode 逻辑
  */
 public class CodeSearchTool extends AbsTool {
+    private static CodeSearchTool instance = new CodeSearchTool();
+    public static CodeSearchTool getInstance(){
+        return instance;
+    }
+
     private static final int DEFAULT_TOKENS = 5000;
     private final McpClientProvider mcpClient;
 

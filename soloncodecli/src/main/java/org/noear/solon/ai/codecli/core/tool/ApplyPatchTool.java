@@ -67,7 +67,7 @@ public class ApplyPatchTool extends AbsTool {
     @Override
     public Object handle(Map<String, Object> args) throws Throwable {
         String patchText = (String) args.get("patchText");
-        String __workDir = (String) args.get("__workDir");
+        String __workDir = (String) args.get("__workDir"); //由 toolContext 传递
 
         // 严格对齐: if (!params.patchText) throw new Error("patchText is required")
         if (patchText == null || patchText.trim().length() == 0) {

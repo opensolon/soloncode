@@ -17,7 +17,7 @@ package org.noear.solon.ai.codecli.core;
 
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.skills.sys.AbsProcessSkill;
+import org.noear.solon.ai.chat.skill.AbsSkill;
 import org.noear.solon.annotation.Param;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +40,7 @@ import java.util.stream.Stream;
  * @author noear
  * @since 3.9.1
  */
-public class CliSkill extends AbsProcessSkill {
+public class CliSkill extends AbsSkill {
     private enum ShellMode {
         CMD, POWERSHELL, UNIX_SHELL
     }
@@ -60,15 +60,8 @@ public class CliSkill extends AbsProcessSkill {
 
     // 定义 100% 对齐的默认忽略列表
     private final List<String> DEFAULT_IGNORES = Arrays.asList(
-            ".git", ".svn", ".hg", "node_modules", "target", "bin", "build",
-            ".idea", ".vscode", ".DS_Store", "vnode", ".classpath", ".project"
+            ".system"
     );
-
-    // 定义二进制文件扩展名
-    private final Set<String> BINARY_EXTS = new HashSet<>(Arrays.asList(
-            "jpg", "jpeg", "png", "gif", "ico", "pdf", "exe", "dll", "class",
-            "zip", "tar", "gz", "7z", "rar", "pyc", "so", "o"
-    ));
 
     /**
      * 判断路径是否应该被忽略 (对齐 Claude Code 过滤规范)
@@ -79,7 +72,6 @@ public class CliSkill extends AbsProcessSkill {
         // 1. 基础判断 (文件名 & 扩展名)
         String name = path.getFileName().toString();
         if (DEFAULT_IGNORES.contains(name)) return true;
-        if (BINARY_EXTS.contains(getFileExtension(name).toLowerCase())) return true;
 
         // 2. 仅对相对于根目录的部分进行路径段检查
         try {
@@ -104,12 +96,15 @@ public class CliSkill extends AbsProcessSkill {
         return (lastIdx == -1) ? "" : fileName.substring(lastIdx + 1);
     }
 
+    protected final Path rootPath;
+    protected final ProcessExecutor executor = new ProcessExecutor();
+
     /**
      * @param boxId   当前盒子(任务空间)标识
      * @param workDir 盒子物理根目录
      */
     public CliSkill(String boxId, String workDir) {
-        super(workDir);
+        this.rootPath = Paths.get(workDir).toAbsolutePath().normalize();
         this.boxId = boxId;
         this.isWindows = System.getProperty("os.name").toLowerCase().contains("win");
 
@@ -419,7 +414,7 @@ public class CliSkill extends AbsProcessSkill {
             finalCmd = finalCmd.replace(key, placeholder);
         }
 
-        return runCode(finalCmd, shellCmd, extension, envs);
+        return executor.executeCode(rootPath, finalCmd, shellCmd, extension, envs, null);
     }
 
     @ToolMapping(name = "list_files", description = "列出目录内容。支持递归模式，递归模式下将以树状结构(Tree)展示以节省空间并增强可读性。")
@@ -810,14 +805,30 @@ public class CliSkill extends AbsProcessSkill {
         return this;
     }
 
+    /**
+     * 配置最大输出大小（字节）
+     */
+    public CliSkill maxOutputSize(int maxOutputSize) {
+        executor.setMaxOutputSize(maxOutputSize);
+        return this;
+    }
+
+    /**
+     * 配置超时时间（秒）
+     */
+    public CliSkill timeoutSeconds(int timeoutSeconds) {
+        executor.setTimeoutSeconds(timeoutSeconds);
+        return this;
+    }
+
 
     public CliSkill scriptCharset(Charset scriptCharset) {
-        this.scriptCharset = scriptCharset;
+        this.executor.setScriptCharset(scriptCharset);
         return this;
     }
 
     public CliSkill outputCharset(Charset outputCharset) {
-        this.outputCharset = outputCharset;
+        this.executor.setOutputCharset(outputCharset);
         return this;
     }
 
