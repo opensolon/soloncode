@@ -13,7 +13,7 @@
 
     <artifactId>soloncodecli</artifactId>
     <name>${project.artifactId}</name>
-    <version>0.0.14</version>
+    <version>0.0.15</version>
     <packaging>jar</packaging>
 
     <properties>
