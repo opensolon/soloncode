@@ -35,14 +35,14 @@ import java.util.function.Function;
  * @since 3.8.1
  */
 @Preview("3.8.1")
-public class CodeSystemPromptCn implements ReActSystemPrompt {
-    private static final Logger log = LoggerFactory.getLogger(CodeSystemPromptCn.class);
+public class CodeSystemPrompt implements ReActSystemPrompt {
+    private static final Logger log = LoggerFactory.getLogger(CodeSystemPrompt.class);
 
     private final String roleDesc;
     private final Function<ReActTrace, String> instructionProvider;
 
-    protected CodeSystemPromptCn(String roleDesc,
-                                 Function<ReActTrace, String> instructionProvider) {
+    protected CodeSystemPrompt(String roleDesc,
+                               Function<ReActTrace, String> instructionProvider) {
         this.roleDesc = roleDesc;
         this.instructionProvider = instructionProvider;
     }
@@ -102,7 +102,7 @@ public class CodeSystemPromptCn implements ReActSystemPrompt {
 
         sb.append("## 行为准则\n")
                 .append("1. **工具调用**：如果需要调用工具，请【直接】触发函数调用（Function Calling）。\n")
-                .append("2. **直接回复**：任务完成后，直接回复结果，不要输出 'Thought:' 或 'Final Answer:' 等标签。\n")
+                .append("2. **最终答复**：任务完成后，直接回复结果，不要输出 'Thought:' 或 'Final Answer:' 等标签。\n")
                 .append("3. **禁止伪造**：严禁在正文中模拟工具执行过程或伪造返回结果。\n\n");
 
         // 业务指令注入
@@ -217,7 +217,7 @@ public class CodeSystemPromptCn implements ReActSystemPrompt {
                 log.debug("Building ReActSystemPromptCn with custom role: {}, custom instruction: {}",
                         roleDesc != null, instructionProvider != null);
             }
-            return new CodeSystemPromptCn(roleDesc, instructionProvider);
+            return new CodeSystemPrompt(roleDesc, instructionProvider);
         }
     }
 }

@@ -1,7 +1,8 @@
 package org.noear.solon.ai.codecli.core.tool;
 
 import org.noear.solon.ai.chat.tool.AbsTool;
-import org.noear.solon.ai.skills.sys.ProcessExecutor;
+import org.noear.solon.ai.codecli.core.ProcessExecutor;
+
 import java.nio.file.Paths;
 import java.util.*;
 

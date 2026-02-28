@@ -148,7 +148,7 @@ public class CliShell implements Runnable {
                             onActionChunk((ActionChunk) chunk, isFirstReasonChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            printMetrics((ReActChunk) chunk);
+                            onFinalChunk((ReActChunk) chunk, isFirstReasonChunk, isFirstConversation);
                         }
                     })
                     .doOnError(e -> {
@@ -252,36 +252,44 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void printMetrics(ReActChunk reAct){
+    private void onFinalChunk(ReActChunk reAct, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
+        if (reAct.isNormal() == false) {
+            String delta = clearThink(reAct.getContent());
+            onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
+        }
+
         if (reAct.getTrace().getMetrics() != null) {
             terminal.writer().println(DIM + " (" + reAct.getTrace().getMetrics().getTotalTokens() + " tokens)" + RESET);
         }
     }
 
-    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk,AtomicBoolean isFirstConversation ){
+    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls()) {
             String delta = clearThink(reason.getContent());
+            onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
+        }
+    }
 
-            if (Assert.isNotEmpty(delta)) {
-                if (isFirstReasonChunk.get()) {
-                    String trimmed = delta.replaceAll("^[\\s\\n]+", "");
-                    if (Assert.isNotEmpty(trimmed)) {
-                        if (isFirstConversation.get()) {
-                            terminal.writer().print("  ");
-                            isFirstConversation.set(false);
-                        } else {
-                            terminal.writer().print("\n  ");
-                        }
-
-                        terminal.writer().print(trimmed.replace("\n", "\n  "));
-                        isFirstReasonChunk.set(false);
+    private void onReasonChunkDo(String delta, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
+        if (Assert.isNotEmpty(delta)) {
+            if (isFirstReasonChunk.get()) {
+                String trimmed = delta.replaceAll("^[\\s\\n]+", "");
+                if (Assert.isNotEmpty(trimmed)) {
+                    if (isFirstConversation.get()) {
+                        terminal.writer().print("  ");
+                        isFirstConversation.set(false);
+                    } else {
+                        terminal.writer().print("\n  ");
                     }
-                } else {
-                    // 连续的思考内容，保持缩进替换即可
-                    terminal.writer().print(delta.replace("\n", "\n  "));
+
+                    terminal.writer().print(trimmed.replace("\n", "\n  "));
+                    isFirstReasonChunk.set(false);
                 }
-                terminal.flush();
+            } else {
+                // 连续的思考内容，保持缩进替换即可
+                terminal.writer().print(delta.replace("\n", "\n  "));
             }
+            terminal.flush();
         }
     }
 

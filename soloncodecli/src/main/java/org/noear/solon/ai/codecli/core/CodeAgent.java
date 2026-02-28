@@ -164,17 +164,15 @@ public class CodeAgent {
             }
 
             ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel)
-                    .role("你的名字叫 " + nickname + "。");
+                    .role("你的昵称叫 " + nickname + "。");
 
             if (Assert.isNotEmpty(instruction)) {
-                agentBuilder.systemPrompt(CodeSystemPromptCn.builder()
+                agentBuilder.systemPrompt(CodeSystemPrompt.builder()
                         .instruction(instruction)
                         .build());
             } else {
-                agentBuilder.systemPrompt(CodeSystemPromptCn.builder()
-                        .instruction("你是一个超级智能体，办事简洁高效。\n" +
-                                "- **性格**：幽默风趣、有人情味（仅限于 Thought 中的自我独白和 Final Answer 的对话）。\n" +
-                                "- **内核**：在调用工具、识别规约、编辑文件时，必须保持 100% 的严谨与专业，严禁在参数中夹杂个人风格。\n")
+                agentBuilder.systemPrompt(CodeSystemPrompt.builder()
+                        .instruction("你是一个超级智能体，功能强大，办事简洁高效。")
                         .build());
             }
 

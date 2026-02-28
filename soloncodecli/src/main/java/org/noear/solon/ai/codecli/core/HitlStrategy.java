@@ -15,7 +15,7 @@ import java.util.Map;
  */
 public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
 
-    // 1. 系统特权与身份篡改 (Claude 绝对禁止)
+    // 1. 系统特权与身份篡改 (绝对禁止)
     private static final String SYSTEM_DANGER =
             ".*\\b(sudo|su|chown|chmod|chgrp|passwd|visudo|alias|unalias)\\b.*";
 
@@ -35,7 +35,7 @@ public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
 
         cmd = cmd.trim();
 
-        // --- A. 注入与子 Shell 防御 (Claude 的最高优先级) ---
+        // --- A. 注入与子 Shell 防御 (最高优先级) ---
         // 拦截反引号、$(...)、重定向到系统设备
         if (cmd.contains("`") || cmd.contains("$(") || cmd.contains("/dev/")) {
             return "检测到潜在的命令注入或设备重定向风险。";
@@ -46,7 +46,7 @@ public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
             return "检测到系统特权或进程控制指令 [" + cmd + "]。";
         }
 
-        // --- C. 路径边界检查 (Claude 严格限制) ---
+        // --- C. 路径边界检查 (严格限制) ---
         // 1. 拦截路径回溯
         if (cmd.contains("../") || cmd.contains("..\\")) {
             return "检测到路径回溯操作，禁止访问工作区外目录。";
@@ -56,7 +56,7 @@ public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
             return "禁止访问系统敏感配置文件。";
         }
 
-        // --- D. 包管理与环境变更 (Claude 的分级策略) ---
+        // --- D. 包管理与环境变更 (的分级策略) ---
         if (cmd.matches(".*" + ENV_MODIFIERS + ".*")) {
             // 只要包含修改动词，就必须确认
             if (cmd.matches(".*" + MODIFY_SUB_CMDS + ".*")) {
@@ -64,7 +64,7 @@ public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
             }
         }
 
-        // --- E. 网络行为 (Claude 的零信任原则) ---
+        // --- E. 网络行为 (零信任原则) ---
         // 任何非 --help / --version 的网络工具调用都需要拦截
         if (cmd.matches(".*\\b(curl|wget|ssh|scp|ftp|nc|telnet|dig|nslookup|ping)\\b.*")) {
             if (!cmd.matches(".*(--help|--version|-V).*")) {

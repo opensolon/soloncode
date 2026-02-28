@@ -64,7 +64,7 @@ public class CliSkill extends AbsSkill {
     );
 
     /**
-     * 判断路径是否应该被忽略 (对齐 Claude Code 过滤规范)
+     * 判断路径是否应该被忽略
      */
     private boolean isIgnored(Path path) {
         if (path.getFileName() == null) return false; // 根目录不忽略
@@ -153,7 +153,7 @@ public class CliSkill extends AbsSkill {
 
     @Override
     public String description() {
-        return "提供符合 Claude Code 规范的 CLI 交互能力，支持 Pool-Box 模型下的文件发现、读取、搜索和精准编辑。";
+        return "提供 CLI 交互能力，支持 Pool-Box 模型下的文件发现、读取、搜索和精准编辑。";
     }
 
     @Override
@@ -165,7 +165,7 @@ public class CliSkill extends AbsSkill {
     public String getInstruction(Prompt prompt) {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("#### CLI Agent Skills 交互规范 (Claude Code Strict Mode)\n\n");
+        sb.append("#### CLI Agent Skills 交互规范\n\n");
 
         // 1. 池盒环境声明
         sb.append("##### 1. 环境空间 (Pool-Box Context)\n");
@@ -426,7 +426,7 @@ public class CliSkill extends AbsSkill {
         if (!Files.exists(target)) return "错误：路径不存在";
 
         if (Boolean.TRUE.equals(recursive)) {
-            // 递归模式：直接输出树状结构 (对齐 Claude Code 的空间效率优化)
+            // 递归模式：直接输出树状结构
             StringBuilder sb = new StringBuilder();
             String displayName = (path == null || ".".equals(path)) ? "." : path;
             sb.append(displayName).append("\n");
@@ -729,7 +729,7 @@ public class CliSkill extends AbsSkill {
     // --- 6. 代码编辑 (对齐 str_replace_editor) ---
 
     /**
-     * 精准替换文件内容 (完全对齐 Claude Code str_replace_editor 规范)
+     * 精准替换文件内容
      */
     @ToolMapping(name = "str_replace_editor", description = "通过精确匹配文本块并替换来编辑文件。注意：如果文件较大，请先通过 read_file 确认行号和内容。")
     public String strReplaceEditor(@Param(value = "path", description = "文件相对路径（禁止以 ./ 开头）。") String path,
