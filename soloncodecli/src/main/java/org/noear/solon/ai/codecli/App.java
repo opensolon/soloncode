@@ -68,7 +68,8 @@ public class App {
 
         ChatModel chatModel = ChatModel.of(config.chatModel).build();
         Map<String, AgentSession> store = new ConcurrentHashMap<>();
-        AgentSessionProvider sessionProvider = (sessionId) -> store.computeIfAbsent(sessionId, key -> new FileAgentSession(key, config.workDir + "/.system/sessions/" + key));
+        AgentSessionProvider sessionProvider = (sessionId) -> store.computeIfAbsent(sessionId, key ->
+                new FileAgentSession(key, config.workDir + "/.soloncode/sessions/" + key));
 
         final McpProviders mcpProviders;
 
@@ -83,8 +84,6 @@ public class App {
         }
 
         CodeAgent codeAgent = new CodeAgent(chatModel)
-                .nickname(config.nickname)
-                .instruction(config.instruction)
                 .workDir(config.workDir)
                 .session(sessionProvider)
                 .enableHitl(config.hitlEnabled)

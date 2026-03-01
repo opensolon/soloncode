@@ -31,8 +31,6 @@ import java.util.Map;
 @Configuration
 @BindProps(prefix="solon.code.cli")
 public class Config {
-    public String nickname;
-    public String instruction;
     public String workDir = "./work";
 
     public int maxSteps = 30;

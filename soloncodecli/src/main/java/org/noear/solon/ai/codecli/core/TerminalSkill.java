@@ -44,7 +44,7 @@ public class TerminalSkill extends AbsSkill {
     protected final ProcessExecutor executor = new ProcessExecutor();
 
     private final List<String> DEFAULT_IGNORES = Arrays.asList(
-            ".system", ".git", "node_modules", ".DS_Store"
+            ".soloncode", ".git", "node_modules", ".DS_Store"
     );
 
     public TerminalSkill(PoolManager skillManager) {

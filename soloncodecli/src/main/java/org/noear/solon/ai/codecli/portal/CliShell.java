@@ -111,7 +111,7 @@ public class CliShell implements Runnable {
                 if (Assert.isEmpty(input)) continue;
 
                 if (!isSystemCommand(session, input)) {
-                    terminal.writer().println("\n" + BOLD + codeAgent.getNickname() + RESET);
+                    terminal.writer().println("\n" + BOLD + "Assistant" + RESET);
                     performAgentTask(session, input);
                 }
             } catch (Throwable e) {
@@ -386,6 +386,7 @@ public class CliShell implements Runnable {
             return true;
         }
         if ("clear".equals(cmd)) {
+            session.clear();
             terminal.puts(InfoCmp.Capability.clear_screen);
             return true;
         }

@@ -50,8 +50,6 @@ public class CodeAgent {
 
     private final ChatModel chatModel;
     private AgentSessionProvider sessionProvider;
-    private String nickname = "CodeCLI";
-    private String instruction = "";
     private String workDir = ".";
     private final Map<String, String> skillPools = new LinkedHashMap<>();
     private Consumer<ReActAgent.Builder> configurator;
@@ -61,24 +59,17 @@ public class CodeAgent {
         this.chatModel = chatModel;
     }
 
-    /**
-     * 设置 Agent 名称 (同时也作为控制台输出前缀)
-     */
-    public CodeAgent nickname(String nickname) {
-        if (nickname != null && !nickname.isEmpty()) {
-            this.nickname = nickname;
-        }
-        return this;
-    }
-
-    public CodeAgent instruction(String instruction) {
-        this.instruction = instruction;
-        return this;
-    }
-
     public CodeAgent workDir(String workDir) {
         this.workDir = workDir;
         return this;
+    }
+
+    public String getVersion() {
+        return "v0.0.15-M2";
+    }
+
+    public String getWorkDir() {
+        return workDir;
     }
 
     public CodeAgent skillPool(String alias, String dir) {
@@ -104,18 +95,6 @@ public class CodeAgent {
     public CodeAgent enableHitl(boolean enableHitl) {
         this.enableHitl = enableHitl;
         return this;
-    }
-
-    public String getNickname() {
-        return nickname;
-    }
-
-    public String getVersion() {
-        return "v0.0.15-M2";
-    }
-
-    public String getWorkDir() {
-        return workDir;
     }
 
     private ReActAgent reActAgent;
@@ -183,16 +162,8 @@ public class CodeAgent {
 
             if (Assert.isEmpty(agentsMd)) {
                 //无 AGENTS.md 配置
-                agentBuilder.role("你的昵称叫 " + nickname);
-
-                if (Assert.isNotEmpty(instruction)) {
-                    agentBuilder.systemPrompt(SystemPrompt.builder()
-                            .instruction(instruction)
-                            .build());
-                } else {
-                    agentBuilder.systemPrompt(SystemPrompt.builder()
-                            .build());
-                }
+                agentBuilder.systemPrompt(SystemPrompt.builder()
+                        .build());
             } else {
                 //有 AGENTS.md 配置
                 agentBuilder.systemPrompt(trace -> agentsMd);
