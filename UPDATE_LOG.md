@@ -6,6 +6,22 @@
 * 添加 AGENTS.md 配置支持
 * 优化 CliSkill 拆分为：TerminalSkill + ExpertSkill
 * 优化 简化系统提示词，拆散到各工具里
+* 调整 `.system` 改为 `.soloncode`（后者更有标识性）
+* 调整 `cli.yml` 改为 `config.yml`（后都更通用）
+* 调整 `config/nickname` 取消（由 AGENTS.md 替代，更自由全面）
+* 调整 `config/instruction` 取消（由 AGENTS.md 替代，更自由全面）
+
+
+关于 `AGENTS.md` 的存放位置：
+
+* 放在工作区根目录下，表示工作区内有效
+* 放在程序目录下，表示默认（工作区内没有时，会被启用）
+
+关于 `.soloncode` 目录：
+
+* 智能体启动后，工作区根目录会自动创建 `.soloncode` 目录（也可以提前创建）
+* `.soloncode/sessoins` 存放会话记录（自动）
+* `.soloncode/skills` 存放工作区内技能（手动），技能可以放在此处，也可以外部挂载
 
 ### v0.0.14
 
