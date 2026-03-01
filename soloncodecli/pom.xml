@@ -112,7 +112,7 @@
     </dependencies>
 
     <build>
-        <finalName>SolonCodeCLI</finalName>
+        <finalName>soloncode-cli</finalName>
         <plugins>
             <plugin>
                 <groupId>org.noear</groupId>

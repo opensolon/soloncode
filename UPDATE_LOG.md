@@ -6,10 +6,11 @@
 * 添加 AGENTS.md 配置支持
 * 优化 CliSkill 拆分为：TerminalSkill + ExpertSkill
 * 优化 简化系统提示词，拆散到各工具里
-* 调整 `.system` 改为 `.soloncode`（后者更有标识性）
-* 调整 `cli.yml` 改为 `config.yml`（后都更通用）
-* 调整 `config/nickname` 取消（由 AGENTS.md 替代，更自由全面）
-* 调整 `config/instruction` 取消（由 AGENTS.md 替代，更自由全面）
+* 调整 工件包 `SolonCodeCLI.jar` 改为 `soloncode-cli.jar`
+* 调整 系统目录 `.system` 改为 `.soloncode`（后者更有标识性）
+* 调整 配置文件 `cli.yml` 改为 `config.yml`（后都更通用）
+* 调整 配置项 `config/nickname` 取消（由 AGENTS.md 替代，更自由全面）
+* 调整 配置项 `config/instruction` 取消（由 AGENTS.md 替代，更自由全面）
 
 
 关于 `AGENTS.md` 的存放位置：
