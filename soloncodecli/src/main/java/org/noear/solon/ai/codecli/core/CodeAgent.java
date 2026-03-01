@@ -18,9 +18,18 @@ import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.IoUtil;
+import org.noear.solon.core.util.ResourceUtil;
 import org.noear.solon.lang.Preview;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +44,8 @@ import java.util.function.Consumer;
  */
 @Preview("3.9.1")
 public class CodeAgent {
+    private final static Logger LOG = LoggerFactory.getLogger(CodeAgent.class);
+
     private final static String SESSION_DEFAULT = "cli";
 
     private final ChatModel chatModel;
@@ -129,6 +140,37 @@ public class CodeAgent {
         return sessionProvider.getSession(instanceId);
     }
 
+    private String getAgentsMd() {
+        URL agentsUrl;
+
+        try {
+            Path path = Paths.get(workDir).toAbsolutePath().normalize().resolve("AGENTS.md");
+            if (Files.exists(path)) {
+                //如果工作区有
+                agentsUrl = path.toUri().toURL();
+            } else {
+                //默认尝试找资源
+                agentsUrl = ResourceUtil.findResourceOrFile("AGENTS.md");
+            }
+
+            if (agentsUrl != null) {
+                try (InputStream is = agentsUrl.openStream()) {
+                    String content = IoUtil.transferToString(is, "utf-8").trim();
+
+                    if (content.length() > 10000) { // 例如限制在 1万字符以内
+                        LOG.warn("AGENTS.md is too large, truncating...");
+                        return content.substring(0, 10000);
+                    }
+                    return content;
+                }
+            }
+        } catch (Throwable e) {
+            LOG.warn("AGENTS.md load failure: {}", e.getMessage(), e);
+        }
+
+        return null;
+    }
+
     public void prepare() {
         if (reActAgent == null) {
             if (sessionProvider == null) {
@@ -136,20 +178,26 @@ public class CodeAgent {
                 sessionProvider = (k) -> store.computeIfAbsent(k, InMemoryAgentSession::new);
             }
 
-            ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel)
-                    .role("你的昵称叫 " + nickname);
+            final ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel);
+            final String agentsMd = getAgentsMd();
 
-            if (Assert.isNotEmpty(instruction)) {
-                agentBuilder.systemPrompt(SystemPrompt.builder()
-                        .instruction(instruction)
-                        .build());
+            if (Assert.isEmpty(agentsMd)) {
+                agentBuilder.role("你的昵称叫 " + nickname);
+
+                if (Assert.isNotEmpty(instruction)) {
+                    agentBuilder.systemPrompt(SystemPrompt.builder()
+                            .instruction(instruction)
+                            .build());
+                } else {
+                    agentBuilder.systemPrompt(SystemPrompt.builder()
+                            .build());
+                }
             } else {
-                agentBuilder.systemPrompt(SystemPrompt.builder()
-                        .build());
+                agentBuilder.systemPrompt(trace -> agentsMd);
             }
 
             CliSkillProvider cliSkillProvider = new CliSkillProvider();
-            if(Assert.isNotEmpty(skillPools)) {
+            if (Assert.isNotEmpty(skillPools)) {
                 for (Map.Entry<String, String> entry : skillPools.entrySet()) {
                     cliSkillProvider.skillPool(entry.getKey(), entry.getValue());
                 }
@@ -187,7 +235,7 @@ public class CodeAgent {
         }
 
         AgentSession session = sessionProvider.getSession(sessonId);
-        String activatedWorkDir =  (String) session.attrs().getOrDefault("context:cwd", workDir);
+        String activatedWorkDir = (String) session.attrs().getOrDefault("context:cwd", workDir);
 
         return reActAgent.prompt(prompt)
                 .session(session)
