@@ -3,4 +3,4 @@
 cd "$(dirname "$0")"
 
 # 运行 jar 包
-java -Dfile.encoding=UTF-8 -jar SolonCodeCLI.jar
+java -Dfile.encoding=UTF-8 -jar soloncode-cli.jar
