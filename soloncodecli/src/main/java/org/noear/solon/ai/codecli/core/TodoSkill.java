@@ -36,7 +36,11 @@ public class TodoSkill extends AbsSkill {
     }
 
     @ToolMapping(name = "todoread", description =
-            "读取任务清单。仅在开始新任务、中途迷失方向或确认最终进度时使用。")
+            "读取当前会话的任务清单。你应该主动地使用此工具以确保知晓任务状态。建议场景：\n" +
+                    "- 开始新对话时查看历史遗留进度；\n" +
+                    "- 在执行多个复杂步骤中途，确认下一步优先级；\n" +
+                    "- 完成代码修改后，确认验证步骤是否已执行。\n" +
+                    "如果文件不存在，将返回空提示。")
     public String todoRead(String __workDir) throws IOException {
         Path rootPath = Paths.get(__workDir).toAbsolutePath().normalize();
         Path todoFile = rootPath.resolve("TODO.md");
@@ -51,10 +55,10 @@ public class TodoSkill extends AbsSkill {
 
     @ToolMapping(name = "todowrite", description =
             "管理任务列表。在处理 3 步以上复杂任务时使用。\n\n" +
-                    "## 要求：\n" +
-                    "1. 避免频繁更新，优先执行实际动作；\n" +
-                    "2. 只有在完成一个物理操作（如修改文件、运行成功）后才更新清单状态；\n" +
-                    "3. 严禁连续调用 todowrite。\n"+
+                    "## 强制要求：\n" +
+                    "1. 收到新指令时立即捕捉为待办项，并根据新信息随时调整清单；\n" +
+                    "2. 严禁批量标记完成。每一步完成后，必须立即更新为 completed；\n" +
+                    "3. 在处理当前任务时，必须将该项标记为 in_progress，且全局唯一。\n\n" +
                     "## 推理示例：\n" +
                     "<example>\n" +
                     "用户：帮我把项目里的 getCwd 改成 getCurrentWorkingDirectory。\n" +
