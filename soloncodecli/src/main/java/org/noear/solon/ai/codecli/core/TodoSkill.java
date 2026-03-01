@@ -50,7 +50,7 @@ public class TodoSkill extends AbsSkill {
     }
 
     @ToolMapping(name = "todowrite", description =
-            "管理任务列表。必须在处理 3 步以上复杂任务时使用。\n\n" +
+            "管理任务列表。在处理 3 步以上复杂任务时使用。\n\n" +
                     "## 要求：\n" +
                     "1. 避免频繁更新，优先执行实际动作；\n" +
                     "2. 只有在完成一个物理操作（如修改文件、运行成功）后才更新清单状态；\n" +

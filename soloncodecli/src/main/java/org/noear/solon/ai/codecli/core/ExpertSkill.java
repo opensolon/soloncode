@@ -57,7 +57,7 @@ public class ExpertSkill extends AbsSkill {
                 sb.append(renderSkillXml(skill, false));
             }
         } else if (total <= searchThreshold) {
-            sb.append("检测到多个专家技能。在执行相关领域动作前，必须先调用 `skillread` 加载具体技能规约：\n");
+            sb.append("检测到多个专家技能。在执行相关领域动作前，先调用 `skillread` 加载具体技能规约：\n");
             sb.append("<available_skills>\n");
             for (PoolManager.SkillDir skill : skillMap.values()) {
                 sb.append("  <skill name=\"").append(skill.aliasPath).append("\">")

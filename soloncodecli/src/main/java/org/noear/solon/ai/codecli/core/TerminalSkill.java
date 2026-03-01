@@ -90,21 +90,21 @@ public class TerminalSkill extends AbsSkill {
     public String getInstruction(Prompt prompt) {
         String currentTime = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss (z)"));
         return "## Terminal 环境状态\n" +
-                "- **当前时间**: " + currentTime + "（注：此为动态时间，每次都会刷新）\n" +
+                "- **当前时间**: " + currentTime + "\n" +
                 "- **终端类型**: " + shellMode + "\n" +
                 "- **环境变量**: 挂载池已注入变量（如 @pool1 映射为 " + envExample + "）。\n" +
                 "- **路径规则**: \n" +
-                "  - **工作区(Workspace)**: 你的主目录，支持读写。必须使用相对路径（如 `src/app.java`）。\n" +
+                "  - **工作区(Workspace)**: 你的主目录，支持读写。使用相对路径（如 `src/app.java`）。\n" +
                 "  - **挂载池(Pools)**: 以 `@` 开头的逻辑路径（如 " + skillManager.getPoolMap().keySet() + "）为**只读**资源，严禁写入。\n" +
                 "## 执行规约\n" +
-                "- **只读隔离**: 逻辑路径（以 @ 开头）仅支持读取和命令执行，所有写入操作必须使用相对路径。\n" +
+                "- **只读隔离**: 逻辑路径（以 @ 开头）仅支持读取和命令执行，所有写入操作使用相对路径。\n" +
                 "- **命令执行**: 在 `bash` 中，优先使用环境变量访问工具，例如使用 `" + envExample + "/bin/tool`。\n";
     }
 
     // --- 1. 执行命令 ---
     @ToolMapping(
             name = "bash",
-            description = "在终端执行非交互式 Shell 指令。支持多行脚本，支持逻辑路径（如 @pool）自动转环境变量。禁止使用需要交互输入的命令（如 vim）。"
+            description = "在终端执行非交互式 Shell 指令。支持多行脚本，支持逻辑路径（如 @pool）自动转环境变量。"
     )
     public String bash(@Param(value = "command", description = "要执行的指令。") String command,
                                        String __workDir) {
@@ -141,7 +141,7 @@ public class TerminalSkill extends AbsSkill {
     }
 
     // --- 3. 读取内容 ---
-    @ToolMapping(name = "read", description = "读取文件内容。修改文件前必须先通过此工具确认最新的文本内容、缩进和换行符。支持大文件分页。支持逻辑路径（如 @pool）。")
+    @ToolMapping(name = "read", description = "读取文件内容。修改文件前先通过此工具确认最新的文本内容、缩进和换行符。支持大文件分页。支持逻辑路径（如 @pool）。")
     public String read(@Param(value = "path", description = "文件相对路径（如 'src'）或逻辑路径（如 '@pool'）。'.' 表示当前根目录。禁止以 ./ 开头。") String path,
                            @Param(value = "start_line", required = false, description = "起始行 (从1开始)。") Integer startLine,
                            @Param(value = "end_line", required = false, description = "结束行。") Integer endLine,
@@ -230,7 +230,7 @@ public class TerminalSkill extends AbsSkill {
     }
 
     // --- 5. 搜索工具 ---
-    @ToolMapping(name = "grep", description = "递归搜索内容。返回 '路径:行号:内容'。在不确定文件位置时必须先执行搜索。支持逻辑路径（如 @pool）。")
+    @ToolMapping(name = "grep", description = "递归搜索内容。返回 '路径:行号:内容'。在不确定文件位置时先执行搜索。支持逻辑路径（如 @pool）。")
     public String grep(@Param(value = "query", description = "关键字。") String query,
                              @Param(value = "path", description = "目录相对路径（如 'src'）或逻辑路径（如 '@pool'）。'.' 表示当前根目录。禁止以 ./ 开头。") String path,
                              String __workDir) throws IOException {
