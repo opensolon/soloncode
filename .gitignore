@@ -28,5 +28,5 @@ nbdist/
 ### Mac files ###
 *.DS_Store
 .vscode
-CODE.md
+CLAUDE.md
 TODO.md
