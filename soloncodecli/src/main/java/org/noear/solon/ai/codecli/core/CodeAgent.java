@@ -161,8 +161,9 @@ public class CodeAgent {
 
             if (Assert.isEmpty(agentsMd)) {
                 //无 AGENTS.md 配置
-                agentBuilder.systemPrompt(SystemPrompt.builder()
-                        .build());
+                agentBuilder.systemPrompt(trace -> "# 系统角色\n" +
+                        "\n" +
+                        "具备自主行动能力的专业任务解决专家。\n");
             } else {
                 //有 AGENTS.md 配置
                 agentBuilder.systemPrompt(trace -> "# 系统角色\n" +
