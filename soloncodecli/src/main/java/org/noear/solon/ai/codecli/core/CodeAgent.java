@@ -159,7 +159,7 @@ public class CodeAgent {
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
             agentBuilder.defaultToolAdd(CodeSearchTool.getInstance());
             agentBuilder.defaultToolAdd(new ApplyPatchTool());
-            agentBuilder.defaultSkillAdd(new CliSkill(poolManager));
+            agentBuilder.defaultSkillAdd(new TerminalSkill(poolManager));
             agentBuilder.defaultSkillAdd(new ExpertSkill(poolManager));
             agentBuilder.defaultSkillAdd(new TodoSkill());
 

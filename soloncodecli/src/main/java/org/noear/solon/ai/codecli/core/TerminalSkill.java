@@ -26,12 +26,12 @@ import java.util.stream.Stream;
  * @author noear
  * @since 3.9.1
  */
-public class CliSkill extends AbsSkill {
+public class TerminalSkill extends AbsSkill {
     private enum ShellMode {
         CMD, POWERSHELL, UNIX_SHELL
     }
 
-    private final static Logger LOG = LoggerFactory.getLogger(CliSkill.class);
+    private final static Logger LOG = LoggerFactory.getLogger(TerminalSkill.class);
     private final String workDirDef;
     private final String shellCmd;
     private final String extension;
@@ -47,11 +47,11 @@ public class CliSkill extends AbsSkill {
             ".system", ".git", "node_modules", ".DS_Store"
     );
 
-    public CliSkill(PoolManager skillManager) {
+    public TerminalSkill(PoolManager skillManager) {
         this(null, skillManager);
     }
 
-    public CliSkill(String workDir, PoolManager skillManager) {
+    public TerminalSkill(String workDir, PoolManager skillManager) {
         this.workDirDef = workDir;
         this.skillManager = skillManager;
 
@@ -89,11 +89,13 @@ public class CliSkill extends AbsSkill {
     @Override
     public String getInstruction(Prompt prompt) {
         String currentTime = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss (z)"));
-        return "#### CLI 环境状态\n" +
+        return "#### Terminal 环境状态\n" +
                 "- **当前时间**: " + currentTime + "（注：此为动态时间，每次都会刷新）\n" +
                 "- **终端类型**: " + shellMode + "\n" +
                 "- **环境变量**: 挂载池已注入变量（如 @pool1 映射为 " + envExample + "）。\n" +
-                "- **逻辑路径支持**: 已挂载 " + skillManager.getPoolMap().keySet() + "\n\n" +
+                "- **路径规则**: \n" +
+                "  - **工作区(Workspace)**: 你的主目录，支持读写。必须使用相对路径（如 `src/app.java`）。\n" +
+                "  - **挂载池(Pools)**: 以 `@` 开头的逻辑路径（如 " + skillManager.getPoolMap().keySet() + "）为**只读**资源，严禁写入。\n" +
                 "#### 执行规约\n" +
                 "- **只读隔离**: 逻辑路径（以 @ 开头）仅支持读取和命令执行，所有写入操作必须使用相对路径。\n" +
                 "- **命令执行**: 在 `bash` 中，优先使用环境变量访问工具，例如使用 `" + envExample + "/bin/tool`。\n";
@@ -102,7 +104,7 @@ public class CliSkill extends AbsSkill {
     // --- 1. 执行命令 ---
     @ToolMapping(
             name = "bash",
-            description = "在终端执行 Shell 指令。支持逻辑路径（如 @pool）自动转环境变量。"
+            description = "在终端执行非交互式 Shell 指令。支持多行脚本，支持逻辑路径（如 @pool）自动转环境变量。禁止使用需要交互输入的命令（如 vim）。"
     )
     public String bash(@Param(value = "command", description = "要执行的指令。") String command,
                                        String __workDir) {
@@ -122,7 +124,10 @@ public class CliSkill extends AbsSkill {
         Path rootPath = getRootPath(__workDir);
 
         Path target = resolveSafePath(rootPath, path, false);
-        if (!Files.exists(target)) return "错误：路径不存在";
+
+        if (!Files.exists(target)) {
+            return "错误：路径不存在";
+        }
 
         if (Boolean.TRUE.equals(recursive)) {
             StringBuilder sb = new StringBuilder();
@@ -312,16 +317,20 @@ public class CliSkill extends AbsSkill {
         if (pStr.startsWith("@")) {
             String alias = pStr.split("[/\\\\]")[0];
             boolean inPool = skillManager.getPoolMap().containsKey(alias);
-            if (!inPool) throw new SecurityException("权限拒绝：未知的技能池路径 " + pStr);
+
+            if (!inPool) {
+                throw new SecurityException("权限拒绝：未知的技能池路径 " + pStr);
+            }
 
             if (writeMode) {
-                LOG.warn("Attempt to write to skill pool path: {}", pStr);
+                throw new SecurityException("权限拒绝：路径 " + pStr + " 属于只读挂载池，禁止写入。请将结果写入工作区的相对路径。");
             }
         } else {
             if (!target.startsWith(rootPath)) {
                 throw new SecurityException("权限拒绝：路径越界。");
             }
         }
+
         return target;
     }
 
