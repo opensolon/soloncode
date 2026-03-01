@@ -165,7 +165,9 @@ public class CodeAgent {
                         .build());
             } else {
                 //有 AGENTS.md 配置
-                agentBuilder.systemPrompt(trace -> agentsMd);
+                agentBuilder.systemPrompt(trace -> "# 系统角色\n" +
+                        "\n" +
+                        "具备自主行动能力的专业任务解决专家。\n" + agentsMd);
             }
 
             CliSkillProvider cliSkillProvider = new CliSkillProvider();
@@ -174,6 +176,7 @@ public class CodeAgent {
                     cliSkillProvider.skillPool(entry.getKey(), entry.getValue());
                 }
             }
+            cliSkillProvider.skillPool("@local", Paths.get(workDir).resolve(".soloncode/skills"));
 
             agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
