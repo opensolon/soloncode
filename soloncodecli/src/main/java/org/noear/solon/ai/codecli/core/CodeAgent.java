@@ -46,7 +46,9 @@ import java.util.function.Consumer;
 public class CodeAgent {
     private final static Logger LOG = LoggerFactory.getLogger(CodeAgent.class);
 
-    private final static String SESSION_DEFAULT = "cli";
+    public final static String SESSION_DEFAULT = "cli";
+    public final static String SOLONCODE_SESSIONS = "/.soloncode/sessions/";
+    public final static String SOLONCODE_SKILLS = "/.soloncode/skills/";
 
     private final ChatModel chatModel;
     private AgentSessionProvider sessionProvider;
@@ -161,14 +163,12 @@ public class CodeAgent {
 
             if (Assert.isEmpty(agentsMd)) {
                 //无 AGENTS.md 配置
-                agentBuilder.systemPrompt(trace -> "# 系统角色\n" +
+                agentBuilder.systemPrompt(trace -> "# 你的角色\n" +
                         "\n" +
                         "具备自主行动能力的专业任务解决专家。\n");
             } else {
                 //有 AGENTS.md 配置
-                agentBuilder.systemPrompt(trace -> "# 系统角色\n" +
-                        "\n" +
-                        "具备自主行动能力的专业任务解决专家。\n\n" + agentsMd);
+                agentBuilder.systemPrompt(trace -> agentsMd);
             }
 
             CliSkillProvider cliSkillProvider = new CliSkillProvider();
@@ -177,7 +177,7 @@ public class CodeAgent {
                     cliSkillProvider.skillPool(entry.getKey(), entry.getValue());
                 }
             }
-            cliSkillProvider.skillPool("@local", Paths.get(workDir).resolve(".soloncode/skills"));
+            cliSkillProvider.skillPool("@local", Paths.get(workDir).resolve(CodeAgent.SOLONCODE_SKILLS));
 
             agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
@@ -187,10 +187,10 @@ public class CodeAgent {
             agentBuilder.defaultSkillAdd(new TodoSkill());
 
             //上下文摘要
-            SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(12,
-                    new HierarchicalSummarizationStrategy(chatModel));
-
-            agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
+//            SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(12,
+//                    new HierarchicalSummarizationStrategy(chatModel));
+//
+//            agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
 
             if (enableHitl) {
                 agentBuilder.defaultInterceptorAdd(new HITLInterceptor()
