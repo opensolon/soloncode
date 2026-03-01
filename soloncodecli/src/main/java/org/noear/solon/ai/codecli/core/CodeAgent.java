@@ -168,7 +168,7 @@ public class CodeAgent {
                 //有 AGENTS.md 配置
                 agentBuilder.systemPrompt(trace -> "# 系统角色\n" +
                         "\n" +
-                        "具备自主行动能力的专业任务解决专家。\n" + agentsMd);
+                        "具备自主行动能力的专业任务解决专家。\n\n" + agentsMd);
             }
 
             CliSkillProvider cliSkillProvider = new CliSkillProvider();
