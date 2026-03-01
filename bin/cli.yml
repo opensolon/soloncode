@@ -30,7 +30,12 @@ solon.code.cli:
     apiKey: "sk-******"
     model: "deepseek-chat"
     userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
-  mountPool: # 技能池（可以多个）
+#    defaultOptions:
+#      temperature: 0.2
+#      top_p: 0.5
+#      frequency_penalty: 0.5
+#      presence_penalty: 0.4
+  skillPools: # 技能池（可以多个）
     "@shared": "${user.home}/WORK/work_github/solonlab/opencode-skills"
 #  mcpServers:
 #    gitee:
