@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.codecli.Config;
 import org.noear.solon.ai.codecli.core.ExpertSkill;
-import org.noear.solon.ai.codecli.core.SkillManager;
+import org.noear.solon.ai.codecli.core.PoolManager;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.test.SolonTest;
 
@@ -21,7 +21,7 @@ public class SkillTest {
     public void case1() {
         Config config = Solon.cfg().toBean("solon.code.cli", Config.class);
 
-        SkillManager skillManager = new SkillManager();
+        PoolManager skillManager = new PoolManager();
         if(Assert.isNotEmpty(config.skillPools)) {
             for (Map.Entry<String, String> entry : config.skillPools.entrySet()) {
                 skillManager.registerPool(entry.getKey(), entry.getValue());

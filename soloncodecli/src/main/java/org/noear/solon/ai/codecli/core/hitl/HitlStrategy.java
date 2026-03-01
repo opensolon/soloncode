@@ -1,4 +1,4 @@
-package org.noear.solon.ai.codecli.core;
+package org.noear.solon.ai.codecli.core.hitl;
 
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;

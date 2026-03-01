@@ -1,18 +1,3 @@
-/*
- * Copyright 2017-2026 noear.org and authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.noear.solon.ai.codecli.core;
 
 import org.noear.solon.ai.annotation.ToolMapping;
@@ -52,7 +37,7 @@ public class CliSkill extends AbsSkill {
     private final String extension;
     private final ShellMode shellMode;
     private final String envExample; // 增加范例字段
-    private final SkillManager skillManager; // 引入技能管理器
+    private final PoolManager skillManager; // 引入技能管理器
     private final Map<String, String> undoHistory = new ConcurrentHashMap<>();
 
     protected Charset fileCharset = StandardCharsets.UTF_8;
@@ -62,11 +47,11 @@ public class CliSkill extends AbsSkill {
             ".system", ".git", "node_modules", ".DS_Store"
     );
 
-    public CliSkill(SkillManager skillManager) {
+    public CliSkill(PoolManager skillManager) {
         this(null, skillManager);
     }
 
-    public CliSkill(String workDir, SkillManager skillManager) {
+    public CliSkill(String workDir, PoolManager skillManager) {
         this.workDirDef = workDir;
         this.skillManager = skillManager;
 

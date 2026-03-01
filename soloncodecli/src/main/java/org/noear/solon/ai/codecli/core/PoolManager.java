@@ -11,8 +11,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class SkillManager {
-    private static final Logger LOG = LoggerFactory.getLogger(SkillManager.class);
+/**
+ * 资源池管理（主要是技能池）
+ *
+ * @author noear
+ * @since 3.9.5
+ */
+public class PoolManager {
+    private static final Logger LOG = LoggerFactory.getLogger(PoolManager.class);
 
     // 逻辑路径前缀 -> 物理根路径 (如 "@shared" -> "/path/to/shared")
     private final Map<String, Path> poolMap = new ConcurrentHashMap<>();
@@ -106,7 +112,7 @@ public class SkillManager {
                     if (isSkillDir(dir)) {
                         String rel = root.relativize(dir).toString().replace("\\", "/");
                         String aliasPath = alias + (rel.isEmpty() ? "" : "/" + rel);
-                        skillMap.put(aliasPath, new SkillManager.SkillDir(aliasPath, dir, parseDescription(dir)));
+                        skillMap.put(aliasPath, new PoolManager.SkillDir(aliasPath, dir, parseDescription(dir)));
                         return FileVisitResult.SKIP_SUBTREE;
                     }
                     if (dir.getFileName().toString().startsWith(".")) return FileVisitResult.SKIP_SUBTREE;

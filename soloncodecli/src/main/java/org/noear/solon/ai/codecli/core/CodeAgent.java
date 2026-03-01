@@ -1,18 +1,3 @@
-/*
- * Copyright 2017-2026 noear.org and authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.noear.solon.ai.codecli.core;
 
 import org.noear.solon.ai.agent.AgentChunk;
@@ -27,6 +12,7 @@ import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.codecli.core.hitl.HitlStrategy;
 import org.noear.solon.ai.codecli.core.tool.ApplyPatchTool;
 import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
@@ -162,10 +148,10 @@ public class CodeAgent {
                         .build());
             }
 
-            SkillManager skillManager = new SkillManager();
+            PoolManager poolManager = new PoolManager();
             if(Assert.isNotEmpty(skillPools)) {
                 for (Map.Entry<String, String> entry : skillPools.entrySet()) {
-                    skillManager.registerPool(entry.getKey(), entry.getValue());
+                    poolManager.registerPool(entry.getKey(), entry.getValue());
                 }
             }
 
@@ -173,8 +159,8 @@ public class CodeAgent {
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
             agentBuilder.defaultToolAdd(CodeSearchTool.getInstance());
             agentBuilder.defaultToolAdd(new ApplyPatchTool());
-            agentBuilder.defaultSkillAdd(new CliSkill(skillManager));
-            agentBuilder.defaultSkillAdd(new ExpertSkill(skillManager));
+            agentBuilder.defaultSkillAdd(new CliSkill(poolManager));
+            agentBuilder.defaultSkillAdd(new ExpertSkill(poolManager));
             agentBuilder.defaultSkillAdd(new TodoSkill());
 
             //上下文摘要
