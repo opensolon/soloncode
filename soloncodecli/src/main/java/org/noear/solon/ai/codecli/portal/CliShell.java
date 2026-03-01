@@ -395,7 +395,7 @@ public class CliShell implements Runnable {
     protected void printWelcome() {
         String path = new File(codeAgent.getWorkDir()).getAbsolutePath();
         // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + codeAgent.getNickname() + RESET + DIM + " " + codeAgent.getVersion() + RESET);
+        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + codeAgent.getVersion() + RESET);
         terminal.writer().println(DIM + path + RESET);
         // 仅保留一个空行
         terminal.writer().println();
