@@ -110,7 +110,7 @@ public class CliSkill extends AbsSkill {
     public String getInstruction(Prompt prompt) {
         String currentTime = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss (z)"));
         return "#### CLI 环境状态\n" +
-                "- **当前时间**: " + currentTime + "\n" +
+                "- **当前时间**: " + currentTime + "（注：此为动态时间，每次都会刷新）\n" +
                 "- **终端类型**: " + shellMode + "\n" +
                 "- **环境变量**: 挂载池已注入变量（如 @pool1 映射为 " + envExample + "）。\n" +
                 "- **逻辑路径支持**: 已挂载 " + skillManager.getPoolMap().keySet() + "\n\n" +
@@ -122,12 +122,7 @@ public class CliSkill extends AbsSkill {
     // --- 1. 执行命令 ---
     @ToolMapping(
             name = "run_terminal_command",
-            description = "在终端执行 Shell 指令。支持逻辑路径（如 @pool）自动转环境变量。\n" +
-                    "【执行流程要求】\n" +
-                    "1. 预检：在处理任何具体技术栈或业务流程前，必须先调用 `search_skills` 或 `list_skills` 确认是否存在对应的专家技能。\n" +
-                    "2. 遵循：若存在匹配技能，必须先通过 `explain_skill` 加载其 SKILL.md 规约，并将其作为执行此命令的最高准则。\n" +
-                    "3. 禁止：严禁在缺乏专家规约指引的情况下，盲目修改核心业务逻辑或启动复杂流水线。\n" +
-                    "【路径注意】支持逻辑路径（如 @pool1/bin/tool），执行时会自动映射为环境变量。"
+            description = "在终端执行 Shell 指令。支持逻辑路径（如 @pool）自动转环境变量。"
     )
     public String run_terminal_command(@Param(value = "command", description = "要执行的指令。") String command,
                                        String __workDir) {

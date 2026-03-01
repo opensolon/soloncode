@@ -45,7 +45,9 @@ public class SkillDiscoverySkill extends AbsSkill {
         if (skillMap.isEmpty()) return null;
 
         int total = skillMap.size();
-        StringBuilder sb = new StringBuilder("\n#### 专家技能库执行规约 (当前可用技能: " + total + ")\n");
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("\n#### 专家技能库执行规约 (当前可用技能: " + total + ")\n");
 
         if (total <= dynamicThreshold && total > 0) {
             sb.append("已加载以下专家技能，其内容即为执行标准，请严格遵循：\n");
@@ -62,9 +64,8 @@ public class SkillDiscoverySkill extends AbsSkill {
             sb.append("</available_skills>");
         } else {
             sb.append("专家技能库规模较大。为了确保工程质量，请执行以下检索流程：\n");
-            sb.append("1. **技能检索**：处理特定技术栈前，必须通过 `search_skills` 检索对应的专家技能。\n");
+            sb.append("1. **技能检索**：处理特定技术栈前，可以通过 `search_skills` 检索对应的专家技能。\n");
             sb.append("2. **规约读取**：通过 `explain_skill` 获取技能对应的 SKILL.md 完整规约。\n");
-            sb.append("3. **禁止盲目操作**：严禁在未确认是否存在专家技能指引的情况下，直接使用通用命令。");
         }
 
         return sb.toString();

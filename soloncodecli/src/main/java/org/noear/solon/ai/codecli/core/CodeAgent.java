@@ -159,9 +159,8 @@ public class CodeAgent {
                         .instruction(instruction)
                         .build());
             } else {
-//                agentBuilder.systemPrompt(CodeSystemPrompt.builder()
-//                        .instruction("你是一个超级智能体，功能强大，办事简洁高效（禁止长篇大论）。")
-//                        .build());
+                agentBuilder.systemPrompt(CodeSystemPrompt.builder()
+                        .build());
             }
 
             SkillManager skillManager = new SkillManager();
