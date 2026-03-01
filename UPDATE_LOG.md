@@ -23,6 +23,7 @@
 * 智能体启动后，工作区根目录会自动创建 `.soloncode` 目录（也可以提前创建）
 * `.soloncode/sessoins` 存放会话记录（自动）
 * `.soloncode/skills` 存放工作区内技能（手动），技能可以放在此处，也可以外部挂载
+* `.soloncode/agents` 预留
 
 ### v0.0.14
 
