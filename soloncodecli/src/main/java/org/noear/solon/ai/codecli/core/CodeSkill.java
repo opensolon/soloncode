@@ -16,7 +16,6 @@ import java.util.stream.Stream;
 
 /**
  * Claude Code 规范对齐的代码专精技能
- * 负责项目初始化、技术栈识别与深度 CLAUDE.md 规约生成
  *
  * @author noear
  * @since 3.9.4
@@ -31,12 +30,12 @@ public class CodeSkill extends AbsSkill {
 
     @Override
     public String description() {
-        return "代码专家技能。支持项目初始化、技术栈自动识别以及 CLAUDE.md 规约生成。";
+        return "代码专家技能。支持项目初始化、技术栈自动识别以及 CODE.md 规约生成。";
     }
 
     @Override
     public boolean isSupported(Prompt prompt) {
-        if (rootExists("CLAUDE.md")) {
+        if (rootExists("CODE.md") || rootExists("CLAUDE.md")) {
             return true;
         }
 
@@ -59,8 +58,8 @@ public class CodeSkill extends AbsSkill {
         buf.append("> Project Context: ").append(msg).append("\n\n");
 
         buf.append("为了确保工程质量，要严格执行以下操作：\n")
-                .append("1. **动作前导**: 在开始任何任务前，先读取根目录的 `CLAUDE.md` 以获取构建和测试指令。\n")
-                .append("2. **验证驱动**: 修改代码后，根据 `CLAUDE.md` 中的指令运行测试，严禁未验证提交。\n")
+                .append("1. **动作前导**: 在开始任何任务前，先读取根目录的 `CODE.md` 以获取构建和测试指令。\n")
+                .append("2. **验证驱动**: 修改代码后，根据 `CODE.md` 中的指令运行测试，严禁未验证提交。\n")
                 .append("3. **路径规范**: 严禁使用 `./` 前缀。使用相对于当前工作目录的纯净相对路径。\n");
 
         return buf.toString();
@@ -79,7 +78,7 @@ public class CodeSkill extends AbsSkill {
             if (!Files.isWritable(rootPath)) return "错误：目录不可写。";
 
             StringBuilder newContent = new StringBuilder();
-            newContent.append("# CLAUDE.md\n\n");
+            newContent.append("# CODE.md\n\n");
             newContent.append("## Build and Test Commands\n\n");
 
             List<String> detectedStacks = new ArrayList<>();
@@ -130,7 +129,7 @@ public class CodeSkill extends AbsSkill {
 
             appendGuidelines(newContent);
 
-            Path targetPath = rootPath.resolve("CLAUDE.md");
+            Path targetPath = rootPath.resolve("CODE.md");
             String finalContent = newContent.toString();
             boolean updated = true;
             if (Files.exists(targetPath)) {
@@ -138,7 +137,7 @@ public class CodeSkill extends AbsSkill {
             }
             if (updated) Files.write(targetPath, finalContent.getBytes(StandardCharsets.UTF_8));
 
-            ensureInGitignore("CLAUDE.md");
+            ensureInGitignore("CODE.md");
             ensureInGitignore("TODO.md");
 
             StringBuilder resultMsg = new StringBuilder();

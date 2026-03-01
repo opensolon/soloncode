@@ -99,9 +99,8 @@ public class CodeAgent {
 
     private ReActAgent reActAgent;
 
-    public CodeSkill getInitSkill(AgentSession session) {
+    public CodeSkill getCodeSkill(AgentSession session) {
         String effectiveWorkDir = (String) session.attrs().getOrDefault("context:cwd", this.workDir);
-        String boxId = session.getSessionId();
 
         return (CodeSkill) session.attrs().computeIfAbsent("CodeSkill", x -> {
             CodeSkill skill = new CodeSkill(effectiveWorkDir);
@@ -215,13 +214,13 @@ public class CodeAgent {
                 .options(o -> {
                     o.toolContextPut("__workDir", activatedWorkDir);
 
-                    o.skillAdd(getInitSkill(session));
+                    o.skillAdd(getCodeSkill(session));
                     o.toolAdd(getLuceneSkill(session).getTools(null));
                 });
     }
 
     public String init(AgentSession session) {
-        String code = getInitSkill(session).refresh();
+        String code = getCodeSkill(session).refresh();
         String search = getLuceneSkill(session).refreshSearchIndex(workDir);
 
         if (Assert.isNotEmpty(code)) {
