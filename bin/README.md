@@ -56,3 +56,4 @@ Solon Code CLI 是基于 Solon AI 框架构建的高性能、自主式 AI 终端
 * 智能体启动后，工作区根目录会自动创建 `.soloncode` 目录（也可以提前创建）
 * `.soloncode/sessoins` 存放会话记录（自动）
 * `.soloncode/skills` 存放工作区内技能（手动），技能可以放在此处，也可以外部挂载
+* `.soloncode/agents` 预留
