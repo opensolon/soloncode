@@ -26,9 +26,9 @@ solon.code.cli:
   acpEndpoint: "/acp"
 
   chatModel: # llm 配置（参考 solon ai chatmodel 配置）
-    apiUrl: "https://api.deepseek.com/v1/chat/completions"
-    apiKey: "sk-******"
-    model: "deepseek-chat"
+    apiUrl: "https://ai.gitee.com/v1/chat/completions"
+    apiKey: "******"
+    model: "GLM-5"
     userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
 #    defaultOptions:
 #      temperature: 0.2
