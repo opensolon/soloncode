@@ -5,9 +5,6 @@ solon.logging.appender:
     level: INFO
 
 solon.code.cli:
-  nickname: "小花" # 智能体昵称
-  #  instruction: "你是一个超级智能体（什么问题都能解决），办事高效简洁，性格幽默风趣。" # 引导指令
-
   workDir: "work" # 工作区目录
   maxSteps: 30 # ReAct 最大循环步数
   maxStepsAutoExtensible: true #最大步数自动续航（由 LLM 反思控制）
