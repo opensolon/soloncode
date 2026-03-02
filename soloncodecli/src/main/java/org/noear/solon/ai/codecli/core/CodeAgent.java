@@ -175,7 +175,7 @@ public class CodeAgent {
                     cliSkillProvider.skillPool(entry.getKey(), entry.getValue());
                 }
             }
-            cliSkillProvider.skillPool("@local", Paths.get(workDir).resolve(CodeAgent.SOLONCODE_SKILLS));
+            cliSkillProvider.skillPool("@local", workDir + CodeAgent.SOLONCODE_SKILLS);
 
             agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
