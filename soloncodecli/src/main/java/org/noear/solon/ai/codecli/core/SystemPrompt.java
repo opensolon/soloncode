@@ -67,6 +67,7 @@ public class SystemPrompt implements ReActSystemPrompt {
         } else {
             //sb.append("请直接通过工具调用解决问题，结果输出需简洁、准确。\n\n");
             //sb.append("你遵循隐含的 ReAct 逻辑：内部思考后直接行动，通过函数调用与系统交互，无需输出标签。\n\n");
+            sb.append("你遵循严谨的 ReAct (Reasoning and Acting) 逻辑。\n\n");
         }
 
         // 2. 注入指令集（含格式、准则、示例）
@@ -97,6 +98,11 @@ public class SystemPrompt implements ReActSystemPrompt {
 
     protected String getNaturalInstruction(ReActTrace trace) {
         StringBuilder sb = new StringBuilder();
+
+        sb.append("## 核心规则\n")
+                .append("1. 深度思考：在每一轮行动前，先在内部评估任务目标、当前进度及潜在风险。\n")
+                .append("2. 直接行动：思考后立即调用工具。禁止在正文中伪造工具输出或模拟执行过程。\n")
+                .append("3. 极简输出：严禁输出重复内容。环境状态未变化时，无需重复描述背景。\n\n");
 
 //        sb.append("## 行为准则\n")
 //                .append("1. **工具调用**：如果需要调用工具，请【直接】触发函数调用（Function Calling）。\n")

@@ -31,16 +31,14 @@ public class TodoSkill extends AbsSkill {
 
     @Override
     public String getInstruction(Prompt prompt) {
-        // 返回 null 是正确的，让模型完全依赖工具描述，减少冗余上下文
-        return null;
+        return "## 任务执行 SOP (Task Lifecycle)\n" +
+                "1. **规划优先**: 超过 3 个步骤的复杂任务，先使用 `todowrite` 初始化计划。\n" +
+                "2. **状态感知**: 开始新任务或任务中途，应执行 `todoread` 确认当前进度。\n" +
+                "3. **状态标记**: `[ ]` 待办；`[/]` 进行中（全局唯一）；`[x]` 已完成。\n" +
+                "4. **重构机制**: 若任务目标发生重大偏移或原计划失效，要重新执行 `todowrite` 重构完整计划。";
     }
 
-    @ToolMapping(name = "todoread", description =
-            "读取当前会话的任务清单。你应该主动地使用此工具以确保知晓任务状态。建议场景：\n" +
-                    "- 开始新对话时查看历史遗留进度；\n" +
-                    "- 在执行多个复杂步骤中途，确认下一步优先级；\n" +
-                    "- 完成代码修改后，确认验证步骤是否已执行。\n" +
-                    "如果文件不存在，将返回空提示。")
+    @ToolMapping(name = "todoread", description = "读取任务清单。用于同步执行进度，确认下一步操作。")
     public String todoRead(String __workDir) throws IOException {
         Path rootPath = Paths.get(__workDir).toAbsolutePath().normalize();
         Path todoFile = rootPath.resolve("TODO.md");
@@ -53,35 +51,20 @@ public class TodoSkill extends AbsSkill {
         return new String(encoded, StandardCharsets.UTF_8);
     }
 
-    @ToolMapping(name = "todowrite", description =
-            "管理任务列表。在处理 3 步以上复杂任务时使用。\n\n" +
-                    "## 强制要求：\n" +
-                    "1. 收到新指令时立即捕捉为待办项，并根据新信息随时调整清单；\n" +
-                    "2. 严禁批量标记完成。每一步完成后，必须立即更新为 completed；\n" +
-                    "3. 在处理当前任务时，必须将该项标记为 in_progress，且全局唯一。\n\n" +
-                    "## 推理示例：\n" +
-                    "<example>\n" +
-                    "用户：帮我把项目里的 getCwd 改成 getCurrentWorkingDirectory。\n" +
-                    "助手：我先搜索全局出现的次数。发现涉及 8 个文件。我将建立清单以防遗漏。\n" +
-                    "调用 `todowrite` (todos: \"- [ ] 备份源码\\n- [/] 修改 src/main.java (in_progress)\\n- [ ] 修改 lib/util.java (pending)...\")\n" +
-                    "</example>")
+    @ToolMapping(name = "todowrite", description ="写入任务列表（新建、更新或重构）。接收完整的 Markdown 格式清单。")
     public String todoWrite(
-            @Param(value = "todos", description = "更新后的完整 Markdown 列表。") String todosMarkdown,
+            @Param(value = "todos", description = "完整 Markdown 列表。") String todosMarkdown,
             String __workDir
     ) throws IOException {
 
         Path rootPath = Paths.get(__workDir).toAbsolutePath().normalize();
         Path todoFile = rootPath.resolve("TODO.md");
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("# TODO\n\n");
-        sb.append("\n\n");
-        sb.append(todosMarkdown.trim());
-
-        Files.write(todoFile, sb.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(todoFile, todosMarkdown.trim().getBytes(StandardCharsets.UTF_8));
         ensureInGitignore(rootPath, "TODO.md");
 
-        return "TODO.md 已物理更新。请保持专注，继续执行标记为 in_progress 的任务。";
+        int lines = todosMarkdown.split("\n").length;
+        return "TODO.md saved (" + lines + " lines).";
     }
 
     private void ensureInGitignore(Path rootPath, String fileName) {

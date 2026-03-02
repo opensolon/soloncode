@@ -67,7 +67,7 @@ public class CodeAgent {
     }
 
     public String getVersion() {
-        return "v0.0.15-M2";
+        return "v0.0.15-M4";
     }
 
     public String getWorkDir() {

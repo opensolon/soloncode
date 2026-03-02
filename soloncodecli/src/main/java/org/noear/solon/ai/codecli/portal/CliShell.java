@@ -375,7 +375,7 @@ public class CliShell implements Runnable {
 
     private boolean isSystemCommand(AgentSession session, String input) {
         String cmd = input.trim().toLowerCase();
-        if ("exit".equals(cmd) || "quit".equals(cmd)) {
+        if ("exit".equals(cmd)) {
             terminal.writer().println(DIM + "Exiting..." + RESET);
             System.exit(0);
             return true;
@@ -387,17 +387,25 @@ public class CliShell implements Runnable {
         }
         if ("clear".equals(cmd)) {
             session.clear();
-            terminal.puts(InfoCmp.Capability.clear_screen);
+            printWelcome(); // 推荐加上，让用户清屏后不至于面对一个完全的黑洞
             return true;
         }
         return false;
     }
 
     protected void printWelcome() {
+        terminal.puts(InfoCmp.Capability.clear_screen);
+        terminal.flush();
+
         String path = new File(codeAgent.getWorkDir()).getAbsolutePath();
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + codeAgent.getVersion() + RESET);
         terminal.writer().println(DIM + path + RESET);
+        terminal.writer().print(DIM + "Tips: command " + RESET + "'exit'" + DIM + " to quit, " +
+                RESET + "'init'" + DIM + " to refresh code, " +
+                RESET + "'clear'" + DIM + " to reset session" + RESET);
+
+        //terminal.writer().println(DIM + "Commands: " + RESET + "exit" + DIM + ", " + RESET + "init (code)" + DIM + ", " + RESET + "clear (session)" + RESET);
         // 仅保留一个空行
         terminal.writer().println();
         terminal.flush();

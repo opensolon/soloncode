@@ -57,7 +57,7 @@ public class ExpertSkill extends AbsSkill {
                 sb.append(renderSkillXml(skill, false));
             }
         } else if (total <= searchThreshold) {
-            sb.append("检测到多个专家技能。在执行相关领域动作前，先调用 `skillread` 加载具体技能规约：\n");
+            sb.append("检测到多个专家技能。如需了解具体领域规约或 API，请调用 `skillread`：\n");
             sb.append("<available_skills>\n");
             for (PoolManager.SkillDir skill : skillMap.values()) {
                 sb.append("  <skill name=\"").append(skill.aliasPath).append("\">")
@@ -67,7 +67,7 @@ public class ExpertSkill extends AbsSkill {
         } else {
             sb.append("专家技能库规模较大。为了确保工程质量，请执行以下检索流程：\n");
             sb.append("1. **技能检索**：处理特定技术栈前，可以通过 `skillsearch` 检索对应的专家技能。\n");
-            sb.append("2. **规约读取**：通过 `skillread` 获取技能对应的 SKILL.md 完整规约。\n");
+            sb.append("2. **按需读取**：仅在需要查看具体 API 参数或执行标准时，调用 `skillread` 获取规约。\n");
         }
 
         return sb.toString();
@@ -123,7 +123,7 @@ public class ExpertSkill extends AbsSkill {
         return sb.toString();
     }
 
-    @ToolMapping(name = "skillread", description = "加载特定专家技能的完整 SKILL.md 规约及其文件参考。")
+    @ToolMapping(name = "skillread", description = "读取技能详细说明书。当需要确认具体工具参数或规约细节时使用。")
     public String skillread(@Param("path") String path, String __workDir) throws IOException {
         Map<String, PoolManager.SkillDir> skillMap = skillManager.getSkillMap();
         // 1. 优先从内存 Map 查找逻辑路径
@@ -154,6 +154,7 @@ public class ExpertSkill extends AbsSkill {
         try {
             String content = Files.exists(md) ? new String(Files.readAllBytes(md), StandardCharsets.UTF_8) : "";
             StringBuilder sb = new StringBuilder("\n<skill_content name=\"" + skill.aliasPath + "\">\n");
+            sb.append("[SYSTEM NOTE: You have successfully accessed this skill specification. Do not re-read unless necessary.]\n");
             sb.append(content.trim()).append("\n\n");
             sb.append("Base Directory: ").append(skill.aliasPath).append("\n");
 
