@@ -57,3 +57,31 @@ Solon Code CLI 是基于 Solon AI 框架构建的高性能、自主式 AI 终端
 * `.soloncode/sessoins` 存放会话记录（自动）
 * `.soloncode/skills` 存放工作区内技能（手动），技能可以放在此处，也可以外部挂载
 * `.soloncode/agents` 预留
+
+
+## 四、最近的更新说明：
+
+
+* 添加 skillPools 配置替代 mountPool 配置（仍可用）
+* 添加 TodoSkill（独立出来）
+* 添加 AGENTS.md 配置支持
+* 优化 CliSkill 拆分为：TerminalSkill + ExpertSkill
+* 优化 简化系统提示词，拆散到各工具里
+* 调整 工件包 `SolonCodeCLI.jar` 改为 `soloncode-cli.jar`
+* 调整 系统目录 `.system` 改为 `.soloncode`（后者更有标识性）
+* 调整 配置文件 `cli.yml` 改为 `config.yml`（后都更通用）
+* 调整 配置项 `config/nickname` 取消（由 AGENTS.md 替代，更自由全面）
+* 调整 配置项 `config/instruction` 取消（由 AGENTS.md 替代，更自由全面）
+
+
+关于 `AGENTS.md` 的存放位置：
+
+* 放在工作区根目录下，表示工作区内有效
+* 放在程序目录下，表示默认（工作区内没有时，会被启用）
+
+关于 `.soloncode` 目录：
+
+* 智能体启动后，工作区根目录会自动创建 `.soloncode` 目录（也可以提前创建）
+* `.soloncode/sessoins` 存放会话记录（自动）
+* `.soloncode/skills` 存放工作区内技能（手动），技能可以放在此处，也可以外部挂载
+* `.soloncode/agents` 预留
