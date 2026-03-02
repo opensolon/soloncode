@@ -51,6 +51,8 @@ Solon Code CLI 是基于 Solon AI 框架构建的高性能、自主式 AI 终端
 * 放在工作区根目录下，表示工作区内有效
 * 放在程序目录下，表示默认（工作区内没有时，会被启用）
 
+如何配置参考（不要有让 llm 逻辑矛盾的内容）：https://mp.weixin.qq.com/s/gbxNIHHhLEGfbZQLh0lqWQ
+
 ### 关于 `.soloncode` 目录：
 
 * 智能体启动后，工作区根目录会自动创建 `.soloncode` 目录（也可以提前创建）
