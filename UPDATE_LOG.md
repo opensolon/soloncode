@@ -1,4 +1,12 @@
 
+### v0.0.16
+
+* 添加 自动加载工作区下的 `.opencode/skills` 作为 `@opencode_skills` 只读池
+* 添加 自动加载工作区下的 `.claude/skills` 作为 `@claude_skills` 只读池
+* 优化 TerminalSkill 预置环境变量 `$PYTHON`，`$NODE`
+* 优化 TerminalSkill bash 添加超时控制（由 llm 控制），之前只能默认（造成有些脚本执行超时）
+* 优化 ExpertSkill skillread 时添加文件在`沙盒`内的别名，并引导使用沙盒别名
+
 ### v0.0.15
 
 * 添加 skillPools 配置替代 mountPool 配置（仍可用）
