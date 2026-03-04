@@ -11,6 +11,8 @@ import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
 import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.codecli.core.subagent.SubAgentManager;
+import org.noear.solon.ai.codecli.core.tool.SubAgentTool;
 import org.noear.solon.ai.codecli.core.tool.ApplyPatchTool;
 import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
@@ -59,6 +61,9 @@ public class CodeAgent {
     private final Map<String, String> skillPools = new LinkedHashMap<>();
     private final McpProviders mcpProviders;
     private Consumer<ReActAgent.Builder> configurator;
+    private boolean enableHitl = true;
+    private boolean enableSubAgent = true; // 默认启用子代理
+    private SubAgentManager subAgentManager;
 
     public CodeAgent(ChatModel chatModel, AgentSessionProvider sessionProvider, CodeProperties config) {
         this.chatModel = chatModel;
@@ -110,6 +115,29 @@ public class CodeAgent {
     public CodeAgent config(Consumer<ReActAgent.Builder> configurator) {
         this.configurator = configurator;
         return this;
+    }
+
+    /**
+     * 是否启用 HITL 交互
+     */
+    public CodeAgent enableHitl(boolean enableHitl) {
+        this.enableHitl = enableHitl;
+        return this;
+    }
+
+    /**
+     * 是否启用子代理功能
+     */
+    public CodeAgent enableSubAgent(boolean enableSubAgent) {
+        this.enableSubAgent = enableSubAgent;
+        return this;
+    }
+
+    /**
+     * 获取子代理管理器
+     */
+    public SubAgentManager getSubAgentManager() {
+        return subAgentManager;
     }
 
     private ReActAgent reActAgent;
@@ -197,6 +225,20 @@ public class CodeAgent {
             agentBuilder.defaultSkillAdd(cliSkillProvider);
             agentBuilder.defaultSkillAdd(new TodoSkill());
 
+            // 添加子代理工具
+            if (enableSubAgent) {
+                subAgentManager = new SubAgentManager(
+                        sessionProvider,
+                        config.workDir,
+                        cliSkillProvider.getPoolManager(),
+                        this,
+                        chatModel
+                );
+                // SubAgentTool 会通过 @ToolMapping 自动注册为工具
+                agentBuilder.defaultToolAdd(new SubAgentTool(subAgentManager));
+                LOG.info("子代理功能已启用");
+            }
+
             //上下文摘要
             SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(
                     config.summaryWindowSize,
@@ -204,9 +246,12 @@ public class CodeAgent {
 
             agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
 
-            if (config.hitlEnabled) {
+            // HITL 交互干预（优先使用实例字段，否则使用配置）
+            boolean hitlEnabled = this.enableHitl || config.hitlEnabled;
+            if (hitlEnabled) {
                 agentBuilder.defaultInterceptorAdd(new HITLInterceptor()
                         .onTool("bash", new HitlStrategy()));
+                LOG.info("HITL 交互干预已启用");
             }
 
             // 添加步数
