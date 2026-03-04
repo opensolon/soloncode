@@ -13,6 +13,7 @@ solon.code.cli:
   summaryWindowSize: 15 # 工作摘要窗口大小（即，工作上下文压缩时留几条消息不压缩）
 
   sandboxMode: true # 消盒模式，启用时禁止访问绝对路径
+  thinkPrinted: false # 内心思考，是否打印
 
   hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
 
