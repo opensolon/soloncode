@@ -8,7 +8,11 @@ solon.code.cli:
   workDir: "work" # 工作区目录
   maxSteps: 30 # ReAct 最大循环步数
   maxStepsAutoExtensible: true #最大步数自动续航（由 LLM 反思控制）
+
   sessionWindowSize: 10 # 会话历史窗口大小（即，新指令时使用几条历史消息）
+  summaryWindowSize: 15 # 工作摘要窗口大小（即，工作上下文压缩时留几条消息不压缩）
+
+  sandboxMode: true # 消盒模式，启用时禁止访问绝对路径
 
   hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
 
