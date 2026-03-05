@@ -2,8 +2,8 @@ package demo.ai.cli;
 
 import org.noear.solon.ai.codecli.core.CodeAgent;
 import org.noear.solon.ai.codecli.portal.BotGate;
-import org.noear.solon.ai.codecli.portal.ChannelRegistry;
-import org.noear.solon.ai.codecli.portal.WebChannel;
+import org.noear.solon.ai.codecli.portal.BotChannelRegistry;
+import org.noear.solon.ai.codecli.portal.BotWebChannel;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,10 +26,10 @@ public class BotGateExample {
         BotGate botGate = new BotGate(codeAgent);
         
         // 注册通道工厂
-        botGate.registerChannelFactory(ChannelRegistry.ChannelTypes.WEB,
+        botGate.registerChannelFactory(BotChannelRegistry.ChannelTypes.WEB,
             (id, config) -> {
                 Integer port = (Integer) config.getOrDefault("port", 8080);
-                return new WebChannel(id, port, codeAgent);
+                return new BotWebChannel(id, port, codeAgent);
             });
         
         // 创建 Web 通道

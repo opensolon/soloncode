@@ -89,7 +89,7 @@ public class CodeAgent {
     }
 
     public String getVersion() {
-        return "v0.0.17";
+        return "v0.0.18";
     }
 
     public CodeProperties getConfig() {
