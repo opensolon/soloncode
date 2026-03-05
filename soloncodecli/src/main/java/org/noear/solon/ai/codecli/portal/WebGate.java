@@ -53,7 +53,7 @@ public class WebGate implements Handler {
         String input = ctx.param("input");
         String mode = ctx.param("m");
         String sessionId = ctx.headerOrDefault("X-Session-Id", "web");
-        String sessionCwd = ctx.header("X-Session-Cwd");
+        String sessionCwd = ctx.header("X-Session-Cwd");//工作区
 
         if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             ctx.status(400);
