@@ -363,6 +363,29 @@ public class TerminalSkill extends AbsSkill {
         return Paths.get(path).toAbsolutePath().normalize();
     }
 
+    private String preprocessUserHome(String pStr) {
+        if (pStr == null) return null;
+
+        // 支持 ~/ 或 ~ 转换为用户主目录
+        if (pStr.equals("~") || pStr.startsWith("~/") || pStr.startsWith("~\\")) {
+            String userHome = System.getProperty("user.home");
+            if (pStr.length() == 1) {
+                return userHome;
+            } else {
+                return Paths.get(userHome, pStr.substring(2)).toString();
+            }
+        }
+        return pStr;
+    }
+
+    private boolean isNotUserHomePath(String pStr) {
+        if (pStr == null) {
+            return false;
+        } else {
+            return pStr.startsWith("~") == false;
+        }
+    }
+
     private Path resolveSafePath(Path rootPath, String pStr, boolean writeMode) {
         if (Assert.isEmpty(pStr) || ".".equals(pStr)) {
             return rootPath;
@@ -386,22 +409,23 @@ public class TerminalSkill extends AbsSkill {
         }
 
         // 2. 处理物理路径
-        Path p = Paths.get(pStr);
+        String pStr2 = preprocessUserHome(pStr);
+        Path p = Paths.get(pStr2);
         Path target;
 
         if (p.isAbsolute()) {
             // 【开放模式】直接使用绝对路径
-            if (sandboxMode) {
+            if (sandboxMode && isNotUserHomePath(pStr)) {
                 throw new SecurityException("权限拒绝：沙盒模式下禁止使用绝对路径。");
             }
             target = p.normalize();
         } else {
             // 相对路径
-            target = rootPath.resolve(pStr).normalize();
+            target = rootPath.resolve(pStr2).normalize();
         }
 
         // 3. 越界检查只在沙盒模式下强制执行
-        if (sandboxMode && !target.startsWith(rootPath)) {
+        if (sandboxMode && isNotUserHomePath(pStr) && !target.startsWith(rootPath)) {
             throw new SecurityException("权限拒绝：路径越界（沙盒模式已开启）。");
         }
 
@@ -442,6 +466,15 @@ public class TerminalSkill extends AbsSkill {
                 result = result.replace(alias, placeholder);
             }
         }
+
+        if (this.shellMode == ShellMode.CMD && result.contains("~")) {
+            String userHome = System.getProperty("user.home").replace("\\", "/");
+            // 简单替换方案，覆盖常见场景
+            result = result.replace("~/", userHome + "/")
+                    .replace("~\\", userHome + "/"); // 处理类似 command ~ 的结尾
+            if (result.equals("~")) result = userHome;
+        }
+
         return result;
     }
 

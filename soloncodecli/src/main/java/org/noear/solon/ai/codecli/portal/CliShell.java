@@ -205,7 +205,7 @@ public class CliShell implements Runnable {
 
             while (latch.getCount() > 0) {
                 int c = terminal.reader().read(50);
-                if (c == '\r' || c == '\n') {
+                if (c == 27 || c == '\r' || c == '\n') {
                     disposable.dispose();
                     isInterrupted.set(true);
                     latch.countDown();
@@ -404,7 +404,7 @@ public class CliShell implements Runnable {
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + codeAgent.getVersion() + RESET);
         terminal.writer().println(DIM + path + RESET);
-        terminal.writer().print(DIM + "Tips: " + RESET + "(Enter)" + DIM + " to interrupt output. Commands: " +
+        terminal.writer().print(DIM + "Tips: " + RESET + "(esc)" + DIM + " to interrupt output. Commands: " +
                 RESET + "'exit'" + DIM + " to quit, " +
                 RESET + "'init'" + DIM + " to refresh, " +
                 RESET + "'clear'" + DIM + " to reset" + RESET);
