@@ -16,6 +16,7 @@
 package org.noear.solon.ai.codecli.portal;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
@@ -52,11 +53,24 @@ public class WebGate implements Handler {
         String input = ctx.param("input");
         String mode = ctx.param("m");
         String sessionId = ctx.headerOrDefault("X-Session-Id", "web");
+        String sessionCwd = ctx.header("X-Session-Cwd");
 
         if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             ctx.status(400);
             ctx.output("Invalid Session ID");
             return;
+        }
+
+        if(Assert.isNotEmpty(sessionCwd)) {
+            //只有第一次传有效（后续的无效）
+            if (sessionCwd.contains("..")) {
+                ctx.status(400);
+                ctx.output("Invalid Session Cwd");
+                return;
+            }
+
+            AgentSession session = codeAgent.getSession(sessionId);
+            session.attrs().putIfAbsent("context:cwd", sessionCwd);
         }
 
         if (Assert.isNotEmpty(input)) {
