@@ -30,10 +30,6 @@ public class ExpertSkill extends AbsSkill {
         this.poolManager = poolManager;
     }
 
-    public PoolManager getSkillManager() {
-        return poolManager;
-    }
-
     @Override
     public String description() {
         return "专家技能管理器。支持从本地或资源池发现并加载专家技能 (SKILL.md)。";
