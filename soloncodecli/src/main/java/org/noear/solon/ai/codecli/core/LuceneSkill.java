@@ -43,8 +43,20 @@ import java.util.stream.Collectors;
 public class LuceneSkill extends AbsSkill {
     private static final Logger LOG = LoggerFactory.getLogger(LuceneSkill.class);
 
-    protected final Directory indexDirectory;
-    protected final Analyzer analyzer;
+    private final Directory indexDirectory;
+    private final Analyzer analyzer;
+    private final String workSpace;
+
+    public LuceneSkill() {
+        this(null);
+    }
+
+    public LuceneSkill(String workSpace) {
+        this.workSpace = workSpace;
+        this.indexDirectory = new ByteBuffersDirectory();
+        this.analyzer = new StandardAnalyzer();
+    }
+
 
     // 可配置的忽略列表
     private Set<String> ignoreNames = new HashSet<>(Arrays.asList(
@@ -55,11 +67,6 @@ public class LuceneSkill extends AbsSkill {
     private Set<String> searchableExtensions = new HashSet<>(Arrays.asList(
             "java", "xml", "js", "ts", "md", "properties", "sql", "txt", "html", "json", "yml", "yaml", "sh", "bat"
     ));
-
-    public LuceneSkill() {
-        this.indexDirectory = new ByteBuffersDirectory();
-        this.analyzer = new StandardAnalyzer();
-    }
 
     /**
      * 设置忽略的文件名或目录名
@@ -81,6 +88,12 @@ public class LuceneSkill extends AbsSkill {
         return this;
     }
 
+    private Path getRootPath(String __cwd) {
+        String path = (__cwd != null) ? __cwd : workSpace;
+        if (path == null) throw new IllegalStateException("Working directory is not set.");
+        return Paths.get(path).toAbsolutePath().normalize();
+    }
+
     @Override
     public String name() {
         return "local_full_text_search_manager";
@@ -91,18 +104,11 @@ public class LuceneSkill extends AbsSkill {
         return "高性能本地全文检索工具。支持后缀: " + searchableExtensions;
     }
 
-    @Override
-    public boolean isSupported(Prompt prompt) {
-        return true;
-    }
-
 
     @ToolMapping(name = "full_text_search", description = "在工作区内中进行本地全文检索（支持代码、配置、文档等文本文件）。")
     public String full_text_search(@Param(value = "query", description = "搜索关键字或短语") String query,
-                                   String __workDir) {
-
-
-        Path rootPath = Paths.get(__workDir).toAbsolutePath().normalize();
+                                   String __cwd) {
+        Path rootPath = getRootPath(__cwd);
 
         try {
             if (!DirectoryReader.indexExists(indexDirectory)) {
@@ -166,8 +172,8 @@ public class LuceneSkill extends AbsSkill {
     }
 
     @ToolMapping(name = "refresh_search_index", description = "刷新工作区内的本地全文索引。")
-    public String refreshSearchIndex(String __workDir) {
-        Path rootPath = Paths.get(__workDir).toAbsolutePath().normalize();
+    public String refreshSearchIndex(String __cwd) {
+        Path rootPath = getRootPath(__cwd);
 
         long start = System.currentTimeMillis();
         IndexWriterConfig config = new IndexWriterConfig(analyzer);

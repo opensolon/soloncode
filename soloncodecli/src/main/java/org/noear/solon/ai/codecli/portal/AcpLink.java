@@ -67,7 +67,7 @@ public class AcpLink implements Runnable{
 
                     Prompt userInput = toPrompt(request);
                     AgentSession session = kernel.getSession(sessionId);
-                    session.attrs().put("context:cwd", context.getCwd());
+                    session.attrs().put(AgentKernel.ATTR_CWD, context.getCwd());
 
                     // 将 ACP 的 Prompt 转发给 Solon ReActAgent
                     return kernel.stream(request.sessionId(), userInput)

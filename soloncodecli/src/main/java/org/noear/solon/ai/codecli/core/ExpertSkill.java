@@ -112,7 +112,7 @@ public class ExpertSkill extends AbsSkill {
     }
 
     @ToolMapping(name = "skillread", description = "读取技能详细说明书。当需要确认具体工具参数或规约细节时使用。")
-    public String skillread(@Param("path") String path, String __workDir) throws IOException {
+    public String skillread(@Param("path") String path, String __cwd) throws IOException {
         Map<String, PoolManager.SkillDir> skillMap = poolManager.getSkillMap();
         // 1. 优先从内存 Map 查找逻辑路径
         PoolManager.SkillDir cachedSkill = skillMap.get(path);
@@ -121,7 +121,7 @@ public class ExpertSkill extends AbsSkill {
         }
 
         // 2. 回退到物理路径解析
-        Path target = resolvePathExtended(__workDir, path);
+        Path target = resolvePathExtended(__cwd, path);
         if (!isSkillDir(target)) return "Error: 路径 " + path + " 不是有效的专家技能目录 (缺少 SKILL.md)";
 
         return renderSkillXml(new PoolManager.SkillDir(path, target, null), true);

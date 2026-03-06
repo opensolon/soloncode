@@ -68,7 +68,7 @@ public class WebGate implements Handler {
             }
 
             AgentSession session = kernel.getSession(sessionId);
-            session.attrs().putIfAbsent("context:cwd", sessionCwd);
+            session.attrs().putIfAbsent(AgentKernel.ATTR_CWD, sessionCwd);
         }
 
         if (Assert.isNotEmpty(input)) {

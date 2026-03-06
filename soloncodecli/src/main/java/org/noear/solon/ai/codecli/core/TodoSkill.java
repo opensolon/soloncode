@@ -39,8 +39,8 @@ public class TodoSkill extends AbsSkill {
     }
 
     @ToolMapping(name = "todoread", description = "读取任务清单。用于同步执行进度，确认下一步操作。")
-    public String todoRead(String __workDir) throws IOException {
-        Path rootPath = Paths.get(__workDir).toAbsolutePath().normalize();
+    public String todoRead(String __cwd) throws IOException {
+        Path rootPath = Paths.get(__cwd).toAbsolutePath().normalize();
         Path todoFile = rootPath.resolve("TODO.md");
 
         if (!Files.exists(todoFile)) {
@@ -54,10 +54,10 @@ public class TodoSkill extends AbsSkill {
     @ToolMapping(name = "todowrite", description ="写入任务列表（新建、更新或重构）。接收完整的 Markdown 格式清单。")
     public String todoWrite(
             @Param(value = "todos", description = "完整 Markdown 列表。") String todosMarkdown,
-            String __workDir
+            String __cwd
     ) throws IOException {
 
-        Path rootPath = Paths.get(__workDir).toAbsolutePath().normalize();
+        Path rootPath = Paths.get(__cwd).toAbsolutePath().normalize();
         Path todoFile = rootPath.resolve("TODO.md");
 
         Files.write(todoFile, todosMarkdown.trim().getBytes(StandardCharsets.UTF_8));

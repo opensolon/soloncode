@@ -5,6 +5,7 @@ import com.github.difflib.UnifiedDiffUtils;
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Patch;
 import org.noear.solon.ai.chat.tool.AbsTool;
+import org.noear.solon.ai.codecli.core.AgentKernel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,7 +68,7 @@ public class ApplyPatchTool extends AbsTool {
     @Override
     public Object handle(Map<String, Object> args) throws Throwable {
         String patchText = (String) args.get("patchText");
-        String __workDir = (String) args.get("__workDir"); //由 toolContext 传递
+        String __cwd = (String) args.get(AgentKernel.ATTR_CWD); //由 toolContext 传递
 
         // 严格对齐: if (!params.patchText) throw new Error("patchText is required")
         if (patchText == null || patchText.trim().length() == 0) {
@@ -91,7 +92,7 @@ public class ApplyPatchTool extends AbsTool {
             throw new RuntimeException("apply_patch verification failed: no hunks found");
         }
 
-        Path worktree = Paths.get(__workDir).toAbsolutePath().normalize();
+        Path worktree = Paths.get(__cwd).toAbsolutePath().normalize();
         List<FileChange> fileChanges = new ArrayList<>();
         StringBuilder totalDiff = new StringBuilder();
 

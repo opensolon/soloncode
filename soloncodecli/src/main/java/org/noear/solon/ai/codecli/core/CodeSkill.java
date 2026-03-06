@@ -24,10 +24,15 @@ import java.util.stream.Stream;
  */
 public class CodeSkill extends AbsSkill {
     private static final Logger LOG = LoggerFactory.getLogger(CodeSkill.class);
-    private final Path rootPath;
 
-    public CodeSkill(String workDir) {
-        this.rootPath = Paths.get(workDir).toAbsolutePath().normalize();
+    private final String workSpace;
+
+    public CodeSkill() {
+        this(null);
+    }
+
+    public CodeSkill(String workSpace) {
+        this.workSpace = workSpace;
     }
 
     @Override
@@ -37,13 +42,16 @@ public class CodeSkill extends AbsSkill {
 
     @Override
     public boolean isSupported(Prompt prompt) {
-        if (rootExists("CLAUDE.md")) {
+        String __cwd = prompt.attrAs(AgentKernel.ATTR_CWD);
+        Path rootPath = getRootPath(__cwd);
+
+        if (rootExists(rootPath, "CLAUDE.md")) {
             return true;
         }
 
-        if (deepExists("pom.xml") || deepExists("package.json") || deepExists("go.mod") ||
-                deepExists(".git") || deepExists(".github") ||
-                deepExists("src") || deepExists("lib")) {
+        if (deepExists(rootPath, "pom.xml") || deepExists(rootPath, "package.json") || deepExists(rootPath, "go.mod") ||
+                deepExists(rootPath, ".git") || deepExists(rootPath, ".github") ||
+                deepExists(rootPath, "src") || deepExists(rootPath, "lib")) {
             return true;
         }
 
@@ -52,9 +60,12 @@ public class CodeSkill extends AbsSkill {
 
     @Override
     public String getInstruction(Prompt prompt) {
+        String __cwd = prompt.attrAs(AgentKernel.ATTR_CWD);
+        Path rootPath = getRootPath(__cwd);
+
         StringBuilder buf = new StringBuilder();
 
-       String msg = init();
+        String msg = init(__cwd);
 
         buf.append("\n## 核心工程规约 (Core Engineering Protocol)\n");
         buf.append("> Project Context: ").append(msg).append("\n\n");
@@ -67,16 +78,24 @@ public class CodeSkill extends AbsSkill {
         return buf.toString();
     }
 
-    public String refresh() {
+    public String refresh(String workDir) {
         if (isSupported(null)) {
-            return init();
+            return init(workDir);
         } else {
             return null;
         }
     }
 
-    public String init() {
+    private Path getRootPath(String __cwd) {
+        String path = (__cwd != null) ? __cwd : workSpace;
+        if (path == null) throw new IllegalStateException("Working directory is not set.");
+        return Paths.get(path).toAbsolutePath().normalize();
+    }
+
+    public String init(String __cwd) {
         try {
+            Path rootPath = getRootPath(__cwd);
+
             if (!Files.isWritable(rootPath)) return "错误：目录不可写。";
 
             StringBuilder newContent = new StringBuilder();
@@ -84,8 +103,8 @@ public class CodeSkill extends AbsSkill {
             newContent.append("## Build and Test Commands\n\n");
 
             List<String> detectedStacks = new ArrayList<>();
-            boolean rootHasMaven = rootExists("pom.xml");
-            boolean rootHasNode = rootExists("package.json");
+            boolean rootHasMaven = rootExists(rootPath, "pom.xml");
+            boolean rootHasNode = rootExists(rootPath, "package.json");
 
             if (rootHasMaven) {
                 detectedStacks.add("Maven(Root)");
@@ -150,8 +169,8 @@ public class CodeSkill extends AbsSkill {
             }
             if (updated) Files.write(targetPath, finalContent.getBytes(StandardCharsets.UTF_8));
 
-            ensureInGitignore("CLAUDE.md");
-            ensureInGitignore("TODO.md");
+            ensureInGitignore(rootPath, "CLAUDE.md");
+            ensureInGitignore(rootPath, "TODO.md");
 
             StringBuilder resultMsg = new StringBuilder();
             resultMsg.append(updated ? "已更新" : "已验证").append("项目工程规范");
@@ -204,7 +223,7 @@ public class CodeSkill extends AbsSkill {
                 .append("- **Style**: Follow existing patterns in the codebase.\n\n");
     }
 
-    private void ensureInGitignore(String fileName) {
+    private void ensureInGitignore(Path rootPath, String fileName) {
         try {
             Path gitignore = rootPath.resolve(".gitignore");
             if (Files.exists(gitignore)) {
@@ -218,11 +237,11 @@ public class CodeSkill extends AbsSkill {
         }
     }
 
-    private boolean rootExists(String path) {
+    private boolean rootExists(Path rootPath, String path) {
         return Files.exists(rootPath.resolve(path));
     }
 
-    private boolean deepExists(String path) {
+    private boolean deepExists(Path rootPath, String path) {
         try (Stream<Path> stream = Files.walk(rootPath, 3)) {
             return stream.filter(Files::isDirectory)
                     .filter(p -> !isIgnored(p)) // 清爽的过滤

@@ -49,6 +49,8 @@ public class AgentKernel {
     private final static Logger LOG = LoggerFactory.getLogger(AgentKernel.class);
 
     public final static String SESSION_DEFAULT = "cli";
+    public final static String ATTR_CWD = "__cwd";
+
     public final static String SOLONCODE_SESSIONS = "/.soloncode/sessions/";
     public final static String SOLONCODE_SKILLS = "/.soloncode/skills/";
     public final static String SOLONCODE_AGENTS = "/.soloncode/agents/";
@@ -60,6 +62,9 @@ public class AgentKernel {
     private final ChatModel chatModel;
     private final AgentSessionProvider sessionProvider;
     private final AgentProperties properties;
+
+    private final CodeSkill codeSkill = new CodeSkill();
+    private final LuceneSkill luceneSkill  =new LuceneSkill();
 
     private final Map<String, String> skillPools = new LinkedHashMap<>();
     private final McpProviders mcpProviders;
@@ -127,20 +132,6 @@ public class AgentKernel {
 
     private ReActAgent reActAgent;
 
-    public CodeSkill getCodeSkill(AgentSession session) {
-        String effectiveWorkDir = (String) session.attrs().getOrDefault("context:cwd", properties.workDir);
-
-        return (CodeSkill) session.attrs().computeIfAbsent("CodeSkill", x -> {
-            CodeSkill skill = new CodeSkill(effectiveWorkDir);
-            return skill;
-        });
-    }
-
-    public LuceneSkill getLuceneSkill(AgentSession session) {
-        return (LuceneSkill) session.attrs().computeIfAbsent("LuceneSkill", x -> {
-            return new LuceneSkill();
-        });
-    }
 
     public AgentSession getSession(String instanceId) {
         return sessionProvider.getSession(instanceId);
@@ -209,6 +200,8 @@ public class AgentKernel {
             agentBuilder.defaultToolAdd(new ApplyPatchTool());
             agentBuilder.defaultSkillAdd(cliSkillProvider);
             agentBuilder.defaultSkillAdd(new TodoSkill());
+            agentBuilder.defaultSkillAdd(codeSkill);
+            agentBuilder.defaultSkillAdd(luceneSkill);
 
             // 添加子代理工具
             if (properties.subAgentEnabled) {
@@ -274,21 +267,22 @@ public class AgentKernel {
         }
 
         AgentSession session = sessionProvider.getSession(sessonId);
-        String activatedWorkDir = (String) session.attrs().getOrDefault("context:cwd", properties.workDir);
+        String activatedWorkDir = (String) session.attrs()
+                .getOrDefault(ATTR_CWD, properties.workDir);
 
         return reActAgent.prompt(prompt)
                 .session(session)
                 .options(o -> {
-                    o.toolContextPut("__workDir", activatedWorkDir);
-
-                    o.skillAdd(getCodeSkill(session));
-                    o.toolAdd(getLuceneSkill(session).getTools(null));
+                    o.toolContextPut(AgentKernel.ATTR_CWD, activatedWorkDir);
                 });
     }
 
     public String init(AgentSession session) {
-        String code = getCodeSkill(session).refresh();
-        String search = getLuceneSkill(session).refreshSearchIndex(properties.workDir);
+        String effectiveWorkDir = (String) session.attrs()
+                .getOrDefault(ATTR_CWD, properties.workDir);
+
+        String code = codeSkill.refresh(effectiveWorkDir);
+        String search = luceneSkill.refreshSearchIndex(effectiveWorkDir);
 
         if (Assert.isNotEmpty(code)) {
             return search + "\n" + code;
