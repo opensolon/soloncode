@@ -85,7 +85,6 @@ public class CliShell implements Runnable {
 
     @Override
     public void run() {
-        kernel.prepare();
         printWelcome();
         AgentSession session = kernel.getSession("cli");
 
@@ -264,7 +263,7 @@ public class CliShell implements Runnable {
     private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             //打印 think 或者 不是 think
-            if (kernel.getProps().thinkPrinted || !reason.getMessage().isThinking()) {
+            if (kernel.getProps().isThinkPrinted() || !reason.getMessage().isThinking()) {
                 String delta = clearThink(reason.getContent());
                 onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
             }
@@ -308,7 +307,7 @@ public class CliShell implements Runnable {
             String argsStr = argsBuilder.toString().replace("\n", " ");
             boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
-            if (kernel.getProps().cliPrintSimplified) {
+            if (kernel.getProps().isCliPrintSimplified()) {
                 // --- 简化风格：单行摘要模式 ---
                 String content = action.getContent() == null ? "" : action.getContent().trim();
                 String summary;
@@ -398,7 +397,7 @@ public class CliShell implements Runnable {
         terminal.puts(InfoCmp.Capability.clear_screen);
         terminal.flush();
 
-        String path = new File(kernel.getWorkDir()).getAbsolutePath();
+        String path = new File(kernel.getProps().getWorkDir()).getAbsolutePath();
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + kernel.getVersion() + RESET);
         terminal.writer().println(DIM + path + RESET);

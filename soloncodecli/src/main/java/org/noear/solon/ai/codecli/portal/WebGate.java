@@ -46,8 +46,6 @@ public class WebGate implements Handler {
 
     @Override
     public void handle(Context ctx) throws Throwable {
-        kernel.prepare();
-
         String input = ctx.param("input");
         String mode = ctx.param("m");
         String sessionId = ctx.headerOrDefault("X-Session-Id", "web");
