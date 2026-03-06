@@ -17,6 +17,7 @@ package org.noear.solon.ai.codecli.core.subagent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
+import org.noear.solon.ai.codecli.core.LuceneSkill;
 import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
@@ -47,11 +48,11 @@ public class DynamicSubagent extends AbsSubagent {
         // 添加所有核心技能
         builder.defaultSkillAdd(mainAgent.getCliSkills());
 
+        builder.defaultSkillAdd(LuceneSkill.getInstance());
+
         // 添加网络工具
         builder.defaultToolAdd(WebfetchTool.getInstance());
         builder.defaultToolAdd(WebsearchTool.getInstance());
-
-        // 添加代码搜索工具（与主代理共享能力）
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
         // 设置最大步数
@@ -68,18 +69,26 @@ public class DynamicSubagent extends AbsSubagent {
 
     @Override
     protected String getDefaultDescription() {
-        return "自定义代理: " + subagentType;
+        return String.format("动态自定义子代理 [%s]，可执行该领域专属的深度调研、代码修改和多步复合任务", subagentType);
     }
 
     @Override
     protected String getDefaultSystemPrompt() {
         StringBuilder sb = new StringBuilder();
-        sb.append("## 动态子代理 (Type: ").append(subagentType).append(")\n\n");
-        sb.append("你是一个专业且高效的任务执行代理。\n\n");
-        sb.append("## 基本工作准则：\n");
-        sb.append("1. 充分利用提供的工具完成目标。\n");
-        sb.append("2. 保持逻辑严密，每步操作后都要验证结果。\n");
-        sb.append("3. 如果发现工具输出不符合预期，请及时调整策略。\n");
+        sb.append("## 动态子代理 (角色类型: ").append(subagentType).append(")\n\n");
+        sb.append("你是一个在 **").append(subagentType).append("** 领域具有深度专业知识的执行专家。\n\n");
+
+        sb.append("### 工作指引\n");
+        sb.append("1. **领域优先**：请严格遵循通过 `.md` 或其他配置文件注入的特定领域指令集。\n");
+        sb.append("2. **工具链配合**：\n");
+        sb.append("   - 使用 `Lucene` 快速扫描项目内的类和方法。\n");
+        sb.append("   - 使用 `CodeSearch` 获取全球范围内的 API 最佳实践和代码参考。\n");
+        sb.append("   - 使用 `bash` 和相关读写工具执行实际的工程变更。\n");
+        sb.append("3. **结果验证**：每一步关键修改后，必须通过终端命令进行功能验证或编译检查。\n\n");
+
+        sb.append("### 基本准则\n");
+        sb.append("- 保持逻辑严密。如果当前工具无法解决问题，请分析原因并尝试调整搜索词或执行策略。\n");
+        sb.append("- 如果遇到不确定的技术细节，优先进行调研而非猜测。\n");
 
         return sb.toString();
     }

@@ -18,6 +18,7 @@ package org.noear.solon.ai.codecli.core.subagent;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
+import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
 
 /**
  * Solon Code 指南代理 - 回答 Solon Code、Solon Agent SDK 和 Solon API 相关问题
@@ -37,6 +38,7 @@ public class SolonGuideSubagent extends AbsSubagent {
 
         // 添加网络获取工具（用于读取在线文档）
         builder.defaultToolAdd(WebfetchTool.getInstance());
+        builder.defaultToolAdd(WebsearchTool.getInstance());
 
         // 添加自定义工具：读取 Solon 文档（传递 workDir）
         builder.defaultToolAdd(new SolonDocTool(mainAgent.getProps().getWorkDir()));
@@ -55,7 +57,7 @@ public class SolonGuideSubagent extends AbsSubagent {
 
     @Override
     protected String getDefaultDescription() {
-        return "Solon Code 指南代理，专门回答关于 Solon Code、Solon Agent SDK 和 Solon API 的问题";
+        return "Solon 开发指南子代理，专门回答关于 Solon Code、Solon Agent SDK 和 Solon API 的问题";
     }
 
     @Override
