@@ -19,6 +19,10 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.codecli.core.CliSkillProvider;
 import org.noear.solon.ai.codecli.core.PoolManager;
+import org.noear.solon.ai.codecli.core.memory.SharedMemoryManager;
+import org.noear.solon.ai.codecli.core.event.EventBus;
+import org.noear.solon.ai.codecli.core.message.MessageChannel;
+import org.noear.solon.ai.codecli.core.teams.SharedTaskList;
 
 /**
  * Bash 命令子代理
@@ -32,8 +36,12 @@ public class BashSubAgent extends AbstractSubAgent {
     private final PoolManager poolManager;
 
     public BashSubAgent(SubAgentConfig config, AgentSessionProvider sessionProvider,
-                        String workDir, PoolManager poolManager) {
-        super(config, sessionProvider);
+                        String workDir, PoolManager poolManager,
+                        SharedMemoryManager sharedMemoryManager,
+                        EventBus eventBus,
+                        MessageChannel messageChannel,
+                        SharedTaskList sharedTaskList) {
+        super(config, sessionProvider, sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
         this.workDir = workDir;
         this.poolManager = poolManager;
     }
@@ -64,8 +72,24 @@ public class BashSubAgent extends AbstractSubAgent {
     }
 
     @Override
+    public String name() {
+        return "bash";
+    }
+
+    @Override
+    public String role() {
+        return "命令执行专家，专门处理 Git、构建测试、系统管理等终端任务";
+    }
+
+    @Override
     protected String getDefaultSystemPrompt() {
-        return "## Bash 命令代理\n\n" +
+        return "---\n" +
+                "name: bash\n" +
+                "description: Command execution expert for Git, build, test, and system management\n" +
+                "tools: Bash\n" +
+                "model: glm-4-flash\n" +
+                "---\n\n" +
+                "## Bash 命令代理\n\n" +
                 "你是一个命令行执行专家，专门负责执行各种 shell 命令和操作。\n" +
                 "\n" +
                 "### 核心能力\n" +

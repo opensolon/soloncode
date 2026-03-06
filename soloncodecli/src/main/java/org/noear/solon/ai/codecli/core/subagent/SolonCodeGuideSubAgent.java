@@ -19,8 +19,12 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.codecli.core.CliSkillProvider;
 import org.noear.solon.ai.codecli.core.PoolManager;
+import org.noear.solon.ai.codecli.core.memory.SharedMemoryManager;
+import org.noear.solon.ai.codecli.core.event.EventBus;
+import org.noear.solon.ai.codecli.core.message.MessageChannel;
 import org.noear.solon.ai.codecli.core.tool.ReadSolonDocTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
+import org.noear.solon.ai.codecli.core.teams.SharedTaskList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,8 +41,12 @@ public class SolonCodeGuideSubAgent extends AbstractSubAgent {
     private final PoolManager poolManager;
 
     public SolonCodeGuideSubAgent(SubAgentConfig config, AgentSessionProvider sessionProvider,
-                                   String workDir, PoolManager poolManager) {
-        super(config, sessionProvider);
+                                   String workDir, PoolManager poolManager,
+                                   SharedMemoryManager sharedMemoryManager,
+                                   EventBus eventBus,
+                                   MessageChannel messageChannel,
+                                   SharedTaskList sharedTaskList) {
+        super(config, sessionProvider, sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
         this.workDir = workDir;
         this.poolManager = poolManager;
     }
@@ -75,10 +83,27 @@ public class SolonCodeGuideSubAgent extends AbstractSubAgent {
     }
 
     @Override
+    public String name() {
+        return "solon-code-guide";
+    }
+
+    @Override
+    public String role() {
+        return "Solon Code 技术专家，负责回答 Solon Code、Solon Agent SDK 和 Solon API 相关问题";
+    }
+
+    @Override
     protected String getDefaultSystemPrompt() {
-        return "## Solon Code 指南代理\n\n" +
+        return "---\n" +
+                "name: solon-code-guide\n" +
+                "description: Solon Code technical expert for answering Solon Code, Solon Agent SDK, and Solon API questions\n" +
+                "tools: Read, Webfetch, skillsearch, skillread\n" +
+                "model: glm-4.7\n" +
+                "---\n\n" +
+                "## Solon Code 指南代理\n\n" +
                 "你是 Solon Code、Solon Agent SDK 和 Solon API 的专家指南，专门回答相关问题。\n" +
                 "\n" +
+                String.format( "%s 这个文件夹就是你的家。要像对待家一样对待它。\n", workDir) +
                 "### 核心知识\n" +
                 "- **Solon Code**：基于 Java 的 AI 编程助手，兼容 Claude Code Agent Skills 规范\n" +
                 "- **Solon Agent SDK**：用于构建 AI Agent 的开发框架\n" +

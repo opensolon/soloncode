@@ -19,6 +19,10 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.codecli.core.CliSkillProvider;
 import org.noear.solon.ai.codecli.core.PoolManager;
+import org.noear.solon.ai.codecli.core.memory.SharedMemoryManager;
+import org.noear.solon.ai.codecli.core.event.EventBus;
+import org.noear.solon.ai.codecli.core.message.MessageChannel;
+import org.noear.solon.ai.codecli.core.teams.SharedTaskList;
 
 /**
  * 探索子代理 - 快速探索代码库
@@ -32,8 +36,12 @@ public class ExploreSubAgent extends AbstractSubAgent {
     private final PoolManager poolManager;
 
     public ExploreSubAgent(SubAgentConfig config, AgentSessionProvider sessionProvider,
-                           String workDir, PoolManager poolManager) {
-        super(config, sessionProvider);
+                           String workDir, PoolManager poolManager,
+                           SharedMemoryManager sharedMemoryManager,
+                           EventBus eventBus,
+                           MessageChannel messageChannel,
+                           SharedTaskList sharedTaskList) {
+        super(config, sessionProvider, sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
         this.workDir = workDir;
         this.poolManager = poolManager;
     }
@@ -66,8 +74,24 @@ public class ExploreSubAgent extends AbstractSubAgent {
     }
 
     @Override
+    public String name() {
+        return "explore";
+    }
+
+    @Override
+    public String role() {
+        return "代码库探索专家，负责快速查找文件、分析代码结构和架构";
+    }
+
+    @Override
     protected String getDefaultSystemPrompt() {
-        return "## 探索代理\n\n" +
+        return "---\n" +
+                "name: explore\n" +
+                "description: Fast codebase exploration expert for finding files and analyzing structure\n" +
+                "tools: Glob, Grep, Read\n" +
+                "model: glm-4-flash\n" +
+                "---\n\n" +
+                "## 探索代理\n\n" +
                 "你是一个快速的代码库探索专家。你的任务是：\n" +
                 "\n" +
                 "### 核心能力\n" +

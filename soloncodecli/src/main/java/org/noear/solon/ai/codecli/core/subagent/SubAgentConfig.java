@@ -28,6 +28,7 @@ public class SubAgentConfig {
     private String customCode;
     private String description;
     private ChatModel chatModel;
+    private String modelName;  // 模型名称（独立于 chatModel）
     private String workDir;
     private int maxSteps;
     private boolean enabled;
@@ -122,6 +123,15 @@ public class SubAgentConfig {
 
     public SubAgentConfig setEnabled(boolean enabled) {
         this.enabled = enabled;
+        return this;
+    }
+
+    public String getModelName() {
+        return modelName;
+    }
+
+    public SubAgentConfig setModelName(String modelName) {
+        this.modelName = modelName;
         return this;
     }
 }

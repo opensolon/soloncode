@@ -40,7 +40,6 @@ public class DynamicSubAgent extends AbstractSubAgent {
     public DynamicSubAgent(SubAgentConfig config, AgentSessionProvider sessionProvider,
                            String workDir, PoolManager poolManager,
                            AgentKernel mainCodeAgent, String customPrompt) {
-        super(config, sessionProvider);
         this.workDir = workDir;
         this.poolManager = poolManager;
         this.mainCodeAgent = mainCodeAgent;

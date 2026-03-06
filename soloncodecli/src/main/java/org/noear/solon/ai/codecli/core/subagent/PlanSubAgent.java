@@ -17,6 +17,10 @@ package org.noear.solon.ai.codecli.core.subagent;
 
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.codecli.core.memory.SharedMemoryManager;
+import org.noear.solon.ai.codecli.core.event.EventBus;
+import org.noear.solon.ai.codecli.core.message.MessageChannel;
+import org.noear.solon.ai.codecli.core.teams.SharedTaskList;
 
 /**
  * 计划子代理 - 软件架构师
@@ -28,8 +32,12 @@ public class PlanSubAgent extends AbstractSubAgent {
 
     private final String workDir;
 
-    public PlanSubAgent(SubAgentConfig config, AgentSessionProvider sessionProvider, String workDir) {
-        super(config, sessionProvider);
+    public PlanSubAgent(SubAgentConfig config, AgentSessionProvider sessionProvider, String workDir,
+                        SharedMemoryManager sharedMemoryManager,
+                        EventBus eventBus,
+                        MessageChannel messageChannel,
+                        SharedTaskList sharedTaskList) {
+        super(config, sessionProvider, sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
         this.workDir = workDir;
     }
 
@@ -50,10 +58,27 @@ public class PlanSubAgent extends AbstractSubAgent {
     }
 
     @Override
+    public String name() {
+        return "plan";
+    }
+
+    @Override
+    public String role() {
+        return "软件架构师，负责设计实现方案、制定执行计划和评估技术选型";
+    }
+
+    @Override
     protected String getDefaultSystemPrompt() {
-        return "## 计划代理（软件架构师）\n\n" +
+        return "---\n" +
+                "name: plan\n" +
+                "description: Software architect for designing implementation plans and technical choices\n" +
+                "tools: Read\n" +
+                "model: glm-4.7\n" +
+                "---\n\n" +
+                "## 计划代理（软件架构师）\n\n" +
                 "你是一个经验丰富的软件架构师，负责设计实现方案和制定执行计划。\n" +
                 "\n" +
+                String.format( "%s 这个文件夹就是你的家。要像对待家一样对待它。\n", workDir) +
                 "### 核心职责\n" +
                 "- 分析需求，理解任务目标\n" +
                 "- 设计实现方案和技术路径\n" +

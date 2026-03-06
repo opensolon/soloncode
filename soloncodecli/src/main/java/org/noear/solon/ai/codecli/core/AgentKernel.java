@@ -17,6 +17,10 @@ import org.noear.solon.ai.codecli.core.tool.ApplyPatchTool;
 import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
+import org.noear.solon.ai.codecli.core.memory.SharedMemoryManager;
+import org.noear.solon.ai.codecli.core.event.EventBus;
+import org.noear.solon.ai.codecli.core.message.MessageChannel;
+import org.noear.solon.ai.codecli.core.teams.SharedTaskList;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.mcp.client.McpProviders;
 import org.noear.solon.core.util.Assert;
@@ -66,6 +70,12 @@ public class AgentKernel {
     private Consumer<ReActAgent.Builder> configurator;
     private SubAgentManager subAgentManager;
 
+    // Agent Teams 增强功能
+    private SharedMemoryManager sharedMemoryManager;
+    private EventBus eventBus;
+    private MessageChannel messageChannel;
+    private SharedTaskList sharedTaskList;
+
     public AgentKernel(ChatModel chatModel, AgentSessionProvider sessionProvider, AgentProperties properties) {
         this.chatModel = chatModel;
         this.sessionProvider = sessionProvider;
@@ -91,6 +101,57 @@ public class AgentKernel {
             }
         } catch (IOException e) {
             throw new RuntimeException("Mcp servers load failure", e);
+        }
+
+        // 初始化 Agent Teams 增强功能
+        initializeAgentTeamsFeatures();
+    }
+
+    /**
+     * 初始化 Agent Teams 增强功能（共享记忆、事件总线、消息通道）
+     */
+    private void initializeAgentTeamsFeatures() {
+        // 1. 初始化共享记忆管理器
+        if (properties.sharedMemoryEnabled) {
+            this.sharedMemoryManager = new SharedMemoryManager(
+                    properties.workDir,
+                    properties.sharedMemory.shortTermTtl,
+                    properties.sharedMemory.longTermTtl,
+                    properties.sharedMemory.cleanupInterval,
+                    properties.sharedMemory.persistOnWrite,
+                    properties.sharedMemory.maxShortTermCount,
+                    properties.sharedMemory.maxLongTermCount
+            );
+            LOG.info("共享记忆功能已启用");
+        }
+
+        // 2. 初始化事件总线
+        if (properties.eventBusEnabled) {
+            int asyncThreads = properties.eventBus.asyncThreads != null
+                    ? properties.eventBus.asyncThreads
+                    : Runtime.getRuntime().availableProcessors();
+
+            this.eventBus = new EventBus(
+                    asyncThreads,
+                    properties.eventBus.maxHistorySize
+            );
+            LOG.info("事件总线功能已启用");
+        }
+
+        // 3. 初始化消息通道
+        if (properties.messageChannelEnabled) {
+            int threads = properties.messageChannel.threads != null
+                    ? properties.messageChannel.threads
+                    : 4;
+
+            this.messageChannel = new MessageChannel(properties.workDir, threads);
+            LOG.info("消息通道功能已启用");
+        }
+
+        // 4. 初始化共享任务列表（如果启用事件总线，则自动启用任务列表）
+        if (properties.eventBusEnabled && properties.teamsEnabled) {
+            this.sharedTaskList = new SharedTaskList(eventBus, 100);
+            LOG.info("共享任务列表功能已启用");
         }
     }
 
@@ -123,6 +184,34 @@ public class AgentKernel {
      */
     public SubAgentManager getSubAgentManager() {
         return subAgentManager;
+    }
+
+    /**
+     * 获取共享记忆管理器
+     */
+    public SharedMemoryManager getSharedMemoryManager() {
+        return sharedMemoryManager;
+    }
+
+    /**
+     * 获取事件总线
+     */
+    public EventBus getEventBus() {
+        return eventBus;
+    }
+
+    /**
+     * 获取消息通道
+     */
+    public MessageChannel getMessageChannel() {
+        return messageChannel;
+    }
+
+    /**
+     * 获取共享任务列表
+     */
+    public SharedTaskList getSharedTaskList() {
+        return sharedTaskList;
     }
 
     private ReActAgent reActAgent;
@@ -217,7 +306,11 @@ public class AgentKernel {
                         properties.workDir,
                         cliSkillProvider.getPoolManager(),
                         this,
-                        chatModel
+                        chatModel,
+                        sharedMemoryManager,
+                        eventBus,
+                        messageChannel,
+                        sharedTaskList
                 );
 
                 // 注册自定义 agents 池（类似 skillPool）

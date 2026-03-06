@@ -18,7 +18,12 @@ package org.noear.solon.ai.codecli.core.subagent;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.codecli.core.AgentKernel;
+import org.noear.solon.ai.codecli.core.AgentProperties;
 import org.noear.solon.ai.codecli.core.PoolManager;
+import org.noear.solon.ai.codecli.core.memory.SharedMemoryManager;
+import org.noear.solon.ai.codecli.core.event.EventBus;
+import org.noear.solon.ai.codecli.core.message.MessageChannel;
+import org.noear.solon.ai.codecli.core.teams.SharedTaskList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +49,13 @@ public class SubAgentManager {
     private final PoolManager poolManager;
     private final AgentKernel mainCodeAgent;
     private final ChatModel chatModel;
+    private final AgentProperties properties;  // 添加 properties 配置
+
+    // Agent Teams 增强功能
+    private final SharedMemoryManager sharedMemoryManager;
+    private final EventBus eventBus;
+    private final MessageChannel messageChannel;
+    private final SharedTaskList sharedTaskList;
 
     // Agents 池（类似 skillPool）
     private final Map<String, String> agentPools = new ConcurrentHashMap<>();
@@ -52,12 +64,35 @@ public class SubAgentManager {
                            String workDir,
                            PoolManager poolManager,
                            AgentKernel mainCodeAgent,
-                           ChatModel chatModel) {
+                           ChatModel chatModel,
+                           SharedMemoryManager sharedMemoryManager,
+                           EventBus eventBus,
+                           MessageChannel messageChannel,
+                           SharedTaskList sharedTaskList) {
+        this(sessionProvider, workDir, poolManager, mainCodeAgent, chatModel, null,
+                sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
+    }
+
+    public SubAgentManager(AgentSessionProvider sessionProvider,
+                           String workDir,
+                           PoolManager poolManager,
+                           AgentKernel mainCodeAgent,
+                           ChatModel chatModel,
+                           AgentProperties properties,
+                           SharedMemoryManager sharedMemoryManager,
+                           EventBus eventBus,
+                           MessageChannel messageChannel,
+                           SharedTaskList sharedTaskList) {
         this.sessionProvider = sessionProvider;
         this.workDir = workDir;
         this.poolManager = poolManager;
         this.mainCodeAgent = mainCodeAgent;
         this.chatModel = chatModel;
+        this.properties = properties;
+        this.sharedMemoryManager = sharedMemoryManager;
+        this.eventBus = eventBus;
+        this.messageChannel = messageChannel;
+        this.sharedTaskList = sharedTaskList;
 
         // 初始化时导出所有 SubAgent 的提示词到 .soloncode/agents 目录
         exportAllPrompts();
@@ -99,15 +134,20 @@ public class SubAgentManager {
     private AbstractSubAgent createAgentInstance(SubAgentType type, SubAgentConfig config) {
         switch (type) {
             case EXPLORE:
-                return new ExploreSubAgent(config, sessionProvider, workDir, poolManager);
+                return new ExploreSubAgent(config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
             case PLAN:
-                return new PlanSubAgent(config, sessionProvider, workDir);
+                return new PlanSubAgent(config, sessionProvider, workDir,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
             case BASH:
-                return new BashSubAgent(config, sessionProvider, workDir, poolManager);
+                return new BashSubAgent(config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
             case SOLON_CODE_GUIDE:
-                return new SolonCodeGuideSubAgent(config, sessionProvider, workDir, poolManager);
+                return new SolonCodeGuideSubAgent(config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
             case GENERAL_PURPOSE:
-                return new GeneralPurposeSubAgent(config, sessionProvider, workDir, poolManager, mainCodeAgent);
+                return new GeneralPurposeSubAgent(config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
             default:
                 throw new IllegalArgumentException("Unsupported SubAgent type: " + type.getCode());
         }
@@ -153,6 +193,15 @@ public class SubAgentManager {
         // 使用自定义代码创建一个虚拟的 SubAgentType
         SubAgentConfig config = new SubAgentConfig(agentName, "自定义代理: " + agentName);
 
+        // 应用自定义 model 配置（针对动态代理）
+        if (properties != null && properties.subAgentModels != null) {
+            String customModel = properties.subAgentModels.get(agentName);
+            if (customModel != null && !customModel.isEmpty()) {
+                config.setModelName(customModel);
+                LOG.info("动态代理 '{}' 使用自定义模型: {}", agentName, customModel);
+            }
+        }
+
         LOG.info("创建动态子代理: {}", agentName);
 
         DynamicSubAgent dynamicAgent = new DynamicSubAgent(
@@ -182,31 +231,45 @@ public class SubAgentManager {
 
         SubAgentConfig config = new SubAgentConfig(type);
 
+        // 应用自定义 model 配置
+        if (properties != null && properties.subAgentModels != null) {
+            String customModel = properties.subAgentModels.get(type.getCode());
+            if (customModel != null && !customModel.isEmpty()) {
+                config.setModelName(customModel);
+                LOG.info("SubAgent '{}' 使用自定义模型: {}", type.getCode(), customModel);
+            }
+        }
+
         switch (type) {
             case EXPLORE:
-                ExploreSubAgent exploreAgent = new ExploreSubAgent(config, sessionProvider, workDir, poolManager);
+                ExploreSubAgent exploreAgent = new ExploreSubAgent(config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
                 exploreAgent.initialize(chatModel);
                 return exploreAgent;
 
             case PLAN:
-                PlanSubAgent planAgent = new PlanSubAgent(config, sessionProvider, workDir);
+                PlanSubAgent planAgent = new PlanSubAgent(config, sessionProvider, workDir,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
                 planAgent.initialize(chatModel);
                 return planAgent;
 
             case BASH:
-                BashSubAgent bashAgent = new BashSubAgent(config, sessionProvider, workDir, poolManager);
+                BashSubAgent bashAgent = new BashSubAgent(config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
                 bashAgent.initialize(chatModel);
                 return bashAgent;
 
             case SOLON_CODE_GUIDE:
-                SolonCodeGuideSubAgent guideAgent = new SolonCodeGuideSubAgent(config, sessionProvider, workDir, poolManager);
+                SolonCodeGuideSubAgent guideAgent = new SolonCodeGuideSubAgent(config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
                 guideAgent.initialize(chatModel);
                 return guideAgent;
 
             case GENERAL_PURPOSE:
             default:
                 GeneralPurposeSubAgent generalAgent = new GeneralPurposeSubAgent(
-                        config, sessionProvider, workDir, poolManager, mainCodeAgent);
+                        config, sessionProvider, workDir, poolManager,
+                        sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
                 generalAgent.initialize(chatModel);
                 return generalAgent;
         }
@@ -232,6 +295,34 @@ public class SubAgentManager {
     public void clear() {
         agents.clear();
         LOG.info("已清除所有子代理");
+    }
+
+    /**
+     * 获取共享记忆管理器
+     */
+    public SharedMemoryManager getSharedMemoryManager() {
+        return sharedMemoryManager;
+    }
+
+    /**
+     * 获取事件总线
+     */
+    public EventBus getEventBus() {
+        return eventBus;
+    }
+
+    /**
+     * 获取消息通道
+     */
+    public MessageChannel getMessageChannel() {
+        return messageChannel;
+    }
+
+    /**
+     * 获取共享任务列表
+     */
+    public SharedTaskList getSharedTaskList() {
+        return sharedTaskList;
     }
 
     /**

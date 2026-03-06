@@ -23,33 +23,57 @@ import reactor.core.publisher.Flux;
 /**
  * 子代理接口
  *
+ * 定义专门的任务执行代理接口，支持同步和流式执行。
+ *
  * @author bai
  * @since 3.9.5
  */
 public interface SubAgent {
 
     /**
+     * 获取代理名称
+     *
+     * @return 代理名称
+     */
+    String name();
+
+    /**
+     * 获取代理角色描述
+     *
+     * @return 角色描述
+     */
+    String role();
+
+
+    String model();
+
+    /**
      * 获取代理类型
+     *
+     * @return 子代理类型
      */
     SubAgentType getType();
 
     /**
      * 获取配置
+     *
+     * @return 子代理配置
      */
     SubAgentConfig getConfig();
 
     /**
      * 执行任务（同步）
      *
-     * @param prompt 任务提示词
+     * @param prompt 任务提示
      * @return 执行结果
+     * @throws Throwable 执行异常
      */
     AgentResponse execute(Prompt prompt) throws Throwable;
 
     /**
      * 执行任务（流式）
      *
-     * @param prompt 任务提示词
+     * @param prompt 任务提示
      * @return 流式结果
      */
     Flux<AgentChunk> stream(Prompt prompt);

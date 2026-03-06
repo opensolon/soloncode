@@ -20,8 +20,12 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.codecli.core.CliSkillProvider;
 import org.noear.solon.ai.codecli.core.AgentKernel;
 import org.noear.solon.ai.codecli.core.PoolManager;
+import org.noear.solon.ai.codecli.core.memory.SharedMemoryManager;
+import org.noear.solon.ai.codecli.core.event.EventBus;
+import org.noear.solon.ai.codecli.core.message.MessageChannel;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
+import org.noear.solon.ai.codecli.core.teams.SharedTaskList;
 
 /**
  * 通用子代理 - 处理各种复杂任务
@@ -33,14 +37,16 @@ public class GeneralPurposeSubAgent extends AbstractSubAgent {
 
     private final String workDir;
     private final PoolManager poolManager;
-    private final AgentKernel mainCodeAgent;
 
     public GeneralPurposeSubAgent(SubAgentConfig config, AgentSessionProvider sessionProvider,
-                                   String workDir, PoolManager poolManager, AgentKernel mainCodeAgent) {
-        super(config, sessionProvider);
+                                   String workDir, PoolManager poolManager,
+                                   SharedMemoryManager sharedMemoryManager,
+                                   EventBus eventBus,
+                                   MessageChannel messageChannel,
+                                   SharedTaskList sharedTaskList) {
+        super(config, sessionProvider, sharedMemoryManager, eventBus, messageChannel, sharedTaskList);
         this.workDir = workDir;
         this.poolManager = poolManager;
-        this.mainCodeAgent = mainCodeAgent;
     }
 
     /**
@@ -77,10 +83,27 @@ public class GeneralPurposeSubAgent extends AbstractSubAgent {
     }
 
     @Override
+    public String name() {
+        return "general";
+    }
+
+    @Override
+    public String role() {
+        return "通用任务专家，能够处理各种复杂的多步骤任务，包括代码操作、命令执行、信息检索等";
+    }
+
+    @Override
     protected String getDefaultSystemPrompt() {
-        return "## 通用任务代理\n\n" +
+        return "---\n" +
+                "name: general-purpose\n" +
+                "description: General task expert for complex multi-step tasks including code operations and command execution\n" +
+                "tools: Bash, Read, Write, Edit, Glob, Grep, Webfetch, Websearch\n" +
+                "model: glm-4.7\n" +
+                "---\n\n" +
+                "## 通用任务代理\n\n" +
                 "你是一个功能全面的任务执行专家，能够处理各种复杂的多步骤任务。\n" +
                 "\n" +
+                String.format( "%s 这个文件夹就是你的家。要像对待家一样对待它。\n", workDir) +
                 "### 核心能力\n" +
                 "- **代码操作**：读取、编辑、搜索代码\n" +
                 "- **命令执行**：运行各种 shell 命令和脚本\n" +
