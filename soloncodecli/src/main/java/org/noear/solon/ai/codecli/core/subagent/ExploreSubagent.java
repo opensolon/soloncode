@@ -15,11 +15,8 @@
  */
 package org.noear.solon.ai.codecli.core.subagent;
 
-import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
-import org.noear.solon.ai.codecli.core.CliSkillProvider;
-import org.noear.solon.ai.codecli.core.PoolManager;
 
 /**
  * 探索子代理 - 快速探索代码库
@@ -34,17 +31,15 @@ public class ExploreSubagent extends AbstractSubagent {
     }
 
     @Override
-    public void initialize() {
-        initAgent(builder -> {
-            // 添加技能（仅终端和专家技能，不添加代码搜索）
-            builder.defaultSkillAdd(mainAgent.getCliSkills());
+    protected void initialize(ReActAgent.Builder builder) {
+        // 添加技能（仅终端和专家技能，不添加代码搜索）
+        builder.defaultSkillAdd(mainAgent.getCliSkills());
 
-            // 设置最大步数（探索任务通常需要较少步数）
-            builder.maxSteps(15);
+        // 设置最大步数（探索任务通常需要较少步数）
+        builder.maxSteps(15);
 
-            // 设置会话窗口大小
-            builder.sessionWindowSize(5);
-        });
+        // 设置会话窗口大小
+        builder.sessionWindowSize(5);
     }
 
     @Override

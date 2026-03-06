@@ -15,8 +15,7 @@
  */
 package org.noear.solon.ai.codecli.core.subagent;
 
-import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
 import org.noear.solon.ai.codecli.core.LuceneSkill;
 
@@ -33,19 +32,17 @@ public class DevPlanSubagent extends AbstractSubagent {
     }
 
     @Override
-    public void initialize() {
-        initAgent(builder -> {
-            // 计划代理主要依赖推理能力，不需要太多工具
-            // 可以添加只读工具来了解代码库
-            builder.defaultSkillAdd(mainAgent.getCliSkills().getTerminalSkill());
-            builder.defaultSkillAdd(LuceneSkill.getInstance());
+    protected void initialize(ReActAgent.Builder builder) {
+        // 计划代理主要依赖推理能力，不需要太多工具
+        // 可以添加只读工具来了解代码库
+        builder.defaultSkillAdd(mainAgent.getCliSkills().getTerminalSkill());
+        builder.defaultSkillAdd(LuceneSkill.getInstance());
 
-            // 设置最大步数（计划任务通常需要较少步数）
-            builder.maxSteps(20);
+        // 设置最大步数（计划任务通常需要较少步数）
+        builder.maxSteps(20);
 
-            // 设置会话窗口大小
-            builder.sessionWindowSize(8);
-        });
+        // 设置会话窗口大小
+        builder.sessionWindowSize(8);
     }
 
     @Override

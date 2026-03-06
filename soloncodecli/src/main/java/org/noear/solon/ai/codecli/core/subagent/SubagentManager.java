@@ -45,24 +45,24 @@ public class SubagentManager {
     public SubagentManager(AgentKernel mainAgent) {
         this.mainAgent = mainAgent;
 
-        // 初始化时导出所有 SubAgent 的提示词到 .soloncode/agents 目录
+        // 初始化时导出所有 Subagent 的提示词到 .soloncode/agents 目录
         exportAllPrompts();
     }
 
     /**
-     * 导出所有 SubAgent 的提示词到 .soloncode/agents 目录
+     * 导出所有 Subagent 的提示词到 .soloncode/agents 目录
      */
     private void exportAllPrompts() {
-        LOG.info("开始导出 SubAgent 提示词到 .soloncode/agents 目录...");
+        LOG.info("开始导出 Subagent 提示词到 .soloncode/agents 目录...");
 
-        // 创建所有已实现的 SubAgent 实例（仅用于导出提示词）
+        // 创建所有已实现的 Subagent 实例（仅用于导出提示词）
         addSubagent(ExploreSubagent::new);
         addSubagent(DevPlanSubagent::new);
         addSubagent(BashSubagent::new);
         addSubagent(SolonGuideSubagent::new);
         addSubagent(GeneralPurposeSubagent::new);
 
-        LOG.info("SubAgent 提示词导出完成");
+        LOG.info("Subagent 提示词导出完成");
     }
 
     public void addSubagent(SubagentFactory factory) {

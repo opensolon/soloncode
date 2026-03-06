@@ -93,7 +93,7 @@ public class SubagentSkill extends AbsSkill {
         // 用于记录已列出的代理，避免重复
         Set<String> listedAgents = new HashSet<>();
 
-        // 1. 列出所有预定义的 SubAgentType
+        // 1. 列出所有预定义的 SubagentType
         sb.append("【预定义子代理】\n");
         for (Subagent subagent : manager.getAgents()) {
             sb.append(String.format("- **%s**: %s\n",

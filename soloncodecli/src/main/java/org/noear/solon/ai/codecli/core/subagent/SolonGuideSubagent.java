@@ -15,11 +15,8 @@
  */
 package org.noear.solon.ai.codecli.core.subagent;
 
-import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
-import org.noear.solon.ai.codecli.core.CliSkillProvider;
-import org.noear.solon.ai.codecli.core.PoolManager;
 import org.noear.solon.ai.codecli.core.tool.ReadSolonDocTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 
@@ -35,23 +32,21 @@ public class SolonGuideSubagent extends AbstractSubagent {
     }
 
     @Override
-    public void initialize() {
-        initAgent(builder -> {
-            // 添加专家技能（用于技能搜索和读取）
-            builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
+    protected void initialize(ReActAgent.Builder builder) {
+        // 添加专家技能（用于技能搜索和读取）
+        builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
 
-            // 添加网络获取工具（用于读取在线文档）
-            builder.defaultToolAdd(WebfetchTool.getInstance());
+        // 添加网络获取工具（用于读取在线文档）
+        builder.defaultToolAdd(WebfetchTool.getInstance());
 
-            // 添加自定义工具：读取 Solon 文档（传递 workDir）
-            builder.defaultToolAdd(new ReadSolonDocTool(mainAgent.getProps().getWorkDir()));
+        // 添加自定义工具：读取 Solon 文档（传递 workDir）
+        builder.defaultToolAdd(new ReadSolonDocTool(mainAgent.getProps().getWorkDir()));
 
-            // 设置较小的步数限制（主要是查询和回答）
-            builder.maxSteps(15);
+        // 设置较小的步数限制（主要是查询和回答）
+        builder.maxSteps(15);
 
-            // 设置会话窗口大小
-            builder.sessionWindowSize(5);
-        });
+        // 设置会话窗口大小
+        builder.sessionWindowSize(5);
     }
 
     @Override

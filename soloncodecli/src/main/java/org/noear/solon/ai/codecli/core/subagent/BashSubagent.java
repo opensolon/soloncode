@@ -15,11 +15,8 @@
  */
 package org.noear.solon.ai.codecli.core.subagent;
 
-import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
-import org.noear.solon.ai.codecli.core.CliSkillProvider;
-import org.noear.solon.ai.codecli.core.PoolManager;
 
 /**
  * Bash 命令子代理
@@ -37,17 +34,15 @@ public class BashSubagent extends AbstractSubagent {
      * 初始化 Bash 代理
      */
     @Override
-    public void initialize() {
-        initAgent(builder -> {
-            // 只添加终端技能（bash 工具）
-            builder.defaultSkillAdd(mainAgent.getCliSkills().getTerminalSkill());
+    protected void initialize(ReActAgent.Builder builder) {
+        // 只添加终端技能（bash 工具）
+        builder.defaultSkillAdd(mainAgent.getCliSkills().getTerminalSkill());
 
-            // 设置最大步数
-            builder.maxSteps(10);
+        // 设置最大步数
+        builder.maxSteps(10);
 
-            // 设置会话窗口大小
-            builder.sessionWindowSize(3);
-        });
+        // 设置会话窗口大小
+        builder.sessionWindowSize(3);
     }
 
     @Override

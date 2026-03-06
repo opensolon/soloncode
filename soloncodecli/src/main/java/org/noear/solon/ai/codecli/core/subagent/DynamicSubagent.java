@@ -15,7 +15,7 @@
  */
 package org.noear.solon.ai.codecli.core.subagent;
 
-import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
 import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
@@ -42,24 +42,23 @@ public class DynamicSubagent extends AbstractSubagent {
     /**
      * 初始化动态代理
      */
-    public void initialize() {
-        initAgent(builder -> {
-            // 添加所有核心技能
-            builder.defaultSkillAdd(mainAgent.getCliSkills());
+    @Override
+    protected void initialize(ReActAgent.Builder builder) {
+        // 添加所有核心技能
+        builder.defaultSkillAdd(mainAgent.getCliSkills());
 
-            // 添加网络工具
-            builder.defaultToolAdd(WebfetchTool.getInstance());
-            builder.defaultToolAdd(WebsearchTool.getInstance());
+        // 添加网络工具
+        builder.defaultToolAdd(WebfetchTool.getInstance());
+        builder.defaultToolAdd(WebsearchTool.getInstance());
 
-            // 添加代码搜索工具（与主代理共享能力）
-            builder.defaultToolAdd(CodeSearchTool.getInstance());
+        // 添加代码搜索工具（与主代理共享能力）
+        builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-            // 设置最大步数
-            builder.maxSteps(25);
+        // 设置最大步数
+        builder.maxSteps(25);
 
-            // 设置会话窗口大小
-            builder.sessionWindowSize(10);
-        });
+        // 设置会话窗口大小
+        builder.sessionWindowSize(10);
     }
 
     @Override

@@ -15,11 +15,8 @@
  */
 package org.noear.solon.ai.codecli.core.subagent;
 
-import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.codecli.core.CliSkillProvider;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.codecli.core.AgentKernel;
-import org.noear.solon.ai.codecli.core.PoolManager;
 import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
@@ -37,25 +34,23 @@ public class GeneralPurposeSubagent extends AbstractSubagent {
     }
 
     @Override
-    public void initialize() {
-        initAgent(builder -> {
-            // 添加所有核心技能
-            builder.defaultSkillAdd(mainAgent.getCliSkills());
+    protected void initialize(ReActAgent.Builder builder) {
+        // 添加所有核心技能
+        builder.defaultSkillAdd(mainAgent.getCliSkills());
 
-            // 添加网络工具
-            builder.defaultToolAdd(WebfetchTool.getInstance());
-            builder.defaultToolAdd(WebsearchTool.getInstance());
-            builder.defaultToolAdd(CodeSearchTool.getInstance());
+        // 添加网络工具
+        builder.defaultToolAdd(WebfetchTool.getInstance());
+        builder.defaultToolAdd(WebsearchTool.getInstance());
+        builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-            // 如果主 CodeAgent 有代码搜索能力，也可以添加
-            // 这里可以根据需要动态添加工具
+        // 如果主 CodeAgent 有代码搜索能力，也可以添加
+        // 这里可以根据需要动态添加工具
 
-            // 设置最大步数（通用任务可能需要更多步数）
-            builder.maxSteps(25);
+        // 设置最大步数（通用任务可能需要更多步数）
+        builder.maxSteps(25);
 
-            // 设置会话窗口大小
-            builder.sessionWindowSize(10);
-        });
+        // 设置会话窗口大小
+        builder.sessionWindowSize(10);
     }
 
     @Override

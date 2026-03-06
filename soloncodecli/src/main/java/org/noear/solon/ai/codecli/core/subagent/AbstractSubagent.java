@@ -49,30 +49,31 @@ public abstract class AbstractSubagent implements Subagent {
 
         exportSystemPrompt();
 
-        initialize();
+        initAgent();
     }
+
+    /**
+     * 初始化
+     */
+    protected abstract void initialize(ReActAgent.Builder builder);
 
     /**
      * 初始化代理
      */
-    protected synchronized void initAgent(Consumer<ReActAgent.Builder> configurator) {
-        if (agent == null) {
-            ReActAgent.Builder builder = ReActAgent.of(mainAgent.getChatModel());
+    protected void initAgent() {
+        ReActAgent.Builder builder = ReActAgent.of(mainAgent.getChatModel());
 
-            // 设置系统提示词
-            String systemPrompt = buildSystemPrompt();
-            builder.systemPrompt(SystemPrompt.builder()
-                    .instruction(systemPrompt)
-                    .build());
+        // 设置系统提示词
+        String systemPrompt = buildSystemPrompt();
+        builder.systemPrompt(SystemPrompt.builder()
+                .instruction(systemPrompt)
+                .build());
 
-            // 应用自定义配置
-            if (configurator != null) {
-                configurator.accept(builder);
-            }
+        // 应用自定义配置
+        initialize(builder);
 
-            this.agent = builder.build();
-            LOG.info("SubAgent '{}' 初始化完成", this.getName());
-        }
+        this.agent = builder.build();
+        LOG.info("Subagent '{}' 初始化完成", this.getName());
     }
 
     /**
@@ -82,13 +83,13 @@ public abstract class AbstractSubagent implements Subagent {
         // 1. 尝试从自定义文件读取提示词（如果存在）
         String customPrompt = readCustomPrompt();
         if (customPrompt != null) {
-            LOG.info("SubAgent '{}' 使用自定义提示词", this.getName());
+            LOG.info("Subagent '{}' 使用自定义提示词", this.getName());
             return customPrompt;
         }
 
         // 2. 使用内置提示词
         String defaultPrompt = getDefaultSystemPrompt();
-        LOG.debug("SubAgent '{}' 使用内置提示词", this.getName());
+        LOG.debug("Subagent '{}' 使用内置提示词", this.getName());
         return defaultPrompt;
     }
 
@@ -115,12 +116,12 @@ public abstract class AbstractSubagent implements Subagent {
             if (!file.exists()) {
                 String content = getDefaultSystemPrompt();
                 Files.write(Paths.get(promptFile), content.getBytes(StandardCharsets.UTF_8));
-                LOG.info("SubAgent '{}' 提示词已导出到: {}", this.getName(), promptFile);
+                LOG.info("Subagent '{}' 提示词已导出到: {}", this.getName(), promptFile);
             } else {
-                LOG.debug("SubAgent '{}' 提示词文件已存在，跳过导出: {}", this.getName(), promptFile);
+                LOG.debug("Subagent '{}' 提示词文件已存在，跳过导出: {}", this.getName(), promptFile);
             }
         } catch (Throwable e) {
-            LOG.warn("SubAgent '{}' 提示词导出失败: {}", this.getName(), e.getMessage());
+            LOG.warn("Subagent '{}' 提示词导出失败: {}", this.getName(), e.getMessage());
         }
     }
 
@@ -139,14 +140,14 @@ public abstract class AbstractSubagent implements Subagent {
                 File file = new File(location);
                 if (file.exists() && file.isFile()) {
                     byte[] bytes = Files.readAllBytes(Paths.get(location));
-                    LOG.info("从 {} 读取 SubAgent '{}' 提示词", location, this.getName());
+                    LOG.info("从 {} 读取 Subagent '{}' 提示词", location, this.getName());
                     return new String(bytes, StandardCharsets.UTF_8);
                 }
             }
 
-            LOG.debug("未找到 SubAgent '{}' 的自定义提示词文件", this.getName());
+            LOG.debug("未找到 Subagent '{}' 的自定义提示词文件", this.getName());
         } catch (Throwable e) {
-            LOG.warn("读取 SubAgent '{}' 自定义提示词失败: {}", this.getName(), e.getMessage());
+            LOG.warn("读取 Subagent '{}' 自定义提示词失败: {}", this.getName(), e.getMessage());
         }
         return null;
     }
@@ -165,7 +166,7 @@ public abstract class AbstractSubagent implements Subagent {
     @Override
     public AgentResponse execute(Prompt prompt) throws Throwable {
         if (agent == null) {
-            throw new IllegalStateException("SubAgent 尚未初始化");
+            throw new IllegalStateException("Subagent 尚未初始化");
         }
 
         String sessionId = "subagent_" + this.getName();
@@ -179,7 +180,7 @@ public abstract class AbstractSubagent implements Subagent {
     @Override
     public Flux<AgentChunk> stream(Prompt prompt) {
         if (agent == null) {
-            return Flux.error(new IllegalStateException("SubAgent 尚未初始化"));
+            return Flux.error(new IllegalStateException("Subagent 尚未初始化"));
         }
 
         String sessionId = "subagent_" + this.getName();
