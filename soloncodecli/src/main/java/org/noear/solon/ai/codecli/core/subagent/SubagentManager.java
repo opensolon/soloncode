@@ -134,7 +134,7 @@ public class SubagentManager {
 
                     // 设置解析后的属性
                     subagent.setDescription(parsed.description);
-                    subagent.setSystemPrompt(parsed.body);
+                    subagent.setSystemPrompt(parsed.systemPrompt);
                     subagent.refresh();
                 } catch (IOException e) {
                     LOG.error("读取代理文件失败: {}", file, e);
@@ -145,21 +145,21 @@ public class SubagentManager {
         }
     }
 
-    private static class ParsedAgentFile {
-        String name;
-        String description;
-        Collection<String> tools;
-        String model;
-        Map<String, Object> metadata;
+    public static class ParsedAgentFile {
+        public String name;
+        public String description;
+        public Collection<String> tools;
+        public String model;
+        public Map<String, Object> metadata;
 
-        String body;
+        public String systemPrompt;
     }
 
-    private ParsedAgentFile parseAgentFile(List<String> lines) {
+    public ParsedAgentFile parseAgentFile(List<String> lines) {
         ParsedAgentFile result = new ParsedAgentFile();
 
         if (lines == null || lines.isEmpty()) {
-            result.body = "";
+            result.systemPrompt = "";
             result.description = "自定义代理";
             return result;
         }
@@ -213,24 +213,24 @@ public class SubagentManager {
                             }
                         }
                     }
-                    result.body = bodyBuilder.toString().trim();
+                    result.systemPrompt = bodyBuilder.toString().trim();
                 } catch (Exception e) {
                     LOG.error("YAML 格式异常，全文本回退", e);
-                    result.body = String.join("\n", lines).trim();
+                    result.systemPrompt = String.join("\n", lines).trim();
                 }
             } else {
                 // 有开头无结尾，视为普通文本
-                result.body = String.join("\n", lines).trim();
+                result.systemPrompt = String.join("\n", lines).trim();
             }
         } else {
             // 第一行不是 ---，严格作为普通 Body 处理
-            result.body = String.join("\n", lines).trim();
+            result.systemPrompt = String.join("\n", lines).trim();
         }
 
         // 描述兜底
-        if (Assert.isEmpty(result.description) && !result.body.isEmpty()) {
+        if (Assert.isEmpty(result.description) && !result.systemPrompt.isEmpty()) {
             // 取第一行并移除 Markdown 标题符
-            String firstLine = result.body.split("\\R")[0];
+            String firstLine = result.systemPrompt.split("\\R")[0];
             result.description = firstLine.replace("#", "").trim();
         }
 
