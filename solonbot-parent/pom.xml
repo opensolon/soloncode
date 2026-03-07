@@ -23,7 +23,7 @@
 
    <modules>
        <module>../solonbot-sdk</module>
-       <module>../soloncodecli</module>
+       <module>../soloncode-cli</module>
    </modules>
 
     <dependencyManagement>
