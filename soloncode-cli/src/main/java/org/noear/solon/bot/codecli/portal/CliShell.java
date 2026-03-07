@@ -15,10 +15,14 @@
  */
 package org.noear.solon.bot.codecli.portal;
 
+import org.jline.keymap.KeyMap;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.Reference;
 import org.jline.reader.UserInterruptException;
+import org.jline.reader.impl.LineReaderImpl;
+import org.jline.reader.impl.completer.AggregateCompleter;
 import org.jline.reader.impl.completer.FileNameCompleter;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
@@ -27,12 +31,15 @@ import org.jline.utils.InfoCmp;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
-import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.bot.codecli.portal.ui.CommandRegistry;
+import org.noear.solon.bot.codecli.portal.ui.SlashCommandCompleter;
+import org.noear.solon.bot.codecli.portal.ui.MarkdownRenderer;
+import org.noear.solon.bot.codecli.portal.ui.StatusBar;
 import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
@@ -42,12 +49,13 @@ import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Code CLI 终端 (Claude Code 风格对齐版)
+ * Code CLI 终端 (printAbove 架构 — 输入始终可用)
  */
 @Preview("3.9.4")
 public class CliShell implements Runnable {
@@ -56,358 +64,783 @@ public class CliShell implements Runnable {
     private Terminal terminal;
     private LineReader reader;
     private final AgentKernel kernel;
+    private final CommandRegistry commandRegistry;
+    private StatusBar statusBar;
 
-    // ANSI 颜色常量 - 严格对齐 Claude 极简风
-    private final static String
-            BOLD = "\033[1m",
+    // ── 共享状态 ──
+    private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
+    private final AtomicBoolean taskRunning = new AtomicBoolean(false);
+    private volatile boolean thinkingStarted = false;
+    private volatile boolean thinkingLineStart = true;
+
+    // ── 流式 Markdown 渲染器 ──
+    private final MarkdownRenderer mdRenderer = new MarkdownRenderer(new MarkdownRenderer.LineOutput() {
+        @Override
+        public void append(String styled) {
+            appendToLineBuffer(styled);
+        }
+
+        @Override
+        public void flushLine() {
+            // Markdown 渲染器要求空行也输出（段落间距）
+            synchronized (lineBuffer) {
+                printAboveLine(lineBuffer.toString() + RESET);
+                lineBuffer.setLength(0);
+            }
+        }
+    });
+
+    // ── 行缓冲 (printAbove 逐行输出) ──
+    private final StringBuilder lineBuffer = new StringBuilder();
+
+    // ANSI 颜色常量 - 对齐 Go TUI 主题
+    private final static String BOLD = "\033[1m",
             DIM = "\033[2m",
-            GREEN = "\033[32m",
-            YELLOW = "\033[33m",
-            RED = "\033[31m",
-            CYAN = "\033[36m",
+            ACCENT = "\033[38;2;255;125;144m",
+            ACCENT_BOLD = "\033[1;38;2;255;125;144m",
+            SOFT = "\033[38;2;160;168;184m",
+            MUTED = "\033[38;2;114;123;137m",
+            ERROR_COLOR = "\033[38;2;244;124;124m",
+            WARN = "\033[38;2;232;194;122m",
+            TEXT = "\033[38;2;243;245;247m",
             RESET = "\033[0m";
+
+    // 图标常量 - 对齐 Go TUI
+    private final static String ICON_ASSISTANT = "\u2726", // ✦
+            ICON_PROMPT = "\u276F", // ❯
+            ICON_TOOL = "\uD83D\uDEE0", // 🛠
+            ICON_CROSS = "\u2718", // ✘
+            ICON_WARN = "\u26A0", // ⚠
+            ICON_THINKING = "\u2699", // ⚙
+            ICON_CHECK = "\u2714"; // ✔
 
     public CliShell(AgentKernel kernel) {
         this.kernel = kernel;
+        this.commandRegistry = new CommandRegistry();
+        registerBuiltinCommands();
 
         try {
             this.terminal = TerminalBuilder.builder()
-                    .jna(true).jansi(true).system(true).dumb(true).build();
+                    .jna(true).jansi(true).system(true)
+                    .signalHandler(Terminal.SignalHandler.SIG_IGN) // 禁止默认信号处理
+                    .build();
+
+            // 禁用 ISIG，让 Ctrl+C 作为普通按键传递而不是信号
+            Attributes attrs = terminal.getAttributes();
+            attrs.setLocalFlag(Attributes.LocalFlag.ISIG, false);
+            terminal.setAttributes(attrs);
+
+            // 窗口 Resize 信号处理
+            terminal.handle(Terminal.Signal.WINCH, signal -> {
+                if (statusBar != null) {
+                    statusBar.draw();
+                }
+                if (reader != null) {
+                    try {
+                        reader.callWidget(LineReader.REDRAW_LINE);
+                        reader.callWidget(LineReader.REDISPLAY);
+                    } catch (Exception ignored) {
+                    }
+                }
+            });
 
             this.reader = LineReaderBuilder.builder()
                     .terminal(terminal)
-                    .completer(new FileNameCompleter())
+                    .completer(new AggregateCompleter(
+                            new SlashCommandCompleter(commandRegistry),
+                            new FileNameCompleter()))
+                    .option(LineReader.Option.AUTO_LIST, true)
+                    .option(LineReader.Option.AUTO_MENU, true)
+                    .option(LineReader.Option.AUTO_MENU_LIST, true)
+                    .option(LineReader.Option.MENU_COMPLETE, true)
+                    .option(LineReader.Option.LIST_PACKED, true)
+                    .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
                     .build();
+
+            // 补全菜单样式
+            reader.setVariable(LineReader.COMPLETION_STYLE_LIST_SELECTION, "fg:white,bg:bright-black,bold");
+            reader.setVariable(LineReader.COMPLETION_STYLE_LIST_BACKGROUND, "bg:default");
+            reader.setVariable(LineReader.COMPLETION_STYLE_LIST_DESCRIPTION, "fg:bright-black");
+            reader.setVariable(LineReader.COMPLETION_STYLE_LIST_STARTING, "fg:cyan");
+            reader.setVariable(LineReader.COMPLETION_STYLE_SELECTION, "fg:white,bg:bright-black,bold");
+            reader.setVariable(LineReader.COMPLETION_STYLE_BACKGROUND, "bg:default");
+
+            // 禁用终端蜂鸣（空缓冲区按 Backspace 等场景）
+            reader.setVariable(LineReader.BELL_STYLE, "none");
+
+            // ── Widget：/ 自动触发补全 ──
+            reader.getWidgets().put("slash-auto-complete", () -> {
+                reader.getBuffer().write('/');
+                if ("/".equals(reader.getBuffer().toString().trim())) {
+                    reader.runMacro("\t");
+                }
+                return true;
+            });
+            reader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference("slash-auto-complete"), "/");
+
+            // ── Widget：ESC 取消当前 AI 任务 ──
+            reader.getWidgets().put("cancel-ai-task", () -> {
+                if (taskRunning.get()) {
+                    cancelRequested.set(true);
+                    Disposable d = currentDisposable;
+                    if (d != null && !d.isDisposed()) {
+                        d.dispose();
+                    }
+                    // 清空待发送输入
+                    int discarded = pendingInputs.size();
+                    pendingInputs.clear();
+                    if (discarded > 0) {
+                        resetPrompt();
+                    }
+                }
+                return true;
+            });
+            reader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference("cancel-ai-task"), KeyMap.esc());
+
+            // ── Widget：Enter 智能提交 ──
+            // AI 运行期间按 Enter 不让 readLine 返回，避免 ❯ xx 行打断输出流
+            reader.getWidgets().put("smart-accept", () -> {
+                String buf = reader.getBuffer().toString().trim();
+                if (taskRunning.get()) {
+                    if (!buf.isEmpty()) {
+                        pendingInputs.add(buf);
+                        updatePromptWithPending();
+                    }
+                    reader.getBuffer().clear();
+                    return true; // 消费 Enter，不让 readLine 返回
+                }
+                // HITL 状态下也拦截
+                if (HITL.isHitl(currentSession)) {
+                    reader.getBuffer().clear();
+                    if (!buf.isEmpty()) {
+                        handleHITLInput(buf);
+                    }
+                    return true;
+                }
+                // 正常情况：空输入不提交
+                if (buf.isEmpty()) {
+                    return true; // 消费 Enter，不做任何事
+                }
+                reader.callWidget(LineReader.ACCEPT_LINE);
+                return true;
+            });
+            reader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference("smart-accept"), "\r");
+            reader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference("smart-accept"), "\n");
+
+            // ── Widget：Ctrl+L 清屏 + 重绘状态栏 ──
+            reader.getWidgets().put("clear-screen-redraw", () -> {
+                terminal.puts(InfoCmp.Capability.clear_screen);
+                terminal.flush();
+                if (statusBar != null) {
+                    statusBar.draw();
+                }
+                reader.callWidget(LineReader.REDRAW_LINE);
+                return true;
+            });
+            reader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference("clear-screen-redraw"), KeyMap.ctrl('L'));
+
+            // ── Widget：Ctrl+C 清空当前输入（不产生历史记录）──
+            reader.getWidgets().put("clear-input", () -> {
+                // 用 kill-whole-line 清空并视觉更新
+                reader.getBuffer().clear();
+                reader.callWidget(LineReader.REDISPLAY);
+                return true;
+            });
+            reader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference("clear-input"), KeyMap.ctrl('C'));
+
         } catch (Exception e) {
             LOG.error("JLine initialization failed", e);
         }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // 内置命令注册
+    // ═══════════════════════════════════════════════════════════
+
+    private void registerBuiltinCommands() {
+        commandRegistry.register("/help", "显示帮助信息", ctx -> {
+            printHelp();
+        });
+
+        commandRegistry.register("/exit", "退出程序", ctx -> {
+            terminal.writer().println(DIM + "Exiting..." + RESET);
+            terminal.flush();
+            System.exit(0);
+        });
+
+        commandRegistry.register("/init", "重新初始化代码索引", ctx -> {
+            AgentSession session = ctx.getSession();
+            String result = kernel.init(session);
+            terminal.writer().println(DIM + result + RESET);
+            terminal.flush();
+        });
+
+        commandRegistry.register("/clear", "清空会话历史", ctx -> {
+            AgentSession session = ctx.getSession();
+            session.clear();
+            // 只清屏，不重新创建 StatusBar（Status 是终端单例）
+            terminal.puts(InfoCmp.Capability.clear_screen);
+            terminal.flush();
+            if (statusBar != null) {
+                statusBar.draw();
+            }
+        });
+
+        commandRegistry.register("/model", "显示当前模型信息", ctx -> {
+            String model = kernel.getProps().getChatModel() != null
+                    ? kernel.getProps().getChatModel().getModel()
+                    : "未配置";
+            terminal.writer().println(DIM + "Model: " + RESET + BOLD + model + RESET);
+            terminal.flush();
+        });
+
+        commandRegistry.register("/compact", "切换精简/详细输出模式", ctx -> {
+            kernel.getProps().setCliPrintSimplified(!kernel.getProps().isCliPrintSimplified());
+            String mode = kernel.getProps().isCliPrintSimplified() ? "精简模式" : "详细模式";
+            terminal.writer().println(DIM + "已切换为: " + RESET + BOLD + mode + RESET);
+            terminal.flush();
+            if (statusBar != null) {
+                statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
+            }
+        });
+
+        commandRegistry.register("/statusbar", "配置状态栏显示内容", ctx -> {
+            if (statusBar != null && !taskRunning.get()) {
+                statusBar.showConfigUI();
+            }
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 主循环 — readLine() 始终活跃
+    // ═══════════════════════════════════════════════════════════
+
+    private volatile AgentSession currentSession;
+    private volatile Disposable currentDisposable;
+    private final List<String> pendingInputs = new ArrayList<>(); // AI 运行期间收集的用户输入
+    private final String normalPrompt = "\n" + ACCENT_BOLD + ICON_PROMPT + RESET + " ";
+
+    /** 构建带待发送列表的 prompt */
+    private String buildPrompt() {
+        StringBuilder p = new StringBuilder("\n");
+        for (String s : pendingInputs) {
+            p.append(DIM + "  \u25B8 " + s + RESET + "\n");
+        }
+        p.append(ACCENT_BOLD + ICON_PROMPT + RESET + " ");
+        return p.toString();
+    }
+
+    /** 更新 prompt（含待发送） — 带 REDRAW */
+    private void updatePromptWithPending() {
+        ((LineReaderImpl) reader).setPrompt(buildPrompt());
+        reader.callWidget(LineReader.REDRAW_LINE);
+    }
+
+    /** 恢复正常 prompt（用 REDISPLAY 彻底刷新，清除多余行） */
+    private void resetPrompt() {
+        ((LineReaderImpl) reader).setPrompt(normalPrompt);
+        reader.callWidget(LineReader.REDISPLAY);
+    }
+
     @Override
     public void run() {
         printWelcome();
-        AgentSession session = kernel.getSession("cli");
+        currentSession = kernel.getSession("cli");
+        kernel.init(currentSession);
 
-        // 1. 初始化对齐
-        kernel.init(session);
-
-        // 2. 主循环
         while (true) {
             try {
-                String promptStr = "\n" + BOLD + CYAN + "User" + RESET + "\n" + BOLD + CYAN + "> " + RESET;
                 String input;
 
                 try {
-                    input = reader.readLine(promptStr);
+                    input = reader.readLine(normalPrompt);
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
                     break;
                 }
 
-                if (Assert.isEmpty(input)) continue;
+                if (Assert.isEmpty(input))
+                    continue;
 
-                if (!isSystemCommand(session, input)) {
-                    terminal.writer().println("\n" + BOLD + "Assistant" + RESET);
-                    performAgentTask(session, input);
+                if (!isSystemCommand(currentSession, input)) {
+                    // readLine 已经回显了 ❯ input，不需要再 printAbove
+                    printAboveLine("\n" + ACCENT_BOLD + ICON_ASSISTANT + " Assistant" + RESET);
+                    startAgentTask(currentSession, input);
                 }
             } catch (Throwable e) {
-                terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
+                terminal.writer().println("\n" + ERROR_COLOR + ICON_CROSS + " Error: " + RESET + e.getMessage());
+                terminal.flush();
             }
         }
     }
 
-    private void performAgentTask(AgentSession session, String input) throws Exception {
-        String currentInput = input;
-        final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
+    // ═══════════════════════════════════════════════════════════
+    // AI 任务执行（完全异步）
+    // ═══════════════════════════════════════════════════════════
+
+    private void startAgentTask(AgentSession session, String input) {
+        taskRunning.set(true);
+        cancelRequested.set(false);
+        thinkingStarted = false;
+
+        // 状态栏：任务开始（taskStart 内部自动 draw）
+        if (statusBar != null) {
+            statusBar.incrementTurns();
+            statusBar.taskStart();
+        }
+
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
+        final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
-        while (true) {
-            // 简化状态提示：只在非首次且任务未完成时打印等待符
-            if (currentInput == null && !isTaskCompleted.get()) {
-                terminal.writer().print("\r" + DIM + "  ... " + RESET);
-                terminal.flush();
-            }
+        currentDisposable = kernel.stream(session.getSessionId(), Prompt.of(input))
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnNext(chunk -> {
+                    if (cancelRequested.get())
+                        return;
 
-            CountDownLatch latch = new CountDownLatch(1);
-            final AtomicBoolean isInterrupted = new AtomicBoolean(false);
-            final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
+                    if (chunk instanceof ReasonChunk) {
+                        onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
+                    } else if (chunk instanceof ActionChunk) {
+                        onActionChunk((ActionChunk) chunk, isFirstReasonChunk);
+                    } else if (chunk instanceof ReActChunk) {
+                        onFinalChunk((ReActChunk) chunk, isFirstReasonChunk, isFirstConversation);
+                    }
+                })
+                .doOnError(e -> {
+                    printAboveLine(ERROR_COLOR + "  " + ICON_CROSS + " Error: " + RESET + e.getMessage());
+                })
+                .doFinally(signal -> {
+                    flushLineBuffer();
 
+                    boolean wasCancelled = cancelRequested.getAndSet(false);
+                    taskRunning.set(false);
+                    currentDisposable = null;
 
-            Disposable disposable = kernel.stream(session.getSessionId(), Prompt.of(currentInput))
-                    .subscribeOn(Schedulers.boundedElastic())
-                    .doOnNext(chunk -> {
-                        if (chunk instanceof ReasonChunk) {
-                            // ReasonChunk 非工具调用时，为流式增量（工具调用时为全量，不需要打印）
-                            onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
-                        } else if (chunk instanceof ActionChunk) {
-                            //ActionChunk 为全量，一次工具调用一个 ActionChunk
-                            onActionChunk((ActionChunk) chunk, isFirstReasonChunk);
-                        } else if (chunk instanceof ReActChunk) {
-                            // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            onFinalChunk((ReActChunk) chunk, isFirstReasonChunk, isFirstConversation);
+                    if (wasCancelled) {
+                        printAboveLine(WARN + "  [Task cancelled]" + RESET);
+                        int discarded = pendingInputs.size();
+                        if (discarded > 0) {
+                            printAboveLine(DIM + "  (" + discarded + " 条待发送输入已丢弃)" + RESET);
+                            pendingInputs.clear();
+                            resetPrompt();
                         }
-                    })
-                    .doOnError(e -> {
-                        terminal.writer().println("\n" + RED + "── Error ────────────────" + RESET);
-                        terminal.writer().println(e.getMessage());
-                        terminal.flush();
-                    })
-                    .doFinally(signal -> {
-                        isTaskCompleted.set(true);
-                        latch.countDown();
-                    })
-                    .subscribe();
+                        session.addMessage(ChatMessage.ofAssistant("Task interrupted by user."));
+                        // 状态栏：回到 idle
+                        if (statusBar != null) {
+                            statusBar.taskEnd(0);
+                        }
+                    }
 
-            // 监听回车中断
-            if (disposable == null || disposable.isDisposed()) {
-                // 处理订阅失败的情况
-                return;
-            }
+                    // HITL 检查
+                    if (HITL.isHitl(session)) {
+                        showHITLPrompt(session);
+                        return;
+                    }
 
-            waitForTask(latch, disposable, session, isInterrupted);
-
-            if (isInterrupted.get()) {
-                terminal.writer().println(DIM + "[Task interrupted]" + RESET);
-                terminal.flush();
-                session.addMessage(ChatMessage.ofAssistant("Task interrupted by user."));
-                return;
-            }
-
-            // HITL 处理 (授权交互)
-            if (HITL.isHitl(session)) {
-                if (handleHITL(session)) {
-                    currentInput = null;
-                    continue;
-                } else {
-                    return;
-                }
-            }
-
-            if (isTaskCompleted.get()) {
-                terminal.writer().println();
-                terminal.flush();
-                return;
-            }
-
-            currentInput = null;
-        }
+                    // 待发送输入 → 渲染用户历史 + 合并为一条发送
+                    if (!pendingInputs.isEmpty() && !wasCancelled) {
+                        // 显示每条待发送输入作为用户历史
+                        for (String pi : pendingInputs) {
+                            printAboveLine(ACCENT_BOLD + ICON_PROMPT + RESET + " " + pi);
+                        }
+                        String merged = String.join("\n", pendingInputs);
+                        pendingInputs.clear();
+                        resetPrompt();
+                        printAboveLine("\n" + ACCENT_BOLD + ICON_ASSISTANT + " Assistant" + RESET);
+                        startAgentTask(session, merged);
+                    }
+                })
+                .subscribe();
     }
 
-    private void waitForTask(CountDownLatch latch, Disposable disposable,
-                             AgentSession session, AtomicBoolean isInterrupted) throws Exception {
-        Attributes originalAttributes = terminal.getAttributes();
-        try {
-            terminal.enterRawMode();
+    // ═══════════════════════════════════════════════════════════
+    // HITL 授权（异步：后台线程显示提示，主线程 readLine 输入）
+    // ═══════════════════════════════════════════════════════════
 
-            while (latch.getCount() > 0) {
-                int c = terminal.reader().read(50);
-                if (c == 27 || c == '\r' || c == '\n') {
-                    disposable.dispose();
-                    isInterrupted.set(true);
-                    latch.countDown();
-                    break;
-                }
-
-                if (HITL.isHitl(session)) {
-                    latch.countDown();
-                    break;
-                }
-            }
-        } finally {
-            terminal.setAttributes(originalAttributes);
-        }
-
-        latch.await();
-    }
-
-    private boolean handleHITL(AgentSession session) {
+    /** 后台线程调用 — 通过 printAbove 显示 HITL 提示 */
+    private void showHITLPrompt(AgentSession session) {
         HITLTask task = HITL.getPendingTask(session);
-        HITLDecision decision = HITL.getDecision(session, task);
+        if (task == null)
+            return;
 
-        if (decision != null) {
-            if (decision.isRejected()) {
-                return false;
-            } else {
-                return true;
-            }
+        // 状态栏同步
+        if (statusBar != null) {
+            statusBar.updateStatus("⚠ awaiting approval");
         }
 
-        terminal.writer().println("\n" + BOLD + YELLOW + "Permission Required" + RESET);
+        printAboveLine("");
+        printAboveLine(MUTED + "  " + repeatChar('\u2500', 20) + RESET);
+        printAboveLine(WARN + "  " + ICON_WARN + " Permission Required" + RESET);
         if ("bash".equals(task.getToolName())) {
-            terminal.writer().println(DIM + "Command: " + RESET + task.getArgs().get("command"));
-        }
-
-        String choice = reader.readLine(BOLD + GREEN + "Approve? (y/n) " + RESET).trim().toLowerCase();
-        if ("y".equals(choice) || "yes".equals(choice)) {
-            HITL.approve(session, task.getToolName());
-            return true;
+            printAboveLine(MUTED + "     Command: " + RESET + String.valueOf(task.getArgs().get("command")));
         } else {
-            HITL.reject(session, task.getToolName());
-            terminal.writer().println(DIM + "Action rejected." + RESET);
-            return false;
+            printAboveLine(MUTED + "     Tool: " + RESET + task.getToolName());
+        }
+        printAboveLine("");
+        printAboveLine("     " + ACCENT_BOLD + ICON_CHECK + " allow" + RESET + MUTED + "    允许执行" + RESET);
+        printAboveLine("     " + ERROR_COLOR + ICON_CROSS + " deny" + RESET + MUTED + "     拒绝执行" + RESET);
+        printAboveLine(MUTED + "  " + repeatChar('\u2500', 20) + RESET);
+        printAboveLine("");
+    }
+
+    /** 主线程调用 — 处理用户在 readLine() 中输入的 HITL 选择 */
+    private void handleHITLInput(String input) {
+        HITLTask task = HITL.getPendingTask(currentSession);
+        if (task == null)
+            return;
+
+        String choice = input.trim().toLowerCase();
+        if ("allow".equals(choice) || "y".equals(choice) || "yes".equals(choice) || "a".equals(choice)) {
+            HITL.approve(currentSession, task.getToolName());
+            printAboveLine(DIM + "  " + ICON_CHECK + " Approved" + RESET);
+            // 继续 AI ReAct 循环
+            startAgentTask(currentSession, null);
+        } else {
+            HITL.reject(currentSession, task.getToolName());
+            printAboveLine(DIM + "  " + ICON_CROSS + " Rejected" + RESET);
         }
     }
 
-    private void onFinalChunk(ReActChunk react, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
+    // ═══════════════════════════════════════════════════════════
+    // 流式回调 — 全部通过行缓冲 + printAbove
+    // ═══════════════════════════════════════════════════════════
+
+    private void onFinalChunk(ReActChunk react, AtomicBoolean isFirstReasonChunk,
+            AtomicBoolean isFirstConversation) {
         if (react.isNormal() == false) {
             String delta = clearThink(react.getContent());
             onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
         }
 
+        flushLineBuffer();
+        mdRenderer.flush(); // 确保 Markdown 状态重置
+
         if (react.getTrace().getMetrics() != null) {
-            terminal.writer().println(DIM + " (" + react.getTrace().getMetrics().getTotalTokens() + " tokens)" + RESET);
+            long tokens = react.getTrace().getMetrics().getTotalTokens();
+            String timeInfo = statusBar != null ? ", " + statusBar.getTaskTimeText() : "";
+            printAboveLine(DIM + "  (" + tokens + " tokens" + timeInfo + ")" + RESET);
+            // 状态栏：任务结束
+            if (statusBar != null) {
+                statusBar.taskEnd(tokens);
+            }
         }
     }
 
-    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
+    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk,
+            AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
-            //打印 think 或者 不是 think
-            if (kernel.getProps().isThinkPrinted() || !reason.getMessage().isThinking()) {
+            boolean isThinking = reason.getMessage().isThinking();
+
+            if (isThinking) {
+                // ── 思考内容：MUTED 色 + │ 左边线 ──
+                if (!thinkingStarted) {
+                    flushLineBuffer();
+                    printAboveLine(MUTED + "  " + ICON_THINKING + " Thinking..." + RESET);
+                    thinkingStarted = true;
+                    thinkingLineStart = true;
+                    // 状态栏：thinking（updateStatus 内部自动 draw）
+                    if (statusBar != null) {
+                        statusBar.updateStatus("⚙ thinking");
+                    }
+                }
+
+                String delta = clearThink(reason.getContent());
+                // 去掉前导空行
+                if (thinkingLineStart) {
+                    delta = delta.replaceAll("^[\\n\\r]+", "");
+                }
+                if (Assert.isNotEmpty(delta)) {
+                    for (char ch : delta.toCharArray()) {
+                        if (ch == '\n') {
+                            flushLineBuffer();
+                            thinkingLineStart = true;
+                        } else if (ch != '\r') {
+                            if (thinkingLineStart) {
+                                appendToLineBuffer(MUTED + "  \u2502 ");
+                                thinkingLineStart = false;
+                            }
+                            appendToLineBuffer(String.valueOf(ch));
+                        }
+                    }
+                }
+            } else {
+                // ── 正常内容 ──
+                if (thinkingStarted) {
+                    flushLineBuffer();
+                    printAboveLine(""); // thinking 和正文之间空一行
+                    thinkingStarted = false;
+                    // 状态栏：进入 responding（updateStatus 内部自动 draw）
+                    if (statusBar != null) {
+                        statusBar.updateStatus("✦ responding");
+                    }
+                }
                 String delta = clearThink(reason.getContent());
                 onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
             }
         }
     }
 
-    private void onReasonChunkDo(String delta, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
+    private volatile boolean reasonAtLineStart = true;
+
+    private void onReasonChunkDo(String delta, AtomicBoolean isFirstReasonChunk,
+            AtomicBoolean isFirstConversation) {
         if (Assert.isNotEmpty(delta)) {
             if (isFirstReasonChunk.get()) {
                 String trimmed = delta.replaceAll("^[\\s\\n]+", "");
                 if (Assert.isNotEmpty(trimmed)) {
-                    if (isFirstConversation.get()) {
-                        terminal.writer().print("  ");
-                        isFirstConversation.set(false);
-                    } else {
-                        terminal.writer().print("\n  ");
-                    }
-
-                    terminal.writer().print(trimmed.replace("\n", "\n  "));
+                    isFirstConversation.set(false);
                     isFirstReasonChunk.set(false);
+                    mdRenderer.reset(); // 新回合重置渲染器
+                    mdRenderer.feed(trimmed);
                 }
             } else {
-                // 连续的思考内容，保持缩进替换即可
-                terminal.writer().print(delta.replace("\n", "\n  "));
+                mdRenderer.feed(delta);
             }
-            terminal.flush();
         }
     }
 
     private void onActionChunk(ActionChunk action, AtomicBoolean isFirstReasonChunk) {
+        // 如果 thinking 还在进行，先结束
+        if (thinkingStarted) {
+            flushLineBuffer();
+            thinkingStarted = false;
+        }
+        flushLineBuffer();
+
         if (Assert.isNotEmpty(action.getToolName())) {
-            // 1. 准备参数字符串
+            // 状态栏：工具调用（updateStatus 内部自动 draw）
+            if (statusBar != null) {
+                statusBar.updateStatus("⊙ " + action.getToolName());
+            }
+            // 准备参数
             StringBuilder argsBuilder = new StringBuilder();
             Map<String, Object> args = action.getArgs();
             if (args != null && !args.isEmpty()) {
                 args.forEach((k, v) -> {
-                    if (argsBuilder.length() > 0) argsBuilder.append(" ");
+                    if (argsBuilder.length() > 0)
+                        argsBuilder.append(" ");
                     argsBuilder.append(k).append("=").append(v);
                 });
             }
             String argsStr = argsBuilder.toString().replace("\n", " ");
-            boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
-            if (kernel.getProps().isCliPrintSimplified()) {
-                // --- 简化风格：单行摘要模式 ---
-                String content = action.getContent() == null ? "" : action.getContent().trim();
-                String summary;
-
-                if (Assert.isEmpty(content)) {
-                    summary = "completed";
-                } else {
-                    String[] lines = content.split("\n");
-                    if (lines.length > 1) {
-                        summary = "returned " + lines.length + " lines";
-                    } else {
-                        summary = content.length() > 40 ? content.substring(0, 37) + "..." : content;
-                    }
-                }
-
-                // 简化模式下，参数也进行极简压缩
-                String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
-
-                terminal.writer().println();
-                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
-                terminal.flush();
-
+            // 结果摘要
+            String content = action.getContent() == null ? "" : action.getContent().trim();
+            String summary;
+            if (Assert.isEmpty(content)) {
+                summary = "completed";
             } else {
-                // --- 全量风格 ---
-                // 1. 打印指令行
-                terminal.writer().println();
-                if (!hasBigArgs) {
-                    // 短参数直接跟在后面
-                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + argsStr + RESET);
+                String[] lines = content.split("\n");
+                if (lines.length > 1) {
+                    summary = "returned " + lines.length + " lines";
                 } else {
-                    // 大参数块，指令名独占一行，参数作为缩进内容打印（类似 write_file 的 content 部分）
-                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET);
-                    if (args != null) {
-                        args.forEach((k, v) -> {
-                            String val = String.valueOf(v).trim();
-                            if ("content".equals(k) && val.split("\n").length > 10) {
-                                // 如果是写文件，且内容太长，只显示头尾
-                                String[] lines = val.split("\n");
-                                val = lines[0] + "\n    ...\n    " + lines[lines.length - 1];
-                            }
-                            terminal.writer().println(DIM + "  [" + k + "]: " + val.replace("\n", "\n    ") + RESET);
-                        });
-                    }
+                    summary = content.length() > 40 ? content.substring(0, 37) + "..." : content;
                 }
-
-                // 2. 处理工具返回的结果内容 (getContent)
-                if (Assert.isNotEmpty(action.getContent())) {
-                    // 在参数和结果之间如果内容较多，可以加个小分隔，或者直接缩进打印
-                    String indentedContent = "  " + action.getContent().trim().replace("\n", "\n  ");
-                    terminal.writer().println(DIM + indentedContent + RESET);
-                }
-
-                terminal.writer().println(DIM + "  (End of output)" + RESET);
-                terminal.flush();
             }
 
-            // 3. 接下来 AI 可能会针对这个结果进行分析 (Reasoning)，设置首行缩进标记
+            if (kernel.getProps().isCliPrintSimplified()) {
+                // 简化模式 — 一行式
+                String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
+                printAboveLine("");
+                printAboveLine(SOFT + "  " + ICON_TOOL + " " + TEXT + BOLD + action.getToolName() + RESET
+                        + " " + MUTED + shortArgs + " (" + summary + ")" + RESET);
+            } else {
+                // 详细模式 — 工具名 + 缩进参数（无边框）
+                printAboveLine("");
+                printAboveLine(SOFT + "  " + ICON_TOOL + " " + TEXT + BOLD
+                        + action.getToolName() + RESET);
+
+                // 参数
+                if (args != null && !args.isEmpty()) {
+                    args.forEach((k, v) -> {
+                        String val = String.valueOf(v).trim().replace("\n", " ");
+                        if (val.length() > 80) {
+                            val = val.substring(0, 77) + "...";
+                        }
+                        printAboveLine(MUTED + "     " + k + ": " + val + RESET);
+                    });
+                }
+
+                // 返回结果
+                if (Assert.isNotEmpty(content)) {
+                    printAboveLine("");
+                    String[] contentLines = content.split("\n");
+                    if (contentLines.length > 10) {
+                        // 只显示首3行 + ... + 末1行
+                        for (int i = 0; i < 3; i++) {
+                            printAboveLine(MUTED + "     " + contentLines[i] + RESET);
+                        }
+                        printAboveLine(MUTED + "     ..." + RESET);
+                        printAboveLine(MUTED + "     " + contentLines[contentLines.length - 1] + RESET);
+                    } else {
+                        for (String line : contentLines) {
+                            printAboveLine(MUTED + "     " + line + RESET);
+                        }
+                    }
+                }
+
+                printAboveLine(MUTED + "     (" + summary + ")" + RESET);
+            }
+
             isFirstReasonChunk.set(true);
         }
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // 行缓冲 + printAbove 工具方法
+    // ═══════════════════════════════════════════════════════════
+
+    /** 向行缓冲追加内容（不立即输出） */
+    private void appendToLineBuffer(String text) {
+        synchronized (lineBuffer) {
+            lineBuffer.append(text);
+        }
+    }
+
+    /** 将行缓冲内容 flush 到 printAbove（一整行） */
+    private void flushLineBuffer() {
+        synchronized (lineBuffer) {
+            if (lineBuffer.length() > 0) {
+                printAboveLine(lineBuffer.toString() + RESET);
+                lineBuffer.setLength(0);
+            }
+        }
+    }
+
+    /** 通过 printAbove 输出一整行（线程安全 — 与状态栏 draw 同步） */
+    private void printAboveLine(String line) {
+        synchronized (terminal) {
+            if (reader != null) {
+                reader.printAbove(line);
+            } else {
+                terminal.writer().println(line);
+                terminal.flush();
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 工具方法
+    // ═══════════════════════════════════════════════════════════
 
     private String clearThink(String chunk) {
         return chunk.replaceAll("(?s)<\\s*/?think\\s*>", "");
     }
 
     private boolean isSystemCommand(AgentSession session, String input) {
-        String cmd = input.trim().toLowerCase();
-        if ("exit".equals(cmd)) {
-            terminal.writer().println(DIM + "Exiting..." + RESET);
-            System.exit(0);
+        String cmd = input.trim();
+
+        if (cmd.startsWith("/")) {
+            CommandRegistry.CommandContext ctx = new CommandRegistry.CommandContext(session, null);
+            if (commandRegistry.execute(cmd, ctx)) {
+                return true;
+            }
+            terminal.writer()
+                    .println(ERROR_COLOR + "未知命令: " + RESET + cmd + MUTED + " (输入 /help 查看可用命令)" + RESET);
+            terminal.flush();
             return true;
         }
-        if ("init".equals(cmd)) {
-            String result = kernel.init(session);
-            terminal.writer().println(DIM + result + RESET);
-            return true;
+
+        String lower = cmd.toLowerCase();
+        if ("exit".equals(lower) || "init".equals(lower) || "clear".equals(lower)) {
+            CommandRegistry.CommandContext ctx = new CommandRegistry.CommandContext(session, null);
+            return commandRegistry.execute("/" + lower, ctx);
         }
-        if ("clear".equals(cmd)) {
-            session.clear();
-            printWelcome(); // 推荐加上，让用户清屏后不至于面对一个完全的黑洞
-            return true;
-        }
+
         return false;
     }
 
+    private void printHelp() {
+        terminal.writer().println();
+        terminal.writer().println(TEXT + BOLD + "  可用命令" + RESET);
+        terminal.writer().println();
+        for (CommandRegistry.Command cmd : commandRegistry.getAllCommands()) {
+            String name = cmd.getName();
+            String padded = name + repeatChar(' ', Math.max(1, 14 - name.length()));
+            terminal.writer()
+                    .println("    " + ACCENT_BOLD + padded + RESET + MUTED + cmd.getDescription() + RESET);
+        }
+        terminal.writer().println();
+        terminal.writer().println(MUTED + "  快捷键" + RESET);
+        terminal.writer().println(MUTED + "    Esc     中断当前操作" + RESET);
+        terminal.writer().println(MUTED + "    Tab     自动补全命令" + RESET);
+        terminal.writer().println(MUTED + "    Ctrl+C  取消当前输入" + RESET);
+        terminal.writer().println(MUTED + "    Ctrl+D  退出程序" + RESET);
+        terminal.writer().println(MUTED + "    Ctrl+L  清屏" + RESET);
+        terminal.writer().println();
+        terminal.writer().println(MUTED + "  " + repeatChar('\u2500', 40) + RESET);
+        terminal.writer().println();
+        terminal.flush();
+    }
+
+    private static String repeatChar(char c, int count) {
+        if (count <= 0)
+            return "";
+        StringBuilder sb = new StringBuilder(count);
+        for (int i = 0; i < count; i++) {
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 欢迎界面（冻结 — 不允许改动）
+    // ═══════════════════════════════════════════════════════════
+
     protected void printWelcome() {
+        // 初始化状态栏
+        this.statusBar = new StatusBar(terminal);
+        String modelName = kernel.getProps().getChatModel() != null
+                ? kernel.getProps().getChatModel().getModel()
+                : "unknown";
+        statusBar.setModelName(modelName);
+        statusBar.setWorkDir(new File(kernel.getProps().getWorkDir()).getAbsolutePath());
+        statusBar.setVersion(kernel.getVersion());
+        statusBar.setSessionId("cli");
+        statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
+        statusBar.setup();
+
         terminal.puts(InfoCmp.Capability.clear_screen);
         terminal.flush();
+        statusBar.draw(); // 清屏后重绘
 
         String path = new File(kernel.getProps().getWorkDir()).getAbsolutePath();
-        // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + kernel.getVersion() + RESET);
-        terminal.writer().println(DIM + path + RESET);
-        terminal.writer().print(DIM + "Tips: " + RESET + "(esc)" + DIM + " to interrupt output. Commands: " +
-                RESET + "'exit'" + DIM + " to quit, " +
-                RESET + "'init'" + DIM + " to refresh, " +
-                RESET + "'clear'" + DIM + " to reset" + RESET);
+        String version = kernel.getVersion();
 
-        //terminal.writer().println(DIM + "Commands: " + RESET + "exit" + DIM + ", " + RESET + "init (code)" + DIM + ", " + RESET + "clear (session)" + RESET);
-        // 仅保留一个空行
+        // ── ASCII Art Logo (对齐 Go TUI renderWelcomeLogo) ──
+        terminal.writer().println();
+        terminal.writer().println(ACCENT_BOLD + "   ███████  ██████  ██      ██████  ███    ██" + RESET + SOFT + BOLD
+                + "   ██████  ██████  ██████  ███████" + RESET);
+        terminal.writer().println(ACCENT_BOLD + "   ██      ██    ██ ██     ██    ██ ████   ██" + RESET + SOFT + BOLD
+                + "  ██      ██    ██ ██   ██ ██" + RESET);
+        terminal.writer().println(ACCENT_BOLD + "   ███████ ██    ██ ██     ██    ██ ██ ██  ██" + RESET + SOFT + BOLD
+                + "  ██      ██    ██ ██   ██ █████" + RESET);
+        terminal.writer().println(ACCENT_BOLD + "        ██ ██    ██ ██     ██    ██ ██  ██ ██" + RESET + SOFT + BOLD
+                + "  ██      ██    ██ ██   ██ ██" + RESET);
+        terminal.writer().println(ACCENT_BOLD + "   ███████  ██████  ██████  ██████  ██   ████" + RESET + SOFT + BOLD
+                + "   ██████  ██████  ██████  ███████" + RESET);
+        terminal.writer().println();
+
+        // ── Meta info ──
+        terminal.writer().println(SOFT + "  Model  " + RESET + TEXT + BOLD + modelName + RESET);
+        terminal.writer().println(SOFT + "  Dir    " + RESET + SOFT + path + RESET);
+        terminal.writer().println(SOFT + "  Ver    " + RESET + SOFT + version + RESET);
+        terminal.writer().println();
+        terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + ACCENT + "Tip" + RESET + SOFT + " Type "
+                + RESET + TEXT + BOLD + "/help" + RESET + SOFT + " to see all commands" + RESET);
+        terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Use " + RESET + TEXT + BOLD + "Tab"
+                + RESET + SOFT + " for auto-completion" + RESET);
+        terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Press " + RESET + TEXT + BOLD
+                + "Esc" + RESET + SOFT + " to cancel operation" + RESET);
+        terminal.writer().println();
+        terminal.writer().println(MUTED + "  " + repeatChar('\u2500', 40) + RESET);
         terminal.writer().println();
         terminal.flush();
     }

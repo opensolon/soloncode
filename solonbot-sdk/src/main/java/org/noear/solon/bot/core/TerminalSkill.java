@@ -3,6 +3,7 @@ package org.noear.solon.bot.core;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
+import org.noear.solon.ai.chat.tool.Tool;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.core.util.Assert;
 
@@ -558,5 +559,12 @@ public class TerminalSkill extends AbsSkill {
         } catch (Exception e) {
             return "/bin/sh";
         }
+    }
+
+    public Tool[] getToolAry(String... names) {
+        List<String> nameList = Arrays.asList(names);
+        return this.getTools(null).stream()
+                .filter(t -> nameList.contains(t.name()))
+                .toArray(org.noear.solon.ai.chat.tool.Tool[]::new);
     }
 }
