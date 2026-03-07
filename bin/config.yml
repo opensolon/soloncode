@@ -16,6 +16,7 @@ solon.code.cli:
   thinkPrinted: true # 内心思考，是否打印
 
   hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
+  subagentEnabled: true # 是否启用子代理模式
 
   cliEnabled: true # 是否启用控制台
   cliPrintSimplified: true

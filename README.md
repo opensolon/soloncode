@@ -64,6 +64,7 @@ Solon Code 是基于 [Solon AI](../../../../opensolon/solon-ai) （支持 Java8 
 
 * https://github.com/zrt-ai-lab/opencode-skills 
 * https://github.com/openclaw/skills
+* https://github.com/anthropics/skills
 * https://github.com/ComposioHQ/awesome-claude-skills
 
 重要提醒：

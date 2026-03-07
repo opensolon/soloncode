@@ -62,6 +62,7 @@ Solon Code CLI 是基于 Solon AI 框架构建的高性能、自主式 AI 终端
 
 * https://github.com/zrt-ai-lab/opencode-skills
 * https://github.com/openclaw/skills
+* https://github.com/anthropics/skills
 * https://github.com/ComposioHQ/awesome-claude-skills
 
 
