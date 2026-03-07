@@ -49,10 +49,11 @@ public class SubagentManager {
 
         // 添加预置的智能体类型
         addSubagent(new ExploreSubagent(mainAgent));
-        addSubagent(new DevPlanSubagent(mainAgent));
+        addSubagent(new PlanSubagent(mainAgent));
+        addSubagent(new GeneralPurposeSubagent(mainAgent));
+
         addSubagent(new BashSubagent(mainAgent));
         addSubagent(new SolonGuideSubagent(mainAgent));
-        addSubagent(new GeneralPurposeSubagent(mainAgent));
     }
 
 
@@ -126,7 +127,7 @@ public class SubagentManager {
                     String subagentType = (parsed.name != null) ? parsed.name : fileName.substring(0, fileName.length() - 3);
 
                     AbsSubagent subagent = (AbsSubagent) subagentMap.computeIfAbsent(subagentType,
-                            k -> new DynamicSubagent(mainAgent, k));
+                            k -> new GeneralPurposeSubagent(mainAgent, k));
 
                     // 设置解析后的属性
                     subagent.setDescription(parsed.description);

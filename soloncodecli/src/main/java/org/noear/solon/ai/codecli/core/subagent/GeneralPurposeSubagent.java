@@ -21,6 +21,7 @@ import org.noear.solon.ai.codecli.core.LuceneSkill;
 import org.noear.solon.ai.codecli.core.tool.CodeSearchTool;
 import org.noear.solon.ai.codecli.core.tool.WebfetchTool;
 import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
+import org.noear.solon.core.util.Assert;
 
 /**
  * 通用子代理 - 处理各种复杂任务
@@ -29,9 +30,20 @@ import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
  * @since 3.9.5
  */
 public class GeneralPurposeSubagent extends AbsSubagent {
+    private final String subagentType;
 
     public GeneralPurposeSubagent(AgentKernel mainAgent) {
+        this(mainAgent, null);
+    }
+
+    public GeneralPurposeSubagent(AgentKernel mainAgent, String subagentType) {
         super(mainAgent);
+
+        if (Assert.isEmpty(subagentType)) {
+            this.subagentType = "general-purpose";
+        } else {
+            this.subagentType = subagentType;
+        }
     }
 
     @Override
@@ -58,7 +70,7 @@ public class GeneralPurposeSubagent extends AbsSubagent {
 
     @Override
     public String getType() {
-        return "general-purpose";
+        return this.subagentType;
     }
 
     @Override

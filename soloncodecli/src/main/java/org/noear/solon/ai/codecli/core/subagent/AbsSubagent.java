@@ -128,20 +128,26 @@ public abstract class AbsSubagent implements Subagent {
     }
 
     @Override
-    public AgentResponse execute(String sessionId, Prompt prompt) throws Throwable {
+    public AgentResponse execute(String sessionId, String __cwd, Prompt prompt) throws Throwable {
         AgentSession session = mainAgent.getSession(sessionId);
 
         return getOrBuildAgent().prompt(prompt)
                 .session(session)
+                .options(o -> {
+                    o.toolContextPut("__cwd", __cwd);
+                })
                 .call();
     }
 
     @Override
-    public Flux<AgentChunk> stream(String sessionId, Prompt prompt) {
+    public Flux<AgentChunk> stream(String sessionId, String __cwd, Prompt prompt) {
         AgentSession session = mainAgent.getSession(sessionId);
 
         return getOrBuildAgent().prompt(prompt)
                 .session(session)
+                .options(o -> {
+                    o.toolContextPut("__cwd", __cwd);
+                })
                 .stream();
     }
 }

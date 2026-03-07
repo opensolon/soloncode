@@ -94,6 +94,8 @@ public class TaskTool extends AbsTool {
         String description = (String) args.get("description");
         String taskId = (String) args.get("task_id");
 
+        String __cwd = (String) args.get("__cwd");
+
         try {
             Subagent agent = manager.getAgent(subagentType);
 
@@ -110,7 +112,7 @@ public class TaskTool extends AbsTool {
 
             // 2. 这里的 AgentSession 逻辑应与 AgentKernel 深度绑定
             // 注意：execute 内部应能识别 sessionId 并从 sessionManager 恢复上下文
-            AgentResponse response = agent.execute(finalSessionId, Prompt.of(prompt));
+            AgentResponse response = agent.execute(finalSessionId, __cwd, Prompt.of(prompt));
 
             String result = response.getContent();
             LOG.info("子代理任务完成: {}", finalSessionId);

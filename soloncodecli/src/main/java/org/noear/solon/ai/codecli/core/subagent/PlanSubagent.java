@@ -28,9 +28,9 @@ import org.noear.solon.ai.codecli.core.tool.WebsearchTool;
  * @author bai
  * @since 3.9.5
  */
-public class DevPlanSubagent extends AbsSubagent {
+public class PlanSubagent extends AbsSubagent {
 
-    public DevPlanSubagent(AgentKernel mainAgent) {
+    public PlanSubagent(AgentKernel mainAgent) {
         super(mainAgent);
     }
 
@@ -55,7 +55,7 @@ public class DevPlanSubagent extends AbsSubagent {
 
     @Override
     public String getType() {
-        return "dev-plan";
+        return "plan";
     }
 
     @Override
