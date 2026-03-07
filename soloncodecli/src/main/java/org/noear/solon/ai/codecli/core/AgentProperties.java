@@ -16,6 +16,7 @@
 package org.noear.solon.ai.codecli.core;
 
 import lombok.Getter;
+import lombok.Setter;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.annotation.BindProps;
@@ -30,6 +31,7 @@ import java.util.Map;
  * @since 3.9.1
  */
 @Getter
+@Setter
 @Configuration
 @BindProps(prefix="solon.code.cli")
 public class AgentProperties {
