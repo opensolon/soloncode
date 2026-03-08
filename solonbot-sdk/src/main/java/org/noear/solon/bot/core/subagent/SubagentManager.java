@@ -104,12 +104,12 @@ public class SubagentManager {
      *
      * @param dir agents 目录路径，可以是绝对路径或相对路径
      */
-    public void agentPool(String dir) {
-        if (Assert.isEmpty(dir)) {
+    public void agentPool(Path dir) {
+        if (dir == null) {
             return;
         }
 
-        Path path = Paths.get(dir).toAbsolutePath().normalize();
+        Path path = dir.toAbsolutePath().normalize();
         if (!Files.exists(path)) {
             LOG.warn("代理池目录不存在: {}", dir);
             return;

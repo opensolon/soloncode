@@ -31,6 +31,7 @@ import org.noear.solon.bot.codecli.portal.AcpLink;
 import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.codecli.portal.WebGate;
 
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -68,7 +69,7 @@ public class App {
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, config.getWorkDir() + AgentKernel.SOLONCODE_SESSIONS + key));
+                new FileAgentSession(key, Paths.get(config.getWorkDir(), AgentKernel.SOLONCODE_SESSIONS, key).normalize().toFile().toString()));
 
 
         AgentKernel agentKernel = new AgentKernel(chatModel, config, sessionProvider, null);

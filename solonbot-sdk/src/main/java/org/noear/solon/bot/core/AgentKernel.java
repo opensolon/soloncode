@@ -49,20 +49,23 @@ public class AgentKernel {
     public final static String SESSION_DEFAULT = "cli";
     public final static String ATTR_CWD = "__cwd";
 
-    public final static String SOLONCODE_SESSIONS = "/.soloncode/sessions/";
-    public final static String SOLONCODE_SKILLS = "/.soloncode/skills/";
-    public final static String SOLONCODE_AGENTS = "/.soloncode/agents/";
-    public final static String OPENCODE_SKILLS = "/.opencode/skills/";
-    public final static String OPENCODE_AGENTS = "/.opencode/agents/";
-    public final static String CLAUDE_SKILLS = "/.claude/skills/";
-    public final static String CLAUDE_AGENTS = "/.claude/agents/";
+    public final static String SOLONCODE_SESSIONS = ".soloncode/sessions/";
+    public final static String SOLONCODE_SKILLS = ".soloncode/skills/";
+    public final static String SOLONCODE_AGENTS = ".soloncode/agents/";
+    public final static String SOLONCODE_DOWNLOADS = ".soloncode/downloads/";
+
+    public final static String OPENCODE_SKILLS = ".opencode/skills/";
+    public final static String OPENCODE_AGENTS = ".opencode/agents/";
+    public final static String CLAUDE_SKILLS = ".claude/skills/";
+    public final static String CLAUDE_AGENTS = ".claude/agents/";
+
 
     private final ChatModel chatModel;
     private final AgentSessionProvider sessionProvider;
     private final AgentProperties properties;
 
     private final CodeSkill codeSkill = new CodeSkill();
-    private final LuceneSkill luceneSkill  =new LuceneSkill();
+    private final LuceneSkill luceneSkill = new LuceneSkill();
 
     private final ReActAgent reActAgent;
     private final McpProviders mcpProviders;
@@ -75,7 +78,7 @@ public class AgentKernel {
         return "v0.0.19";
     }
 
-    public String getName(){
+    public String getName() {
         return reActAgent.name();
     }
 
@@ -127,9 +130,9 @@ public class AgentKernel {
 
         cliSkills.getTerminalSkill().setSandboxMode(properties.isSandboxMode());
 
-        cliSkills.skillPool("@soloncode_skills", properties.getWorkDir() + AgentKernel.SOLONCODE_SKILLS);
-        cliSkills.skillPool("@opencode_skills", properties.getWorkDir() + AgentKernel.OPENCODE_SKILLS);
-        cliSkills.skillPool("@claude_skills", properties.getWorkDir() + AgentKernel.CLAUDE_SKILLS);
+        cliSkills.skillPool("@soloncode_skills", Paths.get(properties.getWorkDir(), AgentKernel.SOLONCODE_SKILLS));
+        cliSkills.skillPool("@opencode_skills", Paths.get(properties.getWorkDir(), AgentKernel.OPENCODE_SKILLS));
+        cliSkills.skillPool("@claude_skills", Paths.get(properties.getWorkDir(), AgentKernel.CLAUDE_SKILLS));
 
         agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
         agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
@@ -139,6 +142,7 @@ public class AgentKernel {
         agentBuilder.defaultSkillAdd(new TodoSkill());
         agentBuilder.defaultSkillAdd(codeSkill);
         agentBuilder.defaultSkillAdd(luceneSkill);
+        agentBuilder.defaultSkillAdd(new BrowserSkill());
 
         // 添加子代理工具
         if (properties.isSubagentEnabled()) {
@@ -146,11 +150,11 @@ public class AgentKernel {
 
             // 注册自定义 agents 池（类似 skillPool）
             // 注册 soloncode agents
-            subagentManager.agentPool(properties.getWorkDir() + AgentKernel.SOLONCODE_AGENTS);
+            subagentManager.agentPool(Paths.get(properties.getWorkDir(), AgentKernel.SOLONCODE_AGENTS));
             // 注册 opencode agents
-            subagentManager.agentPool(properties.getWorkDir() +  AgentKernel.OPENCODE_AGENTS);
+            subagentManager.agentPool(Paths.get(properties.getWorkDir(), AgentKernel.OPENCODE_AGENTS));
             // 注册 claude agents
-            subagentManager.agentPool( properties.getWorkDir() +  AgentKernel.CLAUDE_AGENTS);
+            subagentManager.agentPool(Paths.get(properties.getWorkDir(), AgentKernel.CLAUDE_AGENTS));
 
             // SubagentSkill 会通过 @ToolMapping 自动注册为工具
             agentBuilder.defaultSkillAdd(new TaskSkill(this, subagentManager));

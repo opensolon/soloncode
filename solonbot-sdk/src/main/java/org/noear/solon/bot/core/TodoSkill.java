@@ -41,7 +41,7 @@ public class TodoSkill extends AbsSkill {
     @ToolMapping(name = "todoread", description = "读取任务清单。用于同步执行进度，确认下一步操作。")
     public String todoRead(String __cwd,
                            String __sessionId) throws IOException {
-        Path rootPath = Paths.get(__cwd + AgentKernel.SOLONCODE_SESSIONS).toAbsolutePath().normalize()
+        Path rootPath = Paths.get(__cwd , AgentKernel.SOLONCODE_SESSIONS).toAbsolutePath().normalize()
                 .resolve(__sessionId);
 
         Path todoFile = rootPath.resolve("TODO.md");
@@ -60,7 +60,7 @@ public class TodoSkill extends AbsSkill {
             String __cwd,
             String __sessionId
     ) throws IOException {
-        Path rootPath = Paths.get(__cwd + AgentKernel.SOLONCODE_SESSIONS).toAbsolutePath().normalize()
+        Path rootPath = Paths.get(__cwd , AgentKernel.SOLONCODE_SESSIONS).toAbsolutePath().normalize()
                 .resolve(__sessionId);
 
         if (Files.notExists(rootPath)) {
