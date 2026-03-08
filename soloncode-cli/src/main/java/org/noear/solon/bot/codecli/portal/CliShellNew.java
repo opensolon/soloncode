@@ -615,9 +615,17 @@ public class CliShellNew implements Runnable {
         flushLineBuffer();
 
         if (Assert.isNotEmpty(action.getToolName())) {
+            final String fullToolName;
+
+            if(kernel.getProps().isSubagentEnabled()) {
+                fullToolName = action.getAgentName() + "/" + action.getToolName();
+            } else {
+                fullToolName = action.getToolName();
+            }
+
             // 状态栏：工具调用（updateStatus 内部自动 draw）
             if (statusBar != null) {
-                statusBar.updateStatus("⊙ " + action.getToolName());
+                statusBar.updateStatus("⊙ " + fullToolName);
             }
             // 准备参数
             StringBuilder argsBuilder = new StringBuilder();
@@ -649,13 +657,13 @@ public class CliShellNew implements Runnable {
                 // 简化模式 — 一行式
                 String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
                 printAboveLine("");
-                printAboveLine(SOFT + "  " + ICON_TOOL + " " + TEXT + BOLD + action.getToolName() + RESET
+                printAboveLine(SOFT + "  " + ICON_TOOL + " " + TEXT + BOLD + fullToolName + RESET
                         + " " + MUTED + shortArgs + " (" + summary + ")" + RESET);
             } else {
                 // 详细模式 — 工具名 + 缩进参数（无边框）
                 printAboveLine("");
                 printAboveLine(SOFT + "  " + ICON_TOOL + " " + TEXT + BOLD
-                        + action.getToolName() + RESET);
+                        + fullToolName + RESET);
 
                 // 参数
                 if (args != null && !args.isEmpty()) {
