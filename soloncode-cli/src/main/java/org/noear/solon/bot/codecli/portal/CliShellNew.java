@@ -618,7 +618,11 @@ public class CliShellNew implements Runnable {
             final String fullToolName;
 
             if(kernel.getProps().isSubagentEnabled()) {
-                fullToolName = action.getAgentName() + "/" + action.getToolName();
+                if(kernel.getName().equals(action.getAgentName())){
+                    fullToolName = action.getToolName();
+                } else {
+                    fullToolName = action.getAgentName() + "/" + action.getToolName();
+                }
             } else {
                 fullToolName = action.getToolName();
             }

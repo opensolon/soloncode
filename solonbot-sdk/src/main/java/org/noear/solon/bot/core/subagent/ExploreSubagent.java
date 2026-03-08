@@ -38,6 +38,7 @@ public class ExploreSubagent extends AbsSubagent {
         builder.defaultToolAdd(mainAgent.getCliSkills().getTerminalSkill()
                 .getToolAry("ls", "read", "grep", "glob"));
 
+        builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
         builder.defaultSkillAdd(LuceneSkill.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 

@@ -75,6 +75,10 @@ public class AgentKernel {
         return "v0.0.19";
     }
 
+    public String getName(){
+        return reActAgent.name();
+    }
+
     public AgentProperties getProps() {
         return properties;
     }
