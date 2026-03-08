@@ -15,23 +15,23 @@
  */
 package org.noear.solon.bot.core.subagent;
 
-import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
-import org.noear.solon.ai.agent.react.task.ReasonChunk;
+import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.ChatSession;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.chat.skill.AbsSkill;
 import org.noear.solon.ai.chat.tool.AbsTool;
+import org.noear.solon.annotation.Param;
 import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 子代理技能
@@ -41,20 +41,15 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author bai
  * @since 3.9.5
  */
-public class TaskTool extends AbsTool {
-    private static final Logger LOG = LoggerFactory.getLogger(TaskTool.class);
+public class TaskSkill extends AbsSkill {
+    private static final Logger LOG = LoggerFactory.getLogger(TaskSkill.class);
 
     private final AgentKernel mainAgent;
     private final SubagentManager manager;
 
-    public TaskTool(AgentKernel mainAgent, SubagentManager manager) {
+    public TaskSkill(AgentKernel mainAgent, SubagentManager manager) {
         this.mainAgent = mainAgent;
         this.manager = manager;
-
-        addParam("subagent_type", String.class, "用于此任务的子代理类型");
-        addParam("prompt", String.class, "分派给子代理的具体任务要求（应包含详细背景）");
-        addParam("description", String.class, false, "简短的任务描述（3-5个词）");
-        addParam("task_id", String.class, false, "可选。若要继续之前的任务会话，请传入对应的 task_id");
     }
 
     @Override
@@ -62,67 +57,69 @@ public class TaskTool extends AbsTool {
         return "task";
     }
 
+
     @Override
     public String description() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("启动专门的子代理处理复杂任务。子代理独立运行工具流并返回结论。\n\n");
+        return "战略任务调度与子代理委派专家";
+    }
 
-        // 1. 列表优化：增加能力说明（如果 Subagent 接口支持获取能力描述）
-        sb.append("### 可用的 subagent_type 列表:\n");
+    @Override
+    public String getInstruction(Prompt prompt) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 战略调度协议 (Orchestration Protocol)\n");
+        sb.append("你拥有派生专项子代理的能力。对于重型或涉及全局认知的任务，你必须扮演【调度员】而非【执行者】。\n\n");
+
+        sb.append("### 强制委派准则\n");
+        sb.append("- **项目认知**: 凡是涉及“探索项目”、“分析架构”、“查找核心入口”等需要阅读多个文件或理解代码库的任务，**严禁**手动 ls/read_file。你必须立即使用 `task` 工具委派给 explore 型代理。这是系统性能硬约束。\n");
+        sb.append("- **复杂变更**: 涉及跨文件的代码修复、重构或需要运行测试验证的任务，应委派给 dev 型代理。\n");
+        sb.append("- **决策量化**: 预感需要连续调用超过 3 次原子工具（如 grep, read_file）时，应改用子代理以节省主对话上下文。\n\n");
+
+        sb.append("### 可用的子代理注册表 (Capabilities Registry)\n");
+        sb.append("请根据任务语义匹配最合适的 `subagent_type`：\n");
         sb.append("<available_agents>\n");
         for (Subagent agent : manager.getAgents()) {
-            // 建议在 Subagent 接口增加一个 getCapabilities() 或类似方法
-            sb.append(String.format("  <agent subagent_type=\"%s\" description=\"%s\" />\n",
+            sb.append(String.format("  <agent type=\"%s\" capability=\"%s\" />\n",
                     agent.getType(), agent.getDescription()));
         }
         sb.append("</available_agents>\n\n");
 
-        // 2. 准则优化：使用更强烈的对比
-        sb.append("### 决策准则:\n");
-        sb.append("- **优先使用**: 涉及多步推理、代码重构、运行测试脚本、复杂系统分析。\n");
-        sb.append("- **避免使用**: 仅读取已知路径文件、简单的关键字搜索、查看当前目录列表。\n\n");
-
-        // 3. 示例优化：提供结构化的调用示例
-        sb.append("### 调用示例:\n");
-        sb.append("```json\n");
-        sb.append("// 场景：需要对代码进行深度分析并修复\n");
-        sb.append("task(subagent_type=\"dev\", prompt=\"分析并修复所有单元测试中发现的并发死锁问题\", description=\"修复并发死锁\")\n\n");
-        sb.append("// 场景：继续之前的重构任务\n");
-        sb.append("task(subagent_type=\"plan\", task_id=\"subagent_plan_12345\", prompt=\"基于上一步的方案，生成具体的接口定义\", description=\"细化接口设计\")\n");
-        sb.append("```\n\n");
-
-        // 4. 注意事项：醒目提示
-        sb.append("> [!IMPORTANT]\n");
-        sb.append("> 子代理是上下文隔离的。在 prompt 中必须提供任务所需的全部关键背景（如相关的类名、报错信息、具体要求），否则子代理可能因信息不足而失败。\n");
+        sb.append("### 调用约定\n");
+        sb.append("- **上下文对齐**: 子代理看不见当前历史。必须在 `prompt` 中通过 <context> 标签传入必要的类名、报错或路径。\n");
+        sb.append("- **示例**: `task(subagent_type=\"explore\", prompt=\"分析 demo-web 核心架构\", description=\"架构探索\")`\n");
 
         return sb.toString();
     }
 
-    @Override
-    public Object handle(Map<String, Object> args) throws Throwable {
-        String subagentType = (String) args.get("subagent_type");
-        String prompt = (String) args.get("prompt");
-        String description = (String) args.get("description");
-        String taskId = (String) args.get("task_id");
 
-        String __cwd = (String) args.get("__cwd");
-        String __parentSessionId = (String) args.get(ChatSession.ATTR_SESSIONID);
-        AgentSession __parentSession = mainAgent.getSession(__parentSessionId);
+    //addParam("subagent_type", String.class, "子代理类型（如 explore, dev, researcher）");
+    //        addParam("prompt", String.class, "具体指令。必须包含任务目标、关键类名或必要的背景上下文。");
+    //        addParam("description", String.class, false, "简短的任务描述（3-5个词）");
+    //        addParam("task_id", String.class, false, "可选。若要继续之前的任务会话，请传入对应的 task_id");
+    @ToolMapping(name = "task", description = "派生并分派任务给专项子代理")
+    public String handle(
+            @Param(name = "subagent_type", description = "子代理类型（如 explore, dev, researcher）") String subagent_type,
+            @Param(name = "prompt",description = "具体指令。必须包含任务目标、关键类名或必要的背景上下文。") String prompt,
+            @Param(name = "description", required = false, description = "简短的任务描述（3-5个词），给用户看") String description,
+            @Param(name = "taskId", required = false, description = "可选。若要继续之前的任务会话，请传入对应的 task_id") String taskId,
+            String __cwd,
+            String __sessionId
+    ) {
+        AgentSession __parentSession = mainAgent.getSession(__sessionId);
         ReActTrace __parentTrace = ReActTrace.getCurrent(__parentSession.getSnapshot());
 
         try {
-            Subagent agent = manager.getAgent(subagentType);
+            Subagent agent = manager.getAgent(subagent_type);
 
             if (agent == null) {
-                return "ERROR: 未知的子代理类型 '" + subagentType + "'。请从 <available_agents> 列表中选择。";
+                return "ERROR: 未知的子代理类型 '" + subagent_type + "'。请从 <available_agents> 列表中选择。";
             }
 
             // 1. 会话标识处理：如果有 task_id 则沿用，否则生成基于类型的标识
             String finalSessionId = Assert.isEmpty(taskId)
-                    ? "subagent_" + subagentType + "_" + System.currentTimeMillis()
+                    ? "subagent_" + subagent_type + "_" + System.currentTimeMillis()
                     : taskId;
 
-            LOG.info("分派任务 -> 类型: {}, 会话: {}, 描述: {}", subagentType, finalSessionId, description);
+            LOG.info("分派任务 -> 类型: {}, 会话: {}, 描述: {}", subagent_type, finalSessionId, description);
 
             // 2. 这里的 AgentSession 逻辑应与 AgentKernel 深度绑定
             // 注意：execute 内部应能识别 sessionId 并从 sessionManager 恢复上下文
@@ -161,11 +158,11 @@ public class TaskTool extends AbsTool {
                             "<task_result>\n" +
                             "%s\n" +
                             "</task_result>",
-                    finalSessionId, subagentType, result
+                    finalSessionId, subagent_type, result
             );
 
         } catch (Throwable e) {
-            LOG.error("子代理执行崩溃: type={}, error={}", subagentType, e.getMessage(), e);
+            LOG.error("子代理执行崩溃: type={}, error={}", subagent_type, e.getMessage(), e);
             return "ERROR: 子代理执行失败: " + e.getMessage();
         }
     }
