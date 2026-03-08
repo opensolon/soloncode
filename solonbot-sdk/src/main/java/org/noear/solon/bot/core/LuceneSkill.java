@@ -116,6 +116,11 @@ public class LuceneSkill extends AbsSkill {
 
         try {
             if (!DirectoryReader.indexExists(indexDirectory)) {
+                //如果还没有，尝试刷新
+                refreshSearchIndex(__cwd);
+            }
+
+            if (!DirectoryReader.indexExists(indexDirectory)) {
                 return "本地索引尚未建立。请先执行 refresh_search_index 工具以初始化搜索环境。";
             }
         } catch (IOException e) {

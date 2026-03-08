@@ -137,19 +137,10 @@ public class TaskTool extends AbsTool {
                 //累计 tokens 计数
                 __parentTrace.getMetrics().addMetrics(response.getMetrics());
             } else {
-                AtomicReference<AgentChunk> atomicReference = new AtomicReference<>();
                 ReActChunk chunk1 = (ReActChunk) agent.stream(__cwd, finalSessionId, Prompt.of(prompt))
                         .doOnNext(chunk -> {
                             if(chunk instanceof ActionChunk) {
-                                atomicReference.set(chunk);
                                 __parentTrace.getOptions().getStreamSink().next(chunk);
-                            } else if(chunk instanceof ReasonChunk) {
-                                if (atomicReference.get() != null) {
-                                    ReasonChunk reasonChunk = (ReasonChunk) chunk;
-                                    if (reasonChunk.isFinished() == false) {
-                                        __parentTrace.getOptions().getStreamSink().next(chunk);
-                                    }
-                                }
                             }
                         })
                         .blockLast();
