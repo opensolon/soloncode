@@ -41,8 +41,7 @@ public class TodoSkill extends AbsSkill {
     @ToolMapping(name = "todoread", description = "读取任务清单。用于同步执行进度，确认下一步操作。")
     public String todoRead(String __cwd,
                            String __sessionId) throws IOException {
-        Path rootPath = Paths.get(__cwd).toAbsolutePath().normalize()
-                .resolve(AgentKernel.SOLONCODE_SESSIONS)
+        Path rootPath = Paths.get(__cwd + AgentKernel.SOLONCODE_SESSIONS).toAbsolutePath().normalize()
                 .resolve(__sessionId);
 
         Path todoFile = rootPath.resolve("TODO.md");
@@ -55,14 +54,13 @@ public class TodoSkill extends AbsSkill {
         return new String(encoded, StandardCharsets.UTF_8);
     }
 
-    @ToolMapping(name = "todowrite", description ="写入任务列表（新建、更新或重构）。接收完整的 Markdown 格式清单。")
+    @ToolMapping(name = "todowrite", description = "写入任务列表（新建、更新或重构）。接收完整的 Markdown 格式清单。")
     public String todoWrite(
             @Param(value = "todos", description = "完整 Markdown 列表。") String todosMarkdown,
             String __cwd,
             String __sessionId
     ) throws IOException {
-        Path rootPath = Paths.get(__cwd).toAbsolutePath().normalize()
-                .resolve(AgentKernel.SOLONCODE_SESSIONS)
+        Path rootPath = Paths.get(__cwd + AgentKernel.SOLONCODE_SESSIONS).toAbsolutePath().normalize()
                 .resolve(__sessionId);
 
         if (Files.notExists(rootPath)) {
