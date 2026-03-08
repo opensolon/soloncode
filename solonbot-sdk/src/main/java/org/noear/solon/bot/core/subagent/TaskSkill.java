@@ -70,15 +70,15 @@ public class TaskSkill extends AbsSkill {
         sb.append("你拥有派生专项子代理的能力。对于重型或涉及全局认知的任务，你必须扮演【调度员】而非【执行者】。\n\n");
 
         sb.append("### 强制委派准则\n");
-        sb.append("- **项目认知**: 凡是涉及“探索项目”、“分析架构”、“查找核心入口”等需要阅读多个文件或理解代码库的任务，**严禁**手动 ls/read_file。你必须立即使用 `task` 工具委派给 explore 型代理。这是系统性能硬约束。\n");
-        sb.append("- **复杂变更**: 涉及跨文件的代码修复、重构或需要运行测试验证的任务，应委派给 dev 型代理。\n");
+        sb.append("- **项目认知**: 凡是涉及“探索项目”、“分析架构”、“查找核心入口”等需要阅读多个文件或理解代码库的任务，应委派给子代理。\n");
+        sb.append("- **复杂变更**: 涉及跨文件的代码修复、重构或需要运行测试验证的任务，应委派给子代理。\n");
         sb.append("- **决策量化**: 预感需要连续调用超过 3 次原子工具（如 grep, read_file）时，应改用子代理以节省主对话上下文。\n\n");
 
         sb.append("### 可用的子代理注册表 (Capabilities Registry)\n");
         sb.append("请根据任务语义匹配最合适的 `subagent_type`：\n");
         sb.append("<available_agents>\n");
         for (Subagent agent : manager.getAgents()) {
-            sb.append(String.format("  <agent type=\"%s\" capability=\"%s\" />\n",
+            sb.append(String.format("  <agent subagent_type=\"%s\" capability=\"%s\" />\n",
                     agent.getType(), agent.getDescription()));
         }
         sb.append("</available_agents>\n\n");
@@ -91,13 +91,9 @@ public class TaskSkill extends AbsSkill {
     }
 
 
-    //addParam("subagent_type", String.class, "子代理类型（如 explore, dev, researcher）");
-    //        addParam("prompt", String.class, "具体指令。必须包含任务目标、关键类名或必要的背景上下文。");
-    //        addParam("description", String.class, false, "简短的任务描述（3-5个词）");
-    //        addParam("task_id", String.class, false, "可选。若要继续之前的任务会话，请传入对应的 task_id");
     @ToolMapping(name = "task", description = "派生并分派任务给专项子代理")
     public String handle(
-            @Param(name = "subagent_type", description = "子代理类型（如 explore, dev, researcher）") String subagent_type,
+            @Param(name = "subagent_type", description = "子代理类型") String subagent_type,
             @Param(name = "prompt",description = "具体指令。必须包含任务目标、关键类名或必要的背景上下文。") String prompt,
             @Param(name = "description", required = false, description = "简短的任务描述（3-5个词），给用户看") String description,
             @Param(name = "taskId", required = false, description = "可选。若要继续之前的任务会话，请传入对应的 task_id") String taskId,
