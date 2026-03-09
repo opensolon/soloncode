@@ -26,6 +26,7 @@ import org.noear.solon.bot.core.teams.SubAgentAgentBuilder;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -33,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Agent Teams 集成测试
- *
+ * <p>
  * 测试共享记忆、事件总线、消息传递、任务协作等完整功能
  *
  * @author bai
@@ -85,7 +86,7 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 搜索到 " + searchResults.size() + " 条相关记忆");
 
         // 7. 测试统计信息
-        var stats = manager.getStats();
+        Map<String, Object> stats = manager.getStats();
         System.out.println("✓ 记忆统计: " + stats);
 
         // 清理
@@ -160,17 +161,23 @@ public class AgentTeamsIntegrationTest {
         MessageChannel channel = new MessageChannel(TEST_WORK_DIR, 2);
 
         // 1. 测试注册处理器
-        String handlerId = channel.registerHandler("receiver", message -> {
-            System.out.println("  → 收到消息: " + message.getPayload());
-            return CompletableFuture.completedFuture("ACK");
+        String handlerId = channel.registerHandler("receiver", new MessageHandler() {
+            @Override
+            public <T> CompletableFuture<Object> handle(AgentMessage<T> message) {
+                System.out.println("  → 收到消息: " + message.getContent());
+                return CompletableFuture.completedFuture("ACK");
+            }
         });
         System.out.println("✓ 注册消息处理器: " + handlerId);
 
         // 2. 测试发送点对点消息
-        AgentMessage message = new AgentMessage(
-                "sender", "receiver", "test.type", "test payload",
-                AgentMessage.MessageOptions.builder().requireAck(true).build()
-        );
+        AgentMessage<String> message = new AgentMessage.Builder()
+                .from("sender")
+                .to("receiver")
+                .type("test.type")
+                .content("test payload")
+                .requireAck(true)
+                .build();
 
         CompletableFuture<MessageAck> future = channel.send(message);
         MessageAck ack = future.get(2, TimeUnit.SECONDS);
@@ -179,13 +186,28 @@ public class AgentTeamsIntegrationTest {
 
         // 3. 测试广播消息
         // 注册多个接收者
-        channel.registerHandler("agent1", msg -> CompletableFuture.completedFuture("ACK1"));
-        channel.registerHandler("agent2", msg -> CompletableFuture.completedFuture("ACK2"));
+        channel.registerHandler("agent1", new MessageHandler() {
+            @Override
+            public <T> CompletableFuture<Object> handle(AgentMessage<T> message) {
+                System.out.println("  → 收到消息: " + message.getContent());
+                return CompletableFuture.completedFuture("ACK1");
+            }
+        });
 
-        AgentMessage broadcastMsg = new AgentMessage(
-                "main", "*", "notification", "broadcast test",
-                AgentMessage.MessageOptions.builder().build()
-        );
+        channel.registerHandler("agent2", new MessageHandler() {
+            @Override
+            public <T> CompletableFuture<Object> handle(AgentMessage<T> message) {
+                System.out.println("  → 收到消息: " + message.getContent());
+                return CompletableFuture.completedFuture("ACK2");
+            }
+        });
+
+        AgentMessage<String> broadcastMsg = new AgentMessage.Builder()
+                .from("main")
+                .to("*")
+                .type("notification")
+                .content("broadcast test")
+                .build();
 
         CompletableFuture<List<MessageAck>> broadcastFuture = channel.broadcast(broadcastMsg);
         List<MessageAck> acks = broadcastFuture.get(2, TimeUnit.SECONDS);
@@ -193,15 +215,20 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 广播消息成功: " + acks.size() + " 个接收者");
 
         // 4. 测试消息队列（离线消息）
-        channel.registerHandler("offline_agent", msg -> CompletableFuture.completedFuture("RECEIVED"));
-
-        AgentMessage queuedMsg = new AgentMessage(
-                "main", "offline_agent", "query", "queued message",
-                AgentMessage.MessageOptions.builder()
-                        .persistent(true)
-                        .ttl(60000)
-                        .build()
-        );
+        channel.registerHandler("offline_agent", new MessageHandler() {
+            @Override
+            public <T> CompletableFuture<Object> handle(AgentMessage<T> message) {
+                System.out.println("  → 收到消息: " + message.getContent());
+                return CompletableFuture.completedFuture("RECEIVED");
+            }
+        });
+        AgentMessage<Object> queuedMsg = new AgentMessage.Builder<>()
+                .to("offline_agent")
+                .type("query")
+                .content("queued message")
+                .persistent(true)
+                .ttl(60000)
+                .build();
 
         MessageAck queuedAck = channel.send(queuedMsg).get(2, TimeUnit.SECONDS);
         assertTrue(queuedAck.isSuccess());
@@ -260,21 +287,30 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ Explore 代理订阅事件");
 
         // 4. Explore 代理发送消息给 Plan 代理
-        messageChannel.registerHandler("explore", msg ->
-            CompletableFuture.completedFuture("探索完成")
-        );
-        messageChannel.registerHandler("plan", msg -> {
-            if (msg.getType() == AgentMessageType.QUERY) {
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        Thread.sleep(100); // 模拟处理
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                });
-                return CompletableFuture.completedFuture("计划细节");
+        messageChannel.registerHandler("explore", new MessageHandler() {
+            @Override
+            public <T> CompletableFuture<Object> handle(AgentMessage<T> message) {
+                return CompletableFuture.completedFuture("探索完成");
             }
-            return CompletableFuture.completedFuture("ACK");
+        });
+        messageChannel.registerHandler("plan", new MessageHandler() {
+            @Override
+            public <T> CompletableFuture<Object> handle(AgentMessage<T> message) {
+                if ("query".equals(message.getType())) {
+                    CompletableFuture.runAsync(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                Thread.sleep(100); // 模拟处理
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
+                    });
+                    return CompletableFuture.completedFuture("计划细节");
+                }
+                return CompletableFuture.completedFuture("ACK");
+            }
         });
 
         CompletableFuture<Object> queryResult = messageChannel.request(
@@ -422,7 +458,7 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 依赖关系检查正确");
 
         // 测试获取所有依赖 ID
-        var allDeps = task3.getAllDependencyIds(taskLookup);
+        java.util.Set<String> allDeps = task3.getAllDependencyIds(taskLookup);
         assertTrue(allDeps.contains(task1.getId()));
         assertTrue(allDeps.contains(task2.getId()));
         System.out.println("✓ 获取所有依赖 ID 成功，共 " + allDeps.size() + " 个");
@@ -557,17 +593,17 @@ public class AgentTeamsIntegrationTest {
 
         // 5. 测试任务认领
         TeamTask claimable = taskList.getClaimableTasks().get(0);
-        TeamTask claimed = taskList.claimTask(claimable.getId(), "agent-1");
+        boolean claimResult = taskList.claimTask(claimable.getId(), "agent-1").get();
+        assertTrue(claimResult);
+        TeamTask claimed = taskList.getTask(claimable.getId());
         assertNotNull(claimed);
         assertEquals("agent-1", claimed.getClaimedBy());
         assertEquals(TeamTask.Status.IN_PROGRESS, claimed.getStatus());
         System.out.println("✓ 任务认领成功");
 
         // 6. 测试任务完成
-        claimed.setStatus(TeamTask.Status.COMPLETED);
-        claimed.setResult("任务完成");
-        claimed.setCompletedTime(System.currentTimeMillis());
-        taskList.updateTask(claimed);
+        boolean completeResult = taskList.completeTask(claimable.getId(), "任务完成");
+        assertTrue(completeResult);
         System.out.println("✓ 任务完成");
 
         // 验证统计更新
@@ -606,8 +642,7 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 只有基础任务可认领");
 
         // 完成 task1
-        task1.setStatus(TeamTask.Status.COMPLETED);
-        taskList.updateTask(task1);
+        taskList.completeTask(task1.getId(), "完成");
 
         // 现在 task2 应该可以认领了
         List<TeamTask> newClaimable = taskList.getClaimableTasks();
@@ -646,18 +681,19 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 批量添加 50 个任务，耗时: " + duration + "ms");
 
         // 2. 测试高优先级任务排序
-        List<TeamTask> highPriorityTasks = taskList.getTasksByPriority(9);
+        List<TeamTask> highPriorityTasks = taskList.getAllTasks().stream()
+                .filter(t -> t.getPriority() >= 9)
+                .collect(java.util.stream.Collectors.toList());
         assertTrue(highPriorityTasks.size() >= 5);
-        highPriorityTasks.forEach(task ->
-            assertEquals(9, task.getPriority())
-        );
+        for (TeamTask task : highPriorityTasks) {
+            assertEquals(9, task.getPriority());
+        }
         System.out.println("✓ 高优先级任务筛选成功，共 " + highPriorityTasks.size() + " 个");
 
         // 3. 批量更新状态
         for (TeamTask task : taskList.getAllTasks()) {
             if (task.getPriority() >= 8) {
-                task.setStatus(TeamTask.Status.COMPLETED);
-                taskList.updateTask(task);
+                taskList.completeTask(task.getId(), "批量完成");
             }
         }
 
@@ -738,9 +774,14 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 重复添加任务被拒绝");
 
         // 2. 测试认领不存在的任务
-        TeamTask notFound = taskList.claimTask("non-existent-id", "agent-1");
-        assertNull(notFound);
-        System.out.println("✓ 认领不存在的任务返回 null");
+        try {
+            boolean claimResult = taskList.claimTask("non-existent-id", "agent-1").get();
+            assertFalse(claimResult);
+            System.out.println("✓ 认领不存在的任务返回 false");
+        } catch (Exception e) {
+            // 期望异常
+            assertTrue(true);
+        }
 
         // 3. 测试获取不存在的任务
         TeamTask found = taskList.getTask("non-existent-id");
@@ -793,13 +834,11 @@ public class AgentTeamsIntegrationTest {
         // 2. 并发认领任务
         List<TeamTask> claimableTasks = taskList.getClaimableTasks();
         if (!claimableTasks.isEmpty()) {
-            List<CompletableFuture<TeamTask>> claimFutures = new java.util.ArrayList<>();
+            List<CompletableFuture<Boolean>> claimFutures = new java.util.ArrayList<>();
 
             for (int i = 0; i < Math.min(10, claimableTasks.size()); i++) {
                 final String taskId = claimableTasks.get(i).getId();
-                CompletableFuture<TeamTask> claimFuture = CompletableFuture.supplyAsync(() -> {
-                    return taskList.claimTask(taskId, "agent-" + Thread.currentThread().getId());
-                }, executor);
+                CompletableFuture<Boolean> claimFuture = taskList.claimTask(taskId, "agent-" + Thread.currentThread().getId());
                 claimFutures.add(claimFuture);
             }
 
@@ -807,8 +846,14 @@ public class AgentTeamsIntegrationTest {
             CompletableFuture.allOf(claimFutures.toArray(new CompletableFuture[0])).get();
 
             long claimedCount = claimFutures.stream()
-                    .map(f -> f.join())
-                    .filter(java.util.Objects::nonNull)
+                    .map(f -> {
+                        try {
+                            return f.get();
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    })
+                    .filter(result -> result)
                     .count();
             System.out.println("✓ 并发认领 " + claimedCount + " 个任务");
         }

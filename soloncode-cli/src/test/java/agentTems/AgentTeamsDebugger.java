@@ -167,15 +167,15 @@ public class AgentTeamsDebugger {
 
         // 2.2 测试通配符订阅
         System.out.print("2. 测试通配符匹配... ");
-        CompletableFuture<AgentEventType> future2 = new CompletableFuture<>();
+        CompletableFuture<String> future2 = new CompletableFuture<>();
         bus.subscribe("task.*", event -> {
-            future2.complete(event.getEventType());
+            future2.complete(event.getEventTypeCode());
             return CompletableFuture.completedFuture(EventHandler.Result.success());
         });
 
         bus.publish(new AgentEvent("task.completed", "data", metadata));
-        AgentEventType result2 = future2.get(2, TimeUnit.SECONDS);
-        assertEquals("task.completed", result2, "事件类型应该匹配");
+        String result2 = future2.get(2, TimeUnit.SECONDS);
+        assertEquals("task.completed", result2, "事件类型代码应该匹配");
         System.out.println("✅");
 
         // 2.3 测试事件历史
