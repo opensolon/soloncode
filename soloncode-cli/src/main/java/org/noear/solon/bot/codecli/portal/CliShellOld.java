@@ -50,8 +50,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Code CLI 终端 (Claude Code 风格对齐版)
  */
 @Preview("3.9.4")
-public class CliShell implements Runnable {
-    private final static Logger LOG = LoggerFactory.getLogger(CliShell.class);
+public class CliShellOld implements Runnable {
+    private final static Logger LOG = LoggerFactory.getLogger(CliShellOld.class);
 
     private Terminal terminal;
     private LineReader reader;
@@ -67,7 +67,7 @@ public class CliShell implements Runnable {
             CYAN = "\033[36m",
             RESET = "\033[0m";
 
-    public CliShell(AgentKernel kernel) {
+    public CliShellOld(AgentKernel kernel) {
         this.kernel = kernel;
 
         try {
@@ -295,6 +295,19 @@ public class CliShell implements Runnable {
 
     private void onActionChunk(ActionChunk action, AtomicBoolean isFirstReasonChunk) {
         if (Assert.isNotEmpty(action.getToolName())) {
+            final String fullToolName;
+
+            if(kernel.getProps().isSubagentEnabled()) {
+                if(kernel.getName().equals(action.getAgentName())){
+                    fullToolName = action.getToolName();
+                } else {
+                    fullToolName = action.getAgentName() + "/" + action.getToolName();
+                }
+            } else {
+                fullToolName = action.getToolName();
+            }
+
+
             // 1. 准备参数字符串
             StringBuilder argsBuilder = new StringBuilder();
             Map<String, Object> args = action.getArgs();
@@ -327,7 +340,7 @@ public class CliShell implements Runnable {
                 String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
 
                 terminal.writer().println();
-                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
+                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
                 terminal.flush();
 
             } else {
@@ -336,10 +349,10 @@ public class CliShell implements Runnable {
                 terminal.writer().println();
                 if (!hasBigArgs) {
                     // 短参数直接跟在后面
-                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET + " " + DIM + argsStr + RESET);
+                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
                 } else {
                     // 大参数块，指令名独占一行，参数作为缩进内容打印（类似 write_file 的 content 部分）
-                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + action.getToolName() + RESET);
+                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET);
                     if (args != null) {
                         args.forEach((k, v) -> {
                             String val = String.valueOf(v).trim();

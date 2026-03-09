@@ -7,13 +7,13 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solon-parent</artifactId>
-        <version>3.9.5-SNAPSHOT</version>
+        <version>3.9.5</version>
         <relativePath />
     </parent>
 
     <artifactId>solonbot-parent</artifactId>
     <name>${project.artifactId}</name>
-    <version>0.0.19</version>
+    <version>0.0.20</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -23,6 +23,8 @@
 
    <modules>
        <module>../solonbot-sdk</module>
+
+       <module>../solonclaw</module>
        <module>../soloncode-cli</module>
    </modules>
 

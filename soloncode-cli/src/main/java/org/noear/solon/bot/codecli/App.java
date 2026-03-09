@@ -24,12 +24,14 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.bot.codecli.portal.CliShellNew;
+import org.noear.solon.bot.codecli.portal.CliShellOld;
 import org.noear.solon.bot.core.AgentProperties;
 import org.noear.solon.bot.codecli.portal.AcpLink;
 import org.noear.solon.bot.core.AgentKernel;
-import org.noear.solon.bot.codecli.portal.CliShell;
 import org.noear.solon.bot.codecli.portal.WebGate;
 
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -67,14 +69,14 @@ public class App {
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, config.getWorkDir() + AgentKernel.SOLONCODE_SESSIONS + key));
+                new FileAgentSession(key, Paths.get(config.getWorkDir(), AgentKernel.SOLONCODE_SESSIONS, key).normalize().toFile().toString()));
 
 
         AgentKernel agentKernel = new AgentKernel(chatModel, config, sessionProvider, null);
 
 
         if (config.isCliEnabled()) {
-            new Thread(new CliShell(agentKernel), "CLI-Interactive-Thread").start();
+            new Thread(new CliShellOld(agentKernel), "CLI-Interactive-Thread").start();
         }
 
         if (config.isWebEnabled()) {

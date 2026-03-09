@@ -38,6 +38,7 @@ public class ExploreSubagent extends AbsSubagent {
         builder.defaultToolAdd(mainAgent.getCliSkills().getTerminalSkill()
                 .getToolAry("ls", "read", "grep", "glob"));
 
+        builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
         builder.defaultSkillAdd(LuceneSkill.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
@@ -55,7 +56,7 @@ public class ExploreSubagent extends AbsSubagent {
 
     @Override
     protected String getDefaultDescription() {
-        return "快速探索子代理，专门用于查找文件、理解代码结构和回答代码库问题";
+        return "快速探索子代理，专门用于查找文件、分析和理解代码结构和回答代码库问题";
     }
 
     @Override

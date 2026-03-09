@@ -11,7 +11,7 @@
         <relativePath>../solonbot-parent/pom.xml</relativePath>
     </parent>
 
-    <artifactId>soloncode-cli</artifactId>
+    <artifactId>solonclaw</artifactId>
     <name>${project.artifactId}</name>
     <packaging>jar</packaging>
 

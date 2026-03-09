@@ -74,7 +74,7 @@ public interface Subagent {
      * @return 执行结果
      * @throws Throwable 执行异常
      */
-    AgentResponse execute(String sessionId, String __cwd, Prompt prompt) throws Throwable;
+    AgentResponse call(String __cwd, String sessionId, Prompt prompt) throws Throwable;
 
     /**
      * 执行任务（流式）
@@ -82,5 +82,5 @@ public interface Subagent {
      * @param prompt 任务提示
      * @return 流式结果
      */
-    Flux<AgentChunk> stream(String sessionId, String __cwd, Prompt prompt);
+    Flux<AgentChunk> stream(String __cwd, String sessionId, Prompt prompt);
 }

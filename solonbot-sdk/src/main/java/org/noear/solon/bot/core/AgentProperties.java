@@ -33,7 +33,7 @@ import java.util.Map;
 @Getter
 @Setter
 public class AgentProperties {
-    private String workDir = "./work";
+    private String workDir = "./work/";
 
     private int maxSteps = 30;
     private boolean maxStepsAutoExtensible = false;
@@ -46,6 +46,7 @@ public class AgentProperties {
 
     private boolean hitlEnabled = false;
     private boolean subagentEnabled = true;
+    private boolean browserEnabled = true;
 
     private boolean cliEnabled = true;
     private boolean cliPrintSimplified = true;

@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solonbot-parent</artifactId>
-        <version>0.0.19</version>
+        <version>0.0.20</version>
         <relativePath>../solonbot-parent/pom.xml</relativePath>
     </parent>
 
@@ -57,6 +57,12 @@
             <groupId>org.eclipse.lsp4j</groupId>
             <artifactId>org.eclipse.lsp4j</artifactId>
             <version>0.20.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>1.42.0</version>
         </dependency>
 
         <dependency>

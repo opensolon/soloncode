@@ -3,6 +3,7 @@ package org.noear.solon.bot.core;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
+import org.noear.solon.ai.chat.tool.Tool;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.core.util.Assert;
 
@@ -253,24 +254,53 @@ public class TerminalSkill extends AbsSkill {
                        @Param(value = "new_str", description = "替换后的新内容。") String newStr,
                        String __cwd) throws IOException {
         Path rootPath = getRootPath(__cwd);
-
         Path target = resolveSafePath(rootPath, path, true);
+
         String content = new String(Files.readAllBytes(target), fileCharset);
 
-        String finalOld = oldStr, finalNew = newStr;
-        if (content.contains("\r\n")) {
-            if (finalOld.contains("\n") && !finalOld.contains("\r\n")) finalOld = finalOld.replace("\n", "\r\n");
-            if (finalNew.contains("\n") && !finalNew.contains("\r\n")) finalNew = finalNew.replace("\n", "\r\n");
+        try {
+            String newContent = applyEditLogic(content, oldStr, newStr, false);
+            undoHistory.put(path, content);
+            Files.write(target, newContent.getBytes(fileCharset));
+            return "文件成功修改: " + path;
+        } catch (IllegalArgumentException e) {
+            return "错误：" + e.getMessage();
+        }
+    }
+
+    @ToolMapping(
+            name = "multiedit",
+            description = "在单次操作中对单个文件进行多次批量编辑。相比多次调用 edit，此工具效率更高且具有原子性。"
+    )
+    public String multiedit(@Param(value = "path", description = "文件相对路径。禁止以 ./ 开头。") String path,
+                            @Param(value = "edits", description = "编辑操作列表，每个包含 old_str, new_str, 以及可选的 replace_all。") List<EditOp> edits,
+                            String __cwd) throws IOException {
+        Path rootPath = getRootPath(__cwd);
+        Path target = resolveSafePath(rootPath, path, true);
+
+        if (!Files.exists(target)) {
+            return "错误：文件不存在，无法进行多重编辑。";
         }
 
-        int firstIndex = content.indexOf(finalOld);
-        if (firstIndex == -1) return "错误：找不到文本块。请确保 old_str 的缩进和换行与 read 的输出完全一致。";
-        if (content.lastIndexOf(finalOld) != firstIndex) return "错误：文本块在文件中不唯一，请增加上下文行。";
+        String originalContent = new String(Files.readAllBytes(target), fileCharset);
+        String workingContent = originalContent;
 
-        undoHistory.put(path, content);
-        String newContent = content.substring(0, firstIndex) + finalNew + content.substring(firstIndex + finalOld.length());
-        Files.write(target, newContent.getBytes(fileCharset));
-        return "文件成功修改: " + path;
+        // 顺序应用所有编辑
+        for (int i = 0; i < edits.size(); i++) {
+            EditOp edit = edits.get(i);
+
+            try {
+                workingContent = applyEditLogic(workingContent, edit.oldStr, edit.newStr, edit.replaceAll);
+            } catch (IllegalArgumentException e) {
+                return String.format("第 %d 个编辑操作失败: %s。所有更改已回滚。", i + 1, e.getMessage());
+            }
+        }
+
+        // 原子性保存：只有全部成功才写入文件并记录历史
+        undoHistory.put(path, originalContent);
+        Files.write(target, workingContent.getBytes(fileCharset));
+
+        return String.format("文件 %s 成功完成 %d 处修改。", path, edits.size());
     }
 
     @ToolMapping(name = "undo", description = "撤销最后一次对特定文件的 write 或 edit 操作。")
@@ -355,6 +385,41 @@ public class TerminalSkill extends AbsSkill {
 
     // --- 内部逻辑逻辑 ---
 
+    /**
+     * 核心编辑逻辑抽取（供 edit 和 multiedit 复用）
+     */
+    private String applyEditLogic(String content, String oldStr, String newStr, boolean replaceAll) {
+        if (oldStr == null || newStr == null) {
+            throw new IllegalArgumentException("old_str 和 new_str 不能为空");
+        }
+
+        if (oldStr.equals(newStr)) {
+            throw new IllegalArgumentException("old_str 与 new_str 不能相同");
+        }
+
+        String finalOld = oldStr, finalNew = newStr;
+        // 自动适配换行符
+        if (content.contains("\r\n")) {
+            if (finalOld.contains("\n") && !finalOld.contains("\r\n")) finalOld = finalOld.replace("\n", "\r\n");
+            if (finalNew.contains("\n") && !finalNew.contains("\r\n")) finalNew = finalNew.replace("\n", "\r\n");
+        }
+
+        if (replaceAll) {
+            if (!content.contains(finalOld)) {
+                throw new IllegalArgumentException("找不到待替换的文本块");
+            }
+            return content.replace(finalOld, finalNew);
+        } else {
+            int firstIndex = content.indexOf(finalOld);
+            if (firstIndex == -1) {
+                throw new IllegalArgumentException("找不到文本块。请确保 old_str 的缩进和换行完全一致");
+            }
+            if (content.lastIndexOf(finalOld) != firstIndex) {
+                throw new IllegalArgumentException("文本块在文件中不唯一，请增加上下文行");
+            }
+            return content.substring(0, firstIndex) + finalNew + content.substring(firstIndex + finalOld.length());
+        }
+    }
 
     private Path getRootPath(String __cwd) {
         String path = (__cwd != null) ? __cwd : workDir;
@@ -545,18 +610,20 @@ public class TerminalSkill extends AbsSkill {
         return false;
     }
 
-    private Path resolvePath(Path rootPath, String pathStr) {
-        String cleanPath = (pathStr != null && pathStr.startsWith("./")) ? pathStr.substring(2) : pathStr;
-        Path p = rootPath.resolve(cleanPath).normalize();
-        if (!p.startsWith(rootPath)) throw new SecurityException("权限拒绝：路径越界。");
-        return p;
-    }
-
     private static String probeUnixShell() {
         try {
             return Runtime.getRuntime().exec("bash --version").waitFor() == 0 ? "bash" : "/bin/sh";
         } catch (Exception e) {
             return "/bin/sh";
         }
+    }
+
+    public static class EditOp {
+        @Param(value = "old_str", description = "待替换的唯一文本块。必须唯一且包含精确缩进。")
+        public String oldStr;
+        @Param(value = "new_str", description = "替换后的新内容")
+        public String newStr;
+        @Param(value = "replace_all", required = false, description = "是否替换所有匹配项")
+        public Boolean replaceAll = false; // 赋默认值
     }
 }

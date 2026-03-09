@@ -17,6 +17,7 @@ solon.code.cli:
 
   hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
   subagentEnabled: true # 是否启用子代理模式
+  browserEnabled: true # 是否启用浏览器功能（比如去淘宝买东西）
 
   cliEnabled: true # 是否启用控制台
   cliPrintSimplified: true
