@@ -75,6 +75,7 @@ async function sendMessage(messageText: string) {
     let assistantMessage: Message | null = null;
     let currentMessageId: number | null = null;
     let accumulatedReason = '';
+    let accumulatedAction = '';
     let currentAction = { content: '', toolName: '', args: null as any };
 
     if (reader) {
@@ -121,23 +122,43 @@ async function sendMessage(messageText: string) {
                       role: 'assistant',
                       content: '',
                       timestamp: new Date().toLocaleTimeString(),
-                      reasonContent: text,
-                      showReason: true
+                      reasonContent: text
                     };
                     messages.value.push(assistantMessage);
                   } else {
                     const existingMsg = messages.value.find(m => m.id === currentMessageId);
                     if (existingMsg) {
                       existingMsg.reasonContent = accumulatedReason;
-                      existingMsg.showReason = true;
                       await chatMessagesRef.value?.scrollToBottom();
                     }
                   }
                   await chatMessagesRef.value?.scrollToBottom();
                 } else if (type === 'action') {
-                  currentAction.content += text;
+                  accumulatedAction += text;
                   if (data.toolName) currentAction.toolName = data.toolName;
                   if (data.args) currentAction.args = data.args;
+                  if (currentMessageId === null) {
+                    currentMessageId = Date.now() + Math.floor(Math.random() * 1000);
+                    assistantMessage = {
+                      id: currentMessageId,
+                      role: 'assistant',
+                      content: '',
+                      timestamp: new Date().toLocaleTimeString(),
+                      actionContent: accumulatedAction,
+                      toolName: data.toolName,
+                      args: data.args
+                    };
+                    messages.value.push(assistantMessage);
+                  } else {
+                    const existingMsg = messages.value.find(m => m.id === currentMessageId);
+                    if (existingMsg) {
+                      existingMsg.actionContent = accumulatedAction;
+                      existingMsg.toolName = currentAction.toolName;
+                      existingMsg.args = currentAction.args;
+                      await chatMessagesRef.value?.scrollToBottom();
+                    }
+                  }
+                  await chatMessagesRef.value?.scrollToBottom();
                 } else if (type === 'agent') {
                   let role = 'assistant';
 
@@ -147,26 +168,29 @@ async function sendMessage(messageText: string) {
                       existingMsg.content += text;
                       existingMsg.toolName = currentAction.toolName || undefined;
                       existingMsg.args = currentAction.args;
-                      if (accumulatedReason && !existingMsg.reasonContent) {
-                        existingMsg.reasonContent = accumulatedReason;
-                        existingMsg.showReason = false;
-                      }
+                  if (accumulatedAction) {
+                    existingMsg.actionContent = accumulatedAction;
+                  }
+                  if (accumulatedReason) {
+                    existingMsg.reasonContent = accumulatedReason;
+                  }
                     } else {
                       currentMessageId = Date.now() + Math.floor(Math.random() * 1000);
-                      assistantMessage = {
-                        id: currentMessageId,
-                        role: role as any,
-                        content: text,
-                        timestamp: new Date().toLocaleTimeString(),
-                        reasonContent: accumulatedReason || undefined,
-                        showReason: false,
-                        toolName: currentAction.toolName || undefined,
-                        args: currentAction.args
-                      };
-                      messages.value.push(assistantMessage);
-                      accumulatedReason = '';
-                      currentAction = { content: '', toolName: '', args: null };
-                    }
+                    assistantMessage = {
+                      id: currentMessageId,
+                      role: role as any,
+                      content: text,
+                      timestamp: new Date().toLocaleTimeString(),
+                      reasonContent: accumulatedReason || undefined,
+                      actionContent: accumulatedAction || undefined,
+                      toolName: currentAction.toolName || undefined,
+                      args: currentAction.args
+                    };
+                    messages.value.push(assistantMessage);
+                    accumulatedReason = '';
+                    accumulatedAction = '';
+                    currentAction = { content: '', toolName: '', args: null };
+                  }
                   } else {
                     currentMessageId = Date.now() + Math.floor(Math.random() * 1000);
                     assistantMessage = {
@@ -175,12 +199,13 @@ async function sendMessage(messageText: string) {
                       content: text,
                       timestamp: new Date().toLocaleTimeString(),
                       reasonContent: accumulatedReason || undefined,
-                      showReason: false,
+                      actionContent: accumulatedAction || undefined,
                       toolName: currentAction.toolName || undefined,
                       args: currentAction.args
                     };
                     messages.value.push(assistantMessage);
                     accumulatedReason = '';
+                    accumulatedAction = '';
                     currentAction = { content: '', toolName: '', args: null };
                   }
                   await chatMessagesRef.value?.scrollToBottom();
@@ -194,6 +219,7 @@ async function sendMessage(messageText: string) {
                   };
                   messages.value.push(assistantMessage);
                   accumulatedReason = '';
+                  accumulatedAction = '';
                   await chatMessagesRef.value?.scrollToBottom();
                 }
               }

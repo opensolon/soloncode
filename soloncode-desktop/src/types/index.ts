@@ -8,7 +8,7 @@ export interface Message {
   toolName?: string;
   args?: any;
   reasonContent?: string;
-  showReason?: boolean;
+  actionContent?: string;
 }
 
 export interface Conversation {

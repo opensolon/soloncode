@@ -39,10 +39,6 @@ function getRoleLabel(role: string): string {
   return labels[role] || role;
 }
 
-function toggleReason(message: Message) {
-  message.showReason = !message.showReason;
-}
-
 defineExpose({
   scrollToBottom
 });
@@ -65,18 +61,17 @@ defineExpose({
             <span class="message-role">{{ getRoleLabel(message.role) }}</span>
             <span v-if="message.toolName" class="message-tool">🔧 {{ message.toolName }}</span>
           </div>
-          <div v-if="message.reasonContent" class="message-reason">
-            <div class="reason-toggle" @click="toggleReason(message)">
-              <span>💭 思考</span>
-              <span class="toggle-icon">{{ message.showReason ? '▼' : '▶' }}</span>
-            </div>
-            <div v-if="message.showReason" class="reason-content">
+          <div class="message-text">
+            <div v-if="message.reasonContent" class="message-reason">
               {{ message.reasonContent }}
             </div>
-          </div>
-          <div class="message-text">{{ message.content }}</div>
-          <div v-if="message.args" class="message-args">
-            <pre>{{ JSON.stringify(message.args, null, 2) }}</pre>
+            <div v-if="message.actionContent" class="message-action">
+              {{ message.actionContent }}
+            </div>
+            <div v-if="message.content" class="content-text">{{ message.content }}</div>
+            <div v-if="message.args" class="message-args">
+              <pre>{{ JSON.stringify(message.args, null, 2) }}</pre>
+            </div>
           </div>
           <div class="message-time">{{ message.timestamp }}</div>
         </div>
@@ -170,7 +165,7 @@ defineExpose({
 .message-args {
   margin-top: 8px;
   padding: 8px;
-  background-color: var(--cb-vscode-input-background);
+  background-color: var(--cb-vscode-sideBar-background);
   border-radius: 6px;
   font-size: 12px;
   overflow-x: auto;
@@ -183,41 +178,52 @@ defineExpose({
   color: var(--cb-text-secondary);
 }
 
-.message-reason {
-  margin-bottom: 8px;
+.message-text {
+  padding: 0;
+  border-radius: 0;
+  background-color: transparent;
+  color: var(--cb-text-primary);
+  line-height: 1.6;
+  word-wrap: break-word;
+  transition: background-color 0.3s, color 0.3s;
 }
 
-.reason-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--cb-text-secondary);
-  padding: 4px 8px;
+.message.user .message-text {
+  background-color: var(--cb-accent);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+}
+
+.message.assistant .message-text {
   background-color: var(--cb-vscode-input-background);
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  padding: 12px 16px;
+  border-radius: 12px;
 }
 
-.reason-toggle:hover {
-  background-color: var(--cb-vscode-sideBar-background);
+.content-text {
+  padding: 4px 0;
 }
 
-.toggle-icon {
-  font-size: 10px;
-  transition: transform 0.2s;
+.message.user .content-text {
+  padding: 0;
 }
 
-.reason-content {
-  padding: 8px;
-  margin-top: 4px;
-  background-color: var(--cb-vscode-input-background);
-  border-radius: 4px;
-  font-size: 13px;
+.message-reason,
+.message-action {
+  padding: 4px 0;
   color: var(--cb-text-secondary);
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.message-args {
+  margin-top: 8px;
+  padding: 8px;
+  background-color: var(--cb-vscode-sideBar-background);
+  border-radius: 6px;
+  font-size: 12px;
+  overflow-x: auto;
 }
 
 .message-content {
@@ -251,21 +257,6 @@ defineExpose({
 
 .message.user .message-body {
   align-items: flex-end;
-}
-
-.message-text {
-  padding: 12px 16px;
-  border-radius: 12px;
-  background-color: var(--cb-vscode-input-background);
-  color: var(--cb-text-primary);
-  line-height: 1.6;
-  word-wrap: break-word;
-  transition: background-color 0.3s, color 0.3s;
-}
-
-.message.user .message-text {
-  background-color: var(--cb-accent);
-  color: white;
 }
 
 .message-time {
