@@ -1,5 +1,6 @@
 package org.noear.solon.bot.core;
 
+import com.microsoft.playwright.Playwright;
 import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
@@ -20,6 +21,7 @@ import org.noear.solon.bot.core.tool.WebsearchTool;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.mcp.client.McpProviders;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.ClassUtil;
 import org.noear.solon.core.util.IoUtil;
 import org.noear.solon.core.util.ResourceUtil;
 import org.noear.solon.lang.Preview;
@@ -143,7 +145,7 @@ public class AgentKernel {
         agentBuilder.defaultSkillAdd(codeSkill);
         agentBuilder.defaultSkillAdd(luceneSkill);
 
-        if(properties.isBrowserEnabled()) {
+        if(properties.isBrowserEnabled() && ClassUtil.hasClass(()-> Playwright.class)) {
             agentBuilder.defaultSkillAdd(new BrowserSkill());
         }
 
