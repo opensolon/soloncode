@@ -116,8 +116,8 @@ onMounted(() => {
 <template>
   <main class="main-content">
     <ChatHeader
-      :title="currentConversation.title"
-      :status="currentConversation.status"
+      :title="props.currentConversation.title"
+      :status="props.currentConversation.status"
       :theme="currentTheme"
       @toggle-theme="toggleTheme"
     />

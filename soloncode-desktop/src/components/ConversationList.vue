@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { type Conversation } from '../types';
 
 interface Props {
@@ -10,26 +11,58 @@ interface Emits {
   (e: 'select', conv: Conversation): void;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 defineEmits<Emits>();
+
+// 分离固定会话和普通会话
+const permanentConversations = computed(() =>
+  props.conversations.filter(conv => conv.isPermanent)
+);
+
+const regularConversations = computed(() =>
+  props.conversations.filter(conv => !conv.isPermanent)
+);
 </script>
 
 <template>
   <div class="conversation-list">
+    <!-- 固定会话按钮 -->
     <div
-      v-for="conv in conversations"
+      v-for="conv in permanentConversations"
       :key="conv.id"
-      class="conversation-item"
-      :class="{ active: conv.id === currentId, permanent: conv.isPermanent }"
+      class="conversation-item permanent"
+      :class="{ active: conv.id === props.currentId }"
       @click="$emit('select', conv)"
     >
       <div class="conversation-title">
         <span v-if="conv.icon" class="conversation-icon">{{ conv.icon }}</span>
         {{ conv.title }}
       </div>
-      <div class="conversation-time">{{ conv.timestamp }}</div>
     </div>
-    <div v-if="conversations.length === 0" class="empty-conversations">
+
+    <!-- 普通会话 -->
+    <div v-if="regularConversations.length > 0" class="conversations-section">
+      <div class="section-header">
+        <span class="section-title">会话</span>
+        <span class="section-count">{{ regularConversations.length }}</span>
+      </div>
+      <div
+        v-for="conv in regularConversations"
+        :key="conv.id"
+        class="conversation-item"
+        :class="{ active: conv.id === props.currentId }"
+        @click="$emit('select', conv)"
+      >
+        <div class="conversation-title">
+          <span v-if="conv.icon" class="conversation-icon">{{ conv.icon }}</span>
+          {{ conv.title }}
+        </div>
+        <div class="conversation-time">{{ conv.timestamp }}</div>
+      </div>
+    </div>
+
+    <!-- 空状态 -->
+    <div v-if="props.conversations.length === 0" class="empty-conversations">
       <span>暂无会话</span>
     </div>
   </div>
@@ -40,6 +73,38 @@ defineEmits<Emits>();
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conversations-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 16px;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cb-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-count {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  background-color: var(--cb-vscode-input-background);
+  padding: 2px 8px;
+  border-radius: 10px;
 }
 
 .conversation-item {
@@ -47,7 +112,6 @@ defineEmits<Emits>();
   border-radius: 6px;
   cursor: pointer;
   transition: background-color 0.2s;
-  margin-bottom: 4px;
 }
 
 .conversation-item:hover {
@@ -58,8 +122,45 @@ defineEmits<Emits>();
   background-color: var(--cb-vscode-list-activeSelectionBackground);
 }
 
+/* 固定会话按钮样式 */
 .conversation-item.permanent {
-  border-left: 3px solid var(--cb-accent);
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  transition: all 0.2s;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.conversation-item.permanent:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+  border-color: var(--cb-accent);
+}
+
+.conversation-item.permanent.active {
+  border-color: var(--cb-accent);
+  border-left-width: 3px;
+}
+
+.conversation-item.permanent .conversation-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cb-text-primary);
+  margin-bottom: 0;
+}
+
+.conversation-item.permanent .conversation-icon {
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .conversation-title {

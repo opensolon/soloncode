@@ -10,7 +10,7 @@ interface Emits {
   (e: 'toggle', pluginId: string): void;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 defineEmits<Emits>();
 </script>
 

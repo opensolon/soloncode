@@ -25,7 +25,7 @@ defineExpose({
 <template>
   <div class="chat-messages" ref="chatContainer">
     <div
-      v-for="message in messages"
+      v-for="message in props.messages"
       :key="message.id"
       class="message"
       :class="message.role"
@@ -42,7 +42,7 @@ defineExpose({
     </div>
 
     <!-- 加载指示器 -->
-    <div v-if="isLoading" class="message assistant loading">
+    <div v-if="props.isLoading" class="message assistant loading">
       <div class="message-content">
         <div class="message-avatar">🤖</div>
         <div class="message-body">

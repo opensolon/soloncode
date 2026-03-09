@@ -11,7 +11,7 @@ interface Emits {
   (e: 'toggle-theme'): void;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 defineEmits<Emits>();
 </script>
 

@@ -61,17 +61,11 @@ function handleTogglePluginPanel() {
     />
 
     <!-- 会话列表 -->
-    <div class="conversations-section">
-      <div class="section-header">
-        <span class="section-title">会话</span>
-        <span class="section-count">{{ conversations.length }}</span>
-      </div>
-      <ConversationList
-        :conversations="conversations"
-        :current-id="currentConversation.id"
-        @select="emit('select-conversation', $event)"
-      />
-    </div>
+    <ConversationList
+      :conversations="props.conversations"
+      :current-id="props.currentConversation.id"
+      @select="emit('select-conversation', $event)"
+    />
   </aside>
 </template>
 
@@ -127,37 +121,5 @@ function handleTogglePluginPanel() {
 .action-btn svg,
 .plugin-btn svg {
   flex-shrink: 0;
-}
-
-/* 会话列表区域 */
-.conversations-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px 8px;
-  border-bottom: 1px solid var(--cb-vscode-panel-border);
-}
-
-.section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--cb-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.section-count {
-  font-size: 12px;
-  color: var(--cb-text-secondary);
-  background-color: var(--cb-vscode-input-background);
-  padding: 2px 8px;
-  border-radius: 10px;
 }
 </style>
