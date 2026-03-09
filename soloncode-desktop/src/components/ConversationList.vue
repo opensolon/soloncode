@@ -25,8 +25,7 @@ const regularConversations = computed(() =>
 </script>
 
 <template>
-  <div class="conversation-list">
-    <!-- 固定会话按钮 -->
+   <!-- 固定会话按钮 -->
     <div
       v-for="conv in permanentConversations"
       :key="conv.id"
@@ -39,13 +38,13 @@ const regularConversations = computed(() =>
         {{ conv.title }}
       </div>
     </div>
-
+    <div class="section-header">
+       <span class="section-title">会话</span>
+       <span class="section-count">{{ regularConversations.length }}</span>
+    </div>
+  <div class="conversation-list">
     <!-- 普通会话 -->
     <div v-if="regularConversations.length > 0" class="conversations-section">
-      <div class="section-header">
-        <span class="section-title">会话</span>
-        <span class="section-count">{{ regularConversations.length }}</span>
-      </div>
       <div
         v-for="conv in regularConversations"
         :key="conv.id"
@@ -131,10 +130,9 @@ const regularConversations = computed(() =>
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 0;
+  margin: 10px;
   transition: all 0.2s;
   cursor: pointer;
-  width: 100%;
   box-sizing: border-box;
 }
 
@@ -144,8 +142,8 @@ const regularConversations = computed(() =>
 }
 
 .conversation-item.permanent.active {
+  background-color: var(--cb-vscode-list-hoverBackground);
   border-color: var(--cb-accent);
-  border-left-width: 3px;
 }
 
 .conversation-item.permanent .conversation-title {
