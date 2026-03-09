@@ -7,6 +7,8 @@ export interface Message {
   timestamp: string;
   toolName?: string;
   args?: any;
+  reasonContent?: string;
+  showReason?: boolean;
 }
 
 export interface Conversation {

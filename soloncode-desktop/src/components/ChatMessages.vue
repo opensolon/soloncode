@@ -39,6 +39,10 @@ function getRoleLabel(role: string): string {
   return labels[role] || role;
 }
 
+function toggleReason(message: Message) {
+  message.showReason = !message.showReason;
+}
+
 defineExpose({
   scrollToBottom
 });
@@ -53,13 +57,22 @@ defineExpose({
       :class="message.role"
     >
       <div class="message-content">
-        <div class="message-avatar">
+        <div v-if="message.role !== 'reason'" class="message-avatar">
           {{ getAvatar(message.role) }}
         </div>
         <div class="message-body">
           <div class="message-header">
             <span class="message-role">{{ getRoleLabel(message.role) }}</span>
             <span v-if="message.toolName" class="message-tool">🔧 {{ message.toolName }}</span>
+          </div>
+          <div v-if="message.reasonContent" class="message-reason">
+            <div class="reason-toggle" @click="toggleReason(message)">
+              <span>💭 思考</span>
+              <span class="toggle-icon">{{ message.showReason ? '▼' : '▶' }}</span>
+            </div>
+            <div v-if="message.showReason" class="reason-content">
+              {{ message.reasonContent }}
+            </div>
           </div>
           <div class="message-text">{{ message.content }}</div>
           <div v-if="message.args" class="message-args">
@@ -168,6 +181,43 @@ defineExpose({
   white-space: pre-wrap;
   word-wrap: break-word;
   color: var(--cb-text-secondary);
+}
+
+.message-reason {
+  margin-bottom: 8px;
+}
+
+.reason-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  padding: 4px 8px;
+  background-color: var(--cb-vscode-input-background);
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.reason-toggle:hover {
+  background-color: var(--cb-vscode-sideBar-background);
+}
+
+.toggle-icon {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.reason-content {
+  padding: 8px;
+  margin-top: 4px;
+  background-color: var(--cb-vscode-input-background);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--cb-text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .message-content {

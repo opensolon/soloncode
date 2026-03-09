@@ -73,6 +73,9 @@ async function sendMessage(messageText: string) {
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
     let assistantMessage: Message | null = null;
+    let currentMessageId: number | null = null;
+    let accumulatedReason = '';
+    let currentAction = { content: '', toolName: '', args: null as any };
 
     if (reader) {
       const assistantMsgId = Date.now() + 1;
@@ -108,46 +111,91 @@ async function sendMessage(messageText: string) {
               const type = data.type;
               const text = data.text || '';
 
-              if (type === 'reason') {
-                assistantMessage = {
-                  id: assistantMsgId,
-                  role: 'reason',
-                  content: text,
-                  timestamp: new Date().toLocaleTimeString()
-                };
-              } else if (type === 'action') {
-                assistantMessage = {
-                  id: assistantMsgId,
-                  role: 'action',
-                  content: text,
-                  timestamp: new Date().toLocaleTimeString(),
-                  toolName: data.toolName,
-                  args: data.args
-                };
-              } else if (type === 'agent') {
-                assistantMessage = {
-                  id: assistantMsgId,
-                  role: 'assistant',
-                  content: text,
-                  timestamp: new Date().toLocaleTimeString()
-                };
-              } else if (type === 'error') {
-                assistantMessage = {
-                  id: assistantMsgId,
-                  role: 'error',
-                  content: text,
-                  timestamp: new Date().toLocaleTimeString()
-                };
-              }
+              if (text) {
+                if (type === 'reason') {
+                  accumulatedReason += text;
+                  if (currentMessageId === null) {
+                    currentMessageId = Date.now() + Math.floor(Math.random() * 1000);
+                    assistantMessage = {
+                      id: currentMessageId,
+                      role: 'assistant',
+                      content: '',
+                      timestamp: new Date().toLocaleTimeString(),
+                      reasonContent: text,
+                      showReason: true
+                    };
+                    messages.value.push(assistantMessage);
+                  } else {
+                    const existingMsg = messages.value.find(m => m.id === currentMessageId);
+                    if (existingMsg) {
+                      existingMsg.reasonContent = accumulatedReason;
+                      existingMsg.showReason = true;
+                      await chatMessagesRef.value?.scrollToBottom();
+                    }
+                  }
+                  await chatMessagesRef.value?.scrollToBottom();
+                } else if (type === 'action') {
+                  currentAction.content += text;
+                  if (data.toolName) currentAction.toolName = data.toolName;
+                  if (data.args) currentAction.args = data.args;
+                } else if (type === 'agent') {
+                  let role = 'assistant';
 
-              if (assistantMessage && text) {
-                const existingIndex = messages.value.findIndex(m => m.id === assistantMsgId);
-                if (existingIndex !== -1) {
-                  messages.value[existingIndex] = assistantMessage;
-                } else {
+                  if (currentMessageId !== null) {
+                    const existingMsg = messages.value.find(m => m.id === currentMessageId);
+                    if (existingMsg && existingMsg.role === role) {
+                      existingMsg.content += text;
+                      existingMsg.toolName = currentAction.toolName || undefined;
+                      existingMsg.args = currentAction.args;
+                      if (accumulatedReason && !existingMsg.reasonContent) {
+                        existingMsg.reasonContent = accumulatedReason;
+                        existingMsg.showReason = false;
+                      }
+                    } else {
+                      currentMessageId = Date.now() + Math.floor(Math.random() * 1000);
+                      assistantMessage = {
+                        id: currentMessageId,
+                        role: role as any,
+                        content: text,
+                        timestamp: new Date().toLocaleTimeString(),
+                        reasonContent: accumulatedReason || undefined,
+                        showReason: false,
+                        toolName: currentAction.toolName || undefined,
+                        args: currentAction.args
+                      };
+                      messages.value.push(assistantMessage);
+                      accumulatedReason = '';
+                      currentAction = { content: '', toolName: '', args: null };
+                    }
+                  } else {
+                    currentMessageId = Date.now() + Math.floor(Math.random() * 1000);
+                    assistantMessage = {
+                      id: currentMessageId,
+                      role: role as any,
+                      content: text,
+                      timestamp: new Date().toLocaleTimeString(),
+                      reasonContent: accumulatedReason || undefined,
+                      showReason: false,
+                      toolName: currentAction.toolName || undefined,
+                      args: currentAction.args
+                    };
+                    messages.value.push(assistantMessage);
+                    accumulatedReason = '';
+                    currentAction = { content: '', toolName: '', args: null };
+                  }
+                  await chatMessagesRef.value?.scrollToBottom();
+                } else if (type === 'error') {
+                  currentMessageId = Date.now() + Math.floor(Math.random() * 1000);
+                  assistantMessage = {
+                    id: currentMessageId,
+                    role: 'error',
+                    content: text,
+                    timestamp: new Date().toLocaleTimeString()
+                  };
                   messages.value.push(assistantMessage);
+                  accumulatedReason = '';
+                  await chatMessagesRef.value?.scrollToBottom();
                 }
-                await chatMessagesRef.value?.scrollToBottom();
               }
             } catch (e) {
               console.warn('Failed to parse chunk:', line, e);
