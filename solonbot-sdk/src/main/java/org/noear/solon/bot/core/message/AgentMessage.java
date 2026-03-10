@@ -315,5 +315,16 @@ public class AgentMessage<T> {
         }
     }
 
-
+    @Override
+    public String toString() {
+        return "AgentMessage{" +
+                "id='" + id + '\'' +
+                ", from='" + from + '\'' +
+                ", to='" + to + '\'' +
+                ", type='" + type + '\'' +
+                ", content=" + content +
+                ", timestamp=" + timestamp +
+                ", metadata=" + metadata +
+                '}';
+    }
 }

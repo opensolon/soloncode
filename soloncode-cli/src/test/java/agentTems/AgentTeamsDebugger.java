@@ -16,10 +16,12 @@
 package agentTems;
 
 import lombok.extern.slf4j.Slf4j;
+import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.memory.*;
 import org.noear.solon.bot.core.event.*;
 import org.noear.solon.bot.core.message.*;
 
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -77,7 +79,7 @@ public class AgentTeamsDebugger {
         System.out.println("-----------------------------------");
 
         // 创建管理器
-        SharedMemoryManager manager = new SharedMemoryManager(TEST_WORK_DIR);
+        SharedMemoryManager manager = new SharedMemoryManager(Paths.get(TEST_WORK_DIR, AgentKernel.SOLONCODE_MEMORY));
 
         // 1.1 存储短期记忆
         System.out.print("1. 存储短期记忆... ");
@@ -151,6 +153,7 @@ public class AgentTeamsDebugger {
         CompletableFuture<String> future1 = new CompletableFuture<>();
         bus.subscribe("test.event", event -> {
             future1.complete((String) event.getPayload());
+            System.out.println("接收到事件: " + event);
             return CompletableFuture.completedFuture(EventHandler.Result.success());
         });
 
@@ -170,6 +173,7 @@ public class AgentTeamsDebugger {
         CompletableFuture<String> future2 = new CompletableFuture<>();
         bus.subscribe("task.*", event -> {
             future2.complete(event.getEventTypeCode());
+            System.out.println("接收到事件: " + event);
             return CompletableFuture.completedFuture(EventHandler.Result.success());
         });
 
@@ -218,6 +222,7 @@ public class AgentTeamsDebugger {
         String handlerId = channel.registerHandler("receiver", new MessageHandler() {
             @Override
             public <T> CompletableFuture<Object> handle(AgentMessage<T> message) {
+                System.out.println("收到消息: " + message);
                 return CompletableFuture.completedFuture("ACK");
             }
         });

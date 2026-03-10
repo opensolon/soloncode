@@ -34,6 +34,17 @@ public class KnowledgeMemory extends Memory {
     private List<String> keywords; // 关键词
 
     /**
+     * 无参构造函数（用于反序列化）
+     */
+    public KnowledgeMemory() {
+        super(MemoryType.KNOWLEDGE, -1);
+        this.subject = "";
+        this.content = "";
+        this.category = "";
+        this.keywords = new ArrayList<>();
+    }
+
+    /**
      * 构造函数
      *
      * @param subject 主题

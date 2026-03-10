@@ -34,6 +34,17 @@ public class LongTermMemory extends Memory {
     private double importance;   // 重要性评分 (0.0-1.0)
 
     /**
+     * 无参构造函数（用于反序列化）
+     */
+    public LongTermMemory() {
+        super(MemoryType.LONG_TERM, 7 * 24 * 3600_000L);
+        this.summary = "";
+        this.sourceAgent = "";
+        this.tags = new ArrayList<>();
+        this.importance = 0.5;
+    }
+
+    /**
      * 构造函数
      *
      * @param summary 摘要内容

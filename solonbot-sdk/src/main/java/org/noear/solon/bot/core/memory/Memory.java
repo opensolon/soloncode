@@ -19,6 +19,7 @@ package org.noear.solon.bot.core.memory;
 
 import java.util.Map;
 import java.util.HashMap;
+import java.util.UUID;
 
 /**
  * 记忆基类
@@ -33,7 +34,22 @@ public abstract class Memory  {
     protected long ttl; // Time to live (毫秒)
     protected Map<String, Object> metadata;
 
+    /**
+     * 无参构造函数（用于反序列化）
+     */
+    public Memory() {
+        this.id = UUID.randomUUID().toString();
+        this.type = MemoryType.WORKING;
+        this.ttl = -1;
+        this.timestamp = System.currentTimeMillis();
+        this.metadata = new HashMap<>();
+    }
+
+    /**
+     * 构造函数
+     */
     public Memory(MemoryType type, long ttl) {
+        id = UUID.randomUUID().toString();
         this.type = type;
         this.ttl = ttl;
         this.timestamp = System.currentTimeMillis();

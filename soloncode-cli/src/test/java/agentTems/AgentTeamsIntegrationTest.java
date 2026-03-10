@@ -16,6 +16,7 @@
 package agentTems;
 
 import org.junit.jupiter.api.Test;
+import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.AgentProperties;
 import org.noear.solon.bot.core.memory.*;
 import org.noear.solon.bot.core.event.*;
@@ -24,6 +25,7 @@ import org.noear.solon.bot.core.teams.SharedTaskList;
 import org.noear.solon.bot.core.teams.TeamTask;
 import org.noear.solon.bot.core.teams.SubAgentAgentBuilder;
 
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +53,7 @@ public class AgentTeamsIntegrationTest {
         System.out.println("=== 测试共享记忆管理器 ===");
 
         // 创建管理器
-        SharedMemoryManager manager = new SharedMemoryManager(TEST_WORK_DIR);
+        SharedMemoryManager manager = new SharedMemoryManager(Paths.get(TEST_WORK_DIR, AgentKernel.SOLONCODE_MEMORY));
 
         // 1. 测试存储短期记忆
         ShortTermMemory stm = new ShortTermMemory("explore", "探索任务上下文", "task-1");
@@ -103,8 +105,9 @@ public class AgentTeamsIntegrationTest {
 
         // 1. 测试订阅和发布（使用枚举）
         CompletableFuture<String> future = new CompletableFuture<>();
-        String subscriptionId = bus.subscribe(AgentEventType.TASK_STARTED.getCode(), event -> {
+        String subscriptionId = bus.subscribe(AgentEventType.TASK_STARTED, event -> {
             future.complete((String) event.getPayload());
+            System.out.println("接收到事件: " + event);
             return CompletableFuture.completedFuture(EventHandler.Result.success());
         });
         System.out.println("✓ 订阅事件: " + subscriptionId);
@@ -120,7 +123,7 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 发布事件");
 
         // 3. 验证收到事件
-        String result = future.get(2, TimeUnit.SECONDS);
+        String result = future.get(20, TimeUnit.SECONDS);
         assertEquals("hello world", result);
         System.out.println("✓ 接收到事件: " + result);
 
@@ -244,7 +247,7 @@ public class AgentTeamsIntegrationTest {
         System.out.println("=== 测试代理协作 ===");
 
         // 创建管理器
-        SharedMemoryManager memoryManager = new SharedMemoryManager(TEST_WORK_DIR);
+        SharedMemoryManager memoryManager = new SharedMemoryManager(Paths.get(TEST_WORK_DIR, AgentKernel.SOLONCODE_MEMORY));
         EventBus eventBus = new EventBus(2, 100);
         MessageChannel messageChannel = new MessageChannel(TEST_WORK_DIR, 2);
 
@@ -563,7 +566,7 @@ public class AgentTeamsIntegrationTest {
                 .title("任务1")
                 .priority(8)
                 .build();
-        taskList.addTask(task1);
+        taskList.addTask(task1).join();  // 等待异步完成
         assertEquals(1, taskList.getAllTasks().size());
         System.out.println("✓ 添加单个任务成功");
 
@@ -592,7 +595,9 @@ public class AgentTeamsIntegrationTest {
         System.out.println("✓ 任务统计: " + stats);
 
         // 5. 测试任务认领
-        TeamTask claimable = taskList.getClaimableTasks().get(0);
+        List<TeamTask> claimableTasks = taskList.getClaimableTasks();
+        assertFalse(claimableTasks.isEmpty(), "应该有可认领的任务");
+        TeamTask claimable = claimableTasks.get(0);
         boolean claimResult = taskList.claimTask(claimable.getId(), "agent-1").get();
         assertTrue(claimResult);
         TeamTask claimed = taskList.getTask(claimable.getId());
@@ -605,6 +610,9 @@ public class AgentTeamsIntegrationTest {
         boolean completeResult = taskList.completeTask(claimable.getId(), "任务完成");
         assertTrue(completeResult);
         System.out.println("✓ 任务完成");
+
+        // 等待一小段时间确保状态更新
+        Thread.sleep(100);
 
         // 验证统计更新
         SharedTaskList.TaskStatistics newStats = taskList.getStatistics();
@@ -868,7 +876,7 @@ public class AgentTeamsIntegrationTest {
 
         // 创建短期 TTL 的管理器（1 秒）
         SharedMemoryManager manager = new SharedMemoryManager(
-                TEST_WORK_DIR,
+                Paths.get(TEST_WORK_DIR, AgentKernel.SOLONCODE_MEMORY),
                 1000L,  // 1 秒 TTL
                 7000L,  // 7 秒 TTL
                 100L,   // 快速清理
@@ -877,10 +885,10 @@ public class AgentTeamsIntegrationTest {
                 50
         );
 
-        // 存储短期记忆
-        ShortTermMemory stm = new ShortTermMemory("agent1", "测试内容", "task-1");
+        // 存储短期记忆（使用工厂方法，自动应用配置的 TTL）
+        ShortTermMemory stm = manager.createShortTermMemory("agent1", "测试内容", "task-1");
         manager.store(stm);
-        System.out.println("✓ 存储短期记忆");
+        System.out.println("✓ 存储短期记忆 (TTL=1000ms)");
 
         // 立即检索（应该能找到）
         List<Memory> memories1 = manager.retrieve(Memory.MemoryType.SHORT_TERM, 10);

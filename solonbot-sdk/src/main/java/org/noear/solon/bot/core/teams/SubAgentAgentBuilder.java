@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.PoolManager;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.message.MessageChannel;
@@ -29,6 +30,7 @@ import org.noear.solon.bot.core.subagent.SubagentManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -205,7 +207,7 @@ public class SubAgentAgentBuilder {
      */
     private SharedMemoryManager createSharedMemoryManager() {
         LOG.info("创建默认 SharedMemoryManager");
-        return new SharedMemoryManager(workDir);
+        return new SharedMemoryManager(Paths.get(workDir, AgentKernel.SOLONCODE_MEMORY));
     }
 
     /**

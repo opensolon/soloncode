@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * 团队任务（Team Task）
- *
+ * <p>
  * Agent Teams 中的任务对象，支持：
  * - 任务分配和认领
  * - 优先级管理
@@ -47,12 +47,16 @@ import java.util.concurrent.CompletableFuture;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TeamTask {
-    private String id;                      // 任务ID
+
+    @Builder.Default
+    private String id = UUID.randomUUID().toString();                  // 任务ID
     private String title;                          // 任务标题
     private String description;                    // 详细描述
-    private int priority;                         // 优先级（1-10，10最高）
-    private Status status;                         // 任务状态
-    private TaskType type;                         // 任务类型
+    private int priority;  // 优先级（1-10，10最高）
+    @Builder.Default
+    private Status status = Status.PENDING;
+    @Builder.Default// 任务状态
+    private TaskType type = TaskType.DEVELOPMENT;                       // 任务类型
 
     // 认领信息
     private String claimedBy;                       // 认领者 Agent ID
@@ -98,7 +102,6 @@ public class TeamTask {
      * @param title 任务标题
      */
     public TeamTask(String title) {
-        this.id = UUID.randomUUID().toString();
         this.title = title;
         this.priority = 5;
         this.status = Status.PENDING;
@@ -110,7 +113,7 @@ public class TeamTask {
     /**
      * 双参数构造函数
      *
-     * @param id 任务ID
+     * @param id    任务ID
      * @param title 任务标题
      */
     public TeamTask(String id, String title) {
@@ -217,11 +220,11 @@ public class TeamTask {
      * 递归检查依赖任务是否完成（检测循环依赖）
      *
      * @param taskLookup 任务查找函数
-     * @param visiting 正在访问的任务集合（用于检测循环）
+     * @param visiting   正在访问的任务集合（用于检测循环）
      * @return 是否所有依赖都已完成
      */
     private boolean areAllDependenciesCompleted(java.util.function.Function<String, TeamTask> taskLookup,
-                                                  java.util.Set<String> visiting) {
+                                                java.util.Set<String> visiting) {
         // 检测循环依赖
         if (visiting.contains(this.id)) {
             throw new IllegalStateException("检测到循环依赖: 任务 " + this.id + " (" + this.title + ")");
@@ -280,14 +283,14 @@ public class TeamTask {
      * 递归构建依赖树
      */
     private void buildDependencyTree(java.util.function.Function<String, TeamTask> taskLookup,
-                                      TeamTask task,
-                                      String prefix,
-                                      java.util.Set<String> visited,
-                                      StringBuilder sb) {
+                                     TeamTask task,
+                                     String prefix,
+                                     java.util.Set<String> visited,
+                                     StringBuilder sb) {
         // 防止重复访问（循环依赖检测）
         if (visited.contains(task.getId())) {
             sb.append(prefix).append("└── [⚠️ 循环依赖] ").append(task.getTitle())
-              .append(" (").append(task.getId()).append(")\n");
+                    .append(" (").append(task.getId()).append(")\n");
             return;
         }
 
@@ -297,7 +300,7 @@ public class TeamTask {
         if (!task.getId().equals(this.id)) {
             String statusIcon = getStatusIcon(task.getStatus());
             sb.append(prefix).append("└── ").append(statusIcon).append(" ").append(task.getTitle())
-              .append(" (").append(task.getId()).append(")\n");
+                    .append(" (").append(task.getId()).append(")\n");
         }
 
         // 递归输出依赖
@@ -329,22 +332,34 @@ public class TeamTask {
         if (useEmoji) {
             // Emoji 模式（默认，需要 UTF-8 支持）
             switch (status) {
-                case PENDING: return "⏳";
-                case IN_PROGRESS: return "🔄";
-                case COMPLETED: return "✅";
-                case FAILED: return "❌";
-                case CANCELLED: return "🚫";
-                default: return "❓";
+                case PENDING:
+                    return "⏳";
+                case IN_PROGRESS:
+                    return "🔄";
+                case COMPLETED:
+                    return "✅";
+                case FAILED:
+                    return "❌";
+                case CANCELLED:
+                    return "🚫";
+                default:
+                    return "❓";
             }
         } else {
             // ASCII 模式（兼容旧系统/Windows CMD）
             switch (status) {
-                case PENDING: return "[WAIT]";
-                case IN_PROGRESS: return "[DOING]";
-                case COMPLETED: return "[DONE]";
-                case FAILED: return "[FAIL]";
-                case CANCELLED: return "[CANCEL]";
-                default: return "[???]";
+                case PENDING:
+                    return "[WAIT]";
+                case IN_PROGRESS:
+                    return "[DOING]";
+                case COMPLETED:
+                    return "[DONE]";
+                case FAILED:
+                    return "[FAIL]";
+                case CANCELLED:
+                    return "[CANCEL]";
+                default:
+                    return "[???]";
             }
         }
     }
@@ -383,9 +398,9 @@ public class TeamTask {
      * 递归收集所有依赖ID
      */
     private void collectAllDependencies(java.util.function.Function<String, TeamTask> taskLookup,
-                                         TeamTask task,
-                                         Set<String> result,
-                                         Set<String> visited) {
+                                        TeamTask task,
+                                        Set<String> result,
+                                        Set<String> visited) {
         // 防止循环依赖导致无限递归
         if (visited.contains(task.getId())) {
             return;
@@ -417,7 +432,7 @@ public class TeamTask {
         return 0;
     }
 
-    public static TeamTask.TeamTaskBuilder of(String title){
+    public static TeamTask.TeamTaskBuilder of(String title) {
         return TeamTask.builder().title(title);
     }
 

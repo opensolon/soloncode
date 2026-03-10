@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -67,14 +68,14 @@ public class SharedMemoryManager {
     /**
      * 构造函数（使用默认配置）
      */
-    public SharedMemoryManager(String workDir) {
-        this(workDir, 3600_000L, 7 * 24 * 3600_000L, 300_000L, true, 1000, 500);
+    public SharedMemoryManager(Path path) {
+        this(path, 3600_000L, 7 * 24 * 3600_000L, 300_000L, true, 1000, 500);
     }
 
     /**
      * 完整构造函数
      *
-     * @param workDir 工作目录
+     * @param path 路径
      * @param shortTermTtl 短期记忆TTL（毫秒）
      * @param longTermTtl 长期记忆TTL（毫秒）
      * @param cleanupInterval 清理间隔（毫秒）
@@ -82,14 +83,14 @@ public class SharedMemoryManager {
      * @param maxShortTermCount 短期记忆最大数量
      * @param maxLongTermCount 长期记忆最大数量
      */
-    public SharedMemoryManager(String workDir,
+    public SharedMemoryManager(Path path,
                                long shortTermTtl,
                                long longTermTtl,
                                long cleanupInterval,
                                boolean persistOnWrite,
                                int maxShortTermCount,
                                int maxLongTermCount) {
-        this.memoryStore = new MemoryStore(workDir);
+        this.memoryStore = new MemoryStore(path.toAbsolutePath().toString());
         this.shortTermTtl = shortTermTtl;
         this.longTermTtl = longTermTtl;
         this.cleanupInterval = cleanupInterval;
@@ -143,11 +144,6 @@ public class SharedMemoryManager {
         // 工作记忆特殊处理（不持久化）
         if (memory instanceof WorkingMemory) {
             storeWorking((WorkingMemory) memory);
-            return;
-        }
-
-        // 自动分配ID
-        if (memory == null) {
             return;
         }
 

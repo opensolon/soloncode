@@ -53,12 +53,12 @@ public class AgentKernel {
     public final static String SOLONCODE_SKILLS = ".soloncode/skills/";
     public final static String SOLONCODE_AGENTS = ".soloncode/agents/";
     public final static String SOLONCODE_DOWNLOADS = ".soloncode/downloads/";
+    public final static String SOLONCODE_MEMORY = ".soloncode/memory/";
 
     public final static String OPENCODE_SKILLS = ".opencode/skills/";
     public final static String OPENCODE_AGENTS = ".opencode/agents/";
     public final static String CLAUDE_SKILLS = ".claude/skills/";
     public final static String CLAUDE_AGENTS = ".claude/agents/";
-
 
     private final ChatModel chatModel;
     private final AgentSessionProvider sessionProvider;

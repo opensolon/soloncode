@@ -30,6 +30,16 @@ public class ShortTermMemory extends Memory {
     private String taskId;       // 关联任务ID
 
     /**
+     * 无参构造函数（用于反序列化）
+     */
+    public ShortTermMemory() {
+        super(MemoryType.SHORT_TERM, 3600_000L);
+        this.agentId = "";
+        this.context = "";
+        this.taskId = "";
+    }
+
+    /**
      * 构造函数
      *
      * @param agentId 创建者代理ID

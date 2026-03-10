@@ -40,7 +40,7 @@ public class AgentEvent {
     public AgentEvent(AgentEventType eventType, Object payload, EventMetadata metadata) {
         this.eventId = UUID.randomUUID().toString();
         this.eventType = eventType;
-        this.customEventTypeCode = null;
+        this.customEventTypeCode = eventType.getCode();
         this.payload = payload;
         this.metadata = metadata;
         this.timestamp = System.currentTimeMillis();
