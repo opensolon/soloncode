@@ -1,0 +1,43 @@
+<assembly>
+    <id>release</id>
+    <formats>
+        <format>tar.gz</format>
+    </formats>
+
+    <baseDirectory>soloncode-cli</baseDirectory>
+
+    <fileSets>
+
+        <!-- soloncode-cli -->
+        <fileSet>
+            <directory>${project.build.directory}</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>soloncode-cli.jar</include>
+            </includes>
+        </fileSet>
+
+        <!-- bin -->
+        <fileSet>
+            <directory>${project.basedir}/../bin</directory>
+            <outputDirectory>.</outputDirectory>
+            <fileMode>0755</fileMode>
+            <includes>
+                <include>*.sh</include>
+                <include>*.cmd</include>
+            </includes>
+        </fileSet>
+
+        <!-- config -->
+        <fileSet>
+            <directory>${project.basedir}/../bin</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>AGENTS.md</include>
+                <include>config.yml</include>
+                <include>README.md</include>
+            </includes>
+        </fileSet>
+
+    </fileSets>
+</assembly>
