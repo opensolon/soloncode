@@ -1,4 +1,11 @@
 
+### v0.0.22
+
+* 添加 KeyInfoExtractionStrategy 处理
+* 添加 summaryMaxLength 配置
+* 调整 summaryWindowSize 配置，更名为 summaryTriggerSize（更合理，与 summaryMaxLength 配套）
+* 优化 TaskSkill 子代理引导指令
+
 ### v0.0.21
 
 * 优化 浏览器能力（不需要下载了，改用系统浏览器的能力）

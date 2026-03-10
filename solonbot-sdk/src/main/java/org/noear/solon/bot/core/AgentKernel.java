@@ -9,6 +9,7 @@ import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
+import org.noear.solon.ai.agent.react.intercept.SummarizationStrategy;
 import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -81,6 +82,8 @@ public class AgentKernel {
     private final Consumer<ReActAgent.Builder> configurator;
     private final CliSkillProvider cliSkills = new CliSkillProvider();
 
+    private final SummarizationInterceptor summarizationInterceptor;
+
     private SubagentManager subagentManager;
 
     public String getVersion() {
@@ -93,6 +96,10 @@ public class AgentKernel {
 
     public AgentProperties getProps() {
         return properties;
+    }
+
+    public SummarizationInterceptor getSummarizationInterceptor() {
+        return summarizationInterceptor;
     }
 
     public AgentKernel(ChatModel chatModel, AgentProperties properties, AgentSessionProvider sessionProvider, Consumer<ReActAgent.Builder> configurator) {
@@ -185,9 +192,14 @@ public class AgentKernel {
         }
 
         //上下文摘要
-        SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(
-                properties.getSummaryWindowSize(),
-                new HierarchicalSummarizationStrategy(chatModel));
+        SummarizationStrategy strategy = new CompositeSummarizationStrategy()
+                .addStrategy(new KeyInfoExtractionStrategy(chatModel))      // 提取干货（去水）
+                .addStrategy(new HierarchicalSummarizationStrategy(chatModel)); // 滚动更新摘要
+
+        summarizationInterceptor = new SummarizationInterceptor(
+                properties.getSummaryTriggerSize(),
+                properties.getSummaryMaxLength(),
+                strategy);
 
         agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
 

@@ -61,22 +61,34 @@ public class TaskSkill extends AbsSkill {
     @Override
     public String getInstruction(Prompt prompt) {
         StringBuilder sb = new StringBuilder();
-        sb.append("## 战略调度协议 (Orchestration Protocol)\n");
-        sb.append("你拥有派生专项子代理的能力。对于重型或涉及全局认知的任务，你必须扮演【调度员】而非【执行者】。\n\n");
+        sb.append("启动一个新的代理（Agent）来自主处理复杂的、多步骤的任务。\n\n");
 
-        sb.append("### 强制委派准则\n");
-        sb.append("- **项目认知**: 凡是涉及“探索项目”、“分析架构”、“查找核心入口”等需要阅读多个文件或理解代码库的任务，必须委派给子代理。\n");
-        sb.append("- **复杂变更**: 涉及跨文件的代码修复、重构或需要运行测试验证的任务，必须委派给子代理。\n");
-        sb.append("- **决策量化**: 预感需要连续调用超过 3 次原子工具（如 grep, read_file）时，必须改用子代理以节省主对话上下文。\n\n");
-
-        sb.append("### 可用的子代理注册表 (Capabilities Registry)\n");
-        sb.append("请根据任务语义匹配最合适的 `subagent_type`：\n");
+        sb.append("可用的代理类型及其拥有的工具：\n");
         sb.append("<available_agents>\n");
         for (Subagent agent : manager.getAgents()) {
-            sb.append(String.format("  <agent subagent_type=\"%s\" capability=\"%s\" />\n",
-                    agent.getType(), agent.getDescription()));
+            sb.append(String.format("  - \"%s\": %s\n", agent.getType(), agent.getDescription()));
         }
         sb.append("</available_agents>\n\n");
+
+        sb.append("### 何时使用 Task 工具\n");
+        sb.append("- **项目级认知与探索**：凡是涉及“探索项目”、“分析架构”、“查找核心入口”等需要阅读多个文件或理解整个代码库逻辑的任务，必须委派给子代理。\n");
+        sb.append("- **复杂代码变更**：涉及跨文件的代码修复、大规模重构，或需要运行测试脚本来验证修改是否正确的任务，必须委派给子代理。\n");
+        sb.append("- **长流程决策**：当你预感到需要连续调用超过 3 次原子工具（如多次 grep、多次 read_file）才能完成任务时，应改用子代理以节省主对话的上下文空间。\n");
+        sb.append("- **主动协作**：如果子代理描述中提到应“主动使用”（如 `code-reviewer`），请在完成阶段性工作（如写完核心代码）后，自行判断并启动它，无需等待用户指令。\n\n");
+
+        sb.append("### 何时【禁止】使用 Task 工具：\n");
+        sb.append("- 如果你想读取特定的文件路径，请使用 `read` 或 `glob` 工具而不是 Task，以便更林捷地找到匹配项。\n");
+        sb.append("- 如果你在搜索特定的类定义（如 `class Foo`），请使用 `glob` 工具，以便更快找到匹配项。\n");
+        sb.append("- 如果你在特定的一个或 2-3 个文件中搜索代码，请使用 `read` 工具而不是 Task。\n");
+        sb.append("- 其他与上述代理描述无关的任务。\n\n");
+
+        sb.append("### 使用注意事项：\n");
+        sb.append("1. **并行启动**：只要可能，请同时启动多个代理以最大化性能；为此，请在单条消息中使用多个工具调用。\n");
+        sb.append("2. **结果处理**：代理完成后会返回一条消息给你。代理返回的结果对用户不可见。要向用户展示结果，你应该向用户发送一条包含结果简明摘要的文本消息。输出包含一个 `task_id`，你可以稍后重用它来继续同一个子代理会话。\n");
+        sb.append("3. **上下文管理**：除非提供 `task_id` 来恢复同一个子代理会话（该会话将保留其之前的消息和工具输出），否则每次代理调用都以全新的上下文开始。在开启新会话时，你的 prompt 应包含高度详细的任务描述供代理自主执行，并且你应该明确指定代理在其最后一条（也是唯一一条）返回给你的消息中应提供哪些信息。\n");
+        sb.append("4. **信任度**：代理的输出通常应该是值得信赖的。\n");
+        sb.append("5. **明确意图**：清晰地告知代理你期望它编写代码还是仅进行研究（搜索、读取文件、网页抓取等），因为它并不知道用户的意图。如果可能，告诉它如何验证工作（例如：相关的测试命令）。\n");
+        sb.append("6. **主动使用**：如果代理描述中提到应该主动使用，那么你应该尽力在用户没有要求的情况下尝试使用它。请自行判断。\n\n");
 
         sb.append("### 调用约定\n");
         sb.append("- **上下文对齐**: 子代理看不见当前历史。必须在 `prompt` 中通过 <context> 标签传入必要的类名、报错或路径。\n");

@@ -60,11 +60,7 @@ public class GeneralPurposeSubagent extends AbsSubagent {
         builder.defaultToolAdd(WebsearchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-        SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(
-                mainAgent.getProps().getSummaryWindowSize(),
-                new HierarchicalSummarizationStrategy(mainAgent.getChatModel()));
-
-        builder.defaultInterceptorAdd(summarizationInterceptor);
+        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
 
         // 如果主 CodeAgent 有代码搜索能力，也可以添加
         // 这里可以根据需要动态添加工具

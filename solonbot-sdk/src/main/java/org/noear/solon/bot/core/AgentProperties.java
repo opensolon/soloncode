@@ -39,7 +39,9 @@ public class AgentProperties implements Serializable {
     private boolean maxStepsAutoExtensible = false;
 
     private int sessionWindowSize = 10;
-    private int summaryWindowSize = 15;
+
+    private int summaryTriggerSize = 12;
+    private int summaryMaxLength = 12000;
 
     private boolean sandboxMode = true;
     private boolean thinkPrinted = false;

@@ -51,11 +51,7 @@ public class PlanSubagent extends AbsSubagent {
         builder.defaultToolAdd(WebfetchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-        SummarizationInterceptor summarizationInterceptor = new SummarizationInterceptor(
-                mainAgent.getProps().getSummaryWindowSize(),
-                new HierarchicalSummarizationStrategy(mainAgent.getChatModel()));
-
-        builder.defaultInterceptorAdd(summarizationInterceptor);
+        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
 
         // 设置最大步数（计划任务通常需要较少步数）
         builder.maxSteps(20);
