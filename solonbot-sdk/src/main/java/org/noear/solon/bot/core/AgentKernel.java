@@ -108,6 +108,10 @@ public class AgentKernel {
         this.sessionProvider = sessionProvider;
         this.configurator = configurator;
 
+        if(properties.getSummaryWindowSize() != null){
+            properties.setSummaryTriggerSize(properties.getSummaryWindowSize());
+        }
+
         if(Assert.isNotEmpty(properties.getRestApis())) {
             restApis = new RestApiSkill();
             for (Map.Entry<String, ApiServerParameters> entry : properties.getRestApis().entrySet()) {

@@ -40,6 +40,8 @@ public class AgentProperties implements Serializable {
 
     private int sessionWindowSize = 10;
 
+    @Deprecated
+    private Integer summaryWindowSize;
     private int summaryTriggerSize = 12;
     private int summaryMaxLength = 12000;
 
