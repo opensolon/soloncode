@@ -146,7 +146,6 @@ public class SubAgentMetadataTest {
 
         assertEquals("test", metadata.getName());
         assertEquals("glm-4.7", metadata.getModel());
-        // 注释行应该被忽略
     }
 
     @Test

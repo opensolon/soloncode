@@ -254,7 +254,21 @@ public class AgentTeamsIntegrationTest {
         // 场景：Plan 代理制定计划 → 存储到共享记忆 → 发布事件 → Explore 代理接收事件
         String taskId = "task-collab-1";
 
-        // 1. Plan 代理存储计划到共享记忆
+        // 1. 先订阅事件（在发布之前）
+        CompletableFuture<String> exploreFuture = new CompletableFuture<>();
+        eventBus.subscribe(AgentEventType.TASK_COMPLETED.getCode(), event -> {
+            if ("plan".equals(event.getMetadata().getSourceAgent())) {
+                // 检索相关记忆
+                System.out.println("检索相关记忆");
+                List<Memory> memories = memoryManager.search("缓存", 5);
+                exploreFuture.complete("找到 " + memories.size() + " 条相关记忆");
+                return CompletableFuture.completedFuture(EventHandler.Result.success());
+            }
+            return CompletableFuture.completedFuture(EventHandler.Result.success());
+        });
+        System.out.println("✓ Explore 代理订阅事件");
+
+        // 2. Plan 代理存储计划到共享记忆
         LongTermMemory plan = new LongTermMemory(
                 "实现缓存系统的计划",
                 "plan",
@@ -264,7 +278,7 @@ public class AgentTeamsIntegrationTest {
         memoryManager.store(plan);
         System.out.println("✓ Plan 代理存储计划到共享记忆");
 
-        // 2. Plan 代理发布完成事件
+        // 3. Plan 代理发布完成事件（在订阅之后）
         eventBus.publish(new AgentEvent(
                 AgentEventType.TASK_COMPLETED,
                 "计划已完成",
@@ -275,19 +289,6 @@ public class AgentTeamsIntegrationTest {
                         .build()
         ));
         System.out.println("✓ Plan 代理发布完成事件");
-
-        // 3. Explore 代理订阅事件并处理
-        CompletableFuture<String> exploreFuture = new CompletableFuture<>();
-        eventBus.subscribe(AgentEventType.TASK_COMPLETED.getCode(), event -> {
-            if ("plan".equals(event.getMetadata().getSourceAgent())) {
-                // 检索相关记忆
-                List<Memory> memories = memoryManager.search("缓存", 5);
-                exploreFuture.complete("找到 " + memories.size() + " 条相关记忆");
-                return CompletableFuture.completedFuture(EventHandler.Result.success());
-            }
-            return CompletableFuture.completedFuture(EventHandler.Result.success());
-        });
-        System.out.println("✓ Explore 代理订阅事件");
 
         // 4. Explore 代理发送消息给 Plan 代理
         messageChannel.registerHandler("explore", new MessageHandler() {
@@ -304,7 +305,8 @@ public class AgentTeamsIntegrationTest {
                         @Override
                         public void run() {
                             try {
-                                Thread.sleep(100); // 模拟处理
+                                System.out.println("模拟处理  → 收到消息: " + message.getContent());
+                                Thread.sleep(1000); // 模拟处理
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
                             }
@@ -401,7 +403,7 @@ public class AgentTeamsIntegrationTest {
         // 3. 测试任务状态转换
         task1.setStatus(TeamTask.Status.IN_PROGRESS);
         assertEquals(TeamTask.Status.IN_PROGRESS, task1.getStatus());
-        assertTrue(task1.isClaimable() == false);
+        assertFalse(task1.isClaimable());
 
         task1.setStatus(TeamTask.Status.COMPLETED);
         assertEquals(TeamTask.Status.COMPLETED, task1.getStatus());
@@ -887,20 +889,31 @@ public class AgentTeamsIntegrationTest {
 
         // 存储短期记忆（使用工厂方法，自动应用配置的 TTL）
         ShortTermMemory stm = manager.createShortTermMemory("agent1", "测试内容", "task-1");
+        long createTime = stm.getTimestamp();
+        System.out.println("记忆创建时间: " + createTime);
+        System.out.println("记忆 TTL: " + stm.getTtl() + "ms");
+
         manager.store(stm);
         System.out.println("✓ 存储短期记忆 (TTL=1000ms)");
 
         // 立即检索（应该能找到）
         List<Memory> memories1 = manager.retrieve(Memory.MemoryType.SHORT_TERM, 10);
-        assertTrue(memories1.size() >= 1);
-        System.out.println("✓ 立即检索到 " + memories1.size() + " 条记忆");
+        System.out.println("立即检索到 " + memories1.size() + " 条记忆");
+        assertFalse(memories1.isEmpty(), "应该能检索到刚创建的记忆");
 
-        // 等待 TTL 过期
-        Thread.sleep(1500);
+        // 等待 TTL 过期（多等一些时间确保过期）
+        Thread.sleep(2000); // 改为 2 秒，确保足够超过 1 秒 TTL
+
+        // 检查记忆是否已过期
+        boolean isExpired = stm.isExpired();
+        long elapsedTime = System.currentTimeMillis() - createTime;
+        System.out.println("经过时间: " + elapsedTime + "ms");
+        System.out.println("记忆是否过期: " + isExpired);
 
         // 再次检索（应该找不到）
         List<Memory> memories2 = manager.retrieve(Memory.MemoryType.SHORT_TERM, 10);
-        assertTrue(memories2.size() == 0);
+        System.out.println("过期后检索到 " + memories2.size() + " 条记忆");
+        assertTrue(memories2.isEmpty(), "过期后应该检索不到记忆");
         System.out.println("✓ TTL 过期后无法检索到记忆");
 
         manager.shutdown();

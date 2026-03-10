@@ -30,13 +30,22 @@ public class MessageAck {
     private final boolean success;
     private final String message;
     private final long timestamp;
+    private final Object response;  // Handler 的处理结果
 
-    public MessageAck(String messageId, String receiver, boolean success, String message) {
+    public MessageAck(String messageId, String receiver, boolean success, String message, Object response) {
         this.messageId = messageId;
         this.receiver = receiver;
         this.success = success;
         this.message = message;
         this.timestamp = System.currentTimeMillis();
+        this.response = response;
+    }
+
+    /**
+     * 兼容旧构造函数
+     */
+    public MessageAck(String messageId, String receiver, boolean success, String message) {
+        this(messageId, receiver, success, message, null);
     }
 
     @Override

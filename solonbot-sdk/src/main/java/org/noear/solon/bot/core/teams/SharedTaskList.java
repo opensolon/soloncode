@@ -22,6 +22,10 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
@@ -52,6 +56,13 @@ public class SharedTaskList {
     private final int maxCompletedTasks;                    // 保留的最大已完成任务数
     private final Queue<String> completedTaskQueue;         // 已完成任务队列（FIFO清理）
 
+    // 性能优化：专用线程池
+    private final ExecutorService taskExecutor;              // 任务操作线程池
+    private final ExecutorService eventExecutor;             // 事件发布线程池
+
+    // 性能优化：最大依赖深度限制
+    private static final int MAX_DEPENDENCY_DEPTH = 100;
+
     /**
      * 构造函数
      *
@@ -76,6 +87,39 @@ public class SharedTaskList {
         this.eventBus = eventBus;
         this.maxCompletedTasks = maxCompletedTasks;
         this.completedTaskQueue = new LinkedList<>();
+
+        // 创建专用线程池
+        int poolSize = Math.max(10, Runtime.getRuntime().availableProcessors() * 2);
+        this.taskExecutor = Executors.newFixedThreadPool(poolSize, new NamedThreadFactory("SharedTaskList"));
+        this.eventExecutor = Executors.newSingleThreadExecutor(new NamedThreadFactory("SharedTaskList-Event"));
+
+        LOG.info("SharedTaskList 初始化完成 (线程池大小: {})", poolSize);
+    }
+
+    /**
+     * 关闭资源
+     */
+    public void shutdown() {
+        LOG.info("SharedTaskList 正在关闭...");
+
+        // 关闭线程池
+        taskExecutor.shutdown();
+        eventExecutor.shutdown();
+
+        try {
+            if (!taskExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                taskExecutor.shutdownNow();
+            }
+            if (!eventExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                eventExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            taskExecutor.shutdownNow();
+            eventExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        LOG.info("SharedTaskList 已关闭");
     }
 
 
@@ -96,9 +140,9 @@ public class SharedTaskList {
                     }
                 }
 
-                // 检测循环依赖
-                if (task.hasCyclicDependency(tasks::get)) {
-                    throw new IllegalArgumentException("检测到循环依赖: " + task.getTitle());
+                // 检测循环依赖（带深度限制）
+                if (hasCyclicDependency(task, tasks::get, MAX_DEPENDENCY_DEPTH)) {
+                    throw new IllegalArgumentException("检测到循环依赖或依赖深度超过限制: " + task.getTitle());
                 }
 
                 // 添加任务
@@ -111,19 +155,30 @@ public class SharedTaskList {
 
                 LOG.debug("任务已添加: {} (优先级: {})", task.getTitle(), task.getPriority());
 
-                TeamTask finalTask = task;
-
-                // 触发事件（在锁外执行，避免阻塞）
+                // 异步发布事件（不阻塞返回）
+                final TeamTask finalTask = task;
                 CompletableFuture.runAsync(() -> {
                     publishTaskEvent(AgentEventType.TASK_CREATED, finalTask, null);
-                });
+                }, eventExecutor);
 
                 return task;
 
             } finally {
                 lock.writeLock().unlock();
             }
-        });
+        }, taskExecutor);
+    }
+
+    /**
+     * 检测循环依赖（带深度限制）
+     */
+    private boolean hasCyclicDependency(TeamTask task, java.util.function.Function<String, TeamTask> taskLookup, int maxDepth) {
+        try {
+            return task.hasCyclicDependency(taskLookup);
+        } catch (StackOverflowError e) {
+            LOG.warn("任务依赖深度过大，可能存在循环依赖: {} (深度限制: {})", task.getTitle(), maxDepth);
+            return true;
+        }
     }
 
     /**
@@ -541,9 +596,9 @@ public class SharedTaskList {
     }
 
     /**
-     * 获取可认领任务（考虑依赖关系）
+     * 获取可认领任务（考虑依赖关系，按优先级排序）
      *
-     * @return 任务列表
+     * @return 任务列表（按优先级降序排列）
      */
     public List<TeamTask> getClaimableTasks() {
         lock.readLock().lock();
@@ -558,6 +613,15 @@ public class SharedTaskList {
                             LOG.warn("任务存在循环依赖，无法认领: {}", task.getTitle());
                             return false;
                         }
+                    })
+                    .sorted((a, b) -> {
+                        // 按优先级降序排序（高优先级在前）
+                        int priorityCompare = Integer.compare(b.getPriority(), a.getPriority());
+                        if (priorityCompare != 0) {
+                            return priorityCompare;
+                        }
+                        // 优先级相同时，按创建时间升序排序（早创建的在前）
+                        return Long.compare(a.getClaimTime(), b.getClaimTime());
                     })
                     .collect(Collectors.toList());
         } finally {
@@ -905,6 +969,31 @@ public class SharedTaskList {
             } catch (Exception e) {
                 LOG.error("发布任务事件失败", e);
             }
+        }
+    }
+
+    /**
+     * 命名线程工厂（用于线程池）
+     */
+    private static class NamedThreadFactory implements ThreadFactory {
+        private final AtomicInteger threadNumber = new AtomicInteger(1);
+        private final String namePrefix;
+        private final boolean daemon;
+
+        NamedThreadFactory(String namePrefix) {
+            this(namePrefix, true);
+        }
+
+        NamedThreadFactory(String namePrefix, boolean daemon) {
+            this.namePrefix = namePrefix;
+            this.daemon = daemon;
+        }
+
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread thread = new Thread(r, namePrefix + "-" + threadNumber.getAndIncrement());
+            thread.setDaemon(daemon);
+            return thread;
         }
     }
 }

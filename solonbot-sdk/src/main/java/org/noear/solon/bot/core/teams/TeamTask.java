@@ -23,6 +23,7 @@ import lombok.Setter;
 import org.noear.solon.ai.chat.ChatResponse;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.bot.core.message.AgentMessage;
 import reactor.core.publisher.Flux;
 
 import java.util.*;
@@ -73,6 +74,7 @@ public class TeamTask {
     @Builder.Default
     private Map<String, String> metadata = new HashMap<>();           // 元数据
 
+
     /**
      * 任务状态枚举
      */
@@ -102,6 +104,7 @@ public class TeamTask {
      * @param title 任务标题
      */
     public TeamTask(String title) {
+        this.id = UUID.randomUUID().toString(); // 初始化 ID
         this.title = title;
         this.priority = 5;
         this.status = Status.PENDING;
@@ -117,7 +120,7 @@ public class TeamTask {
      * @param title 任务标题
      */
     public TeamTask(String id, String title) {
-        this.id = id;
+        this.id = id != null ? id : UUID.randomUUID().toString(); // 防止 id 为 null
         this.title = title;
         this.priority = 5;
         this.status = Status.PENDING;
@@ -126,12 +129,6 @@ public class TeamTask {
         this.metadata = new HashMap<>();
     }
 
-    /**
-     * 创建带自动生成 ID 的 Builder
-     */
-    public static TeamTaskBuilder builderWithAutoId() {
-        return TeamTask.builder().id(UUID.randomUUID().toString());
-    }
 
 
     /**
@@ -371,14 +368,46 @@ public class TeamTask {
      * @return 是否存在循环依赖
      */
     public boolean hasCyclicDependency(java.util.function.Function<String, TeamTask> taskLookup) {
-        try {
-            areAllDependenciesCompleted(taskLookup);
+        return detectCyclicDependency(taskLookup, new java.util.HashSet<>());
+    }
+
+    /**
+     * 递归检测循环依赖
+     *
+     * @param taskLookup 任务查找函数
+     * @param visiting   正在访问的任务集合
+     * @return 是否存在循环依赖
+     */
+    private boolean detectCyclicDependency(java.util.function.Function<String, TeamTask> taskLookup,
+                                           java.util.Set<String> visiting) {
+        // 检测循环依赖
+        if (visiting.contains(this.id)) {
+            return true; // 发现循环
+        }
+
+        // 如果没有依赖，返回false
+        if (dependencies == null || dependencies.isEmpty()) {
             return false;
-        } catch (IllegalStateException e) {
-            if (e.getMessage().contains("循环依赖")) {
-                return true;
+        }
+
+        // 标记当前任务正在访问
+        visiting.add(this.id);
+
+        try {
+            // 递归检查每个依赖
+            for (String depId : dependencies) {
+                TeamTask dep = taskLookup.apply(depId);
+                if (dep != null) {
+                    if (dep.detectCyclicDependency(taskLookup, visiting)) {
+                        return true; // 发现循环
+                    }
+                }
             }
-            throw e;
+
+            return false; // 没有循环
+        } finally {
+            // 移除访问标记
+            visiting.remove(this.id);
         }
     }
 
@@ -432,9 +461,6 @@ public class TeamTask {
         return 0;
     }
 
-    public static TeamTask.TeamTaskBuilder of(String title) {
-        return TeamTask.builder().title(title);
-    }
 
     @Override
     public String toString() {

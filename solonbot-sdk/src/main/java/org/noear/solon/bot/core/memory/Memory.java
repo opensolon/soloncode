@@ -87,7 +87,11 @@ public abstract class Memory  {
      * @return true表示已过期，false表示未过期
      */
     public boolean isExpired() {
-        return ttl > 0 && (System.currentTimeMillis() - timestamp) > ttl;
+        if (ttl <= 0) {
+            return false; // TTL <= 0 表示永不过期
+        }
+        long elapsed = System.currentTimeMillis() - timestamp;
+        return elapsed >= ttl; // 使用 >= 而不是 >，确保边界条件正确
     }
 
     /**
@@ -109,6 +113,13 @@ public abstract class Memory  {
      */
     public MemoryType getType() {
         return type;
+    }
+
+    /**
+     * 设置记忆类型（用于反序列化）
+     */
+    public void setType(MemoryType type) {
+        this.type = type;
     }
 
     /**
@@ -144,6 +155,13 @@ public abstract class Memory  {
      */
     public Map<String, Object> getMetadata() {
         return metadata;
+    }
+
+    /**
+     * 设置元数据（用于反序列化）
+     */
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata != null ? metadata : new HashMap<>();
     }
 
     /**

@@ -45,7 +45,7 @@ public class AgentMessage<T> {
     private final long timestamp;
     private final Map<String, String> metadata;
 
-    private AgentMessage(Builder<T> builder) {
+    public AgentMessage(Builder<T> builder) {
         this.id = builder.id != null ? builder.id : UUID.randomUUID().toString();
         this.from = builder.from != null ? builder.from : "system";
         this.to = builder.to != null ? builder.to : "*";

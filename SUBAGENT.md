@@ -1,374 +1,981 @@
+# SubAgent 子代理系统完整指南
 
+## 目录
+- [架构设计](#架构设计)
+- [核心组件](#核心组件)
+- [实现细节](#实现细节)
+- [使用示例](#使用示例)
+- [自定义子代理](#自定义子代理)
+- [最佳实践](#最佳实践)
 
-# Subagent 子代理系统使用指南
+---
 
-Subagent 系统提供了类似 Claude Code 的子代理功能，允许主 Agent 调用专门的子代理来处理特定任务，提高任务处理效率。
+## 架构设计
 
-## 功能概述
+### 整体架构
 
-Subagent 系统包含以下类型的子代理：
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      主 Agent (AgentKernel)                         │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                    TaskSkill / AgentTeamsSkill                 │  │
+│  │  ┌────────────────┐  ┌──────────────┐  ┌─────────────────┐   │  │
+│  │  │   task()       │  │ team_task()  │  │ team_status()  │   │  │
+│  │  │   create_agent()│  │ create_task() │  │ subagent()     │   │  │
+│  │  └────────────────┘  └──────────────┘  └─────────────────┘   │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   SubagentManager (子代理管理器)                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │              AgentPool 扫描和发现                          │  │
+│  │  - @soloncode_agents/  - .soloncode/agents/                   │  │
+│  │  - @opencode_agents/    - .opencode/agents/                  │  │
+│  │  - @claude_agents/      - .claude/agents/                     │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                              │                               │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │  │
+│  │  │   Explore    │  │     Plan     │  │     Bash      │  │  │
+│  │  │   Agent      │  │   Agent      │  │   Agent      │  │  │
+│  │  └──────────────┘  └──────────────┘  └───────────────┘  │  │
+│  │  ┌──────────────────────────────────────────────────────┐   │  │
+│  │  │            GeneralPurpose Agent                      │   │  │
+│  │  └──────────────────────────────────────────────────────┘   │  │
+│  │  ┌──────────────────────────────────────────────────────┐   │  │
+│  │  │         SolonCodeGuide Agent                         │   │  │
+│  │  └──────────────────────────────────────────────────────┘   │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                      ┌────────────────────────┐
+                      │  会话管理 (Sessions)   │
+                      │  - 独立的会话空间        │
+                      │  - 会话历史缓存          │
+                      └────────────────────────┘
+```
 
-| 类型 | 代码 | 描述 |
-|------|------|------|
-| 探索代理 | `explore` | 快速探索代码库，查找文件、理解代码结构 |
-| 计划代理 | `plan` | 软件架构师，设计实现方案和执行计划 |
-| 命令代理 | `bash` | 命令执行专家，处理 git、构建等终端任务 |
-| 通用代理 | `general-purpose` | 处理复杂的多步骤任务 |
-| Solon指南代理 | `solon-guide` | Solon Code、Agent SDK 和 API 专家，可从官网读取文档 |
+---
 
-## 启用 Subagent
+## 核心组件
 
-在创建 AgentKernel 时启用子代理功能：
+### 1. Subagent 接口
+
+**位置**: `org.noear.solon.bot.core.subagent.Subagent`
 
 ```java
-AgentProperties properties = new AgentProperties();
-properties.setSubagentEnabled(true);
+public interface Subagent {
+    /**
+     * 获取子代理类型
+     */
+    String getType();
 
-AgentKernel mainAgent = new AgentKernel(chatModel, ..., properties);
+    /**
+     * 获取描述
+     */
+    String getDescription();
+
+    /**
+     * 获取系统提示词
+     */
+    String getSystemPrompt();
+
+    /**
+     * 执行任务（同步）
+     *
+     * @param __cwd 工作目录
+     * @param sessionId 会话ID
+     * @param prompt 任务提示
+     * @return 执行结果
+     */
+    AgentResponse call(String __cwd, String sessionId, Prompt prompt) throws Throwable;
+
+    /**
+     * 执行任务（流式）
+     *
+     * @param __cwd 工作目录
+     * @param sessionId 会话ID
+     * @param prompt 任务提示
+     * @return 流式结果
+     */
+    Flux<AgentChunk> stream(String __cwd, String sessionId, Prompt prompt);
+}
 ```
 
-## 使用方式
+### 2. SubagentManager
 
-### 方式一：主 Agent 通过工具调用
+**位置**: `org.noear.solon.bot.core.subagent.SubagentManager`
 
-主 Agent 可以使用 `subagent` 工具调用子代理：
+**核心功能**:
+- 管理子代理的创建和缓存
+- 从 AgentPool 扫描和发现子代理
+- 根据类型获取子代理实例
 
+**API**:
+```java
+public class SubagentManager {
+    // 注册 AgentPool
+    void agentPool(String alias, String path);
+
+    // 获取子代理
+    Subagent getAgent(String type);
+
+    // 获取所有子代理
+    List<Subagent> getAgents();
+
+    // 添加子代理
+    void addSubagent(Subagent subagent);
+}
 ```
-用户：帮我探索一下项目的核心类
 
-主 Agent 会：
-1. 识别任务类型为"探索代码库"
-2. 调用 subagent 工具，type="explore"
-3. 将任务委托给探索代理处理
-4. 返回探索结果给用户
+### 3. AbsSubagent 抽象类
+
+**位置**: `org.noear.solon.bot.core.subagent.AbsSubagent`
+
+**功能**:
+- 提供子代理的基础实现
+- 管理 ReActAgent 的创建和缓存
+- 提供默认的工具集和配置
+
+**继承层次**:
+```
+AbsSubagent (抽象基类)
+    ├── ExploreSubagent
+    ├── PlanSubagent
+    ├── BashSubagent
+    ├── GeneralPurposeSubagent
+    └── SolonGuideSubagent
 ```
 
-### 方式二：直接调用 Subagent
+---
 
-通过 SubagentManager 直接调用：
+## 实现细节
+
+### 1. 子代理创建流程
 
 ```java
+// SubagentManager.java
 
-// 获取 SubagentManager
-SubagentManager manager = mainAgent.getSubagentManager();
+public Subagent getAgent(String type) {
+    // 1. 从缓存获取
+    Subagent agent = agents.get(type);
+    if (agent != null) {
+        return agent;
+    }
 
-// 使用探索代理
-String prompt = "请探索这个项目的代码结构，找出所有的 Java 源文件";
-AgentResponse response = manager.getAgent(SubagentType.EXPLORE)
-        .execute(sessionId, Prompt.of(prompt));
+    // 2. 从 AgentPool 扫描
+    for (AgentPool pool : agentPools) {
+        agent = pool.loadAgent(type);
+        if (agent != null) {
+            // 缓存并返回
+            agents.put(type, agent);
+            return agent;
+        }
+    }
+
+    // 3. 未找到
+    return null;
+}
 ```
 
-## 各类型子代理详解
+### 2. AgentPool 扫描机制
+
+```java
+// AgentPool.java
+
+public Subagent loadAgent(String type) {
+    // 1. 查找提示词文件
+    Optional<Path> promptFile = findPromptFile(type);
+
+    if (!promptFile.isPresent()) {
+        return null;
+    }
+
+    // 2. 解析 YAML frontmatter 和 Markdown 内容
+    SubAgentMetadata metadata = parseMetadata(promptFile.get());
+    String systemPrompt = parseSystemPrompt(promptFile.get());
+
+    // 3. 创建子代理实例
+    AbsSubagent agent = createAgentInstance(metadata, systemPrompt);
+
+    return agent;
+}
+
+private Optional<Path> findPromptFile(String type) {
+    // 搜索 type.md 文件
+    // 搜索顺序：soloncode_agents > opencode_agents > claude_agents
+    Path[] searchPaths = {
+        paths.get("soloncode_agents", ".soloncode/agents"),
+        paths.get("opencode_agents", ".opencode/agents"),
+        paths.get("claude_agents", ".claude/agents")
+    };
+
+    for (Path path : searchPaths) {
+        Path file = path.resolve(type + ".md");
+        if (Files.exists(file)) {
+            return Optional.of(file);
+        }
+    }
+
+    return Optional.empty();
+}
+```
+
+### 3. 会话隔离
+
+每个子代理调用都有独立的会话ID：
+
+```java
+// 生成唯一会话ID
+String sessionId = "subagent_" + type + "_" + System.currentTimeMillis();
+
+// 执行任务
+AgentResponse response = agent.call(
+    __cwd,      // 工作目录
+    sessionId,  // 会话ID
+    Prompt.of(prompt)
+);
+
+// 会话ID 格式：subagent_explore_1234567890
+```
+
+**好处**:
+- ✅ 子代理之间不会相互干扰
+- ✅ 可以通过 `taskId` 继续之前的任务
+- ✅ 便于追踪和调试
+
+### 4. Token 统计
+
+子代理的 Token 使用会累计到主 Agent：
+
+```java
+// TaskSkill.handle() / AgentTeamsSkill.subagent()
+
+AgentSession __parentSession = kernel.getSession(__sessionId);
+ReActTrace __parentTrace = ReActTrace.getCurrent(__parentSession.getSnapshot());
+
+// 执行子代理
+AgentResponse response = agent.call(...);
+
+// 累计 Token
+__parentTrace.getMetrics().addMetrics(response.getMetrics());
+```
+
+---
+
+## 使用示例
+
+### 示例 1: 基础调用
+
+```java
+import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.subagent.SubagentManager;
+
+// 初始化
+AgentKernel kernel = new AgentKernel(chatModel, properties);
+SubagentManager manager = kernel.getSubagentManager();
+
+// 调用探索代理
+String sessionId = "session_" + System.currentTimeMillis();
+
+AgentResponse response = manager.getAgent("explore")
+    .call("./work", sessionId, Prompt.of("探索项目的核心类"));
+
+// 处理结果
+System.out.println(response.getContent());
+```
+
+### 示例 2: 通过工具调用（推荐）
+
+```java
+// 1. 将 TaskSkill 或 AgentTeamsSkill 添加到 AgentKernel
+AgentKernel kernel = new AgentKernel(chatModel, properties);
+TaskSkill taskSkill = new TaskSkill(kernel, subagentManager);
+
+kernel.getReActAgent()
+    .defaultSkillAdd(taskSkill);
+
+// 2. LLM 自动调用
+// 用户："帮我探索项目的认证模块"
+
+// 3. 主 Agent 的内部推理
+/*
+识别任务：代码探索
+选择工具：subagent
+参数：
+  - type="explore"
+  - prompt="探索项目中的认证相关模块，找出所有涉及的类、接口和配置"
+
+执行：调用 explore 子代理
+返回：探索结果
+*/
+```
+
+### 示例 3: 继续之前的任务
+
+```java
+// 第一次调用
+AgentResponse response1 = manager.getAgent("explore")
+    .call("./work", "session_1", Prompt.of("探索认证模块"));
+
+String taskId = response.getMetadata().get("taskId");
+// taskId: "subagent_explore_1234567890"
+
+// 第二次调用（继续同一个任务）
+AgentResponse response2 = manager.getAgent("explore")
+    .call("./work", "session_1", Prompt.of("继续深入分析认证流程"));
+
+// 或者使用 taskId
+AgentResponse response2 = manager.getAgent("explore")
+    .call("./work", taskId, Prompt.of("继续深入分析认证流程"));
+```
+
+### 示例 4: 团队协作场景
+
+```java
+// 任务：实现用户登录功能
+
+// 1. 探索现有代码
+AgentResponse exploreResult = manager.getAgent("explore")
+    .call(sessionId, Prompt.of("探索项目中的认证相关代码"));
+
+// 2. 设计实现方案
+AgentResponse planResult = manager.getAgent("plan")
+    .call(sessionId, Prompt.of(
+        "基于探索结果，设计用户认证功能的实现方案。\n" +
+        "现有代码：" + exploreResult.getContent()
+    ));
+
+// 3. 执行实现
+AgentResponse implResult = manager.getAgent("general-purpose")
+    .call(sessionId, Prompt.of(
+        "按照设计方案实现用户认证功能：\n" +
+        "1. 创建 UserService 接口\n" +
+        "2. 实现 AuthenticationController\n" +
+        "3. 添加登录表单"
+    ));
+
+// 4. 运行测试
+AgentResponse testResult = manager.getAgent("bash")
+    .call(sessionId, Prompt.of("运行项目的单元测试"));
+```
+
+---
+
+## 自定义子代理
+
+### 方式1: 通过 YAML 配置文件
+
+**文件位置**: `.soloncode/agents/my-custom-agent.md`
+
+```markdown
+---
+code: my-custom-agent
+name: 我的自定义代理
+description: 专门处理数据库相关任务
+model: gpt-4
+enabled: true
+tools:
+  - read
+  - write
+  - grep
+skills:
+  - expert
+  - lucene
+max_turns: 20
+---
+
+# 系统提示词
+
+你是数据库专家，擅长：
+
+1. **SQL 查询优化**
+   - 分析查询性能
+   - 优化索引
+   - 重写复杂查询
+
+2. **数据建模**
+   - 设计合理的表结构
+   - 定义关系
+   - 规范化数据
+
+3. **数据库迁移**
+   - 编写迁移脚本
+   - 处理版本升级
+
+请在处理任务时：
+- 优先考虑查询性能
+- 确保数据一致性
+- 遵循数据库设计范式
+```
+
+**自动发现**: 重启应用后自动加载
+
+### 方式2: 通过代码创建
+
+```java
+import org.noear.solon.bot.core.subagent.AbsSubagent;
+import org.noear.solon.bot.core.AgentKernel;
+
+public class DatabaseExpertAgent extends AbsSubagent {
+
+    public DatabaseExpertAgent(AgentKernel mainAgent) {
+        super(mainAgent);
+    }
+
+    @Override
+    public String getType() {
+        return "database-expert";
+    }
+
+    @Override
+    protected String getDefaultDescription() {
+        return "数据库专家，擅长 SQL 优化和数据建模";
+    }
+
+    @Override
+    protected String getDefaultSystemPrompt() {
+        return """
+            ## 数据库专家
+
+            你是数据库专家，专注于：
+
+            ### 核心能力
+            - SQL 查询优化
+            - 数据库设计
+            - 性能调优
+
+            ### 工具使用策略
+            1. **read**: 读取 schema 文件
+            2. **grep**: 搜索 SQL 语句
+            3. **write**: 修改数据库脚本
+
+            ### 最佳实践
+            - 优先分析索引使用情况
+            - 识别慢查询
+            - 建议合理的索引
+            """;
+    }
+
+    @Override
+    protected void customize(ReActAgent.Builder builder) {
+        // 添加工具
+        builder.defaultSkillAdd(mainAgent.getCliSkills());
+        builder.defaultSkillAdd(LuceneSkill.getInstance());
+
+        // 设置配置
+        builder.maxSteps(20);
+        builder.sessionWindowSize(8);
+    }
+}
+```
+
+**注册子代理**:
+```java
+DatabaseExpertAgent agent = new DatabaseExpertAgent(kernel);
+manager.addSubagent(agent);
+```
+
+### 方式3: 动态创建（通过工具）
+
+```java
+// 通过 TaskSkill 或 AgentTeamsSkill 的 create_agent() 工具
+
+AgentResponse response = kernel.prompt(Prompt.of(
+    "创建一个数据库专家代理" +
+    "code: database-expert" +
+    "name: 数据库专家" +
+    "description: 专门处理SQL优化和数据建模" +
+    "systemPrompt: 你是SQL专家..." +
+    "tools: read,write,grep" +
+    "skills: expert,lucene"
+)).call();
+
+// 代理定义保存到 .soloncode/agents/database-expert.md
+// 下次启动时自动加载
+```
+
+---
+
+## 内置子代理详解
 
 ### 1. ExploreSubagent - 探索代理
 
-**适用场景：**
-- 查找特定文件或模式
-- 理解代码库结构
-- 搜索类、函数、变量定义
-- 分析模块依赖关系
+**代码**: `org.noear.solon.bot.core.subagent.ExploreSubagent`
 
-**示例：**
-```java
-import org.noear.solon.ai.chat.prompt.Prompt;
+**系统提示词**:
+```
+你是代码探索专家，擅长快速定位文件和理解代码结构。
 
-// 查找所有配置文件
-manager.getAgent(SubagentType.EXPLORE)
-    .execute(sessionId, Prompt.of("找出项目中所有的 .yml 和 .properties 配置文件"));
+### 工具使用策略
+1. **优先使用 Glob**: 定位文件路径（如 **/*.java）
+2. **使用 Grep**: 搜索代码内容
+3. **最后才用 Read**: 读取具体文件
 
-// 理解某个模块的结构
-manager.getAgent(SubagentType.EXPLORE)
-    .execute(sessionId, Prompt.of("分析 soloncodecli/core 包的代码结构"));
+### 工作流程
+1. 根据 task 描述，选择合适的搜索策略
+2. 使用 Glob 找到相关文件
+3. 使用 Grep 搜索关键代码
+4. 必要时读取文件了解细节
 ```
 
-**特点：**
-- 优先使用 Glob 工具进行文件查找
-- 使用 Grep 工具搜索代码内容
-- 只读操作，不会修改代码
-- 较少的步数限制（15步）
+**配置**:
+```java
+maxSteps: 15              // 最大步数
+sessionWindowSize: 5      // 会话窗口
+tools: glob, grep, read   // 只读工具
+```
+
+**适用任务**:
+- 查找特定文件
+- 理解代码结构
+- 搜索类、函数定义
+- 分析依赖关系
+
+---
 
 ### 2. PlanSubagent - 计划代理
 
-**适用场景：**
-- 设计新功能的实现方案
+**代码**: `org.noear.solon.bot.core.subagent.PlanSubagent`
+
+**系统提示词**:
+```
+## 软件架构师
+
+你是软件架构师，负责设计和规划。
+
+### 工作流程
+1. **理解需求**: 仔细阅读 task 描述
+2. **分析现状**: 查看现有代码和架构
+3. **设计方案**: 提供清晰的实现方案
+4. **拆解任务**: 将大任务分解为小步骤
+
+### 输出格式
+1. **概述**: 实现思路和技术选型
+2. **关键文件**: 需要创建/修改的文件列表
+3. **执行步骤**: 详细的实现步骤
+4. **注意事项**: 潜在风险和注意事项
+```
+
+**配置**:
+```java
+maxSteps: 20              // 最大步数
+sessionWindowSize: 8      // 会话窗口
+tools: glob, grep, read   // 只读工具
+```
+
+**适用任务**:
+- 设计新功能
 - 规划重构策略
 - 制定迁移计划
 - 架构设计
 
-**示例：**
-```java
-import org.noear.solon.ai.chat.prompt.Prompt;
-
-manager.getAgent(SubagentType.PLAN)
-    .execute(sessionId, Prompt.of("为添加用户认证功能设计实现方案"));
-
-manager.getAgent(SubagentType.PLAN)
-    .execute(sessionId, Prompt.of("规划将代码迁移到新架构的步骤"));
-```
-
-**输出格式：**
-1. 概述：实现思路
-2. 关键文件：需要修改的文件
-3. 执行步骤：具体的实现步骤
-4. 注意事项：潜在风险
-5. 验证方案：如何验证实现
-
-**特点：**
-- 专注于规划和设计
-- 不执行代码修改
-- 考虑架构权衡
-- 提供清晰的执行计划
+---
 
 ### 3. BashSubagent - 命令代理
 
-**适用场景：**
-- Git 操作（commit, push, pull, branch）
-- 项目构建（mvn, gradle, npm）
+**代码**: `org.noear.solon.bot.core.subagent.BashSubagent`
+
+**系统提示词**:
+```
+## 命令执行专家
+
+你是命令执行专家，擅长处理终端任务。
+
+### 支持的命令类型
+- **Git 操作**: commit, push, pull, branch, merge
+- **项目构建**: mvn, gradle, npm, make
+- **测试执行**: pytest, npm test, go test
+- **依赖管理**: npm install, pip install, go mod
+
+### 注意事项
+- 每次只执行一个命令
+- 先检查命令是否成功
+- 失败时提供错误信息和建议解决方案
+```
+
+**配置**:
+```java
+maxSteps: 10              // 最大步数
+sessionWindowSize: 3      // 会话窗口
+tools: bash             // 仅 Bash 工具
+```
+
+**适用任务**:
+- Git 操作
+- 项目构建
 - 测试执行
 - 依赖安装
 
-**示例：**
-```java
-import org.noear.solon.ai.chat.prompt.Prompt;
-
-manager.getAgent(SubagentType.BASH)
-    .execute(sessionId, Prompt.of("运行所有单元测试"));
-
-manager.getAgent(SubagentType.BASH)
-    .execute(sessionId, Prompt.of("创建一个新的 git 分支 feature/auth"));
-
-manager.getAgent(SubagentType.BASH)
-    .execute(sessionId, Prompt.of("使用 Maven 构建项目"));
-```
-
-**特点：**
-- 只包含 Bash 工具
-- 专注于命令执行
-- 较少的步数限制（10步）
-- 小的会话窗口（3）
+---
 
 ### 4. GeneralPurposeSubagent - 通用代理
 
-**适用场景：**
+**代码**: `org.noear.solon.bot.core.subagent.GeneralPurposeSubagent`
+
+**系统提示词**:
+```
+## 通用任务代理
+
+你是全能型执行专家，负责处理复杂、多步骤且需要综合能力的开发任务。
+
+### 工具使用策略
+1. **本地搜索** (内部): 定位项目内代码、符号或文件时
+   - Lucene: 全文搜索
+   - Glob: 文件查找
+   - Grep: 代码搜索
+
+2. **全网调研** (外部): 遇到新技术、查阅第三方文档时
+   - WebSearch: 搜索互联网信息
+   - WebFetch: 获取文档内容
+
+3. **闭环执行**: 拥有写权限，可以直接修改和验证
+
+### 工作原则
+1. **理解优先**: 动笔修改前，必须充分理解现有逻辑
+2. **分步验证**: 每完成一个关键步骤，建议运行测试验证
+3. **系统性思考**: 修改代码时需考虑对周边模块的影响
+```
+
+**配置**:
+```java
+maxSteps: 25              // 最大步数
+sessionWindowSize: 10     // 会话窗口
+tools: ALL              // 所有工具
+```
+
+**适用任务**:
 - 复杂的多步骤任务
-- 需要多种工具协作的任务
-- 跨模块的任务协调
-- 涉及网络检索的研究任务
+- 跨模块任务协调
+- 涉及网络检索
+- 需要多种工具协作
 
-**示例：**
-```java
-import org.noear.solon.ai.chat.prompt.Prompt;
+---
 
-manager.getAgent(SubagentType.GENERAL_PURPOSE)
-    .execute(sessionId, Prompt.of("重构登录模块，添加多因素认证功能"));
+### 5. SolonGuideSubagent - Solon 指南代理
 
-manager.getAgent(SubagentType.GENERAL_PURPOSE)
-    .execute(sessionId, Prompt.of("研究并实现一个新的 API 端点"));
+**代码**: `org.noear.solon.bot.core.subagent.SolonGuideSubagent`
+
+**系统提示词**:
 ```
+## Solon 技术文档专家
 
-**特点：**
-- 包含完整的工具集
-- 最多步数限制（25步）
-- 最大的会话窗口（10）
-- 功能最全面
+你是 Solon 技术专家，专注于 Solon 框架和 Agent SDK。
 
-### 5. SolonCodeGuideSubagent - Solon 指南代理
-
-**适用场景：**
-- 查询 Solon Code 相关问题
-- 学习 Solon Agent SDK 使用方法
-- 了解 Solon API 接口和用法
-- 从 Solon 官网获取最新文档
-
-**示例：**
-```java
-import org.noear.solon.ai.chat.prompt.Prompt;
-
-// 查询 Solon 快速入门文档
-manager.getAgent(SubagentType.SOLON_CODE_GUIDE)
-    .execute(sessionId, Prompt.of("Solon 的快速入门方法是什么？"));
-
-// 学习 Agent SDK
-manager.getAgent(SubagentType.SOLON_CODE_GUIDE)
-    .execute(sessionId, Prompt.of("如何在 Solon Agent SDK 中创建自定义工具？"));
-
-// 了解 API 用法
-manager.getAgent(SubagentType.SOLON_CODE_GUIDE)
-    .execute(sessionId, Prompt.of("ChatModel 接口如何使用？"));
-```
-
-**专属工具：**
+### 专属工具
 - `read_solon_doc`: 读取 Solon 官网文档（支持本地缓存）
-  - 支持文档：learn-start, agent-quick-start, agent-tools, agent-skill 等
-  - 自动缓存到 `.soloncode/cache/docs/` 目录
-  - 提供内存缓存提升性能
 - `list_solon_docs`: 列出所有可用的官方文档
 - `clear_solon_doc_cache`: 清除文档缓存
 
-**特点：**
-- 专注于 Solon 技术栈
-- 可直接从官网获取最新文档
-- 支持文档缓存，减少网络请求
-- 较少的步数限制（15步）
-- 小的会话窗口（5）
+### 可用文档
+- learn-start: Solon 快速入门
+- agent-quick-start: Agent SDK 快速入门
+- agent-tools: Agent 工具开发
+- agent-skill: Agent 技能开发
+- ...
+
+### 使用流程
+1. 检查本地缓存
+2. 从官网获取最新文档
+3. 分析并解答用户问题
+```
+
+**配置**:
+```java
+maxSteps: 15              // 最大步数
+sessionWindowSize: 5      // 会话窗口
+tools: read_solon_doc, list_solon_docs, lucene, grep
+```
+
+**适用任务**:
+- 查询 Solon 文档
+- 学习 Solon API
+- 开发 Solon Agent 技能
+
+---
 
 ## 最佳实践
 
-### 1. 选择合适的子代理类型
+### 1. 选择合适的子代理
 
-```
-简单文件查找      -> explore
-设计实现方案      -> plan
-执行命令          -> bash
-复杂的多步骤任务   -> general-purpose
-```
-
-### 2. 组合使用子代理
-
-```
-任务：添加新功能
-
-1. 使用 explore 代理查找相关文件
-2. 使用 plan 代理设计实现方案
-3. 使用 general-purpose 代理执行实现
-4. 使用 bash 代理运行测试验证
+```python
+# 决策树
+if 任务类型 == "代码探索" or "文件搜索":
+    子代理 = "explore"
+elif 任务类型 == "方案设计" or "架构规划":
+    子代理 = "plan"
+elif 任务类型 == "命令执行" or "Git操作":
+    子代理 = "bash"
+elif 任务复杂度 == "高" or 需要多种工具:
+    子代理 = "general-purpose"
 ```
 
-### 3. 子代理工具调用
+### 2. 任务分解策略
 
-主 Agent 可以智能地选择合适的子代理：
+```python
+# 复杂任务分解为多个子任务
 
+任务：实现用户认证功能
+
+# 步骤1: 探索现有代码
+subagent(type="explore", prompt="探索认证相关代码")
+
+# 步骤2: 设计方案
+subagent(type="plan", prompt="基于探索结果设计认证方案")
+
+# 步骤3: 实现
+subagent(type="general-purpose", prompt="按照设计实现认证功能")
+
+# 步骤4: 测试
+subagent(type="bash", prompt="运行测试")
 ```
-用户：帮我理解这个项目的认证模块
 
-主 Agent 的思考过程：
-1. 这是一个代码理解任务
-2. 应该使用 explore 子代理
-3. 调用 subagent(type="explore", prompt="...")
-4. 返回探索结果
+### 3. 继续之前的任务
+
+```python
+# 第一次调用
+response1 = subagent(
+    type="explore",
+    prompt="探索认证模块",
+    description="认证探索"
+)
+# 返回: task_id = "subagent_explore_1234567890"
+
+# 第二次调用（继续）
+response2 = subagent(
+    type="explore",
+    prompt="继续深入分析",
+    taskId="subagent_explore_1234567890"  # 使用 task_id 继续会话
+)
 ```
+
+### 4. 错误处理
+
+```python
+# 子代理调用失败时的处理
+
+try:
+    response = subagent(type="explore", prompt="...")
+except SubagentNotFoundException as e:
+    # 子代理不存在
+    print(f"错误: 未知的子代理类型: {e.type}")
+    print(f"可用的子代理: {e.available_agents}")
+
+except AgentExecutionException as e:
+    # 子代理执行失败
+    print(f"错误: 子代理执行失败: {e.message}")
+    print(f"堆栈跟踪: {e.stack_trace}")
+```
+
+---
 
 ## 配置选项
 
-### 禁用 Subagent
+### 1. 全局配置
 
-如果不希望使用子代理功能：
+**config.yml**:
+```yaml
+solon:
+  code:
+    cli:
+      # 启用子代理
+      subAgentEnabled: true
 
+      # 子代理模型配置（可选）
+      subAgentModels:
+        explore: gpt-4
+        plan: gpt-4
+        bash: gpt-3.5
+        general-purpose: gpt-4
+```
+
+### 2. 自定义子代理配置
+
+**Java 代码**:
 ```java
-CodeAgent codeAgent = new CodeAgent(chatModel)
-        .enableSubagent(false);  // 禁用子代理
+// 创建子代理时自定义配置
+SubagentMetadata metadata = new SubagentMetadata();
+metadata.setCode("my-agent");
+metadata.setModel("gpt-4");
+metadata.setMaxTurns(30);
+metadata.setTools(Arrays.asList("read", "write", "grep"));
 ```
 
-### 自定义子代理配置
-
-可以通过 SubagentConfig 自定义每个子代理的行为：
-
-```java
-import org.noear.solon.ai.codecli.core.subagent.SubagentConfig;
-import org.noear.solon.ai.codecli.core.subagent.SubagentType;
-
-SubagentConfig config = new SubagentConfig(SubagentType.EXPLORE);
-config.setMaxSteps(20);  // 设置最大步数
-config.setDescription("自定义描述");
+**YAML 文件**:
+```yaml
+---
+code: my-agent
+model: gpt-4
+max_turns: 30
+tools:
+  - read
+  - write
+  - grep
 ```
 
-### 注册自定义 AgentPool
+---
 
-可以注册自定义的 agentPool，让系统从多个目录发现子代理：
-
-```java
-// 获取 SubagentManager
-SubagentManager manager = codeAgent.getSubagentManager();
-
-// 注册自定义 agent 池
-manager.agentPool("@my_agents", "/path/to/my/agents");
-manager.agentPool("@shared_agents", "./shared/agents");
-
-// 系统默认已注册以下池：
-// - @soloncode_agents -> .soloncode/agents/
-// - @opencode_agents  -> .opencode/agents/
-// - @claude_agents     -> .claude/agents/
-```
-
-**AgentPool 搜索优先级：**
-1. 自定义注册的 agentPool（按注册顺序）
-2. `.opencode/agents/`
-3. `.claude/agents/`
-4. `.soloncode/agents/`（默认池）
-
-当创建子代理时，系统会按优先级搜索提示词文件。
-
-## 工具列表
-
-Subagent 系统提供以下工具：
-
-| 工具名 | 描述 |
-|--------|------|
-| `subagent` | 启动指定类型的子代理执行任务 |
-| `subagent_list` | 列出所有可用的子代理（包括预定义和自定义代理） |
-
-### subagent_list 工具详解
-
-`subagent_list` 工具会扫描所有已注册的 agentPools，动态发现并列出所有可用的子代理：
-
-**输出格式：**
-```
-可用的子代理：
-
-【预定义子代理】
-- **explore** (EXPLORE): 快速探索代码库...
-- **plan** (PLAN): 设计实现方案...
-- **bash** (BASH): 执行命令...
-- **general-purpose** (GENERAL_PURPOSE): 通用代理...
-
-【自定义子代理】
-- **performance-tester** (来自 @soloncode_agents): 性能测试专家...
-- **my-custom-agent** (来自 @opencode_agents): 我的自定义代理...
-
-提示：可以通过 .soloncode/agents/ 目录添加自定义子代理
-```
-
-**特性：**
-- 自动去重：如果自定义代理与预定义代理同名，只显示预定义版本
-- 显示来源：标注每个自定义代理来自哪个 agentPool
-- 描述提取：从 MD 文件的第一行提取描述信息
-- 支持多池：扫描所有已注册的 agentPools 目录
-
-## 配置文件位置
-
-Subagent 的提示词文件存储在项目根目录的 `.soloncode/agents/` 目录下：
+## 文件结构
 
 ```
-项目根目录/
-├── .soloncode/              ← SolonCode 系统目录
-│   ├── agents/               ← Subagent 提示词文件
-│   │   ├── explore.md        # 探索代理
-│   │   ├── plan.md           # 计划代理
-│   │   ├── bash.md           # Bash代理
-│   │   ├── general-purpose.md # 通用代理
-│   │   └── *.md              # 用户自定义代理
-│   ├── sessions/             ← 会话历史
-│   └── skills/               ← 技能文件
-├── work/                     ← 工作目录
-├── AGENTS.md                 ← 主 Agent 配置
-└── config.yml                ← 全局配置
+.soloncode/
+├── agents/                    # 子代理定义文件
+│   ├── explore.md
+│   ├── plan.md
+│   ├── bash.md
+│   ├── general-purpose.md
+│   ├── solon-guide.md
+│   └── *.md                   # 用户自定义代理
+│
+├── sessions/                  # 会话历史
+│   ├── subagent_explore_123/
+│   └── subagent_plan_456/
+│
+├── skills/                    # 技能文件
+└── ...
 ```
 
-用户可以编辑 `.soloncode/agents/` 下的 MD 文件来自定义 Subagent 的行为，修改后重启即可生效。
+---
 
-## 与 Claude Code 的兼容性
+## 测试和调试
 
-本 Subagent 系统设计上兼容 Claude Code 的子代理模式：
-
-- 支持相同的子代理类型概念
-- 提供类似的工具调用接口
-- 可以通过 AGENTS.md 自定义子代理行为
-
-## 测试示例
-
-参考 `SubagentTest.java` 查看完整的使用示例：
+### 运行测试
 
 ```bash
-# 运行子代理测试
+# 测试所有子代理
 mvn test -Dtest=SubagentTest
+
+# 测试特定子代理
+mvn test -Dtest=SubagentTest#testExploreSubagent
+
+# 测试子代理调用
+mvn test -Dtest=AgentTeamsComprehensiveTest
 ```
+
+### 调试技巧
+
+**1. 查看子代理日志**
+```java
+// 设置日志级别
+LoggerContext.getLogger(SubagentManager.class.getName()).setLevel(Level.DEBUG);
+
+// 日志输出
+DEBUG: 分派任务 -> 类型: explore, 会话: subagent_explore_123
+INFO: 子代理任务完成: subagent_explore_123
+```
+
+**2. 检查会话历史**
+```bash
+# 查看特定会话的历史
+ls .soloncode/sessions/subagent_explore_123/
+```
+
+**3. 验证子代理注册**
+```java
+// 列出所有可用的子代理
+List<Subagent> agents = manager.getAgents();
+for (Subagent agent : agents) {
+    System.out.println(STR."- `\{agent.getType()}\`: \{agent.getDescription()}");
+}
+```
+
+---
+
+## 高级特性
+
+### 1. 任务链（Task Chaining）
+
+```java
+// 前一个子代理的结果传递给下一个
+String exploreResult = manager.getAgent("explore")
+    .call(sessionId, Prompt.of("探索认证模块"))
+    .getContent();
+
+String planResult = manager.getAgent("plan")
+    .call(sessionId, Prompt.of(
+        "基于探索结果设计认证方案\n\n" +
+        "现有代码:\n" + exploreResult
+    ))
+    .getContent();
+```
+
+### 2. 流式执行
+
+```java
+// 流式获取子代理输出
+Flux<AgentChunk> chunks = manager.getAgent("explore")
+    .stream(__cwd, sessionId, Prompt.of("探索代码"));
+
+chunks.subscribe(
+    chunk -> System.out.println(chunk.getContent()),
+    error -> error.printStackTrace(),
+    () -> System.out.println("完成")
+);
+```
+
+### 3. 性能优化
+
+```java
+// 使用对象池减少创建开销
+SubagentManager manager = new SubagentManager(10); // 缓存大小
+
+// 预加载常用子代理
+manager.getAgent("explore");  // 预加载
+manager.getAgent("plan");     // 预加载
+```
+
+---
+
+## 常见问题
+
+### Q1: 子代理调用失败
+
+**问题**: `ERROR: 未知的子代理类型 'xxx'`
+
+**解决**:
+1. 检查子代理类型名称是否正确
+2. 确认 `.soloncode/agents/` 下是否有对应的 `.md` 文件
+3. 使用 `subagent_list()` 查看所有可用子代理
+
+### Q2: 子代理执行超时
+
+**问题**: 调用子代理后长时间无响应
+
+**解决**:
+1. 检查子代理的 `maxSteps` 是否足够
+2. 简化任务提示，减少上下文
+3. 使用更快的模型
+4. 检查网络连接（如果涉及网络工具）
+
+### Q3: 子代理无法访问工具
+
+**问题**: 子代理报告找不到工具
+
+**解决**:
+1. 确认工具已正确注册到 `AgentKernel`
+2. 检查子代理的 `customize()` 方法
+3. 查看子代理的系统提示词中是否说明了工具使用策略
+
+---
+
+## 总结
+
+SubAgent 系统通过专门的子代理提供强大的任务委派能力：
+
+| 特性 | 好处 |
+|------|------|
+| **类型专门化** | 每个子代理针对特定任务优化 |
+| **独立会话** | 子代理有独立的会话空间，不会污染主对话 |
+| **Token 节省** | 复杂任务委派给子代理，节省主对话上下文 |
+| **可扩展** | 可以轻松添加新的子代理类型 |
+| **兼容性** | 兼容 Claude Code 的子代理模式 |
+
+---
+
+**作者**: bai
+**版本**: 2.0
+**状态**: ✅ 完整
+**更新日期**: 2026-03-09

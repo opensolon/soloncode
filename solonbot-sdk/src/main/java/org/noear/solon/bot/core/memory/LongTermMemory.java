@@ -16,6 +16,7 @@
 package org.noear.solon.bot.core.memory;
 
 import lombok.Getter;
+import lombok.Setter;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ import java.util.ArrayList;
  * @since 3.9.5
  */
 @Getter
+@Setter
 public class LongTermMemory extends Memory {
     private String summary;      // 摘要内容
     private String sourceAgent;  // 来源代理
@@ -68,18 +70,6 @@ public class LongTermMemory extends Memory {
         this.sourceAgent = sourceAgent;
         this.tags = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
         this.importance = 0.5;
-    }
-
-    public void setSummary(String summary) {
-        this.summary = summary;
-    }
-
-    public void setSourceAgent(String sourceAgent) {
-        this.sourceAgent = sourceAgent;
-    }
-
-    public void setTags(List<String> tags) {
-        this.tags = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
     }
 
     public void setImportance(double importance) {

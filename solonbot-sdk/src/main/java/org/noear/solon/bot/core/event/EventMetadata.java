@@ -15,6 +15,8 @@
  */
 package org.noear.solon.bot.core.event;
 
+import lombok.Getter;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,6 +26,7 @@ import java.util.Map;
  * @author bai
  * @since 3.9.5
  */
+@Getter
 public class EventMetadata {
     private final String sourceAgent;    // 来源代理ID
     private final String taskId;         // 关联任务ID
@@ -42,22 +45,6 @@ public class EventMetadata {
      */
     public static Builder builder() {
         return new Builder();
-    }
-
-    public String getSourceAgent() {
-        return sourceAgent;
-    }
-
-    public String getTaskId() {
-        return taskId;
-    }
-
-    public int getPriority() {
-        return priority;
-    }
-
-    public Map<String, String> getHeaders() {
-        return headers;
     }
 
     public String getHeader(String key) {

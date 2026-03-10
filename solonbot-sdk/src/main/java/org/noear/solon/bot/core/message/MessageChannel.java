@@ -145,7 +145,7 @@ public class MessageChannel {
             } else {
                 LOG.warn("无接收者: to={}", to);
                 return CompletableFuture.completedFuture(
-                    new MessageAck(message.getId(), to, false, "No receiver")
+                    new MessageAck(message.getId(), to, false, "No receiver", null)
                 );
             }
         }
@@ -210,9 +210,8 @@ public class MessageChannel {
                     );
                     return failedFuture;
                 }
-                // 简化实现：返回 ACK 对象
-                // 实际使用中，可以通过其他机制（如事件总线）获取完整的响应
-                return CompletableFuture.completedFuture(ack);
+                // 返回 handler 的处理结果
+                return CompletableFuture.completedFuture(ack.getResponse());
             });
     }
 
@@ -268,7 +267,8 @@ public class MessageChannel {
         return CompletableFuture.anyOf(receivers.stream()
                         .map(wrapper -> wrapper.handle(message)).toArray(CompletableFuture[]::new))
             .thenApply(result -> {
-                MessageAck ack = new MessageAck(message.getId(), message.getTo(), true, null);
+                // 将 handler 的处理结果存储到 MessageAck 中
+                MessageAck ack = new MessageAck(message.getId(), message.getTo(), true, null, result);
 
                 // 如果需要确认，记录确认
                 boolean requireAck = message.getBooleanMetadata("requireAck", false);
@@ -315,11 +315,11 @@ public class MessageChannel {
                         return retryFuture.get();
                     } catch (InterruptedException | ExecutionException e) {
                         Thread.currentThread().interrupt();
-                        return new MessageAck(message.getId(), message.getTo(), false, e.getMessage());
+                        return new MessageAck(message.getId(), message.getTo(), false, e.getMessage(), null);
                     }
                 }
 
-                return new MessageAck(message.getId(), message.getTo(), false, ex.getMessage());
+                return new MessageAck(message.getId(), message.getTo(), false, ex.getMessage(), null);
             });
     }
 
@@ -341,7 +341,7 @@ public class MessageChannel {
         if (requireAck) {
             ackFutures.put(message.getId(), future);
         } else {
-            future.complete(new MessageAck(message.getId(), to, true, "Queued"));
+            future.complete(new MessageAck(message.getId(), to, true, "Queued", null));
         }
 
         return future;
