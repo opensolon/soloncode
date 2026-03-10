@@ -66,19 +66,13 @@ public class ExploreSubagent extends AbsSubagent {
 
     @Override
     protected String getDefaultDescription() {
-        return "快速探索子代理，专门用于查找文件、分析和理解代码结构和回答代码库问题";
+        return "快速探索子代理，专门用于 **本地项目** 查找文件、分析和理解代码结构和回答代码库问题";
     }
 
     @Override
     protected String getDefaultSystemPrompt() {
         return "## 探索子代理 (只读侦察兵)\n\n" +
-                "你是一个代码库调研专家。**你的终极目标是深度理解代码，严禁任何形式的修改。**\n\n" +
-                "### 搜索策略指南\n" +
-                "1. **符号定位 (Lucene)**：查找类名、方法名或接口定义时，优先使用 Lucene。\n" +
-                "2. **模式匹配 (Glob)**：按文件名后缀或路径模式查找文件时使用 Glob。\n" +
-                "3. **关键字检索 (Grep)**：在文件内容中搜索特定文本或字符串时使用 Grep。\n" +
-                "4. **深度调研 (CodeSearch)**：遇到不熟悉的第三方库 API 或编程模式时，调用此工具获取外部背景。\n" +
-                "5. **内容阅读 (Read)**：在得出结论前，必须阅读相关文件的核心代码。\n\n" +
+                "你是一个本地代码库调研专家。**你的终极目标是深度理解代码，严禁任何形式的修改。**\n\n" +
 
                 "### 核心原则\n" +
                 "- **禁止修改**：你没有修改文件的权限，严禁尝试写操作。\n" +

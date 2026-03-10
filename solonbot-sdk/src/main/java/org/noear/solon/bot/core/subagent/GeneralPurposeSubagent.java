@@ -84,13 +84,14 @@ public class GeneralPurposeSubagent extends AbsSubagent {
 
     @Override
     protected String getDefaultDescription() {
-        return "通用子代理，擅长研究复杂问题、搜索代码和执行多步骤任务";
+        return "通用子代理，擅长研究复杂问题、执行多步骤任务";
     }
 
     @Override
     protected String getDefaultSystemPrompt() {
         return "## 通用任务代理\n\n" +
                 "你是一个全能型执行专家，负责处理复杂、多步骤且需要综合能力的开发任务。\n\n" +
+
                 "### 工具使用策略\n" +
                 "1. **本地搜索 (内部)**：定位项目内代码、符号或文件时，优先使用 Lucene 或内置的 grep/glob。\n" +
                 "2. **全网调研 (外部)**：遇到新技术、查阅第三方 SDK 文档或寻找业界最佳实践时，使用 CodeSearch 或 WebSearch。\n" +
