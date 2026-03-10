@@ -370,7 +370,6 @@ public class SubAgentMetadata {
         return result.toString();
     }
 
-    // ========== 工具方法 ==========
 
     public boolean hasModel() {
         return model != null && !model.isEmpty();

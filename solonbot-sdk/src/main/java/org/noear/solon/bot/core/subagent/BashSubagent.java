@@ -18,6 +18,8 @@ package org.noear.solon.bot.core.subagent;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.bot.core.AgentKernel;
 
+import java.util.Arrays;
+
 /**
  * Bash 命令子代理
  *
@@ -49,6 +51,20 @@ public class BashSubagent extends AbsSubagent {
     @Override
     public String getType() {
         return "bash";
+    }
+
+    @Override
+    public SubAgentMetadata getMetadata() {
+        SubAgentMetadata metadata = new SubAgentMetadata();
+        metadata.setCode("bash");
+        metadata.setName("Bash 命令子代理");
+        metadata.setDescription(getDefaultDescription());
+        metadata.setEnabled(true);
+        metadata.setMaxTurns(10);
+        // Bash 代理的工具：基本文件操作、bash 命令
+        metadata.setTools(Arrays.asList("ls", "read", "bash"));
+        // Bash 代理没有额外的技能
+        return metadata;
     }
 
     @Override

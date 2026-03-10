@@ -20,6 +20,8 @@ import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.LuceneSkill;
 import org.noear.solon.bot.core.tool.CodeSearchTool;
 
+import java.util.Arrays;
+
 /**
  * 探索子代理 - 快速探索代码库
  *
@@ -52,6 +54,21 @@ public class ExploreSubagent extends AbsSubagent {
     @Override
     public String getType() {
         return "explore";
+    }
+
+    @Override
+    public SubAgentMetadata getMetadata() {
+        SubAgentMetadata metadata = new SubAgentMetadata();
+        metadata.setCode("explore");
+        metadata.setName("探索子代理");
+        metadata.setDescription(getDefaultDescription());
+        metadata.setEnabled(true);
+        metadata.setMaxTurns(15);
+        // 探索代理的工具：只读文件操作
+        metadata.setTools(Arrays.asList("ls", "read", "grep", "glob", "codesearch"));
+        // 探索代理的技能：专家技能、代码搜索
+        metadata.setSkills(Arrays.asList("expert", "lucene"));
+        return metadata;
     }
 
     @Override

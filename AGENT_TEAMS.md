@@ -75,6 +75,69 @@ Agent Teams 是一种多代理协作模式，通过 **MainAgent（协调器）**
 
 ---
 
+## Teammate 管理（团队成员）
+
+类似 Claude Code 的 `/teammate` 功能，支持动态创建和管理团队成员。
+
+### 创建团队成员
+
+```java
+// 通过 AgentTeamsSkill 创建新成员
+teammate(
+    name="security-expert",
+    role="安全专家",
+    description="专注于安全审计、漏洞检测和合规性检查",
+    expertise="security,auth,encryption",
+    model="gpt-4"
+)
+```
+
+**输出格式**（表格）:
+```
+✅ 团队成员创建成功
+
+## 成员信息
+
+| 属性 | 值 |
+|------|------|
+| **名称** | `security-expert` |
+| **角色** | 安全专家 |
+| **描述** | 专注于安全审计、漏洞检测和合规性检查 |
+| **专业领域** | security,auth,encryption |
+| **模型** | gpt-4 |
+| **文件** | `.soloncode/agents/security-expert.md` |
+| **状态** | 🟢 已激活 |
+```
+
+### 查看所有成员
+
+```java
+// 列出所有团队成员（表格格式）
+teammates()
+```
+
+**输出格式**:
+```
+## 团队成员
+
+| 名称 | 角色 | 描述 | 状态 | 模型 |
+|------|------|------|------|------|
+| `explore` | Explore | 代码探索专家 | 🟢 活跃 | 默认 |
+| `plan` | Plan | 方案设计专家 | 🟢 活跃 | 默认 |
+| `security-expert` | 安全专家 | 安全审计和漏洞检测 | 🟢 活跃 | gpt-4 |
+
+**总计**: 3 位活跃成员
+```
+
+### 移除团队成员
+
+```java
+// 禁用指定成员
+remove_teammate("security-expert")
+```
+
+---
+
 ## 简单代码实现
 
 ### 基础初始化
@@ -295,6 +358,19 @@ Agent Teams 模式通过 **MainAgent 协调 + SubAgents 执行** 的分工协作
 2. **SubAgents** 专注于特定领域的任务执行
 3. **SharedTaskList** 提供统一的任务管理
 4. **EventBus** 实现松耦合的事件通信
+5. **Teammate 管理** 支持动态创建和管理团队成员（类似 Claude Code）
+
+### 核心工具
+
+| 工具 | 功能 | 输出格式 |
+|------|------|----------|
+| `team_task()` | 启动团队协作任务 | 统计 + 结果 |
+| `team_status()` | 查看任务状态 | 表格 + 统计 |
+| `create_task()` | 创建新任务 | 任务信息 |
+| `teammate()` | 创建团队成员 | 表格 |
+| `teammates()` | 列出所有成员 | 表格 |
+| `remove_teammate()` | 移除团队成员 | 状态信息 |
+| `subagent()` | 调用子代理 | task_id + 结果 |
 
 这种模式特别适合需要多个步骤、涉及多个文件或需要专业领域知识的复杂任务。
 

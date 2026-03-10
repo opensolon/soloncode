@@ -22,6 +22,8 @@ import org.noear.solon.bot.core.tool.CodeSearchTool;
 import org.noear.solon.bot.core.tool.WebfetchTool;
 import org.noear.solon.bot.core.tool.WebsearchTool;
 
+import java.util.Arrays;
+
 /**
  * 计划子代理 - 软件架构师
  *
@@ -57,6 +59,21 @@ public class PlanSubagent extends AbsSubagent {
     @Override
     public String getType() {
         return "plan";
+    }
+
+    @Override
+    public SubAgentMetadata getMetadata() {
+        SubAgentMetadata metadata = new SubAgentMetadata();
+        metadata.setCode("plan");
+        metadata.setName("计划子代理");
+        metadata.setDescription(getDefaultDescription());
+        metadata.setEnabled(true);
+        metadata.setMaxTurns(20);
+        // 计划代理的工具：只读文件操作、网络搜索
+        metadata.setTools(Arrays.asList("ls", "read", "grep", "glob", "websearch", "webfetch", "codesearch"));
+        // 计划代理的技能：专家技能、代码搜索
+        metadata.setSkills(Arrays.asList("expert", "lucene"));
+        return metadata;
     }
 
     @Override

@@ -56,6 +56,11 @@ public abstract class AbsSubagent implements Subagent {
     }
 
     @Override
+    public SubAgentMetadata getMetadata() {
+        return null;
+    }
+
+    @Override
     public String getType() {
         // 从类名推断类型
         // 例如：ExploreSubagent -> explore

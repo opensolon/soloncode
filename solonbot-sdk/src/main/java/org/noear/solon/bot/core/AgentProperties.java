@@ -46,6 +46,7 @@ public class AgentProperties {
 
     private boolean hitlEnabled = false;
     private boolean subagentEnabled = true;
+    private boolean agentTeamEnabled = true;
     private boolean browserEnabled = true;
 
     private boolean cliEnabled = true;

@@ -23,6 +23,8 @@ import org.noear.solon.bot.core.tool.WebfetchTool;
 import org.noear.solon.bot.core.tool.WebsearchTool;
 import org.noear.solon.core.util.Assert;
 
+import java.util.Arrays;
+
 /**
  * 通用子代理 - 处理各种复杂任务
  *
@@ -71,6 +73,22 @@ public class GeneralPurposeSubagent extends AbsSubagent {
     @Override
     public String getType() {
         return this.subagentType;
+    }
+
+    @Override
+    public SubAgentMetadata getMetadata() {
+        SubAgentMetadata metadata = new SubAgentMetadata();
+        metadata.setCode(this.subagentType);
+        metadata.setName("通用子代理");
+        metadata.setDescription(getDefaultDescription());
+        metadata.setEnabled(true);
+        metadata.setMaxTurns(25);
+        // 通用代理的工具：包含所有核心工具
+        metadata.setTools(Arrays.asList("ls", "read", "write", "edit", "grep", "glob", "bash",
+                "websearch", "webfetch", "codesearch"));
+        // 通用代理的技能：包含所有核心技能
+        metadata.setSkills(Arrays.asList("terminal", "expert", "lucene", "todo", "code"));
+        return metadata;
     }
 
     @Override

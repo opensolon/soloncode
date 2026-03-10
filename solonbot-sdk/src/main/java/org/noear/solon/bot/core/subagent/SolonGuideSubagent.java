@@ -20,6 +20,8 @@ import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.tool.WebfetchTool;
 import org.noear.solon.bot.core.tool.WebsearchTool;
 
+import java.util.Arrays;
+
 /**
  * Solon Code 指南代理 - 回答 Solon Code、Solon Agent SDK 和 Solon API 相关问题
  *
@@ -53,6 +55,21 @@ public class SolonGuideSubagent extends AbsSubagent {
     @Override
     public String getType() {
         return "solon-guide";
+    }
+
+    @Override
+    public SubAgentMetadata getMetadata() {
+        SubAgentMetadata metadata = new SubAgentMetadata();
+        metadata.setCode("solon-guide");
+        metadata.setName("Solon 指南子代理");
+        metadata.setDescription(getDefaultDescription());
+        metadata.setEnabled(true);
+        metadata.setMaxTurns(15);
+        // Solon 指南代理的工具：网络搜索、文档读取
+        metadata.setTools(Arrays.asList("websearch", "webfetch", "solon_doc_read", "list_solon_docs"));
+        // Solon 指南代理的技能：专家技能（用于技能搜索）
+        metadata.setSkills(Arrays.asList("expert"));
+        return metadata;
     }
 
     @Override

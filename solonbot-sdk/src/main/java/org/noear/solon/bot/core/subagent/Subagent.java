@@ -63,4 +63,8 @@ public interface Subagent {
      * @return 流式结果
      */
     Flux<AgentChunk> stream(String __cwd, String sessionId, Prompt prompt);
+
+
+
+    SubAgentMetadata getMetadata();
 }
