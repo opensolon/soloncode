@@ -23,7 +23,6 @@ import org.noear.solon.bot.core.event.AgentEvent;
 import org.noear.solon.bot.core.event.AgentEventType;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.memory.*;
-import org.noear.solon.bot.core.message.MessageChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,10 +31,11 @@ import java.util.List;
 /**
  * Agent Teams 工具集
  *
- * 提供 MainAgent 和子代理需要的核心工具：
+ * 提供 MainAgent 内部使用的核心工具：
  * - 记忆存储和读取
  * - 事件发布
- * - 消息传递
+ *
+ * 注意：代理间通信工具（send_message、list_agents）在 AgentTeamsSkill 中提供
  *
  * @author bai
  * @since 3.9.5
@@ -46,14 +46,11 @@ public class AgentTeamsTools extends AbsSkill {
 
     private final SharedMemoryManager memoryManager;
     private final EventBus eventBus;
-    private final MessageChannel messageChannel;
 
     public AgentTeamsTools(SharedMemoryManager memoryManager,
-                          EventBus eventBus,
-                          MessageChannel messageChannel) {
+                          EventBus eventBus) {
         this.memoryManager = memoryManager;
         this.eventBus = eventBus;
-        this.messageChannel = messageChannel;
     }
 
     @Override
@@ -186,13 +183,19 @@ public class AgentTeamsTools extends AbsSkill {
 
                 if (mem instanceof ShortTermMemory) {
                     sb.append("[短期] ");
+                    sb.append(((ShortTermMemory) mem).getContext());
                 } else if (mem instanceof LongTermMemory) {
                     sb.append("[长期] ");
-                } else {
+                    sb.append(((LongTermMemory) mem).getSummary());
+                } else if (mem instanceof KnowledgeMemory) {
                     sb.append("[知识] ");
+                    sb.append(((KnowledgeMemory) mem).getContent());
+                } else {
+                    sb.append("[其他] ");
+                    sb.append(mem.getId());
                 }
 
-                sb.append(mem.getContext()).append("\n");
+                sb.append("\n");
             }
 
             return sb.toString();
@@ -208,32 +211,53 @@ public class AgentTeamsTools extends AbsSkill {
      * 设置工作记忆
      */
     @ToolMapping(name = "working_memory_set",
-                 description = "设置工作记忆（用于存储当前任务状态、决策等结构化数据）")
+                 description = "设置工作记忆（用于存储当前任务状态、步骤等结构化数据）")
     public String workingMemorySet(
-            @Param(name = "field", description = "字段名称（如：currentTask、decision、status）") String field,
+            @Param(name = "field", description = "字段名称（taskDescription/status/step/currentAgent）") String field,
             @Param(name = "value", description = "字段值") String value) {
         try {
-            WorkingMemory workingMemory = memoryManager.getWorkingMemory();
+            // 使用默认的 taskId "main-agent"
+            String taskId = "main-agent";
+            WorkingMemory workingMemory = memoryManager.getWorking(taskId);
+
+            // 如果不存在，创建一个新的
+            if (workingMemory == null) {
+                workingMemory = new WorkingMemory(taskId);
+            }
 
             switch (field.toLowerCase()) {
+                case "taskdescription":
                 case "currenttask":
-                    workingMemory.setCurrentTask(value);
-                    break;
-                case "decision":
-                    workingMemory.setDecision(value);
+                    workingMemory.setTaskDescription(value);
                     break;
                 case "status":
                     workingMemory.setStatus(value);
                     break;
-                case "progress":
-                    workingMemory.setProgress(value);
+                case "step":
+                    try {
+                        workingMemory.setStep(Integer.parseInt(value));
+                    } catch (NumberFormatException e) {
+                        return "❌ 步骤必须是数字: " + value;
+                    }
+                    break;
+                case "currentagent":
+                    workingMemory.setCurrentAgent(value);
                     break;
                 default:
-                    workingMemory.set(field, value);
+                    // 存储到 data 字段中
+                    if (workingMemory.getData() == null) {
+                        workingMemory.setData(new java.util.concurrent.ConcurrentHashMap<>());
+                    }
+                    workingMemory.getData().put(field, value);
             }
+
+            // 保存更新后的工作记忆
+            memoryManager.storeWorking(workingMemory);
 
             LOG.debug("设置工作记忆: {}={}", field, value);
             return "✅ 工作记忆已设置: " + field + " = " + value;
+        } catch (NumberFormatException e) {
+            return "❌ 步骤必须是数字: " + value;
         } catch (Exception e) {
             LOG.error("设置工作记忆失败", e);
             return "❌ 设置失败: " + e.getMessage();
@@ -244,33 +268,44 @@ public class AgentTeamsTools extends AbsSkill {
      * 获取工作记忆
      */
     @ToolMapping(name = "working_memory_get",
-                 description = "获取工作记忆（查看当前任务状态、决策等）")
-    public String workingMemoryGet() {
+                 description = "获取工作记忆（查看当前任务状态、步骤等）")
+    public String workingMemoryGet(
+            @Param(name = "taskId", description = "任务ID，默认为'main-agent'") String taskId
+    ) {
         try {
-            WorkingMemory workingMemory = memoryManager.getWorkingMemory();
+            // 如果没有提供 taskId，使用默认值
+            String actualTaskId = (taskId != null && !taskId.isEmpty()) ? taskId : "main-agent";
+
+            WorkingMemory workingMemory = memoryManager.getWorking(actualTaskId);
+
+            if (workingMemory == null) {
+                return "⚠️ 未找到工作记忆: " + actualTaskId;
+            }
 
             StringBuilder sb = new StringBuilder();
             sb.append("## 工作记忆\n\n");
 
-            if (workingMemory.getCurrentTask() != null) {
-                sb.append("**当前任务**: ").append(workingMemory.getCurrentTask()).append("\n");
-            }
-            if (workingMemory.getDecision() != null) {
-                sb.append("**最新决策**: ").append(workingMemory.getDecision()).append("\n");
+            if (workingMemory.getTaskDescription() != null) {
+                sb.append("**当前任务**: ").append(workingMemory.getTaskDescription()).append("\n");
             }
             if (workingMemory.getStatus() != null) {
                 sb.append("**状态**: ").append(workingMemory.getStatus()).append("\n");
             }
-            if (workingMemory.getProgress() != null) {
-                sb.append("**进度**: ").append(workingMemory.getProgress()).append("\n");
+            sb.append("**步骤**: ").append(workingMemory.getStep()).append("\n");
+            if (workingMemory.getCurrentAgent() != null) {
+                sb.append("**当前代理**: ").append(workingMemory.getCurrentAgent()).append("\n");
+            }
+            if (workingMemory.getSummary() != null) {
+                sb.append("**摘要**: ").append(workingMemory.getSummary()).append("\n");
             }
 
-            // 其他字段
-            workingMemory.getAll().forEach((key, value) -> {
-                if (!key.matches("currentTask|decision|status|progress")) {
-                    sb.append("**").append(key).append("**: ").append(value).append("\n");
-                }
-            });
+            // 其他自定义数据字段
+            if (workingMemory.getData() != null && !workingMemory.getData().isEmpty()) {
+                sb.append("\n**其他数据**:\n");
+                workingMemory.getData().forEach((key, value) -> {
+                    sb.append("  - ").append(key).append(": ").append(value).append("\n");
+                });
+            }
 
             return sb.toString();
         } catch (Exception e) {
@@ -298,84 +333,6 @@ public class AgentTeamsTools extends AbsSkill {
             return "✅ 事件已发布: " + type;
         } catch (IllegalArgumentException e) {
             return "❌ 无效的事件类型: " + eventType;
-        } catch (Exception e) {
-            LOG.error("发布事件失败", e);
-            return "❌ 发布失败: " + e.getMessage();
-        }
-    }
-
-    // ==================== 消息工具 ====================
-
-    /**
-     * 发送消息给其他代理
-     */
-    @ToolMapping(name = "send_message",
-                 description = "发送消息给其他代理（点对点通信）")
-    public String sendMessage(
-            @Param(name = "targetAgent", description = "目标代理名称（如：explore、plan、bash）") String targetAgent,
-            @Param(name = "message", description = "消息内容") String message) {
-        try {
-            if (messageChannel == null) {
-                return "⚠️ 消息通道未启用";
-            }
-
-            AgentMessage agentMessage = new AgentMessage(
-                "main-agent",  // 从 MainAgent 发送
-                targetAgent,
-                message,
-                null
-            );
-
-            MessageAck ack = messageChannel.send(agentMessage);
-
-            if (ack.isSuccess()) {
-                LOG.debug("消息已发送: to={}, msg={}", targetAgent, message);
-                return "✅ 消息已发送给 " + targetAgent;
-            } else {
-                return "❌ 消息发送失败: " + ack.getErrorMessage();
-            }
-        } catch (Exception e) {
-            LOG.error("发送消息失败", e);
-            return "❌ 发送失败: " + e.getMessage();
-        }
-    }
-
-    /**
-     * 查看收到的消息
-     */
-    @ToolMapping(name = "get_messages",
-                 description = "查看收到的消息（从消息队列中读取）")
-    public String getMessages(
-            @Param(name = "limit", description = "返回消息数量限制，默认10") Integer limit) {
-        try {
-            if (messageChannel == null) {
-                return "⚠️ 消息通道未启用";
-            }
-
-            int actualLimit = limit != null && limit > 0 ? limit : 10;
-            List<AgentMessage> messages = messageChannel.receive(actualLimit);
-
-            if (messages.isEmpty()) {
-                return "⚠️ 没有新消息";
-            }
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("收到 ").append(messages.size()).append(" 条消息:\n\n");
-
-            for (int i = 0; i < messages.size(); i++) {
-                AgentMessage msg = messages.get(i);
-                sb.append(i + 1).append(". ")
-                  .append("从 ").append(msg.getFromAgent())
-                  .append(" 到 ").append(msg.getToAgent())
-                  .append(": ")
-                  .append(msg.getContent())
-                  .append("\n");
-            }
-
-            return sb.toString();
-        } catch (Exception e) {
-            LOG.error("获取消息失败", e);
-            return "❌ 获取失败: " + e.getMessage();
         }
     }
 }

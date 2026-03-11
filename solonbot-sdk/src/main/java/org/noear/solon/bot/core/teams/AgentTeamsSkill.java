@@ -22,8 +22,10 @@ import org.noear.solon.ai.chat.skill.AbsSkill;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.memory.KnowledgeMemory;
 import org.noear.solon.bot.core.memory.LongTermMemory;
 import org.noear.solon.bot.core.memory.Memory;
+import org.noear.solon.bot.core.memory.ShortTermMemory;
 import org.noear.solon.bot.core.subagent.SubAgentMetadata;
 import org.noear.solon.bot.core.subagent.Subagent;
 import org.noear.solon.bot.core.subagent.SubagentManager;
@@ -96,7 +98,9 @@ public class AgentTeamsSkill extends AbsSkill {
         sb.append("1. **团队协作任务**: 使用 `team_task()` 启动多代理协作\n");
         sb.append("2. **任务管理**: 查看、创建团队任务\n");
         sb.append("3. **子代理调用**: 使用 `subagent()` 委派专门任务（支持会话续接）\n");
-        sb.append("4. **动态代理**: 使用 `create_agent()` 创建新的子代理定义\n\n");
+        sb.append("4. **动态代理**: 使用 `create_agent()` 创建新的子代理定义\n");
+        sb.append("5. **智能记忆管理**: 使用 `memory_store()` 自动分类存储（推荐）\n");
+        sb.append("6. **代理间通信**: 使用 `send_message()` 向其他代理发送消息\n\n");
 
         sb.append("### 强制委派准则\n");
         sb.append("- **项目认知**: 探索项目、分析架构 → 委派给子代理\n");
@@ -138,7 +142,35 @@ public class AgentTeamsSkill extends AbsSkill {
         sb.append("# 场景4: 启动团队协作任务\n");
         sb.append("team_task(\"实现用户登录功能\")\n\n");
         sb.append("# 场景5: 查看任务状态\n");
-        sb.append("team_status()\n");
+        sb.append("team_status()\n\n");
+        sb.append("# 场景6: 智能记忆存储（推荐使用）\n");
+        sb.append("# 自动分类存储（系统自动判断存储周期）\n");
+        sb.append("memory_store(key=\"项目结构\", value=\"采用三层架构：Controller-Service-Repository\")\n");
+        sb.append("# → 系统识别为架构决策，存储到知识记忆（永久）\n\n");
+        sb.append("# 手动指定类别\n");
+        sb.append("memory_store(key=\"当前步骤\", value=\"正在实现Service层\", category=\"context\")\n");
+        sb.append("# → 存储到短期记忆（1小时）\n\n");
+        sb.append("# 场景7: 存储任务完成结果\n");
+        sb.append("memory_store(key=\"登录功能\", value=\"已完成JWT认证，包括登录、登出、token刷新\", category=\"task\")\n");
+        sb.append("# → 存储到长期记忆（7天）\n\n");
+        sb.append("# 场景8: 代理间通信\n");
+        sb.append("# 向 explore 代理发送消息\n");
+        sb.append("send_message(\n");
+        sb.append("    targetAgent=\"explore\",\n");
+        sb.append("    message=\"请探索项目的目录结构，重点关注 src/main/java 目录\"\n");
+        sb.append(")\n\n");
+        sb.append("# 向 plan 代理发送消息\n");
+        sb.append("send_message(\n");
+        sb.append("    targetAgent=\"plan\",\n");
+        sb.append("    message=\"需要设计一个用户认证模块，请提供实现方案\"\n");
+        sb.append(")\n\n");
+        sb.append("# 查看可用代理列表\n");
+        sb.append("list_agents()\n\n");
+        sb.append("### 记忆存储说明\n");
+        sb.append("- **auto**: 自动分类（推荐），系统根据内容关键词智能判断\n");
+        sb.append("- **task**: 任务结果类 → 长期记忆（7天）\n");
+        sb.append("- **context**: 临时上下文类 → 短期记忆（1小时）\n");
+        sb.append("- **decision/knowledge**: 决策和知识类 → 知识记忆（永久）\n");
         sb.append("```\n");
 
         return sb.toString();
@@ -722,6 +754,60 @@ public class AgentTeamsSkill extends AbsSkill {
     }
 
     /**
+     * 智能存储记忆（统一接口）
+     *
+     * 自动根据内容类型选择合适的存储周期：
+     * - 决策类 → 知识记忆（永久）
+     * - 任务结果 → 长期记忆（7天）
+     * - 临时上下文 → 短期记忆（1小时）
+     * - 默认 → 长期记忆（7天）
+     */
+    @ToolMapping(name = "memory_store",
+                 description = "智能存储记忆（自动判断存储周期）。根据内容自动选择合适的存储类型。")
+    public String memoryStore(
+            @Param(name = "key", description = "记忆键") String key,
+            @Param(name = "value", description = "记忆值") String value,
+            @Param(name = "category", description = "可选：指定类别（auto/task/context/decision/knowledge），默认auto") String category) {
+        try {
+            if (mainAgent == null || mainAgent.getSharedMemoryManager() == null) {
+                return "⚠️ 共享记忆未初始化";
+            }
+
+            String actualCategory = (category != null && !category.isEmpty()) ? category : "auto";
+            String result;
+
+            switch (actualCategory) {
+                case "task":
+                    mainAgent.getSharedMemoryManager().putLongTerm(key, value, 604800);
+                    result = "✅ 任务结果已存储（7天）";
+                    break;
+
+                case "context":
+                    mainAgent.getSharedMemoryManager().putShortTerm(key, value, 3600);
+                    result = "✅ 上下文已存储（1小时）";
+                    break;
+
+                case "decision":
+                case "knowledge":
+                    mainAgent.getSharedMemoryManager().putKnowledge(key, value);
+                    result = "✅ 知识已存储（永久）";
+                    break;
+
+                case "auto":
+                default:
+                    result = autoClassifyAndStore(key, value);
+                    break;
+            }
+
+            LOG.info("智能存储记忆: key={}, category={}", key, actualCategory);
+            return result;
+        } catch (Exception e) {
+            LOG.error("存储记忆失败", e);
+            return "❌ 存储失败: " + e.getMessage();
+        }
+    }
+
+    /**
      * 获取工作记忆状态
      */
     @ToolMapping(name = "get_working_memory",
@@ -936,12 +1022,12 @@ public class AgentTeamsSkill extends AbsSkill {
                 return "⚠️ 任务状态不是进行中: " + task.getStatus();
             }
 
-            taskList.completeTask(taskId);
+            taskList.completeTask(taskId, result);
 
-            // 如果提供了结果，存储到记忆
+            // 如果提供了结果，额外存储到记忆
             if (result != null && !result.isEmpty()) {
                 String key = "task-result:" + task.getTitle() + ":" + System.currentTimeMillis();
-                mainAgent.getSharedMemoryManager().putLongTerm(key, result, 604800);
+                mainAgent.getSharedMemoryManager().putLongTerm(key, result.toString(), 604800);
             }
 
             LOG.info("任务已完成: taskId={}", taskId);
@@ -1111,7 +1197,11 @@ public class AgentTeamsSkill extends AbsSkill {
                 return "❌ 依赖任务不存在: " + dependsOnTaskId;
             }
 
-            taskList.addDependency(taskId, dependsOnTaskId);
+            // 添加依赖到任务的依赖列表
+            if (task.getDependencies() == null) {
+                task.setDependencies(new java.util.ArrayList<>());
+            }
+            task.getDependencies().add(dependsOnTaskId);
 
             LOG.info("添加任务依赖: {} depends on {}", taskId, dependsOnTaskId);
             return "✅ 依赖关系已添加: " + taskId + " 依赖于 " + dependsOnTaskId;
@@ -1139,7 +1229,19 @@ public class AgentTeamsSkill extends AbsSkill {
             // 过滤出依赖已完成的任务
             List<TeamTask> claimableTasks = new java.util.ArrayList<>();
             for (TeamTask task : pendingTasks) {
-                if (taskList.areDependenciesCompleted(task)) {
+                // 手动检查依赖是否都已完成
+                boolean allDependenciesCompleted = true;
+                if (task.getDependencies() != null && !task.getDependencies().isEmpty()) {
+                    for (String depId : task.getDependencies()) {
+                        TeamTask depTask = taskList.getTask(depId);
+                        if (depTask == null || !depTask.isCompleted()) {
+                            allDependenciesCompleted = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (allDependenciesCompleted) {
                     claimableTasks.add(task);
                 }
             }
@@ -1205,14 +1307,201 @@ public class AgentTeamsSkill extends AbsSkill {
      * 获取记忆内容（辅助方法）
      */
     private String getMemoryContent(Memory memory) {
-        if (memory instanceof org.noear.solon.bot.core.memory.ShortTermMemory) {
-            return ((org.noear.solon.bot.core.memory.ShortTermMemory) memory).getContext();
-        } else if (memory instanceof org.noear.solon.bot.core.memory.LongTermMemory) {
-            return ((org.noear.solon.bot.core.memory.LongTermMemory) memory).getSummary();
-        } else if (memory instanceof org.noear.solon.bot.core.memory.KnowledgeMemory) {
-            return ((org.noear.solon.bot.core.memory.KnowledgeMemory) memory).getContent();
+        if (memory instanceof ShortTermMemory) {
+            return ((ShortTermMemory) memory).getContext();
+        } else if (memory instanceof LongTermMemory) {
+            return ((LongTermMemory) memory).getSummary();
+        } else if (memory instanceof KnowledgeMemory) {
+            return ((KnowledgeMemory) memory).getContent();
         } else {
             return memory.getId();
+        }
+    }
+
+    /**
+     * 自动分类并存储记忆
+     */
+    private String autoClassifyAndStore(String key, String value) {
+        String lowerValue = value.toLowerCase();
+
+        // 1. 检查是否是决策类内容 → 知识记忆（永久）
+        if (isDecisionContent(lowerValue)) {
+            mainAgent.getSharedMemoryManager().putKnowledge(key, value);
+            return "✅ 决策已存储（永久）[自动分类: 决策类]";
+        }
+
+        // 2. 检查是否是任务结果 → 长期记忆（7天）
+        if (isTaskResult(lowerValue)) {
+            mainAgent.getSharedMemoryManager().putLongTerm(key, value, 604800);
+            return "✅ 任务结果已存储（7天）[自动分类: 任务结果]";
+        }
+
+        // 3. 检查是否是临时上下文 → 短期记忆（1小时）
+        if (isTemporaryContext(lowerValue)) {
+            mainAgent.getSharedMemoryManager().putShortTerm(key, value, 3600);
+            return "✅ 上下文已存储（1小时）[自动分类: 临时上下文]";
+        }
+
+        // 4. 检查是否是知识经验 → 知识记忆（永久）
+        if (isKnowledgeContent(lowerValue)) {
+            mainAgent.getSharedMemoryManager().putKnowledge(key, value);
+            return "✅ 知识已存储（永久）[自动分类: 知识经验]";
+        }
+
+        // 5. 默认使用长期记忆（7天）
+        mainAgent.getSharedMemoryManager().putLongTerm(key, value, 604800);
+        return "✅ 记忆已存储（7天）[自动分类: 默认长期]";
+    }
+
+    /**
+     * 判断是否是决策类内容
+     */
+    private boolean isDecisionContent(String lowerValue) {
+        return lowerValue.contains("决策") || lowerValue.contains("决定")
+            || lowerValue.contains("采用") || lowerValue.contains("选择")
+            || lowerValue.contains("技术选型") || lowerValue.contains("架构")
+            || lowerValue.contains("方案");
+    }
+
+    /**
+     * 判断是否是任务结果
+     */
+    private boolean isTaskResult(String lowerValue) {
+        return lowerValue.contains("已完成") || lowerValue.contains("完成")
+            || lowerValue.contains("结果") || lowerValue.contains("实现")
+            || lowerValue.contains("成功") || lowerValue.contains("done");
+    }
+
+    /**
+     * 判断是否是临时上下文
+     */
+    private boolean isTemporaryContext(String lowerValue) {
+        return lowerValue.contains("临时") || lowerValue.contains("当前")
+            || lowerValue.contains("待办") || lowerValue.contains("进行中")
+            || lowerValue.contains("步骤") || lowerValue.contains("中间");
+    }
+
+    /**
+     * 判断是否是知识经验
+     */
+    private boolean isKnowledgeContent(String lowerValue) {
+        return lowerValue.contains("最佳实践") || lowerValue.contains("经验")
+            || lowerValue.contains("教训") || lowerValue.contains("总结")
+            || lowerValue.contains("技巧") || lowerValue.contains("注意")
+            || lowerValue.contains("建议");
+    }
+
+    // ==================== 代理间通信工具 ====================
+
+    /**
+     * 发送消息给其他代理
+     */
+    @ToolMapping(name = "send_message",
+                 description = "发送消息给其他代理（点对点通信）。可用代理：explore、plan、bash、general-purpose、solon-code-guide 等。")
+    public String sendMessage(
+            @Param(name = "targetAgent", description = "目标代理名称（如：explore、plan、bash、general-purpose）") String targetAgent,
+            @Param(name = "message", description = "消息内容") String message) {
+        try {
+            if (mainAgent == null || mainAgent.getMessageChannel() == null) {
+                return "⚠️ 消息通道未启用";
+            }
+
+            // 使用 Builder 创建消息
+            org.noear.solon.bot.core.message.AgentMessage<String> agentMessage =
+                org.noear.solon.bot.core.message.AgentMessage.<String>of(message)
+                    .from("main-agent")
+                    .to(targetAgent)
+                    .type("command")
+                    .build();
+
+            // 发送消息并等待完成
+            java.util.concurrent.CompletableFuture<org.noear.solon.bot.core.message.MessageAck> ackFuture =
+                mainAgent.getMessageChannel().send(agentMessage);
+
+            // 获取结果（超时5秒）
+            org.noear.solon.bot.core.message.MessageAck ack =
+                ackFuture.get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+            if (ack.isSuccess()) {
+                LOG.debug("消息已发送: to={}, msg={}", targetAgent, message);
+                return "✅ 消息已发送给 " + targetAgent;
+            } else {
+                return "❌ 消息发送失败: " + ack.getMessage();
+            }
+        } catch (java.util.concurrent.TimeoutException e) {
+            LOG.error("发送消息超时", e);
+            return "⚠️ 发送超时: 消息可能还在处理中";
+        } catch (Exception e) {
+            LOG.error("发送消息失败", e);
+            return "❌ 发送失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 获取可用代理列表
+     */
+    @ToolMapping(name = "list_agents",
+                 description = "列出所有可用的子代理（用于查看可以向哪些代理发送消息）")
+    public String listAgents() {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("## 可用的子代理\n\n");
+
+            sb.append("**内置子代理**:\n");
+            sb.append("- `explore`: 代码库探索专家（快速查找文件和理解结构）\n");
+            sb.append("- `plan`: 软件架构师（设计实现方案和执行计划）\n");
+            sb.append("- `bash`: 命令执行专家（处理 git、构建等终端任务）\n");
+            sb.append("- `general-purpose`: 通用代理（处理复杂的多步骤任务）\n");
+            sb.append("- `solon-code-guide`: Solon 框架文档指南专家\n\n");
+
+            sb.append("**团队成员**:\n");
+            // 从 SubagentManager 获取自定义团队成员
+            for (Subagent agent : manager.getAgents()) {
+                if (!agent.getType().equals("explore")
+                    && !agent.getType().equals("plan")
+                    && !agent.getType().equals("bash")
+                    && !agent.getType().equals("general-purpose")
+                    && !agent.getType().equals("solon-code-guide")) {
+                    sb.append(String.format("- `%s`: %s\n",
+                            agent.getType(), agent.getDescription()));
+                }
+            }
+
+            sb.append("\n**提示**:\n");
+            sb.append("- 使用 `send_message(targetAgent, message)` 向指定代理发送消息\n");
+            sb.append("- 使用 `subagent(type, prompt)` 调用代理并获取响应\n");
+            sb.append("- 使用 `teammates()` 查看所有团队成员\n");
+
+            return sb.toString();
+        } catch (Exception e) {
+            LOG.error("列出代理失败", e);
+            return "❌ 列出失败: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 查看消息统计信息
+     */
+    @ToolMapping(name = "get_message_stats",
+                 description = "查看消息统计信息（待处理消息数量等）")
+    public String getMessageStats() {
+        try {
+            if (mainAgent == null || mainAgent.getMessageChannel() == null) {
+                return "⚠️ 消息通道未启用";
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("## 消息统计\n\n");
+
+            // 获取 main-agent 的待处理消息数量
+            int pendingCount = mainAgent.getMessageChannel().getPendingMessageCount("main-agent");
+            sb.append("**待处理消息数**: ").append(pendingCount).append("\n");
+
+            sb.append("\n提示: 使用 send_message 发送消息给其他代理");
+            return sb.toString();
+        } catch (Exception e) {
+            LOG.error("获取消息统计失败", e);
+            return "❌ 获取失败: " + e.getMessage();
         }
     }
 }
