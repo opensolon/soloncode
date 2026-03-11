@@ -1,4 +1,8 @@
 
+### v0.0.23
+
+* 添加 TeamAgent 支持
+
 ### v0.0.22
 
 * 添加 KeyInfoExtractionStrategy 处理

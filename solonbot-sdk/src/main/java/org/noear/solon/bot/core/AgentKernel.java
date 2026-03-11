@@ -106,7 +106,7 @@ public class AgentKernel {
     private MessageChannel messageChannel;
 
     public String getVersion() {
-        return "v0.0.22";
+        return "v0.0.23";
     }
 
     public String getName() {

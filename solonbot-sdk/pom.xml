@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solonbot-parent</artifactId>
-        <version>0.0.22</version>
+        <version>0.0.23</version>
         <relativePath>../solonbot-parent/pom.xml</relativePath>
     </parent>
 
