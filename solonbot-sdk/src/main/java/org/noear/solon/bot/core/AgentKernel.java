@@ -205,8 +205,8 @@ public class AgentKernel {
                 .addStrategy(new HierarchicalSummarizationStrategy(chatModel)); // 滚动更新摘要
 
         summarizationInterceptor = new SummarizationInterceptor(
-                properties.getSummaryTriggerSize(),
-                properties.getSummaryMaxLength(),
+                properties.getSummaryWindowSize(),
+                properties.getSummaryWindowToken(),
                 strategy);
 
         agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
