@@ -297,14 +297,10 @@ public class CliShellOld implements Runnable {
         if (Assert.isNotEmpty(action.getToolName())) {
             final String fullToolName;
 
-            if(kernel.getProps().isSubagentEnabled()) {
-                if(kernel.getName().equals(action.getAgentName())){
-                    fullToolName = action.getToolName();
-                } else {
-                    fullToolName = action.getAgentName() + "/" + action.getToolName();
-                }
-            } else {
+            if(kernel.getName().equals(action.getAgentName())){
                 fullToolName = action.getToolName();
+            } else {
+                fullToolName = action.getAgentName() + "/" + action.getToolName();
             }
 
 
