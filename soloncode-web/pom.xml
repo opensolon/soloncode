@@ -35,13 +35,11 @@
         <dependency>
             <groupId>org.noear</groupId>
             <artifactId>solon-view-thymeleaf</artifactId>
-            <version>3.9.4</version>
         </dependency>
 
         <dependency>
             <groupId>org.noear</groupId>
             <artifactId>solon-web-staticfiles</artifactId>
-            <version>3.9.4</version>
         </dependency>
 
         <dependency>
