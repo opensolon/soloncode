@@ -27,6 +27,7 @@ import org.noear.solon.bot.core.memory.scorer.EnhancedImportanceScorer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.Executors;
@@ -77,7 +78,7 @@ public class IntelligentMemoryManager {
      *
      * @param workDir 工作目录
      */
-    public IntelligentMemoryManager(String workDir) {
+    public IntelligentMemoryManager(Path workDir) {
         this(workDir, true, 0.85, 300_000L);  // 默认5分钟合并一次
     }
 
@@ -89,13 +90,13 @@ public class IntelligentMemoryManager {
      * @param consolidationThreshold 合并阈值（0-1）
      * @param consolidationInterval 合并间隔（毫秒）
      */
-    public IntelligentMemoryManager(String workDir,
+    public IntelligentMemoryManager(Path workDir,
                                     boolean autoConsolidate,
                                     double consolidationThreshold,
                                     long consolidationInterval) {
         this.autoClassifier = new MemoryAutoClassifier();
         this.importanceScorer = new EnhancedImportanceScorer();
-        this.delegate = new SharedMemoryManager(Paths.get(workDir));
+        this.delegate = new SharedMemoryManager(workDir);
         this.autoConsolidate = autoConsolidate;
         this.consolidationThreshold = consolidationThreshold;
         this.consolidationInterval = consolidationInterval;

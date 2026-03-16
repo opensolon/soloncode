@@ -42,20 +42,6 @@ public class PlanSubagent extends AbsSubagent {
         super(mainAgent);
     }
 
-    /**
-     * 创建默认元数据
-     *
-     * 计划代理主要用于规划，不需要太多步数
-     */
-    @Override
-    protected SubAgentMetadata createDefaultMetadata() {
-        return SubAgentMetadata.builder()
-                .name("plan")
-                .description(getDefaultDescription())
-                .maxSteps(20)
-                .maxStepsAutoExtensible(true)
-                .build();
-    }
 
     @Override
     protected void customize(ReActAgent.Builder builder) {
@@ -70,8 +56,6 @@ public class PlanSubagent extends AbsSubagent {
         builder.defaultToolAdd(WebsearchTool.getInstance());
         builder.defaultToolAdd(WebfetchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
-
-        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
 
 
     }

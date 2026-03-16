@@ -183,6 +183,18 @@ public class AgentKernel {
         agentBuilder.defaultSkillAdd(codeSkill);
         agentBuilder.defaultSkillAdd(luceneSkill);
 
+        //上下文摘要
+        SummarizationStrategy strategy = new CompositeSummarizationStrategy()
+                .addStrategy(new KeyInfoExtractionStrategy(chatModel))      // 提取干货（去水）
+                .addStrategy(new HierarchicalSummarizationStrategy(chatModel)); // 滚动更新摘要
+
+        summarizationInterceptor = new SummarizationInterceptor(
+                properties.getSummaryWindowSize(),
+                properties.getSummaryWindowToken(),
+                strategy);
+
+        agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
+
         if(properties.isBrowserEnabled() && ClassUtil.hasClass(()-> Playwright.class)) {
             agentBuilder.defaultSkillAdd(new BrowserSkill());
         }
@@ -208,18 +220,6 @@ public class AgentKernel {
         if (properties.isAgentTeamEnabled()){
             initAgentTeams(properties, agentBuilder);
         }
-
-        //上下文摘要
-        SummarizationStrategy strategy = new CompositeSummarizationStrategy()
-                .addStrategy(new KeyInfoExtractionStrategy(chatModel))      // 提取干货（去水）
-                .addStrategy(new HierarchicalSummarizationStrategy(chatModel)); // 滚动更新摘要
-
-        summarizationInterceptor = new SummarizationInterceptor(
-                properties.getSummaryWindowSize(),
-                properties.getSummaryWindowToken(),
-                strategy);
-
-        agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
 
         // HITL 交互干预（优先使用实例字段，否则使用配置）
         if (properties.isHitlEnabled()) {

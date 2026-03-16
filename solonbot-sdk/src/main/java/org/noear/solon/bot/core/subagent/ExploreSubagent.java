@@ -41,20 +41,6 @@ public class ExploreSubagent extends AbsSubagent {
         super(mainAgent);
     }
 
-    /**
-     * 创建默认元数据
-     *
-     * 探索代理需要适度的步数，并启用自动扩展
-     */
-    @Override
-    protected SubAgentMetadata createDefaultMetadata() {
-        return SubAgentMetadata.builder()
-                .name("explore")
-                .description(getDefaultDescription())
-                .maxSteps(15)
-                .maxStepsAutoExtensible(true)
-                .build();
-    }
 
     @Override
     protected void customize(ReActAgent.Builder builder) {
@@ -69,7 +55,6 @@ public class ExploreSubagent extends AbsSubagent {
         builder.defaultToolAdd(WebfetchTool.getInstance());
         builder.defaultToolAdd(WebsearchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
-        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
 
     }
 

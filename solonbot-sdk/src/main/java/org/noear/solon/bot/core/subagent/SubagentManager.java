@@ -163,11 +163,10 @@ public class SubagentManager {
             }
 
             AbsSubagent subagent = (AbsSubagent) subagentMap.computeIfAbsent(subagentType,
-                    k -> new GeneralPurposeSubagent(mainAgent, parsed.getMetadata()));
+                    k -> new GeneralPurposeSubagent(mainAgent, parsed.getMetadata(), parsed.getPrompt()));
 
             // 设置解析后的属性
             subagent.setDescription(parsed.getMetadata().getDescription());
-            subagent.setSystemPrompt(parsed.getPrompt());
 
             LOG.debug("加载子代理: {} 从 {}", subagentType, file);
         } catch (IOException e) {

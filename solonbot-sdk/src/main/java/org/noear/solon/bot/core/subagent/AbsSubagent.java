@@ -18,6 +18,8 @@ package org.noear.solon.bot.core.subagent;
 import lombok.Getter;
 import lombok.Setter;
 
+import org.apache.commons.lang3.StringUtils;
+import org.jsoup.internal.StringUtil;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentResponse;
@@ -52,7 +54,6 @@ public abstract class AbsSubagent implements Subagent {
     private volatile ReActAgent cachedAgent;
 
     protected String description;
-    protected String systemPrompt;
     protected SubAgentMetadata metadata;
 
 
@@ -70,10 +71,9 @@ public abstract class AbsSubagent implements Subagent {
             builder.defaultToolAdd(AgentTeamsTools.getInstance());
         }
         builder.instruction(getDefaultSystemPrompt());
-
+        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
         // 应用元数据中的属性配置到builder
         applyMetadataToBuilder(builder, metadata);
-
         // 应用自定义配置
         customize(builder);
         cachedAgent = builder.build();
@@ -108,7 +108,6 @@ public abstract class AbsSubagent implements Subagent {
      */
     protected SubAgentMetadata createDefaultMetadata() {
         return SubAgentMetadata.builder()
-                .name(name())                                // 设置代理名称
                 .description(getDefaultDescription())      // 设置描述
                 .build();
     }
@@ -142,7 +141,7 @@ public abstract class AbsSubagent implements Subagent {
         if (metadata == null) {
             return;
         }
-
+        builder.name(metadata.getName());
         // 应用最大步数
         if (metadata.getMaxSteps() != null && metadata.getMaxSteps() > 0) {
             builder.maxSteps(metadata.getMaxSteps());

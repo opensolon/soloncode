@@ -80,9 +80,7 @@ public class AgentTeamsSkill extends AbsSkill {
 
         // 初始化智能记忆管理器
         if (mainAgent != null && mainAgent.getSharedMemoryManager() != null) {
-            String workDir = System.getProperty("user.dir") + File.separator + "work";
-            this.intelligentMemoryManager = new IntelligentMemoryManager(workDir);
-            LOG.info("初始化智能记忆管理器: workDir={}", workDir);
+            this.intelligentMemoryManager = new IntelligentMemoryManager(Paths.get(mainAgent.getWorkDir(), AgentKernel.SOLONCODE_MEMORY));
         } else {
             this.intelligentMemoryManager = null;
         }
@@ -348,19 +346,21 @@ public class AgentTeamsSkill extends AbsSkill {
     private static final long TEAM_TASK_TIMEOUT_MS = 300_000; // 5分钟超时
 
     @ToolMapping(name = "team_task",
-                 description = "启动团队协作任务。MainAgent 会自动分解任务并协调多个 SubAgent 协作完成。适用于复杂、多步骤的任务。注意：简单任务请直接回答，无需调用此工具。")
-    public String teamTask(
+                 description = "启动团队协作任务。MainAgent 会自动分解任务并协调多个 SubAgent 协作完成。适用于复杂、多步骤的任务。注意：简单任务请直接回答，无需调用此工具。返回 Mono<String> 用于异步处理。")
+    public Mono<String> teamTask(
             @Param(name = "prompt", description = "任务描述，清晰说明目标和要求") String prompt,
             String __cwd,
             String __sessionId
     ) {
-        try {
-            if (mainAgent.isRunning()) {
-                return "[WARN] 团队任务正在执行中，请等待当前任务完成。";
-            }
+        // 检查是否已有任务在执行
+        if (mainAgent.isRunning()) {
+            return Mono.just("[WARN] 团队任务正在执行中，请等待当前任务完成。");
+        }
 
-            LOG.info("启动团队协作任务: {}", prompt);
+        LOG.info("启动团队协作任务: {}", prompt);
 
+        // 使用流式执行并转换为 Mono
+        return Mono.fromCallable(() -> {
             // 使用流式执行（实时输出）
             StringBuilder streamingOutput = new StringBuilder();
 
@@ -392,7 +392,7 @@ public class AgentTeamsSkill extends AbsSkill {
 
             } catch (Exception e) {
                 LOG.error("团队任务执行失败", e);
-                return "[ERROR] 团队任务执行失败: " + e.getMessage();
+                throw new RuntimeException("团队任务执行失败: " + e.getMessage(), e);
             }
 
             // 获取任务统计
@@ -423,11 +423,14 @@ public class AgentTeamsSkill extends AbsSkill {
             }
 
             return result.toString();
-
-        } catch (Throwable e) {
-            LOG.error("团队任务执行失败", e);
-            return "[ERROR] 团队任务执行失败: " + e.getMessage();
-        }
+        })
+        .subscribeOn(Schedulers.boundedElastic()) // 在弹性线程池中执行
+        .doOnSubscribe(subscription -> LOG.info("开始异步执行团队任务: {}", prompt))
+        .doOnError(error -> LOG.error("团队任务执行失败: prompt={}", prompt, error))
+        .onErrorResume(throwable -> {
+            LOG.error("团队任务执行失败: prompt={}", prompt, throwable);
+            return Mono.just("[ERROR] 团队任务执行失败: " + throwable.getMessage());
+        });
     }
 
     /**
@@ -956,7 +959,7 @@ public class AgentTeamsSkill extends AbsSkill {
 
             // 构建子代理元数据
             SubAgentMetadata metadata = new SubAgentMetadata();
-            metadata.setName(role);
+            metadata.setName(name);
             metadata.setDescription(description);
             metadata.setEnabled(true);
             metadata.setTeamName(teamName);
@@ -1239,8 +1242,6 @@ public class AgentTeamsSkill extends AbsSkill {
         prompt.append("2. **平衡优先**: 同时看效率比\n");
         prompt.append("3. **协作配合**: 与其他团队成员保持良好沟通\n");
 
-
-
         prompt.append("## 沟通风格\n\n");
         prompt.append("- 使用清晰、简洁的语言\n");
         prompt.append("- 解释技术决策的理由\n");
@@ -1347,46 +1348,64 @@ public class AgentTeamsSkill extends AbsSkill {
             return "[WARN] 智能记忆管理器未初始化";
         }
 
-        Map<String, Object> stats = intelligentMemoryManager.getStats();
+        try {
+            Map<String, Object> stats = intelligentMemoryManager.getStats();
 
-        // 格式化输出
-        StringBuilder sb = new StringBuilder();
-        sb.append("[STATS] 记忆系统统计:\n\n");
+            // 格式化输出
+            StringBuilder sb = new StringBuilder();
+            sb.append("[STATS] 记忆系统统计:\n\n");
 
-        // 各层级记忆数量
-        sb.append("工作记忆: ").append(stats.getOrDefault("workingCount", 0)).append(" 条\n");
-        sb.append("短期记忆: ").append(stats.getOrDefault("shortTermCount", 0)).append(" 条\n");
-        sb.append("长期记忆: ").append(stats.getOrDefault("longTermCount", 0)).append(" 条\n");
-        sb.append("知识记忆: ").append(stats.getOrDefault("knowledgeCount", 0)).append(" 条\n");
+            // 各层级记忆数量
+            sb.append("工作记忆: ").append(stats.getOrDefault("workingCount", 0)).append(" 条\n");
+            sb.append("短期记忆: ").append(stats.getOrDefault("shortTermCount", 0)).append(" 条\n");
+            sb.append("长期记忆: ").append(stats.getOrDefault("longTermCount", 0)).append(" 条\n");
+            sb.append("知识记忆: ").append(stats.getOrDefault("knowledgeCount", 0)).append(" 条\n");
 
-        sb.append("\n");
+            sb.append("\n");
 
-        // 智能层状态
-        sb.append("智能层: ").append(stats.getOrDefault("intelligentLayer", "未启用")).append("\n");
-        sb.append("自动合并: ").append(stats.getOrDefault("autoConsolidate", false)).append("\n");
+            // 智能层状态
+            sb.append("智能层: ").append(stats.getOrDefault("intelligentLayer", "未启用")).append("\n");
+            sb.append("自动合并: ").append(stats.getOrDefault("autoConsolidate", false)).append("\n");
 
-        if (stats.containsKey("consolidationThreshold")) {
-            sb.append("合并阈值: ").append(stats.get("consolidationThreshold")).append("\n");
+            if (stats.containsKey("consolidationThreshold")) {
+                sb.append("合并阈值: ").append(stats.get("consolidationThreshold")).append("\n");
+            }
+            if (stats.containsKey("consolidationInterval")) {
+                sb.append("合并间隔: ").append(stats.get("consolidationInterval")).append("ms\n");
+            }
+
+            sb.append("\n");
+
+            // 内存使用情况
+            if (stats.containsKey("memoryUsed")) {
+                Object usedObj = stats.get("memoryUsed");
+                Object maxObj = stats.getOrDefault("memoryMax", "100MB");
+
+                // 处理可能的字符串或数字类型
+                long used = 0;
+                long max = 100 * 1024 * 1024;
+
+                if (usedObj instanceof Number) {
+                    used = ((Number) usedObj).longValue();
+                }
+                if (maxObj instanceof Number) {
+                    max = ((Number) maxObj).longValue();
+                }
+
+                double ratio = (double) used / max * 100;
+
+                sb.append(String.format("内存使用: %.2fMB / %.2fMB (%.1f%%)\n",
+                        used / (1024.0 * 1024),
+                        max / (1024.0 * 1024),
+                        ratio));
+            }
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            LOG.error("获取记忆统计失败", e);
+            return "[ERROR] 获取记忆统计失败: " + e.getMessage();
         }
-        if (stats.containsKey("consolidationInterval")) {
-            sb.append("合并间隔: ").append(stats.get("consolidationInterval")).append("ms\n");
-        }
-
-        sb.append("\n");
-
-        // 内存使用情况
-        if (stats.containsKey("memoryUsed")) {
-            long used = (long) stats.get("memoryUsed");
-            long max = (long) stats.getOrDefault("memoryMax", 100 * 1024 * 1024);
-            double ratio = (double) used / max * 100;
-
-            sb.append(String.format("内存使用: %.2fMB / %.2fMB (%.1f%%)\n",
-                    used / (1024.0 * 1024),
-                    max / (1024.0 * 1024),
-                    ratio));
-        }
-
-        return sb.toString();
     }
 
     /**
@@ -1583,7 +1602,7 @@ public class AgentTeamsSkill extends AbsSkill {
      * 完成任务
      */
     @ToolMapping(name = "complete_task",
-                 description = "标记任务为已完成（将任务状态改为COMPLETED）")
+                 description = "标记任务为已完成（将任务状态改为COMPLETED）。如果任务是PENDING状态，会自动先认领再完成。")
     public String completeTask(
             @Param(name = "taskId", description = "任务ID") String taskId,
             @Param(name = "result", description = "任务执行结果（可选）") String result) {
@@ -1599,6 +1618,13 @@ public class AgentTeamsSkill extends AbsSkill {
                 return "[ERROR] 任务不存在: " + taskId;
             }
 
+            // 智能处理：如果任务是 PENDING，自动先认领
+            if (task.getStatus() == TeamTask.Status.PENDING) {
+                LOG.info("任务处于PENDING状态，自动认领: taskId={}", taskId);
+                taskList.claimTask(taskId, "auto-complete");
+            }
+
+            // 检查任务状态是否可以完成
             if (task.getStatus() != TeamTask.Status.IN_PROGRESS) {
                 return "[WARN] 任务状态不是进行中: " + task.getStatus();
             }
@@ -2244,125 +2270,33 @@ public class AgentTeamsSkill extends AbsSkill {
     }
 
 
-      /**
-     * 列出所有团队配置
-     *
-     * @return 团队列表
-     */
-    @ToolMapping(name = "list_teams",
-                 description = "列出所有已配置的团队。显示团队名称、描述、成员数量等信息。")
-    public String listTeams() {
-        try {
-            StringBuilder sb = new StringBuilder();
-            sb.append("## 团队配置列表\n\n");
-
-            String teamsDir = mainAgent.getWorkDir() + File.separator + ".soloncode" + File.separator + "teams";
-            File dir = new File(teamsDir);
-
-            if (!dir.exists()) {
-                return "[INFO] 暂无团队配置。请使用 `create_team_config` 创建团队。\n\n" +
-                       "提示：可用的代理包括：explore, plan, bash, general-purpose";
-            }
-
-            File[] files = dir.listFiles((d, name) -> name.endsWith(".md"));
-            if (files == null || files.length == 0) {
-                return "[INFO] 暂无团队配置。请使用 `create_team_config` 创建团队。\n\n" +
-                       "提示：可用的代理包括：explore, plan, bash, general-purpose";
-            }
-
-            for (File file : files) {
-                String teamName = file.getName().replace(".md", "");
-
-                // 读取配置文件
-                String content = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-
-                // 解析基本信息
-                String description = "";
-                String protocol = "sequential";
-                List<String> members = new ArrayList<>();
-
-                String[] lines = content.split("\n");
-                boolean inFrontMatter = false;
-                for (String line : lines) {
-                    if (line.trim().equals("---")) {
-                        inFrontMatter = !inFrontMatter;
-                        continue;
-                    }
-
-                    if (inFrontMatter) {
-                        if (line.startsWith("description:")) {
-                            description = line.substring(12).trim();
-                        } else if (line.startsWith("protocol:")) {
-                            protocol = line.substring(9).trim();
-                        } else if (line.startsWith("agents:")) {
-                            // 解析成员列表在后面的部分
-                        }
-                    } else {
-                        if (line.startsWith("- **")) {
-                            String member = line.substring(4).replace("**", "").trim();
-                            if (!member.isEmpty()) {
-                                members.add(member);
-                            }
-                        }
-                    }
-                }
-
-                sb.append("### ").append(teamName).append("\n\n");
-                sb.append("**描述**: ").append(description).append("\n");
-                sb.append("**协议**: ").append(protocol).append("\n");
-                sb.append("**成员** (").append(members.size()).append("): ");
-                sb.append(String.join(", ", members)).append("\n");
-                sb.append("**配置文件**: ").append(file.getAbsolutePath()).append("\n\n");
-            }
-
-            if (sb.length() == 23) { // 只有标题
-                sb.append("暂无团队配置\n");
-            }
-
-            sb.append("\n**使用说明**:\n");
-            sb.append("- 使用 `create_team_config` 创建新团队\n");
-            sb.append("- 团队配置保存在: ").append(teamsDir).append("\n");
-            sb.append("- 支持的协议: sequential（顺序执行）, hierarchical（层级调度）");
-
-            return sb.toString();
-
-        } catch (Exception e) {
-            LOG.error("列出团队失败", e);
-            return "[ERROR] 列出团队失败: " + e.getMessage();
-        }
-    }
-
     /**
-     * 执行团队任务（异步）
+     * 执行团队任务（同步）
      *
      * 根据已保存的团队配置，动态构建 TeamAgent 并执行任务
      *
      * @param teamName 团队名称
      * @param task 任务描述
-     * @return 异步执行结果（Mono）
+     * @return 同步执行结果（String），包含完整的团队协作输出
      */
     @ToolMapping(name = "run_team_task",
-                 description = "使用指定的团队执行任务。根据团队配置自动协调多个代理协作完成任务。返回 Mono<String> 用于异步处理。")
-    public Mono<String> runTeamTask(
-            @Param(name = "teamName", description = "团队名称（使用 list_teams 查看）") String teamName,
+                 description = "简易版本，使用指定的团队执行任务。根据团队配置自动协调多个代理协作完成任务。返回 String 同步结果。")
+    public String runTeamTask(
+            @Param(name = "teamName", description = "团队名称（使用 teammates 查看）") String teamName,
             @Param(name = "task", description = "任务描述") String task) {
 
-        return Mono.fromCallable(() -> {
-            try {
-                // 1. 读取团队配置文件
-                String teamsDir = mainAgent.getWorkDir() + File.separator + ".soloncode" + File.separator + "teams";
-                File configFile = new File(teamsDir + File.separator + teamName + ".md");
+        try {
+            String description = "";
+            String protocol = "sequential";
+            List<Subagent> validAgents = new ArrayList<>();
 
-                if (!configFile.exists()) {
-                    return "[ERROR] 团队配置不存在: " + teamName + "\n\n" +
-                           "请使用 `list_teams` 查看可用的团队，或使用 `create_team_config` 创建新团队。";
-                }
+            // 1. 尝试从配置文件读取
+            String teamsDir = mainAgent.getWorkDir() + File.separator + ".soloncode" + File.separator + "agentsTeams";
+            File configFile = new File(teamsDir + File.separator + teamName + ".md");
 
-                // 2. 解析配置
+            if (configFile.exists()) {
+                // 从配置文件解析
                 String content = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
-
-                String description = "";
-                String protocol = "sequential";
                 List<String> agentNames = new ArrayList<>();
 
                 String[] lines = content.split("\n");
@@ -2389,10 +2323,8 @@ public class AgentTeamsSkill extends AbsSkill {
                     }
                 }
 
-                // 3. 验证代理是否可用
-                List<Subagent> validAgents = new ArrayList<>();
+                // 验证代理是否可用
                 List<String> missingAgents = new ArrayList<>();
-
                 for (String agentName : agentNames) {
                     Subagent agent = manager.getAgent(agentName);
                     if (agent != null) {
@@ -2408,72 +2340,106 @@ public class AgentTeamsSkill extends AbsSkill {
                            "请确保这些代理已在 SubagentManager 中注册。";
                 }
 
-                // 4. 构建 TeamAgent
-                ChatModel chatModel = mainAgent.getChatModel();
+                LOG.info("从配置文件加载团队: team={}, members={}", teamName, validAgents.size());
+            } else {
+                // 2. 配置文件不存在，动态从 SubagentManager 获取该团队的成员
+                LOG.info("配置文件不存在，尝试从 SubagentManager 动态获取团队成员: team={}", teamName);
+
+                validAgents = manager.getAgents().stream()
+                        .filter(agent -> agent.getMetadata().hasTeamName() &&
+                                     teamName.equals(agent.getMetadata().getTeamName()))
+                        .collect(java.util.stream.Collectors.toList());
+
+                if (validAgents.isEmpty()) {
+                    return "[ERROR] 团队 '" + teamName + "' 中没有可用的代理\n\n" +
+                           "提示：\n" +
+                           "- 使用 `teammates()` 查看可用的团队成员和团队\n" +
+                           "- 使用 `teammate()` 创建新的团队成员（可指定 teamName）\n" +
+                           "- 确保创建成员时指定了正确的团队名称";
+                }
+
+                // 动态生成团队描述
+                description = "团队 " + teamName + "，由 " + validAgents.size() + " 位成员组成";
+                protocol = "sequential"; // 默认使用顺序执行
+
+                LOG.info("动态加载团队成员: team={}, members={}", teamName, validAgents.size());
+            }
+
+            // 4. 构建 TeamAgent
+            ChatModel chatModel = mainAgent.getChatModel();
 
                 TeamAgent.Builder teamBuilder = TeamAgent.of(chatModel)
                         .name(teamName)
                         .role(description.isEmpty() ? teamName : description)
                         .instruction("团队协作完成用户指定的任务。根据任务特点和各成员的能力，合理分配和协调工作。");
 
-                // 5. 添加成员（从 Subagent 中提取底层的 ReActAgent）
-                for (Subagent agent : validAgents) {
-                    if (agent instanceof AbsSubagent) {
-                        AbsSubagent absSubagent = (AbsSubagent) agent;
-                        teamBuilder.agentAdd(absSubagent.getCachedAgent());
-                    } else {
-                        LOG.warn("代理 {} 不是 AbsSubagent 类型，跳过", agent.name());
-                    }
-                }
-
-                // 6. 配置协议
-                if ("hierarchical".equalsIgnoreCase(protocol)) {
-                    teamBuilder.protocol(TeamProtocols.HIERARCHICAL);
+            // 5. 添加成员（从 Subagent 中提取底层的 ReActAgent）
+            for (Subagent agent : validAgents) {
+                if (agent instanceof AbsSubagent) {
+                    AbsSubagent absSubagent = (AbsSubagent) agent;
+                    teamBuilder.agentAdd(absSubagent.getCachedAgent());
                 } else {
-                    teamBuilder.protocol(TeamProtocols.SEQUENTIAL);
+                    LOG.warn("代理 {} 不是 AbsSubagent 类型，跳过", agent.name());
                 }
+            }
 
-                // 7. 配置运行参数
-                teamBuilder.maxTurns(15); // 最多协作 15 轮
+            // 6. 配置协议
+            if ("hierarchical".equalsIgnoreCase(protocol)) {
+                teamBuilder.protocol(TeamProtocols.HIERARCHICAL);
+            } else {
+                teamBuilder.protocol(TeamProtocols.SEQUENTIAL);
+            }
 
-                // 8. 构建并执行
-                TeamAgent teamAgent = teamBuilder.build();
+            // 7. 配置运行参数
+            teamBuilder.maxTurns(15); // 最多协作 15 轮
 
-                LOG.info("启动团队任务: team={}, members={}, protocol={}",
-                         teamName, validAgents.size(), protocol);
+            // 8. 构建并执行
+            TeamAgent teamAgent = teamBuilder.build();
 
-                // 执行任务
-                String result;
-                try {
-                    result = teamAgent.prompt(task)
-                            .call()
-                            .getContent();
-                } catch (Throwable ex) {
-                    LOG.error("团队任务执行异常", ex);
-                    return "[ERROR] 团队任务执行异常: " + ex.getMessage();
+            LOG.info("启动团队任务: team={}, members={}, protocol={}",
+                     teamName, validAgents.size(), protocol);
+
+            // 9. 同步执行任务（收集所有输出）
+            StringBuilder result = new StringBuilder();
+
+            // 添加头部信息
+            result.append(String.format(
+                    "[OK] 团队任务执行\n\n" +
+                    "**团队**: %s\n" +
+                    "**协议**: %s\n" +
+                    "**参与成员**: %d\n" +
+                    "\n--- 执行结果 ---\n\n",
+                    teamName, protocol, validAgents.size()));
+
+            // 执行并收集流式输出
+            try {
+                List<AgentChunk> chunks = teamAgent.prompt(task)
+                        .stream()
+                        .doOnNext(chunk -> {
+                            String content = chunk.getContent();
+                            if (content != null && !content.isEmpty()) {
+                                result.append(content);
+                            }
+                        })
+                        .collectList()
+                        .block(Duration.ofMillis(300000)); // 5分钟超时
+
+                if (chunks != null) {
+                    LOG.info("团队任务执行完成: team={}, chunks={}", teamName, chunks.size());
                 }
-
-                // 9. 返回结果
-                StringBuilder sb = new StringBuilder();
-                sb.append("[OK] 团队任务执行完成\n\n");
-                sb.append("**团队**: ").append(teamName).append("\n");
-                sb.append("**协议**: ").append(protocol).append("\n");
-                sb.append("**参与成员**: ").append(validAgents.size()).append("\n");
-                sb.append("\n--- 执行结果 ---\n\n");
-                sb.append(result);
-
-                return sb.toString();
 
             } catch (Exception e) {
-                LOG.error("执行团队任务失败: team={}, task={}", teamName, task, e);
-                return "[ERROR] 执行团队任务失败: " + e.getMessage() + "\n\n" +
-                       "团队: " + teamName + "\n" +
-                       "任务: " + task;
+                LOG.error("团队任务执行异常: team={}, task={}", teamName, task, e);
+                result.append("\n[ERROR] 团队任务执行异常: ").append(e.getMessage());
             }
-        })
-        .subscribeOn(Schedulers.boundedElastic()) // 在弹性线程池中执行，避免阻塞
-        .doOnSubscribe(subscription -> LOG.info("开始异步执行团队任务: team={}, task={}", teamName, task))
-        .doOnError(error -> LOG.error("团队任务执行失败: team={}, task={}", teamName, task, error))
-        .doOnSuccess(result -> LOG.info("团队任务执行成功: team={}", teamName));
+
+            return result.toString();
+
+        } catch (Exception e) {
+            LOG.error("执行团队任务失败: team={}, task={}", teamName, task, e);
+            return "[ERROR] 执行团队任务失败: " + e.getMessage() + "\n\n" +
+                   "团队: " + teamName + "\n" +
+                   "任务: " + task;
+        }
     }
 }

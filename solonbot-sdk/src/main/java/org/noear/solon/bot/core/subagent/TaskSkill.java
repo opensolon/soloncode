@@ -15,7 +15,7 @@
  */
 package org.noear.solon.bot.core.subagent;
 
-import org.noear.solon.ai.agent.AgentResponse;
+import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.annotation.ToolMapping;
@@ -30,6 +30,8 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.BufferedWriter;
+import java.time.Duration;
+import java.util.List;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -106,9 +108,9 @@ public class TaskSkill extends AbsSkill {
     }
 
     @ToolMapping(name = "task",
-                 description = "【强制使用】派生并分派任务给专项子代理。所有实际开发工作必须使用此工具委派给子代理完成。返回 Mono<String> 用于异步处理。")
+                 description = "【强制使用】派生并分派任务给专项子代理。所有实际开发工作必须使用此工具委派给子代理完成。返回 Mono<String> 异步结果。")
     public Mono<String> task(
-            @Param(name = "subagentType", description = "子代理类型") String subagentType,
+            @Param(name = "name", description = "子代理名称") String name,
             @Param(name = "prompt", description = "具体指令。必须包含任务目标、关键类名或必要的背景上下文。") String prompt,
             @Param(name = "description", required = false, description = "简短的任务描述") String description,
             @Param(name = "taskId", required = false, description = "可选。若要继续之前的任务会话，请传入对应的 task_id") String taskId,
@@ -119,66 +121,74 @@ public class TaskSkill extends AbsSkill {
         ReActTrace __parentTrace = ReActTrace.getCurrent(__parentSession.getSnapshot());
 
         // 检查子代理是否存在
-        Subagent agent = manager.getAgent(subagentType);
+        Subagent agent = manager.getAgent(name);
         if (agent == null) {
-            return Mono.just("ERROR: 未知的子代理类型 '" + subagentType + "'。");
+            return Mono.just("ERROR: 未知的子代理类型 '" + name + "'。");
         }
 
         String finalSessionId = Assert.isEmpty(taskId)
-                ? "subagent_" + subagentType
+                ? "subagent_" + name
                 : taskId;
 
-        LOG.info("分派任务 -> 类型: {}, 会话: {}, 描述: {}", subagentType, finalSessionId, description);
+        LOG.info("分派任务 -> 类型: {}, 会话: {}, 描述: {}", name, finalSessionId, description);
 
-        // 使用 Mono.fromCallable 包装阻塞操作
+        // 获取执行许可（同步）
+        boolean acquired;
+        try {
+            acquired = acquirePermit(name);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Mono.just("ERROR: 获取执行许可被中断");
+        }
+
+        if (!acquired) {
+            return Mono.just("ERROR: 等待子代理执行许可超时。当前可能有太多子代理在执行。");
+        }
+
+        // 异步执行并收集结果
         return Mono.fromCallable(() -> {
-            // 获取执行许可
-            boolean acquired;
-            try {
-                acquired = acquirePermit(subagentType);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("获取执行许可被中断", e);
-            }
+            StringBuilder result = new StringBuilder();
 
-            if (!acquired) {
-                throw new RuntimeException("等待子代理执行许可超时。当前可能有太多子代理在执行。");
-            }
+            // 添加任务头部信息
+            result.append(String.format(
+                    "task_id: %s\n" +
+                    "subagentType: %s\n" +
+                    "\n" +
+                    "<task_result>\n",
+                    finalSessionId, name));
 
             try {
-                AgentResponse response = agent.call(__cwd, finalSessionId, Prompt.of(prompt));
-                String result = response.getContent();
-                __parentTrace.getMetrics().addMetrics(response.getMetrics());
+                // 调用子代理并收集流式输出
+                List<AgentChunk> chunks = agent.stream(__cwd, finalSessionId, Prompt.of(prompt))
+                        .doOnNext(chunk -> {
+                            String content = chunk.getContent();
+                            if (content != null && !content.isEmpty()) {
+                                result.append(content);
+                            }
+                        })
+                        .collectList()
+                        .block(Duration.ofMillis(300000)); // 5分钟超时
 
-                LOG.info("子代理任务完成: {}", finalSessionId);
+                if (chunks != null) {
+                    LOG.info("子代理任务完成: type={}, chunks={}", name, chunks.size());
+                }
 
-                return String.format(
-                        "task_id: %s\n" +
-                        "subagentType: %s\n" +
-                        "\n" +
-                        "<task_result>\n" +
-                        "%s\n" +
-                        "</task_result>",
-                        finalSessionId, subagentType, result != null ? result : "(无输出)"
-                );
-            } catch (Throwable e) {
-                LOG.error("子代理调用异常: type={}, error={}", subagentType, e.getMessage(), e);
-                throw new RuntimeException("子代理调用失败: " + e.getMessage(), e);
+            } catch (Exception e) {
+                LOG.error("子代理执行失败: type={}, error={}", name, e.getMessage(), e);
+                result.append("\nERROR: 子代理执行失败: ").append(e.getMessage());
             } finally {
-                releasePermit(subagentType);
+                result.append("\n</task_result>");
+                releasePermit(name);
             }
+
+            return result.toString();
         })
-        .subscribeOn(Schedulers.boundedElastic()) // 在弹性线程池中执行，避免阻塞
-        .doOnSubscribe(subscription -> LOG.debug("开始异步执行子代理任务: type={}, sessionId={}", subagentType, finalSessionId))
-        .doOnError(error -> LOG.error("子代理执行失败: type={}, error={}", subagentType, error.getMessage(), error))
+        .subscribeOn(Schedulers.boundedElastic()) // 在弹性线程池中执行
+        .doOnSubscribe(subscription -> LOG.info("开始异步执行子代理任务: type={}", name))
+        .doOnError(error -> LOG.error("子代理任务执行失败: type={}, error={}", name, error.getMessage(), error))
         .onErrorResume(throwable -> {
-            // 捕获所有异常并返回错误消息
-            if (throwable instanceof RuntimeException &&
-                throwable.getMessage().contains("等待子代理执行许可超时")) {
-                return Mono.just("ERROR: " + throwable.getMessage());
-            }
-            LOG.error("子代理执行崩溃: type={}, error={}", subagentType, throwable.getMessage(), throwable);
-            return Mono.just("ERROR: 子代理执行失败: " + throwable.getMessage());
+            releasePermit(name);
+            return Mono.just("ERROR: 子代理执行失败: " + throwable.getMessage() + "\n</task_result>");
         });
     }
 
@@ -280,9 +290,8 @@ public class TaskSkill extends AbsSkill {
                 LOG.info("Agent 定义已保存到: {}", agentFile);
             }
 
-            AbsSubagent newAgent = new GeneralPurposeSubagent(mainAgent, metadata);
+            GeneralPurposeSubagent newAgent = new GeneralPurposeSubagent(mainAgent, metadata, agentDefinition);
             newAgent.setDescription(description);
-            newAgent.setSystemPrompt(agentDefinition);
             newAgent.refresh();
             manager.addSubagent(newAgent);
 

@@ -33,20 +33,6 @@ public class BashSubagent extends AbsSubagent {
         super(mainAgent);
     }
 
-    /**
-     * 创建默认元数据
-     *
-     * Bash 代理主要用于执行命令，步数根据任务复杂度变化
-     */
-    @Override
-    protected SubAgentMetadata createDefaultMetadata() {
-        return SubAgentMetadata.builder()
-                .name("bash")
-                .description(getDefaultDescription())
-                .maxSteps(20)
-                .maxStepsAutoExtensible(true)
-                .build();
-    }
 
     /**
      * 初始化 Bash 代理

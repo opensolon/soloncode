@@ -23,7 +23,6 @@ import org.noear.solon.bot.core.LuceneSkill;
 import org.noear.solon.bot.core.tool.CodeSearchTool;
 import org.noear.solon.bot.core.tool.WebfetchTool;
 import org.noear.solon.bot.core.tool.WebsearchTool;
-import org.noear.solon.core.util.Assert;
 
 import java.util.Arrays;
 
@@ -35,6 +34,8 @@ import java.util.Arrays;
  */
 public class GeneralPurposeSubagent extends AbsSubagent {
 
+    String instruction;
+
     public GeneralPurposeSubagent(AgentKernel mainAgent) {
         super(mainAgent);
     }
@@ -43,27 +44,15 @@ public class GeneralPurposeSubagent extends AbsSubagent {
         super(mainAgent, metadata);
     }
 
-    /**
-     * 创建默认元数据
-     *
-     * 通用代理需要更多的步数和自动扩展能力
-     */
-    @Override
-    protected SubAgentMetadata createDefaultMetadata() {
-        return SubAgentMetadata.builder()
-                .name("general-purpose")
-                .description(getDefaultDescription())
-                .maxSteps(25)
-                .maxStepsAutoExtensible(true)
-                .build();
+    public GeneralPurposeSubagent(AgentKernel mainAgent, SubAgentMetadata metadata, String instruction) {
+        super(mainAgent, metadata);
+        this.instruction = instruction;
     }
 
-    /**
-     * 设置 metadata（用于从文件加载）
-     */
     @Override
-    public void setMetadata(SubAgentMetadata metadata) {
-        this.metadata = metadata;
+    protected void applyMetadataToBuilder(ReActAgent.Builder builder, SubAgentMetadata metadata) {
+        super.applyMetadataToBuilder(builder, metadata);
+        builder.instruction(this.instruction);
     }
 
 
@@ -79,13 +68,6 @@ public class GeneralPurposeSubagent extends AbsSubagent {
         builder.defaultToolAdd(WebsearchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
-
-        // 设置会话窗口大小
-        builder.sessionWindowSize(5);
-
-        // 注意：maxSteps 和 maxStepsExtensible 现在通过元数据配置
-        // 在 applyMetadataToBuilder() 中应用
     }
 
 

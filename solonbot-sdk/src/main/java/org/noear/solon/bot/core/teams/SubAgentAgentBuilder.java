@@ -90,7 +90,7 @@ public class SubAgentAgentBuilder {
     public SubAgentAgentBuilder addAgent(Subagent subAgent) {
         if (subAgent != null) {
             this.subAgents.add(subAgent);
-            LOG.debug("添加团队成员: {}", subAgent.getType());
+            LOG.debug("添加团队成员: {}", subAgent.name());
         }
         return this;
     }
@@ -255,8 +255,7 @@ public class SubAgentAgentBuilder {
      */
     private SubAgentMetadata createDefaultMainAgentConfig() {
         SubAgentMetadata config = new SubAgentMetadata();
-        config.setCode("main-agent");
-        config.setName("主代理");
+        config.setName("main-agent");
         config.setDescription("Agent 团队协调器，负责任务分发和结果汇总");
         config.setEnabled(true);
 
