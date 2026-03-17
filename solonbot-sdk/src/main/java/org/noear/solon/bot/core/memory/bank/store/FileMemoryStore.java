@@ -51,9 +51,24 @@ public class FileMemoryStore implements MemoryStore {
         this.storePath = workDir;
 
         // 确保目录存在
-        File dir = new File(storePath);
-        if (!dir.exists()) {
-            dir.mkdirs();
+        try {
+            File dir = new File(storePath);
+            if (!dir.exists()) {
+                boolean created = dir.mkdirs();
+                if (created) {
+                    LOG.info("创建记忆存储目录: {}", storePath);
+                }
+            }
+
+            // 验证目录是否可写
+            if (!dir.isDirectory()) {
+                LOG.error("路径不是目录: {}", storePath);
+            } else if (!dir.canWrite()) {
+                LOG.warn("目录不可写: {}", storePath);
+            }
+
+        } catch (Exception e) {
+            LOG.error("初始化文件存储失败: path={}, error={}", storePath, e.getMessage(), e);
         }
 
         LOG.info("MemoryBank 文件存储初始化完成: path={}", storePath);
@@ -96,8 +111,8 @@ public class FileMemoryStore implements MemoryStore {
 
     private void storeWithAtomicWrite(Observation observation) throws Exception {
         String fileName = observation.getId() + ".json";
-        String tempFilePath = storePath + fileName + TEMP_FILE_SUFFIX;
-        String targetFilePath = storePath + fileName;
+        String tempFilePath = storePath + File.separator + fileName + TEMP_FILE_SUFFIX;
+        String targetFilePath = storePath + File.separator + fileName;
 
         // 序列化为 JSON
         String json = ONode.serialize(observation);
@@ -117,7 +132,7 @@ public class FileMemoryStore implements MemoryStore {
     @Override
     public Observation load(String id) {
         try {
-            String filePath = storePath + id + ".json";
+            String filePath = storePath + File.separator + id + ".json";
             File file = new File(filePath);
 
             if (!file.exists()) {
@@ -136,7 +151,7 @@ public class FileMemoryStore implements MemoryStore {
     @Override
     public void delete(String id) {
         try {
-            String filePath = storePath + id + ".json";
+            String filePath = storePath + File.separator + id + ".json";
             File file = new File(filePath);
 
             if (file.exists()) {

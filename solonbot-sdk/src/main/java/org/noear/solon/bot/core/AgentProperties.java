@@ -35,7 +35,7 @@ import java.util.Map;
 public class AgentProperties implements Serializable {
     private String workDir = "./work/";
 
-    private int maxSteps = 30;
+    private int maxSteps = 10;
     private boolean maxStepsAutoExtensible = false;
 
     private int sessionWindowSize = 10;
@@ -225,7 +225,7 @@ public class AgentProperties implements Serializable {
          * 默认：1（串行执行，避免触发速率限制）
          * 设置为 2-3 可以适当提高性能，但可能触发速率限制
          */
-        public int maxConcurrent = 1;
+        public int maxConcurrent = 2;
 
         /**
          * 子代理调用间隔（毫秒）
@@ -241,12 +241,6 @@ public class AgentProperties implements Serializable {
          */
         public long acquireTimeoutMs = 60000L;
 
-        /**
-         * 触发429错误后的等待时间（毫秒）
-         * 默认：5000ms（5秒）
-         * 收到速率限制错误后，等待的时间
-         */
-        public long rateLimitBackoffMs = 5000L;
     }
 
     /**

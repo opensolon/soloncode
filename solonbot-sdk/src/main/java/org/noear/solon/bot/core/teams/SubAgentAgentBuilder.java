@@ -18,9 +18,11 @@ package org.noear.solon.bot.core.teams;
 import lombok.Builder;
 import lombok.Getter;
 import org.noear.solon.ai.agent.AgentSessionProvider;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.PoolManager;
+import org.noear.solon.bot.core.SystemPrompt;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.memory.SharedMemoryManager;
@@ -88,7 +90,7 @@ public class SubAgentAgentBuilder {
     public SubAgentAgentBuilder addAgent(Subagent subAgent) {
         if (subAgent != null) {
             this.subAgents.add(subAgent);
-            LOG.debug("添加团队成员: {}", subAgent.getType());
+            LOG.debug("添加团队成员: {}", subAgent.name());
         }
         return this;
     }
@@ -172,12 +174,26 @@ public class SubAgentAgentBuilder {
                 poolManager
         );
 
-        // 4. 初始化主代理
+        // 4. 创建 ReActAgent 并设置到 MainAgent
         try {
-            mainAgent.initialize(chatModel);
+            // 创建一个简单的 ReActAgent 用于 MainAgent
+            ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel);
+
+            // 使用 MainAgent 的 Team Lead 指令
+            String teamLeadInstruction = mainAgent.getTeamLeadInstruction();
+            agentBuilder.systemPrompt(SystemPrompt.builder()
+                    .instruction(teamLeadInstruction)
+                    .build());
+            agentBuilder.maxSteps(50);
+
+            ReActAgent reactAgent = agentBuilder.build();
+
+            // 设置到 MainAgent
+            mainAgent.setSharedAgent(reactAgent, chatModel);
+
             LOG.info("Agent 团队构建成功！主代理: {}", config.getName());
-        } catch (Throwable e) {
-            LOG.error("初始化 MainAgent 失败", e);
+        } catch (Exception e) {
+            LOG.error("设置 MainAgent 共享 Agent 失败", e);
             throw new RuntimeException("构建 Agent 团队失败", e);
         }
 
@@ -239,8 +255,7 @@ public class SubAgentAgentBuilder {
      */
     private SubAgentMetadata createDefaultMainAgentConfig() {
         SubAgentMetadata config = new SubAgentMetadata();
-        config.setCode("main-agent");
-        config.setName("主代理");
+        config.setName("main-agent");
         config.setDescription("Agent 团队协调器，负责任务分发和结果汇总");
         config.setEnabled(true);
 

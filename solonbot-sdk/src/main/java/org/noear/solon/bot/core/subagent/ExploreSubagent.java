@@ -41,6 +41,7 @@ public class ExploreSubagent extends AbsSubagent {
         super(mainAgent);
     }
 
+
     @Override
     protected void customize(ReActAgent.Builder builder) {
         // 添加技能（仅终端和专家技能，不添加代码搜索）
@@ -49,43 +50,14 @@ public class ExploreSubagent extends AbsSubagent {
 
         builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
 
-
         builder.defaultSkillAdd(LuceneSkill.getInstance());
-
         // 添加网络工具
         builder.defaultToolAdd(WebfetchTool.getInstance());
         builder.defaultToolAdd(WebsearchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
-
-        // 设置最大步数（探索任务通常需要较少步数）
-        builder.maxSteps(15);
-        builder.maxStepsExtensible(true);
-
-        // 设置会话窗口大小
-        builder.sessionWindowSize(5);
     }
 
-    @Override
-    public String getType() {
-        return "explore";
-    }
-
-    @Override
-    public SubAgentMetadata getMetadata() {
-        SubAgentMetadata metadata = new SubAgentMetadata();
-        metadata.setCode("explore");
-        metadata.setName("探索子代理");
-        metadata.setDescription(getDefaultDescription());
-        metadata.setEnabled(true);
-        metadata.setMaxTurns(15);
-        // 探索代理的工具：只读文件操作
-        metadata.setTools(Arrays.asList("ls", "read", "grep", "glob", "codesearch"));
-        // 探索代理的技能：专家技能、代码搜索
-        metadata.setSkills(Arrays.asList("expert", "lucene"));
-        return metadata;
-    }
 
     @Override
     protected String getDefaultDescription() {

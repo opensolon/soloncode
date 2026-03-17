@@ -23,7 +23,6 @@ import org.noear.solon.bot.core.LuceneSkill;
 import org.noear.solon.bot.core.tool.CodeSearchTool;
 import org.noear.solon.bot.core.tool.WebfetchTool;
 import org.noear.solon.bot.core.tool.WebsearchTool;
-import org.noear.solon.core.util.Assert;
 
 import java.util.Arrays;
 
@@ -34,59 +33,28 @@ import java.util.Arrays;
  * @since 3.9.5
  */
 public class GeneralPurposeSubagent extends AbsSubagent {
-    private final String subagentType;
-    // 维护 metadata 字段
+
+    String instruction;
 
     public GeneralPurposeSubagent(AgentKernel mainAgent) {
-        this(mainAgent, null);
-    }
-
-    public GeneralPurposeSubagent(AgentKernel mainAgent, String subagentType) {
         super(mainAgent);
-
-        if (Assert.isEmpty(subagentType)) {
-            this.subagentType = "general-purpose";
-        } else {
-            this.subagentType = subagentType;
-        }
-
-        // 初始化默认 metadata
-        this.metadata = createDefaultMetadata();
     }
 
-    /**
-     * 创建默认的 metadata
-     */
-    private SubAgentMetadata createDefaultMetadata() {
-        SubAgentMetadata metadata = new SubAgentMetadata();
-        metadata.setCode(this.subagentType);
-        metadata.setName("通用子代理");
-        metadata.setDescription(getDefaultDescription());
-        metadata.setEnabled(true);
-        metadata.setMaxTurns(25);
-        // 通用代理的工具：包含所有核心工具
-        metadata.setTools(Arrays.asList("ls", "read", "write", "edit", "grep", "glob", "bash",
-                "websearch", "webfetch", "codesearch"));
-        // 通用代理的技能：包含所有核心技能
-        metadata.setSkills(Arrays.asList("terminal", "expert", "lucene", "todo", "code"));
-        return metadata;
+    public GeneralPurposeSubagent(AgentKernel mainAgent, SubAgentMetadata metadata) {
+        super(mainAgent, metadata);
     }
 
-    /**
-     * 设置 metadata（用于从文件加载）
-     */
+    public GeneralPurposeSubagent(AgentKernel mainAgent, SubAgentMetadata metadata, String instruction) {
+        super(mainAgent, metadata);
+        this.instruction = instruction;
+    }
+
     @Override
-    public void setMetadata(SubAgentMetadata metadata) {
-        this.metadata = metadata;
+    protected void applyMetadataToBuilder(ReActAgent.Builder builder, SubAgentMetadata metadata) {
+        super.applyMetadataToBuilder(builder, metadata);
+        builder.instruction(this.instruction);
     }
 
-    /**
-     * 获取 metadata（返回维护的字段）
-     */
-    @Override
-    public SubAgentMetadata getMetadata() {
-        return metadata;
-    }
 
     @Override
     protected void customize(ReActAgent.Builder builder) {
@@ -100,23 +68,8 @@ public class GeneralPurposeSubagent extends AbsSubagent {
         builder.defaultToolAdd(WebsearchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
-
-        // 如果主 CodeAgent 有代码搜索能力，也可以添加
-        // 这里可以根据需要动态添加工具
-
-        // 设置最大步数（通用任务可能需要更多步数）
-        builder.maxSteps(25);
-        builder.maxStepsExtensible(true);
-
-        // 设置会话窗口大小
-        builder.sessionWindowSize(5);
     }
 
-    @Override
-    public String getType() {
-        return this.subagentType;
-    }
 
     @Override
     protected String getDefaultDescription() {

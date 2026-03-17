@@ -44,6 +44,8 @@ public class AgentTeamsTools extends AbsSkill {
 
     private static final Logger LOG = LoggerFactory.getLogger(AgentTeamsTools.class);
 
+    private static AgentTeamsTools instance = null;
+
     private final SharedMemoryManager memoryManager;
     private final EventBus eventBus;
 
@@ -51,6 +53,16 @@ public class AgentTeamsTools extends AbsSkill {
                           EventBus eventBus) {
         this.memoryManager = memoryManager;
         this.eventBus = eventBus;
+        if (instance == null){
+            instance = this;
+        }
+    }
+
+    public static AgentTeamsTools getInstance(){
+        if (instance == null){
+            throw new RuntimeException("AgentTeamsTools is not initialized");
+        }
+        return instance;
     }
 
     @Override
@@ -63,7 +75,7 @@ public class AgentTeamsTools extends AbsSkill {
         StringBuilder sb = new StringBuilder();
         sb.append("## Agent Teams 内部工具集（底层API）\n\n");
         sb.append("这是 MainAgent 内部使用的底层工具集，提供记忆管理和事件发布功能。\n\n");
-        sb.append("### ⚠️ 使用建议\n\n");
+        sb.append("###  使用建议\n\n");
         sb.append("**大多数情况下，推荐使用 AgentTeamsSkill 中的智能记忆工具**：\n");
         sb.append("- `memory_store()`: 自动分类存储（系统自动判断存储类型和重要性）\n");
         sb.append("- `memory_recall()`: 智能检索（按相关性排序，自动合并重复内容）\n");
