@@ -1,0 +1,62 @@
+solon.logging.appender:
+  console:
+    enable: true # 是否启用控制台日志（启用后，会对 cli console 有干扰）
+  file:
+    level: TRACE
+
+solon.code.cli:
+  workDir: "work" # 工作区目录
+  maxSteps: 30 # ReAct 最大循环步数
+  maxStepsAutoExtensible: true #最大步数自动续航（由 LLM 反思控制）
+
+  sessionWindowSize: 10 # 会话历史窗口大小（即，新指令时使用几条历史消息）
+
+  summaryWindowSize: 12 # 触发摘要压缩的消息条数阈值（即，工作上下文压缩时留几条消息不压缩）
+  summaryWindowToken: 15000 # 触发摘要压缩的内容长度阈值（即，工作上下文压缩时留多长内容不压缩）
+
+  sandboxMode: true # 消盒模式，启用时禁止访问绝对路径
+  thinkPrinted: true # 内心思考，是否打印
+
+  hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
+  subagentEnabled: true # 是否启用子代理模式
+  browserEnabled: true # 是否启用浏览器功能（比如去淘宝买东西）
+
+  cliEnabled: false # 是否启用控制台
+  cliPrintSimplified: false
+
+  webEnabled: true # 是否启用 WebApi
+  webEndpoint: "/cli"
+
+  acpEnabled: false # 是否启用 Acp 协议（一些支持 Acp 的 IDE 可以连接）
+  acpTransport: "websocket" # "stdio" or "websocket"
+  acpEndpoint: "/acp"
+
+  chatModel:
+    apiUrl: "https://ai.gitee.com/v1/chat/completions"
+    apiKey: "******"
+    model: "glm-5.0"
+    timeout: "120s"
+    userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
+#    defaultOptions:
+#      thinking: true
+#      enable_thinking: false
+#      temperature: 0.2
+#      top_p: 0.5
+#      frequency_penalty: 0.5
+#      presence_penalty: 0.4
+  skillPools:
+    "@shared": "${user.home}/WORK/work_github/solonlab/awesome-claude-skills"
+#  restApis:
+#    api1:
+#      docUrl: ""
+#      apiBaseUrl: ""
+#      headers: { API_KEY: "xxx" }
+#  mcpServers:
+#    gitee:
+#      type: "streamable"
+#      url: "http://..."
+#      headers: { API_KEY: "xxx" }
+#      timeout: "120s"
+#    memory:
+#      command: "npx"
+#      args: [ "-y", "@modelcontextprotocol/server-memory" ]
