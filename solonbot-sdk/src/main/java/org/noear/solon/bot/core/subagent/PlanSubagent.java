@@ -15,14 +15,18 @@
  */
 package org.noear.solon.bot.core.subagent;
 
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
 import org.noear.solon.ai.agent.react.intercept.summarize.HierarchicalSummarizationStrategy;
+import org.noear.solon.ai.chat.message.AssistantMessage;
+import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.LuceneSkill;
 import org.noear.solon.bot.core.tool.CodeSearchTool;
 import org.noear.solon.bot.core.tool.WebfetchTool;
 import org.noear.solon.bot.core.tool.WebsearchTool;
+import org.noear.solon.lang.Nullable;
 
 import java.util.Arrays;
 
@@ -38,6 +42,7 @@ public class PlanSubagent extends AbsSubagent {
         super(mainAgent);
     }
 
+
     @Override
     protected void customize(ReActAgent.Builder builder) {
         // 计划代理主要依赖推理能力，不需要太多工具
@@ -48,39 +53,11 @@ public class PlanSubagent extends AbsSubagent {
         builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
 
         builder.defaultSkillAdd(LuceneSkill.getInstance());
-
         builder.defaultToolAdd(WebsearchTool.getInstance());
         builder.defaultToolAdd(WebfetchTool.getInstance());
         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
-        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
 
-        // 设置最大步数（计划任务通常需要较少步数）
-        builder.maxSteps(20);
-        builder.maxStepsExtensible(true);
-
-        // 设置会话窗口大小
-        builder.sessionWindowSize(5);
-    }
-
-    @Override
-    public String getType() {
-        return "plan";
-    }
-
-    @Override
-    public SubAgentMetadata getMetadata() {
-        SubAgentMetadata metadata = new SubAgentMetadata();
-        metadata.setCode("plan");
-        metadata.setName("计划子代理");
-        metadata.setDescription(getDefaultDescription());
-        metadata.setEnabled(true);
-        metadata.setMaxTurns(20);
-        // 计划代理的工具：只读文件操作、网络搜索
-        metadata.setTools(Arrays.asList("ls", "read", "grep", "glob", "websearch", "webfetch", "codesearch"));
-        // 计划代理的技能：专家技能、代码搜索
-        metadata.setSkills(Arrays.asList("expert", "lucene"));
-        return metadata;
     }
 
     @Override

@@ -15,7 +15,10 @@
  */
 package org.noear.solon.bot.core.subagent;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.ArrayList;
@@ -28,50 +31,79 @@ import java.util.List;
  * 从系统提示词头部的 YAML 配置中解析出来的元数据
  * 兼容 Claude Code Agent Skills 规范
  *
+ * 增强功能：
+ * - 元数据验证
+ * - 元数据继承和合并
+ * - Builder 模式支持（使用 Lombok）
+ *
  * @author bai
  * @since 3.9.5
  */
 @Getter
 @Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class SubAgentMetadata {
-    // 代理标识
-    private String code;
+
+    @Builder.Default
     private boolean enabled = true;
 
     // 必需字段
     private String name;
     private String description;
 
-    // 工具配置
-    private List<String> tools = new ArrayList<>();
-    private List<String> disallowedTools = new ArrayList<>();
-
     // 模型配置
     private String model;
 
+    // 最大步数（新增）
+    private Integer maxSteps;
+
+    // 最大步数自动扩展（新增）
+    private Boolean maxStepsAutoExtensible;
+
+
+    // 工具配置
+    @Builder.Default
+    private List<String> tools = new ArrayList<>();
+
+    @Builder.Default
+    private List<String> disallowedTools = new ArrayList<>();
+
+
     // 权限配置
-    private String permissionMode;  // default, acceptEdits, dontAsk, bypassPermissions, plan
+    private String permissionMode;
+
 
     // 执行限制
     private Integer maxTurns;
 
+
     // Skills 配置
+    @Builder.Default
     private List<String> skills = new ArrayList<>();
 
+
     // MCP Servers 配置
+    @Builder.Default
     private List<String> mcpServers = new ArrayList<>();
+
 
     // Hooks 配置（暂不解析，保留字段）
     private Object hooks;
 
+
     // 记忆配置
     private String memory;  // user, project, local
+
 
     // 后台任务
     private Boolean background;
 
+
     // 隔离配置
     private String isolation;  // worktree
+
 
     // 团队配置
     private String teamName;  // 所属团队名称（用于团队成员）
@@ -123,9 +155,6 @@ public class SubAgentMetadata {
                 String value = line.substring(colonIndex + 1).trim();
 
                 switch (key) {
-                    case "code":
-                        metadata.code = value;
-                        break;
                     case "name":
                         metadata.name = value;
                         break;
@@ -155,6 +184,16 @@ public class SubAgentMetadata {
                         } catch (NumberFormatException e) {
                             // 忽略无效值
                         }
+                        break;
+                    case "maxSteps":
+                        try {
+                            metadata.maxSteps = Integer.parseInt(value);
+                        } catch (NumberFormatException e) {
+                            // 忽略无效值
+                        }
+                        break;
+                    case "maxStepsAutoExtensible":
+                        metadata.maxStepsAutoExtensible = Boolean.parseBoolean(value);
                         break;
                     case "skills":
                         // Skills 列表，逗号分隔
@@ -224,6 +263,7 @@ public class SubAgentMetadata {
     /**
      * 提示词和元数据的组合
      */
+    @Getter
     public static class PromptWithMetadata {
         private final SubAgentMetadata metadata;
         private final String prompt;
@@ -233,13 +273,6 @@ public class SubAgentMetadata {
             this.prompt = prompt;
         }
 
-        public SubAgentMetadata getMetadata() {
-            return metadata;
-        }
-
-        public String getPrompt() {
-            return prompt;
-        }
     }
 
     /**
@@ -278,11 +311,6 @@ public class SubAgentMetadata {
         StringBuilder yaml = new StringBuilder();
         yaml.append("---\n");
 
-        // 代理标识
-        if (code != null && !code.isEmpty()) {
-            yaml.append("code: ").append(code).append("\n");
-        }
-
         // 必需字段
         if (name != null && !name.isEmpty()) {
             yaml.append("name: ").append(name).append("\n");
@@ -319,6 +347,16 @@ public class SubAgentMetadata {
         // 执行限制
         if (hasMaxTurns()) {
             yaml.append("maxTurns: ").append(maxTurns).append("\n");
+        }
+
+        // 最大步数配置
+        if (maxSteps != null && maxSteps > 0) {
+            yaml.append("maxSteps: ").append(maxSteps).append("\n");
+        }
+
+        // 最大步数自动扩展
+        if (maxStepsAutoExtensible != null && maxStepsAutoExtensible) {
+            yaml.append("maxStepsAutoExtensible: ").append(maxStepsAutoExtensible).append("\n");
         }
 
         // Skills 配置

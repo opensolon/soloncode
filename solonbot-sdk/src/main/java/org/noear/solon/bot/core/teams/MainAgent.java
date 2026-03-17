@@ -21,12 +21,13 @@ import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.bot.core.AgentKernel;
-import org.noear.solon.bot.core.CliSkillProvider;
 import org.noear.solon.bot.core.PoolManager;
-import org.noear.solon.bot.core.SystemPrompt;
 import org.noear.solon.bot.core.event.AgentEvent;
 import org.noear.solon.bot.core.event.AgentEventType;
 import org.noear.solon.bot.core.event.EventBus;
@@ -39,12 +40,14 @@ import org.noear.solon.bot.core.message.AgentMessage;
 import org.noear.solon.bot.core.message.MessageAck;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.subagent.SubAgentMetadata;
+import org.noear.solon.bot.core.subagent.Subagent;
 import org.noear.solon.bot.core.subagent.SubagentManager;
-import org.noear.solon.bot.core.subagent.TaskSkill;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -97,6 +100,10 @@ public class MainAgent {
     // 性能优化：使用 CountDownLatch 替代轮询
     private volatile CountDownLatch taskCompletionLatch;
 
+    private static final long SUBAGENT_STREAM_TIMEOUT_MS = 180_000;
+
+
+
     public MainAgent(SubAgentMetadata config,
                      AgentSessionProvider sessionProvider,
                      SharedMemoryManager sharedMemoryManager,
@@ -141,55 +148,142 @@ public class MainAgent {
     }
 
     /**
-     * 初始化主代理
+     * 获取 Team Lead（团队协调器）指令
+     *
+     * 此指令会被追加到系统提示词中，让 Agent 了解自己作为 Team Lead 的角色和职责。
+     *
+     * @return Team Lead 角色指令
      */
-    public synchronized void initialize(ChatModel chatModel) {
-        if (agent == null) {
-            ReActAgent.Builder builder = ReActAgent.of(chatModel);
+    public String getTeamLeadInstruction() {
+        return "## Team Lead（团队协调器）角色\n\n" +
+                "你现在启用了 **Agent Teams 模式**，你是团队的 **Team Lead（团队领导）**。\n\n" +
+                "### 核心职责\n\n" +
+                "1. **任务分析** - 判断任务类型，选择合适的协作模式\n" +
+                "2. **团队协作** - 协调多个专业子代理（teammates）协作完成任务\n" +
+                "3. **结果汇总** - 收集各子代理的结果，形成最终答案\n" +
+                "4. **质量控制** - 确保子任务完成的质量和一致性\n\n" +
+                "### 两种协作模式（必须正确选择）\n\n" +
+                "#### 模式1：简单多专家协作（直接调用 task()）\n\n" +
+                "**适用场景**：\n" +
+                "- 用户明确要求多个专家从不同角度分析\n" +
+                "- 任务相对简单，不需要复杂的工作流\n" +
+                "- 可以并行调用多个专家，然后汇总结果\n\n" +
+                "**关键词**：\"专家\"、\"分析\"、\"建议\"、\"从.*角度\"、\"多.*位.*专家\"\n\n" +
+                "**执行流程**：\n" +
+                "1. 直接调用多个 `task(name=\"专家名\", prompt=\"具体问题\")`\n" +
+                "2. 等待所有专家返回结果\n" +
+                "3. MainAgent 汇总各专家意见，给出总结\n\n" +
+                "**示例**：\n" +
+                "```\n" +
+                "用户：找100以内的完全平方数，请三位专家（代数、几何、数论）分析\n\n" +
+                "执行：\n" +
+                "1. task(name=\"代数专家\", prompt=\"从代数角度分析100以内的完全平方数\")\n" +
+                "2. task(name=\"几何专家\", prompt=\"从几何角度分析100以内的完全平方数\")\n" +
+                "3. task(name=\"数论专家\", prompt=\"从数论角度分析100以内的完全平方数\")\n" +
+                "4. 汇总三位专家的分析结果\n" +
+                "```\n\n" +
+                "**多轮讨论（如果需要专家互相质疑、补充）**：\n" +
+                "```\n" +
+                "# 第1轮：专家A首发\n" +
+                "result1 = task(name=\"专家A\", prompt=\"分析问题\")\n\n" +
+                "# 第2轮：专家B回应专家A\n" +
+                "result2 = task(\n" +
+                "    name=\"专家B\",\n" +
+                "    prompt=\"专家A的观点：\" + result1 + \"\\n请从你的角度回应或质疑\"\n" +
+                ")\n\n" +
+                "# 第3轮：专家C综合前两位\n" +
+                "result3 = task(\n" +
+                "    name=\"专家C\",\n" +
+                "    prompt=\"专家A：\" + result1 + \"\\n专家B：\" + result2 + \"\\n请给出综合建议\"\n" +
+                ")\n\n" +
+                "# 汇总讨论结果\n" +
+                "final = \"经过讨论，三位专家达成共识...\"\n" +
+                "```\n\n" +
+                "#### 模式2：复杂任务编排（任务列表 + 智能路由）\n\n" +
+                "**适用场景**：\n" +
+                "- 多步骤、复杂的工作流\n" +
+                "- 需要任务之间的依赖和协调\n" +
+                "- 需要团队成员通过任务列表自主协作\n\n" +
+                "**关键词**：\"实现\"、\"开发\"、\"设计\"、\"重构\"、\"优化\"等多步骤工程任务\n\n" +
+                "**执行流程**：\n" +
+                "1. 使用 `task_add()` 或 `create_task()` 创建任务列表\n" +
+                "2. 团队成员通过 `list_all_tasks()` 或 `get_claimable_tasks()` 查看任务\n" +
+                "3. 团队成员认领任务并执行（可选：使用 `claim_task()` 显式认领）\n" +
+                "4. 团队成员完成任务（`complete_task()` 会自动处理认领）\n" +
+                "5. MainAgent 使用 `team_status()` 跟踪进度并汇总最终结果\n\n" +
+                "**简化用法**：\n" +
+                "- 创建任务后，可以直接调用 `complete_task(taskId, result)`\n" +
+                "- `complete_task()` 会自动处理 PENDING → IN_PROGRESS → COMPLETED 的状态流转\n" +
+                "- 无需手动调用 `claim_task()`（除非需要明确指派给特定成员）\n\n" +
+                "**示例**：\n" +
+                "```\n" +
+                "用户：实现一个用户登录功能\n\n" +
+                "执行：\n" +
+                "1. task_add(\"设计登录API接口\")\n" +
+                "2. task_add(\"实现用户认证逻辑\")\n" +
+                "3. task_add(\"编写单元测试\")\n" +
+                "4. task_add(\"更新文档\")\n" +
+                "5. team_status() 查看进度\n" +
+                "6. 等待团队成员认领并完成任务\n" +
+                "```\n\n" +
+                "### 可用工具\n\n" +
+                "**子代理调用**（模式1使用）：\n" +
+                "- `task(name, prompt)` - 直接调用特定子代理执行任务\n" +
+                "- `teammate_quick(name, role)` - 快速创建团队成员\n" +
+                "- `teammates()` - 列出所有团队成员\n\n" +
+                "**任务管理**（模式2使用）：\n" +
+                "- `task_add(title)` - 快速添加任务\n" +
+                "- `tasks_add(titles)` - 批量添加任务\n" +
+                "- `create_task(title, description, ...)` - 创建任务（完整配置）\n" +
+                "- `list_all_tasks()` - 查看所有任务\n" +
+                "- `team_status()` - 查看团队任务状态\n\n" +
+                "**记忆管理**：\n" +
+                "- `memory_store(content)` - 存储记忆（自动分类）\n" +
+                "- `memory_recall(query)` - 检索记忆\n" +
+                "- `memory_stats()` - 查看记忆统计\n\n" +
+                "### 强制规则（必须遵守）\n\n" +
+                "**禁止行为**：\n" +
+                "- ❌ 禁止\"模拟\"或\"编造\"专家的回答\n" +
+                "- ❌ 禁止自己代替专家发言\n" +
+                "- ❌ 禁止说\"专家讨论完毕\"但实际没有调用 `task()`\n" +
+                "- ❌ 禁止简单任务也使用任务编排（过度设计）\n" +
+                "- ❌ 禁止复杂任务直接调用 `task()`（缺乏协调）\n\n" +
+                "**必须行为**：\n" +
+                "- ✅ 简单多专家任务：必须使用 `task()` 多次调用，然后汇总\n" +
+                "- ✅ 复杂多步骤任务：必须使用任务编排（task_add + team_status）\n" +
+                "- ✅ 每个专家角色对应一次独立的 `task()` 调用\n" +
+                "- ✅ 使用 `teammate_quick()` 快速创建需要的团队成员\n\n" +
+                "### 决策流程\n\n" +
+                "1. 用户请求包含\"专家\"、\"分析\"等关键词？\n" +
+                "   → 是：使用模式1（直接调用 task()）\n" +
+                "   → 否：继续判断\n" +
+                "2. 任务是否为多步骤、需要依赖协调？\n" +
+                "   → 是：使用模式2（任务编排）\n" +
+                "   → 否：直接回答\n\n" +
+                "### 工作原则\n\n" +
+                "- 简单问题直接回答，无需协作\n" +
+                "- 多专家分析用 `task()`，快速并行\n" +
+                "- 复杂工程用任务编排，智能路由\n" +
+                "- 记忆重要决策，方便后续查阅";
+    }
 
-            // 设置系统提示词
-            builder.systemPrompt(SystemPrompt.builder()
-                    .instruction(getSystemPrompt())
-                    .build());
-
-            // 添加技能
-            CliSkillProvider skillProvider = new CliSkillProvider(workDir);
-            if (poolManager != null) {
-                poolManager.getPoolMap().forEach((alias, path) -> {
-                    skillProvider.skillPool(alias, path);
-                });
-            }
-
-            // 基础技能
-            builder.defaultSkillAdd(skillProvider.getTerminalSkill());
-            builder.defaultSkillAdd(skillProvider.getExpertSkill());
-
-            // Agent Teams 工具集（记忆、事件、消息）
-            AgentTeamsTools teamsTools = new AgentTeamsTools(
-                    sharedMemoryManager,
-                    eventBus
-            );
-            builder.defaultSkillAdd(teamsTools);
-
-            // 子代理调用工具（如果有 kernel 和 subagentManager）
-            if (kernel != null && subagentManager != null) {
-                TaskSkill taskSkill = new TaskSkill(kernel, subagentManager);
-                builder.defaultSkillAdd(taskSkill);
-                LOG.debug("MainAgent: TaskSkill 已添加");
-            } else {
-                LOG.debug("MainAgent: 无 kernel 或 subagentManager，跳过 TaskSkill");
-            }
-
-            // 设置较大的步数（主代理需要协调多个任务）
-            builder.maxSteps(50);
-            builder.sessionWindowSize(10);
-
-            this.chatModel = chatModel;  // 保存 ChatModel 引用
-            this.agent = builder.build();
-            this.session = sessionProvider.getSession("main_agent");
-
-            LOG.info("MainAgent '{}' 初始化完成", config.getCode());
+    /**
+     * 设置共享的 ReActAgent
+     *
+     * MainAgent 不再创建自己的 ReActAgent，而是使用 AgentKernel 创建的主 ReActAgent。
+     * 这样可以避免两层推理，简化架构。
+     *
+     * @param agent 共享的 ReActAgent
+     * @param chatModel ChatModel（用于任务分析等功能）
+     */
+    public synchronized void setSharedAgent(ReActAgent agent, ChatModel chatModel) {
+        if (this.agent != null) {
+            LOG.warn("MainAgent 已有共享 Agent，将被覆盖");
         }
+        this.agent = agent;
+        this.chatModel = chatModel;
+        this.session = sessionProvider.getSession("main_agent");
+        LOG.info("MainAgent 已设置共享 ReActAgent");
     }
 
     /**
@@ -199,14 +293,40 @@ public class MainAgent {
      * @param __cwd 工作目录
      * @return 响应流
      */
-    public Flux<AgentChunk> executeStream(Prompt prompt, String __cwd) throws Throwable {
+    public Flux<AgentChunk> executeStream(Prompt prompt, String __cwd) {
         if (agent == null) {
             throw new IllegalStateException("MainAgent 尚未初始化");
         }
 
         running.set(true);
 
-        // 0. 启动目标守护（防止在多轮循环中偏离目标）
+        // 0. 自动创建主任务到 SharedTaskList
+        TeamTask mainTask = null;
+        try {
+            String userContent = prompt.getUserContent();
+            // 生成简短标题（取前50个字符）
+            String title = userContent.length() > 50
+                    ? userContent.substring(0, 50) + "..."
+                    : userContent;
+
+            mainTask = new TeamTask();
+            mainTask.setTitle(title);
+            mainTask.setDescription(userContent);
+            mainTask.setType(TeamTask.TaskType.DEVELOPMENT);
+            mainTask.setPriority(10); // 主任务高优先级
+            mainTask.setStatus(TeamTask.Status.IN_PROGRESS);
+
+            CompletableFuture<TeamTask> future = taskList.addTask(mainTask);
+            mainTask = future.join();
+            LOG.info("主任务已自动创建: taskId={}, title={}", mainTask.getId(), mainTask.getTitle());
+
+        } catch (Exception e) {
+            LOG.warn("创建主任务失败（继续执行）: {}", e.getMessage());
+        }
+
+        final TeamTask finalMainTask = mainTask;
+
+        // 1. 启动目标守护（防止在多轮循环中偏离目标）
         String goalId = null;
         try {
             if (kernel != null) {
@@ -218,7 +338,7 @@ public class MainAgent {
         }
 
         try {
-            // 1. 发布主代理任务开始事件
+            // 2. 发布主代理任务开始事件
             publishEvent(AgentEventType.MAIN_TASK_STARTED, prompt.getUserContent(), null);
 
             // 2. 执行主代理内部的协调逻辑（流式输出）
@@ -234,7 +354,17 @@ public class MainAgent {
                     .stream();
 
             // 7. 在流完成后等待所有子任务完成
-            Flux<AgentChunk> resultStream = responseStream
+            // 等待所有子任务完成
+            // 汇总结果
+            // 更新主任务状态
+            // 发布主代理任务完成事件
+            // 停止目标守护
+            // 更新主任务状态为失败
+            // 出错时也要停止目标守护
+            // 更新主任务状态为取消
+            // 取消时也要停止目标守护
+
+            return responseStream
                     .doOnComplete(() -> {
                         try {
                             // 等待所有子任务完成
@@ -242,6 +372,16 @@ public class MainAgent {
 
                             // 汇总结果
                             String summary = summarizeResults();
+
+                            // 更新主任务状态
+                            if (finalMainTask != null) {
+                                try {
+                                    taskList.completeTask(finalMainTask.getId(), summary);
+                                    LOG.info("主任务已完成: taskId={}", finalMainTask.getId());
+                                } catch (Exception e) {
+                                    LOG.warn("更新主任务状态失败: {}", e.getMessage());
+                                }
+                            }
 
                             // 发布主代理任务完成事件
                             publishEvent(AgentEventType.MAIN_TASK_COMPLETED, summary, null);
@@ -251,6 +391,9 @@ public class MainAgent {
                         } catch (Exception e) {
                             LOG.error("MainAgent 后处理失败", e);
                         } finally {
+                            // 设置运行状态为 false
+                            running.set(false);
+
                             // 停止目标守护
                             try {
                                 this.stopGoalGuarding();
@@ -262,6 +405,17 @@ public class MainAgent {
                     })
                     .doOnError(error -> {
                         LOG.error("MainAgent 流式执行出错", error);
+
+                        // 更新主任务状态为失败
+                        if (finalMainTask != null) {
+                            try {
+                                taskList.failTask(finalMainTask.getId(), error.getMessage());
+                                LOG.info("主任务已标记为失败: taskId={}", finalMainTask.getId());
+                            } catch (Exception e) {
+                                LOG.warn("更新主任务失败状态失败: {}", e.getMessage());
+                            }
+                        }
+
                         running.set(false);
                         // 出错时也要停止目标守护
                         try {
@@ -273,6 +427,17 @@ public class MainAgent {
                     })
                     .doOnCancel(() -> {
                         LOG.warn("MainAgent 流式执行被取消");
+
+                        // 更新主任务状态为取消
+                        if (finalMainTask != null) {
+                            try {
+                                taskList.removeTask(finalMainTask.getId());
+                                LOG.info("主任务已取消: taskId={}", finalMainTask.getId());
+                            } catch (Exception e) {
+                                LOG.warn("更新主任务取消状态失败: {}", e.getMessage());
+                            }
+                        }
+
                         running.set(false);
                         // 取消时也要停止目标守护
                         try {
@@ -282,8 +447,6 @@ public class MainAgent {
                             LOG.warn("停止目标守护失败: {}", e.getMessage());
                         }
                     });
-
-            return resultStream;
 
         } finally {
             running.set(false);
@@ -308,7 +471,7 @@ public class MainAgent {
             payload.put("tasks", tasks);
 
             AgentMessage<Map<String, Object>> message = AgentMessage.<Map<String, Object>>of(payload)
-                    .from(config.getCode())
+                    .from(config.getName())
                     .to("*")
                     .type("task_notification")
                     .build();
@@ -581,7 +744,7 @@ public class MainAgent {
     private void registerMessageHandler() {
         if (messageChannel != null) {
             messageHandlerId = messageChannel.registerHandler(
-                    config.getCode(),
+                    config.getName(),
                     this::handleMessage
             );
             LOG.info("MainAgent 消息处理器已注册");
@@ -641,7 +804,7 @@ public class MainAgent {
     private void publishEvent(AgentEventType eventType, Object payload, String taskId) {
         if (eventBus != null) {
             EventMetadata metadata = EventMetadata.builder()
-                    .sourceAgent(config.getCode())
+                    .sourceAgent(config.getName())
                     .taskId(taskId)
                     .priority(5)
                     .build();
@@ -651,133 +814,6 @@ public class MainAgent {
         }
     }
 
-    /**
-     * 获取系统提示词
-     */
-    private String getSystemPrompt() {
-        return "## 主代理（Team Lead）- 强制执行模式\n\n" +
-                "你是 Agent Teams 的团队领导，负责协调多个子代理协作完成任务。\n" +
-                "\n" +
-                "### ⚠️ 核心规则（违反即失败）\n" +
-                "\n" +
-                "#### 🚫 禁止行为（绝对不可违反）\n" +
-                "1. **禁止模拟工作**：\n" +
-                "   - 严禁使用 `update_working_memory`、`memory_store` 等工具声称工作已完成\n" +
-                "   - 不断更新 step、currentAgent 字段而不实际工作是**严重违规**\n" +
-                "   - 不得在记忆中存储虚假的\"已完成\"状态\n\n" +
-                "2. **禁止虚假产出**：\n" +
-                "   - 不得声称\"需求分析已完成\"、\"代码已编写\"等虚假结论\n" +
-                "   - 没有实际文件产出前，不得宣称任务完成\n" +
-                "   - 记忆存储只能存储真实已完成的工作结果\n\n" +
-                "3. **禁止循环操作**：\n" +
-                "   - 不得重复调用相同的工具而不产生新进展\n" +
-                "   - 不得无限更新状态而无实际工作\n" +
-                "   - 检测到循环时必须立即停止并改变策略\n\n" +
-                "#### ✅ 必须行为（必须执行）\n" +
-                "1. **必须使用 subagent 工具**：\n" +
-                "   - 所有实际工作必须通过 `subagent(type, prompt)` 工具委派给专门的子代理\n" +
-                "   - 可用的子代理类型：explore、plan、bash、general-purpose、solon-code-guide\n" +
-                "   - 例如：`subagent(type='bash', prompt='创建项目目录并初始化')`\n\n" +
-                "2. **必须有实际产出**：\n" +
-                "   - **代码任务**必须生成 `.java`、`.py` 等代码文件\n" +
-                "   - **文档任务**必须生成 `.md`、`.txt` 等文档文件\n" +
-                "   - **测试任务**必须有测试报告或测试结果文件\n" +
-                "   - **架构任务**必须有架构图或设计文档\n\n" +
-                "3. **必须验证产出**：\n" +
-                "   - 使用 `read` 或 `ls` 工具验证文件是否真实创建\n" +
-                "   - 确认文件内容符合要求后才可宣称任务完成\n\n" +
-                "\n" +
-                "### 工作流程（强制执行）\n" +
-                "\n" +
-                "#### 步骤 1：任务分析（使用 subagent）\n" +
-                "```\n" +
-                "subagent(\n" +
-                "    type='plan',\n" +
-                "    prompt='分析任务需求：[用户任务]，提供详细的实现方案'\n" +
-                ")\n" +
-                "```\n" +
-                "\n" +
-                "#### 步骤 2：执行工作（使用 subagent）\n" +
-                "```\n" +
-                "# 开发任务\n" +
-                "subagent(\n" +
-                "    type='bash',\n" +
-                "    prompt='创建文件 [文件名]，编写代码实现：[具体需求]'\n" +
-                ")\n" +
-                "\n" +
-                "# 测试任务\n" +
-                "subagent(\n" +
-                "    type='bash',\n" +
-                "    prompt='编写测试用例并运行测试，生成测试报告'\n" +
-                ")\n" +
-                "```\n" +
-                "\n" +
-                "#### 步骤 3：验证产出（使用 ls/read）\n" +
-                "```\n" +
-                "ls(path='.')  # 列出文件\n" +
-                "read(file_path='xxx.java')  # 验证文件内容\n" +
-                "```\n" +
-                "\n" +
-                "#### 步骤 4：总结结果（仅在真实完成后）\n" +
-                "```\n" +
-                "# 只有在确认文件真实创建后才可总结\n" +
-                "Final Answer: [ANSWER]\n" +
-                "已完成以下工作：\n" +
-                "1. 创建文件：file1.java, file2.py\n" +
-                "2. 文件内容：[简要描述]\n" +
-                "3. 验证结果：所有文件已通过测试\n" +
-                "```\n" +
-                "\n" +
-                "### ⚠️ 常见错误（必须避免）\n" +
-                "\n" +
-                "❌ **错误示例**：\n" +
-                "```\n" +
-                "# 错误1：虚假更新状态\n" +
-                "update_working_memory(field='step', value='1')\n" +
-                "update_working_memory(field='step', value='2')\n" +
-                "memory_store(content='需求分析已完成')  # 虚假！\n" +
-                "\n" +
-                "# 错误2：声称完成但无产出\n" +
-                "Final Answer: [ANSWER]\n" +
-                "团队协作完成！  # 但没有创建任何文件\n" +
-                "```\n" +
-                "\n" +
-                "✅ **正确示例**：\n" +
-                "```\n" +
-                "# 正确：实际调用子代理\n" +
-                "subagent(type='bash', prompt='创建 UserController.java')\n" +
-                "# 等待结果...\n" +
-                "ls(path='src/main/java')  # 验证文件已创建\n" +
-                "read(file_path='src/main/java/UserController.java')  # 验证内容\n" +
-                "Final Answer: [ANSWER]\n" +
-                "已创建 UserController.java，包含用户增删改查功能\n" +
-                "```\n" +
-                "\n" +
-                "### 🎯 成功标准\n" +
-                "\n" +
-                "任务被认为完成，当且仅当：\n" +
-                "1. **有实际文件产出**：代码、文档、测试报告等\n" +
-                "2. **文件内容已验证**：使用 read 工具确认内容正确\n" +
-                "3. **通过必要测试**：代码可编译、可运行\n" +
-                "4. **无虚假声明**：所有声称的完成都是真实的\n" +
-                "\n" +
-                "### 📊 token 使用警告\n" +
-                "\n" +
-                "- 每个任务建议不超过 10,000 tokens\n" +
-                "- 超过 5,000 tokens 时必须检查是否有实际产出\n" +
-                "- 超过 10,000 tokens 无产出时立即终止任务\n" +
-                "- 禁止循环调用工具而不产生进展\n" +
-                "\n" +
-                "### 🚀 立即开始\n" +
-                "\n" +
-                "接到任务后，必须：\n" +
-                "1. 先使用 `subagent(type='plan', ...)` 分析需求\n" +
-                "2. 再使用 `subagent(type='bash', ...)` 执行工作\n" +
-                "3. 使用 `ls`、`read` 验证产出\n" +
-                "4. 确认真实完成后才给出 Final Answer\n" +
-                "\n" +
-                "**记住：禁止模拟，必须实际产出！**\n";
-    }
 
     /**
      * 检查是否正在运行
@@ -805,7 +841,7 @@ public class MainAgent {
 
         // 注销消息处理器
         if (messageChannel != null && messageHandlerId != null) {
-            messageChannel.unregisterHandler(config.getCode(), messageHandlerId);
+            messageChannel.unregisterHandler(config.getName(), messageHandlerId);
             LOG.info("MainAgent 消息处理器已注销");
         }
     }
@@ -829,6 +865,108 @@ public class MainAgent {
     public void stopGoalGuarding() {
         if (goalKeeper != null) {
             goalKeeper.stopGoalGuarding();
+        }
+    }
+
+    public AgentResponse call(String __cwd, String sessionId, Prompt prompt) throws Throwable {
+        AgentSession session = kernel.getSession(sessionId);
+
+        return agent.prompt(prompt)
+                .session(session)
+                .options(o -> {
+                    o.toolContextPut("__cwd", __cwd);
+                })
+                .call();
+    }
+
+    public Flux<AgentChunk> stream(String __cwd, String sessionId, Prompt prompt) {
+        AgentSession session = kernel.getSession(sessionId);
+
+        return agent.prompt(prompt)
+                .session(session)
+                .options(o -> {
+                    o.toolContextPut("__cwd", __cwd);
+                })
+                .stream();
+    }
+
+    /**
+     * 执行流式子代理调用
+     */
+    public String executeStream( String __cwd, String sessionId,
+                                       Prompt prompt, ReActTrace __parentTrace, String name) {
+        try {
+            String promptStr = prompt.toString();
+            LOG.info("[mainAgent] 启动异步流式执行: type={}, sessionId={}, promptLength={}",
+                    name, sessionId, promptStr != null ? promptStr.length() : 0);
+
+            final long[] firstChunkTime = {0};
+            final long[] lastChunkTime = {System.currentTimeMillis()};
+            final int[] chunkCount = {0};
+            final StringBuilder contentBuilder = new StringBuilder();
+
+            String result = this.stream(__cwd, sessionId, prompt)
+                    .doOnSubscribe(s -> {
+                        LOG.info("[mainAgent] 流订阅成功: name={}, sessionId={}", name, sessionId);
+                    })
+                    .doOnNext(chunk -> {
+                        long now = System.currentTimeMillis();
+                        if (chunkCount[0] == 0) {
+                            firstChunkTime[0] = now;
+                            long firstChunkDelay = now - lastChunkTime[0];
+                            LOG.info("[mainAgent] 收到首个chunk: name={}, delay={}ms, chunkType={}",
+                                    name, firstChunkDelay, chunk.getClass().getSimpleName());
+                        }
+                        lastChunkTime[0] = now;
+                        chunkCount[0]++;
+
+                        LOG.debug("[mainAgent] 收到chunk: type={}, chunkType={}, total={}",
+                                name, chunk.getClass().getSimpleName(), chunkCount[0]);
+
+                        if (chunk instanceof ActionChunk) {
+                            __parentTrace.getOptions().getStreamSink().next(chunk);
+                        } else if (chunk instanceof ReasonChunk) {
+                            __parentTrace.getOptions().getStreamSink().next(chunk);
+                        }
+
+                        if (chunk != null && chunk.hasContent()) {
+                            contentBuilder.append(chunk.getContent());
+                        }
+                    })
+                    .doOnComplete(() -> {
+                        long totalDuration = System.currentTimeMillis() - firstChunkTime[0];
+                        LOG.info("[mainAgent] 流完成: type={}, sessionId={}, totalChunks={}, totalDuration={}ms",
+                                name, sessionId, chunkCount[0], totalDuration);
+                    })
+                    .doOnError(e -> {
+                        LOG.error("[mainAgent] 流错误: type={}, sessionId={}, error={}, chunksReceived={}",
+                                name, sessionId, e.getMessage(), chunkCount[0]);
+                    })
+                    .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                    .then(Mono.fromCallable(() -> contentBuilder.toString()))
+                    .block(Duration.ofMillis(SUBAGENT_STREAM_TIMEOUT_MS));
+
+            LOG.info("[mainAgent] 执行成功: type={}, sessionId={}, chunks={}, resultLength={}",
+                    name, sessionId, chunkCount[0],
+                    result != null ? result.length() : 0);
+
+            return result;
+
+        } catch (Exception e) {
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.contains("Timeout")) {
+                LOG.error("[mainAgent] 执行超时: name={}, sessionId={}", name, sessionId);
+                return "ERROR: mainAgent执行超时。\n\n" +
+                        "可能原因：\n" +
+                        "1. LLM API 响应过慢或无响应\n" +
+                        "2. mainAgent执行的任务过于复杂\n" +
+                        "3. 网络连接问题\n\n" +
+                        "建议：\n" +
+                        "- 简化任务描述\n" +
+                        "- 检查网络连接\n" +
+                        "- 查看mainAgent日志了解详情";
+            }
+            throw new RuntimeException(e);
         }
     }
 

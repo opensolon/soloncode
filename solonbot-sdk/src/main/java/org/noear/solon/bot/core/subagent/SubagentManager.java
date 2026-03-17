@@ -15,19 +15,14 @@
  */
 package org.noear.solon.bot.core.subagent;
 
-import org.noear.snack4.ONode;
 import org.noear.solon.bot.core.AgentKernel;
-import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -50,17 +45,15 @@ public class SubagentManager {
     public SubagentManager(AgentKernel mainAgent) {
         this.mainAgent = mainAgent;
 
-        // 添加预置的智能体类型
+        // 添加预置的智能体类型（保持向后兼容）
         addSubagent(new ExploreSubagent(mainAgent));
         addSubagent(new PlanSubagent(mainAgent));
         addSubagent(new GeneralPurposeSubagent(mainAgent));
-
         addSubagent(new BashSubagent(mainAgent));
     }
 
-
     public void addSubagent(Subagent subagent) {
-        subagentMap.putIfAbsent(subagent.getType(), subagent);
+        subagentMap.putIfAbsent(subagent.name(), subagent);
     }
 
     /**
@@ -170,16 +163,10 @@ public class SubagentManager {
             }
 
             AbsSubagent subagent = (AbsSubagent) subagentMap.computeIfAbsent(subagentType,
-                    k -> new GeneralPurposeSubagent(mainAgent, k));
+                    k -> new GeneralPurposeSubagent(mainAgent, parsed.getMetadata(), parsed.getPrompt()));
 
             // 设置解析后的属性
             subagent.setDescription(parsed.getMetadata().getDescription());
-            subagent.setSystemPrompt(parsed.getPrompt());
-
-            // 设置完整的 metadata（包括 teamName 等字段）
-            subagent.setMetadata(parsed.getMetadata());
-
-            subagent.refresh();
 
             LOG.debug("加载子代理: {} 从 {}", subagentType, file);
         } catch (IOException e) {

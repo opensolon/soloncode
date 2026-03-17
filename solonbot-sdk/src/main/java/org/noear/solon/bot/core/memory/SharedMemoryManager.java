@@ -67,7 +67,7 @@ public class SharedMemoryManager {
     private final int maxLongTermCount;
 
     // 性能监控：内存使用上限
-    private static final long MAX_MEMORY_USAGE = 100 * 1024 * 1024; // 100MB
+    private static final long MAX_MEMORY_USAGE = 300 * 1024 * 1024; // 100MB
     private static final double MEMORY_WARNING_THRESHOLD = 0.8;     // 80% 警告阈值
 
     /**
@@ -374,7 +374,6 @@ public class SharedMemoryManager {
         return usedMemory > MAX_MEMORY_USAGE;
     }
 
-    // ========== 工作记忆方法 ==========
 
     /**
      * 创建短期记忆（使用配置的TTL）
@@ -500,11 +499,6 @@ public class SharedMemoryManager {
         if (memory != null) {
             memory.complete();
             LOG.debug("工作记忆已完成: taskId={}, step={}", taskId, memory.getStep());
-
-            // 可以选择转移到短期记忆
-            // ShortTermMemory stm = convertToShortTerm(memory);
-            // store(stm);
-
             workingCache.remove(taskId);
         }
     }
@@ -530,7 +524,6 @@ public class SharedMemoryManager {
         LOG.info("所有记忆已清空");
     }
 
-    // ========== 便捷方法（简化键值对接口） ==========
 
     /**
      * 存储短期记忆（便捷方法）
@@ -563,6 +556,22 @@ public class SharedMemoryManager {
         memory.setTimestamp(System.currentTimeMillis());
         memory.setTags(Collections.emptyList());
         store(memory);
+    }
+
+    /**
+     * 检索长期记忆（便捷方法）
+     *
+     * @param key 键
+     * @return 值，不存在返回 null
+     */
+    public String recallLongTerm(String key) {
+        Memory ltm = longTermCache.get(key);
+        if (ltm != null && !ltm.isExpired()) {
+            if (ltm instanceof LongTermMemory) {
+                return ((LongTermMemory) ltm).getSummary();
+            }
+        }
+        return null;
     }
 
     /**
@@ -732,7 +741,7 @@ public class SharedMemoryManager {
         LOG.warn("紧急清理完成，清理了 {} 条短期记忆", cleared);
 
         // 建议垃圾回收
-        System.gc();
+//        System.gc();
     }
 
     /**
@@ -828,42 +837,54 @@ public class SharedMemoryManager {
             LOG.info("从存储加载了 {} 条观察", observations.size());
 
             // 将 Observation 转换并缓存到对应的 Memory 类型
-            for (Observation obs : observations) {
-                // 根据类型转换
-                Memory memory = null;
-                if (obs.getType() == Observation.ObservationType.GENERAL) {
-                    ShortTermMemory stm = new ShortTermMemory();
-                    stm.setId(obs.getId());
-                    stm.setContext(obs.getContent());
-                    stm.setTimestamp(obs.getTimestamp());
-                    memory = stm;
-                } else if (obs.getType() == Observation.ObservationType.TASK_RESULT) {
-                    LongTermMemory ltm = new LongTermMemory();
-                    ltm.setId(obs.getId());
-                    ltm.setSummary(obs.getContent());
-                    ltm.setTimestamp(obs.getTimestamp());
-                    ltm.setImportance((float) obs.getImportance());
-                    ltm.setTags(new ArrayList<>());
-                    memory = ltm;
-                } else if (obs.getType() == Observation.ObservationType.ARCHITECTURE) {
-                    KnowledgeMemory km = new KnowledgeMemory();
-                    km.setId(obs.getId());
-                    km.setContent(obs.getContent());
-                    km.setTimestamp(obs.getTimestamp());
-                    km.setKeywords(new ArrayList<>());
-                    memory = km;
-                }
+            int loadedCount = 0;
+            int skippedCount = 0;
 
-                if (memory != null && !memory.isExpired()) {
-                    store(memory);
+            for (Observation obs : observations) {
+                try {
+                    // 根据类型转换
+                    Memory memory = null;
+                    if (obs.getType() == Observation.ObservationType.GENERAL) {
+                        ShortTermMemory stm = new ShortTermMemory();
+                        stm.setId(obs.getId());
+                        stm.setContext(obs.getContent());
+                        stm.setTimestamp(obs.getTimestamp());
+                        memory = stm;
+                    } else if (obs.getType() == Observation.ObservationType.TASK_RESULT) {
+                        LongTermMemory ltm = new LongTermMemory();
+                        ltm.setId(obs.getId());
+                        ltm.setSummary(obs.getContent());
+                        ltm.setTimestamp(obs.getTimestamp());
+                        ltm.setImportance((float) obs.getImportance());
+                        ltm.setTags(new ArrayList<>());
+                        memory = ltm;
+                    } else if (obs.getType() == Observation.ObservationType.ARCHITECTURE) {
+                        KnowledgeMemory km = new KnowledgeMemory();
+                        km.setId(obs.getId());
+                        km.setContent(obs.getContent());
+                        km.setTimestamp(obs.getTimestamp());
+                        km.setKeywords(new ArrayList<>());
+                        memory = km;
+                    }
+
+                    if (memory != null && !memory.isExpired()) {
+                        store(memory);
+                        loadedCount++;
+                    } else {
+                        skippedCount++;
+                    }
+                } catch (Exception e) {
+                    LOG.warn("加载单个观察失败: id={}, error={}", obs.getId(), e.getMessage());
+                    skippedCount++;
                 }
             }
 
             Map<String, Object> stats = memoryBank.getStats();
-            LOG.info("共享记忆加载完成: {}", stats);
+            LOG.info("共享记忆加载完成: loaded={}, skipped={}, stats={}", loadedCount, skippedCount, stats);
 
         } catch (Exception e) {
-            LOG.warn("共享记忆初始化失败: error={}", e.getMessage());
+            LOG.warn("共享记忆初始化失败: error={}", e.getMessage(), e);
+            // 不抛出异常，允许系统继续运行
         }
     }
 
