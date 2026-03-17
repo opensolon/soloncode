@@ -16,9 +16,9 @@
 
     <modules>
         <module>solonbot-parent</module>
-
         <module>solonclaw</module>
         <module>soloncode-cli</module>
+        <module>soloncode-web</module>
     </modules>
 
 </project>

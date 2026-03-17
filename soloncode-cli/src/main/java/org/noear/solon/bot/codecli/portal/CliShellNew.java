@@ -49,6 +49,7 @@ import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -122,6 +123,7 @@ public class CliShellNew implements Runnable {
         try {
             this.terminal = TerminalBuilder.builder()
                     .jna(true).jansi(true).system(true)
+                    .encoding(StandardCharsets.UTF_8)
                     .signalHandler(Terminal.SignalHandler.SIG_IGN) // 禁止默认信号处理
                     .build();
 
@@ -350,6 +352,15 @@ public class CliShellNew implements Runnable {
 
     @Override
     public void run() {
+        // Windows 下将控制台切换为 UTF-8 代码页，避免中文输入乱码
+        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+            try {
+                new ProcessBuilder("cmd", "/c", "chcp", "65001")
+                        .inheritIO().start().waitFor();
+            } catch (Exception ignored) {
+            }
+        }
+
         printWelcome();
         currentSession = kernel.getSession("cli");
         kernel.init(currentSession);

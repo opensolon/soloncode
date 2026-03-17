@@ -1,0 +1,110 @@
+/*
+ * Global Theme Variables
+ * Shared across all pages. Switch theme via <body data-theme="light|dark">.
+ *
+ * Usage:
+ *   <link rel="stylesheet" href="/css/theme.css"/>
+ *   <body data-theme="light">
+ */
+
+/* ===== Common ===== */
+:root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+/* ===== Light Theme ===== */
+[data-theme="light"] {
+    /* Background */
+    --bg-body: #f5f6fa;
+    --bg-sidebar: #ffffff;
+    --bg-main: #ffffff;
+    --bg-input-box: #ffffff;
+    --bg-hover: #f0f1f5;
+    --bg-code: #f6f8fa;
+    --bg-code-block: #1e1e2e;
+
+    /* Message */
+    --bg-user-msg: #4f6ef7;
+    --bg-action: #f0f7f0;
+
+    /* Text */
+    --text-primary: #1a1a2e;
+    --text-secondary: #6b7280;
+    --text-user-msg: #ffffff;
+    --text-ai-msg: #1a1a2e;
+    --text-sidebar: #374151;
+    --text-code: #d4d4d4;
+
+    /* Border */
+    --border-color: #e5e7eb;
+    --border-input: #d1d5db;
+
+    /* Accent */
+    --accent: #4f6ef7;
+    --accent-hover: #3b5de7;
+    --accent-light: #eef1fe;
+
+    /* Functional */
+    --action-border: #86b886;
+    --error-bg: #fef2f2;
+    --error-border: #fca5a5;
+    --error-text: #dc2626;
+
+    /* Effects */
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.08);
+    --thinking-dot: #4f6ef7;
+    --tag-bg: #f3f4f8;
+    --tag-border: #e5e7eb;
+    --thinking-block-bg: #f8f9fc;
+    --thinking-block-border: #e0e3eb;
+}
+
+/* ===== Dark Theme ===== */
+[data-theme="dark"] {
+    /* Background */
+    --bg-body: #0f0f1a;
+    --bg-sidebar: #16162a;
+    --bg-main: #1a1a2e;
+    --bg-input-box: #1e1e36;
+    --bg-hover: #22223a;
+    --bg-code: rgba(255, 255, 255, 0.06);
+    --bg-code-block: #0d1117;
+
+    /* Message */
+    --bg-user-msg: #4f6ef7;
+    --bg-action: #1a2a1a;
+
+    /* Text */
+    --text-primary: #e4e4ed;
+    --text-secondary: #8b8ba0;
+    --text-user-msg: #ffffff;
+    --text-ai-msg: #e4e4ed;
+    --text-sidebar: #c0c0d0;
+    --text-code: #d4d4d4;
+
+    /* Border */
+    --border-color: #2a2a44;
+    --border-input: #333355;
+
+    /* Accent */
+    --accent: #6b8aff;
+    --accent-hover: #5a75e6;
+    --accent-light: #1e2240;
+
+    /* Functional */
+    --action-border: #3a5a3a;
+    --error-bg: #2a1a1a;
+    --error-border: #5a3a3a;
+    --error-text: #f87171;
+
+    /* Effects */
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.3);
+    --thinking-dot: #6b8aff;
+    --tag-bg: #22223a;
+    --tag-border: #333355;
+    --thinking-block-bg: #1a1a30;
+    --thinking-block-border: #2a2a44;
+}

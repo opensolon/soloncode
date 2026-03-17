@@ -237,7 +237,7 @@ public class CodeSkill extends AbsSkill {
         try {
             Path gitignore = rootPath.resolve(".gitignore");
             if (Files.exists(gitignore)) {
-                List<String> lines = Files.readAllLines(gitignore);
+                List<String> lines = Files.readAllLines(gitignore, StandardCharsets.UTF_8);
                 // 精确匹配行，或者检查是否有以该文件名开头的有效行
                 boolean exists = lines.stream()
                         .map(String::trim)
@@ -245,7 +245,7 @@ public class CodeSkill extends AbsSkill {
 
                 if (!exists) {
                     String separator = (lines.isEmpty() || lines.get(lines.size()-1).isEmpty()) ? "" : "\n";
-                    Files.write(gitignore, (separator + fileName + "\n").getBytes(), StandardOpenOption.APPEND);
+                    Files.write(gitignore, (separator + fileName + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND);
                 }
             }
         } catch (Exception ignored) {

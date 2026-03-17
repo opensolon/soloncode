@@ -86,11 +86,17 @@ public class HitlStrategy implements HITLInterceptor.InterventionStrategy {
         }
 
         // --- G. 破坏性文件操作 ---
-        if (cmd.matches(".*\\b(rm|mv)\\b.*")) {
-            // 禁止在工作区根目录执行递归删除
-            if (cmd.matches(".*rm\\s+-rf\\s+.*") && (cmd.contains("*") || cmd.contains(" ."))) {
-                return "检测到大范围递归删除操作风险。";
-            }
+        // rm -r / rm -rf / rm -Rf 等递归删除
+        if (cmd.matches(".*\\brm\\s+-(\\w*[rR]\\w*)\\s+.*")) {
+            return "检测到递归删除操作 [" + cmd + "]。";
+        }
+        // Windows: rd /s, rmdir /s
+        if (cmd.matches("(?i).*\\b(rd|rmdir)\\s+/s\\b.*")) {
+            return "检测到递归删除操作 [" + cmd + "]。";
+        }
+        // mv 移动操作（可能导致数据丢失）
+        if (cmd.matches(".*\\bmv\\s+.*")) {
+            return "检测到文件移动操作 [" + cmd + "]。";
         }
 
         return null; // 基础查询命令 (ls, cat, pwd, echo, find) 全数放行

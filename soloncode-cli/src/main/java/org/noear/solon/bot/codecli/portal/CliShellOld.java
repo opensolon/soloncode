@@ -42,6 +42,7 @@ import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -72,7 +73,9 @@ public class CliShellOld implements Runnable {
 
         try {
             this.terminal = TerminalBuilder.builder()
-                    .jna(true).jansi(true).system(true).dumb(true).build();
+                    .jna(true).jansi(true).system(true).dumb(true)
+                    .encoding(StandardCharsets.UTF_8)
+                    .build();
 
             this.reader = LineReaderBuilder.builder()
                     .terminal(terminal)
@@ -85,6 +88,15 @@ public class CliShellOld implements Runnable {
 
     @Override
     public void run() {
+        // Windows 下将控制台切换为 UTF-8 代码页，避免中文输入乱码
+        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+            try {
+                new ProcessBuilder("cmd", "/c", "chcp", "65001")
+                        .inheritIO().start().waitFor();
+            } catch (Exception ignored) {
+            }
+        }
+
         printWelcome();
         AgentSession session = kernel.getSession("cli");
 

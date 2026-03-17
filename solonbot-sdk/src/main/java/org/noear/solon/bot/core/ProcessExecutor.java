@@ -109,9 +109,13 @@ public class ProcessExecutor {
     public String executeCode(Path rootPath, String code, String cmd, String ext, Map<String, String> envs, Integer timeoutMs, Consumer<String> onOutput) {
         Path tempScript = null;
         try {
-            // 1. 持久化脚本
+            // 1. 持久化脚本（Windows .bat 文件需前置 chcp 65001 以确保 UTF-8 输出）
+            String finalCode = code;
+            if (".bat".equals(ext)) {
+                finalCode = "@chcp 65001 > nul\r\n" + code;
+            }
             tempScript = Files.createTempFile(rootPath, "_script_", ext);
-            Files.write(tempScript, code.getBytes(scriptCharset));
+            Files.write(tempScript, finalCode.getBytes(scriptCharset));
 
             // 2. 构建完整命令（处理带空格的命令字符串）
             List<String> fullCmd = new ArrayList<>(Arrays.asList(cmd.split("\\s+")));

@@ -12,6 +12,6 @@ if not exist "soloncode-cli.jar" (
 )
 
 :: 执行 Java 命令
-java -Dfile.encoding=UTF-8 -jar "soloncode-cli.jar"
+java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dstdin.encoding=UTF-8 -jar "soloncode-cli.jar"
 
 pause
