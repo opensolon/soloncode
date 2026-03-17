@@ -18,6 +18,11 @@ package org.noear.solon.bot.core.teams;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.Agent;
+import org.noear.solon.ai.agent.AgentResponse;
+import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.team.TeamAgent;
 import org.noear.solon.ai.agent.team.TeamProtocols;
 import org.noear.solon.ai.chat.ChatModel;
@@ -27,10 +32,8 @@ import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.memory.smart.IntelligentMemoryManager;
-import org.noear.solon.bot.core.subagent.AbsSubagent;
-import org.noear.solon.bot.core.subagent.SubAgentMetadata;
-import org.noear.solon.bot.core.subagent.Subagent;
-import org.noear.solon.bot.core.subagent.SubagentManager;
+import org.noear.solon.bot.core.subagent.*;
+import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -45,6 +48,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -102,29 +106,20 @@ public class AgentTeamsSkill extends AbsSkill {
         sb.append("### 核心规则（强制执行）\n\n");
         sb.append("#### 禁止行为（绝对不可违反）\n");
         sb.append("1. **禁止模拟工作**：\n");
-        sb.append("   - 严禁不断更新 `update_working_memory`、`step`、`currentAgent` 而无实际产出\n");
+        sb.append("   - 严禁不断更新 `update_working_memory`、`step`、`currentAgent`\n");
         sb.append("   - 不得使用 `memory_store` 存储虚假的\"已完成\"状态\n");
         sb.append("   - 不得声称\"需求分析已完成\"、\"代码已编写\"等虚假结论\n");
         sb.append("   - 不断更新状态而无实际文件产出是**严重违规**\n\n");
-        sb.append("2. **必须有实际产出**：\n");
-        sb.append("   - 代码任务必须生成 `.java`、`.py` 等文件\n");
-        sb.append("   - 文档任务必须生成 `.md`、`.txt` 等文件\n");
-        sb.append("   - 使用 `ls`、`read` 工具验证文件已真实创建\n");
-        sb.append("   - 确认文件内容符合要求后才可宣称任务完成\n\n");
-        sb.append("3. **禁止循环操作**：\n");
+        sb.append("2. **禁止循环操作**：\n");
         sb.append("   - 不得重复调用相同工具而不产生新进展\n");
         sb.append("   - 检测到循环时必须立即停止并使用 `task()` 工具\n\n");
         sb.append("#### 必须行为（强制执行）\n");
         sb.append("1. **必须使用 task 工具**：\n");
         sb.append("   - 所有实际工作必须通过 `task(subagent_type, prompt)` 委派给子代理\n");
-        sb.append("   - 可用类型：explore、plan、bash、general-purpose、solon-code-guide\n");
+        sb.append("   - 可用类型：explore、plan、bash、general-purpose\n");
         sb.append("   - 例如：`task(subagent_type='bash', prompt='创建文件并编写代码')`\n\n");
-        sb.append("2. **必须验证产出**：\n");
-        sb.append("   - 使用 `ls(path='.')` 列出创建的文件\n");
-        sb.append("   - 使用 `read(file_path='xxx')` 验证文件内容\n");
-        sb.append("   - 只有确认真实产出后才可完成\n\n");
-        sb.append("3. **token 使用警告**：\n");
-        sb.append("   - 每个任务建议不超过 10,000 tokens\n");
+        sb.append("2. **token 使用警告**：\n");
+        sb.append("   - 每个任务建议不超过 20,000 tokens\n");
         sb.append("   - 超过 5,000 tokens 无产出时必须改变策略\n");
         sb.append("   - 禁止无限循环调用工具\n\n");
 
@@ -184,7 +179,6 @@ public class AgentTeamsSkill extends AbsSkill {
         sb.append("### 团队成员配置选项\n\n");
         sb.append("**基本配置**:\n");
         sb.append("- `name`: 成员唯一标识（如：security-expert）\n");
-        sb.append("- `role`: 角色描述（如：安全专家）\n");
         sb.append("- `description`: 详细职责描述\n");
         sb.append("- `teamName`: 团队名称（可选，自动生成）\n\n");
         sb.append("**技能与工具配置**:\n");
@@ -228,7 +222,7 @@ public class AgentTeamsSkill extends AbsSkill {
         sb.append("```\n\n");
 
         sb.append("### 任务链协调：如何将结果传递给下一个 subagent\n\n");
-        sb.append("**⚠️ 重要：完成任务链协调的三种方法**\n\n");
+        sb.append("** 重要：完成任务链协调的三种方法**\n\n");
         sb.append("**方法 1：在 prompt 中传递上下文（推荐）**\n");
         sb.append("```\n");
         sb.append("# 第一步：plan 完成设计\n");
@@ -346,90 +340,84 @@ public class AgentTeamsSkill extends AbsSkill {
     private static final long TEAM_TASK_TIMEOUT_MS = 300_000; // 5分钟超时
 
     @ToolMapping(name = "team_task",
-                 description = "启动团队协作任务。MainAgent 会自动分解任务并协调多个 SubAgent 协作完成。适用于复杂、多步骤的任务。注意：简单任务请直接回答，无需调用此工具。返回 Mono<String> 用于异步处理。")
+                 description = "启动团队协作任务。MainAgent 会自动分解任务并协调多个 SubAgent 协作完成。适用于复杂、多步骤的任务。注意：简单任务请直接回答，无需调用此工具。返回 Mono<String>。")
     public Mono<String> teamTask(
             @Param(name = "prompt", description = "任务描述，清晰说明目标和要求") String prompt,
+            @Param(name = "taskId", required = false, description = "可选。若要继续之前的任务会话，请传入对应的 task_id") String taskId,
             String __cwd,
             String __sessionId
     ) {
         // 检查是否已有任务在执行
         if (mainAgent.isRunning()) {
-            return Mono.just("[WARN] 团队任务正在执行中，请等待当前任务完成。");
+            return Mono.just("[WARN] 团队任务正在执行中，请等待当前任务完成。\n");
         }
+
+        AgentSession __parentSession = kernel.getSession(__sessionId);
+        ReActTrace __parentTrace = ReActTrace.getCurrent(__parentSession.getSnapshot());
+
+        String finalSessionId = Assert.isEmpty(taskId)
+                ? "team_task_" + __sessionId
+                : taskId;
 
         LOG.info("启动团队协作任务: {}", prompt);
 
-        // 使用流式执行并转换为 Mono
-        return Mono.fromCallable(() -> {
-            // 使用流式执行（实时输出）
-            StringBuilder streamingOutput = new StringBuilder();
+        // 🔑 关键：使用 Mono.create 避免阻塞主 Flux
+        return Mono.create(emitter -> {
+            // 在单独的线程中执行 MainAgent
+                StringBuilder finalResult = new StringBuilder();
 
-            try {
-                // 获取流式响应（传递 __cwd 以支持文件操作）
-                Flux<AgentChunk> responseStream =
-                    mainAgent.executeStream(Prompt.of(prompt), __cwd);
+                try {
+                    // 获取流式响应
+                    List<AgentChunk> chunks = mainAgent.executeStream(Prompt.of(prompt), __cwd)
+                            .doOnNext(chunk -> {
+                                String content = chunk.getContent();
+                                if (content != null && !content.isEmpty()) {
 
-                // 收集流式输出（带超时）
-                List<AgentChunk> chunks = responseStream
-                    .doOnNext(chunk -> {
-                        String content = chunk.getContent();
-                        if (content != null && !content.isEmpty()) {
-                            streamingOutput.append(content);
-                        }
-                    })
-                    .doOnComplete(() -> {
-                        LOG.info("\n[OK] 团队任务流式执行完成");
-                    })
-                    .doOnError(error -> {
-                        LOG.error("团队任务流式执行出错", error);
-                    })
-                    .collectList()
-                    .block(Duration.ofMillis(TEAM_TASK_TIMEOUT_MS));
+                                    if (chunk instanceof ActionChunk) {
+                                        __parentTrace.getOptions().getStreamSink().next(chunk);
+                                    } else if (chunk instanceof ReasonChunk) {
+                                        __parentTrace.getOptions().getStreamSink().next(chunk);
+                                    }
 
-                if (chunks != null) {
-                    LOG.debug("流式响应收集完成，收到 {} 个 chunk", chunks.size());
+                                    if (chunk != null && chunk.hasContent()) {
+                                        // 实时追加到结果
+                                        finalResult.append(content);
+                                    }
+                                }
+                            })
+                            .doOnComplete(() -> {
+                                LOG.info("团队任务流式执行完成");
+
+                                // 在完成后输出统计信息
+                                try {
+                                    SharedTaskList.TaskStatistics stats = mainAgent.getTaskList().getStatistics();
+                                    String statsMsg = String.format(
+                                            "\n\n[STATS] 总=%d, 完成=%d, 失败=%d, 进行中=%d, 待认领=%d\n",
+                                            stats.totalTasks, stats.completedTasks, stats.failedTasks,
+                                            stats.inProgressTasks, stats.pendingTasks);
+                                    finalResult.append(statsMsg);
+                                } catch (Exception e) {
+                                    LOG.warn("获取任务统计失败: {}", e.getMessage());
+                                }
+
+                                // 完成 Mono
+                                emitter.success(finalResult.toString());
+                            })
+                            .doOnError(error -> {
+                                LOG.error("团队任务流式执行出错: {}", error.getMessage(), error);
+                                emitter.error(error);
+                            })
+                            .collectList()
+                            .block(Duration.ofMillis(TEAM_TASK_TIMEOUT_MS));
+
+                    if (chunks != null) {
+                        LOG.debug("流式响应收集完成，收到 {} 个 chunk", chunks.size());
+                    }
+
+                } catch (Exception e) {
+                    LOG.error("团队任务执行失败", e);
+                    emitter.error(new RuntimeException("团队任务执行失败: " + e.getMessage(), e));
                 }
-
-            } catch (Exception e) {
-                LOG.error("团队任务执行失败", e);
-                throw new RuntimeException("团队任务执行失败: " + e.getMessage(), e);
-            }
-
-            // 获取任务统计
-            SharedTaskList.TaskStatistics stats = mainAgent.getTaskList().getStatistics();
-
-            StringBuilder result = new StringBuilder();
-            result.append("[OK] 团队任务执行完成\n\n");
-            result.append("**任务统计**:\n");
-            result.append(String.format("- 总任务数: %d\n", stats.totalTasks));
-            result.append(String.format("- 已完成: %d\n", stats.completedTasks));
-            result.append(String.format("- 失败: %d\n", stats.failedTasks));
-            result.append(String.format("- 进行中: %d\n", stats.inProgressTasks));
-            result.append(String.format("- 待认领: %d\n\n", stats.pendingTasks));
-
-            // 主 Agent 的回复（流式输出已实时打印）
-            result.append("**主 Agent 回复**:\n");
-
-            // 如果流式输出有内容，添加到结果中
-            String agentResponse = streamingOutput.toString();
-            if (!agentResponse.isEmpty()) {
-                // 限制显示长度，避免过长
-                if (agentResponse.length() > 2000) {
-                    agentResponse = agentResponse.substring(0, 2000) + "\n...(内容过长，已截断)";
-                }
-                result.append(agentResponse);
-            } else {
-                result.append("(流式输出已完成，请查看上方控制台输出)");
-            }
-
-            return result.toString();
-        })
-        .subscribeOn(Schedulers.boundedElastic()) // 在弹性线程池中执行
-        .doOnSubscribe(subscription -> LOG.info("开始异步执行团队任务: {}", prompt))
-        .doOnError(error -> LOG.error("团队任务执行失败: prompt={}", prompt, error))
-        .onErrorResume(throwable -> {
-            LOG.error("团队任务执行失败: prompt={}", prompt, throwable);
-            return Mono.just("[ERROR] 团队任务执行失败: " + throwable.getMessage());
         });
     }
 
@@ -658,36 +646,40 @@ public class AgentTeamsSkill extends AbsSkill {
     @ToolMapping(name = "analyze_tasks",
                  description = "针对团队协作任务，分析用户请求，将其分解为多个子任务。返回任务分解建议（JSON格式），Agent可以根据建议使用create_task创建任务。")
     public String analyzeTasks(
-            @Param(name = "request", description = "用户请求或任务描述") String request) {
+            @Param(name = "request", description = "用户请求或任务描述") String request,
+            String __cwd,
+            String __sessionId) {
+
+        AgentSession __parentSession = kernel.getSession(__sessionId);
+        ReActTrace __parentTrace = ReActTrace.getCurrent(__parentSession.getSnapshot());
         try {
             if (mainAgent == null) {
                 return "[WARN] MainAgent 未初始化";
             }
 
+            String result = null;
             // 构建 LLM 分析提示词
             String prompt = buildTaskAnalysisPrompt(request);
 
-            // 调用 LLM 分析
-            Prompt llmPrompt = Prompt.of(prompt);
-
-            // 通过 kernel 获取 ChatModel
-            if (kernel == null) {
-                return "[WARN] Kernel 未初始化";
+            if (__parentTrace.getOptions().getStreamSink() == null) {
+                // 同步模式
+                AgentResponse response = mainAgent.call(__cwd, __sessionId, Prompt.of(prompt));
+                result = response.getContent();
+                __parentTrace.getMetrics().addMetrics(response.getMetrics());
+            } else {
+                // 流式模式
+                result = mainAgent.executeStream(__cwd, __sessionId, Prompt.of(prompt),
+                        __parentTrace, "analyze_tasks");
             }
-
-            ChatModel chatModel = kernel.getChatModel();
-            if (chatModel == null) {
-                return "[WARN] ChatModel 未初始化";
-            }
-
-            String response = chatModel.prompt(llmPrompt).call().getContent();
 
             // 解析并格式化响应
-            return formatAnalysisResponse(response);
+            return formatAnalysisResponse(result);
 
         } catch (Exception e) {
             LOG.error("任务分析失败", e);
             return "[ERROR] 任务分析失败: " + e.getMessage();
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -792,15 +784,13 @@ public class AgentTeamsSkill extends AbsSkill {
      */
     private List<TeamTask> parseTasksJson(String json) {
         List<TeamTask> tasks = new ArrayList<>();
-
         try {
             ONode root = ONode.deserialize(json);
-
             // 检查是否为数组
             if (root.isArray()) {
                 for (int i = 0; i < root.size(); i++) {
                     ONode taskNode = root.get(i);
-                    TeamTask task = parseTaskNode(taskNode, i);
+                    TeamTask task = taskNode.toBean(TeamTask.class);
                     if (task != null) {
                         tasks.add(task);
                     }
@@ -809,54 +799,9 @@ public class AgentTeamsSkill extends AbsSkill {
         } catch (Exception e) {
             LOG.warn("解析任务 JSON 失败: {}", e.getMessage());
         }
-
         return tasks;
     }
 
-    /**
-     * 从 ONode 解析单个任务
-     */
-    private TeamTask parseTaskNode(ONode node, int index) {
-        try {
-            String title = node.get("title").getString();
-            String description = node.get("description").getString();
-            String typeStr = node.get("type").getString();
-            int priority = node.get("priority").getInt();
-
-            if (title == null || title.isEmpty()) {
-                title = "任务 " + (index + 1);
-            }
-            if (description == null || description.isEmpty()) {
-                description = title;
-            }
-
-            TeamTask.TaskType type = TeamTask.TaskType.DEVELOPMENT;
-            if (typeStr != null && !typeStr.isEmpty()) {
-                try {
-                    type = TeamTask.TaskType.valueOf(typeStr.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    // 使用默认类型
-                }
-            }
-
-            if (priority < 1 || priority > 10) {
-                priority = 7;
-            }
-
-            String taskId = "task-" + System.currentTimeMillis() + "-" + index;
-            return TeamTask.builder()
-                    .id(taskId)
-                    .title(title)
-                    .description(description)
-                    .type(type)
-                    .priority(priority)
-                    .dependencies(new ArrayList<>())
-                    .build();
-        } catch (Exception e) {
-            LOG.warn("解析任务节点失败: {}, error: {}", node, e.getMessage());
-            return null;
-        }
-    }
 
     /**
      * 获取状态图标

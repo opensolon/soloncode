@@ -67,7 +67,7 @@ public class SharedMemoryManager {
     private final int maxLongTermCount;
 
     // 性能监控：内存使用上限
-    private static final long MAX_MEMORY_USAGE = 100 * 1024 * 1024; // 100MB
+    private static final long MAX_MEMORY_USAGE = 300 * 1024 * 1024; // 100MB
     private static final double MEMORY_WARNING_THRESHOLD = 0.8;     // 80% 警告阈值
 
     /**
@@ -374,7 +374,6 @@ public class SharedMemoryManager {
         return usedMemory > MAX_MEMORY_USAGE;
     }
 
-    // ========== 工作记忆方法 ==========
 
     /**
      * 创建短期记忆（使用配置的TTL）
@@ -500,11 +499,6 @@ public class SharedMemoryManager {
         if (memory != null) {
             memory.complete();
             LOG.debug("工作记忆已完成: taskId={}, step={}", taskId, memory.getStep());
-
-            // 可以选择转移到短期记忆
-            // ShortTermMemory stm = convertToShortTerm(memory);
-            // store(stm);
-
             workingCache.remove(taskId);
         }
     }
@@ -530,7 +524,6 @@ public class SharedMemoryManager {
         LOG.info("所有记忆已清空");
     }
 
-    // ========== 便捷方法（简化键值对接口） ==========
 
     /**
      * 存储短期记忆（便捷方法）
@@ -732,7 +725,7 @@ public class SharedMemoryManager {
         LOG.warn("紧急清理完成，清理了 {} 条短期记忆", cleared);
 
         // 建议垃圾回收
-        System.gc();
+//        System.gc();
     }
 
     /**

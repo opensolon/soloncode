@@ -185,6 +185,16 @@ public class SubAgentMetadata {
                             // 忽略无效值
                         }
                         break;
+                    case "maxSteps":
+                        try {
+                            metadata.maxSteps = Integer.parseInt(value);
+                        } catch (NumberFormatException e) {
+                            // 忽略无效值
+                        }
+                        break;
+                    case "maxStepsAutoExtensible":
+                        metadata.maxStepsAutoExtensible = Boolean.parseBoolean(value);
+                        break;
                     case "skills":
                         // Skills 列表，逗号分隔
                         metadata.skills = new ArrayList<>(Arrays.asList(value.split(",\\s*")));
@@ -337,6 +347,16 @@ public class SubAgentMetadata {
         // 执行限制
         if (hasMaxTurns()) {
             yaml.append("maxTurns: ").append(maxTurns).append("\n");
+        }
+
+        // 最大步数配置
+        if (maxSteps != null && maxSteps > 0) {
+            yaml.append("maxSteps: ").append(maxSteps).append("\n");
+        }
+
+        // 最大步数自动扩展
+        if (maxStepsAutoExtensible != null && maxStepsAutoExtensible) {
+            yaml.append("maxStepsAutoExtensible: ").append(maxStepsAutoExtensible).append("\n");
         }
 
         // Skills 配置

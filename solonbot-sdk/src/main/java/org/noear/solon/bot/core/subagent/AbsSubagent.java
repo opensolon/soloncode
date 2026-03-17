@@ -142,23 +142,29 @@ public abstract class AbsSubagent implements Subagent {
             return;
         }
         builder.name(metadata.getName());
-        // 应用最大步数
+
+        // 应用最大步数（优先级：maxSteps > maxTurns > 默认值）
         if (metadata.getMaxSteps() != null && metadata.getMaxSteps() > 0) {
             builder.maxSteps(metadata.getMaxSteps());
+            LOG.debug("使用 maxSteps 配置: {}", metadata.getMaxSteps());
+        } else if (metadata.hasMaxTurns()) {
+            // maxTurns 作为备选
+            builder.maxSteps(metadata.getMaxTurns());
+            LOG.debug("使用 maxTurns 作为 maxSteps: {}", metadata.getMaxTurns());
+        } else {
+            // 使用默认步数 30（与主 Agent 保持一致）
+            builder.maxSteps(30);
+            LOG.debug("使用默认 maxSteps: 30");
         }
 
-        // 应用最大步数自动扩展
+        // 应用最大步数自动扩展（默认启用）
         if (metadata.getMaxStepsAutoExtensible() != null) {
             builder.maxStepsExtensible(metadata.getMaxStepsAutoExtensible());
-        }
-
-        // 应用最大轮次
-        if (metadata.hasMaxTurns()) {
-            LOG.debug("元数据指定了最大轮次: {}", metadata.getMaxTurns());
-            // 可以作为最大步数的参考
-            if (metadata.getMaxSteps() == null) {
-                builder.maxSteps(metadata.getMaxTurns());
-            }
+            LOG.debug("maxStepsAutoExtensible: {}", metadata.getMaxStepsAutoExtensible());
+        } else {
+            // 默认启用步数自动扩展
+            builder.maxStepsExtensible(true);
+            LOG.debug("使用默认 maxStepsAutoExtensible: true");
         }
     }
 

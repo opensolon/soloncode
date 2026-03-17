@@ -157,9 +157,13 @@ public class MemoryConsolidator {
         // 4. 综合相似度
         double similarity = jaccard * 0.8 + typeBonus * 0.1 + lenSimilarity * 0.1;
 
+        // 安全地截取 ID 前 8 个字符用于日志
+        String idA = a.getId() != null ? (a.getId().length() > 8 ? a.getId().substring(0, 8) : a.getId()) : "null";
+        String idB = b.getId() != null ? (b.getId().length() > 8 ? b.getId().substring(0, 8) : b.getId()) : "null";
+
         LOG.trace("相似度计算: {} <-> {} = {}",
-                a.getId().substring(0, 8),
-                b.getId().substring(0, 8),
+                idA,
+                idB,
                 similarity);
 
         return similarity;

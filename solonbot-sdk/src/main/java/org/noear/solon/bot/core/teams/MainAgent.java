@@ -17,9 +17,13 @@ package org.noear.solon.bot.core.teams;
 
 import lombok.Getter;
 import org.noear.solon.ai.agent.AgentChunk;
+import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.bot.core.AgentKernel;
@@ -36,11 +40,14 @@ import org.noear.solon.bot.core.message.AgentMessage;
 import org.noear.solon.bot.core.message.MessageAck;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.subagent.SubAgentMetadata;
+import org.noear.solon.bot.core.subagent.Subagent;
 import org.noear.solon.bot.core.subagent.SubagentManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -92,6 +99,8 @@ public class MainAgent {
 
     // 性能优化：使用 CountDownLatch 替代轮询
     private volatile CountDownLatch taskCompletionLatch;
+
+    private static final long SUBAGENT_STREAM_TIMEOUT_MS = 180_000;
 
 
 
@@ -788,133 +797,6 @@ public class MainAgent {
         }
     }
 
-    /**
-     * 获取系统提示词
-     */
-    private String getSystemPrompt() {
-        return "## 主代理（Team Lead）- 强制执行模式\n\n" +
-                "你是 Agent Teams 的团队领导，负责协调多个子代理协作完成任务。\n" +
-                "\n" +
-                "### ⚠️ 核心规则（违反即失败）\n" +
-                "\n" +
-                "#### 🚫 禁止行为（绝对不可违反）\n" +
-                "1. **禁止模拟工作**：\n" +
-                "   - 严禁使用 `update_working_memory`、`memory_store` 等工具声称工作已完成\n" +
-                "   - 不断更新 step、currentAgent 字段而不实际工作是**严重违规**\n" +
-                "   - 不得在记忆中存储虚假的\"已完成\"状态\n\n" +
-                "2. **禁止虚假产出**：\n" +
-                "   - 不得声称\"需求分析已完成\"、\"代码已编写\"等虚假结论\n" +
-                "   - 没有实际文件产出前，不得宣称任务完成\n" +
-                "   - 记忆存储只能存储真实已完成的工作结果\n\n" +
-                "3. **禁止循环操作**：\n" +
-                "   - 不得重复调用相同的工具而不产生新进展\n" +
-                "   - 不得无限更新状态而无实际工作\n" +
-                "   - 检测到循环时必须立即停止并改变策略\n\n" +
-                "#### ✅ 必须行为（必须执行）\n" +
-                "1. **必须使用 subagent 工具**：\n" +
-                "   - 所有实际工作必须通过 `subagent(type, prompt)` 工具委派给专门的子代理\n" +
-                "   - 可用的子代理类型：explore、plan、bash、general-purpose、solon-code-guide\n" +
-                "   - 例如：`subagent(type='bash', prompt='创建项目目录并初始化')`\n\n" +
-                "2. **必须有实际产出**：\n" +
-                "   - **代码任务**必须生成 `.java`、`.py` 等代码文件\n" +
-                "   - **文档任务**必须生成 `.md`、`.txt` 等文档文件\n" +
-                "   - **测试任务**必须有测试报告或测试结果文件\n" +
-                "   - **架构任务**必须有架构图或设计文档\n\n" +
-                "3. **必须验证产出**：\n" +
-                "   - 使用 `read` 或 `ls` 工具验证文件是否真实创建\n" +
-                "   - 确认文件内容符合要求后才可宣称任务完成\n\n" +
-                "\n" +
-                "### 工作流程（强制执行）\n" +
-                "\n" +
-                "#### 步骤 1：任务分析（使用 subagent）\n" +
-                "```\n" +
-                "subagent(\n" +
-                "    type='plan',\n" +
-                "    prompt='分析任务需求：[用户任务]，提供详细的实现方案'\n" +
-                ")\n" +
-                "```\n" +
-                "\n" +
-                "#### 步骤 2：执行工作（使用 subagent）\n" +
-                "```\n" +
-                "# 开发任务\n" +
-                "subagent(\n" +
-                "    type='bash',\n" +
-                "    prompt='创建文件 [文件名]，编写代码实现：[具体需求]'\n" +
-                ")\n" +
-                "\n" +
-                "# 测试任务\n" +
-                "subagent(\n" +
-                "    type='bash',\n" +
-                "    prompt='编写测试用例并运行测试，生成测试报告'\n" +
-                ")\n" +
-                "```\n" +
-                "\n" +
-                "#### 步骤 3：验证产出（使用 ls/read）\n" +
-                "```\n" +
-                "ls(path='.')  # 列出文件\n" +
-                "read(file_path='xxx.java')  # 验证文件内容\n" +
-                "```\n" +
-                "\n" +
-                "#### 步骤 4：总结结果（仅在真实完成后）\n" +
-                "```\n" +
-                "# 只有在确认文件真实创建后才可总结\n" +
-                "Final Answer: [ANSWER]\n" +
-                "已完成以下工作：\n" +
-                "1. 创建文件：file1.java, file2.py\n" +
-                "2. 文件内容：[简要描述]\n" +
-                "3. 验证结果：所有文件已通过测试\n" +
-                "```\n" +
-                "\n" +
-                "### ⚠️ 常见错误（必须避免）\n" +
-                "\n" +
-                "❌ **错误示例**：\n" +
-                "```\n" +
-                "# 错误1：虚假更新状态\n" +
-                "update_working_memory(field='step', value='1')\n" +
-                "update_working_memory(field='step', value='2')\n" +
-                "memory_store(content='需求分析已完成')  # 虚假！\n" +
-                "\n" +
-                "# 错误2：声称完成但无产出\n" +
-                "Final Answer: [ANSWER]\n" +
-                "团队协作完成！  # 但没有创建任何文件\n" +
-                "```\n" +
-                "\n" +
-                "✅ **正确示例**：\n" +
-                "```\n" +
-                "# 正确：实际调用子代理\n" +
-                "subagent(type='bash', prompt='创建 UserController.java')\n" +
-                "# 等待结果...\n" +
-                "ls(path='src/main/java')  # 验证文件已创建\n" +
-                "read(file_path='src/main/java/UserController.java')  # 验证内容\n" +
-                "Final Answer: [ANSWER]\n" +
-                "已创建 UserController.java，包含用户增删改查功能\n" +
-                "```\n" +
-                "\n" +
-                "### 🎯 成功标准\n" +
-                "\n" +
-                "任务被认为完成，当且仅当：\n" +
-                "1. **有实际文件产出**：代码、文档、测试报告等\n" +
-                "2. **文件内容已验证**：使用 read 工具确认内容正确\n" +
-                "3. **通过必要测试**：代码可编译、可运行\n" +
-                "4. **无虚假声明**：所有声称的完成都是真实的\n" +
-                "\n" +
-                "### 📊 token 使用警告\n" +
-                "\n" +
-                "- 每个任务建议不超过 10,000 tokens\n" +
-                "- 超过 5,000 tokens 时必须检查是否有实际产出\n" +
-                "- 超过 10,000 tokens 无产出时立即终止任务\n" +
-                "- 禁止循环调用工具而不产生进展\n" +
-                "\n" +
-                "### 🚀 立即开始\n" +
-                "\n" +
-                "接到任务后，必须：\n" +
-                "1. 先使用 `subagent(type='plan', ...)` 分析需求\n" +
-                "2. 再使用 `subagent(type='bash', ...)` 执行工作\n" +
-                "3. 使用 `ls`、`read` 验证产出\n" +
-                "4. 确认真实完成后才给出 Final Answer\n" +
-                "\n" +
-                "**记住：禁止模拟，必须实际产出！**\n";
-    }
 
     /**
      * 检查是否正在运行
@@ -966,6 +848,108 @@ public class MainAgent {
     public void stopGoalGuarding() {
         if (goalKeeper != null) {
             goalKeeper.stopGoalGuarding();
+        }
+    }
+
+    public AgentResponse call(String __cwd, String sessionId, Prompt prompt) throws Throwable {
+        AgentSession session = kernel.getSession(sessionId);
+
+        return agent.prompt(prompt)
+                .session(session)
+                .options(o -> {
+                    o.toolContextPut("__cwd", __cwd);
+                })
+                .call();
+    }
+
+    public Flux<AgentChunk> stream(String __cwd, String sessionId, Prompt prompt) {
+        AgentSession session = kernel.getSession(sessionId);
+
+        return agent.prompt(prompt)
+                .session(session)
+                .options(o -> {
+                    o.toolContextPut("__cwd", __cwd);
+                })
+                .stream();
+    }
+
+    /**
+     * 执行流式子代理调用
+     */
+    public String executeStream( String __cwd, String sessionId,
+                                       Prompt prompt, ReActTrace __parentTrace, String name) {
+        try {
+            String promptStr = prompt.toString();
+            LOG.info("[mainAgent] 启动异步流式执行: type={}, sessionId={}, promptLength={}",
+                    name, sessionId, promptStr != null ? promptStr.length() : 0);
+
+            final long[] firstChunkTime = {0};
+            final long[] lastChunkTime = {System.currentTimeMillis()};
+            final int[] chunkCount = {0};
+            final StringBuilder contentBuilder = new StringBuilder();
+
+            String result = this.stream(__cwd, sessionId, prompt)
+                    .doOnSubscribe(s -> {
+                        LOG.info("[mainAgent] 流订阅成功: name={}, sessionId={}", name, sessionId);
+                    })
+                    .doOnNext(chunk -> {
+                        long now = System.currentTimeMillis();
+                        if (chunkCount[0] == 0) {
+                            firstChunkTime[0] = now;
+                            long firstChunkDelay = now - lastChunkTime[0];
+                            LOG.info("[mainAgent] 收到首个chunk: name={}, delay={}ms, chunkType={}",
+                                    name, firstChunkDelay, chunk.getClass().getSimpleName());
+                        }
+                        lastChunkTime[0] = now;
+                        chunkCount[0]++;
+
+                        LOG.debug("[mainAgent] 收到chunk: type={}, chunkType={}, total={}",
+                                name, chunk.getClass().getSimpleName(), chunkCount[0]);
+
+                        if (chunk instanceof ActionChunk) {
+                            __parentTrace.getOptions().getStreamSink().next(chunk);
+                        } else if (chunk instanceof ReasonChunk) {
+                            __parentTrace.getOptions().getStreamSink().next(chunk);
+                        }
+
+                        if (chunk != null && chunk.hasContent()) {
+                            contentBuilder.append(chunk.getContent());
+                        }
+                    })
+                    .doOnComplete(() -> {
+                        long totalDuration = System.currentTimeMillis() - firstChunkTime[0];
+                        LOG.info("[mainAgent] 流完成: type={}, sessionId={}, totalChunks={}, totalDuration={}ms",
+                                name, sessionId, chunkCount[0], totalDuration);
+                    })
+                    .doOnError(e -> {
+                        LOG.error("[mainAgent] 流错误: type={}, sessionId={}, error={}, chunksReceived={}",
+                                name, sessionId, e.getMessage(), chunkCount[0]);
+                    })
+                    .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                    .then(Mono.fromCallable(() -> contentBuilder.toString()))
+                    .block(Duration.ofMillis(SUBAGENT_STREAM_TIMEOUT_MS));
+
+            LOG.info("[mainAgent] 执行成功: type={}, sessionId={}, chunks={}, resultLength={}",
+                    name, sessionId, chunkCount[0],
+                    result != null ? result.length() : 0);
+
+            return result;
+
+        } catch (Exception e) {
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.contains("Timeout")) {
+                LOG.error("[mainAgent] 执行超时: name={}, sessionId={}", name, sessionId);
+                return "ERROR: mainAgent执行超时。\n\n" +
+                        "可能原因：\n" +
+                        "1. LLM API 响应过慢或无响应\n" +
+                        "2. mainAgent执行的任务过于复杂\n" +
+                        "3. 网络连接问题\n\n" +
+                        "建议：\n" +
+                        "- 简化任务描述\n" +
+                        "- 检查网络连接\n" +
+                        "- 查看mainAgent日志了解详情";
+            }
+            throw new RuntimeException(e);
         }
     }
 
