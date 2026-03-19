@@ -18,8 +18,6 @@ package org.noear.solon.bot.core.subagent;
 import lombok.Getter;
 import lombok.Setter;
 
-import org.apache.commons.lang3.StringUtils;
-import org.jsoup.internal.StringUtil;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentResponse;
@@ -50,28 +48,28 @@ import reactor.core.publisher.Flux;
 public abstract class AbsSubagent implements Subagent {
     private static final Logger LOG = LoggerFactory.getLogger(AbsSubagent.class);
 
-    protected final AgentKernel mainAgent;
+    protected final AgentKernel rootAgent;
     private volatile ReActAgent cachedAgent;
 
     protected String description;
     protected SubAgentMetadata metadata;
 
 
-    public AbsSubagent(AgentKernel mainAgent) {
-        this(mainAgent, null);
+    public AbsSubagent(AgentKernel rootAgent) {
+        this(rootAgent, null);
     }
 
-    public AbsSubagent(AgentKernel mainAgent, SubAgentMetadata metadata) {
-        this.mainAgent = mainAgent;
+    public AbsSubagent(AgentKernel rootAgent, SubAgentMetadata metadata) {
+        this.rootAgent = rootAgent;
         // 初始化默认元数据
         this.metadata = metadata == null ? createDefaultMetadata() : metadata;
 
-        ReActAgent.Builder builder = ReActAgent.of(mainAgent.getChatModel());
-        if (mainAgent.getProperties().isTeamsEnabled()){
+        ReActAgent.Builder builder = ReActAgent.of(rootAgent.getChatModel());
+        if (rootAgent.getProperties().isTeamsEnabled()){
             builder.defaultToolAdd(AgentTeamsTools.getInstance());
         }
         builder.instruction(getDefaultSystemPrompt());
-        builder.defaultInterceptorAdd(mainAgent.getSummarizationInterceptor());
+        builder.defaultInterceptorAdd(rootAgent.getSummarizationInterceptor());
         // 应用元数据中的属性配置到builder
         applyMetadataToBuilder(builder, metadata);
         // 应用自定义配置
@@ -182,7 +180,7 @@ public abstract class AbsSubagent implements Subagent {
 
     @Override
     public AgentResponse call(String __cwd, String sessionId, Prompt prompt) throws Throwable {
-        AgentSession session = mainAgent.getSession(sessionId);
+        AgentSession session = rootAgent.getSession(sessionId);
 
         return cachedAgent.prompt(prompt)
                 .session(session)
@@ -194,7 +192,7 @@ public abstract class AbsSubagent implements Subagent {
 
     @Override
     public Flux<AgentChunk> stream(String __cwd, String sessionId, Prompt prompt) {
-        AgentSession session = mainAgent.getSession(sessionId);
+        AgentSession session = rootAgent.getSession(sessionId);
 
         return cachedAgent.prompt(prompt)
                 .session(session)

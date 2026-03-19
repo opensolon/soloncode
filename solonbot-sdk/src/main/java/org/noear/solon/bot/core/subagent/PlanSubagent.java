@@ -15,20 +15,12 @@
  */
 package org.noear.solon.bot.core.subagent;
 
-import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
-import org.noear.solon.ai.agent.react.intercept.summarize.HierarchicalSummarizationStrategy;
-import org.noear.solon.ai.chat.message.AssistantMessage;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
 import org.noear.solon.bot.core.AgentKernel;
-import org.noear.solon.lang.Nullable;
-
-import java.util.Arrays;
 
 /**
  * 计划子代理 - 软件架构师
@@ -47,10 +39,10 @@ public class PlanSubagent extends AbsSubagent {
     protected void customize(ReActAgent.Builder builder) {
         // 计划代理主要依赖推理能力，不需要太多工具
         // 可以添加只读工具来了解代码库
-        builder.defaultToolAdd(mainAgent.getCliSkills().getTerminalSkill()
+        builder.defaultToolAdd(rootAgent.getCliSkills().getTerminalSkill()
                 .getToolAry("ls", "read", "grep", "glob"));
 
-        builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
+        builder.defaultSkillAdd(rootAgent.getCliSkills().getExpertSkill());
 
         builder.defaultSkillAdd(LuceneSkill.getInstance());
         builder.defaultToolAdd(WebsearchTool.getInstance());

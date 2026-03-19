@@ -716,51 +716,51 @@ public class AgentTeamsIntegrationTest {
 
     // ==================== SubAgentAgentBuilder 测试 ====================
 
-    @Test
-    public void testSubAgentAgentBuilder() {
-        System.out.println("=== 测试 SubAgentAgentBuilder ===");
-
-        // 注意：这个测试需要实际的 ChatModel、AgentSessionProvider、PoolManager
-        // 这里只测试 Builder 的结构和方法链
-
-        // 测试静态工厂方法
-        assertNotNull(SubAgentAgentBuilder.class);
-        System.out.println("✓ SubAgentAgentBuilder 类存在");
-
-        // 检查是否有必要的方法
-        boolean hasBuilder = false;
-        boolean hasOfMethod = false;
-        boolean hasBuildMethod = false;
-
-        try {
-            SubAgentAgentBuilder.builder();
-            hasBuilder = true;
-            System.out.println("✓ builder() 方法存在");
-        } catch (Exception e) {
-            System.out.println("✗ builder() 方法调用失败（可能需要实际依赖）");
-        }
-
-        try {
-            java.lang.reflect.Method ofMethod = SubAgentAgentBuilder.class.getMethod("of", org.noear.solon.ai.chat.ChatModel.class);
-            hasOfMethod = true;
-            System.out.println("✓ of() 方法存在");
-        } catch (Exception e) {
-            System.out.println("✗ of() 方法不存在");
-        }
-
-        try {
-            java.lang.reflect.Method buildMethod = SubAgentAgentBuilder.class.getMethod("build");
-            hasBuildMethod = true;
-            System.out.println("✓ build() 方法存在");
-        } catch (Exception e) {
-            System.out.println("✗ build() 方法不存在");
-        }
-
-        assertTrue(hasBuilder || hasOfMethod);
-        assertTrue(hasBuildMethod);
-
-        System.out.println("✓ SubAgentAgentBuilder 测试通过\n");
-    }
+//    @Test
+//    public void testSubAgentAgentBuilder() {
+//        System.out.println("=== 测试 SubAgentAgentBuilder ===");
+//
+//        // 注意：这个测试需要实际的 ChatModel、AgentSessionProvider、PoolManager
+//        // 这里只测试 Builder 的结构和方法链
+//
+//        // 测试静态工厂方法
+//        assertNotNull(SubAgentAgentBuilder.class);
+//        System.out.println("✓ SubAgentAgentBuilder 类存在");
+//
+//        // 检查是否有必要的方法
+//        boolean hasBuilder = false;
+//        boolean hasOfMethod = false;
+//        boolean hasBuildMethod = false;
+//
+//        try {
+//            SubAgentAgentBuilder.builder();
+//            hasBuilder = true;
+//            System.out.println("✓ builder() 方法存在");
+//        } catch (Exception e) {
+//            System.out.println("✗ builder() 方法调用失败（可能需要实际依赖）");
+//        }
+//
+//        try {
+//            java.lang.reflect.Method ofMethod = SubAgentAgentBuilder.class.getMethod("of", org.noear.solon.ai.chat.ChatModel.class);
+//            hasOfMethod = true;
+//            System.out.println("✓ of() 方法存在");
+//        } catch (Exception e) {
+//            System.out.println("✗ of() 方法不存在");
+//        }
+//
+//        try {
+//            java.lang.reflect.Method buildMethod = SubAgentAgentBuilder.class.getMethod("build");
+//            hasBuildMethod = true;
+//            System.out.println("✓ build() 方法存在");
+//        } catch (Exception e) {
+//            System.out.println("✗ build() 方法不存在");
+//        }
+//
+//        assertTrue(hasBuilder || hasOfMethod);
+//        assertTrue(hasBuildMethod);
+//
+//        System.out.println("✓ SubAgentAgentBuilder 测试通过\n");
+//    }
 
     // ==================== 边界情况和错误处理测试 ====================
 

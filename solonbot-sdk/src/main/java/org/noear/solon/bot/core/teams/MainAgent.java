@@ -20,11 +20,9 @@ import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
-import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.skills.cli.PoolManager;
 import org.noear.solon.bot.core.AgentKernel;
@@ -40,7 +38,6 @@ import org.noear.solon.bot.core.message.AgentMessage;
 import org.noear.solon.bot.core.message.MessageAck;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.subagent.SubAgentMetadata;
-import org.noear.solon.bot.core.subagent.Subagent;
 import org.noear.solon.bot.core.subagent.SubagentManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,18 +75,13 @@ public class MainAgent {
     private final MessageChannel messageChannel;
     private final SharedTaskList taskList;
     private final String workDir;
-    private final PoolManager poolManager;
 
     // 目标守护者
     private GoalKeeperIntegration goalKeeper;
 
     // 新增：用于访问 subagent 功能
-    private final AgentKernel kernel;
-    private final SubagentManager subagentManager;
+    private final AgentKernel rootAgent;
 
-    private ReActAgent agent;
-    private ChatModel chatModel;  // 保存 ChatModel 引用用于任务分析
-    private AgentSession session;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     // 任务事件监听器
@@ -103,32 +95,19 @@ public class MainAgent {
     private static final long SUBAGENT_STREAM_TIMEOUT_MS = 180_000;
 
 
-
-    public MainAgent(SubAgentMetadata config,
-                     AgentSessionProvider sessionProvider,
-                     SharedMemoryManager sharedMemoryManager,
-                     EventBus eventBus,
-                     MessageChannel messageChannel,
-                     SharedTaskList taskList,
-                     String workDir,
-                     PoolManager poolManager) {
-        this(config, sessionProvider, sharedMemoryManager, eventBus, messageChannel,
-             taskList, workDir, poolManager, null, null);
-    }
-
     /**
      * 完整构造函数（支持 subagent 功能）
      */
-    public MainAgent(SubAgentMetadata config,
-                     AgentSessionProvider sessionProvider,
-                     SharedMemoryManager sharedMemoryManager,
-                     EventBus eventBus,
-                     MessageChannel messageChannel,
-                     SharedTaskList taskList,
-                     String workDir,
-                     PoolManager poolManager,
-                     AgentKernel kernel,
-                     SubagentManager subagentManager) {
+    public MainAgent(
+            AgentKernel rootAgent,
+            SubAgentMetadata config,
+            AgentSessionProvider sessionProvider,
+            SharedMemoryManager sharedMemoryManager,
+            EventBus eventBus,
+            MessageChannel messageChannel,
+            SharedTaskList taskList,
+            String workDir) {
+        this.rootAgent = rootAgent;
         this.config = config;
         this.sessionProvider = sessionProvider;
         this.sharedMemoryManager = sharedMemoryManager;
@@ -136,9 +115,6 @@ public class MainAgent {
         this.messageChannel = messageChannel;
         this.taskList = taskList;
         this.workDir = workDir;
-        this.poolManager = poolManager;
-        this.kernel = kernel;
-        this.subagentManager = subagentManager;
 
         // 注册任务事件监听器
         registerTaskEventListeners();
@@ -149,7 +125,7 @@ public class MainAgent {
 
     /**
      * 获取 Team Lead（团队协调器）指令
-     *
+     * <p>
      * 此指令会被追加到系统提示词中，让 Agent 了解自己作为 Team Lead 的角色和职责。
      *
      * @return Team Lead 角色指令
@@ -267,37 +243,15 @@ public class MainAgent {
                 "- 记忆重要决策，方便后续查阅";
     }
 
-    /**
-     * 设置共享的 ReActAgent
-     *
-     * MainAgent 不再创建自己的 ReActAgent，而是使用 AgentKernel 创建的主 ReActAgent。
-     * 这样可以避免两层推理，简化架构。
-     *
-     * @param agent 共享的 ReActAgent
-     * @param chatModel ChatModel（用于任务分析等功能）
-     */
-    public synchronized void setSharedAgent(ReActAgent agent, ChatModel chatModel) {
-        if (this.agent != null) {
-            LOG.warn("MainAgent 已有共享 Agent，将被覆盖");
-        }
-        this.agent = agent;
-        this.chatModel = chatModel;
-        this.session = sessionProvider.getSession("main_agent");
-        LOG.info("MainAgent 已设置共享 ReActAgent");
-    }
 
     /**
      * 流式执行主任务（实时输出）
      *
      * @param prompt 用户提示
-     * @param __cwd 工作目录
+     * @param __cwd  工作目录
      * @return 响应流
      */
     public Flux<AgentChunk> executeStream(Prompt prompt, String __cwd) {
-        if (agent == null) {
-            throw new IllegalStateException("MainAgent 尚未初始化");
-        }
-
         running.set(true);
 
         // 0. 自动创建主任务到 SharedTaskList
@@ -329,7 +283,7 @@ public class MainAgent {
         // 1. 启动目标守护（防止在多轮循环中偏离目标）
         String goalId = null;
         try {
-            if (kernel != null) {
+            if (rootAgent != null) {
                 goalId = this.startGoalGuarding(prompt.getUserContent());
                 LOG.info("目标守护已启动: goalId={}, 目标={}", goalId, prompt.getUserContent());
             }
@@ -341,9 +295,12 @@ public class MainAgent {
             // 2. 发布主代理任务开始事件
             publishEvent(AgentEventType.MAIN_TASK_STARTED, prompt.getUserContent(), null);
 
+            AgentSession session = rootAgent.getSession("main_agent");
+
             // 2. 执行主代理内部的协调逻辑（流式输出）
             // 注意：任务分解现在由 Agent 通过工具自主决定
-            reactor.core.publisher.Flux<AgentChunk> responseStream = agent.prompt(prompt)
+            reactor.core.publisher.Flux<AgentChunk> responseStream = rootAgent.getReActAgent()
+                    .prompt(prompt)
                     .session(session)
                     .options(o -> {
                         // 传递工作目录给工具（ls、bash 等需要）
@@ -700,7 +657,7 @@ public class MainAgent {
 
             if (!claimableTasks.isEmpty()) {
                 LOG.info("发现 {} 个可认领的任务（由于任务 {} 完成），广播通知...",
-                    claimableTasks.size(), completedTaskId);
+                        claimableTasks.size(), completedTaskId);
 
                 // 修复：通过 MessageChannel 广播任务可用通知
                 broadcastTaskNotification(claimableTasks);
@@ -721,7 +678,7 @@ public class MainAgent {
 
             for (TeamTask task : allTasks) {
                 if (task.getStatus() == TeamTask.Status.PENDING &&
-                    task.getDependencies().contains(taskId)) {
+                        task.getDependencies().contains(taskId)) {
                     dependentTasks.add(task);
                 }
             }
@@ -869,9 +826,10 @@ public class MainAgent {
     }
 
     public AgentResponse call(String __cwd, String sessionId, Prompt prompt) throws Throwable {
-        AgentSession session = kernel.getSession(sessionId);
+        AgentSession session = rootAgent.getSession(sessionId);
 
-        return agent.prompt(prompt)
+        return rootAgent.getReActAgent()
+                .prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.toolContextPut("__cwd", __cwd);
@@ -880,9 +838,9 @@ public class MainAgent {
     }
 
     public Flux<AgentChunk> stream(String __cwd, String sessionId, Prompt prompt) {
-        AgentSession session = kernel.getSession(sessionId);
+        AgentSession session = rootAgent.getSession(sessionId);
 
-        return agent.prompt(prompt)
+        return rootAgent.getReActAgent().prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.toolContextPut("__cwd", __cwd);
@@ -893,8 +851,8 @@ public class MainAgent {
     /**
      * 执行流式子代理调用
      */
-    public String executeStream( String __cwd, String sessionId,
-                                       Prompt prompt, ReActTrace __parentTrace, String name) {
+    public String executeStream(String __cwd, String sessionId,
+                                Prompt prompt, ReActTrace __parentTrace, String name) {
         try {
             String promptStr = prompt.toString();
             LOG.info("[mainAgent] 启动异步流式执行: type={}, sessionId={}, promptLength={}",

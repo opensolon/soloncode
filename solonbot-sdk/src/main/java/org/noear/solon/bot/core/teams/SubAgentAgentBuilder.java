@@ -131,74 +131,74 @@ public class SubAgentAgentBuilder {
      * @return MainAgent 实例作为团队协调器
      * @throws IllegalStateException 如果缺少必需参数
      */
-    public MainAgent build() {
-        // 验证必需参数
-        validateRequiredParams();
-
-        LOG.info("开始构建 Agent 团队...");
-        LOG.info("工作目录: {}", workDir);
-        LOG.info("团队成员数: {}", subAgents.size());
-
-        // 1. 创建或使用提供的协作组件
-        // 注意：SharedTaskList 依赖 EventBus，所以需要先创建 EventBus
-        EventBus eb = eventBus != null
-                ? eventBus
-                : createEventBus();
-
-        SharedMemoryManager smm = sharedMemoryManager != null
-                ? sharedMemoryManager
-                : createSharedMemoryManager();
-
-        MessageChannel mc = messageChannel != null
-                ? messageChannel
-                : createMessageChannel();
-
-        SharedTaskList tl = taskList != null
-                ? taskList
-                : createTaskList(eb);
-
-        // 2. 创建主代理配置（如果没有提供）
-        SubAgentMetadata config = mainAgentConfig != null
-                ? mainAgentConfig
-                : createDefaultMainAgentConfig();
-
-        // 3. 构建 MainAgent
-        MainAgent mainAgent = new MainAgent(
-                config,
-                sessionProvider,
-                smm,
-                eb,
-                mc,
-                tl,
-                workDir,
-                poolManager
-        );
-
-        // 4. 创建 ReActAgent 并设置到 MainAgent
-        try {
-            // 创建一个简单的 ReActAgent 用于 MainAgent
-            ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel);
-
-            // 使用 MainAgent 的 Team Lead 指令
-            String teamLeadInstruction = mainAgent.getTeamLeadInstruction();
-            agentBuilder.systemPrompt(SystemPrompt.builder()
-                    .instruction(teamLeadInstruction)
-                    .build());
-            agentBuilder.maxSteps(50);
-
-            ReActAgent reactAgent = agentBuilder.build();
-
-            // 设置到 MainAgent
-            mainAgent.setSharedAgent(reactAgent, chatModel);
-
-            LOG.info("Agent 团队构建成功！主代理: {}", config.getName());
-        } catch (Exception e) {
-            LOG.error("设置 MainAgent 共享 Agent 失败", e);
-            throw new RuntimeException("构建 Agent 团队失败", e);
-        }
-
-        return mainAgent;
-    }
+//    public MainAgent build() {
+//        // 验证必需参数
+//        validateRequiredParams();
+//
+//        LOG.info("开始构建 Agent 团队...");
+//        LOG.info("工作目录: {}", workDir);
+//        LOG.info("团队成员数: {}", subAgents.size());
+//
+//        // 1. 创建或使用提供的协作组件
+//        // 注意：SharedTaskList 依赖 EventBus，所以需要先创建 EventBus
+//        EventBus eb = eventBus != null
+//                ? eventBus
+//                : createEventBus();
+//
+//        SharedMemoryManager smm = sharedMemoryManager != null
+//                ? sharedMemoryManager
+//                : createSharedMemoryManager();
+//
+//        MessageChannel mc = messageChannel != null
+//                ? messageChannel
+//                : createMessageChannel();
+//
+//        SharedTaskList tl = taskList != null
+//                ? taskList
+//                : createTaskList(eb);
+//
+//        // 2. 创建主代理配置（如果没有提供）
+//        SubAgentMetadata config = mainAgentConfig != null
+//                ? mainAgentConfig
+//                : createDefaultMainAgentConfig();
+//
+//        // 3. 构建 MainAgent
+//        MainAgent mainAgent = new MainAgent(
+//                config,
+//                sessionProvider,
+//                smm,
+//                eb,
+//                mc,
+//                tl,
+//                workDir,
+//                poolManager
+//        );
+//
+//        // 4. 创建 ReActAgent 并设置到 MainAgent
+//        try {
+//            // 创建一个简单的 ReActAgent 用于 MainAgent
+//            ReActAgent.Builder agentBuilder = ReActAgent.of(chatModel);
+//
+//            // 使用 MainAgent 的 Team Lead 指令
+//            String teamLeadInstruction = mainAgent.getTeamLeadInstruction();
+//            agentBuilder.systemPrompt(SystemPrompt.builder()
+//                    .instruction(teamLeadInstruction)
+//                    .build());
+//            agentBuilder.maxSteps(50);
+//
+//            ReActAgent reactAgent = agentBuilder.build();
+//
+//            // 设置到 MainAgent
+//            mainAgent.setSharedAgent(reactAgent, chatModel);
+//
+//            LOG.info("Agent 团队构建成功！主代理: {}", config.getName());
+//        } catch (Exception e) {
+//            LOG.error("设置 MainAgent 共享 Agent 失败", e);
+//            throw new RuntimeException("构建 Agent 团队失败", e);
+//        }
+//
+//        return mainAgent;
+//    }
 
     /**
      * 验证必需参数

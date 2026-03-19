@@ -15,12 +15,9 @@
  */
 package org.noear.solon.bot.core.subagent;
 
-import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.task.ActionChunk;
-import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
@@ -29,12 +26,8 @@ import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.io.BufferedWriter;
-import java.time.Duration;
-import java.util.List;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -53,10 +46,10 @@ import java.util.concurrent.TimeUnit;
  * @author bai
  * @since 3.9.5
  */
-public class TaskSkill extends AbsSkill {
-    private static final Logger LOG = LoggerFactory.getLogger(TaskSkill.class);
+public class SubagentSkill extends AbsSkill {
+    private static final Logger LOG = LoggerFactory.getLogger(SubagentSkill.class);
 
-    private final AgentKernel agentKernel;
+    private final AgentKernel rootAgent;
     private final SubagentManager manager;
 
     // 并发控制：使用 Semaphore 限制同时发起的子代理请求数（从配置读取）
@@ -65,17 +58,17 @@ public class TaskSkill extends AbsSkill {
     // 记录每个子代理类型的调用时间，用于精细控制
     private static final ConcurrentHashMap<String, Long> lastCallTimeByType = new ConcurrentHashMap<>();
 
-    public TaskSkill(AgentKernel agentKernel, SubagentManager manager) {
-        this.agentKernel = agentKernel;
+    public SubagentSkill(AgentKernel rootAgent, SubagentManager manager) {
+        this.rootAgent = rootAgent;
         this.manager = manager;
 
         // 从配置读取并发控制参数
-        int maxConcurrent = agentKernel.getProperties().subagentConcurrency.maxConcurrent;
+        int maxConcurrent = rootAgent.getProperties().subagentConcurrency.maxConcurrent;
         this.concurrencySemaphore = new Semaphore(maxConcurrent);
 
         LOG.info("TaskSkill 初始化: maxConcurrent={}, callIntervalMs={}ms",
                  maxConcurrent,
-                 agentKernel.getProperties().subagentConcurrency.callIntervalMs);
+                 rootAgent.getProperties().subagentConcurrency.callIntervalMs);
     }
 
     @Override
@@ -121,7 +114,7 @@ public class TaskSkill extends AbsSkill {
             String __cwd,
             String __sessionId
     ) {
-        AgentSession __parentSession = agentKernel.getSession(__sessionId);
+        AgentSession __parentSession = rootAgent.getSession(__sessionId);
         ReActTrace __parentTrace = ReActTrace.getCurrent(__parentSession.getSnapshot());
 
         try {
@@ -183,7 +176,7 @@ public class TaskSkill extends AbsSkill {
         long waitStart = System.currentTimeMillis();
 
         // 1. 等待并发许可（从配置读取超时时间）
-        long acquireTimeoutMs = agentKernel.getProperties().subagentConcurrency.acquireTimeoutMs;
+        long acquireTimeoutMs = rootAgent.getProperties().subagentConcurrency.acquireTimeoutMs;
         boolean acquired = concurrencySemaphore.tryAcquire(acquireTimeoutMs, TimeUnit.MILLISECONDS);
         if (!acquired) {
             LOG.warn("[并发控制] 等待执行许可超时: type={}, timeout={}ms", subagentType, acquireTimeoutMs);
@@ -196,7 +189,7 @@ public class TaskSkill extends AbsSkill {
         }
 
         // 2. 控制调用间隔（避免连续调用触发速率限制）
-        long callIntervalMs = agentKernel.getProperties().subagentConcurrency.callIntervalMs;
+        long callIntervalMs = rootAgent.getProperties().subagentConcurrency.callIntervalMs;
         Long lastCall = lastCallTimeByType.get(subagentType);
         long now = System.currentTimeMillis();
         if (lastCall != null) {
@@ -274,7 +267,7 @@ public class TaskSkill extends AbsSkill {
                 LOG.info("Agent 定义已保存到: {}", agentFile);
             }
 
-            GeneralPurposeSubagent newAgent = new GeneralPurposeSubagent(agentKernel, metadata, agentDefinition);
+            GeneralPurposeSubagent newAgent = new GeneralPurposeSubagent(rootAgent, metadata, agentDefinition);
             newAgent.setDescription(description);
             newAgent.refresh();
             manager.addSubagent(newAgent);

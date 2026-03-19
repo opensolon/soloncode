@@ -54,14 +54,14 @@ public class MainAgentTaskOrchestrationTest {
 
         // 创建 MainAgent
         MainAgent mainAgent = new MainAgent(
+                null,
                 config,
                 sessionProvider,
                 memoryManager,
                 eventBus,
                 null, // MessageChannel 为 null（测试用）
                 taskList,
-                "./work",
-                null // PoolManager 为 null（测试用）
+                "./work"
         );
 
         // 测试 1: 探索类任务创建

@@ -16,18 +16,11 @@
 package org.noear.solon.bot.core.subagent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
-import org.noear.solon.ai.agent.react.intercept.SummarizationStrategy;
-import org.noear.solon.ai.agent.react.intercept.summarize.CompositeSummarizationStrategy;
-import org.noear.solon.ai.agent.react.intercept.summarize.HierarchicalSummarizationStrategy;
-import org.noear.solon.ai.agent.react.intercept.summarize.KeyInfoExtractionStrategy;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
 import org.noear.solon.bot.core.AgentKernel;
-
-import java.util.Arrays;
 
 /**
  * 探索子代理 - 快速探索代码库
@@ -37,18 +30,18 @@ import java.util.Arrays;
  */
 public class ExploreSubagent extends AbsSubagent {
 
-    public ExploreSubagent(AgentKernel mainAgent) {
-        super(mainAgent);
+    public ExploreSubagent(AgentKernel rootAgent) {
+        super(rootAgent);
     }
 
 
     @Override
     protected void customize(ReActAgent.Builder builder) {
         // 添加技能（仅终端和专家技能，不添加代码搜索）
-        builder.defaultToolAdd(mainAgent.getCliSkills().getTerminalSkill()
+        builder.defaultToolAdd(rootAgent.getCliSkills().getTerminalSkill()
                 .getToolAry("ls", "read", "grep", "glob"));
 
-        builder.defaultSkillAdd(mainAgent.getCliSkills().getExpertSkill());
+        builder.defaultSkillAdd(rootAgent.getCliSkills().getExpertSkill());
 
         builder.defaultSkillAdd(LuceneSkill.getInstance());
         // 添加网络工具

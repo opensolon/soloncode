@@ -16,15 +16,11 @@
 package org.noear.solon.bot.core.subagent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
-import org.noear.solon.ai.agent.react.intercept.summarize.HierarchicalSummarizationStrategy;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
 import org.noear.solon.bot.core.AgentKernel;
-
-import java.util.Arrays;
 
 /**
  * 通用子代理 - 处理各种复杂任务
@@ -36,16 +32,16 @@ public class GeneralPurposeSubagent extends AbsSubagent {
 
     String instruction;
 
-    public GeneralPurposeSubagent(AgentKernel mainAgent) {
-        super(mainAgent);
+    public GeneralPurposeSubagent(AgentKernel rootAgent) {
+        super(rootAgent);
     }
 
-    public GeneralPurposeSubagent(AgentKernel mainAgent, SubAgentMetadata metadata) {
-        super(mainAgent, metadata);
+    public GeneralPurposeSubagent(AgentKernel rootAgent, SubAgentMetadata metadata) {
+        super(rootAgent, metadata);
     }
 
-    public GeneralPurposeSubagent(AgentKernel mainAgent, SubAgentMetadata metadata, String instruction) {
-        super(mainAgent, metadata);
+    public GeneralPurposeSubagent(AgentKernel rootAgent, SubAgentMetadata metadata, String instruction) {
+        super(rootAgent, metadata);
         this.instruction = instruction;
     }
 
@@ -59,7 +55,7 @@ public class GeneralPurposeSubagent extends AbsSubagent {
     @Override
     protected void customize(ReActAgent.Builder builder) {
         // 添加所有核心技能
-        builder.defaultSkillAdd(mainAgent.getCliSkills());
+        builder.defaultSkillAdd(rootAgent.getCliSkills());
 
         builder.defaultSkillAdd(LuceneSkill.getInstance());
 

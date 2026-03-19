@@ -16,10 +16,7 @@
 package org.noear.solon.bot.core.subagent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.agent.react.ReActAgentConfig;
 import org.noear.solon.bot.core.AgentKernel;
-
-import java.util.Arrays;
 
 /**
  * Bash 命令子代理
@@ -29,8 +26,8 @@ import java.util.Arrays;
  */
 public class BashSubagent extends AbsSubagent {
 
-    public BashSubagent(AgentKernel mainAgent) {
-        super(mainAgent);
+    public BashSubagent(AgentKernel rootAgent) {
+        super(rootAgent);
     }
 
 
@@ -40,7 +37,7 @@ public class BashSubagent extends AbsSubagent {
     @Override
     protected void customize(ReActAgent.Builder builder) {
         // 只添加终端技能的（bash 工具）
-        builder.defaultToolAdd(mainAgent.getCliSkills().getTerminalSkill()
+        builder.defaultToolAdd(rootAgent.getCliSkills().getTerminalSkill()
                 .getToolAry("ls", "read", "bash"));
     }
 

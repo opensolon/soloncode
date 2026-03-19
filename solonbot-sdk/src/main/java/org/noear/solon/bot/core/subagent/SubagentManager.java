@@ -40,16 +40,16 @@ public class SubagentManager {
     private static final Logger LOG = LoggerFactory.getLogger(SubagentManager.class);
 
     private final Map<String, Subagent> subagentMap = new ConcurrentHashMap<>();
-    private final AgentKernel mainAgent;
+    private final AgentKernel rootAgent;
 
-    public SubagentManager(AgentKernel mainAgent) {
-        this.mainAgent = mainAgent;
+    public SubagentManager(AgentKernel rootAgent) {
+        this.rootAgent = rootAgent;
 
         // 添加预置的智能体类型（保持向后兼容）
-        addSubagent(new ExploreSubagent(mainAgent));
-        addSubagent(new PlanSubagent(mainAgent));
-        addSubagent(new GeneralPurposeSubagent(mainAgent));
-        addSubagent(new BashSubagent(mainAgent));
+        addSubagent(new ExploreSubagent(rootAgent));
+        addSubagent(new PlanSubagent(rootAgent));
+        addSubagent(new GeneralPurposeSubagent(rootAgent));
+        addSubagent(new BashSubagent(rootAgent));
     }
 
     public void addSubagent(Subagent subagent) {
@@ -163,7 +163,7 @@ public class SubagentManager {
             }
 
             AbsSubagent subagent = (AbsSubagent) subagentMap.computeIfAbsent(subagentType,
-                    k -> new GeneralPurposeSubagent(mainAgent, parsed.getMetadata(), parsed.getPrompt()));
+                    k -> new GeneralPurposeSubagent(rootAgent, parsed.getMetadata(), parsed.getPrompt()));
 
             // 设置解析后的属性
             subagent.setDescription(parsed.getMetadata().getDescription());
