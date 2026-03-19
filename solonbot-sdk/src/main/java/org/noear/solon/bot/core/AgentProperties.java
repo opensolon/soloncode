@@ -19,7 +19,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
-import org.noear.solon.bot.core.config.ApiServerParameters;
+import org.noear.solon.ai.skills.restapi.ApiSource;
 
 import java.io.Serializable;
 import java.util.Map;
@@ -96,7 +96,7 @@ public class AgentProperties implements Serializable {
      */
     public Map<String, String> subAgentModels;
 
-    private Map<String, ApiServerParameters> restApis;
+    private Map<String, ApiSource> restApis;
     @Deprecated
     private Map<String, String> mountPool;
     private Map<String, String> skillPools;

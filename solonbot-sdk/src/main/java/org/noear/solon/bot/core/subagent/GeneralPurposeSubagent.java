@@ -18,11 +18,11 @@ package org.noear.solon.bot.core.subagent;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
 import org.noear.solon.ai.agent.react.intercept.summarize.HierarchicalSummarizationStrategy;
+import org.noear.solon.ai.skills.lucene.LuceneSkill;
+import org.noear.solon.ai.skills.web.CodeSearchTool;
+import org.noear.solon.ai.skills.web.WebfetchTool;
+import org.noear.solon.ai.skills.web.WebsearchTool;
 import org.noear.solon.bot.core.AgentKernel;
-import org.noear.solon.bot.core.LuceneSkill;
-import org.noear.solon.bot.core.tool.CodeSearchTool;
-import org.noear.solon.bot.core.tool.WebfetchTool;
-import org.noear.solon.bot.core.tool.WebsearchTool;
 
 import java.util.Arrays;
 

@@ -23,9 +23,8 @@
         </dependency>
 
         <dependency>
-            <groupId>com.microsoft.playwright</groupId>
-            <artifactId>playwright</artifactId>
-            <version>${playwright.version}</version>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai-skill-browser</artifactId>
         </dependency>
 
         <dependency>

@@ -14,22 +14,24 @@ import org.noear.solon.ai.agent.react.intercept.SummarizationStrategy;
 import org.noear.solon.ai.agent.react.intercept.summarize.*;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.skills.browser.BrowserSkill;
+import org.noear.solon.ai.skills.cli.CliSkillProvider;
+import org.noear.solon.ai.skills.cli.TodoSkill;
+import org.noear.solon.ai.skills.diff.ApplyPatchTool;
+import org.noear.solon.ai.skills.lucene.LuceneSkill;
+import org.noear.solon.ai.skills.restapi.ApiSource;
+import org.noear.solon.ai.skills.web.*;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.memory.SharedMemoryManager;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.subagent.SubAgentMetadata;
 import org.noear.solon.ai.skills.restapi.RestApiSkill;
-import org.noear.solon.bot.core.config.ApiServerParameters;
 import org.noear.solon.bot.core.subagent.SubagentManager;
 import org.noear.solon.bot.core.subagent.TaskSkill;
 import org.noear.solon.bot.core.teams.AgentTeamsSkill;
 import org.noear.solon.bot.core.teams.AgentTeamsTools;
 import org.noear.solon.bot.core.teams.MainAgent;
 import org.noear.solon.bot.core.teams.SharedTaskList;
-import org.noear.solon.bot.core.tool.ApplyPatchTool;
-import org.noear.solon.bot.core.tool.CodeSearchTool;
-import org.noear.solon.bot.core.tool.WebfetchTool;
-import org.noear.solon.bot.core.tool.WebsearchTool;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.mcp.client.McpProviders;
 import org.noear.solon.core.util.Assert;
@@ -124,10 +126,8 @@ public class AgentKernel {
 
         if(Assert.isNotEmpty(properties.getRestApis())) {
             restApis = new RestApiSkill();
-            for (Map.Entry<String, ApiServerParameters> entry : properties.getRestApis().entrySet()) {
-                restApis.addApi(entry.getValue().getDocUrl(),
-                        entry.getValue().getApiBaseUrl(),
-                        entry.getValue().getHeaders());
+            for (Map.Entry<String, ApiSource> entry : properties.getRestApis().entrySet()) {
+                restApis.addApi(entry.getValue());
             }
         } else {
             restApis = null;
@@ -179,7 +179,7 @@ public class AgentKernel {
         agentBuilder.defaultToolAdd(CodeSearchTool.getInstance());
         agentBuilder.defaultToolAdd(new ApplyPatchTool());
         agentBuilder.defaultSkillAdd(cliSkills);
-        agentBuilder.defaultSkillAdd(new TodoSkill());
+        agentBuilder.defaultSkillAdd(new TodoSkill(SOLONCODE_SESSIONS));
         agentBuilder.defaultSkillAdd(codeSkill);
         agentBuilder.defaultSkillAdd(luceneSkill);
 
