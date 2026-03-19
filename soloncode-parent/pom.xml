@@ -11,7 +11,7 @@
         <relativePath />
     </parent>
 
-    <artifactId>solonbot-parent</artifactId>
+    <artifactId>soloncode-parent</artifactId>
     <name>${project.artifactId}</name>
     <version>0.0.23</version>
     <packaging>pom</packaging>
@@ -29,14 +29,14 @@
     </properties>
 
    <modules>
-       <module>../solonbot-sdk</module>
+       <module>../soloncode-core</module>
    </modules>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
                 <groupId>org.noear</groupId>
-                <artifactId>solonbot-sdk</artifactId>
+                <artifactId>soloncode-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

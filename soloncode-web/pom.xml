@@ -6,9 +6,9 @@
 
     <parent>
         <groupId>org.noear</groupId>
-        <artifactId>solonbot-parent</artifactId>
+        <artifactId>soloncode-parent</artifactId>
         <version>0.0.23</version>
-        <relativePath>../solonbot-parent/pom.xml</relativePath>
+        <relativePath>../soloncode-parent/pom.xml</relativePath>
     </parent>
 
     <artifactId>soloncode-web</artifactId>
@@ -19,7 +19,7 @@
     <dependencies>
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>solonbot-sdk</artifactId>
+            <artifactId>soloncode-core</artifactId>
         </dependency>
 
         <dependency>
