@@ -20,7 +20,7 @@ import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 
 /**
  * 通用子代理 - 处理各种复杂任务
@@ -32,15 +32,15 @@ public class GeneralPurposeSubagent extends AbsSubagent {
 
     String instruction;
 
-    public GeneralPurposeSubagent(AgentKernel rootAgent) {
+    public GeneralPurposeSubagent(AgentRuntime rootAgent) {
         super(rootAgent);
     }
 
-    public GeneralPurposeSubagent(AgentKernel rootAgent, SubAgentMetadata metadata) {
+    public GeneralPurposeSubagent(AgentRuntime rootAgent, SubAgentMetadata metadata) {
         super(rootAgent, metadata);
     }
 
-    public GeneralPurposeSubagent(AgentKernel rootAgent, SubAgentMetadata metadata, String instruction) {
+    public GeneralPurposeSubagent(AgentRuntime rootAgent, SubAgentMetadata metadata, String instruction) {
         super(rootAgent, metadata);
         this.instruction = instruction;
     }

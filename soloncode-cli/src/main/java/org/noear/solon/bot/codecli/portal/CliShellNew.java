@@ -40,7 +40,7 @@ import org.noear.solon.bot.codecli.portal.ui.CommandRegistry;
 import org.noear.solon.bot.codecli.portal.ui.SlashCommandCompleter;
 import org.noear.solon.bot.codecli.portal.ui.MarkdownRenderer;
 import org.noear.solon.bot.codecli.portal.ui.StatusBar;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
@@ -64,7 +64,7 @@ public class CliShellNew implements Runnable {
 
     private Terminal terminal;
     private LineReader reader;
-    private final AgentKernel kernel;
+    private final AgentRuntime kernel;
     private final CommandRegistry commandRegistry;
     private StatusBar statusBar;
 
@@ -115,7 +115,7 @@ public class CliShellNew implements Runnable {
             ICON_THINKING = "\u2699", // ⚙
             ICON_CHECK = "\u2714"; // ✔
 
-    public CliShellNew(AgentKernel kernel) {
+    public CliShellNew(AgentRuntime kernel) {
         this.kernel = kernel;
         this.commandRegistry = new CommandRegistry();
         registerBuiltinCommands();

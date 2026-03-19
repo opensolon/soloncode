@@ -2,8 +2,7 @@ package org.noear.solon.bot.core.subagent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActAgentExtension;
-import org.noear.solon.bot.core.AgentKernel;
-import org.noear.solon.bot.core.teams.TeamReActExtension;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +16,7 @@ import java.nio.file.Paths;
 public class SubagentReActExtension implements ReActAgentExtension {
     private static final Logger LOG = LoggerFactory.getLogger(SubagentReActExtension.class);
 
-    private final AgentKernel rootAgent;
+    private final AgentRuntime rootAgent;
 
     private SubagentManager subagentManager;
 
@@ -26,7 +25,7 @@ public class SubagentReActExtension implements ReActAgentExtension {
         return subagentManager;
     }
 
-    public SubagentReActExtension(AgentKernel rootAgent){
+    public SubagentReActExtension(AgentRuntime rootAgent){
         this.rootAgent = rootAgent;
     }
 
@@ -36,13 +35,13 @@ public class SubagentReActExtension implements ReActAgentExtension {
 
         // 注册自定义 agents 池（类似 skillPool）
         // 注册 soloncode agents
-        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentKernel.SOLONCODE_AGENTS));
+        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentRuntime.SOLONCODE_AGENTS));
         // 注册 opencode agents
-        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentKernel.OPENCODE_AGENTS));
+        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentRuntime.OPENCODE_AGENTS));
         // 注册 claude agents
-        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentKernel.CLAUDE_AGENTS));
+        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentRuntime.CLAUDE_AGENTS));
         // 注册 soloncode agentsTeams（递归扫描团队成员目录）
-        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentKernel.SOLONCODE_AGENTS_TEAMS), true);
+        subagentManager.agentPool(Paths.get(rootAgent.getProperties().getWorkDir(), AgentRuntime.SOLONCODE_AGENTS_TEAMS), true);
 
         // SubagentSkill 会通过 @ToolMapping 自动注册为工具
         agentBuilder.defaultSkillAdd(new SubagentSkill(rootAgent, subagentManager));

@@ -28,7 +28,7 @@ import org.noear.solon.ai.skills.browser.BrowserManager;
 import org.noear.solon.bot.codecli.portal.CliShellOld;
 import org.noear.solon.bot.core.AgentProperties;
 import org.noear.solon.bot.codecli.portal.AcpLink;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.codecli.portal.WebGate;
 import org.noear.solon.core.event.AppStopEndEvent;
 
@@ -59,42 +59,46 @@ public class App {
                 app.enableWebSocket(true);
             }
 
-            app.onEvent(AppStopEndEvent.class, e->{
+            app.onEvent(AppStopEndEvent.class, e -> {
                 BrowserManager.closeAll();
             });
         });
 
-        AgentProperties config = Solon.context().getBean(AgentProperties.class);
+        AgentProperties agentProperties = Solon.context().getBean(AgentProperties.class);
 
-        if (config == null || config.getChatModel() == null) {
+        if (agentProperties == null || agentProperties.getChatModel() == null) {
             throw new RuntimeException("ChatModel config not found");
         }
 
-        ChatModel chatModel = ChatModel.of(config.getChatModel()).build();
+        ChatModel chatModel = ChatModel.of(agentProperties.getChatModel()).build();
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, Paths.get(config.getWorkDir(), AgentKernel.SOLONCODE_SESSIONS, key).normalize().toFile().toString()));
+                new FileAgentSession(key, Paths.get(agentProperties.getWorkDir(), AgentRuntime.SOLONCODE_SESSIONS, key).normalize().toFile().toString()));
 
 
-        AgentKernel agentKernel = new AgentKernel(chatModel, config, sessionProvider, null);
+        AgentRuntime agentKernel = AgentRuntime.builder()
+                .chatModel(chatModel)
+                .properties(agentProperties)
+                .sessionProvider(sessionProvider)
+                .build();
 
 
-        if (config.isCliEnabled()) {
+        if (agentProperties.isCliEnabled()) {
             new Thread(new CliShellOld(agentKernel), "CLI-Interactive-Thread").start();
         }
 
-        if (config.isWebEnabled()) {
-            Solon.app().router().get(config.getWebEndpoint(), new WebGate(agentKernel));
+        if (agentProperties.isWebEnabled()) {
+            Solon.app().router().get(agentProperties.getWebEndpoint(), new WebGate(agentKernel));
         }
 
-        if (config.isAcpEnabled()) {
+        if (agentProperties.isAcpEnabled()) {
             AcpAgentTransport agentTransport;
-            if ("stdio".equals(config.getAcpTransport())) {
+            if ("stdio".equals(agentProperties.getAcpTransport())) {
                 agentTransport = new StdioAcpAgentTransport();
             } else {
                 agentTransport = new WebSocketSolonAcpAgentTransport(
-                        config.getAcpTransport(), McpJsonMapper.getDefault());
+                        agentProperties.getAcpTransport(), McpJsonMapper.getDefault());
             }
 
             new AcpLink(agentKernel, agentTransport).run();

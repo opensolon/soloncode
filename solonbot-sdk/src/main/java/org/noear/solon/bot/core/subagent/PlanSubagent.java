@@ -20,7 +20,7 @@ import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 
 /**
  * 计划子代理 - 软件架构师
@@ -30,7 +30,7 @@ import org.noear.solon.bot.core.AgentKernel;
  */
 public class PlanSubagent extends AbsSubagent {
 
-    public PlanSubagent(AgentKernel mainAgent) {
+    public PlanSubagent(AgentRuntime mainAgent) {
         super(mainAgent);
     }
 

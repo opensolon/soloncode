@@ -22,7 +22,7 @@ import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
 import org.noear.solon.annotation.Param;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit;
 public class SubagentSkill extends AbsSkill {
     private static final Logger LOG = LoggerFactory.getLogger(SubagentSkill.class);
 
-    private final AgentKernel rootAgent;
+    private final AgentRuntime rootAgent;
     private final SubagentManager manager;
 
     // 并发控制：使用 Semaphore 限制同时发起的子代理请求数（从配置读取）
@@ -58,7 +58,7 @@ public class SubagentSkill extends AbsSkill {
     // 记录每个子代理类型的调用时间，用于精细控制
     private static final ConcurrentHashMap<String, Long> lastCallTimeByType = new ConcurrentHashMap<>();
 
-    public SubagentSkill(AgentKernel rootAgent, SubagentManager manager) {
+    public SubagentSkill(AgentRuntime rootAgent, SubagentManager manager) {
         this.rootAgent = rootAgent;
         this.manager = manager;
 

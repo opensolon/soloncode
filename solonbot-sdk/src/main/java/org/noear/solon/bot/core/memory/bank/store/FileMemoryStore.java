@@ -16,7 +16,6 @@
 package org.noear.solon.bot.core.memory.bank.store;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.memory.bank.Observation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

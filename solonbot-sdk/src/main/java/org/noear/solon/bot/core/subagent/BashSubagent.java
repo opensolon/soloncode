@@ -16,7 +16,7 @@
 package org.noear.solon.bot.core.subagent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 
 /**
  * Bash 命令子代理
@@ -26,7 +26,7 @@ import org.noear.solon.bot.core.AgentKernel;
  */
 public class BashSubagent extends AbsSubagent {
 
-    public BashSubagent(AgentKernel rootAgent) {
+    public BashSubagent(AgentRuntime rootAgent) {
         super(rootAgent);
     }
 

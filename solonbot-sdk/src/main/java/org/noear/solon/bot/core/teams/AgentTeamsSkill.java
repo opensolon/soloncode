@@ -29,7 +29,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.annotation.Param;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.core.memory.smart.IntelligentMemoryManager;
 import org.noear.solon.bot.core.subagent.*;
 import org.noear.solon.core.util.Assert;
@@ -65,20 +65,20 @@ public class AgentTeamsSkill extends AbsSkill {
     private static final Logger LOG = LoggerFactory.getLogger(AgentTeamsSkill.class);
     private static final String CURRENT_TEAM_KEY = "current_team_name"; // 当前团队名的内存键
 
-    private final AgentKernel rootAgent;
+    private final AgentRuntime rootAgent;
     private final MainAgent mainAgent;
     private final IntelligentMemoryManager intelligentMemoryManager;
 
     /**
      * 完整构造函数（支持子代理调用）
      */
-    public AgentTeamsSkill(AgentKernel rootAgent, MainAgent mainAgent) {
+    public AgentTeamsSkill(AgentRuntime rootAgent, MainAgent mainAgent) {
         this.rootAgent = rootAgent;
         this.mainAgent = mainAgent;
 
         // 初始化智能记忆管理器
         if (mainAgent != null && mainAgent.getSharedMemoryManager() != null) {
-            this.intelligentMemoryManager = new IntelligentMemoryManager(Paths.get(mainAgent.getWorkDir(), AgentKernel.SOLONCODE_MEMORY));
+            this.intelligentMemoryManager = new IntelligentMemoryManager(Paths.get(mainAgent.getWorkDir(), AgentRuntime.SOLONCODE_MEMORY));
         } else {
             this.intelligentMemoryManager = null;
         }

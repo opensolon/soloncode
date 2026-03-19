@@ -6,6 +6,7 @@ import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.agent.react.ReActAgentExtension;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.agent.react.intercept.SummarizationInterceptor;
@@ -40,11 +41,10 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Map;
-import java.util.function.Consumer;
+import java.util.*;
 
 /**
- * 智能体内核 (Pool-Box 模型)
+ * 智能体运行时 (Pool-Box 模型)
  * <p>基于 ReAct 模式的终端智能助理，提供多池挂载与任务盒隔离体验</p>
  *
  * @author noear
@@ -52,8 +52,8 @@ import java.util.function.Consumer;
  */
 @Preview("3.9.1")
 @Getter
-public class AgentKernel {
-    private final static Logger LOG = LoggerFactory.getLogger(AgentKernel.class);
+public class AgentRuntime {
+    private final static Logger LOG = LoggerFactory.getLogger(AgentRuntime.class);
 
     public final static String SESSION_DEFAULT = "cli";
     public final static String ATTR_CWD = "__cwd";
@@ -83,7 +83,6 @@ public class AgentKernel {
     private final McpProviders mcpProviders;
     private final RestApiSkill restApis;
 
-    private final Consumer<ReActAgent.Builder> configurator;
     private final CliSkillProvider cliSkills = new CliSkillProvider();
 
     private final SummarizationInterceptor summarizationInterceptor;
@@ -104,13 +103,12 @@ public class AgentKernel {
         return properties;
     }
 
-    public AgentKernel(ChatModel chatModel, AgentProperties properties, AgentSessionProvider sessionProvider, Consumer<ReActAgent.Builder> configurator) {
+    private AgentRuntime(ChatModel chatModel, AgentProperties properties, AgentSessionProvider sessionProvider, Collection<ReActAgentExtension> extensions) {
         this.chatModel = chatModel;
         this.properties = properties;
         this.sessionProvider = sessionProvider;
-        this.configurator = configurator;
 
-        if(Assert.isNotEmpty(properties.getRestApis())) {
+        if (Assert.isNotEmpty(properties.getRestApis())) {
             restApis = new RestApiSkill();
             for (Map.Entry<String, ApiSource> entry : properties.getRestApis().entrySet()) {
                 restApis.addApi(entry.getValue());
@@ -156,9 +154,9 @@ public class AgentKernel {
 
         cliSkills.getTerminalSkill().setSandboxMode(properties.isSandboxMode());
 
-        cliSkills.skillPool("@soloncode_skills", Paths.get(properties.getWorkDir(), AgentKernel.SOLONCODE_SKILLS));
-        cliSkills.skillPool("@opencode_skills", Paths.get(properties.getWorkDir(), AgentKernel.OPENCODE_SKILLS));
-        cliSkills.skillPool("@claude_skills", Paths.get(properties.getWorkDir(), AgentKernel.CLAUDE_SKILLS));
+        cliSkills.skillPool("@soloncode_skills", Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_SKILLS));
+        cliSkills.skillPool("@opencode_skills", Paths.get(properties.getWorkDir(), AgentRuntime.OPENCODE_SKILLS));
+        cliSkills.skillPool("@claude_skills", Paths.get(properties.getWorkDir(), AgentRuntime.CLAUDE_SKILLS));
 
         agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
         agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
@@ -170,7 +168,7 @@ public class AgentKernel {
         agentBuilder.defaultSkillAdd(codeSkill);
         agentBuilder.defaultSkillAdd(luceneSkill);
 
-        if(properties.isBrowserEnabled() && ClassUtil.hasClass(()-> BrowserSkill.class)) {
+        if (properties.isBrowserEnabled() && ClassUtil.hasClass(() -> BrowserSkill.class)) {
             agentBuilder.defaultSkillAdd(new BrowserSkill());
         }
 
@@ -193,7 +191,7 @@ public class AgentKernel {
             subagentReActExtension.configure(agentBuilder);
         }
 
-        if (properties.isAgentTeamEnabled()){
+        if (properties.isAgentTeamEnabled()) {
             teamReActExtension = new TeamReActExtension(this);
             teamReActExtension.configure(agentBuilder);
         }
@@ -218,7 +216,7 @@ public class AgentKernel {
             }
         }
 
-        if(restApis != null){
+        if (restApis != null) {
             agentBuilder.defaultSkillAdd(restApis);
         }
 
@@ -237,13 +235,14 @@ public class AgentKernel {
             }
         }
 
-        if (configurator != null) {
-            configurator.accept(agentBuilder);
+        if (Assert.isNotEmpty(extensions)) {
+            for (ReActAgentExtension extension : extensions) {
+                extension.configure(agentBuilder);
+            }
         }
 
         reActAgent = agentBuilder.build();
     }
-
 
 
     public AgentSession getSession(String instanceId) {
@@ -295,7 +294,7 @@ public class AgentKernel {
         return reActAgent.prompt(prompt)
                 .session(session)
                 .options(o -> {
-                    o.toolContextPut(AgentKernel.ATTR_CWD, activatedWorkDir);
+                    o.toolContextPut(AgentRuntime.ATTR_CWD, activatedWorkDir);
                 });
     }
 
@@ -323,4 +322,42 @@ public class AgentKernel {
                 .call();
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        private ChatModel chatModel;
+        private AgentProperties properties;
+        private AgentSessionProvider sessionProvider;
+        private List<ReActAgentExtension> extensions = new ArrayList<>();
+
+        public Builder chatModel(ChatModel chatModel) {
+            this.chatModel = chatModel;
+            return this;
+        }
+
+        public Builder properties(AgentProperties properties) {
+            this.properties = properties;
+            return this;
+        }
+
+        public Builder sessionProvider(AgentSessionProvider sessionProvider) {
+            this.sessionProvider = sessionProvider;
+            return this;
+        }
+
+        public Builder extension(ReActAgentExtension extension) {
+            this.extensions.add(extension);
+            return this;
+        }
+
+        public AgentRuntime build() {
+            Objects.nonNull(chatModel);
+            Objects.nonNull(properties);
+            Objects.nonNull(sessionProvider);
+
+            return new AgentRuntime(chatModel, properties, sessionProvider, extensions);
+        }
+    }
 }

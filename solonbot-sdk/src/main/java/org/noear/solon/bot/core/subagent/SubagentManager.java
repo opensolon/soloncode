@@ -15,7 +15,7 @@
  */
 package org.noear.solon.bot.core.subagent;
 
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,9 +40,9 @@ public class SubagentManager {
     private static final Logger LOG = LoggerFactory.getLogger(SubagentManager.class);
 
     private final Map<String, Subagent> subagentMap = new ConcurrentHashMap<>();
-    private final AgentKernel rootAgent;
+    private final AgentRuntime rootAgent;
 
-    public SubagentManager(AgentKernel rootAgent) {
+    public SubagentManager(AgentRuntime rootAgent) {
         this.rootAgent = rootAgent;
 
         // 添加预置的智能体类型（保持向后兼容）

@@ -2,7 +2,7 @@ package org.noear.solon.bot.core.teams;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActAgentExtension;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.core.AgentProperties;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.memory.SharedMemoryManager;
@@ -22,7 +22,7 @@ import java.nio.file.Paths;
 public class TeamReActExtension implements ReActAgentExtension {
     private static final Logger LOG = LoggerFactory.getLogger(TeamReActExtension.class);
 
-    private final AgentKernel rootAgent;
+    private final AgentRuntime rootAgent;
     private final AgentProperties properties;
 
     // Agent Teams 相关组件
@@ -32,7 +32,7 @@ public class TeamReActExtension implements ReActAgentExtension {
     private SharedMemoryManager memoryManager;
     private MessageChannel messageChannel;
 
-    public TeamReActExtension(AgentKernel rootAgent) {
+    public TeamReActExtension(AgentRuntime rootAgent) {
         this.rootAgent = rootAgent;
         this.properties = rootAgent.getProperties();
     }
@@ -57,12 +57,12 @@ public class TeamReActExtension implements ReActAgentExtension {
             LOG.debug("SharedTaskList 已创建");
 
             // 3. 创建 SharedMemoryManager（共享内存管理器）
-            Path memoryPath = Paths.get(properties.getWorkDir(), AgentKernel.SOLONCODE_MEMORY);
+            Path memoryPath = Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_MEMORY);
             this.memoryManager = new SharedMemoryManager(memoryPath);
             LOG.debug("SharedMemoryManager 已创建，路径: {}", memoryPath);
 
             // 4. 创建 MessageChannel（消息通道）- 使用配置
-            Path messagePath = Paths.get(properties.getWorkDir(), AgentKernel.SOLONCODE_MEMORY);
+            Path messagePath = Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_MEMORY);
             int messageThreads = properties.getMessageChannel().threads != null ?
                     properties.getMessageChannel().threads : 4;
             this.messageChannel = new MessageChannel(messagePath.toString(), messageThreads);

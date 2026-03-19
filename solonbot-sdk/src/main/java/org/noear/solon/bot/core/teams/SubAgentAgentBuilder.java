@@ -18,11 +18,9 @@ package org.noear.solon.bot.core.teams;
 import lombok.Builder;
 import lombok.Getter;
 import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.skills.cli.PoolManager;
-import org.noear.solon.bot.core.AgentKernel;
-import org.noear.solon.bot.core.SystemPrompt;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.memory.SharedMemoryManager;
@@ -223,7 +221,7 @@ public class SubAgentAgentBuilder {
      */
     private SharedMemoryManager createSharedMemoryManager() {
         LOG.info("创建默认 SharedMemoryManager");
-        return new SharedMemoryManager(Paths.get(workDir, AgentKernel.SOLONCODE_MEMORY));
+        return new SharedMemoryManager(Paths.get(workDir, AgentRuntime.SOLONCODE_MEMORY));
     }
 
     /**

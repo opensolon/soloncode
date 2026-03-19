@@ -24,8 +24,7 @@ import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.skills.cli.PoolManager;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.core.event.AgentEvent;
 import org.noear.solon.bot.core.event.AgentEventType;
 import org.noear.solon.bot.core.event.EventBus;
@@ -38,7 +37,6 @@ import org.noear.solon.bot.core.message.AgentMessage;
 import org.noear.solon.bot.core.message.MessageAck;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.subagent.SubAgentMetadata;
-import org.noear.solon.bot.core.subagent.SubagentManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -80,7 +78,7 @@ public class MainAgent {
     private GoalKeeperIntegration goalKeeper;
 
     // 新增：用于访问 subagent 功能
-    private final AgentKernel rootAgent;
+    private final AgentRuntime rootAgent;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
@@ -99,7 +97,7 @@ public class MainAgent {
      * 完整构造函数（支持 subagent 功能）
      */
     public MainAgent(
-            AgentKernel rootAgent,
+            AgentRuntime rootAgent,
             SubAgentMetadata config,
             AgentSessionProvider sessionProvider,
             SharedMemoryManager sharedMemoryManager,

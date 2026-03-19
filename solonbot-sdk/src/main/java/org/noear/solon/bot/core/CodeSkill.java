@@ -37,7 +37,7 @@ public class CodeSkill extends AbsSkill {
 
     @Override
     public boolean isSupported(Prompt prompt) {
-        String __cwd = prompt.attrAs(AgentKernel.ATTR_CWD);
+        String __cwd = prompt.attrAs(AgentRuntime.ATTR_CWD);
         Path rootPath = getRootPath(__cwd);
 
         if (rootExists(rootPath, "CLAUDE.md")) {
@@ -55,7 +55,7 @@ public class CodeSkill extends AbsSkill {
 
     @Override
     public String getInstruction(Prompt prompt) {
-        String __cwd = prompt.attrAs(AgentKernel.ATTR_CWD);
+        String __cwd = prompt.attrAs(AgentRuntime.ATTR_CWD);
 
         StringBuilder buf = new StringBuilder();
 
@@ -73,7 +73,7 @@ public class CodeSkill extends AbsSkill {
     }
 
     public String refresh(String __cwd) {
-        if (isSupported(Prompt.of().attrPut(AgentKernel.ATTR_CWD, __cwd))) {
+        if (isSupported(Prompt.of().attrPut(AgentRuntime.ATTR_CWD, __cwd))) {
             return init(__cwd);
         } else {
             return null;

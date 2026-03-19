@@ -24,7 +24,7 @@ import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.*;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.core.teams.AgentTeamsTools;
 import org.noear.solon.core.util.Assert;
 
@@ -48,18 +48,18 @@ import reactor.core.publisher.Flux;
 public abstract class AbsSubagent implements Subagent {
     private static final Logger LOG = LoggerFactory.getLogger(AbsSubagent.class);
 
-    protected final AgentKernel rootAgent;
+    protected final AgentRuntime rootAgent;
     private volatile ReActAgent cachedAgent;
 
     protected String description;
     protected SubAgentMetadata metadata;
 
 
-    public AbsSubagent(AgentKernel rootAgent) {
+    public AbsSubagent(AgentRuntime rootAgent) {
         this(rootAgent, null);
     }
 
-    public AbsSubagent(AgentKernel rootAgent, SubAgentMetadata metadata) {
+    public AbsSubagent(AgentRuntime rootAgent, SubAgentMetadata metadata) {
         this.rootAgent = rootAgent;
         // 初始化默认元数据
         this.metadata = metadata == null ? createDefaultMetadata() : metadata;

@@ -17,7 +17,6 @@ package org.noear.solon.bot.core.goalker;
 
 import org.noear.solon.ai.agent.AgentChunk;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.bot.core.AgentKernel;
 import org.noear.solon.bot.core.memory.WorkingMemory;
 import org.noear.solon.bot.core.teams.MainAgent;
 import org.slf4j.Logger;

@@ -23,7 +23,7 @@ import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Handler;
 import org.noear.solon.core.util.Assert;
@@ -40,9 +40,9 @@ import reactor.core.publisher.Flux;
  */
 @Preview("3.9.1")
 public class WebGate implements Handler {
-    private final AgentKernel kernel;
+    private final AgentRuntime kernel;
 
-    public WebGate(AgentKernel kernel) {
+    public WebGate(AgentRuntime kernel) {
         this.kernel = kernel;
     }
 
@@ -71,7 +71,7 @@ public class WebGate implements Handler {
             }
 
             AgentSession session = kernel.getSession(sessionId);
-            session.attrs().putIfAbsent(AgentKernel.ATTR_CWD, sessionCwd);
+            session.attrs().putIfAbsent(AgentRuntime.ATTR_CWD, sessionCwd);
         }
 
         // HITL approve/reject handling

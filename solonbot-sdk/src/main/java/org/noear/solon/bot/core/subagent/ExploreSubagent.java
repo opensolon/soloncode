@@ -20,7 +20,7 @@ import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 
 /**
  * 探索子代理 - 快速探索代码库
@@ -30,7 +30,7 @@ import org.noear.solon.bot.core.AgentKernel;
  */
 public class ExploreSubagent extends AbsSubagent {
 
-    public ExploreSubagent(AgentKernel rootAgent) {
+    public ExploreSubagent(AgentRuntime rootAgent) {
         super(rootAgent);
     }
 

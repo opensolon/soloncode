@@ -16,7 +16,7 @@
 package agentTems;
 
 import lombok.extern.slf4j.Slf4j;
-import org.noear.solon.bot.core.AgentKernel;
+import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.core.memory.*;
 import org.noear.solon.bot.core.event.*;
 import org.noear.solon.bot.core.message.*;
@@ -79,7 +79,7 @@ public class AgentTeamsDebugger {
         System.out.println("-----------------------------------");
 
         // 创建管理器
-        SharedMemoryManager manager = new SharedMemoryManager(Paths.get(TEST_WORK_DIR, AgentKernel.SOLONCODE_MEMORY));
+        SharedMemoryManager manager = new SharedMemoryManager(Paths.get(TEST_WORK_DIR, AgentRuntime.SOLONCODE_MEMORY));
 
         // 1.1 存储短期记忆
         System.out.print("1. 存储短期记忆... ");
