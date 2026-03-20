@@ -129,37 +129,33 @@ public class AgentDefinition {
 
         if (Assert.isNotEmpty(metadata.getTools())) {
             //目前参考了： https://opencode.ai/docs/zh-cn/permissions/
+            TerminalSkillProxy terminalSkillWrap = new TerminalSkillProxy(agentRuntime.getCliSkills().getTerminalSkill());
+
             for (String toolName : metadata.getTools()) {
                 switch (toolName) {
                     case "read": {
-                        builder.defaultToolAdd(agentRuntime.getCliSkills().getTerminalSkill()
-                                .getToolAry("read"));
+                        terminalSkillWrap.addTools("read");
                         break;
                     }
                     case "edit": {
-                        builder.defaultToolAdd(agentRuntime.getCliSkills().getTerminalSkill()
-                                .getToolAry("read", "write", "edit", "multiedit", "undo"));
+                        terminalSkillWrap.addTools("read", "write", "edit", "multiedit", "undo");
                         break;
                     }
                     case "glob": {
-                        builder.defaultToolAdd(agentRuntime.getCliSkills().getTerminalSkill()
-                                .getToolAry("glob"));
+                        terminalSkillWrap.addTools("glob");
                         break;
                     }
                     case "grep": {
-                        builder.defaultToolAdd(agentRuntime.getCliSkills().getTerminalSkill()
-                                .getToolAry("grep"));
+                        terminalSkillWrap.addTools("grep");
                         break;
                     }
                     case "ls":
                     case "list": {
-                        builder.defaultToolAdd(agentRuntime.getCliSkills().getTerminalSkill()
-                                .getToolAry("ls"));
+                        terminalSkillWrap.addTools("ls");
                         break;
                     }
                     case "bash": {
-                        builder.defaultToolAdd(agentRuntime.getCliSkills().getTerminalSkill()
-                                .getToolAry("bash"));
+                        terminalSkillWrap.addTools("bash");
                         break;
                     }
                     case "task": {
@@ -206,6 +202,11 @@ public class AgentDefinition {
                         break;
                     }
                 }
+            }
+
+            if (terminalSkillWrap.isEmpty() == false) {
+                // terminalSkill / tools 需要通过以 skill 形态加载（getInstruction 里有 SOP）
+                builder.defaultSkillAdd(terminalSkillWrap);
             }
         }
 
