@@ -276,16 +276,18 @@ import org.noear.solon.bot.core.subagent.SubagentManager;
 
 // 初始化
 AgentKernel kernel = new AgentKernel(chatModel, properties);
-SubagentManager manager = kernel.getSubagentManager();
+        SubagentManager manager = kernel.getSubagentManager();
 
-// 调用探索代理
-String sessionId = "session_" + System.currentTimeMillis();
+        // 调用探索代理
+        String sessionId = "session_" + System.currentTimeMillis();
 
-AgentResponse response = manager.getAgent("explore")
-    .call("./work", sessionId, Prompt.of("探索项目的核心类"));
+        AgentResponse response = manager.getAgent("explore")
+                .call("./work", sessionId, Prompt.of("探索项目的核心类"));
 
 // 处理结果
-System.out.println(response.getContent());
+System.out.
+
+        println(response.getContent());
 ```
 
 ### 示例 2: 通过工具调用（推荐）
@@ -439,25 +441,25 @@ public class DatabaseExpertAgent extends AbsSubagent {
     @Override
     protected String getDefaultSystemPrompt() {
         return """
-            ## 数据库专家
-
-            你是数据库专家，专注于：
-
-            ### 核心能力
-            - SQL 查询优化
-            - 数据库设计
-            - 性能调优
-
-            ### 工具使用策略
-            1. **read**: 读取 schema 文件
-            2. **grep**: 搜索 SQL 语句
-            3. **write**: 修改数据库脚本
-
-            ### 最佳实践
-            - 优先分析索引使用情况
-            - 识别慢查询
-            - 建议合理的索引
-            """;
+                ## 数据库专家
+                
+                你是数据库专家，专注于：
+                
+                ### 核心能力
+                - SQL 查询优化
+                - 数据库设计
+                - 性能调优
+                
+                ### 工具使用策略
+                1. **read**: 读取 schema 文件
+                2. **grep**: 搜索 SQL 语句
+                3. **write**: 修改数据库脚本
+                
+                ### 最佳实践
+                - 优先分析索引使用情况
+                - 识别慢查询
+                - 建议合理的索引
+                """;
     }
 
     @Override

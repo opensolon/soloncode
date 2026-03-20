@@ -18,10 +18,10 @@ public class SubagentReActExtension implements ReActAgentExtension {
 
     private final AgentRuntime rootAgent;
 
-    private SubagentManager subagentManager;
+    private AgentManager subagentManager;
 
 
-    public SubagentManager getSubagentManager() {
+    public AgentManager getSubagentManager() {
         return subagentManager;
     }
 
@@ -31,7 +31,7 @@ public class SubagentReActExtension implements ReActAgentExtension {
 
     @Override
     public void configure(ReActAgent.Builder agentBuilder) {
-        subagentManager = new SubagentManager(rootAgent);
+        subagentManager = new AgentManager(rootAgent);
 
         // 注册自定义 agents 池（类似 skillPool）
         // 注册 soloncode agents

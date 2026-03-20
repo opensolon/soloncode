@@ -36,7 +36,7 @@ import org.noear.solon.bot.core.memory.ShortTermMemory;
 import org.noear.solon.bot.core.message.AgentMessage;
 import org.noear.solon.bot.core.message.MessageAck;
 import org.noear.solon.bot.core.message.MessageChannel;
-import org.noear.solon.bot.core.subagent.SubAgentMetadata;
+import org.noear.solon.bot.core.subagent.AgentMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -66,7 +66,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MainAgent {
     private static final Logger LOG = LoggerFactory.getLogger(MainAgent.class);
 
-    private final SubAgentMetadata config;
+    private final AgentMetadata config;
     private final AgentSessionProvider sessionProvider;
     private final SharedMemoryManager sharedMemoryManager;
     private final EventBus eventBus;
@@ -98,7 +98,7 @@ public class MainAgent {
      */
     public MainAgent(
             AgentRuntime rootAgent,
-            SubAgentMetadata config,
+            AgentMetadata config,
             AgentSessionProvider sessionProvider,
             SharedMemoryManager sharedMemoryManager,
             EventBus eventBus,

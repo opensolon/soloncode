@@ -30,25 +30,12 @@ import org.noear.solon.bot.core.AgentRuntime;
  */
 public class GeneralPurposeSubagent extends AbsSubagent {
 
-    String instruction;
-
     public GeneralPurposeSubagent(AgentRuntime rootAgent) {
         super(rootAgent);
     }
 
-    public GeneralPurposeSubagent(AgentRuntime rootAgent, SubAgentMetadata metadata) {
-        super(rootAgent, metadata);
-    }
-
-    public GeneralPurposeSubagent(AgentRuntime rootAgent, SubAgentMetadata metadata, String instruction) {
-        super(rootAgent, metadata);
-        this.instruction = instruction;
-    }
-
-    @Override
-    protected void applyMetadataToBuilder(ReActAgent.Builder builder, SubAgentMetadata metadata) {
-        super.applyMetadataToBuilder(builder, metadata);
-        builder.instruction(this.instruction);
+    public GeneralPurposeSubagent(AgentRuntime rootAgent, AgentDefinition agentDefinition) {
+        super(rootAgent, agentDefinition);
     }
 
 

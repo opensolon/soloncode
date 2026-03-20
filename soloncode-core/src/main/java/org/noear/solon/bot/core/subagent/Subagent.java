@@ -43,7 +43,7 @@ public interface Subagent {
     /**
      * 获取元数据
      */
-    SubAgentMetadata getMetadata();
+    AgentMetadata getMetadata();
 
     /**
      * 执行任务（同步）

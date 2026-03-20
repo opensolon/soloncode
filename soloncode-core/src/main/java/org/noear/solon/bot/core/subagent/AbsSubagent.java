@@ -50,25 +50,29 @@ public abstract class AbsSubagent implements Subagent {
     protected final AgentRuntime rootAgent;
     private volatile ReActAgent cachedAgent;
 
-    protected String description;
-    protected SubAgentMetadata metadata;
+    protected AgentDefinition definition;
 
 
     public AbsSubagent(AgentRuntime rootAgent) {
         this(rootAgent, null);
     }
 
-    public AbsSubagent(AgentRuntime rootAgent, SubAgentMetadata metadata) {
+    public AbsSubagent(AgentRuntime rootAgent, AgentDefinition definition) {
         this.rootAgent = rootAgent;
-        // 初始化默认元数据
-        this.metadata = metadata == null ? createDefaultMetadata() : metadata;
+
+        if(definition == null){
+            this.definition = new AgentDefinition();
+        } else {
+            this.definition = definition;
+        }
 
         ReActAgent.Builder builder = ReActAgent.of(rootAgent.getChatModel());
 
-        builder.instruction(getDefaultSystemPrompt());
+        builder.instruction(getInstruction());
         builder.defaultInterceptorAdd(rootAgent.getSummarizationInterceptor());
         // 应用元数据中的属性配置到builder
-        applyMetadataToBuilder(builder, metadata);
+        applyMetadataToBuilder(builder, definition.getMetadata());
+
         // 应用自定义配置
         customize(builder);
         cachedAgent = builder.build();
@@ -76,35 +80,28 @@ public abstract class AbsSubagent implements Subagent {
 
     @Override
     public final String getDescription() {
-        if (Assert.isEmpty(description)) {
+        if (Assert.isEmpty(definition.getMetadata().getDescription())) {
             return getDefaultDescription();
         } else {
-            return description;
+            return definition.getMetadata().getDescription();
         }
     }
 
+    public final String getInstruction(){
+        if (Assert.isEmpty(definition.getPrompt())) {
+            return getDefaultSystemPrompt();
+        } else {
+            return definition.getPrompt();
+        }
+    }
 
     @Override
-    public SubAgentMetadata getMetadata() {
-        return metadata;
+    public AgentMetadata getMetadata() {
+        return definition.getMetadata();
     }
 
     public String name(){
         return cachedAgent.name();
-    }
-
-    /**
-     * 创建默认元数据（由子类重写）
-     *
-     * 此方法在构造函数开始时调用，在 cachedAgent 构建之前。
-     * 元数据的名称会被用于配置 cachedAgent。
-     *
-     * @return 默认元数据
-     */
-    protected SubAgentMetadata createDefaultMetadata() {
-        return SubAgentMetadata.builder()
-                .description(getDefaultDescription())      // 设置描述
-                .build();
     }
 
 
@@ -132,7 +129,7 @@ public abstract class AbsSubagent implements Subagent {
      * @param builder ReActAgent 构建器
      * @param metadata 元数据配置
      */
-    protected void applyMetadataToBuilder(ReActAgent.Builder builder, SubAgentMetadata metadata) {
+    protected void applyMetadataToBuilder(ReActAgent.Builder builder, AgentMetadata metadata) {
         if (metadata == null) {
             return;
         }
@@ -162,7 +159,6 @@ public abstract class AbsSubagent implements Subagent {
             LOG.debug("使用默认 maxStepsAutoExtensible: true");
         }
     }
-
 
 
     protected void refresh() {

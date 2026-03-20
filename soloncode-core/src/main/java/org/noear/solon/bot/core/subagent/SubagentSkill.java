@@ -50,7 +50,7 @@ public class SubagentSkill extends AbsSkill {
     private static final Logger LOG = LoggerFactory.getLogger(SubagentSkill.class);
 
     private final AgentRuntime rootAgent;
-    private final SubagentManager manager;
+    private final AgentManager manager;
 
     // 并发控制：使用 Semaphore 限制同时发起的子代理请求数（从配置读取）
     private final Semaphore concurrencySemaphore;
@@ -58,7 +58,7 @@ public class SubagentSkill extends AbsSkill {
     // 记录每个子代理类型的调用时间，用于精细控制
     private static final ConcurrentHashMap<String, Long> lastCallTimeByType = new ConcurrentHashMap<>();
 
-    public SubagentSkill(AgentRuntime rootAgent, SubagentManager manager) {
+    public SubagentSkill(AgentRuntime rootAgent, AgentManager manager) {
         this.rootAgent = rootAgent;
         this.manager = manager;
 
@@ -230,25 +230,27 @@ public class SubagentSkill extends AbsSkill {
             String __cwd
     ) {
         try {
-            SubAgentMetadata metadata = new SubAgentMetadata();
-            metadata.setName(name);
-            metadata.setDescription(description);
-            metadata.setEnabled(true);
+            AgentDefinition definition = new AgentDefinition();
+            definition.setMetadata(new AgentMetadata());
+
+            definition.getMetadata().setName(name);
+            definition.getMetadata().setDescription(description);
+            definition.getMetadata().setEnabled(true);
 
             if (model != null && !model.isEmpty()) {
-                metadata.setModel(model);
+                definition.getMetadata().setModel(model);
             }
             if (tools != null && !tools.isEmpty()) {
-                metadata.setTools(Arrays.asList(tools.split(",\\s*")));
+                definition.getMetadata().setTools(Arrays.asList(tools.split(",\\s*")));
             }
             if (skills != null && !skills.isEmpty()) {
-                metadata.setSkills(Arrays.asList(skills.split(",\\s*")));
+                definition.getMetadata().setSkills(Arrays.asList(skills.split(",\\s*")));
             }
             if (maxTurns != null && maxTurns > 0) {
-                metadata.setMaxTurns(maxTurns);
+                definition.getMetadata().setMaxTurns(maxTurns);
             }
 
-            String agentDefinition = metadata.toYamlFrontmatterWithPrompt(systemPrompt);
+            definition.setPrompt(systemPrompt);
 
             boolean shouldSave = saveToFile == null || saveToFile;
             if (shouldSave) {
@@ -262,13 +264,12 @@ public class SubagentSkill extends AbsSkill {
                         new OutputStreamWriter(
                                 Files.newOutputStream(agentFile.toFile().toPath()),
                                 StandardCharsets.UTF_8))) {
-                    writer.write(agentDefinition);
+                    writer.write(definition.toMarkdown());
                 }
                 LOG.info("Agent 定义已保存到: {}", agentFile);
             }
 
-            GeneralPurposeSubagent newAgent = new GeneralPurposeSubagent(rootAgent, metadata, agentDefinition);
-            newAgent.setDescription(description);
+            GeneralPurposeSubagent newAgent = new GeneralPurposeSubagent(rootAgent, definition);
             newAgent.refresh();
             manager.addSubagent(newAgent);
 

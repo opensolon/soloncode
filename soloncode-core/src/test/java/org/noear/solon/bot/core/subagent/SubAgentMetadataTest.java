@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.ai.codecli.core.subagent;
+package org.noear.solon.bot.core.subagent;
 
 import org.junit.jupiter.api.Test;
-import org.noear.solon.bot.core.subagent.SubAgentMetadata;
+import org.noear.solon.bot.core.subagent.AgentDefinition;
+import org.noear.solon.bot.core.subagent.AgentMetadata;
 
 import java.util.List;
 
@@ -41,7 +42,7 @@ public class SubAgentMetadataTest {
                 "## 探索代理\n\n" +
                 "你是一个快速的代码库探索专家。";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("explore", metadata.getName());
         assertEquals("Fast codebase exploration expert", metadata.getDescription());
@@ -62,7 +63,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 计划代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("plan", metadata.getName());
         assertEquals("glm-4.7", metadata.getModel());
@@ -75,7 +76,7 @@ public class SubAgentMetadataTest {
         String prompt = "## 计划代理\n\n" +
                 "你是一个软件架构师。";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertNull(metadata.getName());
         assertNull(metadata.getDescription());
@@ -92,7 +93,7 @@ public class SubAgentMetadataTest {
                 "## Bash 代理\n\n" +
                 "你是一个命令行执行专家。";
 
-        SubAgentMetadata.PromptWithMetadata result = SubAgentMetadata.parseAndClean(prompt);
+        AgentDefinition result = AgentDefinition.fromMarkdown(prompt);
 
         // 验证元数据
         assertEquals("bash", result.getMetadata().getName());
@@ -111,7 +112,7 @@ public class SubAgentMetadataTest {
         String prompt = "## 计划代理\n\n" +
                 "你是一个软件架构师。";
 
-        SubAgentMetadata.PromptWithMetadata result = SubAgentMetadata.parseAndClean(prompt);
+        AgentDefinition result = AgentDefinition.fromMarkdown(prompt);
 
         // 元数据应该为空
         assertNull(result.getMetadata().getName());
@@ -123,12 +124,13 @@ public class SubAgentMetadataTest {
 
     @Test
     public void testHasModel() {
-        SubAgentMetadata metadata1 = new SubAgentMetadata();
+        AgentMetadata metadata1 = new AgentMetadata();
         assertFalse(metadata1.hasModel());
 
-        SubAgentMetadata metadata2 = SubAgentMetadata.fromPrompt(
+        AgentMetadata metadata2 = AgentDefinition.fromMarkdown(
                 "---\nmodel: glm-4.7\n---\n\n"
-        );
+        ).getMetadata();
+
         assertTrue(metadata2.hasModel());
     }
 
@@ -142,7 +144,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertEquals("glm-4.7", metadata.getModel());
@@ -159,7 +161,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertEquals("glm-4.7", metadata.getModel());
@@ -182,10 +184,10 @@ public class SubAgentMetadataTest {
                 "- 使用 Read 工具读取文件内容\n" +
                 "- 分析代码结构和架构";
 
-        SubAgentMetadata.PromptWithMetadata result = SubAgentMetadata.parseAndClean(prompt);
+        AgentDefinition result = AgentDefinition.fromMarkdown(prompt);
 
         // 验证元数据
-        SubAgentMetadata metadata = result.getMetadata();
+        AgentMetadata metadata = result.getMetadata();
         assertEquals("explore", metadata.getName());
         assertEquals("glm-4-flash", metadata.getModel());
         assertTrue(metadata.hasModel());
@@ -214,7 +216,7 @@ public class SubAgentMetadataTest {
                 "## 计划代理（软件架构师）\n\n" +
                 "你是一个经验丰富的软件架构师。";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("plan", metadata.getName());
         assertEquals("glm-4.7", metadata.getModel());
@@ -229,7 +231,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertTrue(metadata.hasDisallowedTools());
@@ -247,7 +249,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertEquals("plan", metadata.getPermissionMode());
@@ -262,7 +264,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertEquals(Integer.valueOf(50), metadata.getMaxTurns());
@@ -277,7 +279,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertTrue(metadata.hasSkills());
@@ -295,7 +297,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertTrue(metadata.hasMcpServers());
@@ -312,7 +314,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertEquals("project", metadata.getMemory());
@@ -327,7 +329,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertTrue(metadata.isBackground());
@@ -341,7 +343,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertEquals("worktree", metadata.getIsolation());
@@ -366,7 +368,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 综合测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("comprehensive-test", metadata.getName());
         assertEquals("A comprehensive test with all metadata fields", metadata.getDescription());
@@ -400,7 +402,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertNull(metadata.getMaxTurns());
@@ -415,7 +417,7 @@ public class SubAgentMetadataTest {
                 "---\n\n" +
                 "## 测试代理";
 
-        SubAgentMetadata metadata = SubAgentMetadata.fromPrompt(prompt);
+        AgentMetadata metadata = AgentDefinition.fromMarkdown(prompt).getMetadata();
 
         assertEquals("test", metadata.getName());
         assertFalse(metadata.isBackground());

@@ -7,7 +7,7 @@ import org.noear.solon.bot.core.AgentProperties;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.memory.SharedMemoryManager;
 import org.noear.solon.bot.core.message.MessageChannel;
-import org.noear.solon.bot.core.subagent.SubAgentMetadata;
+import org.noear.solon.bot.core.subagent.AgentMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,7 +69,7 @@ public class TeamReActExtension implements ReActAgentExtension {
             LOG.debug("MessageChannel 已创建，路径: {}, 线程数: {}", messagePath, messageThreads);
 
             // 5. 创建 MainAgent 配置
-            SubAgentMetadata mainAgentConfig = new SubAgentMetadata();
+            AgentMetadata mainAgentConfig = new AgentMetadata();
             mainAgentConfig.setName("main-agent");
             mainAgentConfig.setDescription("Agent Teams 协调器，负责任务分解和团队协作");
             mainAgentConfig.setEnabled(true);

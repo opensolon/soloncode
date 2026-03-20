@@ -19,7 +19,7 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.memory.SharedMemoryManager;
-import org.noear.solon.bot.core.subagent.SubAgentMetadata;
+import org.noear.solon.bot.core.subagent.AgentMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +44,7 @@ public class MainAgentTaskOrchestrationTest {
         EventBus eventBus = new EventBus();
         SharedTaskList taskList = new SharedTaskList(eventBus);
         SharedMemoryManager memoryManager = new SharedMemoryManager(Paths.get("./work"));
-        SubAgentMetadata config = new SubAgentMetadata();
+        AgentMetadata config = new AgentMetadata();
         //config.setCode("main-agent");
         config.setName("主代理");
         config.setDescription("测试主代理");

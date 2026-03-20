@@ -36,13 +36,13 @@ import java.util.stream.Stream;
  * @author bai
  * @since 3.9.5
  */
-public class SubagentManager {
-    private static final Logger LOG = LoggerFactory.getLogger(SubagentManager.class);
+public class AgentManager {
+    private static final Logger LOG = LoggerFactory.getLogger(AgentManager.class);
 
     private final Map<String, Subagent> subagentMap = new ConcurrentHashMap<>();
     private final AgentRuntime rootAgent;
 
-    public SubagentManager(AgentRuntime rootAgent) {
+    public AgentManager(AgentRuntime rootAgent) {
         this.rootAgent = rootAgent;
 
         // 添加预置的智能体类型（保持向后兼容）
@@ -94,7 +94,7 @@ public class SubagentManager {
     /**
      * 注册自定义 agents 池
      *
-     * @param dir agents 目录路径，可以是绝对路径或相对路径
+     * @param dir       agents 目录路径，可以是绝对路径或相对路径
      * @param recursive 是否递归扫描子目录（用于团队成员目录）
      */
     public void agentPool(Path dir, boolean recursive) {
@@ -155,20 +155,18 @@ public class SubagentManager {
             List<String> fullContent = Files.readAllLines(file, StandardCharsets.UTF_8);
 
             // 解析文件：拆分元数据和 Prompt
-            SubAgentMetadata.PromptWithMetadata parsed = SubAgentMetadata.fromFileLines(fullContent);
+            AgentDefinition definition = AgentDefinition.fromMarkdown(fullContent);
 
-            String subagentType = parsed.getMetadata().getName();
-            if (subagentType == null || subagentType.isEmpty()) {
-                subagentType = fileName.substring(0, fileName.length() - 3);
+            String agentTypeName = definition.getMetadata().getName();
+
+            if (agentTypeName == null || agentTypeName.isEmpty()) {
+                agentTypeName = fileName.substring(0, fileName.length() - 3);
             }
 
-            AbsSubagent subagent = (AbsSubagent) subagentMap.computeIfAbsent(subagentType,
-                    k -> new GeneralPurposeSubagent(rootAgent, parsed.getMetadata(), parsed.getPrompt()));
+            subagentMap.computeIfAbsent(agentTypeName,
+                    k -> new GeneralPurposeSubagent(rootAgent, definition));
 
-            // 设置解析后的属性
-            subagent.setDescription(parsed.getMetadata().getDescription());
-
-            LOG.debug("加载子代理: {} 从 {}", subagentType, file);
+            LOG.debug("加载子代理: {} 从 {}", agentTypeName, file);
         } catch (IOException e) {
             LOG.error("读取代理文件失败: {}", file, e);
         }

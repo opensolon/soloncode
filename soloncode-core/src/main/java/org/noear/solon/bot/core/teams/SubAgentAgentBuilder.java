@@ -24,9 +24,9 @@ import org.noear.solon.bot.core.AgentRuntime;
 import org.noear.solon.bot.core.event.EventBus;
 import org.noear.solon.bot.core.message.MessageChannel;
 import org.noear.solon.bot.core.memory.SharedMemoryManager;
-import org.noear.solon.bot.core.subagent.SubAgentMetadata;
+import org.noear.solon.bot.core.subagent.AgentMetadata;
 import org.noear.solon.bot.core.subagent.Subagent;
-import org.noear.solon.bot.core.subagent.SubagentManager;
+import org.noear.solon.bot.core.subagent.AgentManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,7 +64,7 @@ public class SubAgentAgentBuilder {
     private final EventBus eventBus;
     private final MessageChannel messageChannel;
     private final SharedTaskList taskList;
-    private final SubAgentMetadata mainAgentConfig;
+    private final AgentMetadata mainAgentConfig;
 
     /**
      * 静态工厂方法：创建构建器
@@ -114,7 +114,7 @@ public class SubAgentAgentBuilder {
      * @param manager 子代理管理器
      * @return this
      */
-    public SubAgentAgentBuilder addAllFrom(SubagentManager manager) {
+    public SubAgentAgentBuilder addAllFrom(AgentManager manager) {
         if (manager != null) {
             addAgents(new ArrayList<>(manager.getAgents()));
         }
@@ -251,8 +251,8 @@ public class SubAgentAgentBuilder {
     /**
      * 创建默认的主代理配置
      */
-    private SubAgentMetadata createDefaultMainAgentConfig() {
-        SubAgentMetadata config = new SubAgentMetadata();
+    private AgentMetadata createDefaultMainAgentConfig() {
+        AgentMetadata config = new AgentMetadata();
         config.setName("main-agent");
         config.setDescription("Agent 团队协调器，负责任务分发和结果汇总");
         config.setEnabled(true);

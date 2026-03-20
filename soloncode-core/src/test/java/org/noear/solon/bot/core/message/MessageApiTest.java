@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.ai.codecli.core.message;
+package org.noear.solon.bot.core.message;
 
 import org.junit.jupiter.api.Test;
 import org.noear.solon.bot.core.message.AgentMessage;

@@ -84,7 +84,7 @@ public class AgentTeamsSkill extends AbsSkill {
         }
     }
 
-    private SubagentManager getSubagentManager(){
+    private AgentManager getSubagentManager(){
         return rootAgent.getSubagentReActExtension().getSubagentManager();
     }
 
@@ -953,7 +953,7 @@ public class AgentTeamsSkill extends AbsSkill {
             }
 
             // 构建子代理元数据
-            SubAgentMetadata metadata = new SubAgentMetadata();
+            AgentMetadata metadata = new AgentMetadata();
             metadata.setName(name);
             metadata.setDescription(description);
             metadata.setEnabled(true);
@@ -1004,7 +1004,11 @@ public class AgentTeamsSkill extends AbsSkill {
             }
 
             // 生成完整的代理定义
-            String agentDefinition = metadata.toYamlFrontmatterWithPrompt(finalPrompt);
+            AgentDefinition definition = new AgentDefinition();
+            definition.setMetadata(metadata);
+            definition.setPrompt(finalPrompt);
+
+            String agentMd = definition.toMarkdown();
 
             // 保存到文件（所有成员都归属于某个团队）
             Path teamsDir = Paths.get(__cwd, ".soloncode", "agentsTeams", teamName);
@@ -1012,7 +1016,7 @@ public class AgentTeamsSkill extends AbsSkill {
             Path agentFile = teamsDir.resolve(name + ".md");
             LOG.info("创建团队成员: 团队={}, 角色={}, 文件={}", teamName, name, agentFile);
 
-            Files.write(agentFile, agentDefinition.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            Files.write(agentFile, agentMd.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             LOG.info("Agent 定义已保存到: {}", agentFile);
 
             // 重新扫描目录以加载新创建的 agent（使用 putIfAbsent 避免重复）
