@@ -24,7 +24,6 @@ import org.noear.snack4.ONode;
 import org.noear.solon.core.util.Assert;
 import org.yaml.snakeyaml.Yaml;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -58,10 +57,10 @@ public class AgentMetadata {
     private Boolean maxStepsAutoExtensible;
 
     // 工具配置
-    private List<String> tools = new ArrayList<>();
+    private List<String> tools;
 
     // 禁用工具
-    private List<String> disallowedTools = new ArrayList<>();
+    private List<String> disallowedTools;
 
     // 权限配置
     private String permissionMode;
@@ -70,10 +69,10 @@ public class AgentMetadata {
     private Integer maxTurns;
 
     // Skills 配置
-    private List<String> skills = new ArrayList<>();
+    private List<String> skills;
 
     // MCP Servers 配置
-    private List<String> mcpServers = new ArrayList<>();
+    private List<String> mcpServers;
 
     // Hooks 配置（暂不解析，保留字段）
     private Object hooks;

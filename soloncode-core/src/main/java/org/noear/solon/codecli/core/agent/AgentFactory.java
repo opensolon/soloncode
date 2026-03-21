@@ -78,7 +78,9 @@ public class AgentFactory {
                         terminalSkillWrap.addTools("bash");
                         break;
                     }
+                    case "subagent":
                     case "task": {
+                        builder.defaultToolAdd(agentRuntime.getTaskSkill());
                         break;
                     }
                     case "skill": {
@@ -113,16 +115,25 @@ public class AgentFactory {
                         break;
                     }
 
+                    case "browser":{
+                        if (agentRuntime.getProperties().isBrowserEnabled() && ClassUtil.hasClass(() -> BrowserSkill.class)) {
+                            builder.defaultSkillAdd(BrowserSkill.getInstance());
+                        }
+                        break;
+                    }
+
                     case "*": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills());
                         builder.defaultSkillAdd(LuceneSkill.getInstance());
+                        builder.defaultToolAdd(agentRuntime.getTaskSkill());
+
                         builder.defaultToolAdd(agentRuntime.getTodoSkill());
                         builder.defaultToolAdd(WebfetchTool.getInstance());
                         builder.defaultToolAdd(WebsearchTool.getInstance());
                         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
                         if (agentRuntime.getProperties().isBrowserEnabled() && ClassUtil.hasClass(() -> BrowserSkill.class)) {
-                            builder.defaultSkillAdd(new BrowserSkill());
+                            builder.defaultSkillAdd(BrowserSkill.getInstance());
                         }
 
                         if (agentRuntime.getMcpProviders() != null) {
