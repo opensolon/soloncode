@@ -1,12 +1,15 @@
 package org.noear.solon.codecli.core.agent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.mcp.client.McpClientProvider;
+import org.noear.solon.ai.skills.browser.BrowserSkill;
 import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
 import org.noear.solon.codecli.core.AgentRuntime;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.ClassUtil;
 
 /**
  * 代理工厂
@@ -117,6 +120,20 @@ public class AgentFactory {
                         builder.defaultToolAdd(WebfetchTool.getInstance());
                         builder.defaultToolAdd(WebsearchTool.getInstance());
                         builder.defaultToolAdd(CodeSearchTool.getInstance());
+
+                        if (agentRuntime.getProperties().isBrowserEnabled() && ClassUtil.hasClass(() -> BrowserSkill.class)) {
+                            builder.defaultSkillAdd(new BrowserSkill());
+                        }
+
+                        if (agentRuntime.getMcpProviders() != null) {
+                            for (McpClientProvider mcpProvider : agentRuntime.getMcpProviders().getProviders().values()) {
+                                builder.defaultToolAdd(mcpProvider);
+                            }
+                        }
+
+                        if (agentRuntime.getRestApis() != null) {
+                            builder.defaultSkillAdd(agentRuntime.getRestApis());
+                        }
                         break;
                     }
                 }
