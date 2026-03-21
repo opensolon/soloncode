@@ -98,291 +98,38 @@ public class AgentTeamsSkill extends AbsSkill {
 
     @Override
     public String description() {
-        return "AgentTeams 模式协调器：MainAgent团队协作、任务列表管理、子代理协调";
-    }
+        return "AgentTeams 核心协调器：负责复杂任务分解、子代理(SubAgent)委派、团队任务状态追踪及智能协作记忆管理。";    }
 
     @Override
     public String getInstruction(Prompt prompt) {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("## AgentTeams 模式（团队协作模式）\n\n");
-        sb.append("### 角色定位\n");
-        sb.append("你是 **MainAgent（团队领导）**，负责协调多个子代理协作完成复杂任务。\n");
-        sb.append("与 SubAgent 模式不同，你需要管理任务列表、协调工作流、汇总团队成果。\n\n");
+        sb.append("## AgentTeams 协调员行动准则\n\n");
 
-        sb.append("### 核心规则（团队协作专用）\n\n");
-        sb.append("#### 禁止行为（绝对不可违反）\n");
-        sb.append("1. **禁止虚假团队协作**：\n");
-        sb.append("   - 严禁模拟多个\"专家\"讨论但实际不调用 task() 工具\n");
-        sb.append("   - 不得声称\"专家A认为...、专家B建议...\"但未真实调用\n");
-        sb.append("   - 不得使用 `memory_store` 存储虚假的\"已完成\"状态\n");
-        sb.append("   - 不断更新工作记忆但无子代理实际执行是**严重违规**\n\n");
-        sb.append("2. **禁止循环操作**：\n");
-        sb.append("   - 不得重复调用相同工具而不产生新进展\n");
-        sb.append("   - 检测到循环时必须立即停止并使用 `task()` 或 `complete_task()`\n\n");
-        sb.append("#### 必须行为（团队协作流程）\n");
-        sb.append("1. **任务分解**：使用 `analyze_tasks()` 或 `create_tasks()` 创建任务列表\n");
-        sb.append("2. **委派执行**：使用 `task()` 或 `complete_task()` 让子代理实际执行\n");
-        sb.append("3. **跟踪进度**：使用 `team_status()` 查看任务状态\n");
-        sb.append("4. **汇总成果**：收集各子代理结果，形成最终答案\n\n");
+        sb.append("### 1. 核心禁令 (CRITICAL)\n");
+        sb.append("- **严禁伪造协作**：禁止在未真实调用 `task()` 的情况下声称专家已执行或达成共识。\n");
+        sb.append("- **严禁循环停滞**：若连续 2 次工具调用未产生实质性进度（如文件变更、任务状态更新），必须重新分析任务。\n");
+        sb.append("- **严禁空转**：严禁仅更新工作记忆（working_memory）而不委派实际子任务。\n\n");
 
-        sb.append("### 模式对比：AgentTeams vs SubAgent\n\n");
-        sb.append("| 特性 | **AgentTeams 模式**（当前） | **SubAgent 模式** |\n");
-        sb.append("|------|---------------------------|------------------|\n");
-        sb.append("| **协调器** | MainAgent（团队领导） | 主Agent直接调用 |\n");
-        sb.append("| **任务管理** | 使用任务列表（`create_task`/`complete_task`） | 无任务列表 |\n");
-        sb.append("| **协作方式** | 多子代理通过任务列表协作 | 单次直接调用 |\n");
-        sb.append("| **适用场景** | 复杂、多步骤、需协调的工程任务 | 单一、独立的专业任务 |\n");
-        sb.append("| **工具数量** | 20+（团队协作、记忆管理等） | 1（只有task） |\n\n");
-        sb.append("**何时使用 AgentTeams 模式**：\n");
-        sb.append("- ✅ 需要**任务分解和跟踪**（有明确步骤）\n");
-        sb.append("- ✅ 需要**多个子代理协作**（2个以上专业领域）\n");
-        sb.append("- ✅ 需要**中间结果共享**（子代理间传递数据）\n");
-        sb.append("- ✅ 需要**进度监控**（查看哪些任务完成/进行中）\n\n");
-        sb.append("**何时使用 SubAgent 模式**：\n");
-        sb.append("- ✅ 简单任务（单次调用即可完成）\n");
-        sb.append("- ✅ 探索性任务（分析项目、查找代码）\n");
-        sb.append("- ✅ 不需要任务协调（独立执行）\n\n");
+        sb.append("### 2. 模式决策树\n");
+        sb.append("- **SubAgent 模式**：单一、独立、无上下文依赖的小任务（直接用 `task()`）。\n");
+        sb.append("- **AgentTeams 模式**：需要多步拆解、多角色交叉评审、或跨文件复杂变更（必须用 `team_task()` 启动）。\n\n");
 
-        // ========== 工作流程 ==========
-        sb.append("### 工作流程\n");
-        sb.append("1. 分析任务：识别所需的专业领域。\n");
-        sb.append("2. 组建团队：自动激活相关领域的专家 Agent。\n");
-        sb.append("3. 引导讨论：\n");
-        sb.append("   - 让专家轮流发表观点。\n");
-        sb.append("   - 鼓励专家互相质疑（例如：安全专家挑战开发专家的架构）。\n");
-        sb.append("   - 记录争议点并寻求共识。\n");
-        sb.append("4. 生成报告：汇总讨论结果，去除冗余对话，只保留高质量的最终结论。\n\n");
+        sb.append("### 3. 任务执行流 (Standard Protocol)\n");
+        sb.append("1. **分解(Analyze)**：调用 `analyze_tasks` 获取结构化建议。\n");
+        sb.append("2. **创建(Create)**：根据建议调用 `create_tasks` 或 `task_add`。**注意：** 记录返回的 taskId。\n");
+        sb.append("3. **委派(Delegate)**：调用 `task(name, prompt, taskId)` 委派给具体专家。必须在 prompt 中包含前置任务的 context。\n");
+        sb.append("4. **同步(Sync)**：每完成一个关键节点，必须调用 `complete_task` 标记并更新 `team_status`。\n\n");
 
-        // ========== 核心能力 ==========
-        sb.append("### 核心能力\n");
-        sb.append("1. **团队协作任务**: 使用 `team_task()` 启动多代理协作\n");
-        sb.append("2. **任务管理**: \n");
-        sb.append("   - `analyze_tasks()` 分析任务（返回分解建议，JSON格式）\n");
-        sb.append("   - `create_task()` 单个创建，`create_tasks()` 批量创建，`remove_task()` 删除\n");
-        sb.append("   - `team_status()` 查看状态，`claim_task()` 认领，`release_task()` 释放\n");
-        sb.append("   - `complete_task()` 完成，`fail_task()` 失败\n");
-        sb.append("   - `list_all_tasks()` 列出所有，`get_claimable_tasks()` 获取可认领\n");
-        sb.append("3. **子代理调用**: 使用 `task()` 委派专门任务（支持会话续接）【强制使用】\n");
-        sb.append("4. **团队成员管理**: 使用 `teammate()` 创建，`teammates()` 列出，`remove_teammate()` 移除\n");
-        sb.append("5. **智能记忆管理**: 使用 `memory_store()` 自动分类存储（推荐）\n");
-        sb.append("   - 自动分类：决策→永久、任务→7天、临时→10分钟\n");
-        sb.append("   - 自动评分：多维度评估记忆重要性（0-10分）\n");
-        sb.append("   - 智能检索：`memory_recall()` 按相关性排序\n");
-        sb.append("6. **工作记忆**: `get_working_memory()` 查看，`update_working_memory()` 更新\n");
-        sb.append("7. **多专家讨论**: \n");
-        sb.append("   - **简单讨论**（3位以内专家）：使用多轮 `task()` 调用，传递前一位专家的观点\n");
-        sb.append("   - **复杂讨论**（4位以上专家）：使用讨论板 `create_discussion_board()`\n");
-        sb.append("   - `create_discussion_board()` 创建讨论板\n");
-        sb.append("   - `append_discussion_board()` 追加专家观点\n");
-        sb.append("   - `get_discussion_board()` 获取完整讨论\n");
-        sb.append("8. **代理间通信**: 使用 `send_message()` 发送消息，`list_agents()` 查看可用代理\n");
-        sb.append("9. **团队命名**: 使用 `suggest_team_name()` 获取命名建议\n\n");
+        sb.append("### 4. 智能记忆应用规范\n");
+        sb.append("- **优先使用 `memory_store`**：系统会自动根据内容特征实现分级存储（永久/长期/临时）。\n");
+        sb.append("- **关键上下文提取**：在委派任务给新专家时，必须从 `memory_recall` 提取相关架构或协议约束，作为 context 注入。\n\n");
 
-        sb.append("### 强制委派准则\n");
-        sb.append("- **项目认知**: 探索项目、分析架构 → 委派给子代理\n");
-        sb.append("- **复杂变更**: 跨文件修复、重构 → 委派给子代理\n");
-        sb.append("- **决策量化**: 超过 3 次工具调用 → 改用子代理\n");
-        sb.append("- **所有开发任务**: 必须使用 `task(name='bash', ...)` 实际创建文件\n\n");
+        sb.append("### 5. 团队通信规范\n");
+        sb.append("- **send_message**：用于向已存在的子代理发送指令更新或询问状态。\n");
+        sb.append("- **list_agents**：在创建 `teammate` 前，先查看当前活跃的代理列表避免重复创建。\n\n");
 
-        sb.append("### 可用的子代理\n");
-        sb.append("<available_agents>\n");
-        // 只显示自定义团队成员（有 teamName 的）
-        for (AgentDefinition agent : getAgentManager().getAgents()) {
-            if (agent.getMetadata().hasTeamName()) {
-                sb.append(String.format("  - `%s`: %s (团队: %s)\n",
-                        agent.getName(),
-                        agent.getDescription(),
-                        agent.getMetadata().getTeamName()));
-            }
-        }
-        sb.append("</available_agents>\n\n");
-
-        // ========== 团队成员管理 ==========
-        sb.append("### 团队成员管理\n");
-        sb.append("1. **创建成员**: 使用 `teammate()` 创建新的团队成员\n");
-        sb.append("2. **列出成员**: 使用 `teammates()` 查看所有团队成员（表格格式）\n");
-        sb.append("3. **移除成员**: 使用 `remove_teammate()` 移除团队成员\n\n");
-        sb.append("### 团队成员配置选项\n\n");
-        sb.append("**基本配置**:\n");
-        sb.append("- `name`: 成员唯一标识（如：security-expert）\n");
-        sb.append("- `description`: 详细职责描述\n");
-        sb.append("- `teamName`: 团队名称（可选，自动生成）\n\n");
-        sb.append("**技能与工具配置**:\n");
-        sb.append("- `expertise`: 专业领域（如：security,auth,encryption）\n");
-        sb.append("- `skills`: 启用的技能列表（如：expert,terminal,lucene）\n");
-        sb.append("- `tools`: 启用的工具列表（如：read,write,edit,browser）\n");
-        sb.append("- `disallowedTools`: 禁用的工具列表\n");
-        sb.append("- `mcpServers`: 启用的 MCP 服务器\n");
-        sb.append("- `includeAgentTeamsTools`: 引入记忆管理工具（默认true）\n\n");
-        sb.append("**可用工具参考**:\n");
-        sb.append("- **文件操作**: `read`, `write`, `edit`, `ls`, `find`（由子代理提供）\n");
-        sb.append("- **浏览器**: `browser_screenshot`, `browser_interact`, `browser_navigate`（由子代理提供）\n");
-        sb.append("- **记忆管理**: `memory_store`, `memory_recall`, `memory_stats`\n");
-        sb.append("- **工作记忆**: `get_working_memory`, `update_working_memory`\n");
-        sb.append("- **任务管理**: `analyze_tasks`, `create_task`, `create_tasks`, `remove_task`, `team_status`, `claim_task`, `release_task`, `complete_task`, `fail_task`, `list_all_tasks`\n");
-        sb.append("- **团队协作**: `task`（子代理调用）, `teammate`, `teammates`, `remove_teammate`\n");
-        sb.append("- **代理通信**: `send_message`, `list_agents`, `get_message_stats`\n");
-        sb.append("- **团队命名**: `suggest_team_name`\n\n");
-        sb.append("**使用示例**:\n");
-        sb.append("```bash\n");
-        sb.append("# 创建带记忆管理工具的成员\n");
-        sb.append("teammate(\n");
-        sb.append("    name=\"analyst\",\n");
-        sb.append("    role=\"数据分析师\",\n");
-        sb.append("    description=\"负责数据分析和报告生成\",\n");
-        sb.append("    skills=\"expert,lucene\",\n");
-        sb.append("    tools=\"read,write,ls\"\n");
-        sb.append(")\n\n");
-        sb.append("# 创建带浏览器工具的成员\n");
-        sb.append("teammate(\n");
-        sb.append("    name=\"browser-bot\",\n");
-        sb.append("    role=\"浏览器自动化专家\",\n");
-        sb.append("    tools=\"browser_screenshot,browser_interact,browser_navigate\"\n");
-        sb.append(")\n\n");
-        sb.append("# 创建禁用某些工具的成员\n");
-        sb.append("teammate(\n");
-        sb.append("    name=\"read-only-expert\",\n");
-        sb.append("    role=\"只读代码审查专家\",\n");
-        sb.append("    disallowedTools=\"write,edit,bash\"\n");
-        sb.append(")\n");
-        sb.append("```\n\n");
-
-        sb.append("### 任务链协调：如何将结果传递给下一个 subagent\n\n");
-        sb.append("** 重要：完成任务链协调的三种方法**\n\n");
-        sb.append("**方法 1：在 prompt 中传递上下文（推荐）**\n");
-        sb.append("```\n");
-        sb.append("# 第一步：plan 完成设计\n");
-        sb.append("result1 = task(name='plan', prompt='设计用户登录模块')\n");
-        sb.append("\n");
-        sb.append("# 第二步：传递给 bash\n");
-        sb.append("task(\n");
-        sb.append("    name='bash',\n");
-        sb.append("    prompt='<context>基于以下设计：' + result1 + '</context>创建代码'\n");
-        sb.append(")\n");
-        sb.append("```\n\n");
-        sb.append("**方法 2：使用共享记忆**\n");
-        sb.append("```\n");
-        sb.append("result1 = task(name='plan', prompt='设计...')\n");
-        sb.append("memory_store(content=result1, key='design')\n");
-        sb.append("design = memory_recall(query='设计', limit=1)\n");
-        sb.append("task(name='bash', prompt='<context>' + design + '</context>创建代码')\n");
-        sb.append("```\n\n");
-        sb.append("**方法 3：使用 taskId 续接会话**\n");
-        sb.append("```\n");
-        sb.append("result1 = task(name='explore', prompt='分析项目')\n");
-        sb.append("# 返回 task_id: explore_12345\n");
-        sb.append("result2 = task(\n");
-        sb.append("    name='explore',\n");
-        sb.append("    prompt='深入分析 Controller 层',\n");
-        sb.append("    taskId='explore_12345'  # 续接之前的会话\n");
-        sb.append(")\n");
-        sb.append("```\n\n");
-        sb.append("**详细指南**：参考项目文档 `docs/TASK_CHAIN_GUIDE.md`\n\n");
-
-        // ========== 使用场景 ==========
-        sb.append("### 使用场景\n");
-        sb.append("```\n");
-        sb.append("# 场景1: 创建团队成员（指定团队）\n");
-        sb.append("teammate(\n");
-        sb.append("    name=\"security-expert\",\n");
-        sb.append("    role=\"security-expert\",\n");
-        sb.append("    description=\"专注于安全审计、漏洞检测\",\n");
-        sb.append("    teamName=\"myteam\"              # 指定团队名称\n");
-        sb.append(")\n");
-        sb.append("# 生成文件: .soloncode/agentsTeams/myteam/security-expert.md\n\n");
-        sb.append("# 场景2: 创建成员（不指定团队，智能生成）\n");
-        sb.append("teammate(\n");
-        sb.append("    name=\"db-optimizer\",\n");
-        sb.append("    role=\"db-optimizer\",\n");
-        sb.append("    description=\"SQL 查询优化\"\n");
-        sb.append(")\n");
-        sb.append("# 智能生成团队名: database-team (根据关键词自动识别)\n");
-        sb.append("# 生成文件: .soloncode/agentsTeams/database-team/db-optimizer.md\n");
-        sb.append("# 团队名会保存到内存，后续创建会自动使用同一团队\n\n");
-        sb.append("# 场景3: 查看所有成员\n");
-        sb.append("teammates()\n\n");
-        sb.append("# 场景4: 启动团队协作任务\n");
-        sb.append("team_task(\"实现用户登录功能\")\n\n");
-        sb.append("# 场景5: 查看任务状态\n");
-        sb.append("team_status()\n\n");
-        sb.append("# 场景6: 多专家讨论（简单模式 - 多轮调用）\n");
-        sb.append("# 适用于：3位以内专家，需要互相质疑、补充\n");
-        sb.append("result1 = task(name=\"security\", prompt=\"评审登录设计\")\n");
-        sb.append("result2 = task(name=\"performance\", prompt=\"安全专家建议：\" + result1 + \"\\n请从性能角度回应\")\n");
-        sb.append("result3 = task(name=\"arch\", prompt=\"前两位专家讨论如下，请给出折中方案：\" + result1 + result2)\n");
-        sb.append("# 汇总三位专家的讨论结果\n\n");
-        sb.append("# 场景7: 多专家讨论（复杂模式 - 讨论板）\n");
-        sb.append("# 适用于：4位以上专家，或需要长期记录的讨论\n");
-        sb.append("# 步骤1: 创建讨论板\n");
-        sb.append("board = create_discussion_board(topic=\"评审登录API设计\")\n");
-        sb.append("# 返回: boardId = \"discussion-1234567890\"\n\n");
-        sb.append("# 步骤2: 让第一位专家发言\n");
-        sb.append("result1 = task(\n");
-        sb.append("    name=\"security\",\n");
-        sb.append("    prompt=\"阅读讨论板：\" + get_discussion_board(boardId) + \"\\n发表你的观点\"\n");
-        sb.append(")\n");
-        sb.append("append_discussion_board(boardId, \"security\", result1)\n\n");
-        sb.append("# 步骤3: 让第二位专家回应\n");
-        sb.append("result2 = task(\n");
-        sb.append("    name=\"performance\",\n");
-        sb.append("    prompt=\"阅读讨论板：\" + get_discussion_board(boardId) + \"\\n请回应或质疑专家A\"\n");
-        sb.append(")\n");
-        sb.append("append_discussion_board(boardId, \"performance\", result2)\n\n");
-        sb.append("# 步骤4: 让更多专家参与...\n");
-        sb.append("# 每位专家都能看到完整的讨论记录\n\n");
-        sb.append("# 步骤5: 获取完整讨论\n");
-        sb.append("full_discussion = get_discussion_board(boardId)\n");
-        sb.append("# 汇总所有专家的观点\n\n");
-        sb.append("# 场景8: 查看任务状态\n");
-        sb.append("team_status()\n\n");
-        sb.append("# 场景6: 智能记忆存储（推荐使用）\n");
-        sb.append("# 自动分类存储（系统自动判断存储类型和周期）\n");
-        sb.append("memory_store(content=\"采用三层架构：Controller-Service-Repository\", key=\"架构决策\")\n");
-        sb.append("# → 系统识别为架构决策，自动分类到永久记忆（重要性评分: 8.5/10）\n\n");
-        sb.append("# 存储任务完成结果\n");
-        sb.append("memory_store(content=\"已完成JWT认证，包括登录、登出、token刷新\", key=\"登录功能\")\n");
-        sb.append("# → 系统识别为任务结果，自动分类到长期记忆（7天，重要性评分: 7.2/10）\n\n");
-        sb.append("# 存储临时上下文\n");
-        sb.append("memory_store(content=\"正在实现Service层\", key=\"当前步骤\")\n");
-        sb.append("# → 系统识别为临时上下文，自动分类到工作记忆（10分钟，重要性评分: 3.5/10）\n\n");
-        sb.append("# 场景7: 智能检索记忆\n");
-        sb.append("memory_recall(query=\"登录功能\", limit=5)\n");
-        sb.append("# → 返回最相关的 5 条记忆，按相关性排序\n\n");
-        sb.append("# 场景8: 查看记忆统计\n");
-        sb.append("memory_stats()\n");
-        sb.append("# → 显示各层级记忆数量、智能层状态、内存使用情况\n\n");
-        sb.append("# 场景9: 代理间通信\n");
-        sb.append("# 向 explore 代理发送消息\n");
-        sb.append("send_message(\n");
-        sb.append("    targetAgent=\"explore\",\n");
-        sb.append("    message=\"请探索项目的目录结构，重点关注 src/main/java 目录\"\n");
-        sb.append(")\n\n");
-        sb.append("# 向 plan 代理发送消息\n");
-        sb.append("send_message(\n");
-        sb.append("    targetAgent=\"plan\",\n");
-        sb.append("    message=\"需要设计一个用户认证模块，请提供实现方案\"\n");
-        sb.append(")\n\n");
-        sb.append("# 查看可用代理列表\n");
-        sb.append("list_agents()\n");
-        sb.append("```\n\n");
-
-        // ========== 记忆管理说明 ==========
-        sb.append("### 记忆管理说明\n");
-        sb.append("**智能记忆系统**（推荐使用）:\n");
-        sb.append("- **memory_store(content, key?)**: 自动分类存储\n");
-        sb.append("  - 决策类（\"决策\"、\"架构\"、\"采用\"）→ 永久记忆\n");
-        sb.append("  - 任务类（\"完成\"、\"实现\"、\"修复\"）→ 长期记忆（7天）\n");
-        sb.append("  - 临时类（\"正在\"、\"尝试\"、\"临时\"）→ 工作记忆（10分钟）\n");
-        sb.append("  - 知识类（\"API\"、\"设计\"、\"配置\"）→ 永久记忆\n");
-        sb.append("  - 自动评分：基于内容、类型、关键词、时间、访问频率\n");
-        sb.append("- **memory_recall(query, limit?)**: 智能检索（按相关性排序）\n");
-        sb.append("- **memory_stats()**: 查看统计信息\n\n");
-        sb.append("**记忆数量优化**:\n");
-        sb.append("- 从 15+ 个工具简化到 3 个核心工具\n");
-        sb.append("- 自动分类：无需手动选择记忆类型\n");
-        sb.append("- 智能检索：只返回最相关的记忆，减少 token 消耗\n");
-        sb.append("```\n");
+        sb.append("> **提示**：你是团队的大脑，子代理是你的手。你负责思考‘怎么做’并监督‘做得如何’。");
 
         return sb.toString();
     }

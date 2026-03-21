@@ -91,9 +91,6 @@ public class MainAgent {
 
     private static final long SUBAGENT_STREAM_TIMEOUT_MS = 180_000;
 
-    private final AgentTeamsSkill agentTeamsSkill;
-    private final SharedMemorySkill sharedMemorySkill;
-
     /**
      * 完整构造函数（支持 subagent 功能）
      */
@@ -113,12 +110,6 @@ public class MainAgent {
         this.messageChannel = messageChannel;
         this.taskList = taskList;
         this.workDir = workDir;
-
-        this.agentTeamsSkill = new AgentTeamsSkill(
-                agentRuntime,
-                this
-        );
-        this.sharedMemorySkill =  new SharedMemorySkill(sharedMemoryManager, this.getEventBus());
 
 
         // 注册任务事件监听器
@@ -195,14 +186,7 @@ public class MainAgent {
 
             // 2. 执行主代理内部的协调逻辑（流式输出）
             // 注意：任务分解现在由 Agent 通过工具自主决定
-
-           ReActAgent.Builder agentBuilder = agentDefinition.builder(agentRuntime);
-
-            agentBuilder.defaultSkillAdd(agentTeamsSkill);
-            agentBuilder.defaultSkillAdd(sharedMemorySkill);
-
-
-            Flux<AgentChunk> responseStream = agentBuilder.build()
+            Flux<AgentChunk> responseStream = agentDefinition.builder(agentRuntime).build()
                     .prompt(prompt)
                     .session(session)
                     .options(o -> {

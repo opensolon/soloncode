@@ -84,6 +84,16 @@ public class TeamReActExtension implements ReActAgentExtension {
             );
 
 
+
+            AgentTeamsSkill agentTeamsSkill = new AgentTeamsSkill(
+                    agentRuntime,
+                    mainAgent
+            );
+            SharedMemorySkill sharedMemorySkill =  new SharedMemorySkill(memoryManager, eventBus);
+
+            agentBuilder.defaultSkillAdd(agentTeamsSkill);
+            agentBuilder.defaultSkillAdd(sharedMemorySkill);
+
             LOG.debug("Agent Teams 模式初始化完成 [OK]");
 
         } catch (Throwable e) {
