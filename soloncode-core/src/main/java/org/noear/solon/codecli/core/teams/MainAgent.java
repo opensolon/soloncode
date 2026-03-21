@@ -21,7 +21,7 @@ import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.codecli.core.AgentRuntime;
@@ -769,7 +769,7 @@ public class MainAgent {
                         LOG.debug("[mainAgent] 收到chunk: type={}, chunkType={}, total={}",
                                 name, chunk.getClass().getSimpleName(), chunkCount[0]);
 
-                        if (chunk instanceof ActionChunk) {
+                        if (chunk instanceof ActionEndChunk) {
                             __parentTrace.getOptions().getStreamSink().next(chunk);
                         } else if (chunk instanceof ReasonChunk) {
                             __parentTrace.getOptions().getStreamSink().next(chunk);

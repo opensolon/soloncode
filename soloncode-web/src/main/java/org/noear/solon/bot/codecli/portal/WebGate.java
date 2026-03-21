@@ -20,7 +20,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.codecli.core.AgentRuntime;
@@ -124,8 +124,8 @@ public class WebGate implements Handler {
                                             .toJson();
                                 }
                             }
-                        } else if (chunk instanceof ActionChunk) {
-                            ActionChunk action = (ActionChunk) chunk;
+                        } else if (chunk instanceof ActionEndChunk) {
+                            ActionEndChunk action = (ActionEndChunk) chunk;
                             ONode oNode = new ONode().set("type", "action")
                                     .set("text", chunk.getContent());
 

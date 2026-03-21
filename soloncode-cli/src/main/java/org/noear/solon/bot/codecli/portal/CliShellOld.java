@@ -29,7 +29,8 @@ import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ActionEndChunk;
+import org.noear.solon.ai.agent.react.task.ActionStartChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -152,9 +153,12 @@ public class CliShellOld implements Runnable {
                         if (chunk instanceof ReasonChunk) {
                             // ReasonChunk 非工具调用时，为流式增量（工具调用时为全量，不需要打印）
                             onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
-                        } else if (chunk instanceof ActionChunk) {
-                            //ActionChunk 为全量，一次工具调用一个 ActionChunk
-                            onActionChunk((ActionChunk) chunk, isFirstReasonChunk);
+                        } else if (chunk instanceof ActionStartChunk) {
+                            //ActionStartChunk 为全量，一次工具调用一个 ActionStartChunk
+                            onActionStartChunk((ActionStartChunk) chunk, isFirstReasonChunk);
+                        } else if (chunk instanceof ActionEndChunk) {
+                            //ActionEndChunk 为全量，一次工具调用一个 ActionEndChunk
+                            onActionEndChunk((ActionEndChunk) chunk, isFirstReasonChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
                             onFinalChunk((ReActChunk) chunk, isFirstReasonChunk, isFirstConversation);
@@ -305,7 +309,46 @@ public class CliShellOld implements Runnable {
         }
     }
 
-    private void onActionChunk(ActionChunk action, AtomicBoolean isFirstReasonChunk) {
+    private void onActionStartChunk(ActionStartChunk action, AtomicBoolean isFirstReasonChunk) {
+        if ("task".equals(action.getToolName())) {
+            final String fullToolName;
+
+            if (kernel.getName().equals(action.getAgentName())) {
+                fullToolName = action.getToolName();
+            } else {
+                fullToolName = action.getAgentName() + "/" + action.getToolName();
+            }
+
+
+            // 1. 准备参数字符串
+            StringBuilder argsBuilder = new StringBuilder();
+            Map<String, Object> args = action.getArgs();
+            if (args != null && !args.isEmpty()) {
+                args.forEach((k, v) -> {
+                    if (argsBuilder.length() > 0) argsBuilder.append(" ");
+                    argsBuilder.append(k).append("=").append(v);
+                });
+            }
+            String argsStr = argsBuilder.toString().replace("\n", " ");
+
+            {
+                String summary = "start";
+
+                // 简化模式下，参数也进行极简压缩
+                String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
+
+                terminal.writer().println();
+                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
+                terminal.flush();
+
+            }
+
+            // 3. 接下来 AI 可能会针对这个结果进行分析 (Reasoning)，设置首行缩进标记
+            isFirstReasonChunk.set(true);
+        }
+    }
+
+    private void onActionEndChunk(ActionEndChunk action, AtomicBoolean isFirstReasonChunk) {
         if (Assert.isNotEmpty(action.getToolName())) {
             final String fullToolName;
 

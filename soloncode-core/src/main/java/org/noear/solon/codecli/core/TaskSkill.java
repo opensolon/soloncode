@@ -20,7 +20,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -162,7 +162,7 @@ public class TaskSkill extends AbsSkill {
                             })
                             .stream()
                             .doOnNext(chunk -> {
-                                if(chunk instanceof ActionChunk) {
+                                if(chunk instanceof ActionEndChunk) {
                                     __parentTrace.getOptions().getStreamSink().next(chunk);
                                 } else if(chunk instanceof ReasonChunk){
                                     __parentTrace.getOptions().getStreamSink().next(chunk);

@@ -750,7 +750,7 @@
             }
         }
 
-        function appendActionChunk(toolName, text) {
+        function appendActionEndChunk(toolName, text) {
             finishPendingTool();
             ensureAssistantBubble();
 
@@ -984,7 +984,7 @@
                 switch (chunk.type) {
                     case 'reason': finishPendingTool(); appendReasonChunk(chunk.text); break;
                     case 'text':   finishThinkingBlock(); finishPendingTool(); appendContentChunk(chunk.text, true); break;
-                    case 'action': finishThinkingBlock(); appendActionChunk(chunk.toolName, chunk.text); break;
+                    case 'action': finishThinkingBlock(); appendActionEndChunk(chunk.toolName, chunk.text); break;
                     case 'agent':  finishThinkingBlock(); finishPendingTool(); appendContentChunk(chunk.text, false); break;
                     case 'error':  finishThinkingBlock(); appendErrorChunk(chunk.text); break;
                     case 'hitl':   finishThinkingBlock(); finishPendingTool(); appendHitlCard(chunk.toolName, chunk.command); break;

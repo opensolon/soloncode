@@ -6,7 +6,7 @@ import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
-import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.PlanChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.content.Contents;
@@ -92,8 +92,8 @@ public class AcpLink implements Runnable{
                                     }
                                 }
                                 // --- 工具执行阶段 (Action/Observation) ---
-                                else if (chunk instanceof ActionChunk) {
-                                    ActionChunk actionChunk = (ActionChunk) chunk;
+                                else if (chunk instanceof ActionEndChunk) {
+                                    ActionEndChunk actionChunk = (ActionEndChunk) chunk;
                                     String toolName = actionChunk.getToolName();
                                     String content = chunk.getContent();
 

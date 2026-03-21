@@ -32,7 +32,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.agent.react.task.ActionChunk;
+import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -418,8 +418,8 @@ public class CliShellNew implements Runnable {
 
                     if (chunk instanceof ReasonChunk) {
                         onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
-                    } else if (chunk instanceof ActionChunk) {
-                        onActionChunk((ActionChunk) chunk, isFirstReasonChunk);
+                    } else if (chunk instanceof ActionEndChunk) {
+                        onActionEndChunk((ActionEndChunk) chunk, isFirstReasonChunk);
                     } else if (chunk instanceof ReActChunk) {
                         onFinalChunk((ReActChunk) chunk, isFirstReasonChunk, isFirstConversation);
                     }
@@ -617,7 +617,7 @@ public class CliShellNew implements Runnable {
         }
     }
 
-    private void onActionChunk(ActionChunk action, AtomicBoolean isFirstReasonChunk) {
+    private void onActionEndChunk(ActionEndChunk action, AtomicBoolean isFirstReasonChunk) {
         // 如果 thinking 还在进行，先结束
         if (thinkingStarted) {
             flushLineBuffer();
