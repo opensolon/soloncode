@@ -202,9 +202,6 @@ public class AgentRuntime {
         agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
 
         if (properties.isSubagentEnabled()) {
-            agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
-            agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
-            agentBuilder.defaultSkillAdd(cliSkills);
             agentBuilder.defaultSkillAdd(todoSkill);
 
 
