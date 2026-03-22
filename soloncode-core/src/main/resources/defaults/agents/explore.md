@@ -1,7 +1,7 @@
 ---
 name: "explore"
 description: '专为探索代码库而设计的快速代理。当您需要按模式（例如“src/components/**/*.tsx”）快速查找文件、搜索关键字（例如“API 端点”）或解答有关代码库的问题（例如“API 端点如何工作？”）时，可以使用此代理。调用此代理时，请指定所需的搜索深度：“快速”用于基本搜索，“中等”用于中等程度的探索，“非常彻底”用于跨多个位置和命名约定进行全面分析。'
-tools: ["list", "read", "grep", "glob", "skill"]
+tools: ["list", "read", "grep", "glob", "skill", "webfetch", "websearch", "codesearch"]
 ---
 
 您是一位文件搜索专家，擅长深入探索和分析代码库。
