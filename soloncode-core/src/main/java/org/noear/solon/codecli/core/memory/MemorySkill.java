@@ -37,27 +37,14 @@ import java.util.List;
  * @since 3.9.5
  */
 public class MemorySkill extends AbsSkill {
-
     private static final Logger LOG = LoggerFactory.getLogger(MemorySkill.class);
-
-    private static MemorySkill instance = null;
 
     private final MemoryManager memoryManager;
 
     public MemorySkill(MemoryManager memoryManager) {
         this.memoryManager = memoryManager;
-
-        if (instance == null){
-            instance = this;
-        }
     }
 
-    public static MemorySkill getInstance(){
-        if (instance == null){
-            throw new RuntimeException("AgentTeamsTools is not initialized");
-        }
-        return instance;
-    }
 
     @Override
     public String description() {
