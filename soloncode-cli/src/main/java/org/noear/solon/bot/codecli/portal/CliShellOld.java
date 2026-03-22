@@ -31,6 +31,7 @@ import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
+import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.codecli.core.AgentRuntime;
@@ -179,6 +180,9 @@ public class CliShellOld implements Runnable {
                         if (chunk instanceof ReasonChunk) {
                             // ReasonChunk 非工具调用时，为流式增量（工具调用时为全量，不需要打印）
                             onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
+                        } else if (chunk instanceof ThoughtChunk) {
+                            //ThoughtChunk 为全量（ReasonChunk 的汇总）
+                            onThoughtChunk((ThoughtChunk) chunk);
                         } else if (chunk instanceof ActionEndChunk) {
                             //ActionEndChunk 为全量，一次工具调用一个 ActionEndChunk
                             onActionEndChunk((ActionEndChunk) chunk, isFirstReasonChunk);
@@ -329,6 +333,21 @@ public class CliShellOld implements Runnable {
                 terminal.writer().print(delta.replace("\n", "\n  "));
             }
             terminal.flush();
+        }
+    }
+
+
+    private void onThoughtChunk(ThoughtChunk thought) {
+        if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+            // 仅在多任务并行且有内容时输出
+            String content = thought.getAssistantMessage().getResultContent();
+            if (Assert.isNotEmpty(content)) {
+                // 保持 Claude 风格的间接缩进，去掉首尾多余换行
+                terminal.writer().println();
+                terminal.writer().print("  " + content.trim().replace("\n", "\n  "));
+                terminal.writer().println();
+                terminal.flush();
+            }
         }
     }
 
