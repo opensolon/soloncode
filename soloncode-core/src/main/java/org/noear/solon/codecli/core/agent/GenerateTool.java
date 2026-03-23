@@ -29,7 +29,9 @@ public class GenerateTool {
     }
 
     @ToolMapping(name = "generate_agent",
-            description = "动态创建一个具有特定能力和系统提示词的子代理（优先使用 general 子代理）。")
+            description = "动态创建一个具有特定能力和系统提示词的子代理\n" +
+                    "- 优先使用 general 子代理（如果它不适合，才考虑创建新的子代理）\n" +
+                    "- 创建前，可以先查阅任务相关的专家技能（如果有，可以更好的为子代理设计系统提示词）")
     public String generateAgent(
             @Param(name = "name", description = "子代理的唯一英文标识符（如 code_reviewer）") String name,
             @Param(name = "description", description = "简要描述该代理的职责") String description,
