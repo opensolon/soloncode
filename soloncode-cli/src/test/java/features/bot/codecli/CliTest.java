@@ -1,6 +1,6 @@
 package features.bot.codecli;
 
-import org.noear.solon.bot.codecli.App;
+import org.noear.solon.codecli.App;
 
 public class CliTest {
     public static void main(String[] args) {

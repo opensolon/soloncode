@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.bot.codecli.portal;
+package org.noear.solon.codecli.portal;
 
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;

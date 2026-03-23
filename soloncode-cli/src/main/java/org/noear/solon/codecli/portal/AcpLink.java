@@ -1,4 +1,4 @@
-package org.noear.solon.bot.codecli.portal;
+package org.noear.solon.codecli.portal;
 
 import com.agentclientprotocol.sdk.agent.AcpAgent;
 import com.agentclientprotocol.sdk.agent.AcpAsyncAgent;

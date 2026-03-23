@@ -13,34 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.bot.codecli;
+package org.noear.solon.codecli;
 
-import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
-import com.agentclientprotocol.sdk.agent.transport.WebSocketSolonAcpAgentTransport;
-import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
-import io.modelcontextprotocol.json.McpJsonMapper;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.skills.browser.BrowserManager;
-import org.noear.solon.bot.codecli.portal.CliShellOld;
-import org.noear.solon.codecli.core.AgentProperties;
-import org.noear.solon.bot.codecli.portal.AcpLink;
+import org.noear.solon.codecli.portal.WebGate;
 import org.noear.solon.codecli.core.AgentRuntime;
-import org.noear.solon.bot.codecli.portal.WebGate;
-import org.noear.solon.core.event.AppStopEndEvent;
+import org.noear.solon.codecli.core.AgentProperties;
 
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Cli 应用
- *
- * @author noear
- * @since 3.9.1
+ * Web 启动类
+ * @author oisin
+ * @date 2026年3月13日
  */
 public class App {
 
@@ -58,10 +49,6 @@ public class App {
                 app.enableHttp(true);
                 app.enableWebSocket(true);
             }
-
-            app.onEvent(AppStopEndEvent.class, e -> {
-                BrowserManager.closeAll();
-            });
         });
 
         AgentProperties agentProperties = Solon.context().getBean(AgentProperties.class);
@@ -83,25 +70,8 @@ public class App {
                 .sessionProvider(sessionProvider)
                 .build();
 
-
-        if (agentProperties.isCliEnabled()) {
-            new Thread(new CliShellOld(agentKernel), "CLI-Interactive-Thread").start();
-        }
-
         if (agentProperties.isWebEnabled()) {
             Solon.app().router().get(agentProperties.getWebEndpoint(), new WebGate(agentKernel));
-        }
-
-        if (agentProperties.isAcpEnabled()) {
-            AcpAgentTransport agentTransport;
-            if ("stdio".equals(agentProperties.getAcpTransport())) {
-                agentTransport = new StdioAcpAgentTransport();
-            } else {
-                agentTransport = new WebSocketSolonAcpAgentTransport(
-                        agentProperties.getAcpTransport(), McpJsonMapper.getDefault());
-            }
-
-            new AcpLink(agentKernel, agentTransport).run();
         }
     }
 }

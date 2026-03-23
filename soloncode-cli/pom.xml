@@ -63,7 +63,7 @@
                 <artifactId>solon-maven-plugin</artifactId>
                 <configuration>
                     <finalName>${project.artifactId}</finalName>
-                    <mainClass>org.noear.solon.bot.codecli.App</mainClass>
+                    <mainClass>org.noear.solon.codecli.App</mainClass>
                 </configuration>
             </plugin>
 

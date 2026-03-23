@@ -1,6 +1,6 @@
 package features.bot.codeweb;
 
-import org.noear.solon.bot.codecli.App;
+import org.noear.solon.codecli.App;
 
 /**
  *

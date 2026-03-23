@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.bot.codecli.portal;
+package org.noear.solon.codecli.portal;
 
 import org.jline.keymap.KeyMap;
 import org.jline.reader.EndOfFileException;
@@ -36,10 +36,10 @@ import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.bot.codecli.portal.ui.CommandRegistry;
-import org.noear.solon.bot.codecli.portal.ui.SlashCommandCompleter;
-import org.noear.solon.bot.codecli.portal.ui.MarkdownRenderer;
-import org.noear.solon.bot.codecli.portal.ui.StatusBar;
+import org.noear.solon.codecli.portal.ui.CommandRegistry;
+import org.noear.solon.codecli.portal.ui.SlashCommandCompleter;
+import org.noear.solon.codecli.portal.ui.MarkdownRenderer;
+import org.noear.solon.codecli.portal.ui.StatusBar;
 import org.noear.solon.codecli.core.AgentRuntime;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;

@@ -7,7 +7,7 @@
  *
  * https://www.apache.org/licenses/LICENSE-2.0
  */
-package org.noear.solon.bot.codecli.portal.ui;
+package org.noear.solon.codecli.portal.ui;
 
 /**
  * 流式 Markdown 渲染器 — 接收逐字符/逐 token 输入，输出 ANSI 彩色终端文本
