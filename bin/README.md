@@ -42,6 +42,7 @@ Solon Code CLI 是基于 Solon AI 框架构建的高性能、自主式 AI 终端
 
 ### 3、补充：扩展技能 (Skills) 下载
 
+* https://github.com/opensolon/skills （内部只有一个 solon 框架开发技能）
 * https://github.com/zrt-ai-lab/opencode-skills
 * https://github.com/openclaw/skills
 * https://github.com/anthropics/skills
