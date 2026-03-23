@@ -76,7 +76,6 @@ public class TaskSkill extends AbsSkill {
 
         sb.append("**规则提示**：\n");
         sb.append("1. **上下文隔离**: 子代理不共享主会话历史，请在 prompt 中提供必要的背景信息。\n");
-        sb.append("3. **任务 ID**: 若要持续跟踪某个子代理的对话，请务必记录并传回对应的 `task_id`。");
 
         return sb.toString();
     }
@@ -137,15 +136,7 @@ public class TaskSkill extends AbsSkill {
 
         String result = null;
         ReActAgent agent = agentDefinition.builder(agentRuntime).build();
-        final AgentSession session;
-
-        if (Assert.isEmpty(task.getTaskId())) {
-            session = InMemoryAgentSession.of(agent.name());
-        } else {
-            session = agentRuntime.getSession(task.getTaskId());
-        }
-
-        String finalSessionId = session.getSessionId();
+        final AgentSession session  = InMemoryAgentSession.of(agent.name());
 
         try {
             if (__parentTrace.getOptions().getStreamSink() == null) {
@@ -203,10 +194,6 @@ public class TaskSkill extends AbsSkill {
         StringBuilder buf = new StringBuilder();
 
         buf.append("<task_response>");
-        if (Assert.isNotEmpty(task.getTaskId())) {
-            buf.append("<task_id>").append(task.getTaskId()).append("</task_id>");
-        }
-
         buf.append("<agent_name>").append(task.getName()).append("</agent_name>");
         buf.append("<status>").append(successful ? "success" : "failure").append("</status>");
         buf.append("<content><![CDATA[").append(result != null ? result : "").append("]]></content>");
@@ -227,8 +214,6 @@ public class TaskSkill extends AbsSkill {
         private String prompt;
         @Param(name = "description", required = false, description = "简短的任务描述")
         private String description;
-        @Param(name = "taskId", required = false, description = "可选。若要继续之前的任务会话，请传入对应的 task_id")
-        private String taskId;
 
         public String getName() {
             return name;
@@ -242,15 +227,10 @@ public class TaskSkill extends AbsSkill {
             return description;
         }
 
-        public String getTaskId() {
-            return taskId;
-        }
-
         @Override
         public String toString() {
             return "TaskOp{" +
                     "name='" + name + '\'' +
-                    ", taskId='" + taskId + '\'' +
                     ", desc='" + description + '\'' +
                     '}';
         }
