@@ -1,11 +1,11 @@
 ---
 name: solon-development-skill
-description: "Specialized knowledge for developing Java applications with the Solon framework (v3.9.3). This skill should be used when users want to create, configure, or troubleshoot Solon-based Java projects, including web applications, microservices, AI integrations, flow orchestration, and cloud-native services. Solon is an independent Java enterprise framework (NOT based on Spring) with its own annotation system, IoC/AOP container, and plugin ecosystem."
+description: "Specialized knowledge for developing Java applications with the Solon framework (v3.9.6). This skill should be used when users want to create, configure, or troubleshoot Solon-based Java projects, including web applications, microservices, AI integrations, flow orchestration, and cloud-native services. Solon is an independent Java enterprise framework (NOT based on Spring) with its own annotation system, IoC/AOP container, and plugin ecosystem."
 ---
 
 # Solon Development Skill
 
-Provide expert guidance for building Java applications with the **Solon framework** (v3.9.3). Solon is an independent, full-scenario Java enterprise application development framework — it is **NOT compatible with Spring** and has its own architecture, annotations, and ecosystem built from scratch.
+Provide expert guidance for building Java applications with the **Solon framework** (v3.9.6). Solon is an independent, full-scenario Java enterprise application development framework — it is **NOT compatible with Spring** and has its own architecture, annotations, and ecosystem built from scratch.
 
 **Official website**: https://solon.noear.org  
 **GitHub**: https://github.com/opensolon/solon  
@@ -18,7 +18,7 @@ Provide expert guidance for building Java applications with the **Solon framewor
 2. **No Spring dependencies.** Never include `spring-boot-starter-*`, `spring-*`, or any Spring artifact in Solon projects. Solon uses `org.noear` group ID.
 3. **Configuration file is `app.yml`** (or `app.properties`), NOT `application.yml`.
 4. **Entry point** is `Solon.start(App.class, args)`, NOT `SpringApplication.run()`.
-5. **All examples must target version 3.9.3** unless the user specifies otherwise.
+5. **All examples must target version 3.9.6** unless the user specifies otherwise.
 6. **Parent POM** is `solon-parent` with `groupId=org.noear`.
 
 ## Quick Start Template
@@ -35,7 +35,7 @@ Provide expert guidance for building Java applications with the **Solon framewor
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solon-parent</artifactId>
-        <version>3.9.3</version>
+        <version>3.9.6</version>
     </parent>
 
     <groupId>com.example</groupId>

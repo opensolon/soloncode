@@ -1,6 +1,6 @@
 # Solon API Reference & Ecosystem Details
 
-> Version: 3.9.3 | Official: https://solon.noear.org | GitHub: https://github.com/opensolon
+> Version: 3.9.6 | Official: https://solon.noear.org | GitHub: https://github.com/opensolon
 
 ## 1. Core Annotations Reference
 
