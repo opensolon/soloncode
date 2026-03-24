@@ -185,9 +185,16 @@ public class AgentRuntime {
 
         cliSkills.getTerminalSkill().setSandboxMode(properties.isSandboxMode());
 
-        cliSkills.skillPool("@soloncode_skills", Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_SKILLS));
-        cliSkills.skillPool("@opencode_skills", Paths.get(properties.getWorkDir(), AgentRuntime.OPENCODE_SKILLS));
-        cliSkills.skillPool("@claude_skills", Paths.get(properties.getWorkDir(), AgentRuntime.CLAUDE_SKILLS));
+        cliSkills.skillPool("@soloncode_work_skills", Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_SKILLS));
+        cliSkills.skillPool("@opencode_work_skills", Paths.get(properties.getWorkDir(), AgentRuntime.OPENCODE_SKILLS));
+        cliSkills.skillPool("@claude_work_skills", Paths.get(properties.getWorkDir(), AgentRuntime.CLAUDE_SKILLS));
+
+        String userHome = System.getProperty("user.home");
+        if(Assert.isNotEmpty(userHome)) {
+            cliSkills.skillPool("@soloncode_shared_skills", Paths.get(userHome, AgentRuntime.SOLONCODE_SKILLS));
+            cliSkills.skillPool("@opencode_shared_skills", Paths.get(userHome, AgentRuntime.OPENCODE_SKILLS));
+            cliSkills.skillPool("@claude_shared_skills", Paths.get(userHome, AgentRuntime.CLAUDE_SKILLS));
+        }
 
         agentManager = new AgentManager();
         agentManager.agentPool(Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_AGENTS));
