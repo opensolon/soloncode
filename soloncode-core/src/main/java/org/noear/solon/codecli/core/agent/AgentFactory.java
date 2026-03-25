@@ -2,13 +2,11 @@ package org.noear.solon.codecli.core.agent;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
-import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.web.CodeSearchTool;
 import org.noear.solon.ai.skills.web.WebfetchTool;
 import org.noear.solon.ai.skills.web.WebsearchTool;
 import org.noear.solon.codecli.core.AgentRuntime;
 import org.noear.solon.core.util.Assert;
-import org.noear.solon.core.util.ClassUtil;
 
 /**
  * 代理工厂
@@ -112,7 +110,6 @@ public class AgentFactory {
 
                     case "*": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills());
-                        builder.defaultSkillAdd(LuceneSkill.getInstance());
                         builder.defaultToolAdd(agentRuntime.getTaskSkill());
 
                         builder.defaultToolAdd(agentRuntime.getTodoSkill());
