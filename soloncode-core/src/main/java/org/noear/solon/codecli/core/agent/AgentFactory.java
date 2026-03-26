@@ -110,15 +110,15 @@ public class AgentFactory {
 
                     case "*": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills());
-                        builder.defaultToolAdd(agentRuntime.getTaskSkill());
-
                         builder.defaultToolAdd(agentRuntime.getTodoSkill());
+                        builder.defaultToolAdd(agentRuntime.getCodeSkill());
+
                         builder.defaultToolAdd(WebfetchTool.getInstance());
                         builder.defaultToolAdd(WebsearchTool.getInstance());
                         builder.defaultToolAdd(CodeSearchTool.getInstance());
 
+                        builder.defaultToolAdd(agentRuntime.getTaskSkill());
 
-                        builder.defaultToolAdd(agentRuntime.getCodeSkill());
 
                         if (agentRuntime.getMcpProviders() != null) {
                             for (McpClientProvider mcpProvider : agentRuntime.getMcpProviders().getProviders().values()) {

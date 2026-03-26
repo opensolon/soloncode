@@ -203,25 +203,17 @@ public class AgentRuntime {
 
         agentBuilder.defaultInterceptorAdd(summarizationInterceptor);
 
-        if (properties.isSubagentEnabled()) {
-            //agentBuilder.defaultToolAdd(MemorySkill.getInstance());
-            agentBuilder.defaultSkillAdd(todoSkill);
-            agentBuilder.defaultSkillAdd(cliSkills.getExpertSkill());
+        agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
+        agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
+        agentBuilder.defaultToolAdd(CodeSearchTool.getInstance());
 
+        agentBuilder.defaultSkillAdd(getCliSkills());
+        agentBuilder.defaultSkillAdd(getTodoSkill());
+        agentBuilder.defaultSkillAdd(getCodeSkill());
+
+        if(properties.isSubagentEnabled()) {
+            agentBuilder.defaultSkillAdd(taskSkill);
             agentBuilder.defaultToolAdd(generateTool);
-
-            agentBuilder.defaultSkillAdd(taskSkill);
-        } else {
-            //agentBuilder.defaultToolAdd(MemorySkill.getInstance());
-            agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
-            agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
-            agentBuilder.defaultToolAdd(CodeSearchTool.getInstance());
-
-            agentBuilder.defaultSkillAdd(cliSkills);
-            agentBuilder.defaultSkillAdd(todoSkill);
-            agentBuilder.defaultSkillAdd(codeSkill);
-
-            agentBuilder.defaultSkillAdd(taskSkill);
         }
 
         if (getMcpProviders() != null) {
