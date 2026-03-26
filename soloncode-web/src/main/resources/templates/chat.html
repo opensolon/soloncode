@@ -29,6 +29,20 @@
         .sidebar-item-del:hover { background: #ef444422; color: #ef4444; }
         .sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; }
 
+        /* Streaming indicator for sidebar items */
+        .sidebar-item.streaming { border-left: 3px solid var(--accent); padding-left: 9px; }
+        .sidebar-item.streaming:hover .sidebar-item-del { display: none; }
+        .sidebar-item-spinner {
+            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: blob-spin 0.8s linear infinite;
+            margin-left: 6px;
+        }
+
         /* ===== Main ===== */
         .main-area { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; background: var(--bg-main); transition: background 0.3s; }
 
@@ -267,7 +281,7 @@
         <!-- Chat View -->
         <div class="chat-view" id="chatView">
             <div class="messages-wrap" id="messagesWrap">
-                <div class="messages-inner" id="messages"></div>
+                <!-- Per-session containers are added here dynamically -->
             </div>
             <div class="input-wrap">
                 <div class="input-box">
@@ -296,7 +310,6 @@
         /* ===== DOM ===== */
         var welcomeView = document.getElementById('welcomeView');
         var chatView = document.getElementById('chatView');
-        var messagesEl = document.getElementById('messages');
         var messagesWrap = document.getElementById('messagesWrap');
         var welcomeInput = document.getElementById('welcomeInput');
         var welcomeSendBtn = document.getElementById('welcomeSendBtn');
@@ -310,22 +323,72 @@
         /* ===== Constants ===== */
         var DOTS_HTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
 
-        /* ===== State ===== */
+        /* ===== Per-Session State ===== */
+        function SessionState(sessionId) {
+            this.sessionId = sessionId;
+            this.container = document.createElement('div');
+            this.container.className = 'messages-inner';
+            this.container.style.display = 'none';
+            messagesWrap.appendChild(this.container);
+            this.eventSource = null;
+            this.isStreaming = false;
+            this.currentBubbleEl = null;
+            this.reasonBuffer = '';
+            this.thinkingBlockEl = null;
+            this.thinkingBodyMdEl = null;
+            this.thinkingBodyWrapEl = null;
+            this.thinkingBuffer = '';
+            this.pendingToolCard = null;
+            this.thinkingEl = null;
+            this.inlineThinkingEl = null;
+            this.silenceTimer = null;
+            this.contentRafId = null;
+            this.reasonRafId = null;
+        }
+
+        var sessionMap = {};
+        var activeSessionId = null;
+
+        /* ===== Global State ===== */
         var SESSION_ID = 'web-' + Date.now().toString(36);
         var isStreaming = false;
-        var currentBubbleEl = null;
-        var reasonBuffer = '';
-        var eventSource = null;
-        var thinkingEl = null;
-        var pendingToolCard = null;
-        var thinkingBlockEl = null;
-        var thinkingBuffer = '';
+        var inChatMode = false;
         var chatHistory = [];
         var currentChatIndex = -1;
-        var inChatMode = false;
-        var pendingImageBase64 = null; // base64 data (no prefix)
+        var pendingImageBase64 = null;
         var pendingImageMime = null;
-        var silenceTimer = null;
+        var userScrolledUp = false;
+
+        /* ===== Session Helpers ===== */
+        function getOrCreateSession(sessionId) {
+            if (!sessionMap[sessionId]) {
+                sessionMap[sessionId] = new SessionState(sessionId);
+            }
+            return sessionMap[sessionId];
+        }
+
+        function setActiveSession(sessionId) {
+            if (activeSessionId && sessionMap[activeSessionId]) {
+                sessionMap[activeSessionId].container.style.display = 'none';
+            }
+            var sess = getOrCreateSession(sessionId);
+            sess.container.style.display = '';
+            activeSessionId = sessionId;
+            SESSION_ID = sessionId;
+            isStreaming = sess.isStreaming;
+            userScrolledUp = false;
+            if (isStreaming) setBtnStopMode();
+            else setBtnSendMode();
+        }
+
+        function deactivateSession() {
+            if (activeSessionId && sessionMap[activeSessionId]) {
+                sessionMap[activeSessionId].container.style.display = 'none';
+            }
+            activeSessionId = null;
+            isStreaming = false;
+            setBtnSendMode();
+        }
 
         /* ===== Image Paste ===== */
         var welcomeImgWrap = document.getElementById('welcomeImgWrap');
@@ -343,9 +406,9 @@
                     var file = items[i].getAsFile();
                     var reader = new FileReader();
                     reader.onload = function(evt) {
-                        var dataUrl = evt.target.result; // data:image/png;base64,xxxx
+                        var dataUrl = evt.target.result;
                         var parts = dataUrl.split(',');
-                        var meta = parts[0]; // data:image/png;base64
+                        var meta = parts[0];
                         pendingImageBase64 = parts[1];
                         pendingImageMime = meta.match(/data:(.*?);/)[1];
                         showImagePreview(dataUrl);
@@ -412,10 +475,9 @@
         }
         function switchToWelcomeMode() {
             inChatMode = false;
+            deactivateSession();
             welcomeView.style.display = '';
             chatView.classList.remove('active');
-            messagesEl.innerHTML = '';
-            resetStreamState();
             welcomeInput.focus();
         }
 
@@ -441,7 +503,11 @@
         chatInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
         welcomeSendBtn.addEventListener('click', function() { sendMessage(); });
         chatSendBtn.addEventListener('click', function() {
-            if (isStreaming) { finishStream(); } else { sendMessage(); }
+            if (isStreaming && activeSessionId && sessionMap[activeSessionId]) {
+                finishStream(sessionMap[activeSessionId]);
+            } else {
+                sendMessage();
+            }
         });
 
         /* ===== Click to focus ===== */
@@ -461,25 +527,31 @@
         });
 
         /* ===== Helpers ===== */
-        var userScrolledUp = false;
         messagesWrap.addEventListener('scroll', function() {
             var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
             userScrolledUp = gap > 80;
         });
+        var scrollRafPending = false;
         function scrollToBottom(force) {
             if (!force && userScrolledUp) return;
             if (force) userScrolledUp = false;
+            if (scrollRafPending) return;
+            scrollRafPending = true;
             requestAnimationFrame(function() {
+                scrollRafPending = false;
                 messagesWrap.scrollTop = messagesWrap.scrollHeight;
             });
         }
-        function resetStreamState() {
-            currentBubbleEl = null;
-            reasonBuffer = '';
-            thinkingBlockEl = null;
-            thinkingBuffer = '';
-            if (contentRafId) { cancelAnimationFrame(contentRafId); contentRafId = null; }
-            if (reasonRafId) { cancelAnimationFrame(reasonRafId); reasonRafId = null; }
+
+        function resetStreamState(sess) {
+            sess.currentBubbleEl = null;
+            sess.reasonBuffer = '';
+            sess.thinkingBlockEl = null;
+            sess.thinkingBodyMdEl = null;
+            sess.thinkingBodyWrapEl = null;
+            sess.thinkingBuffer = '';
+            if (sess.contentRafId) { cancelAnimationFrame(sess.contentRafId); sess.contentRafId = null; }
+            if (sess.reasonRafId) { cancelAnimationFrame(sess.reasonRafId); sess.reasonRafId = null; }
         }
 
         function setBtnStopMode() {
@@ -516,7 +588,6 @@
 
         function saveChatToHistory(firstMsg) {
             var label = firstMsg.length > 30 ? firstMsg.substring(0, 30) + '...' : firstMsg;
-            /* avoid duplicate for current session */
             for (var i = 0; i < chatHistory.length; i++) {
                 if (chatHistory[i].sessionId === SESSION_ID) {
                     currentChatIndex = i;
@@ -530,16 +601,30 @@
             updateHistoryUI();
         }
 
+        /* Sidebar event delegation — single listener instead of per-item binding */
+        historyList.addEventListener('click', function(e) {
+            var delBtn = e.target.closest('.sidebar-item-del');
+            if (delBtn) {
+                e.stopPropagation();
+                var idx = parseInt(delBtn.closest('.sidebar-item').getAttribute('data-idx'));
+                if (!isNaN(idx)) deleteSession(idx);
+                return;
+            }
+            var item = e.target.closest('.sidebar-item');
+            if (item) {
+                var idx = parseInt(item.getAttribute('data-idx'));
+                if (!isNaN(idx)) selectSession(idx);
+            }
+        });
+
         function updateHistoryUI() {
             var frag = document.createDocumentFragment();
             for (var i = 0; i < chatHistory.length; i++) {
                 var item = document.createElement('div');
-                item.className = 'sidebar-item' + (i === currentChatIndex ? ' active' : '');
+                var sess = sessionMap[chatHistory[i].sessionId];
+                var streaming = sess && sess.isStreaming;
+                item.className = 'sidebar-item' + (i === currentChatIndex ? ' active' : '') + (streaming ? ' streaming' : '');
                 item.setAttribute('data-idx', i);
-
-                item.addEventListener('click', (function(idx) {
-                    return function() { selectSession(idx); };
-                })(i));
 
                 var label = document.createElement('span');
                 label.className = 'sidebar-item-label';
@@ -549,11 +634,14 @@
                 delBtn.className = 'sidebar-item-del';
                 delBtn.title = '删除对话';
                 delBtn.innerHTML = '<i class="layui-icon layui-icon-close"></i>';
-                delBtn.addEventListener('click', (function(idx) {
-                    return function(e) { e.stopPropagation(); deleteSession(idx); };
-                })(i));
 
                 item.appendChild(label);
+                if (streaming) {
+                    var spinner = document.createElement('span');
+                    spinner.className = 'sidebar-item-spinner';
+                    spinner.title = '对话进行中...';
+                    item.appendChild(spinner);
+                }
                 item.appendChild(delBtn);
                 frag.appendChild(item);
             }
@@ -569,6 +657,17 @@
             xhr.open('POST', '/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId), true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4) {
+                    /* Clean up session state after server confirms */
+                    var sess = sessionMap[entry.sessionId];
+                    if (sess) {
+                        if (sess.eventSource) sess.eventSource.close();
+                        if (sess.silenceTimer) clearTimeout(sess.silenceTimer);
+                        if (sess.contentRafId) cancelAnimationFrame(sess.contentRafId);
+                        if (sess.reasonRafId) cancelAnimationFrame(sess.reasonRafId);
+                        if (sess.container.parentNode) sess.container.parentNode.removeChild(sess.container);
+                        delete sessionMap[entry.sessionId];
+                    }
+
                     chatHistory.splice(idx, 1);
 
                     if (idx === currentChatIndex) {
@@ -589,38 +688,46 @@
             if (idx === currentChatIndex && inChatMode) return;
             var entry = chatHistory[idx];
             if (!entry) return;
-            SESSION_ID = entry.sessionId;
+
             currentChatIndex = idx;
-            messagesEl.innerHTML = '';
-            resetStreamState();
-            switchToChatMode();
+            SESSION_ID = entry.sessionId;
+            if (!inChatMode) switchToChatMode();
+            setActiveSession(entry.sessionId);
             updateHistoryUI();
-            loadMessages(entry.sessionId);
+
+            var sess = sessionMap[entry.sessionId];
+            /* Only load from server if not streaming and container has no content */
+            if (!sess.isStreaming && sess.container.children.length === 0) {
+                loadMessages(sess);
+            } else {
+                scrollToBottom(true);
+            }
         }
 
-        function loadMessages(sessionId) {
+        function loadMessages(sess) {
             var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/chat/messages?sessionId=' + encodeURIComponent(sessionId), true);
+            xhr.open('GET', '/chat/messages?sessionId=' + encodeURIComponent(sess.sessionId), true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     try {
                         var msgs = JSON.parse(xhr.responseText);
-                        messagesEl.innerHTML = '';
+                        sess.container.innerHTML = '';
+                        resetStreamState(sess);
                         for (var i = 0; i < msgs.length; i++) {
                             var m = msgs[i];
                             if (m.role === 'USER') {
-                                resetStreamState();
-                                appendUserMessage(m.content);
+                                resetStreamState(sess);
+                                appendUserMessage(sess, m.content);
                             } else if (m.role === 'ASSISTANT') {
                                 var isConsecutive = (i > 0 && msgs[i - 1].role === 'ASSISTANT');
-                                if (!isConsecutive) resetStreamState();
-                                var el = ensureAssistantBubble();
-                                reasonBuffer = isConsecutive ? reasonBuffer + '\n\n' + m.content : m.content;
-                                el.innerHTML = renderMd(reasonBuffer);
+                                if (!isConsecutive) resetStreamState(sess);
+                                var el = ensureAssistantBubble(sess);
+                                sess.reasonBuffer = isConsecutive ? sess.reasonBuffer + '\n\n' + m.content : m.content;
+                                el.innerHTML = renderMd(sess.reasonBuffer);
                             }
                         }
-                        resetStreamState();
-                        scrollToBottom(true);
+                        resetStreamState(sess);
+                        if (sess.sessionId === activeSessionId) scrollToBottom(true);
                     } catch (e) {}
                 }
             };
@@ -630,8 +737,8 @@
         /* Load on startup */
         loadSessionHistory();
 
-        /* ===== Message Rendering ===== */
-        function appendUserMessage(text, imageDataUrl) {
+        /* ===== Message Rendering (Session-Aware) ===== */
+        function appendUserMessage(sess, text, imageDataUrl) {
             var row = document.createElement('div');
             row.className = 'msg-row user';
             row.innerHTML = '<div class="msg-bubble"></div><div class="msg-avatar">我</div>';
@@ -645,13 +752,13 @@
             var span = document.createElement('span');
             span.textContent = text;
             bubble.appendChild(span);
-            messagesEl.appendChild(row);
-            scrollToBottom(true);
+            sess.container.appendChild(row);
+            if (sess.sessionId === activeSessionId) scrollToBottom(true);
         }
 
-        function ensureAssistantBubble() {
-            if (!currentBubbleEl) {
-                removeThinking();
+        function ensureAssistantBubble(sess) {
+            if (!sess.currentBubbleEl) {
+                removeThinking(sess);
                 var row = document.createElement('div');
                 row.className = 'msg-row assistant';
                 row.innerHTML = '<div class="msg-avatar"><i class="layui-icon layui-icon-bot" style="font-size:18px"></i></div>'
@@ -659,22 +766,22 @@
                     + '<div class="msg-actions">'
                     + '<button class="msg-action-btn copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i> 复制</button>'
                     + '</div></div>';
-                messagesEl.appendChild(row);
-                currentBubbleEl = row.querySelector('.md-content');
+                sess.container.appendChild(row);
+                sess.currentBubbleEl = row.querySelector('.md-content');
                 var copyBtn = row.querySelector('.copy-btn');
-                var mdRef = currentBubbleEl;
+                var mdRef = sess.currentBubbleEl;
                 copyBtn.addEventListener('click', function() {
                     var txt = mdRef.innerText || '';
                     if (navigator.clipboard) { navigator.clipboard.writeText(txt); }
                 });
             }
-            return currentBubbleEl;
+            return sess.currentBubbleEl;
         }
 
-        function ensureThinkingBlock() {
-            if (!thinkingBlockEl) {
-                ensureAssistantBubble();
-                var parent = currentBubbleEl.parentNode;
+        function ensureThinkingBlock(sess) {
+            if (!sess.thinkingBlockEl) {
+                ensureAssistantBubble(sess);
+                var parent = sess.currentBubbleEl.parentNode;
                 var block = document.createElement('div');
                 block.className = 'thinking-block streaming expanded';
                 block.innerHTML = '<div class="thinking-block-header">'
@@ -683,38 +790,41 @@
                     + '<i class="layui-icon layui-icon-right thinking-block-toggle"></i>'
                     + '</div>'
                     + '<div class="thinking-block-body"><div class="md-content"></div></div>';
-                parent.insertBefore(block, currentBubbleEl);
+                parent.insertBefore(block, sess.currentBubbleEl);
                 block.querySelector('.thinking-block-header').addEventListener('click', function() {
                     block.classList.toggle('expanded');
                 });
-                thinkingBlockEl = block;
-                thinkingBuffer = '';
+                sess.thinkingBlockEl = block;
+                sess.thinkingBodyMdEl = block.querySelector('.thinking-block-body .md-content');
+                sess.thinkingBodyWrapEl = block.querySelector('.thinking-block-body');
+                sess.thinkingBuffer = '';
             }
-            return thinkingBlockEl;
+            return sess.thinkingBlockEl;
         }
 
-        function insertBeforeActions(el) {
-            var parent = currentBubbleEl.parentNode;
+        function insertBeforeActions(sess, el) {
+            var parent = sess.currentBubbleEl.parentNode;
             parent.insertBefore(el, parent.querySelector('.msg-actions'));
         }
 
-        function finishThinkingBlock() {
-            if (thinkingBlockEl) {
-                // Flush pending reason RAF to render final thinking content
-                if (reasonRafId) {
-                    cancelAnimationFrame(reasonRafId);
-                    reasonRafId = null;
-                    var bodyEl = thinkingBlockEl.querySelector('.thinking-block-body');
-                    var mdEl = bodyEl.querySelector('.md-content');
-                    mdEl.innerHTML = renderMd(thinkingBuffer);
+        function finishThinkingBlock(sess) {
+            if (sess.thinkingBlockEl) {
+                if (sess.reasonRafId) {
+                    cancelAnimationFrame(sess.reasonRafId);
+                    sess.reasonRafId = null;
+                    if (sess.thinkingBodyMdEl) {
+                        sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+                    }
                 }
-                thinkingBlockEl.classList.remove('streaming', 'expanded');
-                var label = thinkingBlockEl.querySelector('.thinking-block-label');
+                sess.thinkingBlockEl.classList.remove('streaming', 'expanded');
+                var label = sess.thinkingBlockEl.querySelector('.thinking-block-label');
                 if (label) label.textContent = '思考结束';
-                var dots = thinkingBlockEl.querySelector('.thinking-block-dots');
+                var dots = sess.thinkingBlockEl.querySelector('.thinking-block-dots');
                 if (dots) dots.remove();
-                thinkingBlockEl = null;
-                thinkingBuffer = '';
+                sess.thinkingBlockEl = null;
+                sess.thinkingBodyMdEl = null;
+                sess.thinkingBodyWrapEl = null;
+                sess.thinkingBuffer = '';
             }
         }
 
@@ -722,37 +832,38 @@
             return text.replace(/<\s*\/?think\s*>/gi, '');
         }
 
-        var reasonRafId = null;
-        function appendReasonChunk(text) {
-            removeThinking();
-            ensureThinkingBlock();
-            thinkingBuffer += clearThinkTags(text);
-            if (!reasonRafId) {
-                reasonRafId = requestAnimationFrame(function() {
-                    reasonRafId = null;
-                    if (!thinkingBlockEl) return;
-                    var bodyEl = thinkingBlockEl.querySelector('.thinking-block-body');
-                    var mdEl = bodyEl.querySelector('.md-content');
-                    mdEl.innerHTML = renderMd(thinkingBuffer);
-                    bodyEl.scrollTop = bodyEl.scrollHeight;
-                    scrollToBottom();
+        function appendReasonChunk(sess, text) {
+            removeThinking(sess);
+            ensureThinkingBlock(sess);
+            sess.thinkingBuffer += clearThinkTags(text);
+            if (!sess.reasonRafId) {
+                sess.reasonRafId = requestAnimationFrame(function() {
+                    sess.reasonRafId = null;
+                    if (!sess.thinkingBlockEl) return;
+                    if (sess.thinkingBodyMdEl) {
+                        sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+                    }
+                    if (sess.thinkingBodyWrapEl) {
+                        sess.thinkingBodyWrapEl.scrollTop = sess.thinkingBodyWrapEl.scrollHeight;
+                    }
+                    if (sess.sessionId === activeSessionId) scrollToBottom();
                 });
             }
         }
 
-        function finishPendingTool() {
-            if (pendingToolCard) {
-                var icon = pendingToolCard.querySelector('.tool-status-icon');
+        function finishPendingTool(sess) {
+            if (sess.pendingToolCard) {
+                var icon = sess.pendingToolCard.querySelector('.tool-status-icon');
                 if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
-                var label = pendingToolCard.querySelector('.tool-label');
+                var label = sess.pendingToolCard.querySelector('.tool-label');
                 if (label) label.textContent = '已完成';
-                pendingToolCard = null;
+                sess.pendingToolCard = null;
             }
         }
 
-        function appendActionEndChunk(toolName, text) {
-            finishPendingTool();
-            ensureAssistantBubble();
+        function appendActionEndChunk(sess, toolName, text) {
+            finishPendingTool(sess);
+            ensureAssistantBubble(sess);
 
             var card = document.createElement('div');
             card.className = 'tool-card';
@@ -769,74 +880,70 @@
                 card.classList.toggle('expanded');
             });
 
-            insertBeforeActions(card);
-            pendingToolCard = card;
+            insertBeforeActions(sess, card);
+            sess.pendingToolCard = card;
 
-            reasonBuffer = '';
+            sess.reasonBuffer = '';
             var newMd = document.createElement('div');
             newMd.className = 'md-content';
-            insertBeforeActions(newMd);
-            currentBubbleEl = newMd;
-            scrollToBottom();
+            insertBeforeActions(sess, newMd);
+            sess.currentBubbleEl = newMd;
+            if (sess.sessionId === activeSessionId) scrollToBottom();
         }
 
-        var contentRafId = null;
-        function appendContentChunk(text, append) {
+        function appendContentChunk(sess, text, append) {
             var clean = clearThinkTags(text);
-            reasonBuffer = append ? reasonBuffer + clean : clean;
-            if (!contentRafId) {
-                contentRafId = requestAnimationFrame(function() {
-                    contentRafId = null;
-                    var el = ensureAssistantBubble();
-                    el.innerHTML = renderMd(reasonBuffer);
-                    scrollToBottom();
+            sess.reasonBuffer = append ? sess.reasonBuffer + clean : clean;
+            if (!sess.contentRafId) {
+                sess.contentRafId = requestAnimationFrame(function() {
+                    sess.contentRafId = null;
+                    var el = ensureAssistantBubble(sess);
+                    el.innerHTML = renderMd(sess.reasonBuffer);
+                    if (sess.sessionId === activeSessionId) scrollToBottom();
                 });
             }
         }
 
-        function appendErrorChunk(text) {
-            ensureAssistantBubble();
+        function appendErrorChunk(sess, text) {
+            ensureAssistantBubble(sess);
             var errEl = document.createElement('div');
             errEl.className = 'chunk-error';
             errEl.textContent = text;
-            insertBeforeActions(errEl);
-            scrollToBottom();
+            insertBeforeActions(sess, errEl);
+            if (sess.sessionId === activeSessionId) scrollToBottom();
         }
 
         /* ===== Thinking Indicators ===== */
-        /* Initial thinking row: standalone row with avatar, only before first bubble */
-        function showThinking() {
-            removeThinking();
-            thinkingEl = document.createElement('div');
-            thinkingEl.className = 'thinking-row';
-            thinkingEl.innerHTML = '<div class="msg-avatar" style="background:linear-gradient(135deg,var(--accent),#a78bfa);color:#fff">'
+        function showThinking(sess) {
+            removeThinking(sess);
+            sess.thinkingEl = document.createElement('div');
+            sess.thinkingEl.className = 'thinking-row';
+            sess.thinkingEl.innerHTML = '<div class="msg-avatar" style="background:linear-gradient(135deg,var(--accent),#a78bfa);color:#fff">'
                 + '<i class="layui-icon layui-icon-bot" style="font-size:18px"></i></div>'
                 + '<div class="thinking-bubble">思考中' + DOTS_HTML + '</div>';
-            messagesEl.appendChild(thinkingEl);
-            scrollToBottom(true);
+            sess.container.appendChild(sess.thinkingEl);
+            if (sess.sessionId === activeSessionId) scrollToBottom(true);
         }
-        function removeThinking() {
-            if (thinkingEl && thinkingEl.parentNode) { thinkingEl.parentNode.removeChild(thinkingEl); thinkingEl = null; }
+        function removeThinking(sess) {
+            if (sess.thinkingEl && sess.thinkingEl.parentNode) { sess.thinkingEl.parentNode.removeChild(sess.thinkingEl); sess.thinkingEl = null; }
         }
 
-        /* Inline thinking: lightweight dots inside current bubble, for mid-stream pauses */
-        var inlineThinkingEl = null;
-        function showInlineThinking() {
-            if (inlineThinkingEl || !currentBubbleEl) return;
-            inlineThinkingEl = document.createElement('div');
-            inlineThinkingEl.className = 'inline-thinking';
-            inlineThinkingEl.innerHTML = '思考中 ' + DOTS_HTML;
-            insertBeforeActions(inlineThinkingEl);
-            scrollToBottom();
+        function showInlineThinking(sess) {
+            if (sess.inlineThinkingEl || !sess.currentBubbleEl) return;
+            sess.inlineThinkingEl = document.createElement('div');
+            sess.inlineThinkingEl.className = 'inline-thinking';
+            sess.inlineThinkingEl.innerHTML = '思考中 ' + DOTS_HTML;
+            insertBeforeActions(sess, sess.inlineThinkingEl);
+            if (sess.sessionId === activeSessionId) scrollToBottom();
         }
-        function removeInlineThinking() {
-            if (inlineThinkingEl && inlineThinkingEl.parentNode) { inlineThinkingEl.parentNode.removeChild(inlineThinkingEl); }
-            inlineThinkingEl = null;
+        function removeInlineThinking(sess) {
+            if (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) { sess.inlineThinkingEl.parentNode.removeChild(sess.inlineThinkingEl); }
+            sess.inlineThinkingEl = null;
         }
 
         /* ===== HITL ===== */
-        function appendHitlCard(toolName, command) {
-            ensureAssistantBubble();
+        function appendHitlCard(sess, toolName, command) {
+            ensureAssistantBubble(sess);
 
             var card = document.createElement('div');
             card.className = 'hitl-card';
@@ -852,7 +959,7 @@
                 + '<button class="hitl-btn hitl-btn-reject">\u62d2\u7edd</button>'
                 + '</div>';
 
-            insertBeforeActions(card);
+            insertBeforeActions(sess, card);
 
             var approveBtn = card.querySelector('.hitl-btn-approve');
             var rejectBtn = card.querySelector('.hitl-btn-reject');
@@ -863,7 +970,7 @@
                 approveBtn.textContent = '\u5df2\u6279\u51c6';
                 rejectBtn.style.display = 'none';
                 card.style.borderColor = '#22c55e';
-                handleHitlResponse('approve');
+                handleHitlResponse(sess, 'approve');
             });
 
             rejectBtn.addEventListener('click', function() {
@@ -872,10 +979,10 @@
                 rejectBtn.textContent = '\u5df2\u62d2\u7edd';
                 approveBtn.style.display = 'none';
                 card.style.borderColor = '#ef4444';
-                handleHitlResponse('reject');
+                handleHitlResponse(sess, 'reject');
             });
 
-            scrollToBottom();
+            if (sess.sessionId === activeSessionId) scrollToBottom();
         }
 
         function escapeHtml(str) {
@@ -884,62 +991,78 @@
             return div.innerHTML;
         }
 
-        function handleHitlResponse(action) {
-            resetStreamState();
+        function handleHitlResponse(sess, action) {
+            if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
+            resetStreamState(sess);
 
-            isStreaming = true;
-            setBtnStopMode();
+            sess.isStreaming = true;
+            if (sess.sessionId === activeSessionId) {
+                isStreaming = true;
+                setBtnStopMode();
+            }
 
             var url = SSE_ENDPOINT + '?hitlAction=' + encodeURIComponent(action)
-                + '&sessionId=' + encodeURIComponent(SESSION_ID);
+                + '&sessionId=' + encodeURIComponent(sess.sessionId);
 
-            eventSource = new EventSource(url);
-            eventSource.onmessage = handleSSEMessage;
-            eventSource.onerror = function() { finishStream(); };
+            sess.eventSource = new EventSource(url);
+            sess.eventSource.onmessage = function(event) { handleSSEData(sess, event.data); };
+            sess.eventSource.onerror = function() { finishStream(sess); };
         }
 
         /* ===== Send ===== */
         function sendMessage() {
             var text = getInputText();
-            if ((!text && !pendingImageBase64) || isStreaming) return;
+            if (!text && !pendingImageBase64) return;
+            /* Block only if the active session is currently streaming */
+            if (activeSessionId && sessionMap[activeSessionId] && sessionMap[activeSessionId].isStreaming) return;
             if (!text) text = '请描述这张图片';
 
             var imageDataUrl = pendingImageBase64 ? ('data:' + pendingImageMime + ';base64,' + pendingImageBase64) : null;
             var imageBase64 = pendingImageBase64;
             var imageMime = pendingImageMime;
 
-            if (currentChatIndex === -1) saveChatToHistory(text);
+            if (currentChatIndex === -1) {
+                SESSION_ID = 'web-' + Date.now().toString(36);
+                saveChatToHistory(text);
+            }
 
             clearInput();
             clearImagePreview();
-            switchToChatMode();
-            appendUserMessage(text, imageDataUrl);
+            if (!inChatMode) switchToChatMode();
+            setActiveSession(SESSION_ID);
 
+            var sess = sessionMap[SESSION_ID];
+
+            appendUserMessage(sess, text, imageDataUrl);
+
+            sess.isStreaming = true;
             isStreaming = true;
             setBtnStopMode();
-            resetStreamState();
-            showThinking();
+            resetStreamState(sess);
+            showThinking(sess);
 
             if (imageBase64) {
-                sendWithFetch(text, imageBase64, imageMime);
+                sendWithFetch(sess, text, imageBase64, imageMime);
             } else {
-                sendWithEventSource(text);
+                sendWithEventSource(sess, text);
             }
         }
 
-        function sendWithEventSource(text) {
+        function sendWithEventSource(sess, text) {
+            if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
             var url = SSE_ENDPOINT + '?input=' + encodeURIComponent(text)
-                + '&sessionId=' + encodeURIComponent(SESSION_ID);
+                + '&sessionId=' + encodeURIComponent(sess.sessionId);
 
-            eventSource = new EventSource(url);
-            eventSource.onmessage = handleSSEMessage;
-            eventSource.onerror = function() { finishStream(); };
+            sess.eventSource = new EventSource(url);
+            sess.eventSource.onmessage = function(event) { handleSSEData(sess, event.data); };
+            sess.eventSource.onerror = function() { finishStream(sess); };
         }
 
-        function sendWithFetch(text, imageBase64, imageMime) {
-            var body = JSON.stringify({ input: text, sessionId: SESSION_ID, imageBase64: imageBase64, imageMime: imageMime });
+        function sendWithFetch(sess, text, imageBase64, imageMime) {
+            if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
+            var body = JSON.stringify({ input: text, sessionId: sess.sessionId, imageBase64: imageBase64, imageMime: imageMime });
             var abortCtrl = new AbortController();
-            eventSource = { close: function() { abortCtrl.abort(); } }; // duck-type for finishStream
+            sess.eventSource = { close: function() { abortCtrl.abort(); } };
 
             fetch(SSE_ENDPOINT, {
                 method: 'POST',
@@ -953,59 +1076,59 @@
 
                 function pump() {
                     reader.read().then(function(result) {
-                        if (result.done) { finishStream(); return; }
+                        if (result.done) { finishStream(sess); return; }
                         buffer += decoder.decode(result.value, { stream: true });
                         var lines = buffer.split('\n');
-                        buffer = lines.pop(); // keep incomplete line
+                        buffer = lines.pop();
                         for (var i = 0; i < lines.length; i++) {
                             var line = lines[i].trim();
                             if (line.startsWith('data:')) {
                                 var raw = line.substring(5).trim();
-                                handleSSEData(raw);
+                                handleSSEData(sess, raw);
                             }
                         }
                         pump();
-                    }).catch(function() { finishStream(); });
+                    }).catch(function() { finishStream(sess); });
                 }
                 pump();
-            }).catch(function() { finishStream(); });
+            }).catch(function() { finishStream(sess); });
         }
 
-        function handleSSEMessage(event) {
-            handleSSEData(event.data);
-        }
-
-        function handleSSEData(raw) {
-            if (raw === '[DONE]') { finishStream(); return; }
+        /* ===== SSE Data Handling (Session-Aware) ===== */
+        function handleSSEData(sess, raw) {
+            if (raw === '[DONE]') { finishStream(sess); return; }
             try {
                 var chunk = JSON.parse(raw);
-                if (silenceTimer) clearTimeout(silenceTimer);
-                removeInlineThinking();
+                if (sess.silenceTimer) clearTimeout(sess.silenceTimer);
+                removeInlineThinking(sess);
                 switch (chunk.type) {
-                    case 'reason': finishPendingTool(); appendReasonChunk(chunk.text); break;
-                    case 'text':   finishThinkingBlock(); finishPendingTool(); appendContentChunk(chunk.text, true); break;
-                    case 'action': finishThinkingBlock(); appendActionEndChunk(chunk.toolName, chunk.text); break;
-                    case 'agent':  finishThinkingBlock(); finishPendingTool(); appendContentChunk(chunk.text, false); break;
-                    case 'error':  finishThinkingBlock(); appendErrorChunk(chunk.text); break;
-                    case 'hitl':   finishThinkingBlock(); finishPendingTool(); appendHitlCard(chunk.toolName, chunk.command); break;
+                    case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
+                    case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
+                    case 'action': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text); break;
+                    case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, false); break;
+                    case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
+                    case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
                 }
-                silenceTimer = setTimeout(function() {
-                    if (isStreaming && !thinkingBlockEl) showInlineThinking();
+                sess.silenceTimer = setTimeout(function() {
+                    if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
                 }, 1000);
             } catch (e) {}
         }
 
-        function finishStream() {
-            isStreaming = false;
-            if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
-            removeThinking();
-            removeInlineThinking();
-            finishThinkingBlock();
-            finishPendingTool();
-            if (eventSource) { eventSource.close(); eventSource = null; }
-            setBtnSendMode();
-            resetStreamState();
-            chatInput.focus();
+        function finishStream(sess) {
+            sess.isStreaming = false;
+            if (sess.silenceTimer) { clearTimeout(sess.silenceTimer); sess.silenceTimer = null; }
+            removeThinking(sess);
+            removeInlineThinking(sess);
+            finishThinkingBlock(sess);
+            finishPendingTool(sess);
+            if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
+            resetStreamState(sess);
+            if (sess.sessionId === activeSessionId) {
+                isStreaming = false;
+                setBtnSendMode();
+                chatInput.focus();
+            }
             loadSessionHistory();
         }
     </script>
