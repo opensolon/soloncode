@@ -15,8 +15,6 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.skills.cli.CliSkillProvider;
 import org.noear.solon.ai.skills.cli.TodoSkill;
-import org.noear.solon.ai.skills.diff.ApplyPatchTool;
-import org.noear.solon.ai.skills.lucene.LuceneSkill;
 import org.noear.solon.ai.skills.restapi.ApiSource;
 import org.noear.solon.ai.skills.web.*;
 import org.noear.solon.ai.skills.restapi.RestApiSkill;
@@ -26,7 +24,6 @@ import org.noear.solon.ai.mcp.client.McpProviders;
 import org.noear.solon.codecli.core.agent.GenerateTool;
 import org.noear.solon.codecli.core.hitl.HitlStrategy;
 import org.noear.solon.core.util.Assert;
-import org.noear.solon.core.util.ClassUtil;
 import org.noear.solon.core.util.IoUtil;
 import org.noear.solon.core.util.ResourceUtil;
 import org.slf4j.Logger;
@@ -68,7 +65,6 @@ public class AgentRuntime {
     private final AgentProperties properties;
 
     private final CodeSkill codeSkill = new CodeSkill();
-    private final LuceneSkill luceneSkill = new LuceneSkill();
     private final TodoSkill todoSkill = new TodoSkill(SOLONCODE_SESSIONS);
     private final TaskSkill taskSkill = new TaskSkill(this);
     private final GenerateTool generateTool = new GenerateTool(this);
@@ -86,7 +82,7 @@ public class AgentRuntime {
     private AgentManager agentManager;
 
     public String getVersion() {
-        return "v2026.2.23";
+        return "v2026.3.25";
     }
 
     public String getName() {
@@ -213,18 +209,19 @@ public class AgentRuntime {
             agentBuilder.defaultSkillAdd(cliSkills.getExpertSkill());
 
             agentBuilder.defaultToolAdd(generateTool);
+
             agentBuilder.defaultSkillAdd(taskSkill);
         } else {
             //agentBuilder.defaultToolAdd(MemorySkill.getInstance());
             agentBuilder.defaultToolAdd(WebfetchTool.getInstance());
             agentBuilder.defaultToolAdd(WebsearchTool.getInstance());
             agentBuilder.defaultToolAdd(CodeSearchTool.getInstance());
-            agentBuilder.defaultToolAdd(new ApplyPatchTool());
 
             agentBuilder.defaultSkillAdd(cliSkills);
             agentBuilder.defaultSkillAdd(todoSkill);
             agentBuilder.defaultSkillAdd(codeSkill);
-            agentBuilder.defaultSkillAdd(luceneSkill);
+
+            agentBuilder.defaultSkillAdd(taskSkill);
         }
 
         if (getMcpProviders() != null) {
@@ -319,12 +316,11 @@ public class AgentRuntime {
                 .getOrDefault(ATTR_CWD, properties.getWorkDir());
 
         String code = codeSkill.refresh(effectiveWorkDir);
-        String search = luceneSkill.refreshSearchIndex(effectiveWorkDir);
 
         if (Assert.isNotEmpty(code)) {
-            return search + "\n" + code;
+            return "已初始化：" + code;
         } else {
-            return search;
+            return "已初始化...";
         }
     }
 
