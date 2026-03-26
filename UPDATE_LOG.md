@@ -4,8 +4,8 @@
 * 添加 工作区 skills 目录自动索引
 * 优化 explore.md 和 TaskSkill
 * 优化 cli 打印添加执行秒数（方便看）
-* 移除 ApplyPatchTool，LuceneSkill （减少工具上下文）
-* 调整 子代理模式改为弱模式（不再强制使用）
+* 移除 ApplyPatchTool，LuceneSkill （减少工具上下文，工件包缩小为：27MB）
+* 调整 子代理模式改为弱模式（不再强模式使用，否则会让简单的体务变复杂）
 * 调整 子代理增加 code skill 支持
 
 ### v2026.3.23
