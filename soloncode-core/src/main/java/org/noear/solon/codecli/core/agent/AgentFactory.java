@@ -95,34 +95,28 @@ public class AgentFactory {
                         builder.defaultSkillAdd(agentRuntime.getTaskSkill());
                         break;
                     }
-
                     case "skill": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills().getExpertSkill());
                         break;
                     }
-
                     case "todoread":
                     case "todowrite":
                     case "todo": {
-                        builder.defaultToolAdd(agentRuntime.getTodoSkill());
+                        builder.defaultSkillAdd(agentRuntime.getTodoSkill());
                         break;
                     }
-
                     case "webfetch": {
                         builder.defaultToolAdd(WebfetchTool.getInstance());
                         break;
                     }
-
                     case "websearch": {
                         builder.defaultToolAdd(WebsearchTool.getInstance());
                         break;
                     }
-
                     case "codesearch": {
                         builder.defaultToolAdd(CodeSearchTool.getInstance());
                         break;
                     }
-
                     case "*": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills());
                         builder.defaultSkillAdd(agentRuntime.getTodoSkill());
@@ -149,18 +143,15 @@ public class AgentFactory {
                         }
                         break;
                     }
-
                     case "restapi": {
                         if (agentRuntime.getRestApis() != null) {
                             builder.defaultSkillAdd(agentRuntime.getRestApis());
                         }
                     }
-
                     case "generate": {
                         builder.defaultToolAdd(agentRuntime.getGenerateTool());
                         break;
                     }
-
                     case "hitl": {
                         builder.defaultInterceptorAdd(agentRuntime.getHitlInterceptor());
                         break;
