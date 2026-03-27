@@ -22,11 +22,12 @@ import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.Reference;
 import org.jline.reader.UserInterruptException;
 import org.jline.reader.impl.LineReaderImpl;
-import org.jline.reader.impl.completer.AggregateCompleter;
-import org.jline.reader.impl.completer.FileNameCompleter;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStringBuilder;
+import org.jline.utils.AttributedStyle;
 import org.jline.utils.InfoCmp;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
@@ -41,6 +42,8 @@ import org.noear.solon.codecli.portal.ui.SlashCommandCompleter;
 import org.noear.solon.codecli.portal.ui.MarkdownRenderer;
 import org.noear.solon.codecli.portal.ui.StatusBar;
 import org.noear.solon.codecli.core.AgentRuntime;
+import org.noear.solon.codecli.core.ConfigLoader;
+import org.noear.solon.codecli.core.SessionManager;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
@@ -66,6 +69,7 @@ public class CliShellNew implements Runnable {
     private LineReader reader;
     private final AgentRuntime kernel;
     private final CommandRegistry commandRegistry;
+    private final SessionManager sessionManager = new SessionManager();
     private StatusBar statusBar;
 
     // ── 共享状态 ──
@@ -148,14 +152,13 @@ public class CliShellNew implements Runnable {
 
             this.reader = LineReaderBuilder.builder()
                     .terminal(terminal)
-                    .completer(new AggregateCompleter(
-                            new SlashCommandCompleter(commandRegistry),
-                            new FileNameCompleter()))
+                    .completer(new SlashCommandCompleter(commandRegistry))
                     .option(LineReader.Option.AUTO_LIST, true)
                     .option(LineReader.Option.AUTO_MENU, true)
                     .option(LineReader.Option.AUTO_MENU_LIST, true)
-                    .option(LineReader.Option.MENU_COMPLETE, true)
                     .option(LineReader.Option.LIST_PACKED, true)
+                    .option(LineReader.Option.LIST_AMBIGUOUS, false)
+                    .option(LineReader.Option.RECOGNIZE_EXACT, false)
                     .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
                     .build();
 
@@ -170,11 +173,11 @@ public class CliShellNew implements Runnable {
             // 禁用终端蜂鸣（空缓冲区按 Backspace 等场景）
             reader.setVariable(LineReader.BELL_STYLE, "none");
 
-            // ── Widget：/ 自动触发补全 ──
+            // ── Widget：/ 自动触发补全列表 ──
             reader.getWidgets().put("slash-auto-complete", () -> {
                 reader.getBuffer().write('/');
                 if ("/".equals(reader.getBuffer().toString().trim())) {
-                    reader.runMacro("\t");
+                    reader.callWidget(LineReader.COMPLETE_WORD);
                 }
                 return true;
             });
@@ -204,26 +207,33 @@ public class CliShellNew implements Runnable {
             // ── Widget：Enter 智能提交 ──
             // AI 运行期间按 Enter 不让 readLine 返回，避免 ❯ xx 行打断输出流
             reader.getWidgets().put("smart-accept", () -> {
-                String buf = reader.getBuffer().toString().trim();
+                String buf = reader.getBuffer().toString();
+                String trimmed = buf.trim();
+
+                // \ + Enter → 换行（对标 Claude Code）
+                if (buf.endsWith("\\")) {
+                    reader.getBuffer().delete(reader.getBuffer().length() - 1);
+                    reader.getBuffer().write('\n');
+                    return true;
+                }
+
                 if (taskRunning.get()) {
-                    if (!buf.isEmpty()) {
-                        pendingInputs.add(buf);
+                    if (!trimmed.isEmpty()) {
+                        pendingInputs.add(trimmed);
                         updatePromptWithPending();
                     }
                     reader.getBuffer().clear();
-                    return true; // 消费 Enter，不让 readLine 返回
+                    return true;
                 }
-                // HITL 状态下也拦截
                 if (HITL.isHitl(currentSession)) {
                     reader.getBuffer().clear();
-                    if (!buf.isEmpty()) {
-                        handleHITLInput(buf);
+                    if (!trimmed.isEmpty()) {
+                        handleHITLInput(trimmed);
                     }
                     return true;
                 }
-                // 正常情况：空输入不提交
-                if (buf.isEmpty()) {
-                    return true; // 消费 Enter，不做任何事
+                if (trimmed.isEmpty()) {
+                    return true;
                 }
                 reader.callWidget(LineReader.ACCEPT_LINE);
                 return true;
@@ -246,9 +256,16 @@ public class CliShellNew implements Runnable {
             reader.getKeyMaps().get(LineReader.MAIN)
                     .bind(new Reference("clear-screen-redraw"), KeyMap.ctrl('L'));
 
-            // ── Widget：Ctrl+C 清空当前输入（不产生历史记录）──
+            // ── Widget：Ctrl+C — 中断生成 / 清空输入（对标 Claude Code）──
             reader.getWidgets().put("clear-input", () -> {
-                // 用 kill-whole-line 清空并视觉更新
+                if (taskRunning.get()) {
+                    cancelRequested.set(true);
+                    Disposable d = currentDisposable;
+                    if (d != null && !d.isDisposed()) {
+                        d.dispose();
+                    }
+                    pendingInputs.clear();
+                }
                 reader.getBuffer().clear();
                 reader.callWidget(LineReader.REDISPLAY);
                 return true;
@@ -283,14 +300,52 @@ public class CliShellNew implements Runnable {
             terminal.flush();
         });
 
-        commandRegistry.register("/clear", "清空会话历史", ctx -> {
+        commandRegistry.register("/clear", "清空当前会话历史", ctx -> {
             AgentSession session = ctx.getSession();
             session.clear();
-            // 只清屏，不重新创建 StatusBar（Status 是终端单例）
             terminal.puts(InfoCmp.Capability.clear_screen);
             terminal.flush();
             if (statusBar != null) {
                 statusBar.draw();
+            }
+        });
+
+        commandRegistry.register("/new", "开始新会话", ctx -> {
+            // 新建临时 session，只在第一条消息时才持久化
+            currentSession = kernel.getSession("_tmp_" + System.currentTimeMillis());
+            kernel.init(currentSession);
+            terminal.puts(InfoCmp.Capability.clear_screen);
+            terminal.flush();
+            if (statusBar != null) {
+                statusBar.setSessionId("(new)");
+                statusBar.draw();
+            }
+            terminal.writer().println(DIM + "  New session started." + RESET);
+            terminal.flush();
+        });
+
+        commandRegistry.register("/resume", "恢复历史会话", ctx -> {
+            String arg = ctx.getArg();
+
+            if (arg != null && !arg.trim().isEmpty()) {
+                resumeByIndex(arg.trim());
+                return;
+            }
+
+            String cwd = kernel.getProps().getWorkDir();
+            List<SessionManager.SessionMeta> sessions = sessionManager.listSessions(cwd);
+            if (sessions.isEmpty()) {
+                terminal.writer().println(DIM + "  No sessions for this directory." + RESET);
+                terminal.flush();
+                return;
+            }
+
+            int selected = interactiveSelect(sessions);
+            if (selected >= 0) {
+                resumeByIndex(String.valueOf(selected + 1));
+            } else {
+                terminal.writer().println(DIM + "  Cancelled." + RESET);
+                terminal.flush();
             }
         });
 
@@ -302,10 +357,25 @@ public class CliShellNew implements Runnable {
             terminal.flush();
         });
 
-        commandRegistry.register("/compact", "切换精简/详细输出模式", ctx -> {
+        commandRegistry.register("/compact", "压缩当前会话上下文", ctx -> {
+            terminal.writer().println(DIM + "  Compacting session context..." + RESET);
+            terminal.flush();
+            // TODO: 实际调用 summarization 压缩上下文
+            terminal.writer().println(DIM + "  Session context compacted." + RESET);
+            terminal.flush();
+        });
+
+        commandRegistry.register("/thinking", "切换思考内容显示", ctx -> {
+            kernel.getProps().setThinkPrinted(!kernel.getProps().isThinkPrinted());
+            String mode = kernel.getProps().isThinkPrinted() ? "ON" : "OFF";
+            terminal.writer().println(DIM + "  Thinking display: " + RESET + BOLD + mode + RESET);
+            terminal.flush();
+        });
+
+        commandRegistry.register("/details", "切换工具调用详情显示", ctx -> {
             kernel.getProps().setCliPrintSimplified(!kernel.getProps().isCliPrintSimplified());
-            String mode = kernel.getProps().isCliPrintSimplified() ? "精简模式" : "详细模式";
-            terminal.writer().println(DIM + "已切换为: " + RESET + BOLD + mode + RESET);
+            String mode = kernel.getProps().isCliPrintSimplified() ? "simplified" : "detailed";
+            terminal.writer().println(DIM + "  Tool details: " + RESET + BOLD + mode + RESET);
             terminal.flush();
             if (statusBar != null) {
                 statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
@@ -325,28 +395,43 @@ public class CliShellNew implements Runnable {
 
     private volatile AgentSession currentSession;
     private volatile Disposable currentDisposable;
-    private final List<String> pendingInputs = new ArrayList<>(); // AI 运行期间收集的用户输入
-    private final String normalPrompt = "\n" + ACCENT_BOLD + ICON_PROMPT + RESET + " ";
+    private final List<String> pendingInputs = new ArrayList<>();
 
-    /** 构建带待发送列表的 prompt */
-    private String buildPrompt() {
-        StringBuilder p = new StringBuilder("\n");
-        for (String s : pendingInputs) {
-            p.append(DIM + "  \u25B8 " + s + RESET + "\n");
-        }
-        p.append(ACCENT_BOLD + ICON_PROMPT + RESET + " ");
-        return p.toString();
+    // Prompt style: RGB(255,125,144) bold for the ❯ icon
+    private static final AttributedStyle PROMPT_STYLE = AttributedStyle.BOLD
+            .foreground(255, 125, 144);
+
+    /** Build the normal prompt as AttributedString so JLine calculates width correctly */
+    private AttributedString buildNormalPrompt() {
+        AttributedStringBuilder sb = new AttributedStringBuilder();
+        sb.append("\n");
+        sb.styled(PROMPT_STYLE, ICON_PROMPT);
+        sb.append(" ");
+        return sb.toAttributedString();
     }
 
-    /** 更新 prompt（含待发送） — 带 REDRAW */
+    /** Build prompt with pending inputs list */
+    private AttributedString buildPendingPrompt() {
+        AttributedStringBuilder sb = new AttributedStringBuilder();
+        sb.append("\n");
+        for (String s : pendingInputs) {
+            sb.styled(AttributedStyle.DEFAULT.faint(), "  \u25B8 " + s);
+            sb.append("\n");
+        }
+        sb.styled(PROMPT_STYLE, ICON_PROMPT);
+        sb.append(" ");
+        return sb.toAttributedString();
+    }
+
+    /** Update prompt with pending inputs — with REDRAW */
     private void updatePromptWithPending() {
-        ((LineReaderImpl) reader).setPrompt(buildPrompt());
+        ((LineReaderImpl) reader).setPrompt(buildPendingPrompt().toAnsi(terminal));
         reader.callWidget(LineReader.REDRAW_LINE);
     }
 
-    /** 恢复正常 prompt（用 REDISPLAY 彻底刷新，清除多余行） */
+    /** Reset to normal prompt */
     private void resetPrompt() {
-        ((LineReaderImpl) reader).setPrompt(normalPrompt);
+        ((LineReaderImpl) reader).setPrompt(buildNormalPrompt().toAnsi(terminal));
         reader.callWidget(LineReader.REDISPLAY);
     }
 
@@ -362,7 +447,8 @@ public class CliShellNew implements Runnable {
         }
 
         printWelcome();
-        currentSession = kernel.getSession("cli");
+        // 启动时用临时 session，不持久化。第一条消息时才正式创建会话。
+        currentSession = kernel.getSession("_tmp_" + System.currentTimeMillis());
         kernel.init(currentSession);
 
         while (true) {
@@ -370,7 +456,7 @@ public class CliShellNew implements Runnable {
                 String input;
 
                 try {
-                    input = reader.readLine(normalPrompt);
+                    input = reader.readLine(buildNormalPrompt().toAnsi(terminal));
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
@@ -381,7 +467,9 @@ public class CliShellNew implements Runnable {
                     continue;
 
                 if (!isSystemCommand(currentSession, input)) {
-                    // readLine 已经回显了 ❯ input，不需要再 printAbove
+                    // 延迟创建：第一条消息时才正式创建会话
+                    ensureSessionCreated(input);
+
                     printAboveLine("\n" + ACCENT_BOLD + ICON_ASSISTANT + " Assistant" + RESET);
                     startAgentTask(currentSession, input);
                 }
@@ -733,15 +821,13 @@ public class CliShellNew implements Runnable {
         }
     }
 
-    /** 通过 printAbove 输出一整行（线程安全 — 与状态栏 draw 同步） */
+    /** 通过 printAbove 输出一整行（printAbove 内部用 JLine 的 ReentrantLock，跟 StatusBar.draw 共用同一把锁） */
     private void printAboveLine(String line) {
-        synchronized (terminal) {
-            if (reader != null) {
-                reader.printAbove(line);
-            } else {
-                terminal.writer().println(line);
-                terminal.flush();
-            }
+        if (reader != null) {
+            reader.printAbove(line);
+        } else {
+            terminal.writer().println(line);
+            terminal.flush();
         }
     }
 
@@ -751,6 +837,179 @@ public class CliShellNew implements Runnable {
 
     private String clearThink(String chunk) {
         return chunk.replaceAll("(?s)<\\s*/?think\\s*>", "");
+    }
+
+    /**
+     * Interactive arrow-key selector. Returns selected index (0-based), or -1 if cancelled.
+     */
+    private int interactiveSelect(List<SessionManager.SessionMeta> sessions) {
+        int selected = 0;
+        int count = sessions.size();
+
+        // Draw initial list
+        drawSessionMenu(sessions, selected);
+
+        try {
+            while (true) {
+                int ch = terminal.reader().read();
+                if (ch == 27) { // ESC or arrow key sequence
+                    // Check for arrow key: ESC [ A/B
+                    int ch2 = terminal.reader().read();
+                    if (ch2 == '[' || ch2 == 'O') {
+                        int ch3 = terminal.reader().read();
+                        if (ch3 == 'A') { // Up
+                            selected = (selected - 1 + count) % count;
+                            redrawSessionMenu(sessions, selected, count);
+                            continue;
+                        } else if (ch3 == 'B') { // Down
+                            selected = (selected + 1) % count;
+                            redrawSessionMenu(sessions, selected, count);
+                            continue;
+                        }
+                    }
+                    // Plain Esc — cancel
+                    clearMenuLines(count + 3);
+                    return -1;
+                }
+                if (ch == 3 || ch == -1) { // Ctrl+C / EOF
+                    clearMenuLines(count + 3);
+                    return -1;
+                }
+                if (ch == '\r' || ch == '\n') { // Enter — confirm
+                    clearMenuLines(count + 3);
+                    return selected;
+                }
+                if (ch == 'j') { // vim down
+                    selected = (selected + 1) % count;
+                    redrawSessionMenu(sessions, selected, count);
+                }
+                if (ch == 'k') { // vim up
+                    selected = (selected - 1 + count) % count;
+                    redrawSessionMenu(sessions, selected, count);
+                }
+                if (ch == 'q') { // quit
+                    clearMenuLines(count + 3);
+                    return -1;
+                }
+            }
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private void drawSessionMenu(List<SessionManager.SessionMeta> sessions, int selected) {
+        terminal.writer().println();
+        terminal.writer().println(TEXT + BOLD + "  Sessions" + RESET + MUTED + "  (↑↓ select, Enter confirm, Esc cancel)" + RESET);
+        terminal.writer().println();
+        for (int i = 0; i < sessions.size(); i++) {
+            terminal.writer().println(formatSessionItem(sessions.get(i), i, selected));
+        }
+        terminal.flush();
+    }
+
+    private void redrawSessionMenu(List<SessionManager.SessionMeta> sessions, int selected, int count) {
+        // Move cursor up to overwrite the menu items
+        for (int i = 0; i < count; i++) {
+            terminal.writer().print("\033[A"); // cursor up
+        }
+        terminal.writer().print("\r"); // carriage return
+        for (int i = 0; i < count; i++) {
+            terminal.writer().println("\033[2K" + formatSessionItem(sessions.get(i), i, selected));
+        }
+        terminal.flush();
+    }
+
+    private String formatSessionItem(SessionManager.SessionMeta m, int index, int selected) {
+        boolean isSel = (index == selected);
+        String pointer = isSel ? ACCENT_BOLD + " > " + RESET : "   ";
+        String titleColor = isSel ? TEXT + BOLD : SOFT;
+        String title = m.title.isEmpty() ? "(untitled)" : m.title;
+        String time = SessionManager.formatTime(m.updatedAt);
+        String dir = m.cwd != null ? m.cwd : "";
+        if (dir.length() > 30) dir = "..." + dir.substring(dir.length() - 27);
+        return pointer + titleColor + title + RESET
+                + MUTED + "  [" + time + "]  "
+                + "(" + m.messageCount + " msgs)  " + dir + RESET;
+    }
+
+    private void clearMenuLines(int lines) {
+        for (int i = 0; i < lines; i++) {
+            terminal.writer().print("\033[A\033[2K"); // up + clear line
+        }
+        terminal.writer().print("\r");
+        terminal.flush();
+    }
+
+    private void printSessionList(List<SessionManager.SessionMeta> sessions) {
+        terminal.writer().println();
+        terminal.writer().println(TEXT + BOLD + "  Sessions" + RESET);
+        terminal.writer().println();
+        int idx = 1;
+        for (SessionManager.SessionMeta m : sessions) {
+            boolean isCurrent = currentSession != null
+                    && currentSession.getSessionId().equals(m.id);
+            String marker = isCurrent ? ACCENT_BOLD + " * " + RESET : "   ";
+            String title = m.title.isEmpty() ? "(untitled)" : m.title;
+            String time = SessionManager.formatTime(m.updatedAt);
+            String dir = m.cwd != null ? m.cwd : "";
+            if (dir.length() > 30) dir = "..." + dir.substring(dir.length() - 27);
+            terminal.writer().println(marker + ACCENT_BOLD + idx + RESET
+                    + MUTED + "  [" + time + "]  " + RESET
+                    + TEXT + title + RESET
+                    + MUTED + "  (" + m.messageCount + " msgs)  " + dir + RESET);
+            idx++;
+        }
+        terminal.writer().println();
+        terminal.flush();
+    }
+
+    /**
+     * Lazy session creation: only persist a session when actual conversation happens.
+     * Temp sessions (id starts with _tmp_) are replaced with a real one on first message.
+     */
+    private void ensureSessionCreated(String firstMessage) {
+        String sid = currentSession.getSessionId();
+        if (sid.startsWith("_tmp_")) {
+            // First real message — create a persistent session
+            String newId = sessionManager.createSession(kernel.getProps().getWorkDir());
+            sessionManager.updateTitle(newId, firstMessage);
+            currentSession = kernel.getSession(newId);
+            kernel.init(currentSession);
+            if (statusBar != null) {
+                statusBar.setSessionId(newId);
+                statusBar.draw();
+            }
+        } else {
+            // Existing session — just update meta
+            sessionManager.touch(sid);
+        }
+    }
+
+    private void resumeByIndex(String input) {
+        try {
+            int idx = Integer.parseInt(input);
+            List<SessionManager.SessionMeta> sessions = sessionManager.listSessions();
+            if (idx < 1 || idx > sessions.size()) {
+                terminal.writer().println(ERROR_COLOR + "  Invalid number: " + idx
+                        + " (1-" + sessions.size() + ")" + RESET);
+                terminal.flush();
+                return;
+            }
+            SessionManager.SessionMeta meta = sessions.get(idx - 1);
+            currentSession = kernel.getSession(meta.id);
+            terminal.puts(InfoCmp.Capability.clear_screen);
+            terminal.flush();
+            if (statusBar != null) {
+                statusBar.setSessionId(meta.id);
+                statusBar.draw();
+            }
+            String title = meta.title.isEmpty() ? meta.id : meta.title;
+            terminal.writer().println(DIM + "  Resumed: " + RESET + TEXT + BOLD + title + RESET);
+            terminal.flush();
+        } catch (NumberFormatException e) {
+            terminal.writer().println(ERROR_COLOR + "  Please enter a number." + RESET);
+            terminal.flush();
+        }
     }
 
     private boolean isSystemCommand(AgentSession session, String input) {
@@ -778,21 +1037,23 @@ public class CliShellNew implements Runnable {
 
     private void printHelp() {
         terminal.writer().println();
-        terminal.writer().println(TEXT + BOLD + "  可用命令" + RESET);
+        terminal.writer().println(TEXT + BOLD + "  Commands" + RESET);
         terminal.writer().println();
         for (CommandRegistry.Command cmd : commandRegistry.getAllCommands()) {
             String name = cmd.getName();
-            String padded = name + repeatChar(' ', Math.max(1, 14 - name.length()));
+            String padded = name + repeatChar(' ', Math.max(1, 16 - name.length()));
             terminal.writer()
                     .println("    " + ACCENT_BOLD + padded + RESET + MUTED + cmd.getDescription() + RESET);
         }
         terminal.writer().println();
-        terminal.writer().println(MUTED + "  快捷键" + RESET);
-        terminal.writer().println(MUTED + "    Esc     中断当前操作" + RESET);
-        terminal.writer().println(MUTED + "    Tab     自动补全命令" + RESET);
-        terminal.writer().println(MUTED + "    Ctrl+C  取消当前输入" + RESET);
-        terminal.writer().println(MUTED + "    Ctrl+D  退出程序" + RESET);
-        terminal.writer().println(MUTED + "    Ctrl+L  清屏" + RESET);
+        terminal.writer().println(TEXT + BOLD + "  Keybindings" + RESET);
+        terminal.writer().println();
+        terminal.writer().println(MUTED + "    Tab          " + RESET + SOFT + "Auto-complete /commands" + RESET);
+        terminal.writer().println(MUTED + "    \\+Enter      " + RESET + SOFT + "Insert newline" + RESET);
+        terminal.writer().println(MUTED + "    Esc          " + RESET + SOFT + "Cancel running task" + RESET);
+        terminal.writer().println(MUTED + "    Ctrl+C       " + RESET + SOFT + "Cancel task / clear input" + RESET);
+        terminal.writer().println(MUTED + "    Ctrl+D       " + RESET + SOFT + "Exit" + RESET);
+        terminal.writer().println(MUTED + "    Ctrl+L       " + RESET + SOFT + "Clear screen" + RESET);
         terminal.writer().println();
         terminal.writer().println(MUTED + "  " + repeatChar('\u2500', 40) + RESET);
         terminal.writer().println();
@@ -825,6 +1086,14 @@ public class CliShellNew implements Runnable {
         statusBar.setSessionId("cli");
         statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
         statusBar.setup();
+        // 把 JLine 内部的 ReentrantLock 传给 StatusBar，确保 draw() 跟 printAbove() 用同一把锁
+        try {
+            java.lang.reflect.Field lockField = LineReaderImpl.class.getDeclaredField("lock");
+            lockField.setAccessible(true);
+            statusBar.setJLineLock((java.util.concurrent.locks.ReentrantLock) lockField.get(reader));
+        } catch (Exception e) {
+            LOG.warn("Cannot access JLine internal lock, statusbar animation may flicker", e);
+        }
 
         terminal.puts(InfoCmp.Capability.clear_screen);
         terminal.flush();
@@ -848,16 +1117,21 @@ public class CliShellNew implements Runnable {
         terminal.writer().println();
 
         // ── Meta info ──
-        terminal.writer().println(SOFT + "  Model  " + RESET + TEXT + BOLD + modelName + RESET);
-        terminal.writer().println(SOFT + "  Dir    " + RESET + SOFT + path + RESET);
-        terminal.writer().println(SOFT + "  Ver    " + RESET + SOFT + version + RESET);
+        String configSource = ConfigLoader.loadConfig() != null
+                ? ConfigLoader.loadConfig().toAbsolutePath().toString()
+                : "(built-in)";
+
+        terminal.writer().println(SOFT + "  Model   " + RESET + TEXT + BOLD + modelName + RESET);
+        terminal.writer().println(SOFT + "  Dir     " + RESET + SOFT + path + RESET);
+        terminal.writer().println(SOFT + "  Config  " + RESET + SOFT + configSource + RESET);
+        terminal.writer().println(SOFT + "  Ver     " + RESET + SOFT + version + RESET);
         terminal.writer().println();
         terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + ACCENT + "Tip" + RESET + SOFT + " Type "
                 + RESET + TEXT + BOLD + "/help" + RESET + SOFT + " to see all commands" + RESET);
         terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Use " + RESET + TEXT + BOLD + "Tab"
-                + RESET + SOFT + " for auto-completion" + RESET);
+                + RESET + SOFT + " for auto-completion, " + RESET + TEXT + BOLD + "\\" + RESET + SOFT + "+Enter for newline" + RESET);
         terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Press " + RESET + TEXT + BOLD
-                + "Esc" + RESET + SOFT + " to cancel operation" + RESET);
+                + "Esc" + RESET + SOFT + "/" + RESET + TEXT + BOLD + "Ctrl+C" + RESET + SOFT + " to cancel operation" + RESET);
         terminal.writer().println();
         terminal.writer().println(MUTED + "  " + repeatChar('\u2500', 40) + RESET);
         terminal.writer().println();

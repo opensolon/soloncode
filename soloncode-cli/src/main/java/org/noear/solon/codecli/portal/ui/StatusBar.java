@@ -151,27 +151,36 @@ public class StatusBar {
         }
     }
 
-    /** 绘制状态栏到终端底部 */
+    private java.util.concurrent.locks.ReentrantLock jlineLock;
+
+    /** 设置 JLine 内部的 ReentrantLock（必须跟 printAbove 用同一把锁） */
+    public void setJLineLock(java.util.concurrent.locks.ReentrantLock lock) {
+        this.jlineLock = lock;
+    }
+
+    /** 绘制状态栏到终端底部（用 JLine 内部锁保证跟 printAbove 串行） */
     public void draw() {
         if (status == null)
             return;
 
-        synchronized (terminal) {
+        if (jlineLock != null) {
+            jlineLock.lock();
             try {
-                List<AttributedString> lines = new ArrayList<>();
-                lines.add(buildStatusLine());
-                terminal.writer().print("\033[?25l");
-                terminal.flush();
-                status.update(lines);
-                terminal.writer().print("\033[?25h");
-                terminal.flush();
-            } catch (Throwable ignored) {
-                try {
-                    terminal.writer().print("\033[?25h");
-                    terminal.flush();
-                } catch (Throwable e) {
-                }
+                drawInternal();
+            } finally {
+                jlineLock.unlock();
             }
+        } else {
+            drawInternal();
+        }
+    }
+
+    private void drawInternal() {
+        try {
+            List<AttributedString> lines = new ArrayList<>();
+            lines.add(buildStatusLine());
+            status.update(lines);
+        } catch (Throwable ignored) {
         }
     }
 
@@ -396,11 +405,8 @@ public class StatusBar {
         stopBarAnimation();
         glowPosition = 0;
         barAnimTask = barAnimExecutor.scheduleAtFixedRate(() -> {
-            try {
-                glowPosition++;
-                draw();
-            } catch (Throwable ignored) {
-            }
+            glowPosition++;
+            draw();
         }, 100, 100, TimeUnit.MILLISECONDS);
     }
 

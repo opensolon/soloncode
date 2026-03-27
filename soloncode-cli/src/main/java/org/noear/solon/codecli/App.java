@@ -55,11 +55,8 @@ public class App {
         Solon.start(App.class, args, app -> {
             AgentProperties c = app.cfg().toBean("solon.code.cli", AgentProperties.class);
 
-            // 确保 workDir 为绝对路径
-            if (c.getWorkDir() != null && !Paths.get(c.getWorkDir()).isAbsolute()) {
-                c.setWorkDir(Paths.get(System.getProperty("user.dir"), c.getWorkDir())
-                        .toAbsolutePath().normalize().toString());
-            }
+            // workDir 始终为当前工作目录（忽略配置中的 workDir）
+            c.setWorkDir(Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize().toString());
             app.context().wrapAndPut(AgentProperties.class, c);
             app.enableHttp(false); //默认不启用 http
 
@@ -82,8 +79,10 @@ public class App {
         ChatModel chatModel = ChatModel.of(agentProperties.getChatModel()).build();
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
+        // 会话数据存到全局目录 ~/.soloncode/sessions/<sessionId>/
+        Path globalSessionsDir = ConfigLoader.getGlobalConfigDir().resolve("sessions");
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, Paths.get(agentProperties.getWorkDir(), AgentRuntime.SOLONCODE_SESSIONS, key).normalize().toFile().toString()));
+                new FileAgentSession(key, globalSessionsDir.resolve(key).normalize().toFile().toString()));
 
 
         AgentRuntime agentKernel = AgentRuntime.builder()

@@ -44,20 +44,26 @@ public class SlashCommandCompleter implements Completer {
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
         String buffer = line.line();
-        // 仅在行首输入且以 "/" 开头时触发命令补全
-        if (buffer != null && buffer.startsWith("/")) {
-            List<CommandRegistry.Command> matched = registry.findCandidates(buffer.trim());
-            for (CommandRegistry.Command cmd : matched) {
-                candidates.add(new Candidate(
-                        cmd.getName(), // value - 补全后的实际值
-                        cmd.getName(), // display - 菜单中显示的文本
-                        null, // group
-                        cmd.getDescription(), // descr - 显示在右侧的描述
-                        null, // suffix
-                        null, // key
-                        true // complete - 是否为完整匹配
-                ));
-            }
+        if (buffer == null || !buffer.startsWith("/")) return;
+
+        // Only use the first word as the command prefix (e.g. "/resume 2" → "/resume")
+        String prefix = buffer.trim();
+        int spaceIdx = prefix.indexOf(' ');
+        if (spaceIdx > 0) {
+            prefix = prefix.substring(0, spaceIdx);
+        }
+
+        List<CommandRegistry.Command> matched = registry.findCandidates(prefix);
+        for (CommandRegistry.Command cmd : matched) {
+            candidates.add(new Candidate(
+                    cmd.getName(),       // value
+                    cmd.getName(),       // display
+                    null,                // group
+                    cmd.getDescription(),// description
+                    null,                // suffix
+                    null,                // key
+                    false                // complete=false: show list, don't auto-complete
+            ));
         }
     }
 }

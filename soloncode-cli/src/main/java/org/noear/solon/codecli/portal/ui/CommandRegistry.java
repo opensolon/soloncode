@@ -67,6 +67,7 @@ public class CommandRegistry {
     public static class CommandContext {
         private final Object session;
         private final Runnable onExit;
+        private String arg;
 
         public CommandContext(Object session, Runnable onExit) {
             this.session = session;
@@ -76,6 +77,14 @@ public class CommandRegistry {
         @SuppressWarnings("unchecked")
         public <T> T getSession() {
             return (T) session;
+        }
+
+        public String getArg() {
+            return arg;
+        }
+
+        public void setArg(String arg) {
+            this.arg = arg;
         }
 
         public void exit() {
@@ -134,7 +143,7 @@ public class CommandRegistry {
     }
 
     /**
-     * 执行命令
+     * 执行命令（支持带参数，如 "/resume 3"）
      *
      * @param input   用户输入
      * @param context 命令上下文
@@ -145,9 +154,22 @@ public class CommandRegistry {
             return false;
         }
 
-        String key = input.toLowerCase();
-        Command cmd = commands.get(key);
+        String trimmed = input.trim();
+        // Split: "/resume 3" → command="/resume", arg="3"
+        int spaceIdx = trimmed.indexOf(' ');
+        String cmdName;
+        String arg;
+        if (spaceIdx > 0) {
+            cmdName = trimmed.substring(0, spaceIdx).toLowerCase();
+            arg = trimmed.substring(spaceIdx + 1).trim();
+        } else {
+            cmdName = trimmed.toLowerCase();
+            arg = null;
+        }
+
+        Command cmd = commands.get(cmdName);
         if (cmd != null) {
+            context.setArg(arg);
             cmd.getHandler().accept(context);
             return true;
         }
