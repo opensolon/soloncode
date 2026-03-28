@@ -2241,7 +2241,7 @@ public class AgentTeamsSkill extends AbsSkill {
             }
 
             // 4. 构建 TeamAgent
-            ChatModel chatModel = agentRuntime.getLlm();
+            ChatModel chatModel = agentRuntime.getChatModel();
 
                 TeamAgent.Builder teamBuilder = TeamAgent.of(chatModel)
                         .name(teamName)

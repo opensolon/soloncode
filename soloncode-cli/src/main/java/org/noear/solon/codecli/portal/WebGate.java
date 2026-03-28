@@ -38,10 +38,10 @@ import reactor.core.publisher.Flux;
  */
 @Preview("3.9.1")
 public class WebGate implements Handler {
-    private final AgentRuntime kernel;
+    private final AgentRuntime agentRuntime;
 
-    public WebGate(AgentRuntime kernel) {
-        this.kernel = kernel;
+    public WebGate(AgentRuntime agentRuntime) {
+        this.agentRuntime = agentRuntime;
     }
 
     @Override
@@ -57,22 +57,27 @@ public class WebGate implements Handler {
             return;
         }
 
-        if(Assert.isNotEmpty(sessionCwd)) {
+        if (Assert.isNotEmpty(sessionCwd)) {
             //只有第一次传有效（后续的无效）
             if (sessionCwd.contains("..")) {
                 ctx.status(400);
                 ctx.output("Invalid Session Cwd");
                 return;
             }
-
-            AgentSession session = kernel.getSession(sessionId);
-            session.attrs().putIfAbsent(AgentRuntime.ATTR_CWD, sessionCwd);
         }
+
+        AgentSession session = agentRuntime.getSession(sessionId);
 
         if (Assert.isNotEmpty(input)) {
             if ("call".equals(mode)) {
                 ctx.contentType(MimeType.TEXT_PLAIN_UTF8_VALUE);
-                String result = kernel.call(sessionId, Prompt.of(input))
+                String result = agentRuntime.getRootAgent()
+                        .prompt(input)
+                        .session(session)
+                        .options(o -> {
+                            o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                        })
+                        .call()
                         .getContent();
 
                 ctx.output(result);
@@ -80,7 +85,13 @@ public class WebGate implements Handler {
                 ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
 
 
-                Flux<String> stringFlux = kernel.stream(sessionId, Prompt.of(input))
+                Flux<String> stringFlux = agentRuntime.getRootAgent()
+                        .prompt(input)
+                        .session(session)
+                        .options(o -> {
+                            o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                        })
+                        .stream()
                         .map(chunk -> {
                             if (chunk.hasContent()) {
                                 if (chunk instanceof ReasonChunk) {

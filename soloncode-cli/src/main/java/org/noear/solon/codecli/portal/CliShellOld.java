@@ -175,9 +175,12 @@ public class CliShellOld implements Runnable {
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
 
-            Prompt prompt = Prompt.of(currentInput).attrPut("start_time" , System.currentTimeMillis());
+            Prompt prompt = Prompt.of(currentInput).attrPut("start_time", System.currentTimeMillis());
 
-            Disposable disposable = agentRuntime.stream(session.getSessionId(), prompt)
+            Disposable disposable = agentRuntime.getRootAgent()
+                    .prompt(prompt)
+                    .session(session)
+                    .stream()
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReasonChunk) {

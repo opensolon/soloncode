@@ -24,18 +24,18 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class AcpLink implements Runnable{
-    private final AgentRuntime kernel; // CodeCLI 内部的 Agent
+public class AcpLink implements Runnable {
+    private final AgentRuntime agentRuntime; // CodeCLI 内部的 Agent
     private final AcpAgentTransport agentTransport;
 
-    public AcpLink(AgentRuntime kernel, AcpAgentTransport agentTransport) {
-        this.kernel = kernel;
+    public AcpLink(AgentRuntime agentRuntime, AcpAgentTransport agentTransport) {
+        this.agentRuntime = agentRuntime;
         this.agentTransport = agentTransport;
     }
 
     private final Map<String, AcpSessionContext> sessionStates = new ConcurrentHashMap<>();
 
-    public void run(){
+    public void run() {
         AcpAsyncAgent acpAgent = createAgent(agentTransport);
 
         acpAgent.start().subscribe();
@@ -66,11 +66,16 @@ public class AcpLink implements Runnable{
                     AcpSessionContext context = sessionStates.get(sessionId);
 
                     Prompt userInput = toPrompt(request);
-                    AgentSession session = kernel.getSession(sessionId);
-                    session.attrs().put(AgentRuntime.ATTR_CWD, context.getCwd());
+                    AgentSession session = agentRuntime.getSession(sessionId);
 
                     // 将 ACP 的 Prompt 转发给 Solon ReActAgent
-                    return kernel.stream(request.sessionId(), userInput)
+                    return agentRuntime.getRootAgent()
+                            .prompt(userInput)
+                            .session(session)
+                            .options(o -> {
+                                o.toolContextPut(AgentRuntime.ATTR_CWD, context.getCwd());
+                            })
+                            .stream()
                             .concatMap(chunk -> {
                                 // --- 规划阶段 ---
                                 if (chunk instanceof PlanChunk) {
@@ -162,7 +167,13 @@ public class AcpLink implements Runnable{
 
     public static class AcpSessionContext {
         private final String cwd;
-        public AcpSessionContext(String cwd) { this.cwd = cwd; }
-        public String getCwd() { return cwd; }
+
+        public AcpSessionContext(String cwd) {
+            this.cwd = cwd;
+        }
+
+        public String getCwd() {
+            return cwd;
+        }
     }
 }

@@ -46,7 +46,6 @@ import java.util.*;
 public class AgentRuntime {
     private final static Logger LOG = LoggerFactory.getLogger(AgentRuntime.class);
 
-    public final static String SESSION_DEFAULT = "cli";
     public final static String ATTR_CWD = "__cwd";
 
     public final static String SOLONCODE_SESSIONS = ".soloncode/sessions/";
@@ -239,6 +238,10 @@ public class AgentRuntime {
         return sessionProvider.getSession(instanceId);
     }
 
+    public ReActAgent getRootAgent() {
+        return rootAgent;
+    }
+
     public ReActAgent.Builder createSubagent(AgentDefinition definition) {
         return AgentFactory.create(this, definition);
     }
@@ -276,21 +279,6 @@ public class AgentRuntime {
         return null;
     }
 
-    private ReActRequest buildRequest(String sessonId, Prompt prompt) {
-        if (sessonId == null) {
-            sessonId = SESSION_DEFAULT;
-        }
-
-        AgentSession session = sessionProvider.getSession(sessonId);
-        String activatedWorkDir = (String) session.attrs()
-                .getOrDefault(ATTR_CWD, properties.getWorkDir());
-
-        return rootAgent.prompt(prompt)
-                .session(session)
-                .options(o -> {
-                    o.toolContextPut(AgentRuntime.ATTR_CWD, activatedWorkDir);
-                });
-    }
 
     public String init(AgentSession session) {
         String effectiveWorkDir = (String) session.attrs()
@@ -303,16 +291,6 @@ public class AgentRuntime {
         } else {
             return "已初始化...";
         }
-    }
-
-    public Flux<AgentChunk> stream(String sessionId, Prompt prompt) {
-        return buildRequest(sessionId, prompt)
-                .stream();
-    }
-
-    public AgentResponse call(String sessionId, Prompt prompt) throws Throwable {
-        return buildRequest(sessionId, prompt)
-                .call();
     }
 
     public static Builder builder() {

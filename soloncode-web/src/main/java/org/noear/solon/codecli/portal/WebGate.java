@@ -64,22 +64,20 @@ public class WebGate implements Handler {
             return;
         }
 
-        if(Assert.isNotEmpty(sessionCwd)) {
+        if (Assert.isNotEmpty(sessionCwd)) {
             //只有第一次传有效（后续的无效）
             if (sessionCwd.contains("..")) {
                 ctx.status(400);
                 ctx.output("Invalid Session Cwd");
                 return;
             }
-
-            AgentSession session = agentRuntime.getSession(sessionId);
-            session.attrs().putIfAbsent(AgentRuntime.ATTR_CWD, sessionCwd);
         }
+
+        AgentSession session = agentRuntime.getSession(sessionId);
 
         // HITL approve/reject handling
         String hitlAction = ctx.param("hitlAction");
         if (Assert.isNotEmpty(hitlAction)) {
-            AgentSession session = agentRuntime.getSession(sessionId);
             HITLTask task = HITL.getPendingTask(session);
             if (task != null) {
                 if ("approve".equals(hitlAction)) {
@@ -90,28 +88,40 @@ public class WebGate implements Handler {
             }
             // Resume streaming after HITL decision
             ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-            ctx.returnValue(buildStreamFlux(sessionId, null));
+            ctx.returnValue(buildStreamFlux(session, sessionCwd, null));
             return;
         }
 
         if (Assert.isNotEmpty(input)) {
             if ("call".equals(mode)) {
                 ctx.contentType(MimeType.TEXT_PLAIN_UTF8_VALUE);
-                String result = agentRuntime.call(sessionId, Prompt.of(input))
+                String result = agentRuntime.getRootAgent()
+                        .prompt(input)
+                        .session(session)
+                        .options(o -> {
+                            o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                        })
+                        .call()
                         .getContent();
 
                 ctx.output(result);
             } else {
                 ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-                ctx.returnValue(buildStreamFlux(sessionId, input));
+                ctx.returnValue(buildStreamFlux(session, sessionCwd, input));
             }
         }
     }
 
-    private Flux<String> buildStreamFlux(String sessionId, String input) {
-        Prompt prompt = Prompt.of(input).attrPut("start_time" , System.currentTimeMillis());
+    private Flux<String> buildStreamFlux(AgentSession session, String sessionCwd, String input) {
+        Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
 
-        return agentRuntime.stream(sessionId, prompt)
+        return agentRuntime.getRootAgent()
+                .prompt(input)
+                .session(session)
+                .options(o -> {
+                    o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                })
+                .stream()
                 .map(chunk -> {
                     if (chunk instanceof ReasonChunk) {
                         return onReasonChunk((ReasonChunk) chunk);
@@ -133,7 +143,6 @@ public class WebGate implements Handler {
                 })
                 .concatWith(Flux.defer(() -> {
                     // Check HITL state after stream completes
-                    AgentSession session = agentRuntime.getSession(sessionId);
                     if (HITL.isHitl(session)) {
                         HITLTask task = HITL.getPendingTask(session);
                         if (task != null) {
@@ -151,7 +160,7 @@ public class WebGate implements Handler {
                 }));
     }
 
-    private String onReasonChunk(ReasonChunk reason){
+    private String onReasonChunk(ReasonChunk reason) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             if (reason.getMessage().isThinking()) {
                 return new ONode().set("type", "reason")
@@ -167,7 +176,7 @@ public class WebGate implements Handler {
         return "";
     }
 
-    private String onActionEndChunk(ActionEndChunk action){
+    private String onActionEndChunk(ActionEndChunk action) {
         if (Assert.isNotEmpty(action.getToolName())) {
             ONode oNode = new ONode().set("type", "action")
                     .set("text", action.getContent());
@@ -187,7 +196,7 @@ public class WebGate implements Handler {
         return "";
     }
 
-    private String onReActChunk(ReActChunk react){
+    private String onReActChunk(ReActChunk react) {
         StringBuilder buf = new StringBuilder();
 
         if (react.isNormal() == false) {

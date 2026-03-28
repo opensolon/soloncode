@@ -67,7 +67,7 @@ public class CliShellNew implements Runnable {
 
     private Terminal terminal;
     private LineReader reader;
-    private final AgentRuntime kernel;
+    private final AgentRuntime agentRuntime;
     private final CommandRegistry commandRegistry;
     private final SessionManager sessionManager = new SessionManager();
     private StatusBar statusBar;
@@ -119,8 +119,8 @@ public class CliShellNew implements Runnable {
             ICON_THINKING = "\u2699", // ⚙
             ICON_CHECK = "\u2714"; // ✔
 
-    public CliShellNew(AgentRuntime kernel) {
-        this.kernel = kernel;
+    public CliShellNew(AgentRuntime agentRuntime) {
+        this.agentRuntime = agentRuntime;
         this.commandRegistry = new CommandRegistry();
         registerBuiltinCommands();
 
@@ -295,7 +295,7 @@ public class CliShellNew implements Runnable {
 
         commandRegistry.register("/init", "重新初始化代码索引", ctx -> {
             AgentSession session = ctx.getSession();
-            String result = kernel.init(session);
+            String result = agentRuntime.init(session);
             terminal.writer().println(DIM + result + RESET);
             terminal.flush();
         });
@@ -312,8 +312,8 @@ public class CliShellNew implements Runnable {
 
         commandRegistry.register("/new", "开始新会话", ctx -> {
             // 新建临时 session，只在第一条消息时才持久化
-            currentSession = kernel.getSession("_tmp_" + System.currentTimeMillis());
-            kernel.init(currentSession);
+            currentSession = agentRuntime.getSession("_tmp_" + System.currentTimeMillis());
+            agentRuntime.init(currentSession);
             terminal.puts(InfoCmp.Capability.clear_screen);
             terminal.flush();
             if (statusBar != null) {
@@ -332,7 +332,7 @@ public class CliShellNew implements Runnable {
                 return;
             }
 
-            String cwd = kernel.getProps().getWorkDir();
+            String cwd = agentRuntime.getProps().getWorkDir();
             List<SessionManager.SessionMeta> sessions = sessionManager.listSessions(cwd);
             if (sessions.isEmpty()) {
                 terminal.writer().println(DIM + "  No sessions for this directory." + RESET);
@@ -350,8 +350,8 @@ public class CliShellNew implements Runnable {
         });
 
         commandRegistry.register("/model", "显示当前模型信息", ctx -> {
-            String model = kernel.getProps().getChatModel() != null
-                    ? kernel.getProps().getChatModel().getModel()
+            String model = agentRuntime.getProps().getChatModel() != null
+                    ? agentRuntime.getProps().getChatModel().getModel()
                     : "未配置";
             terminal.writer().println(DIM + "Model: " + RESET + BOLD + model + RESET);
             terminal.flush();
@@ -366,19 +366,19 @@ public class CliShellNew implements Runnable {
         });
 
         commandRegistry.register("/thinking", "切换思考内容显示", ctx -> {
-            kernel.getProps().setThinkPrinted(!kernel.getProps().isThinkPrinted());
-            String mode = kernel.getProps().isThinkPrinted() ? "ON" : "OFF";
+            agentRuntime.getProps().setThinkPrinted(!agentRuntime.getProps().isThinkPrinted());
+            String mode = agentRuntime.getProps().isThinkPrinted() ? "ON" : "OFF";
             terminal.writer().println(DIM + "  Thinking display: " + RESET + BOLD + mode + RESET);
             terminal.flush();
         });
 
         commandRegistry.register("/details", "切换工具调用详情显示", ctx -> {
-            kernel.getProps().setCliPrintSimplified(!kernel.getProps().isCliPrintSimplified());
-            String mode = kernel.getProps().isCliPrintSimplified() ? "simplified" : "detailed";
+            agentRuntime.getProps().setCliPrintSimplified(!agentRuntime.getProps().isCliPrintSimplified());
+            String mode = agentRuntime.getProps().isCliPrintSimplified() ? "simplified" : "detailed";
             terminal.writer().println(DIM + "  Tool details: " + RESET + BOLD + mode + RESET);
             terminal.flush();
             if (statusBar != null) {
-                statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
+                statusBar.setCompactMode(agentRuntime.getProps().isCliPrintSimplified());
             }
         });
 
@@ -401,7 +401,9 @@ public class CliShellNew implements Runnable {
     private static final AttributedStyle PROMPT_STYLE = AttributedStyle.BOLD
             .foreground(255, 125, 144);
 
-    /** Build the normal prompt as AttributedString so JLine calculates width correctly */
+    /**
+     * Build the normal prompt as AttributedString so JLine calculates width correctly
+     */
     private AttributedString buildNormalPrompt() {
         AttributedStringBuilder sb = new AttributedStringBuilder();
         sb.append("\n");
@@ -410,7 +412,9 @@ public class CliShellNew implements Runnable {
         return sb.toAttributedString();
     }
 
-    /** Build prompt with pending inputs list */
+    /**
+     * Build prompt with pending inputs list
+     */
     private AttributedString buildPendingPrompt() {
         AttributedStringBuilder sb = new AttributedStringBuilder();
         sb.append("\n");
@@ -423,13 +427,17 @@ public class CliShellNew implements Runnable {
         return sb.toAttributedString();
     }
 
-    /** Update prompt with pending inputs — with REDRAW */
+    /**
+     * Update prompt with pending inputs — with REDRAW
+     */
     private void updatePromptWithPending() {
         ((LineReaderImpl) reader).setPrompt(buildPendingPrompt().toAnsi(terminal));
         reader.callWidget(LineReader.REDRAW_LINE);
     }
 
-    /** Reset to normal prompt */
+    /**
+     * Reset to normal prompt
+     */
     private void resetPrompt() {
         ((LineReaderImpl) reader).setPrompt(buildNormalPrompt().toAnsi(terminal));
         reader.callWidget(LineReader.REDISPLAY);
@@ -448,8 +456,8 @@ public class CliShellNew implements Runnable {
 
         printWelcome();
         // 启动时用临时 session，不持久化。第一条消息时才正式创建会话。
-        currentSession = kernel.getSession("_tmp_" + System.currentTimeMillis());
-        kernel.init(currentSession);
+        currentSession = agentRuntime.getSession("_tmp_" + System.currentTimeMillis());
+        agentRuntime.init(currentSession);
 
         while (true) {
             try {
@@ -498,7 +506,10 @@ public class CliShellNew implements Runnable {
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
         final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
-        currentDisposable = kernel.stream(session.getSessionId(), Prompt.of(input))
+        currentDisposable = agentRuntime.getRootAgent()
+                .prompt(input)
+                .session(session)
+                .stream()
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(chunk -> {
                     if (cancelRequested.get())
@@ -563,7 +574,9 @@ public class CliShellNew implements Runnable {
     // HITL 授权（异步：后台线程显示提示，主线程 readLine 输入）
     // ═══════════════════════════════════════════════════════════
 
-    /** 后台线程调用 — 通过 printAbove 显示 HITL 提示 */
+    /**
+     * 后台线程调用 — 通过 printAbove 显示 HITL 提示
+     */
     private void showHITLPrompt(AgentSession session) {
         HITLTask task = HITL.getPendingTask(session);
         if (task == null)
@@ -589,7 +602,9 @@ public class CliShellNew implements Runnable {
         printAboveLine("");
     }
 
-    /** 主线程调用 — 处理用户在 readLine() 中输入的 HITL 选择 */
+    /**
+     * 主线程调用 — 处理用户在 readLine() 中输入的 HITL 选择
+     */
     private void handleHITLInput(String input) {
         HITLTask task = HITL.getPendingTask(currentSession);
         if (task == null)
@@ -612,7 +627,7 @@ public class CliShellNew implements Runnable {
     // ═══════════════════════════════════════════════════════════
 
     private void onFinalChunk(ReActChunk react, AtomicBoolean isFirstReasonChunk,
-            AtomicBoolean isFirstConversation) {
+                              AtomicBoolean isFirstConversation) {
         if (react.isNormal() == false) {
             String delta = clearThink(react.getContent());
             onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
@@ -633,7 +648,7 @@ public class CliShellNew implements Runnable {
     }
 
     private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk,
-            AtomicBoolean isFirstConversation) {
+                               AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             boolean isThinking = reason.getMessage().isThinking();
 
@@ -689,7 +704,7 @@ public class CliShellNew implements Runnable {
     private volatile boolean reasonAtLineStart = true;
 
     private void onReasonChunkDo(String delta, AtomicBoolean isFirstReasonChunk,
-            AtomicBoolean isFirstConversation) {
+                                 AtomicBoolean isFirstConversation) {
         if (Assert.isNotEmpty(delta)) {
             if (isFirstReasonChunk.get()) {
                 String trimmed = delta.replaceAll("^[\\s\\n]+", "");
@@ -716,7 +731,7 @@ public class CliShellNew implements Runnable {
         if (Assert.isNotEmpty(action.getToolName())) {
             final String fullToolName;
 
-            if(kernel.getName().equals(action.getAgentName())){
+            if (agentRuntime.getName().equals(action.getAgentName())) {
                 fullToolName = action.getToolName();
             } else {
                 fullToolName = action.getAgentName() + "/" + action.getToolName();
@@ -752,7 +767,7 @@ public class CliShellNew implements Runnable {
                 }
             }
 
-            if (kernel.getProps().isCliPrintSimplified()) {
+            if (agentRuntime.getProps().isCliPrintSimplified()) {
                 // 简化模式 — 一行式
                 String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
                 printAboveLine("");
@@ -804,14 +819,18 @@ public class CliShellNew implements Runnable {
     // 行缓冲 + printAbove 工具方法
     // ═══════════════════════════════════════════════════════════
 
-    /** 向行缓冲追加内容（不立即输出） */
+    /**
+     * 向行缓冲追加内容（不立即输出）
+     */
     private void appendToLineBuffer(String text) {
         synchronized (lineBuffer) {
             lineBuffer.append(text);
         }
     }
 
-    /** 将行缓冲内容 flush 到 printAbove（一整行） */
+    /**
+     * 将行缓冲内容 flush 到 printAbove（一整行）
+     */
     private void flushLineBuffer() {
         synchronized (lineBuffer) {
             if (lineBuffer.length() > 0) {
@@ -821,7 +840,9 @@ public class CliShellNew implements Runnable {
         }
     }
 
-    /** 通过 printAbove 输出一整行（printAbove 内部用 JLine 的 ReentrantLock，跟 StatusBar.draw 共用同一把锁） */
+    /**
+     * 通过 printAbove 输出一整行（printAbove 内部用 JLine 的 ReentrantLock，跟 StatusBar.draw 共用同一把锁）
+     */
     private void printAboveLine(String line) {
         if (reader != null) {
             reader.printAbove(line);
@@ -971,10 +992,10 @@ public class CliShellNew implements Runnable {
         String sid = currentSession.getSessionId();
         if (sid.startsWith("_tmp_")) {
             // First real message — create a persistent session
-            String newId = sessionManager.createSession(kernel.getProps().getWorkDir());
+            String newId = sessionManager.createSession(agentRuntime.getProps().getWorkDir());
             sessionManager.updateTitle(newId, firstMessage);
-            currentSession = kernel.getSession(newId);
-            kernel.init(currentSession);
+            currentSession = agentRuntime.getSession(newId);
+            agentRuntime.init(currentSession);
             if (statusBar != null) {
                 statusBar.setSessionId(newId);
                 statusBar.draw();
@@ -996,7 +1017,7 @@ public class CliShellNew implements Runnable {
                 return;
             }
             SessionManager.SessionMeta meta = sessions.get(idx - 1);
-            currentSession = kernel.getSession(meta.id);
+            currentSession = agentRuntime.getSession(meta.id);
             terminal.puts(InfoCmp.Capability.clear_screen);
             terminal.flush();
             if (statusBar != null) {
@@ -1077,14 +1098,14 @@ public class CliShellNew implements Runnable {
     protected void printWelcome() {
         // 初始化状态栏
         this.statusBar = new StatusBar(terminal);
-        String modelName = kernel.getProps().getChatModel() != null
-                ? kernel.getProps().getChatModel().getModel()
+        String modelName = agentRuntime.getProps().getChatModel() != null
+                ? agentRuntime.getProps().getChatModel().getModel()
                 : "unknown";
         statusBar.setModelName(modelName);
-        statusBar.setWorkDir(new File(kernel.getProps().getWorkDir()).getAbsolutePath());
-        statusBar.setVersion(kernel.getVersion());
+        statusBar.setWorkDir(new File(agentRuntime.getProps().getWorkDir()).getAbsolutePath());
+        statusBar.setVersion(agentRuntime.getVersion());
         statusBar.setSessionId("cli");
-        statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
+        statusBar.setCompactMode(agentRuntime.getProps().isCliPrintSimplified());
         statusBar.setup();
         // 把 JLine 内部的 ReentrantLock 传给 StatusBar，确保 draw() 跟 printAbove() 用同一把锁
         try {
@@ -1099,8 +1120,8 @@ public class CliShellNew implements Runnable {
         terminal.flush();
         statusBar.draw(); // 清屏后重绘
 
-        String path = new File(kernel.getProps().getWorkDir()).getAbsolutePath();
-        String version = kernel.getVersion();
+        String path = new File(agentRuntime.getProps().getWorkDir()).getAbsolutePath();
+        String version = agentRuntime.getVersion();
 
         // ── ASCII Art Logo (对齐 Go TUI renderWelcomeLogo) ──
         terminal.writer().println();
