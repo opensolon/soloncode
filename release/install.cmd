@@ -66,15 +66,17 @@ echo.
 :: =============================================
 set "SOURCE_DIR=%~dp0"
 if "%SOURCE_DIR:~-1%"=="\" set "SOURCE_DIR=%SOURCE_DIR:~0,-1%"
-set "SOURCE_SOLONCODE=%SOURCE_DIR%\.soloncode"
+set "SOURCE_BIN_DIR=%SOURCE_DIR%\bin"
+set "SOURCE_SKILLS_DIR=%SOURCE_DIR%\skills"
 set "TARGET_DIR=%USERPROFILE%\.soloncode"
 set "TARGET_BIN_DIR=%TARGET_DIR%\bin"
+set "TARGET_SKILLS_DIR=%TARGET_DIR%\skills"
 
 :: =============================================
 :: 检查源目录是否存在
 :: =============================================
-if not exist "%SOURCE_SOLONCODE%" (
-    echo [Error] Source directory not found: %SOURCE_SOLONCODE%
+if not exist "%SOURCE_BIN_DIR%" (
+    echo [Error] Source bin directory not found: %SOURCE_BIN_DIR%
     pause
     exit /b 1
 )
@@ -101,30 +103,26 @@ echo [2/5] Preparing target directory: %TARGET_DIR%
 
 if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
 if not exist "%TARGET_BIN_DIR%" mkdir "%TARGET_BIN_DIR%"
+if not exist "%TARGET_SKILLS_DIR%" mkdir "%TARGET_SKILLS_DIR%"
 echo       Created directory structure
 
 :: =============================================
-:: [3/5] 复制 .soloncode 目录内容到目标目录
+:: [3/5] 复制文件
 :: =============================================
 echo.
 echo [3/5] Copying files to target directory...
 
 :: 复制 bin 目录内容
-if exist "%SOURCE_SOLONCODE%\bin" (
-    xcopy "%SOURCE_SOLONCODE%\bin\*" "%TARGET_BIN_DIR%\" /E /Y >nul 2>&1
-    echo       Copied bin/ directory
-)
+xcopy "%SOURCE_BIN_DIR%\*" "%TARGET_BIN_DIR%\" /E /Y >nul 2>&1
+echo       Copied bin/ directory
 
 :: 复制 skills 目录（如果目标存在，先删除再复制）
-if exist "%SOURCE_SOLONCODE%\skills" (
-    if exist "%TARGET_DIR%\skills" rd /s /q "%TARGET_DIR%\skills"
-    xcopy "%SOURCE_SOLONCODE%\skills" "%TARGET_DIR%\skills\" /E /I /Y >nul 2>&1
+if exist "%SOURCE_SKILLS_DIR%" (
+    if exist "%TARGET_SKILLS_DIR%" rd /s /q "%TARGET_SKILLS_DIR%"
+    xcopy "%SOURCE_SKILLS_DIR%\*" "%TARGET_SKILLS_DIR%\" /E /I /Y >nul 2>&1
     echo       Copied skills/ directory
-)
-
-:: 复制其他文件（排除 bin 和 skills）
-for %%f in ("%SOURCE_SOLONCODE%\*") do (
-    copy "%%f" "%TARGET_DIR%\" >nul 2>&1
+) else (
+    echo       No skills/ directory to copy
 )
 
 echo       Files copied successfully
@@ -322,7 +320,7 @@ echo     %%USERPROFILE%%\.soloncode\
 echo     ├── bin\           (executables)
 echo     │   ├── soloncode-cli.jar
 echo     │   ├── soloncode.cmd
-echo     │   └── config.yml (configuration)
+echo     │   └── config.yml (configuration, preserved if exists)
 echo     └── skills\        (skill modules)
 echo.
 

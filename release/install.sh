@@ -19,15 +19,17 @@ SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # 目标目录
 TARGET_DIR="$HOME/.soloncode"
 TARGET_BIN_DIR="$TARGET_DIR/bin"
+TARGET_SKILLS_DIR="$TARGET_DIR/skills"
 
-# 源 .soloncode 目录
-SOURCE_SOLONCODE="$SOURCE_DIR/.soloncode"
+# 源目录
+SOURCE_BIN_DIR="$SOURCE_DIR/bin"
+SOURCE_SKILLS_DIR="$SOURCE_DIR/skills"
 
 # =============================================
 # 检查源目录是否存在
 # =============================================
-if [ ! -d "$SOURCE_SOLONCODE" ]; then
-    echo "[Error] Source directory not found: $SOURCE_SOLONCODE"
+if [ ! -d "$SOURCE_BIN_DIR" ]; then
+    echo "[Error] Source bin directory not found: $SOURCE_BIN_DIR"
     exit 1
 fi
 
@@ -51,43 +53,33 @@ fi
 echo ""
 echo "[2/5] Preparing target directory: $TARGET_DIR"
 
-# 创建目录结构
 mkdir -p "$TARGET_DIR"
 mkdir -p "$TARGET_BIN_DIR"
+mkdir -p "$TARGET_SKILLS_DIR"
 
 echo "      Created directory structure"
 
 # =============================================
-# [3/5] 复制 .soloncode 目录内容到目标目录
+# [3/5] 复制文件
 # =============================================
 echo ""
-echo "[3/5] Copying files to $TARGET_DIR ..."
+echo "[3/5] Copying files..."
 
 # 复制 bin 目录内容
-if [ -d "$SOURCE_SOLONCODE/bin" ]; then
-    cp -R "$SOURCE_SOLONCODE/bin/"* "$TARGET_BIN_DIR/" 2>/dev/null || true
-    echo "      Copied bin/ directory"
-fi
+cp -R "$SOURCE_BIN_DIR/"* "$TARGET_BIN_DIR/" 2>/dev/null || true
+echo "      Copied bin/ directory"
 
-# 复制 skills 目录
-if [ -d "$SOURCE_SOLONCODE/skills" ]; then
-    # 如果目标 skills 目录存在，先删除再复制（更新）
-    if [ -d "$TARGET_DIR/skills" ]; then
-        rm -rf "$TARGET_DIR/skills"
+# 复制 skills 目录（覆盖更新）
+if [ -d "$SOURCE_SKILLS_DIR" ]; then
+    # 如果目标 skills 目录存在，先删除再复制
+    if [ -d "$TARGET_SKILLS_DIR" ]; then
+        rm -rf "$TARGET_SKILLS_DIR"
     fi
-    cp -R "$SOURCE_SOLONCODE/skills" "$TARGET_DIR/" 2>/dev/null || true
+    cp -R "$SOURCE_SKILLS_DIR" "$TARGET_DIR/" 2>/dev/null || true
     echo "      Copied skills/ directory"
+else
+    echo "      No skills/ directory to copy"
 fi
-
-# 复制其他文件（如 .gitignore 等，排除 bin 和 skills）
-for item in "$SOURCE_SOLONCODE"/*; do
-    item_name=$(basename "$item")
-    if [ "$item_name" != "bin" ] && [ "$item_name" != "skills" ]; then
-        cp -R "$item" "$TARGET_DIR/" 2>/dev/null || true
-    fi
-done
-
-echo "      Files copied successfully"
 
 # =============================================
 # [4/5] 恢复 config.yml（如果之前存在）
@@ -265,6 +257,6 @@ echo "    ~/.soloncode/"
 echo "    ├── bin/           (executables)"
 echo "    │   ├── soloncode-cli.jar"
 echo "    │   ├── soloncode   (launcher)"
-echo "    │   └── config.yml  (configuration)"
+echo "    │   └── config.yml  (configuration, preserved if exists)"
 echo "    └── skills/         (skill modules)"
 echo ""
