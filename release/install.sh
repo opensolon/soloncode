@@ -34,17 +34,28 @@ if [ ! -d "$SOURCE_BIN_DIR" ]; then
 fi
 
 # =============================================
-# [1/5] 检查并备份已有的 config.yml
+# [1/5] 检查并备份已有的 config.yml 和 AGENTS.md
 # =============================================
 echo "[1/5] Checking for existing configuration..."
 CONFIG_BACKUP=""
+AGENTS_BACKUP=""
 TARGET_CONFIG="$TARGET_BIN_DIR/config.yml"
+TARGET_AGENTS="$TARGET_BIN_DIR/AGENTS.md"
+
 if [ -f "$TARGET_CONFIG" ]; then
     CONFIG_BACKUP=$(mktemp)
     cp "$TARGET_CONFIG" "$CONFIG_BACKUP"
     echo "      Found existing config.yml (will be preserved)"
 else
     echo "      No existing config.yml found"
+fi
+
+if [ -f "$TARGET_AGENTS" ]; then
+    AGENTS_BACKUP=$(mktemp)
+    cp "$TARGET_AGENTS" "$AGENTS_BACKUP"
+    echo "      Found existing AGENTS.md (will be preserved)"
+else
+    echo "      No existing AGENTS.md found"
 fi
 
 # =============================================
@@ -82,7 +93,7 @@ else
 fi
 
 # =============================================
-# [4/5] 恢复 config.yml（如果之前存在）
+# [4/5] 恢复 config.yml 和 AGENTS.md（如果之前存在）
 # =============================================
 echo ""
 echo "[4/5] Finalizing installation..."
@@ -91,6 +102,12 @@ if [ -n "$CONFIG_BACKUP" ]; then
     cp "$CONFIG_BACKUP" "$TARGET_CONFIG"
     rm -f "$CONFIG_BACKUP"
     echo "      Preserved existing config.yml"
+fi
+
+if [ -n "$AGENTS_BACKUP" ]; then
+    cp "$AGENTS_BACKUP" "$TARGET_AGENTS"
+    rm -f "$AGENTS_BACKUP"
+    echo "      Preserved existing AGENTS.md"
 fi
 
 # 检查 jar 文件是否存在
@@ -258,5 +275,6 @@ echo "    ├── bin/           (executables)"
 echo "    │   ├── soloncode-cli.jar"
 echo "    │   ├── soloncode   (launcher)"
 echo "    │   └── config.yml  (configuration, preserved if exists)"
-echo "    └── skills/         (skill modules)"
+echo "    │   └── AGENTS.md   (agents config, preserved if exists)"
+echo "    └── skills/        (skill modules)"
 echo ""

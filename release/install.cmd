@@ -82,17 +82,28 @@ if not exist "%SOURCE_BIN_DIR%" (
 )
 
 :: =============================================
-:: [1/5] 检查并备份已有的 config.yml
+:: [1/5] 检查并备份已有的 config.yml 和 AGENTS.md
 :: =============================================
 echo [1/5] Checking for existing configuration...
 set "CONFIG_BACKUP="
+set "AGENTS_BACKUP="
 set "TARGET_CONFIG=%TARGET_BIN_DIR%\config.yml"
+set "TARGET_AGENTS=%TARGET_BIN_DIR%\AGENTS.md"
+
 if exist "%TARGET_CONFIG%" (
     set "CONFIG_BACKUP=%TEMP%\soloncode_config_backup_%RANDOM%.yml"
     copy "%TARGET_CONFIG%" "!CONFIG_BACKUP!" >nul 2>&1
     echo       Found existing config.yml (will be preserved)
 ) else (
     echo       No existing config.yml found
+)
+
+if exist "%TARGET_AGENTS%" (
+    set "AGENTS_BACKUP=%TEMP%\soloncode_agents_backup_%RANDOM%.md"
+    copy "%TARGET_AGENTS%" "!AGENTS_BACKUP!" >nul 2>&1
+    echo       Found existing AGENTS.md (will be preserved)
+) else (
+    echo       No existing AGENTS.md found
 )
 
 :: =============================================
@@ -128,7 +139,7 @@ if exist "%SOURCE_SKILLS_DIR%" (
 echo       Files copied successfully
 
 :: =============================================
-:: [4/5] 恢复 config.yml 并检查 jar 文件
+:: [4/5] 恢复 config.yml 和 AGENTS.md 并检查 jar 文件
 :: =============================================
 echo.
 echo [4/5] Finalizing installation...
@@ -139,6 +150,15 @@ if not "!CONFIG_BACKUP!"=="" (
         copy "!CONFIG_BACKUP!" "%TARGET_CONFIG%" >nul 2>&1
         del "!CONFIG_BACKUP!" >nul 2>&1
         echo       Preserved existing config.yml
+    )
+)
+
+:: 恢复 AGENTS.md 备份（如果之前存在）
+if not "!AGENTS_BACKUP!"=="" (
+    if exist "!AGENTS_BACKUP!" (
+        copy "!AGENTS_BACKUP!" "%TARGET_AGENTS%" >nul 2>&1
+        del "!AGENTS_BACKUP!" >nul 2>&1
+        echo       Preserved existing AGENTS.md
     )
 )
 
@@ -320,7 +340,8 @@ echo     %%USERPROFILE%%\.soloncode\
 echo     ├── bin\           (executables)
 echo     │   ├── soloncode-cli.jar
 echo     │   ├── soloncode.cmd
-echo     │   └── config.yml (configuration, preserved if exists)
+echo     │   └── config.yml  (configuration, preserved if exists)
+echo     │   └── AGENTS.md   (agents config, preserved if exists)
 echo     └── skills\        (skill modules)
 echo.
 
