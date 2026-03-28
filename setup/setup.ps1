@@ -22,24 +22,25 @@ function Write-Error {
 }
 
 # Cleanup temp directory
-if (Test-Path $TEMP_DIR) {
-    Remove-Item -Recurse -Force $TEMP_DIR
+if (Test-Path "$TEMP_DIR") {
+    Remove-Item -Recurse -Force "$TEMP_DIR"
 }
-New-Item -ItemType Directory -Path $TEMP_DIR | Out-Null
+New-Item -ItemType Directory -Path "$TEMP_DIR" | Out-Null
 
 try {
     Write-Info "Downloading SolonCode CLI $VERSION..."
 
     $packageFile = Join-Path $TEMP_DIR "package.tar.gz"
-    Invoke-WebRequest -Uri $PACKAGE_URL -OutFile $packageFile -UseBasicParsing
+    Invoke-WebRequest -Uri $PACKAGE_URL -OutFile "$packageFile" -UseBasicParsing
 
     Write-Info "Extracting package..."
 
     # Extract tar.gz using built-in tar (Windows 10+)
-    tar -xzf $packageFile -C $TEMP_DIR
+    # Use quotes to handle paths with spaces
+    tar -xzf "$packageFile" -C "$TEMP_DIR"
 
     # Find install.cmd
-    $installScript = Get-ChildItem -Path $TEMP_DIR -Filter "install.cmd" -Recurse | Select-Object -First 1
+    $installScript = Get-ChildItem -Path "$TEMP_DIR" -Filter "install.cmd" -Recurse | Select-Object -First 1
 
     if (-not $installScript) {
         Write-Error "install.cmd not found in package"
@@ -48,8 +49,11 @@ try {
 
     Write-Info "Running installer..."
 
-    # Run installer
-    & $installScript.FullName
+    # Run installer (with quotes to handle paths with spaces)
+    $installDir = Split-Path $installScript.FullName -Parent
+    Push-Location $installDir
+    & cmd /c """$($installScript.FullName)"""
+    Pop-Location
 
 } catch {
     Write-Error $_.Exception.Message
