@@ -66,95 +66,88 @@ echo.
 :: =============================================
 set "SOURCE_DIR=%~dp0"
 if "%SOURCE_DIR:~-1%"=="\" set "SOURCE_DIR=%SOURCE_DIR:~0,-1%"
-set "TARGET_DIR=%USERPROFILE%\.soloncode\bin"
+set "SOURCE_SOLONCODE=%SOURCE_DIR%\.soloncode"
+set "TARGET_DIR=%USERPROFILE%\.soloncode"
+set "TARGET_BIN_DIR=%TARGET_DIR%\bin"
+
+:: =============================================
+:: 检查源目录是否存在
+:: =============================================
+if not exist "%SOURCE_SOLONCODE%" (
+    echo [Error] Source directory not found: %SOURCE_SOLONCODE%
+    pause
+    exit /b 1
+)
 
 :: =============================================
 :: [1/5] 检查并备份已有的 config.yml
 :: =============================================
-echo [1/5] Checking for existing installation...
+echo [1/5] Checking for existing configuration...
 set "CONFIG_BACKUP="
-set "TARGET_CONFIG=%TARGET_DIR%\config.yml"
+set "TARGET_CONFIG=%TARGET_BIN_DIR%\config.yml"
 if exist "%TARGET_CONFIG%" (
     set "CONFIG_BACKUP=%TEMP%\soloncode_config_backup_%RANDOM%.yml"
     copy "%TARGET_CONFIG%" "!CONFIG_BACKUP!" >nul 2>&1
-    echo       Backing up existing config.yml
+    echo       Found existing config.yml (will be preserved)
 ) else (
     echo       No existing config.yml found
 )
 
 :: =============================================
-:: [2/5] 创建/清空目标目录
+:: [2/5] 创建目标目录结构
 :: =============================================
 echo.
 echo [2/5] Preparing target directory: %TARGET_DIR%
-if exist "%TARGET_DIR%" (
-    :: 清空目录内容（保留目录本身）
-    del /Q "%TARGET_DIR%\*" >nul 2>&1
-    for /d %%d in ("%TARGET_DIR%\*") do rd "%%d" /S /Q >nul 2>&1
-    echo       Cleaned existing directory
-) else (
-    mkdir "%TARGET_DIR%"
-    echo       Created new directory
-)
+
+if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
+if not exist "%TARGET_BIN_DIR%" mkdir "%TARGET_BIN_DIR%"
+echo       Created directory structure
 
 :: =============================================
-:: [3/5] 复制所有文件到目标目录
+:: [3/5] 复制 .soloncode 目录内容到目标目录
 :: =============================================
 echo.
 echo [3/5] Copying files to target directory...
-set "FILE_COUNT=0"
-for %%f in ("%SOURCE_DIR%\*") do (
+
+:: 复制 bin 目录内容
+if exist "%SOURCE_SOLONCODE%\bin" (
+    xcopy "%SOURCE_SOLONCODE%\bin\*" "%TARGET_BIN_DIR%\" /E /Y >nul 2>&1
+    echo       Copied bin/ directory
+)
+
+:: 复制 skills 目录（如果目标存在，先删除再复制）
+if exist "%SOURCE_SOLONCODE%\skills" (
+    if exist "%TARGET_DIR%\skills" rd /s /q "%TARGET_DIR%\skills"
+    xcopy "%SOURCE_SOLONCODE%\skills" "%TARGET_DIR%\skills\" /E /I /Y >nul 2>&1
+    echo       Copied skills/ directory
+)
+
+:: 复制其他文件（排除 bin 和 skills）
+for %%f in ("%SOURCE_SOLONCODE%\*") do (
     copy "%%f" "%TARGET_DIR%\" >nul 2>&1
-    set /a FILE_COUNT+=1
 )
-:: 复制子目录（如果有）
-for /d %%d in ("%SOURCE_DIR%\*") do (
-    xcopy "%%d" "%TARGET_DIR%\%%~nxd\" /E /I /Y >nul 2>&1
-    set /a FILE_COUNT+=1
-)
-echo       Copied !FILE_COUNT! items successfully
+
+echo       Files copied successfully
 
 :: =============================================
-:: [4/5] 解压 zip 文件（如果存在）
+:: [4/5] 恢复 config.yml 并检查 jar 文件
 :: =============================================
 echo.
-echo [4/5] Extracting zip files...
-set "FOUND_ZIP=0"
-for %%z in ("%TARGET_DIR%\soloncode-cli-bin-*.zip") do (
-    set "FOUND_ZIP=1"
-    echo       Found: %%~nxz
-    
-    :: 使用 PowerShell 解压（Windows 内置，无需额外工具）
-    powershell -NoProfile -Command "Expand-Archive -Path '%%z' -DestinationPath '%TARGET_DIR%' -Force" >nul 2>&1
-    
-    :: 处理子目录情况（解压后可能在子目录中）
-    for /d %%d in ("%TARGET_DIR%\soloncode-cli-*") do (
-        if exist "%%d\soloncode-cli.jar" (
-            xcopy "%%d\*" "%TARGET_DIR%\" /E /Y >nul 2>&1
-            rd "%%d" /S /Q >nul 2>&1
-            echo       Extracted files from subdirectory
-        )
-    )
-    echo       Extracted successfully
-)
-
-if "%FOUND_ZIP%"=="0" (
-    echo       No zip file found, skip extraction
-)
+echo [4/5] Finalizing installation...
 
 :: 恢复 config.yml 备份（如果之前存在）
 if not "!CONFIG_BACKUP!"=="" (
     if exist "!CONFIG_BACKUP!" (
         copy "!CONFIG_BACKUP!" "%TARGET_CONFIG%" >nul 2>&1
         del "!CONFIG_BACKUP!" >nul 2>&1
-        echo       Restored existing config.yml (preserved user config)
+        echo       Preserved existing config.yml
     )
 )
 
 :: 检查 jar 文件是否存在
-if not exist "%TARGET_DIR%\soloncode-cli.jar" (
+if not exist "%TARGET_BIN_DIR%\soloncode-cli.jar" (
     echo.
-    echo [Error] soloncode-cli.jar not found in %TARGET_DIR%
+    echo [Error] soloncode-cli.jar not found in %TARGET_BIN_DIR%
     pause
     exit /b 1
 )
@@ -167,7 +160,7 @@ echo.
 echo [5/5] Setting up 'soloncode' command...
 
 :: 创建 Windows 批处理启动脚本 (soloncode.cmd)
-set "LAUNCHER_CMD=%TARGET_DIR%\soloncode.cmd"
+set "LAUNCHER_CMD=%TARGET_BIN_DIR%\soloncode.cmd"
 (
 echo @echo off
 echo setlocal enabledelayedexpansion
@@ -205,7 +198,7 @@ echo java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 
 echo       Created: soloncode.cmd (for CMD/PowerShell)
 
 :: 创建 PowerShell 启动脚本 (soloncode.ps1) - 更好的 UTF-8 支持
-set "LAUNCHER_PS1=%TARGET_DIR%\soloncode.ps1"
+set "LAUNCHER_PS1=%TARGET_BIN_DIR%\soloncode.ps1"
 (
 echo # Solon Code CLI Launcher for PowerShell
 echo param([Parameter(ValueFromRemainingArguments)]$Args)
@@ -229,7 +222,7 @@ echo & java "-Dfile.encoding=UTF-8" "-Dstdout.encoding=UTF-8" "-Dstderr.encoding
 echo       Created: soloncode.ps1 (for PowerShell)
 
 :: 创建 Git Bash 启动脚本 (soloncode)
-set "LAUNCHER_SH=%TARGET_DIR%\soloncode"
+set "LAUNCHER_SH=%TARGET_BIN_DIR%\soloncode"
 (
 echo #!/bin/bash
 echo # Solon Code CLI Launcher for Git Bash / WSL
@@ -249,11 +242,11 @@ set "PATH_UPDATED=0"
 for /f "usebackq tokens=*" %%p in (`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path','User')"`) do set "USER_PATH=%%p"
 
 :: 检查是否已在 PATH 中
-if "!USER_PATH:%TARGET_DIR%=!" neq "!USER_PATH!" (
+if "!USER_PATH:%TARGET_BIN_DIR%=!" neq "!USER_PATH!" (
     echo       Already in user PATH
 ) else (
     :: 添加到用户 PATH
-    powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User');$np=if($p -ne ''){'$p;%TARGET_DIR%'}else{'%TARGET_DIR%'};[Environment]::SetEnvironmentVariable('Path',$np,'User')" >nul 2>&1
+    powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User');$np=if($p -ne ''){'$p;%TARGET_BIN_DIR%'}else{'%TARGET_BIN_DIR%'};[Environment]::SetEnvironmentVariable('Path',$np,'User')" >nul 2>&1
     if !ERRORLEVEL! equ 0 (
         echo       Added to user PATH
         set "PATH_UPDATED=1"
@@ -263,13 +256,12 @@ if "!USER_PATH:%TARGET_DIR%=!" neq "!USER_PATH!" (
 )
 
 :: 方法2：尝试创建符号链接到系统目录（需要管理员权限，可选）
-:: 这提供了类似 macOS/Linux 的 /usr/local/bin 体验
 set "SYMLINK_CREATED=0"
 if "%IS_ADMIN%"=="0" (
     :: 检查系统 PATH 中是否已有
     for /f "usebackq tokens=*" %%p in (`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path','Machine')"`) do set "MACHINE_PATH=%%p"
     
-    if "!MACHINE_PATH:%TARGET_DIR%=!" equ "!MACHINE_PATH!" (
+    if "!MACHINE_PATH:%TARGET_BIN_DIR%=!" equ "!MACHINE_PATH!" (
         :: 尝试创建符号链接（需要管理员权限）
         set "LINK_DIR=C:\ProgramData\soloncode"
         set "LINK_FILE=!LINK_DIR!\soloncode.cmd"
@@ -291,7 +283,7 @@ if "%IS_ADMIN%"=="0" (
 )
 
 :: 刷新当前会话的 PATH（不持久，但方便后续命令）
-set "PATH=%PATH%;%TARGET_DIR%"
+set "PATH=%PATH%;%TARGET_BIN_DIR%"
 
 :: =============================================
 :: 完成
@@ -315,24 +307,30 @@ if "%SYMLINK_CREATED%"=="1" (
     echo   [User-level] soloncode command configured for current user
     echo.
     echo   Usage:
-    echo     1. Open a NEW terminal window ^(CMD, PowerShell, or Git Bash^)
+    echo     1. Open a NEW terminal window (CMD, PowerShell, or Git Bash)
     echo     2. Run: soloncode
     echo.
     echo   Terminal-specific notes:
     echo     - CMD:         soloncode
-    echo     - PowerShell:  soloncode  ^(or .\soloncode.ps1 for better UTF-8^)
+    echo     - PowerShell:  soloncode  (or .\soloncode.ps1 for better UTF-8)
     echo     - Git Bash:    ./soloncode
 )
 
 echo.
-echo   Note: Your existing config.yml has been preserved.
+echo   Directory structure:
+echo     %%USERPROFILE%%\.soloncode\
+echo     ├── bin\           (executables)
+echo     │   ├── soloncode-cli.jar
+echo     │   ├── soloncode.cmd
+echo     │   └── config.yml (configuration)
+echo     └── skills\        (skill modules)
 echo.
 
 :: 提供刷新 PATH 的选项
 if "%PATH_UPDATED%"=="1" (
     echo   [Tip] To use soloncode immediately in current terminal:
-    echo     CMD:        refreshenv ^[if available, or restart terminal^]
-    echo     PowerShell: $env:Path = [Environment]::GetEnvironmentVariable^('Path','User'^)
+    echo     CMD:        refreshenv [if available, or restart terminal]
+    echo     PowerShell: $env:Path = [Environment]::GetEnvironmentVariable('Path','User')
     echo.
 )
 

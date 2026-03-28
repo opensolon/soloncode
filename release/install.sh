@@ -17,73 +17,103 @@ echo ""
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # 目标目录
-TARGET_DIR="$HOME/.soloncode/bin"
+TARGET_DIR="$HOME/.soloncode"
+TARGET_BIN_DIR="$TARGET_DIR/bin"
 
-# 步骤1：备份已有的 config.yml（如果存在）
-echo "[1/5] Checking for existing installation..."
+# 源 .soloncode 目录
+SOURCE_SOLONCODE="$SOURCE_DIR/.soloncode"
+
+# =============================================
+# 检查源目录是否存在
+# =============================================
+if [ ! -d "$SOURCE_SOLONCODE" ]; then
+    echo "[Error] Source directory not found: $SOURCE_SOLONCODE"
+    exit 1
+fi
+
+# =============================================
+# [1/5] 检查并备份已有的 config.yml
+# =============================================
+echo "[1/5] Checking for existing configuration..."
 CONFIG_BACKUP=""
-if [ -f "$TARGET_DIR/config.yml" ]; then
+TARGET_CONFIG="$TARGET_BIN_DIR/config.yml"
+if [ -f "$TARGET_CONFIG" ]; then
     CONFIG_BACKUP=$(mktemp)
-    cp "$TARGET_DIR/config.yml" "$CONFIG_BACKUP"
-    echo "      Backing up existing config.yml"
+    cp "$TARGET_CONFIG" "$CONFIG_BACKUP"
+    echo "      Found existing config.yml (will be preserved)"
 else
     echo "      No existing config.yml found"
 fi
 
-# 步骤2：创建/清空目标目录
+# =============================================
+# [2/5] 创建目标目录结构
+# =============================================
 echo ""
 echo "[2/5] Preparing target directory: $TARGET_DIR"
-if [ -d "$TARGET_DIR" ]; then
-    # 清空目录内容（保留目录本身）
-    rm -rf "$TARGET_DIR"/*
-    echo "      Cleaned existing directory"
-else
-    mkdir -p "$TARGET_DIR"
-    echo "      Created new directory"
-fi
 
-# 步骤3：复制 bin 下所有文件到目标目录
+# 创建目录结构
+mkdir -p "$TARGET_DIR"
+mkdir -p "$TARGET_BIN_DIR"
+
+echo "      Created directory structure"
+
+# =============================================
+# [3/5] 复制 .soloncode 目录内容到目标目录
+# =============================================
 echo ""
 echo "[3/5] Copying files to $TARGET_DIR ..."
-cp -R "$SOURCE_DIR"/* "$TARGET_DIR/" 2>/dev/null || true
-echo "      Files copied successfully"
 
-# 步骤4：解压 zip 文件（如果存在）
-echo ""
-echo "[4/5] Extracting zip files..."
-ZIP_FILE=$(find "$TARGET_DIR" -maxdepth 1 -name "soloncode-cli-bin-*.zip" 2>/dev/null | head -n 1)
-if [ -n "$ZIP_FILE" ]; then
-    echo "      Found: $(basename "$ZIP_FILE")"
-    unzip -o "$ZIP_FILE" -d "$TARGET_DIR/" > /dev/null 2>&1
-    # 解压后可能有子目录，把子目录里的文件移出来
-    SUB_DIR=$(find "$TARGET_DIR" -maxdepth 1 -type d -name "soloncode-cli-bin-*" 2>/dev/null | head -n 1)
-    if [ -n "$SUB_DIR" ]; then
-        cp -R "$SUB_DIR"/* "$TARGET_DIR/" 2>/dev/null || true
-        rm -rf "$SUB_DIR"
-    fi
-    echo "      Extracted successfully"
-else
-    echo "      No zip file found, skip extraction"
+# 复制 bin 目录内容
+if [ -d "$SOURCE_SOLONCODE/bin" ]; then
+    cp -R "$SOURCE_SOLONCODE/bin/"* "$TARGET_BIN_DIR/" 2>/dev/null || true
+    echo "      Copied bin/ directory"
 fi
 
-# 恢复 config.yml 备份（如果之前存在）
+# 复制 skills 目录
+if [ -d "$SOURCE_SOLONCODE/skills" ]; then
+    # 如果目标 skills 目录存在，先删除再复制（更新）
+    if [ -d "$TARGET_DIR/skills" ]; then
+        rm -rf "$TARGET_DIR/skills"
+    fi
+    cp -R "$SOURCE_SOLONCODE/skills" "$TARGET_DIR/" 2>/dev/null || true
+    echo "      Copied skills/ directory"
+fi
+
+# 复制其他文件（如 .gitignore 等，排除 bin 和 skills）
+for item in "$SOURCE_SOLONCODE"/*; do
+    item_name=$(basename "$item")
+    if [ "$item_name" != "bin" ] && [ "$item_name" != "skills" ]; then
+        cp -R "$item" "$TARGET_DIR/" 2>/dev/null || true
+    fi
+done
+
+echo "      Files copied successfully"
+
+# =============================================
+# [4/5] 恢复 config.yml（如果之前存在）
+# =============================================
+echo ""
+echo "[4/5] Finalizing installation..."
+
 if [ -n "$CONFIG_BACKUP" ]; then
-    cp "$CONFIG_BACKUP" "$TARGET_DIR/config.yml"
+    cp "$CONFIG_BACKUP" "$TARGET_CONFIG"
     rm -f "$CONFIG_BACKUP"
-    echo "      Restored existing config.yml (preserved user config)"
+    echo "      Preserved existing config.yml"
 fi
 
 # 检查 jar 文件是否存在
-if [ ! -f "$TARGET_DIR/soloncode-cli.jar" ]; then
-    echo "[Error] soloncode-cli.jar not found in $TARGET_DIR"
+if [ ! -f "$TARGET_BIN_DIR/soloncode-cli.jar" ]; then
+    echo "[Error] soloncode-cli.jar not found in $TARGET_BIN_DIR"
     exit 1
 fi
 echo "      Found soloncode-cli.jar"
 
-# 步骤5：创建 soloncode 命令脚本
+# =============================================
+# [5/5] 创建 soloncode 命令脚本
+# =============================================
 echo ""
 echo "[5/5] Creating 'soloncode' command..."
-cat > "$TARGET_DIR/soloncode" << 'LAUNCHER_EOF'
+cat > "$TARGET_BIN_DIR/soloncode" << 'LAUNCHER_EOF'
 #!/bin/bash
 # Solon Code CLI Launcher
 # 获取脚本真实路径（兼容软链接）
@@ -101,8 +131,8 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 java -Dfile.encoding=UTF-8 -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
 LAUNCHER_EOF
-chmod +x "$TARGET_DIR/soloncode"
-echo "      Created: $TARGET_DIR/soloncode"
+chmod +x "$TARGET_BIN_DIR/soloncode"
+echo "      Created: $TARGET_BIN_DIR/soloncode"
 
 # =============================================
 # 配置 PATH 环境变量（兼容多种 shell 和系统）
@@ -194,11 +224,11 @@ SYMLINK_CREATED=false
 if [ ! -e "/usr/local/bin/soloncode" ]; then
     if [ -w "/usr/local/bin" ] 2>/dev/null; then
         # 有写权限，直接创建
-        ln -sf "$TARGET_DIR/soloncode" /usr/local/bin/soloncode 2>/dev/null && SYMLINK_CREATED=true
+        ln -sf "$TARGET_BIN_DIR/soloncode" /usr/local/bin/soloncode 2>/dev/null && SYMLINK_CREATED=true
     elif command -v sudo >/dev/null 2>&1; then
         # 尝试用 sudo（非交互式，静默失败）
         if sudo -n true 2>/dev/null; then
-            sudo ln -sf "$TARGET_DIR/soloncode" /usr/local/bin/soloncode 2>/dev/null && SYMLINK_CREATED=true
+            sudo ln -sf "$TARGET_BIN_DIR/soloncode" /usr/local/bin/soloncode 2>/dev/null && SYMLINK_CREATED=true
         fi
     fi
 fi
@@ -230,5 +260,11 @@ else
 fi
 
 echo ""
-echo "  Note: Your existing config.yml has been preserved."
+echo "  Directory structure:"
+echo "    ~/.soloncode/"
+echo "    ├── bin/           (executables)"
+echo "    │   ├── soloncode-cli.jar"
+echo "    │   ├── soloncode   (launcher)"
+echo "    │   └── config.yml  (configuration)"
+echo "    └── skills/         (skill modules)"
 echo ""

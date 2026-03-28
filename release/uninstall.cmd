@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 
 :: =============================================
 ::  Solon Code Uninstaller (Windows)
-::  Supports both User and System level uninstall
+::  完全卸载 Solon Code，包括配置目录
 :: =============================================
 
 echo.
@@ -12,11 +12,7 @@ echo    Solon Code Uninstaller
 echo ============================================
 echo.
 
-:: Get install directory
-set "INSTALL_DIR=%~dp0"
-if "%INSTALL_DIR:~-1%"=="\" set "INSTALL_DIR=%INSTALL_DIR:~0,-1%"
-
-:: Detect if running as admin
+:: 检测管理员权限
 net session >nul 2>&1
 set "IS_ADMIN=0"
 if %errorLevel% equ 0 set "IS_ADMIN=1"
@@ -25,13 +21,27 @@ if %IS_ADMIN% equ 1 (
     echo [Info] Running with Administrator privileges
 ) else (
     echo [Info] Running without Administrator privileges
-    echo        Will uninstall from User scope only
+)
+
+:: 安装目录
+set "INSTALL_DIR=%USERPROFILE%\.soloncode"
+
+:: 检查是否已安装
+if not exist "%INSTALL_DIR%" (
+    echo.
+    echo [Info] Solon Code is not installed.
+    echo        Directory not found: %INSTALL_DIR%
+    pause
+    exit /b 0
 )
 
 echo.
-
-:: Confirm uninstall
-set /p CONFIRM="Uninstall Solon Code from: %INSTALL_DIR% ? (Y/N): "
+echo This will remove Solon Code completely:
+echo   - Executables and configuration
+echo   - Skills modules
+echo   - PATH configuration
+echo.
+set /p CONFIRM="Continue? (Y/N): "
 if /i not "%CONFIRM%"=="Y" (
     echo Cancelled.
     pause
@@ -39,13 +49,13 @@ if /i not "%CONFIRM%"=="Y" (
 )
 
 :: ============================================
-::  Remove from PATH (both User and System)
+::  [1/4] 从 PATH 中移除
 :: ============================================
 echo.
 echo [1/4] Removing from PATH...
 
-:: Use PowerShell to handle PATH (avoids 1024-char limit of setx)
-:: Remove from User PATH
+:: 使用 PowerShell 处理 PATH（避免 setx 的 1024 字符限制）
+:: 从用户 PATH 移除
 powershell -NoProfile -Command ^
     "$p=[Environment]::GetEnvironmentVariable('Path','User');" ^
     "$p=$p -replace '[;]*[^^;]*soloncode[^^;]*[;]*','';" ^
@@ -55,7 +65,7 @@ powershell -NoProfile -Command ^
     >nul 2>&1
 echo       Cleaned User PATH
 
-:: Remove from System PATH (if admin)
+:: 从系统 PATH 移除（如果是管理员）
 if %IS_ADMIN% equ 1 (
     powershell -NoProfile -Command ^
         "$p=[Environment]::GetEnvironmentVariable('Path','Machine');" ^
@@ -68,31 +78,49 @@ if %IS_ADMIN% equ 1 (
 )
 
 :: ============================================
-::  Remove environment variables
+::  [2/4] 移除环境变量
 :: ============================================
 echo.
 echo [2/4] Removing environment variables...
 
-:: User level
+:: 用户级
 reg delete "HKCU\Environment" /v SOLONCODE_HOME /f >nul 2>&1
 echo       Removed User SOLONCODE_HOME
 
-:: System level (if admin)
+:: 系统级（如果是管理员）
 if %IS_ADMIN% equ 1 (
     reg delete "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v SOLONCODE_HOME /f >nul 2>&1
     echo       Removed System SOLONCODE_HOME
 )
 
 :: ============================================
-::  Remove ProgramData launcher directory
+::  [3/4] 删除安装目录
 :: ============================================
 echo.
-echo [3/4] Removing launcher directory...
+echo [3/4] Removing installation directory...
+
+if exist "%INSTALL_DIR%" (
+    rd /s /q "%INSTALL_DIR%" 2>nul
+    if exist "%INSTALL_DIR%" (
+        echo       [Warning] Could not remove %INSTALL_DIR%
+        echo       Some files may be in use. Please restart and try again.
+    ) else (
+        echo       Removed: %INSTALL_DIR%
+    )
+) else (
+    echo       Directory already removed
+)
+
+:: ============================================
+::  [4/4] 删除系统级启动器目录
+:: ============================================
+echo.
+echo [4/4] Cleaning up launcher directory...
 
 if exist "C:\ProgramData\soloncode" (
-    rmdir /s /q "C:\ProgramData\soloncode" 2>nul
+    rd /s /q "C:\ProgramData\soloncode" 2>nul
     if exist "C:\ProgramData\soloncode" (
-        echo       [Note] Could not remove C:\ProgramData\soloncode ^(need admin^?
+        echo       [Note] Could not remove C:\ProgramData\soloncode ^(need admin^)
     ) else (
         echo       Removed C:\ProgramData\soloncode
     )
@@ -101,39 +129,16 @@ if exist "C:\ProgramData\soloncode" (
 )
 
 :: ============================================
-::  Remove launcher scripts from install dir
-:: ============================================
-echo.
-echo [4/4] Cleaning launcher scripts...
-
-:: Remove generated launcher scripts (keep the uninstaller itself)
-if exist "%INSTALL_DIR%\soloncode.cmd" (
-    del /q "%INSTALL_DIR%\soloncode.cmd" 2>nul
-    echo       Removed soloncode.cmd
-)
-
-if exist "%INSTALL_DIR%\soloncode.ps1" (
-    del /q "%INSTALL_DIR%\soloncode.ps1" 2>nul
-    echo       Removed soloncode.ps1
-)
-
-if exist "%INSTALL_DIR%\soloncode" (
-    del /q "%INSTALL_DIR%\soloncode" 2>nul
-    echo       Removed soloncode ^(Git Bash^)
-)
-
-:: ============================================
-::  Complete
+::  完成
 :: ============================================
 echo.
 echo ============================================
 echo    Uninstall Complete!
 echo ============================================
 echo.
-echo   Note: Config and session data preserved at:
-echo         %%USERPROFILE%%\.soloncode\
-echo   To fully remove, manually delete that directory.
+echo   Solon Code has been fully removed.
 echo.
-echo   [Tip] Restart your terminal for PATH changes to take effect.
+echo   [Note] Please restart your terminal for
+echo          PATH changes to take effect.
 echo.
 pause

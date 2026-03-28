@@ -1,6 +1,7 @@
 #!/bin/bash
 # =============================================
 #  Solon Code Uninstall Script (Linux / macOS)
+#  完全卸载 Solon Code，包括配置目录
 # =============================================
 
 echo ""
@@ -9,10 +10,22 @@ echo "   Solon Code Uninstaller"
 echo "============================================"
 echo ""
 
-INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="$HOME/.soloncode"
 
-# 确认
-read -p "Uninstall Solon Code from $INSTALL_DIR ? (Y/N): " -n 1 -r
+# 检查是否已安装
+if [ ! -d "$INSTALL_DIR" ]; then
+    echo "[Info] Solon Code is not installed."
+    echo "       Directory not found: $INSTALL_DIR"
+    exit 0
+fi
+
+# 确认卸载
+echo "This will remove Solon Code completely:"
+echo "  - Executables and configuration"
+echo "  - Skills modules"
+echo "  - PATH configuration"
+echo ""
+read -p "Continue? (Y/N): " -n 1 -r
 echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Cancelled."
@@ -24,10 +37,10 @@ OS_TYPE="$(uname -s)"
 echo "[Info] Detected OS: $OS_TYPE"
 
 # ============================================
-#  清理 shell 配置文件中的 PATH 配置
+#  [1/4] 清理 shell 配置文件中的 PATH 配置
 # ============================================
 echo ""
-echo "[1/3] Cleaning shell configuration files..."
+echo "[1/4] Cleaning shell configuration files..."
 
 clean_shell_config() {
     local config_file="$1"
@@ -77,10 +90,10 @@ if [ -f "$FISH_CONFIG" ]; then
 fi
 
 # ============================================
-#  删除符号链接
+#  [2/4] 删除符号链接
 # ============================================
 echo ""
-echo "[2/3] Removing command symlinks..."
+echo "[2/4] Removing command symlinks..."
 
 # 系统级链接
 if [ -L "/usr/local/bin/soloncode" ] || [ -f "/usr/local/bin/soloncode" ]; then
@@ -101,19 +114,39 @@ if [ -L "$HOME/bin/soloncode" ] || [ -f "$HOME/bin/soloncode" ]; then
 fi
 
 # ============================================
-#  清理启动脚本 (如果有安装在安装目录外)
+#  [3/4] 删除安装目录
 # ============================================
 echo ""
-echo "[3/3] Cleaning up..."
+echo "[3/4] Removing installation directory..."
 
-# 检查是否有残留的启动脚本
-for cmd_path in "/usr/local/bin/soloncode" "$HOME/.local/bin/soloncode" "$HOME/bin/soloncode"; do
-    if [ -L "$cmd_path" ]; then
-        rm -f "$cmd_path" 2>/dev/null
+if [ -d "$INSTALL_DIR" ]; then
+    rm -rf "$INSTALL_DIR"
+    if [ -d "$INSTALL_DIR" ]; then
+        echo "      [Warning] Could not remove $INSTALL_DIR"
+    else
+        echo "      Removed: $INSTALL_DIR"
     fi
-done
+else
+    echo "      Directory already removed"
+fi
 
-echo "      Cleanup complete"
+# ============================================
+#  [4/4] 清理备份文件
+# ============================================
+echo ""
+echo "[4/4] Cleaning up backup files..."
+
+# 清理 shell 配置备份文件（询问用户）
+read -p "Remove shell config backups (*.bak)? (Y/N): " -n 1 -r
+echo ""
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    for config_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$FISH_CONFIG"; do
+        if [ -f "${config_file}.bak" ]; then
+            rm -f "${config_file}.bak"
+            echo "      Removed: ${config_file}.bak"
+        fi
+    done
+fi
 
 # ============================================
 #  完成
@@ -123,7 +156,8 @@ echo "============================================"
 echo "   Uninstall Complete!"
 echo "============================================"
 echo ""
-echo "  Note: Config and session data preserved at:"
-echo "        ~/.soloncode/"
-echo "  To fully remove: rm -rf ~/.soloncode"
+echo "  Solon Code has been fully removed."
+echo ""
+echo "  [Note] Please restart your terminal or run:"
+echo "         source ~/.bashrc   (or ~/.zshrc)"
 echo ""
