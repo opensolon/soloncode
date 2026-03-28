@@ -35,7 +35,7 @@ import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.codecli.core.AgentRuntime;
-import org.noear.solon.codecli.core.TaskSkill;
+import org.noear.solon.codecli.core.agent.TaskSkill;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;

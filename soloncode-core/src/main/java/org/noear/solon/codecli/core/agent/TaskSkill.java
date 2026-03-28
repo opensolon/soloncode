@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.core;
+package org.noear.solon.codecli.core.agent;
 
 import org.noear.solon.ai.agent.AgentResponse;
 import org.noear.solon.ai.agent.AgentSession;
@@ -29,7 +29,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Param;
-import org.noear.solon.codecli.core.agent.AgentDefinition;
+import org.noear.solon.codecli.core.AgentRuntime;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;

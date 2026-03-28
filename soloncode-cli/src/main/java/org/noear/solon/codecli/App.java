@@ -26,7 +26,6 @@ import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.codecli.core.AgentRuntime;
-import org.noear.solon.codecli.core.ConfigLoader;
 import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.portal.CliShellNew;
 import org.noear.solon.codecli.portal.CliShellOld;

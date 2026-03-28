@@ -1,7 +1,8 @@
-package org.noear.solon.codecli.core;
+package org.noear.solon.codecli.core.code;
 
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.skill.AbsSkill;
+import org.noear.solon.codecli.core.AgentRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
