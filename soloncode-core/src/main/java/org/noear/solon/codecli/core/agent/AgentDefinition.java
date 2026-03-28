@@ -43,7 +43,8 @@ public class AgentDefinition {
     public static final String TOOL_EDIT = "edit";
     public static final String TOOL_READ = "read";
 
-    public static final String TOOL_ALL = "*";
+    public static final String TOOL_ALL_PUBC = "*"; //全部公有的
+    public static final String TOOL_ALL_FULL = "**"; // 全部（包括公有，私有）
 
 
     protected Metadata metadata = new Metadata();

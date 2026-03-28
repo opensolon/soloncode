@@ -199,22 +199,12 @@ public class AgentRuntime {
 
         AgentDefinition agentDefinition = new AgentDefinition();
 
+        // 系统提示词
         agentDefinition.setSystemPrompt(getAgentsMd());
-        agentDefinition.getMetadata().setName("main");
-        agentDefinition.getMetadata().addTools(
-                AgentDefinition.TOOL_ALL,
-                AgentDefinition.TOOL_MCP,
-                AgentDefinition.TOOL_RESTAPI);
-
-        if (properties.isSubagentEnabled()) {
-            agentDefinition.getMetadata().addTools(
-                    AgentDefinition.TOOL_TASK,
-                    AgentDefinition.TOOL_GENERATE);
-        }
-
-        if (properties.isHitlEnabled()) {
-            agentDefinition.getMetadata().addTools("hitl");
-        }
+        // 名字
+        agentDefinition.getMetadata().setName("root");
+        // 工具权限
+        agentDefinition.getMetadata().addTools(properties.getTools());
 
         // 添加步数
         agentDefinition.getMetadata().setMaxSteps(properties.getMaxSteps());

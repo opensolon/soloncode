@@ -22,6 +22,7 @@ public class AgentProperties implements Serializable {
     private ChatConfig chatModel;
     private String workDir = "work";
     private int maxSteps = 10;
+    private String tools = "**";
     private boolean maxStepsAutoExtensible = false;
     private String uiType = "old";
     private int sessionWindowSize = 8;

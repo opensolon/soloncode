@@ -138,6 +138,12 @@ public class AgentFactory {
                     //-------
 
 
+                    case "generate": {
+                        if (agentRuntime.getProps().isSubagentEnabled()) {
+                            builder.defaultToolAdd(agentRuntime.getGenerateTool());
+                        }
+                        break;
+                    }
                     case "mcp": {
                         if (agentRuntime.getMcpGatewaySkill() != null) {
                             builder.defaultSkillAdd(agentRuntime.getMcpGatewaySkill());
@@ -149,12 +155,46 @@ public class AgentFactory {
                             builder.defaultSkillAdd(agentRuntime.getRestApiSkill());
                         }
                     }
-                    case "generate": {
-                        builder.defaultToolAdd(agentRuntime.getGenerateTool());
+                    case "hitl": {
+                        if(agentRuntime.getProps().isHitlEnabled()) {
+                            builder.defaultInterceptorAdd(agentRuntime.getHitlInterceptor());
+                        }
                         break;
                     }
-                    case "hitl": {
-                        builder.defaultInterceptorAdd(agentRuntime.getHitlInterceptor());
+
+                    case "**":{
+                        builder.defaultSkillAdd(agentRuntime.getCliSkills());
+                        builder.defaultSkillAdd(agentRuntime.getTodoSkill());
+                        builder.defaultSkillAdd(agentRuntime.getCodeSkill());
+
+                        builder.defaultToolAdd(WebfetchTool.getInstance());
+                        builder.defaultToolAdd(WebsearchTool.getInstance());
+                        builder.defaultToolAdd(CodeSearchTool.getInstance());
+
+                        if (agentRuntime.getProps().isSubagentEnabled()) {
+                            builder.defaultSkillAdd(agentRuntime.getTaskSkill());
+                        }
+
+                        //---
+
+                        if (agentRuntime.getProps().isSubagentEnabled()) {
+                            builder.defaultToolAdd(agentRuntime.getGenerateTool());
+                        }
+
+                        //mcp
+                        if (agentRuntime.getMcpGatewaySkill() != null) {
+                            builder.defaultSkillAdd(agentRuntime.getMcpGatewaySkill());
+                        }
+
+                        //rest-api
+                        if (agentRuntime.getRestApiSkill() != null) {
+                            builder.defaultSkillAdd(agentRuntime.getRestApiSkill());
+                        }
+
+                        //hitl
+                        if(agentRuntime.getProps().isHitlEnabled()) {
+                            builder.defaultInterceptorAdd(agentRuntime.getHitlInterceptor());
+                        }
                         break;
                     }
                 }
