@@ -32,6 +32,10 @@ public class AgentFactory {
 
         builder.name(agentDefinition.getName());
 
+        if (Assert.isNotEmpty(agentRuntime.getProps().getWorkDir())) {
+            builder.defaultToolContextPut(AgentRuntime.ATTR_CWD, agentRuntime.getProps().getWorkDir());
+        }
+
         if (Assert.isNotEmpty(agentDefinition.getSystemPrompt())) {
             builder.systemPrompt(r -> agentDefinition.getSystemPrompt());
         }

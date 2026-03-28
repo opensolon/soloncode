@@ -166,7 +166,6 @@ public class CliShellOld implements Runnable {
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
-
             Prompt prompt = Prompt.of(currentInput).attrPut("start_time", System.currentTimeMillis());
 
             Disposable disposable = agentRuntime.getRootAgent()

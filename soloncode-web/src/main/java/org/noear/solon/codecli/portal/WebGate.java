@@ -99,7 +99,9 @@ public class WebGate implements Handler {
                         .prompt(input)
                         .session(session)
                         .options(o -> {
-                            o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                            if (Assert.isNotEmpty(sessionCwd)) {
+                                o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                            }
                         })
                         .call()
                         .getContent();
@@ -116,10 +118,12 @@ public class WebGate implements Handler {
         Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
 
         return agentRuntime.getRootAgent()
-                .prompt(input)
+                .prompt(prompt)
                 .session(session)
                 .options(o -> {
-                    o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                    if (Assert.isNotEmpty(sessionCwd)) {
+                        o.toolContextPut(AgentRuntime.ATTR_CWD, sessionCwd);
+                    }
                 })
                 .stream()
                 .map(chunk -> {

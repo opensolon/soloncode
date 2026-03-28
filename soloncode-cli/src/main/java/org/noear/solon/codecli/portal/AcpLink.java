@@ -73,7 +73,9 @@ public class AcpLink implements Runnable {
                             .prompt(userInput)
                             .session(session)
                             .options(o -> {
-                                o.toolContextPut(AgentRuntime.ATTR_CWD, context.getCwd());
+                                if (Assert.isNotEmpty(context.getCwd())) {
+                                    o.toolContextPut(AgentRuntime.ATTR_CWD, context.getCwd());
+                                }
                             })
                             .stream()
                             .concatMap(chunk -> {
