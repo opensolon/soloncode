@@ -111,6 +111,7 @@ public class CliShellOld implements Runnable {
                 try {
                     terminal.writer().println();
                     terminal.writer().print(BOLD + CYAN + "User" + RESET);
+                    terminal.writer().println();
                     terminal.flush();
 
                     input = reader.readLine(BOLD + CYAN + "> " + RESET);

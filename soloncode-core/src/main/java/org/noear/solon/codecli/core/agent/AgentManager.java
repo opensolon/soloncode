@@ -111,12 +111,12 @@ public class AgentManager {
 
         Path path = dir.toAbsolutePath().normalize();
         if (!Files.exists(path)) {
-            LOG.warn("Agent pool directory does not exist: {}", dir);
+            LOG.debug("Agent pool directory does not exist: {}", dir);
             return;
         }
 
         if (!Files.isDirectory(path)) {
-            LOG.warn("Agent pool path is not a directory: {}", dir);
+            LOG.debug("Agent pool path is not a directory: {}", dir);
             return;
         }
 
