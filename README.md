@@ -19,7 +19,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 安装后的目录：
 
-* `~/soloncode/bin/`，
+* `~/soloncode/bin/`
 
 配置修改（安装后，先修改配置）：
 
