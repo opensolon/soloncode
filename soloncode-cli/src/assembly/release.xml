@@ -30,16 +30,6 @@
             </includes>
         </fileSet>
 
-        <!-- docs -->
-        <fileSet>
-            <directory>${project.basedir}/../release</directory>
-            <outputDirectory>.</outputDirectory>
-            <includes>
-                <include>AGENTS.md</include>
-                <include>README.md</include>
-            </includes>
-        </fileSet>
-
         <!-- skills -->
         <fileSet>
             <directory>${project.basedir}/../release/skills</directory>
