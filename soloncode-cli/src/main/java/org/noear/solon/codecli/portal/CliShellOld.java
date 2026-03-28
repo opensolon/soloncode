@@ -469,8 +469,8 @@ public class CliShellOld implements Runnable {
 
 
     protected void printWelcome() {
-        terminal.puts(InfoCmp.Capability.clear_screen);
-        terminal.flush();
+//        terminal.puts(InfoCmp.Capability.clear_screen);
+//        terminal.flush();
 
         String path = new File(agentRuntime.getProps().getWorkDir()).getAbsolutePath();
         // 连带版本号，紧凑排列
