@@ -11,7 +11,7 @@
         <!-- soloncode-cli -->
         <fileSet>
             <directory>${project.build.directory}</directory>
-            <outputDirectory>.</outputDirectory>
+            <outputDirectory>./bin</outputDirectory>
             <includes>
                 <include>soloncode-cli.jar</include>
             </includes>
@@ -19,7 +19,7 @@
 
         <!-- scripts (install/uninstall/run) -->
         <fileSet>
-            <directory>${project.basedir}/../bin</directory>
+            <directory>${project.basedir}/../release</directory>
             <outputDirectory>.</outputDirectory>
             <fileMode>0755</fileMode>
             <includes>
@@ -27,14 +27,12 @@
                 <include>install.cmd</include>
                 <include>uninstall.sh</include>
                 <include>uninstall.cmd</include>
-                <include>run.sh</include>
-                <include>run.cmd</include>
             </includes>
         </fileSet>
 
         <!-- docs -->
         <fileSet>
-            <directory>${project.basedir}/../bin</directory>
+            <directory>${project.basedir}/../release</directory>
             <outputDirectory>.</outputDirectory>
             <includes>
                 <include>AGENTS.md</include>
@@ -42,12 +40,22 @@
             </includes>
         </fileSet>
 
+        <!-- skills -->
+        <fileSet>
+            <directory>${project.basedir}/../release/skills</directory>
+            <outputDirectory>./skills</outputDirectory>
+            <includes>
+                <include>**/*</include>
+            </includes>
+        </fileSet>
+
         <!-- default config template (placed in .soloncode/ subdirectory) -->
         <fileSet>
-            <directory>${project.basedir}/../bin</directory>
-            <outputDirectory>.soloncode</outputDirectory>
+            <directory>${project.basedir}/../release/bin</directory>
+            <outputDirectory>./bin</outputDirectory>
             <includes>
                 <include>config.yml</include>
+                <include>AGENTS.md</include>
             </includes>
         </fileSet>
 
