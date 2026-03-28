@@ -476,10 +476,10 @@ public class CliShellOld implements Runnable {
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + agentRuntime.getVersion() + RESET);
         terminal.writer().println(DIM + path + RESET);
-        terminal.writer().print(DIM + "Tips: " + RESET + "(esc)" + DIM + " to interrupt. Commands: " +
-                RESET + "'/exit'" + DIM + " to quit, " +
-                RESET + "'/resume'" + DIM + " to resume, " +
-                RESET + "'/clear'" + DIM + " to reset" + RESET);
+        terminal.writer().print(DIM + "Tips: " + RESET + "(esc)" + DIM + " interrupt | " +
+                RESET + "'/exit'" + DIM + ": quit | " +
+                RESET + "'/resume'" + DIM + ": resume | " +
+                RESET + "'/clear'" + DIM + ": reset" + RESET);
 
         //terminal.writer().println(DIM + "Commands: " + RESET + "exit" + DIM + ", " + RESET + "init (code)" + DIM + ", " + RESET + "clear (session)" + RESET);
         // 仅保留一个空行
