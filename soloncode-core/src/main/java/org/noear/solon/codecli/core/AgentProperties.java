@@ -18,11 +18,10 @@ import java.util.Map;
 @Getter
 @Setter
 public class AgentProperties implements Serializable {
-    private Map<String, McpServerParameters> mcpServers;
     private ChatConfig chatModel;
     private String workDir = "work";
-    private int maxSteps = 10;
     private String tools = "**";
+    private int maxSteps = 20;
     private boolean maxStepsAutoExtensible = false;
     private String uiType = "old";
     private int sessionWindowSize = 8;
@@ -32,8 +31,6 @@ public class AgentProperties implements Serializable {
     private boolean thinkPrinted = false;
     private boolean hitlEnabled = false;
     private boolean subagentEnabled = true;
-    private boolean agentTeamEnabled = false;
-    private boolean browserEnabled = true;
     private boolean cliEnabled = true;
     private boolean cliPrintSimplified = true;
     private boolean webEnabled = false;
@@ -41,10 +38,11 @@ public class AgentProperties implements Serializable {
     private boolean acpEnabled = false;
     private String acpTransport = "stdio";
     private String acpEndpoint = "/acp";
-    private Map<String, ApiSource> restApis;
-    @Deprecated
-    private Map<String, String> mountPool;
+
     private Map<String, String> skillPools;
+
+    private Map<String, McpServerParameters> mcpServers;
+    private Map<String, ApiSource> restApis;
 
     /**
      * 当前目录

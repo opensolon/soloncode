@@ -162,13 +162,6 @@ public class AgentRuntime {
             throw new RuntimeException("Mcp servers load failure", e);
         }
 
-
-        if (Assert.isNotEmpty(properties.getMountPool())) {
-            properties.getMountPool().forEach((alias, dir) -> {
-                cliSkills.skillPool(alias, dir);
-            });
-        }
-
         if (Assert.isNotEmpty(properties.getSkillPools())) {
             properties.getSkillPools().forEach((alias, dir) -> {
                 cliSkills.skillPool(alias, dir);
