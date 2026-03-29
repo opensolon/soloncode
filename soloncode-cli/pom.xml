@@ -24,6 +24,12 @@
 
         <dependency>
             <groupId>org.noear</groupId>
+            <artifactId>solon-ai-acp</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
             <artifactId>solon-server-smarthttp</artifactId>
         </dependency>
 
