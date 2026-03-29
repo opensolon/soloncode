@@ -31,7 +31,7 @@ import org.noear.solon.codecli.portal.CliShellNew;
 import org.noear.solon.codecli.portal.CliShellOld;
 import org.noear.solon.codecli.portal.WebGate;
 
-import java.nio.file.Path;
+import java.net.URL;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,6 +46,10 @@ public class App {
 
     public static void main(String[] args) {
         Solon.start(App.class, args, app -> {
+            //加载配置文件
+            URL configUrl = AgentProperties.getConfigUrl();
+            app.cfg().loadAdd(configUrl);
+
             //获取命令行运行的当前用户工作区
             String workDir = Paths.get(AgentProperties.getUserDir()).toAbsolutePath().normalize().toString();
             AgentProperties c = app.cfg().toBean("soloncode", AgentProperties.class);
