@@ -9,6 +9,8 @@
 
 ## 安装与配置
 
+安装：
+
 ```bash
 # Mac / Linux:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
@@ -39,10 +41,10 @@ User
 > 
 ```
 
-命令测试：
+效果测试（分别尝试以下任务，从简单到复杂）：
 
 * `你好`
-* `用网络分析下 ai mcp 协议，然后生成个 ppt`（最好提前安装些 skill）
+* `用网络分析下 ai mcp 协议，然后生成个 ppt` //最好提前安装些 skill
 * `帮我设计一个 agent team（设计案存为 demo-dis.md），开发一个 solon + java17 的经典权限管理系统（demo-web），前端用 vue3，界面要简洁好看`
 
 
