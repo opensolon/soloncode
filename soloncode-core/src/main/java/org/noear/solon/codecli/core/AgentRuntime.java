@@ -178,7 +178,8 @@ public class AgentRuntime {
         cliSkills.skillPool("@claude_skills", Paths.get(properties.getWorkDir(), AgentRuntime.CLAUDE_SKILLS));
 
         agentManager = new AgentManager();
-        agentManager.agentPool(Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_AGENTS));
+        agentManager.agentPool(Paths.get(AgentProperties.getUserHome(), AgentRuntime.SOLONCODE_AGENTS)); //global
+        agentManager.agentPool(Paths.get(properties.getWorkDir(), AgentRuntime.SOLONCODE_AGENTS)); //local
 
         //上下文摘要
         SummarizationStrategy strategy = new CompositeSummarizationStrategy()

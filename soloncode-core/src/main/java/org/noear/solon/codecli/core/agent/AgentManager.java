@@ -15,22 +15,16 @@
  */
 package org.noear.solon.codecli.core.agent;
 
-import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.ResourceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -98,6 +92,7 @@ public class AgentManager {
         agentMap.clear();
     }
 
+    private Set<Path> pathCached = new HashSet<>();
     /**
      * 注册自定义 agents 池
      *
@@ -118,6 +113,12 @@ public class AgentManager {
         if (!Files.isDirectory(path)) {
             LOG.debug("Agent pool path is not a directory: {}", dir);
             return;
+        }
+
+        if(pathCached.contains(path)){
+            return;
+        } else {
+            pathCached.add(path);
         }
 
         try {
