@@ -7,10 +7,44 @@
 
 set -e
 
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
 echo ""
 echo "============================================"
-echo "   Solon Code Installer"
+echo -e "   Solon Code Installer"
 echo "============================================"
+echo ""
+
+# =============================================
+# 检查 Java 是否安装
+# =============================================
+echo -e "${YELLOW}[Pre-check]${NC} Verifying Java installation..."
+
+if ! command -v java &> /dev/null; then
+    echo ""
+    echo -e "${RED}[Error] Java is not installed or not in PATH${NC}"
+    echo ""
+    echo "  Please install Java 8 or later:"
+    echo "    - Ubuntu/Debian: sudo apt install openjdk-17-jdk"
+    echo "    - macOS: brew install openjdk@17"
+    echo "    - Or download from: https://adoptium.net/"
+    echo ""
+    # If not called from setup.sh, wait for user input
+    if [ -z "$SOLONCODE_SETUP" ]; then
+        echo "Press Enter to exit..."
+        read -r
+    fi
+    exit 1
+fi
+
+# 获取 Java 版本
+JAVA_VERSION=$(java -version 2>&1 | head -n 1)
+echo -e "      ${JAVA_VERSION}${NC}"
 echo ""
 
 # 源目录（脚本所在目录）
@@ -250,26 +284,26 @@ fi
 # 完成
 # =============================================
 echo ""
-echo "============================================"
-echo "   Installation Complete!"
-echo "============================================"
+echo -e "${GREEN}============================================${NC}"
+echo -e "${GREEN}   Installation Complete!${NC}"
+echo -e "${GREEN}============================================${NC}"
 echo ""
 echo "  Install path: $TARGET_DIR"
-echo "  Detected shell: $USER_SHELL"
+echo "  Java version: $JAVA_VERSION"
 echo ""
 
 if [ "$SYMLINK_CREATED" = true ]; then
-    echo "  Symlink created: /usr/local/bin/soloncode"
-    echo "  You can run 'soloncode' directly now!"
+    echo -e "  ${CYAN}Symlink created: /usr/local/bin/soloncode${NC}"
+    echo -e "  You can run ${CYAN}soloncode${NC} directly now!"
 else
-    echo "  Usage:"
+    echo -e "  ${CYAN}Usage:${NC}"
     echo "    1. Run: source ~/.${USER_SHELL}rc"
     echo "    2. Or restart your terminal"
     echo "    3. Then run: soloncode"
 fi
 
 echo ""
-echo "  Directory structure:"
+echo -e "  ${CYAN}Directory structure:${NC}"
 echo "    ~/.soloncode/"
 echo "    ├── bin/           (executables)"
 echo "    │   ├── soloncode-cli.jar"
@@ -278,3 +312,12 @@ echo "    │   └── config.yml  (configuration, preserved if exists)"
 echo "    │   └── AGENTS.md   (agents config, preserved if exists)"
 echo "    └── skills/        (skill modules)"
 echo ""
+echo -e "  ${YELLOW}[Tip]${NC} To use soloncode immediately in current terminal:"
+echo "    source ~/.${USER_SHELL}rc"
+echo ""
+
+# If not called from setup.sh, wait for user input
+if [ -z "$SOLONCODE_SETUP" ]; then
+    echo "Press Enter to exit..."
+    read -r
+fi

@@ -165,10 +165,14 @@ if (-not (Test-Path $JarFile)) {
     exit 1
 }
 
-# 设置控制台编码为 UTF-8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+# 设置控制台编码为 UTF-8（兼容不同 PowerShell 环境）
+try {
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+} catch {
+    # 某些终端环境不支持设置编码，忽略错误
+}
 
 # 运行 Java 程序
 & java "-Dfile.encoding=UTF-8" "-Dstdout.encoding=UTF-8" "-Dstderr.encoding=UTF-8" "-Dstdin.encoding=UTF-8" -jar $JarFile @RestArgs
