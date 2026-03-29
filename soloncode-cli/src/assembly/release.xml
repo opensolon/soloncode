@@ -19,7 +19,7 @@
 
         <!-- scripts (install/uninstall/run) -->
         <fileSet>
-            <directory>${project.basedir}/../release</directory>
+            <directory>${project.basedir}/release</directory>
             <outputDirectory>.</outputDirectory>
             <fileMode>0755</fileMode>
             <includes>
@@ -29,7 +29,7 @@
         </fileSet>
 
         <fileSet>
-            <directory>${project.basedir}/../release/bin</directory>
+            <directory>${project.basedir}/release/bin</directory>
             <outputDirectory>./bin</outputDirectory>
             <fileMode>0755</fileMode>
             <includes>
@@ -40,7 +40,7 @@
 
         <!-- skills -->
         <fileSet>
-            <directory>${project.basedir}/../release/skills</directory>
+            <directory>${project.basedir}/release/skills</directory>
             <outputDirectory>./skills</outputDirectory>
             <includes>
                 <include>**/*</include>
@@ -49,7 +49,7 @@
 
         <!-- default config template (placed in .soloncode/ subdirectory) -->
         <fileSet>
-            <directory>${project.basedir}/../release/bin</directory>
+            <directory>${project.basedir}/release/bin</directory>
             <outputDirectory>./bin</outputDirectory>
             <includes>
                 <include>config.yml</include>
