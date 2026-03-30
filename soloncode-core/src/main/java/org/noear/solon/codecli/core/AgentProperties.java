@@ -57,6 +57,9 @@ public class AgentProperties implements Serializable {
     private boolean webEnabled = false;
     private String webEndpoint = "/cli";
 
+    private boolean wsEnabled = false;
+    private String wsEndpoint = "/ws";
+
     private boolean acpEnabled = false;
     private String acpTransport = "stdio";
     private String acpEndpoint = "/acp";

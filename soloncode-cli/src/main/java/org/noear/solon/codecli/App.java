@@ -29,7 +29,8 @@ import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.core.AgentRuntime;
 import org.noear.solon.codecli.portal.WebGate;
-import org.noear.solon.core.event.AppStopEndEvent;
+import org.noear.solon.codecli.remoting.WebSocketGate;
+import org.noear.solon.net.websocket.WebSocketRouter;
 
 import java.nio.file.Paths;
 import java.util.Map;
@@ -51,6 +52,11 @@ public class App {
 
             if (c.isWebEnabled()) {
                 app.enableHttp(true);
+            }
+
+            if (c.isWsEnabled()) {
+                app.enableHttp(true);  // WebSocket 需要 HTTP 服务（升级握手）
+                app.enableWebSocket(true);
             }
 
             if (c.isAcpEnabled() && "stdio".equals(c.getAcpTransport()) == false) {
@@ -85,6 +91,10 @@ public class App {
 
         if (agentProperties.isWebEnabled()) {
             Solon.app().router().get(agentProperties.getWebEndpoint(), new WebGate(agentKernel));
+        }
+
+        if (agentProperties.isWsEnabled()){
+            WebSocketRouter.getInstance().of("ws", new WebSocketGate(agentKernel));
         }
 
         if (agentProperties.isAcpEnabled()) {
