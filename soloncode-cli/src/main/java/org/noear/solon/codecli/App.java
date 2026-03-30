@@ -95,6 +95,7 @@ public class App {
                 //单次任务态
                 String prompt = Solon.cfg().argx().flagAt(1);
                 new CliShellOld(agentRuntime).call(prompt);
+                Solon.stop();
                 return;
             } else {
                 // 工作态
