@@ -1,11 +1,17 @@
 export type MessageType = 'user' | 'assistant' | 'reason' | 'action' | 'error';
-export type ContentType = 'reason' | 'action' | 'text' | 'error';
+export type ContentType = 'reason' | 'action' | 'text' | 'error' | 'think';
 
 export interface ContentItem {
   type: ContentType;
   text: string;
   toolName?: string;
-  args?: any;
+  args?: Record<string, unknown>;
+}
+
+export interface MessageMetadata {
+  modelName?: string;
+  totalTokens?: number;
+  elapsedMs?: number;
 }
 
 export interface Message {
@@ -13,6 +19,7 @@ export interface Message {
   role: MessageType;
   timestamp: string;
   contents: ContentItem[];
+  metadata?: MessageMetadata;
 }
 
 export interface Conversation {
