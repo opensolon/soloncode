@@ -172,7 +172,18 @@ while [ -L "$SCRIPT_PATH" ]; do
     esac
 done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
-java -Dfile.encoding=UTF-8 -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
+
+# 检测 Java 版本，如果是 21+ 则添加 --enable-native-access 参数
+JAVA_VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | grep -oE '[0-9]+' | head -1)
+if [ -z "$JAVA_VER" ]; then
+    # 如果提取失败，尝试另一种方式
+    JAVA_VER=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
+fi
+JAVA_OPTS="-Dfile.encoding=UTF-8"
+if [ -n "$JAVA_VER" ] && [ "$JAVA_VER" -ge 21 ]; then
+    JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
+fi
+java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
 LAUNCHER_EOF
 chmod +x "$TARGET_BIN_DIR/soloncode"
 echo "      Created: $TARGET_BIN_DIR/soloncode"

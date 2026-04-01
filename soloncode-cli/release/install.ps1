@@ -156,8 +156,29 @@ try {
 } catch {
     # 某些终端环境不支持设置编码，忽略错误
 }
+# 检测 Java 版本，如果是 21+ 则添加 --enable-native-access 参数
+$JavaArgs = @("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-Dstdin.encoding=UTF-8")
+try {
+    $VerProcess = New-Object System.Diagnostics.Process
+    $VerProcess.StartInfo.FileName = "java"
+    $VerProcess.StartInfo.Arguments = "-version"
+    $VerProcess.StartInfo.RedirectStandardError = $true
+    $VerProcess.StartInfo.RedirectStandardOutput = $true
+    $VerProcess.StartInfo.UseShellExecute = $false
+    $VerProcess.Start() | Out-Null
+    $VerOutput = $VerProcess.StandardError.ReadToEnd()
+    $VerProcess.WaitForExit()
+    if ($VerOutput -match '"(\d+)') {
+        $JavaMajor = [int]$Matches[1]
+        if ($JavaMajor -ge 21) {
+            $JavaArgs += "--enable-native-access=ALL-UNNAMED"
+        }
+    }
+} catch {
+    # 版本检测失败时忽略，继续执行
+}
 # 运行 Java 程序
-& java "-Dfile.encoding=UTF-8" "-Dstdout.encoding=UTF-8" "-Dstderr.encoding=UTF-8" "-Dstdin.encoding=UTF-8" -jar $JarFile @RestArgs
+& java @JavaArgs -jar $JarFile @RestArgs
 '@
 Set-Content -Path $LAUNCHER_PS1 -Value $LAUNCHER_CONTENT -Encoding UTF8
 Write-Host "      Created: soloncode.ps1" -ForegroundColor Gray
@@ -167,7 +188,17 @@ $LAUNCHER_SH_CONTENT = @'
 #!/bin/bash
 # Solon Code CLI Launcher for Git Bash / WSL
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-java -Dfile.encoding=UTF-8 -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
+
+# 检测 Java 版本，如果是 21+ 则添加 --enable-native-access 参数
+JAVA_VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | grep -oE '[0-9]+' | head -1)
+if [ -z "$JAVA_VER" ]; then
+    JAVA_VER=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
+fi
+JAVA_OPTS="-Dfile.encoding=UTF-8"
+if [ -n "$JAVA_VER" ] && [ "$JAVA_VER" -ge 21 ]; then
+    JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
+fi
+java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
 '@
 Set-Content -Path $LAUNCHER_SH -Value $LAUNCHER_SH_CONTENT -Encoding UTF8 -NoNewline
 Write-Host "      Created: soloncode (for Git Bash)" -ForegroundColor Gray
