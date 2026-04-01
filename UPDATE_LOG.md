@@ -4,10 +4,9 @@
 * 添加 soloncode-cli pid 打印
 * 添加 soloncode-cli skillhub 自动索引
 * 优化 soloncode-cli edit 失败时的提示细节
-* 优化 java21+ 启动，去除启动时的 System.load() 警告
+* 优化 java21+ 环境，去除启动时的 System.load() 警告
 * 调整 soloncode-cli 日志输出位置到 `.soloncode` 下面（这样，不会产生多余的目录）
 * 调整 soloncode-core CLAUDE.md 文件位置到 `.soloncode` 下面（这样，不会产生多余的文件）
-* 升级 jansi 版本
 
 ### v2026.4.1
 
