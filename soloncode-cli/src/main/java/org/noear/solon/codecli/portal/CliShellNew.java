@@ -440,8 +440,12 @@ public class CliShellNew implements Runnable {
         // Windows 下将控制台切换为 UTF-8 代码页，避免中文输入乱码
         if (System.getProperty("os.name").toLowerCase().contains("win")) {
             try {
-                new ProcessBuilder("cmd", "/c", "chcp", "65001")
-                        .inheritIO().start().waitFor();
+                Process process = new ProcessBuilder("cmd", "/c", "chcp", "65001").start();
+                // 读取并丢弃输出，避免显示到控制台
+                try (java.io.InputStream is = process.getInputStream()) {
+                    while (is.read() != -1) {}
+                }
+                process.waitFor();
             } catch (Exception ignored) {
             }
         }
