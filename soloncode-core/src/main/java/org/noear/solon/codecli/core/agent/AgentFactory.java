@@ -105,7 +105,13 @@ public class AgentFactory {
                     case "todoread":
                     case "todowrite":
                     case "todo": {
-                        builder.defaultSkillAdd(agentRuntime.getTodoSkill());
+                        if (metadata.isPrimary()) {
+                            //主代理，用文件模式
+                            builder.defaultSkillAdd(agentRuntime.getTodoSkill());
+                        } else {
+                            //次代理，用内存模式
+                            builder.planningMode(true);
+                        }
                         break;
                     }
                     case "webfetch": {
@@ -156,13 +162,13 @@ public class AgentFactory {
                         }
                     }
                     case "hitl": {
-                        if(agentRuntime.getProps().isHitlEnabled()) {
+                        if (agentRuntime.getProps().isHitlEnabled()) {
                             builder.defaultInterceptorAdd(agentRuntime.getHitlInterceptor());
                         }
                         break;
                     }
 
-                    case "**":{
+                    case "**": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills());
                         builder.defaultSkillAdd(agentRuntime.getTodoSkill());
                         builder.defaultSkillAdd(agentRuntime.getCodeSkill());
@@ -192,7 +198,7 @@ public class AgentFactory {
                         }
 
                         //hitl
-                        if(agentRuntime.getProps().isHitlEnabled()) {
+                        if (agentRuntime.getProps().isHitlEnabled()) {
                             builder.defaultInterceptorAdd(agentRuntime.getHitlInterceptor());
                         }
                         break;

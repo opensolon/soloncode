@@ -203,6 +203,8 @@ public class AgentRuntime {
         agentDefinition.setSystemPrompt(getAgentsMd());
         // 名字
         agentDefinition.getMetadata().setName("root");
+        // 主代理
+        agentDefinition.getMetadata().setPrimary(true);
         // 工具权限
         agentDefinition.getMetadata().addTools(properties.getTools());
 

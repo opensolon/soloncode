@@ -169,6 +169,7 @@ public class AgentDefinition {
     public static class Metadata {
         private boolean enabled = true;
         private boolean hidden = false;
+        private boolean primary = false;
 
         // 必需字段
         private String name;

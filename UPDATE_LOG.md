@@ -6,6 +6,7 @@
 * 优化 soloncode-cli edit 失败时的提示细节
 * 优化 java21+ 环境，去除启动时的 System.load() 警告
 * 调整 soloncode-cli 日志输出位置到 `.soloncode` 下面（这样，不会产生多余的目录）
+* 调整 soloncode-cli TODO 机制，主代理用文件模式（避免开发时冲突，或产生文件太多），次代理用内存模式。次代理定位偏临时性
 * 调整 soloncode-core CLAUDE.md 文件位置到 `.soloncode` 下面（这样，不会产生多余的文件）
 
 ### v2026.4.1
