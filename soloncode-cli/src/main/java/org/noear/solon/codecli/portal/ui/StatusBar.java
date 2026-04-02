@@ -21,7 +21,6 @@ import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
-import org.jline.utils.InfoCmp;
 import org.noear.solon.codecli.portal.ui.theme.PortalTheme;
 import org.noear.solon.codecli.portal.ui.theme.PortalThemes;
 
@@ -87,17 +86,24 @@ public class StatusBar {
         return t;
     });
     private volatile ScheduledFuture<?> animTask;
-    private volatile int lastRenderedLineCount = 0;
-    private java.util.concurrent.locks.ReentrantLock jlineLock;
     private volatile Cursor restoreCursor;
+    private volatile Runnable renderRequester;
+    private volatile boolean configActive = false;
+    private volatile Set<String> configEnabledFields = Collections.emptySet();
+    private volatile int configCursor = 0;
 
     public StatusBar(Terminal terminal) {
         this.terminal = terminal;
+        this.renderRequester = new Runnable() {
+            @Override
+            public void run() {
+            }
+        };
     }
 
     public void setTheme(PortalTheme theme) {
         this.theme = theme == null ? PortalThemes.defaultTheme() : theme;
-        draw();
+        requestRender();
     }
 
     public void setModelName(String name) {
@@ -118,7 +124,7 @@ public class StatusBar {
 
     public void setCompactMode(boolean compact) {
         this.compactMode = compact;
-        draw();
+        requestRender();
     }
 
     public void incrementTurns() {
@@ -126,112 +132,54 @@ public class StatusBar {
     }
 
     public void setup() {
-        this.lastRenderedLineCount = 0;
     }
 
     public void setJLineLock(java.util.concurrent.locks.ReentrantLock lock) {
-        this.jlineLock = lock;
+        // 兼容旧调用点。渲染已统一收口到 PortalScreenRenderer。
     }
 
     public void setRestoreCursor(Cursor cursor) {
-        this.restoreCursor = cursor;
+        if (cursor == null) {
+            this.restoreCursor = null;
+        } else {
+            this.restoreCursor = new Cursor(cursor.getX(), cursor.getY());
+        }
+    }
+
+    public void setRenderRequester(Runnable renderRequester) {
+        if (renderRequester == null) {
+            this.renderRequester = new Runnable() {
+                @Override
+                public void run() {
+                }
+            };
+        } else {
+            this.renderRequester = renderRequester;
+        }
     }
 
     public void draw() {
-        if (jlineLock != null) {
-            jlineLock.lock();
-            try {
-                drawInternal();
-            } finally {
-                jlineLock.unlock();
-            }
-        } else {
-            drawInternal();
-        }
-    }
-
-    private void drawInternal() {
-        try {
-            Cursor savedCursor = readCursorPosition();
-            if (savedCursor == null) {
-                savedCursor = restoreCursor;
-            } else {
-                restoreCursor = savedCursor;
-            }
-            List<AttributedString> lines = new ArrayList<AttributedString>();
-            lines.add(buildRuntimeLine());
-            lines.add(blankLine());
-            lines.addAll(popupLines);
-            lines.add(padLine(inputLine == null ? new AttributedString("") : inputLine));
-            lines.add(blankLine());
-            lines.add(buildStatusLine());
-            int currentLineCount = lines.size();
-            if (currentLineCount < lastRenderedLineCount) {
-                for (int i = currentLineCount; i < lastRenderedLineCount; i++) {
-                    lines.add(blankLine());
-                }
-            }
-            int renderLineCount = Math.max(lastRenderedLineCount, currentLineCount);
-            int terminalHeight = Math.max(1, terminal.getHeight());
-            int startRow = Math.max(1, terminalHeight - renderLineCount + 1);
-            terminal.writer().print("\033[?25l");
-            for (int i = 0; i < renderLineCount; i++) {
-                int row = startRow + i;
-                AttributedString line = i < lines.size() ? lines.get(i) : blankLine();
-                terminal.writer().print("\033[" + row + ";1H");
-                terminal.writer().print("\033[2K");
-                terminal.writer().print(line.toAnsi(terminal));
-            }
-            restoreCursor(savedCursor);
-            terminal.writer().print("\033[?25h");
-            terminal.flush();
-            lastRenderedLineCount = currentLineCount;
-        } catch (Throwable ignored) {
-            try {
-                terminal.writer().print("\033[?25h");
-                terminal.flush();
-            } catch (Throwable e) {
-            }
-        }
+        requestRender();
     }
 
     public void suspend() {
-        try {
-            Cursor savedCursor = readCursorPosition();
-            if (savedCursor == null) {
-                savedCursor = restoreCursor;
-            } else {
-                restoreCursor = savedCursor;
-            }
-            int lineCount = lastRenderedLineCount;
-            if (lineCount > 0) {
-                int terminalHeight = Math.max(1, terminal.getHeight());
-                int startRow = Math.max(1, terminalHeight - lineCount + 1);
-                terminal.writer().print("\033[?25l");
-                for (int i = 0; i < lineCount; i++) {
-                    terminal.writer().print("\033[" + (startRow + i) + ";1H");
-                    terminal.writer().print("\033[2K");
-                }
-                restoreCursor(savedCursor);
-                terminal.writer().print("\033[?25h");
-                terminal.flush();
-            }
-        } catch (Throwable ignored) {
-        }
+        // 统一渲染口径下，正文区与底部区都由 PortalScreenRenderer 负责落屏。
+        // 这里不再直接触碰终端。
     }
 
     public void restore() {
-        draw();
+        requestRender();
     }
 
-    public void updateFooter(List<AttributedString> popupLines, AttributedString inputLine) {
+    public void updateFooter(List<AttributedString> popupLines, AttributedString inputLine, Cursor cursor) {
         if (popupLines == null || popupLines.isEmpty()) {
             this.popupLines = Collections.emptyList();
         } else {
             this.popupLines = new ArrayList<AttributedString>(popupLines);
         }
         this.inputLine = inputLine == null ? new AttributedString("") : inputLine;
-        draw();
+        setRestoreCursor(cursor);
+        requestRender();
     }
 
     public void updateStatus(String status) {
@@ -240,7 +188,7 @@ public class StatusBar {
             this.stateStartTime = System.currentTimeMillis();
         }
         this.currentStatus = normalized;
-        draw();
+        requestRender();
     }
 
     public String getStatusText() {
@@ -261,7 +209,7 @@ public class StatusBar {
         this.lastTokens = 0;
         this.currentStatus = "thinking";
         startAnimation();
-        draw();
+        requestRender();
     }
 
     public void taskEnd(long tokens) {
@@ -273,12 +221,12 @@ public class StatusBar {
         this.currentStatus = "idle";
         this.stateStartTime = System.currentTimeMillis();
         stopAnimation();
-        draw();
+        requestRender();
     }
 
     public void updateTokens(long tokens) {
         this.lastTokens = tokens;
-        draw();
+        requestRender();
     }
 
     public boolean isIdle() {
@@ -450,15 +398,13 @@ public class StatusBar {
     }
 
     public void showConfigUI() {
-        suspend();
-
         Attributes savedAttrs = terminal.getAttributes();
         try {
             terminal.enterRawMode();
-            Set<String> tempEnabled = new LinkedHashSet<String>(enabledFields);
-            int cursor = 0;
-
-            drawConfigMenu(tempEnabled, cursor);
+            configEnabledFields = new LinkedHashSet<String>(enabledFields);
+            configCursor = 0;
+            configActive = true;
+            requestRender();
 
             while (true) {
                 int key = readKey();
@@ -476,12 +422,12 @@ public class StatusBar {
                             if (isReaderReady()) {
                                 int arrow = readKey();
                                 if (arrow == 'A') {
-                                    cursor = Math.max(0, cursor - 1);
-                                    drawConfigMenu(tempEnabled, cursor);
+                                    configCursor = Math.max(0, configCursor - 1);
+                                    requestRender();
                                     continue;
                                 } else if (arrow == 'B') {
-                                    cursor = Math.min(ALL_FIELDS.length - 1, cursor + 1);
-                                    drawConfigMenu(tempEnabled, cursor);
+                                    configCursor = Math.min(ALL_FIELDS.length - 1, configCursor + 1);
+                                    requestRender();
                                     continue;
                                 }
                             }
@@ -489,71 +435,34 @@ public class StatusBar {
                     }
                     break;
                 } else if (key == ' ') {
-                    String field = ALL_FIELDS[cursor];
-                    if (tempEnabled.contains(field)) {
-                        tempEnabled.remove(field);
+                    String field = ALL_FIELDS[configCursor];
+                    Set<String> next = new LinkedHashSet<String>(configEnabledFields);
+                    if (next.contains(field)) {
+                        next.remove(field);
                     } else {
-                        tempEnabled.add(field);
+                        next.add(field);
                     }
-                    drawConfigMenu(tempEnabled, cursor);
+                    configEnabledFields = next;
+                    requestRender();
                 } else if (key == 'k' || key == 'K') {
-                    cursor = Math.max(0, cursor - 1);
-                    drawConfigMenu(tempEnabled, cursor);
+                    configCursor = Math.max(0, configCursor - 1);
+                    requestRender();
                 } else if (key == 'j' || key == 'J') {
-                    cursor = Math.min(ALL_FIELDS.length - 1, cursor + 1);
-                    drawConfigMenu(tempEnabled, cursor);
+                    configCursor = Math.min(ALL_FIELDS.length - 1, configCursor + 1);
+                    requestRender();
                 } else if (key == '\r' || key == '\n') {
                     enabledFields.clear();
-                    enabledFields.addAll(tempEnabled);
+                    enabledFields.addAll(configEnabledFields);
                     break;
                 }
             }
         } finally {
+            configActive = false;
+            configEnabledFields = Collections.emptySet();
+            configCursor = 0;
             terminal.setAttributes(savedAttrs);
+            requestRender();
         }
-
-        clearConfigMenu();
-        restore();
-    }
-
-    private void drawConfigMenu(Set<String> tempEnabled, int cursor) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("\r\033[J");
-        sb.append("\n");
-        sb.append(ansiMuted()).append("  --- ").append(RESET)
-                .append(ansiText()).append("Status Bar 配置").append(RESET)
-                .append(ansiMuted()).append(" --- ").append(RESET);
-        sb.append(ansiMuted()).append("  ↑↓/jk  Space  Enter  Esc").append(RESET);
-        sb.append("\n\n");
-
-        for (int i = 0; i < ALL_FIELDS.length; i++) {
-            String field = ALL_FIELDS[i];
-            boolean enabled = tempEnabled.contains(field);
-            boolean current = i == cursor;
-            String check = enabled ? ansiSuccess() + "[✔]" + RESET : ansiMuted() + "[ ]" + RESET;
-            String name = String.format("%-10s", capitalize(field));
-            String desc = ansiMuted() + FIELD_DESCRIPTIONS[i] + RESET;
-
-            if (current) {
-                sb.append("  ").append(ansiAccent()).append("▸").append(RESET)
-                        .append(check).append(" ").append(ansiAccentBold()).append(name).append(RESET)
-                        .append(" ").append(desc);
-            } else {
-                String nameColor = enabled ? ansiText() : ansiMuted();
-                sb.append("    ").append(check).append(" ").append(nameColor).append(name).append(RESET)
-                        .append(" ").append(desc);
-            }
-            sb.append("\n");
-        }
-
-        sb.append("\033[").append(ALL_FIELDS.length + 3).append("A");
-        terminal.writer().write(sb.toString());
-        terminal.flush();
-    }
-
-    private void clearConfigMenu() {
-        terminal.writer().write("\r\033[J");
-        terminal.flush();
     }
 
     private void startAnimation() {
@@ -563,7 +472,7 @@ public class StatusBar {
             @Override
             public void run() {
                 animationTick++;
-                draw();
+                requestRender();
             }
         }, 100, 100, TimeUnit.MILLISECONDS);
     }
@@ -652,47 +561,8 @@ public class StatusBar {
         return theme.toolTitle().style();
     }
 
-    private String ansiText() {
-        return theme.textPrimary().ansiFg();
-    }
-
-    private String ansiMuted() {
-        return theme.textMuted().ansiFg();
-    }
-
-    private String ansiAccent() {
-        return theme.accent().ansiFg();
-    }
-
-    private String ansiAccentBold() {
-        return theme.accentStrong().ansiBoldFg();
-    }
-
-    private String ansiSuccess() {
-        return theme.success().ansiFg();
-    }
-
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
-    }
-
-    private Cursor readCursorPosition() {
-        try {
-            return terminal.getCursorPosition(discarded -> {
-            });
-        } catch (Throwable e) {
-            return null;
-        }
-    }
-
-    private void restoreCursor(Cursor cursor) {
-        if (cursor == null) {
-            return;
-        }
-        try {
-            terminal.puts(InfoCmp.Capability.cursor_address, cursor.getY(), cursor.getX());
-        } catch (Throwable ignored) {
-        }
     }
 
     private static String normalizeStatus(String value) {
@@ -737,6 +607,94 @@ public class StatusBar {
             return s;
         }
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    public RenderSnapshot snapshot() {
+        if (configActive) {
+            return new RenderSnapshot(buildConfigLines(), null);
+        }
+
+        List<AttributedString> lines = new ArrayList<AttributedString>();
+        lines.add(buildRuntimeLine());
+        lines.add(blankLine());
+        lines.addAll(popupLines);
+        lines.add(padLine(inputLine == null ? new AttributedString("") : inputLine));
+        lines.add(blankLine());
+        lines.add(buildStatusLine());
+
+        Cursor cursor = restoreCursor == null ? null : new Cursor(restoreCursor.getX(), restoreCursor.getY());
+        return new RenderSnapshot(lines, cursor);
+    }
+
+    private void requestRender() {
+        Runnable requester = renderRequester;
+        if (requester != null) {
+            requester.run();
+        }
+    }
+
+    private List<AttributedString> buildConfigLines() {
+        List<AttributedString> lines = new ArrayList<AttributedString>();
+        lines.add(blankLine());
+
+        AttributedStringBuilder header = new AttributedStringBuilder();
+        header.append("  ");
+        header.style(styleMuted());
+        header.append("--- ");
+        header.style(styleText());
+        header.append("Status Bar 配置");
+        header.style(styleMuted());
+        header.append(" ---  ↑↓/jk  Space  Enter  Esc");
+        lines.add(padLine(header.toAttributedString()));
+        lines.add(blankLine());
+
+        Set<String> enabled = configEnabledFields == null ? Collections.<String>emptySet() : configEnabledFields;
+        for (int i = 0; i < ALL_FIELDS.length; i++) {
+            String field = ALL_FIELDS[i];
+            boolean checked = enabled.contains(field);
+            boolean selected = i == configCursor;
+
+            AttributedStringBuilder row = new AttributedStringBuilder();
+            if (selected) {
+                row.append("  ");
+                row.style(styleAccent());
+                row.append("▸");
+            } else {
+                row.append("   ");
+            }
+
+            row.append(" ");
+            row.style(checked ? styleSuccess() : styleMuted());
+            row.append(checked ? "[✔]" : "[ ]");
+            row.append(" ");
+            row.style(selected ? styleAccentBold() : (checked ? styleText() : styleMuted()));
+            row.append(String.format("%-10s", capitalize(field)));
+            row.append(" ");
+            row.style(styleMuted());
+            row.append(FIELD_DESCRIPTIONS[i]);
+            lines.add(padLine(row.toAttributedString()));
+        }
+
+        lines.add(blankLine());
+        return lines;
+    }
+
+    public static final class RenderSnapshot {
+        private final List<AttributedString> lines;
+        private final Cursor cursor;
+
+        private RenderSnapshot(List<AttributedString> lines, Cursor cursor) {
+            this.lines = Collections.unmodifiableList(new ArrayList<AttributedString>(lines));
+            this.cursor = cursor;
+        }
+
+        public List<AttributedString> getLines() {
+            return lines;
+        }
+
+        public Cursor getCursor() {
+            return cursor;
+        }
     }
 
     private static final class RuntimeStatusInfo {

@@ -19,12 +19,10 @@ import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Cursor;
-import org.jline.terminal.Size;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
-import org.jline.utils.InfoCmp;
 import org.noear.solon.codecli.portal.ui.CommandRegistry;
 import org.noear.solon.codecli.portal.ui.bottom.mode.BottomListMode;
 import org.noear.solon.codecli.portal.ui.bottom.mode.CommandPaletteMode;
@@ -63,12 +61,10 @@ public class BottomInputController {
     private String historyDraft = "";
     private boolean historyDraftSaved = false;
     private volatile boolean eofReached = false;
-    private Cursor contentCursor;
     private Object selectionResult;
     private PortalTheme theme = PortalThemes.defaultTheme();
     private SelectionCallbacks<Object> selectionCallbacks;
     private volatile ReentrantLock terminalLock;
-    private volatile int lastFooterLines = 6;
     private volatile String footerNotice;
     public BottomInputController(Terminal terminal, CommandRegistry commandRegistry, Path workDir, Listener listener) {
         this.terminal = terminal;
@@ -138,19 +134,12 @@ public class BottomInputController {
     }
 
     public void renderNow() {
-        withTerminalLock(() -> {
-            synchronized (renderLock) {
-                if (contentCursor == null) {
-                    captureContentCursorFromTerminalLocked();
-                }
-                List<AttributedString> popupLines = buildPopupLines();
-                AttributedString inputLine = buildInputLine();
-                int footerLines = totalFooterLines(popupLines.size());
-                lastFooterLines = footerLines;
-                listener.updateFooter(popupLines, inputLine);
-                placeCursor(footerLines, inputLineIndex(popupLines.size()));
-            }
-        });
+        synchronized (renderLock) {
+            List<AttributedString> popupLines = buildPopupLines();
+            AttributedString inputLine = buildInputLine();
+            int popupCount = popupLines.size();
+            listener.updateFooter(popupLines, inputLine, buildFooterCursor(popupCount));
+        }
     }
 
     public void close() {
@@ -163,53 +152,8 @@ public class BottomInputController {
                     }
                     rawModeAttributes = null;
                 }
-                try {
-                    terminal.writer().print("\033[?25h");
-                    terminal.flush();
-                } catch (Throwable ignored) {
-                }
+                listener.showTerminalCursor();
             }
-        });
-    }
-
-    public void invalidateContentCursor() {
-        synchronized (renderLock) {
-            contentCursor = null;
-        }
-    }
-
-    public void captureContentCursorFromTerminal() {
-        withTerminalLock(() -> {
-            synchronized (renderLock) {
-                captureContentCursorFromTerminalLocked();
-            }
-        });
-    }
-
-    public void recordPrintedContentLine(String line) {
-        synchronized (renderLock) {
-            ensureContentCursorInitializedLocked();
-            contentCursor = advanceContentCursor(contentCursor, line);
-            scrollContentViewportIfNeededLocked();
-        }
-    }
-
-    public void prepareForContentOutput() {
-        withTerminalLock(() -> {
-            synchronized (renderLock) {
-                listener.suspendFooter();
-                ensureContentCursorInitializedLocked();
-                if (contentCursor != null) {
-                    terminal.puts(InfoCmp.Capability.cursor_address, contentCursor.getY(), contentCursor.getX());
-                    terminal.flush();
-                }
-            }
-        });
-    }
-
-    public void finishContentOutput() {
-        withTerminalLock(() -> {
-            renderNow();
         });
     }
 
@@ -339,10 +283,7 @@ public class BottomInputController {
 
         if (key.ctrl && key.code == 'l') {
             clearFooterNotice();
-            terminal.writer().print("\033[2J\033[H");
-            terminal.flush();
-            listener.redrawStatusBar();
-            renderNow();
+            listener.clearScreen();
             return null;
         }
 
@@ -763,21 +704,9 @@ public class BottomInputController {
         return popupCount + 2;
     }
 
-    private void placeCursor(int overlaySize, int inputLineIndex) {
-        if (overlaySize <= 0) {
-            return;
-        }
-
-        Size size = terminal.getSize();
-        int height = Math.max(1, size.getRows());
-        int overlayTopRow = Math.max(1, height - overlaySize + 1);
-        int inputRow = Math.min(height, overlayTopRow + inputLineIndex);
+    private Cursor buildFooterCursor(int popupCount) {
         int cursorColumn = 3 + visibleWidth(getDisplayedInputCursorText());
-
-        terminal.writer().print("\033[" + inputRow + ";" + Math.max(1, cursorColumn) + "H");
-        terminal.writer().print("\033[?25h");
-        terminal.flush();
-        listener.updateFooterCursor(new Cursor(Math.max(0, cursorColumn - 1), Math.max(0, inputRow - 1)));
+        return new Cursor(Math.max(0, cursorColumn - 1), Math.max(0, inputLineIndex(popupCount)));
     }
 
     private AttributedString padLine(AttributedString line) {
@@ -906,97 +835,6 @@ public class BottomInputController {
         }
 
         return 1;
-    }
-
-    private Cursor readCursorPosition() {
-        try {
-            return terminal.getCursorPosition(discarded -> {
-            });
-        } catch (Throwable e) {
-            return null;
-        }
-    }
-
-    private void captureContentCursorFromTerminalLocked() {
-        Cursor cursor = readCursorPosition();
-        if (cursor == null) {
-            cursor = new Cursor(0, 0);
-        }
-        contentCursor = clampCursorToViewport(cursor);
-    }
-
-    private void ensureContentCursorInitializedLocked() {
-        if (contentCursor == null) {
-            captureContentCursorFromTerminalLocked();
-        } else {
-            contentCursor = clampCursorToViewport(contentCursor);
-        }
-    }
-
-    private Cursor clampCursorToViewport(Cursor cursor) {
-        if (cursor == null) {
-            return null;
-        }
-
-        Size size = terminal.getSize();
-        int height = Math.max(1, size.getRows());
-        int width = Math.max(1, size.getColumns());
-        int cursorY = Math.max(0, Math.min(cursor.getY(), height - 1));
-        int cursorX = Math.max(0, Math.min(cursor.getX(), width - 1));
-        return new Cursor(cursorX, cursorY);
-    }
-
-    private Cursor advanceContentCursor(Cursor baseCursor, String line) {
-        Cursor safeCursor = clampCursorToViewport(baseCursor == null ? new Cursor(0, 0) : baseCursor);
-        Size size = terminal.getSize();
-        int width = Math.max(1, size.getColumns());
-        int nextY = safeCursor.getY();
-
-        String normalized = line == null ? "" : line.replace("\r\n", "\n").replace('\r', '\n');
-        String[] segments = normalized.split("\n", -1);
-        int currentColumn = safeCursor.getX();
-        for (String segment : segments) {
-            nextY += rowsUsedBySegment(segment, currentColumn, width);
-            currentColumn = 0;
-        }
-
-        return new Cursor(0, Math.max(0, nextY));
-    }
-
-    private void scrollContentViewportIfNeededLocked() {
-        if (contentCursor == null) {
-            return;
-        }
-
-        Size size = terminal.getSize();
-        int contentBottomRow = contentBottomRow(size);
-        if (contentCursor.getY() <= contentBottomRow) {
-            return;
-        }
-
-        int overflow = contentCursor.getY() - contentBottomRow;
-        terminal.writer().print("\033[" + overflow + "S");
-        terminal.flush();
-        contentCursor = new Cursor(0, contentBottomRow);
-    }
-
-    private int contentBottomRow(Size size) {
-        int height = Math.max(1, size.getRows());
-        int reservedFooterLines = Math.max(1, lastFooterLines);
-        return Math.max(0, height - reservedFooterLines - 1);
-    }
-
-    private int rowsUsedBySegment(String segment, int currentColumn, int width) {
-        int visible = visibleWidth(stripAnsi(segment));
-        int occupied = currentColumn + Math.max(1, visible);
-        return Math.max(1, ((occupied - 1) / Math.max(1, width)) + 1);
-    }
-
-    private String stripAnsi(String text) {
-        if (text == null || text.isEmpty()) {
-            return "";
-        }
-        return text.replaceAll("\\u001B\\[[;\\d]*m", "");
     }
 
     private void fireSelectionFocus() {
@@ -1184,13 +1022,11 @@ public class BottomInputController {
 
         void handleHitlInput(String text);
 
-        void suspendFooter();
+        void clearScreen();
 
-        void redrawStatusBar();
+        void showTerminalCursor();
 
-        void updateFooter(List<AttributedString> popupLines, AttributedString inputLine);
-
-        void updateFooterCursor(Cursor cursor);
+        void updateFooter(List<AttributedString> popupLines, AttributedString inputLine, Cursor cursor);
     }
 
     public interface SelectionCallbacks<T> {

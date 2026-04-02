@@ -91,7 +91,8 @@ public class CliShellNew implements Runnable {
     private LineReader reader;
     private StatusBar statusBar;
     private BottomInputController bottomInputController;
-    private volatile ReentrantLock terminalLock;
+    private PortalScreenRenderer screenRenderer;
+    private volatile ReentrantLock terminalLock = new ReentrantLock();
     private volatile boolean thinkingStarted = false;
     private volatile boolean thinkingLineStart = true;
     private volatile boolean lastContentLineBlank = true;
@@ -149,11 +150,8 @@ public class CliShellNew implements Runnable {
 
             // 窗口 Resize 信号处理
             terminal.handle(Terminal.Signal.WINCH, signal -> {
-                if (statusBar != null) {
-                    statusBar.draw();
-                }
-                if (bottomInputController != null) {
-                    bottomInputController.renderNow();
+                if (screenRenderer != null) {
+                    screenRenderer.renderNow();
                 }
             });
 
@@ -207,30 +205,24 @@ public class CliShellNew implements Runnable {
                         }
 
                         @Override
-                        public void suspendFooter() {
-                            if (statusBar != null) {
-                                statusBar.suspend();
+                        public void clearScreen() {
+                            if (screenRenderer != null) {
+                                screenRenderer.clearContent();
                             }
                         }
 
                         @Override
-                        public void redrawStatusBar() {
-                            if (statusBar != null) {
-                                statusBar.draw();
+                        public void showTerminalCursor() {
+                            if (screenRenderer != null) {
+                                screenRenderer.showTerminalCursor();
                             }
                         }
 
                         @Override
-                        public void updateFooter(List<AttributedString> popupLines, AttributedString inputLine) {
+                        public void updateFooter(List<AttributedString> popupLines, AttributedString inputLine,
+                                org.jline.terminal.Cursor cursor) {
                             if (statusBar != null) {
-                                statusBar.updateFooter(popupLines, inputLine);
-                            }
-                        }
-
-                        @Override
-                        public void updateFooterCursor(org.jline.terminal.Cursor cursor) {
-                            if (statusBar != null) {
-                                statusBar.setRestoreCursor(cursor);
+                                statusBar.updateFooter(popupLines, inputLine, cursor);
                             }
                         }
                     });
@@ -293,10 +285,8 @@ public class CliShellNew implements Runnable {
         commandRegistry.register("/clear", "清空当前会话历史", ctx -> {
             AgentSession session = ctx.getSession();
             session.clear();
-            terminal.puts(InfoCmp.Capability.clear_screen);
-            terminal.flush();
-            if (bottomInputController != null) {
-                bottomInputController.captureContentCursorFromTerminal();
+            if (screenRenderer != null) {
+                screenRenderer.clearContent();
             }
             if (statusBar != null) {
                 statusBar.draw();
@@ -307,10 +297,8 @@ public class CliShellNew implements Runnable {
             // 新建临时 session，只在第一条消息时才持久化
             currentSession = kernel.getSession("_tmp_" + System.currentTimeMillis());
             //kernel.init(currentSession);
-            terminal.puts(InfoCmp.Capability.clear_screen);
-            terminal.flush();
-            if (bottomInputController != null) {
-                bottomInputController.captureContentCursorFromTerminal();
+            if (screenRenderer != null) {
+                screenRenderer.clearContent();
             }
             if (statusBar != null) {
                 statusBar.setSessionId("(new)");
@@ -811,18 +799,10 @@ public class CliShellNew implements Runnable {
 
     /** 直接输出到主缓冲区。底部输入已自管，不能再使用 printAbove。 */
     private void printAboveLine(String line) {
-        withTerminalLock(() -> {
-            if (bottomInputController != null) {
-                bottomInputController.prepareForContentOutput();
-            }
-            terminal.writer().println(line);
-            terminal.flush();
-            lastContentLineBlank = isVisualBlank(line);
-            if (bottomInputController != null) {
-                bottomInputController.recordPrintedContentLine(line);
-                bottomInputController.finishContentOutput();
-            }
-        });
+        lastContentLineBlank = isVisualBlank(line);
+        if (screenRenderer != null) {
+            screenRenderer.appendContentLine(line);
+        }
     }
 
     private void printUserInput(String input) {
@@ -1110,10 +1090,8 @@ public class CliShellNew implements Runnable {
 
     private void resumeSession(SessionManager.SessionMeta meta) {
         currentSession = kernel.getSession(meta.id);
-        terminal.puts(InfoCmp.Capability.clear_screen);
-        terminal.flush();
-        if (bottomInputController != null) {
-            bottomInputController.captureContentCursorFromTerminal();
+        if (screenRenderer != null) {
+            screenRenderer.clearContent();
         }
         if (statusBar != null) {
             statusBar.setSessionId(meta.id);
@@ -1199,21 +1177,6 @@ public class CliShellNew implements Runnable {
         }
     }
 
-    private void withTerminalLock(Runnable action) {
-        ReentrantLock lock = terminalLock;
-        if (lock == null) {
-            action.run();
-            return;
-        }
-
-        lock.lock();
-        try {
-            action.run();
-        } finally {
-            lock.unlock();
-        }
-    }
-
     // ═══════════════════════════════════════════════════════════
     // 欢迎界面（冻结 — 不允许改动）
     // ═══════════════════════════════════════════════════════════
@@ -1221,6 +1184,15 @@ public class CliShellNew implements Runnable {
     protected void printWelcome() {
         // 初始化状态栏
         this.statusBar = new StatusBar(terminal);
+        this.screenRenderer = new PortalScreenRenderer(terminal, statusBar);
+        statusBar.setRenderRequester(new Runnable() {
+            @Override
+            public void run() {
+                if (screenRenderer != null) {
+                    screenRenderer.renderNow();
+                }
+            }
+        });
         statusBar.setTheme(theme);
         String modelName = kernel.getProps().getChatModel() != null
                 ? kernel.getProps().getChatModel().getModel()
@@ -1231,62 +1203,71 @@ public class CliShellNew implements Runnable {
         statusBar.setSessionId("cli");
         statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
         statusBar.setup();
+        statusBar.setJLineLock(terminalLock);
+        screenRenderer.setTerminalLock(terminalLock);
+        if (bottomInputController != null) {
+            bottomInputController.setTerminalLock(terminalLock);
+        }
         // 把 JLine 内部的 ReentrantLock 传给 StatusBar，确保 draw() 跟 printAbove() 用同一把锁
         try {
             java.lang.reflect.Field lockField = LineReaderImpl.class.getDeclaredField("lock");
             lockField.setAccessible(true);
-            terminalLock = (ReentrantLock) lockField.get(reader);
-            statusBar.setJLineLock(terminalLock);
-            if (bottomInputController != null) {
-                bottomInputController.setTerminalLock(terminalLock);
+            ReentrantLock jlineLock = (ReentrantLock) lockField.get(reader);
+            if (jlineLock != null) {
+                terminalLock = jlineLock;
+                statusBar.setJLineLock(terminalLock);
+                screenRenderer.setTerminalLock(terminalLock);
+                if (bottomInputController != null) {
+                    bottomInputController.setTerminalLock(terminalLock);
+                }
             }
         } catch (Exception e) {
-            LOG.warn("Cannot access JLine internal lock, statusbar animation may flicker", e);
+            LOG.warn("Cannot access JLine internal lock, fallback terminal lock will be used", e);
         }
-
-        terminal.puts(InfoCmp.Capability.clear_screen);
-        terminal.flush();
-        statusBar.draw(); // 清屏后重绘
 
         String path = new File(kernel.getProps().getWorkDir()).getAbsolutePath();
         String version = kernel.getVersion();
+        List<String> welcomeLines = new ArrayList<String>();
 
         // ── ASCII Art Logo (对齐 Go TUI renderWelcomeLogo) ──
-        terminal.writer().println();
-        terminal.writer().println(ACCENT_BOLD + "   ███████  ██████  ██      ██████  ███    ██" + RESET + SOFT + BOLD
+        welcomeLines.add("");
+        welcomeLines.add(ACCENT_BOLD + "   ███████  ██████  ██      ██████  ███    ██" + RESET + SOFT + BOLD
                 + "   ██████  ██████  ██████  ███████" + RESET);
-        terminal.writer().println(ACCENT_BOLD + "   ██      ██    ██ ██     ██    ██ ████   ██" + RESET + SOFT + BOLD
+        welcomeLines.add(ACCENT_BOLD + "   ██      ██    ██ ██     ██    ██ ████   ██" + RESET + SOFT + BOLD
                 + "  ██      ██    ██ ██   ██ ██" + RESET);
-        terminal.writer().println(ACCENT_BOLD + "   ███████ ██    ██ ██     ██    ██ ██ ██  ██" + RESET + SOFT + BOLD
+        welcomeLines.add(ACCENT_BOLD + "   ███████ ██    ██ ██     ██    ██ ██ ██  ██" + RESET + SOFT + BOLD
                 + "  ██      ██    ██ ██   ██ █████" + RESET);
-        terminal.writer().println(ACCENT_BOLD + "        ██ ██    ██ ██     ██    ██ ██  ██ ██" + RESET + SOFT + BOLD
+        welcomeLines.add(ACCENT_BOLD + "        ██ ██    ██ ██     ██    ██ ██  ██ ██" + RESET + SOFT + BOLD
                 + "  ██      ██    ██ ██   ██ ██" + RESET);
-        terminal.writer().println(ACCENT_BOLD + "   ███████  ██████  ██████  ██████  ██   ████" + RESET + SOFT + BOLD
+        welcomeLines.add(ACCENT_BOLD + "   ███████  ██████  ██████  ██████  ██   ████" + RESET + SOFT + BOLD
                 + "   ██████  ██████  ██████  ███████" + RESET);
-        terminal.writer().println();
+        welcomeLines.add("");
 
         // ── Meta info ──
         String configSource = ConfigLoader.loadConfig() != null
                 ? ConfigLoader.loadConfig().toAbsolutePath().toString()
                 : "(built-in)";
 
-        terminal.writer().println(SOFT + "  Model   " + RESET + TEXT + BOLD + modelName + RESET);
-        terminal.writer().println(SOFT + "  Dir     " + RESET + SOFT + path + RESET);
-        terminal.writer().println(SOFT + "  Config  " + RESET + SOFT + configSource + RESET);
-        terminal.writer().println(SOFT + "  Ver     " + RESET + SOFT + version + RESET);
-        terminal.writer().println();
-        terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + ACCENT + "Tip" + RESET + SOFT + " Type "
+        welcomeLines.add(SOFT + "  Model   " + RESET + TEXT + BOLD + modelName + RESET);
+        welcomeLines.add(SOFT + "  Dir     " + RESET + SOFT + path + RESET);
+        welcomeLines.add(SOFT + "  Config  " + RESET + SOFT + configSource + RESET);
+        welcomeLines.add(SOFT + "  Ver     " + RESET + SOFT + version + RESET);
+        welcomeLines.add("");
+        welcomeLines.add(MUTED + "  " + ICON_PROMPT + " " + RESET + ACCENT + "Tip" + RESET + SOFT + " Type "
                 + RESET + TEXT + BOLD + "/help" + RESET + SOFT + " to see all commands" + RESET);
-        terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Use " + RESET + TEXT + BOLD + "Tab"
+        welcomeLines.add(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Use " + RESET + TEXT + BOLD + "Tab"
                 + RESET + SOFT + " for auto-completion, " + RESET + TEXT + BOLD + "\\" + RESET + SOFT + "+Enter for newline" + RESET);
-        terminal.writer().println(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Press " + RESET + TEXT + BOLD
+        welcomeLines.add(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Press " + RESET + TEXT + BOLD
                 + "Esc" + RESET + SOFT + "/" + RESET + TEXT + BOLD + "Ctrl+C" + RESET + SOFT + " to cancel operation" + RESET);
-        terminal.writer().println();
-        terminal.writer().println(MUTED + "  " + repeatChar('\u2500', 40) + RESET);
-        terminal.writer().println();
-        terminal.flush();
+        welcomeLines.add("");
+        welcomeLines.add(MUTED + "  " + repeatChar('\u2500', 40) + RESET);
+        welcomeLines.add("");
+
+        if (screenRenderer != null) {
+            screenRenderer.replaceContent(welcomeLines);
+        }
         if (bottomInputController != null) {
-            bottomInputController.captureContentCursorFromTerminal();
+            bottomInputController.renderNow();
         }
     }
 }
