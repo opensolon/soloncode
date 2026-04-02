@@ -105,13 +105,7 @@ public class AgentFactory {
                     case "todoread":
                     case "todowrite":
                     case "todo": {
-                        if (metadata.isPrimary()) {
-                            //主代理，用文件模式
-                            builder.defaultSkillAdd(agentRuntime.getTodoSkill());
-                        } else {
-                            //次代理，用内存模式
-                            builder.planningMode(true);
-                        }
+                        todoAddDo(metadata, builder, agentRuntime);
                         break;
                     }
                     case "webfetch": {
@@ -128,7 +122,7 @@ public class AgentFactory {
                     }
                     case "*": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills());
-                        builder.defaultSkillAdd(agentRuntime.getTodoSkill());
+                        todoAddDo(metadata, builder, agentRuntime);
                         builder.defaultSkillAdd(agentRuntime.getCodeSkill());
 
                         builder.defaultToolAdd(WebfetchTool.getInstance());
@@ -170,7 +164,7 @@ public class AgentFactory {
 
                     case "**": {
                         builder.defaultSkillAdd(agentRuntime.getCliSkills());
-                        builder.defaultSkillAdd(agentRuntime.getTodoSkill());
+                        todoAddDo(metadata, builder, agentRuntime);
                         builder.defaultSkillAdd(agentRuntime.getCodeSkill());
 
                         builder.defaultToolAdd(WebfetchTool.getInstance());
@@ -213,6 +207,16 @@ public class AgentFactory {
         }
 
         return builder;
+    }
+
+    private static void todoAddDo(AgentDefinition.Metadata metadata, ReActAgent.Builder builder, AgentRuntime agentRuntime) {
+        if (metadata.isPrimary()) {
+            //主代理，用文件模式
+            builder.defaultSkillAdd(agentRuntime.getTodoSkill());
+        } else {
+            //次代理，用内存模式
+            builder.planningMode(true);
+        }
     }
 
 
