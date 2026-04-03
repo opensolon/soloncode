@@ -211,3 +211,241 @@
   border-color: var(--cb-accent);
   color: white;
 }
+
+/* ==================== 面板头部 ==================== */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+}
+
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--cb-text-secondary);
+  letter-spacing: 0.5px;
+}
+
+/* ==================== 操作反馈 ==================== */
+
+.git-feedback {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+  animation: feedbackSlide 0.2s ease;
+}
+
+.git-feedback.success {
+  color: #89d185;
+  background-color: rgba(137, 209, 133, 0.1);
+}
+
+.git-feedback.error {
+  color: #c74e39;
+  background-color: rgba(199, 78, 57, 0.1);
+}
+
+.git-feedback.info {
+  color: var(--cb-text-secondary);
+  background-color: var(--cb-vscode-input-background);
+}
+
+@keyframes feedbackSlide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==================== 分支信息 & 下拉 ==================== */
+
+.branch-info {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.branch-info:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.branch-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.branch-badge.ahead {
+  color: #89d185;
+  background-color: rgba(137, 209, 133, 0.15);
+}
+
+.branch-badge.behind {
+  color: #e2c08d;
+  background-color: rgba(226, 192, 141, 0.15);
+}
+
+.branch-chevron {
+  margin-left: auto;
+  opacity: 0.5;
+  transition: transform 0.15s;
+}
+
+.branch-dropdown {
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+  background-color: var(--cb-vscode-sideBar-background);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.branch-option {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--cb-text-primary);
+  transition: background-color 0.1s;
+}
+
+.branch-option:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.branch-option.current {
+  font-weight: 600;
+}
+
+.branch-current-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background-color: var(--cb-accent);
+  color: white;
+  margin-left: auto;
+}
+
+.branch-loading,
+.branch-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  text-align: center;
+}
+
+/* ==================== 文件操作按钮 ==================== */
+
+.file-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.git-file-item:hover .file-actions {
+  opacity: 1;
+}
+
+.file-action-btn {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--cb-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.file-action-btn:hover {
+  background-color: var(--cb-vscode-input-background);
+  color: var(--cb-text-primary);
+}
+
+.discard-btn:hover {
+  color: #c74e39;
+}
+
+/* ==================== 空状态 ==================== */
+
+.git-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--cb-text-secondary);
+  font-size: 13px;
+}
+
+/* ==================== 提交历史 ==================== */
+
+.git-history {
+  border-top: 1px solid var(--cb-vscode-panel-border);
+  flex-shrink: 0;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--cb-text-secondary);
+  background-color: var(--cb-vscode-sideBar-background);
+}
+
+.history-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.history-loading,
+.history-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  text-align: center;
+}
+
+.history-entry {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+  transition: background-color 0.1s;
+}
+
+.history-entry:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.history-message {
+  font-size: 12px;
+  color: var(--cb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--cb-text-secondary);
+}
+
+.history-hash {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  color: var(--cb-accent);
+}
+
+.history-author {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

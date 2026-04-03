@@ -6,3 +6,4 @@ solon.logging.appender:
     enable: false
   file:
     level: DEBUG
+

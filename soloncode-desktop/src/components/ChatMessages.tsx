@@ -1,9 +1,11 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Icon } from './common/Icon';
 import { ThinkBlock } from './ThinkBlock';
+import { ActionBlock } from './ActionBlock';
 import type { Message, Theme, ContentItem } from '../types';
 import './ChatMessages.css';
 
@@ -21,48 +23,18 @@ export interface ChatMessagesRef {
 function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme }) {
   // 思考内容
   if (item.type === 'think') {
-    return <ThinkBlock content={item.text} />;
+    return <ThinkBlock content={item.text} theme={theme} />;
   }
 
-  // 工具执行结果
+  // 工具执行结果（折叠块）
   if (item.type === 'action') {
     return (
-      <div className="content-item action-item">
-        <div className="action-header">
-          <span className="action-icon">⚡</span>
-          <span className="action-tool-name">{item.toolName || '工具执行'}</span>
-        </div>
-        {item.args && (
-          <div className="action-args">
-            <pre>{JSON.stringify(item.args, null, 2)}</pre>
-          </div>
-        )}
-        <div className="action-result">
-          <ReactMarkdown
-            components={{
-              code({ node, inline, className, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(className || '');
-                return !inline && match ? (
-                  <SyntaxHighlighter
-                    style={theme === 'dark' ? oneDark : oneLight}
-                    language={match[1]}
-                    PreTag="div"
-                    {...props}
-                  >
-                    {String(children).replace(/\n$/, '')}
-                  </SyntaxHighlighter>
-                ) : (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                );
-              }
-            }}
-          >
-            {item.text || '执行完成'}
-          </ReactMarkdown>
-        </div>
-      </div>
+      <ActionBlock
+        text={item.text || ''}
+        toolName={item.toolName}
+        args={item.args}
+        theme={theme}
+      />
     );
   }
 
@@ -76,6 +48,7 @@ function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme
         </div>
         <div className="reason-content">
           <ReactMarkdown
+            remarkPlugins={[remarkBreaks]}
             components={{
               code({ node, inline, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || '');
@@ -117,6 +90,7 @@ function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme
   return (
     <div className="content-item text-item">
       <ReactMarkdown
+        remarkPlugins={[remarkBreaks]}
         components={{
           code({ node, inline, className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');

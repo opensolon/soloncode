@@ -45,6 +45,9 @@ public class AgentProperties implements Serializable {
     private String acpTransport = "stdio";
     private String acpEndpoint = "/acp";
 
+    private boolean wsEnabled = true;
+    private String wsEndpoint = "/ws";
+
     private Map<String, String> skillPools;
 
     private Map<String, McpServerParameters> mcpServers;

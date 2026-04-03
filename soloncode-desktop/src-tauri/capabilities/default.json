@@ -18,6 +18,7 @@
     "fs:allow-exists",
     "fs:allow-mkdir",
     "fs:allow-remove",
-    "fs:allow-rename"
+    "fs:allow-rename",
+    "fs:allow-watch"
   ]
 }

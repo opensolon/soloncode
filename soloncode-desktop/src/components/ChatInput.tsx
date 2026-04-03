@@ -30,6 +30,8 @@ interface ContextRef {
 
 interface ChatInputProps {
   onSend: (message: string, options: SendOptions) => void;
+  isLoading?: boolean;
+  onStop?: () => void;
   availableFiles?: ContextRef[];
 }
 
@@ -39,7 +41,7 @@ export interface SendOptions {
   contexts: ContextRef[];
 }
 
-export function ChatInput({ onSend, availableFiles = [] }: ChatInputProps) {
+export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: ChatInputProps) {
   const [userInput, setUserInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('glm-4.7');
   const [selectedAgent, setSelectedAgent] = useState('default');
@@ -258,7 +260,7 @@ export function ChatInput({ onSend, availableFiles = [] }: ChatInputProps) {
           {/* 工具栏 */}
           <div className="input-toolbar">
             {/* 模型选择 */}
-            <div className="toolbar-group">
+            {/* <div className="toolbar-group">
               <select
                 className="model-select"
                 value={selectedModel}
@@ -268,10 +270,10 @@ export function ChatInput({ onSend, availableFiles = [] }: ChatInputProps) {
                   <option key={model.id} value={model.id}>{model.name}</option>
                 ))}
               </select>
-            </div>
+            </div> */}
 
             {/* 智能体选择 */}
-            <div className="toolbar-group">
+            {/* <div className="toolbar-group">
               <button
                 type="button"
                 className="agent-btn"
@@ -292,31 +294,8 @@ export function ChatInput({ onSend, availableFiles = [] }: ChatInputProps) {
                 <Icon name={selectedAgentInfo?.icon as any || 'bot'} size={14} />
                 <span>{selectedAgentInfo?.name}</span>
               </button>
-            </div>
+            </div> */}
 
-            {/* 右侧快捷按钮 */}
-            <div className="toolbar-group toolbar-right">
-              <button
-                type="button"
-                className="toolbar-btn"
-                title="引用上下文 (#)"
-                onClick={() => {
-                  if (textareaRef.current) {
-                    const pos = textareaRef.current.selectionStart;
-                    setUserInput(prev => prev.slice(0, pos) + '#' + prev.slice(pos));
-                    textareaRef.current.focus();
-                    setTimeout(() => {
-                      setAutocompleteType('context');
-                      setAutocompleteQuery('');
-                      setAutocompletePosition({ start: pos, end: pos + 1 });
-                      setShowAutocomplete(true);
-                    }, 0);
-                  }
-                }}
-              >
-                #
-              </button>
-            </div>
           </div>
 
           {/* 输入行 */}
@@ -330,12 +309,46 @@ export function ChatInput({ onSend, availableFiles = [] }: ChatInputProps) {
               rows={1}
               onKeyDown={handleKeyDown}
             />
+            {isLoading && onStop ? (
+              <button
+                type="button"
+                className="stop-button"
+                onClick={onStop}
+                title="停止生成"
+              >
+                <Icon name="close" size={14} />
+              </button>
+            ) : null}
             <button
               type="submit"
               className="send-button"
               disabled={!userInput.trim()}
             >
               <Icon name="send" size={16} />
+            </button>
+          </div>
+
+          {/* 底部操作栏 */}
+          <div className="input-bottom-bar">
+            <button
+              type="button"
+              className="toolbar-btn"
+              title="引用上下文 (#)"
+              onClick={() => {
+                if (textareaRef.current) {
+                  const pos = textareaRef.current.selectionStart;
+                  setUserInput(prev => prev.slice(0, pos) + '#' + prev.slice(pos));
+                  textareaRef.current.focus();
+                  setTimeout(() => {
+                    setAutocompleteType('context');
+                    setAutocompleteQuery('');
+                    setAutocompletePosition({ start: pos, end: pos + 1 });
+                    setShowAutocomplete(true);
+                  }, 0);
+                }
+              }}
+            >
+              #
             </button>
           </div>
         </form>

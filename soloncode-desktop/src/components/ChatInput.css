@@ -213,6 +213,34 @@
   transform: scale(1);
 }
 
+/* 停止按钮 */
+.stop-button {
+  width: 36px;
+  height: 36px;
+  background-color: var(--cb-error, #ef4444);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.stop-button:hover {
+  opacity: 0.85;
+  transform: scale(1.05);
+}
+
+/* 底部操作栏（左下角） */
+.input-bottom-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 8px 12px;
+}
+
 /* 底部提示 */
 .input-footer {
   display: flex;

@@ -9,15 +9,17 @@ import '../views/ChatPage.css';
 interface ChatViewProps {
   currentConversation: Conversation;
   plugins?: Plugin[];
+  workspacePath?: string;
 }
 
 // 全局 WebSocket 连接管理器（单例模式）
 class WebSocketManager {
   private static instance: WebSocketManager | null = null;
   private ws: WebSocket | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private messageCallbacks: Map<string, (data: any) => void> = new Map();
   private connectingSessionId: string | null = null;
+  private backendPort: number | null = null;
+  private workspacePath: string | null = null;
 
   static getInstance(): WebSocketManager {
     if (!WebSocketManager.instance) {
@@ -26,10 +28,33 @@ class WebSocketManager {
     return WebSocketManager.instance;
   }
 
+  /** 设置后端端口（由 App.tsx 调用，打开工作区后设置） */
+  setBackendPort(port: number | null) {
+    if (this.backendPort !== port) {
+      this.backendPort = port;
+      this.closeConnection(); // 只关闭连接，不清除回调
+    }
+  }
+
+  /** 设置工作区路径（由 App.tsx 调用） */
+  setWorkspacePath(path: string | null) {
+    if (this.workspacePath !== path) {
+      this.workspacePath = path;
+      this.closeConnection(); // 只关闭连接，不清除回调
+    }
+  }
+
   private getWebSocketUrl(): string {
-    const host = import.meta.env.VITE_WS_HOST || 'localhost:8080';
+    const host = this.backendPort
+      ? `localhost:${this.backendPort}`
+      : (import.meta.env.VITE_WS_HOST || 'localhost:8080');
     const protocol = import.meta.env.VITE_WS_PROTOCOL || 'ws';
-    return `${protocol}://${host}/ws`;
+    const params = new URLSearchParams();
+    if (this.workspacePath) {
+      params.set('X-Session-Cwd', this.workspacePath);
+    }
+    const query = params.toString();
+    return `${protocol}://${host}/ws${query ? '?' + query : ''}`;
   }
 
   connect(): Promise<WebSocket> {
@@ -41,8 +66,7 @@ class WebSocketManager {
 
       if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
         const onOpen = () => {
-          this.ws?.removeEventListener('open', onOpen);
-          this.ws?.removeEventListener('error', onError);
+          cleanup();
           resolve(this.ws!);
         };
         const onError = (e: Event) => {
@@ -50,6 +74,13 @@ class WebSocketManager {
           this.ws?.removeEventListener('error', onError);
           reject(new Error('WebSocket connection failed'));
         };
+         // 定义清理函数，用于移除监听器
+        const cleanup = () => {
+        this.ws?.removeEventListener('open', onOpen);
+        this.ws?.removeEventListener('error', onError);
+        // 注意：如果是复用实例，这里通常不移除 message/close，
+        // 但为了 Promise 的纯净性，这里假设我们只关心连接建立阶段
+      };
         this.ws.addEventListener('open', onOpen);
         this.ws.addEventListener('error', onError);
         return;
@@ -88,12 +119,14 @@ class WebSocketManager {
       const msg = JSON.parse(data);
       const sessionId = msg.sessionId;
 
-      if (sessionId && this.messageCallbacks.has(sessionId)) {
-        const callback = this.messageCallbacks.get(sessionId);
-        callback?.(msg);
-      } else if (this.connectingSessionId && this.messageCallbacks.has(this.connectingSessionId)) {
-        const callback = this.messageCallbacks.get(this.connectingSessionId);
-        callback?.(msg);
+      // 按优先级查找回调：精确匹配 → connectingSessionId → 任意一个
+      let callback = (sessionId && this.messageCallbacks.get(sessionId))
+        || (this.connectingSessionId && this.messageCallbacks.get(this.connectingSessionId))
+        || this.messageCallbacks.values().next().value
+        || null;
+
+      if (callback) {
+        callback(msg);
       }
     } catch (e) {
       console.warn('[WS] Failed to parse message:', data, e);
@@ -117,12 +150,26 @@ class WebSocketManager {
     ws.send(JSON.stringify(request));
   }
 
-  disconnect() {
+  /** 取消当前请求：关闭连接，保留回调注册以便重新连接 */
+  cancel() {
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
+    this.connectingSessionId = null;
+  }
+
+  disconnect() {
+    this.closeConnection();
     this.messageCallbacks.clear();
+  }
+
+  /** 只关闭连接，保留回调注册（端口/路径变化时使用） */
+  closeConnection() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
   }
 }
 
@@ -139,7 +186,17 @@ function filterEmptyTags(text: string): string {
   return result;
 }
 
-export function ChatView({ currentConversation }: ChatViewProps) {
+/** 设置后端 WebSocket 端口（供 App.tsx 调用） */
+export function setBackendPort(port: number | null) {
+  WebSocketManager.getInstance().setBackendPort(port);
+}
+
+/** 设置工作区路径（供 App.tsx 调用，连接 WS 时会作为 X-Session-Cwd 参数传入） */
+export function setWorkspacePath(path: string | null) {
+  WebSocketManager.getInstance().setWorkspacePath(path);
+}
+
+export function ChatView({ currentConversation, workspacePath }: ChatViewProps) {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -151,17 +208,37 @@ export function ChatView({ currentConversation }: ChatViewProps) {
   const accumulatedContentRef = useRef<{
     think: string;      // 思考内容（<think/`thinking`> 标签内，累积）
     text: string;       // 正文内容（包括 reason 和 text 类型，累积）
-    action: string;     // 工具执行内容
-    lastActionInfo: { toolName?: string; args?: Record<string, unknown> } | null;
+    actions: Array<{    // 每个工具调用独立一个块
+      text: string;
+      toolName?: string;
+      args?: Record<string, unknown>;
+    }>;
   }>({
     think: '',
     text: '',
-    action: '',
-    lastActionInfo: null
+    actions: [],
   });
 
   // 当前 assistant 消息 ID
   const assistantMsgIdRef = useRef<number>(0);
+
+  // 加载超时计时器：收到消息时重置，10秒无新消息自动停止
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startLoadingTimer = useCallback(() => {
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    loadingTimerRef.current = setTimeout(() => {
+      console.log('[ChatView] Loading timeout, auto-stopping');
+      setIsLoading(false);
+    }, 10000);
+  }, []);
+
+  const clearLoadingTimer = useCallback(() => {
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current);
+      loadingTimerRef.current = null;
+    }
+  }, []);
 
   // 更新 ref
   useEffect(() => {
@@ -198,14 +275,16 @@ export function ChatView({ currentConversation }: ChatViewProps) {
       items.push({ type: 'think', text: acc.think.trim() });
     }
 
-    // action 单独显示
-    if (acc.action.trim()) {
-      items.push({
-        type: 'action',
-        text: acc.action.trim(),
-        toolName: acc.lastActionInfo?.toolName,
-        args: acc.lastActionInfo?.args
-      });
+    // 每个工具调用独立显示
+    for (const act of acc.actions) {
+      if (act.text.trim()) {
+        items.push({
+          type: 'action',
+          text: act.text.trim(),
+          toolName: act.toolName,
+          args: act.args
+        });
+      }
     }
 
     // 正文内容（包括 reason 和 text 类型）
@@ -224,13 +303,9 @@ export function ChatView({ currentConversation }: ChatViewProps) {
     const handleMessage = (data: any) => {
       const msgSessionId = data.sessionId || sessionId;
 
-      // 检查消息是否属于当前会话
-      if (msgSessionId !== conversationIdRef.current.toString()) {
-        console.log('[WS] Message for different session, ignoring:', msgSessionId);
-        return;
-      }
-
+      // done / error 类型必须处理，不受 session 校验限制（保证 loading 状态正确）
       if (data.type === 'done') {
+        clearLoadingTimer();
         // 构建最终消息
         const contentItems = buildContentItems();
         if (contentItems.length > 0) {
@@ -265,8 +340,7 @@ export function ChatView({ currentConversation }: ChatViewProps) {
         accumulatedContentRef.current = {
           think: '',
           text: '',
-          action: '',
-          lastActionInfo: null
+          actions: [],
         };
 
         setIsLoading(false);
@@ -274,10 +348,24 @@ export function ChatView({ currentConversation }: ChatViewProps) {
         return;
       }
 
+      if (data.type === 'error') {
+        setIsLoading(false);
+        return;
+      }
+
+      // 其他消息类型检查是否属于当前会话
+      if (msgSessionId !== conversationIdRef.current.toString()) {
+        console.log('[WS] Message for different session, ignoring:', msgSessionId);
+        return;
+      }
+
       const type = data.type as ContentType;
       let text = filterEmptyTags(data.text || '');
 
-      if (text.trim() === '') return;
+      if (text === '') return;
+
+      // 收到任何内容消息，重置加载超时计时器
+      startLoadingTimer();
 
       // 累积内容
       // 注意：只有 think 类型（<think/`thinking`> 标签内）才是思考块
@@ -292,12 +380,19 @@ export function ChatView({ currentConversation }: ChatViewProps) {
           acc.text += text;
           break;
         case 'action':
-          acc.action += text;
           if (data.toolName) {
-            acc.lastActionInfo = {
+            // 新的工具调用开始，推入新条目
+            acc.actions.push({
+              text: text,
               toolName: data.toolName,
               args: data.args
-            };
+            });
+          } else if (acc.actions.length > 0) {
+            // 追加到当前最后一个 action
+            acc.actions[acc.actions.length - 1].text += text;
+          } else {
+            // 没有 toolName 且没有已有 action，创建一个
+            acc.actions.push({ text });
           }
           break;
         case 'text':
@@ -360,13 +455,13 @@ export function ChatView({ currentConversation }: ChatViewProps) {
     });
 
     setIsLoading(true);
+    startLoadingTimer(); // 开始超时计时
 
     // 重置累积器
     accumulatedContentRef.current = {
       think: '',
       text: '',
-      action: '',
-      lastActionInfo: null
+      actions: [],
     };
 
     assistantMsgIdRef.current = Date.now() + Math.floor(Math.random() * 1000);
@@ -381,7 +476,8 @@ export function ChatView({ currentConversation }: ChatViewProps) {
         input: fullMessage,
         sessionId: sessionId,
         model: options.model,
-        agent: options.agent
+        agent: options.agent,
+        cwd: workspacePath || undefined,
       };
 
       await wsManager.sendMessage(sessionId, request);
@@ -466,6 +562,35 @@ export function ChatView({ currentConversation }: ChatViewProps) {
     }
   }, [currentConversation]);
 
+  // 停止当前请求
+  const handleStop = useCallback(() => {
+    WebSocketManager.getInstance().cancel();
+    clearLoadingTimer();
+    setIsLoading(false);
+
+    // 保留当前已累积的内容作为最终消息
+    const contentItems = buildContentItems();
+    if (contentItems.length > 0) {
+      const finalMsg: Message = {
+        id: assistantMsgIdRef.current,
+        role: 'assistant',
+        timestamp: new Date().toLocaleTimeString(),
+        contents: contentItems,
+      };
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.id !== assistantMsgIdRef.current);
+        return [...filtered, finalMsg];
+      });
+    }
+
+    // 重置累积器
+    accumulatedContentRef.current = {
+      think: '',
+      text: '',
+      actions: [],
+    };
+  }, []);
+
   return (
     <main className="main-content">
       <ChatHeader
@@ -480,7 +605,7 @@ export function ChatView({ currentConversation }: ChatViewProps) {
         isLoading={isLoading}
         theme={currentTheme}
       />
-      <ChatInput onSend={sendMessage} />
+      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} />
     </main>
   );
 }

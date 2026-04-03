@@ -73,5 +73,9 @@ public class App {
         if (agentProperties.isWebEnabled()) {
             Solon.app().router().get(agentProperties.getWebEndpoint(), new WebGate(agentKernel));
         }
+
+        if (agentProperties.isWebEnabled()) {
+            Solon.app().router().get(agentProperties.getWebEndpoint(), new WebGate(agentKernel));
+        }
     }
 }

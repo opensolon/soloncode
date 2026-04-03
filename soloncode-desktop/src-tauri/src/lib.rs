@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::process::{Child, Command};
+use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
@@ -14,6 +16,48 @@ pub struct FileInfo {
 pub struct WorkspaceInfo {
     path: String,
     name: String,
+}
+
+// ==================== Git 相关结构体 ====================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitFileStatus {
+    path: String,
+    status: String,  // "modified", "added", "deleted", "untracked"
+    staged: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitStatusResult {
+    branch: String,
+    ahead: u32,
+    behind: u32,
+    files: Vec<GitFileStatus>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitLogEntry {
+    hash: String,
+    short_hash: String,
+    author: String,
+    date: String,
+    message: String,
+}
+
+/// 执行 git 命令的辅助函数
+fn run_git(args: &[&str], cwd: &str) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| format!("执行 git 命令失败: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git {} 失败: {}", args.join(" "), stderr.trim()));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 /// 读取文件内容
@@ -88,8 +132,8 @@ fn list_directory_tree(path: &str, max_depth: usize) -> Result<Vec<FileInfo>, St
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // 跳过隐藏文件和常见忽略目录
-            if name.starts_with('.') || name == "node_modules" || name == "target" {
+            // 跳过常见忽略目录
+            if name == "node_modules" || name == "target" {
                 continue;
             }
 
@@ -227,6 +271,380 @@ fn init_workspace_config(workspace_path: &str) -> Result<String, String> {
     Ok(settings_file.to_string_lossy().to_string())
 }
 
+// ==================== Git 命令 ====================
+
+/// 获取 Git 状态
+#[tauri::command]
+fn git_status(cwd: &str) -> Result<GitStatusResult, String> {
+    // 获取分支和 ahead/behind 信息
+    let branch_output = run_git(&["status", "--porcelain=v2", "--branch"], cwd)?;
+
+    let mut branch = String::from("HEAD");
+    let mut ahead: u32 = 0;
+    let mut behind: u32 = 0;
+    let mut staged_files: std::collections::HashMap<String, GitFileStatus> = std::collections::HashMap::new();
+    let mut unstaged_files: std::collections::HashMap<String, GitFileStatus> = std::collections::HashMap::new();
+    let mut untracked_files: Vec<GitFileStatus> = Vec::new();
+
+    for line in branch_output.lines() {
+        if line.starts_with("# branch.head ") {
+            let val = line.trim_start_matches("# branch.head ").trim();
+            if val != "(detached)" {
+                branch = val.to_string();
+            }
+        } else if line.starts_with("# branch.ab ") {
+            let ab = line.trim_start_matches("# branch.ab ").trim();
+            let parts: Vec<&str> = ab.split_whitespace().collect();
+            if parts.len() >= 2 {
+                ahead = parts[0].trim_start_matches('+').parse::<i32>().unwrap_or(0).max(0) as u32;
+                behind = parts[1].trim_start_matches('-').parse::<i32>().unwrap_or(0).max(0) as u32;
+            }
+        } else if line.starts_with("1 ") {
+            // 已跟踪文件的变更
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 9 {
+                let xy = parts[1];
+                let file_path = parts[8..].join(" ");
+
+                // x = 暂存区状态, y = 工作区状态
+                let x = xy.chars().next().unwrap_or('.');
+                let y = xy.chars().nth(1).unwrap_or('.');
+
+                // 暂存区变更
+                if x != '.' && x != '?' {
+                    let status = match x {
+                        'A' => "added",
+                        'D' => "deleted",
+                        'M' | 'R' | 'C' => "modified",
+                        _ => "modified",
+                    };
+                    staged_files.insert(file_path.clone(), GitFileStatus {
+                        path: file_path.clone(),
+                        status: status.to_string(),
+                        staged: true,
+                    });
+                }
+
+                // 工作区变更
+                if y != '.' && y != '?' {
+                    let status = match y {
+                        'D' => "deleted",
+                        'M' => "modified",
+                        _ => "modified",
+                    };
+                    unstaged_files.insert(file_path.clone(), GitFileStatus {
+                        path: file_path.clone(),
+                        status: status.to_string(),
+                        staged: false,
+                    });
+                }
+            }
+        } else if line.starts_with("? ") {
+            // 未跟踪文件
+            let file_path = line.trim_start_matches("? ").trim().to_string();
+            untracked_files.push(GitFileStatus {
+                path: file_path.clone(),
+                status: "untracked".to_string(),
+                staged: false,
+            });
+        }
+    }
+
+    // 合并文件列表（去重：暂存优先）
+    let mut files: Vec<GitFileStatus> = Vec::new();
+    for (_, f) in staged_files.iter() {
+        files.push(f.clone());
+    }
+    for (path, f) in unstaged_files {
+        if !staged_files.contains_key(&path) {
+            files.push(f);
+        }
+    }
+    files.extend(untracked_files);
+
+    // 排序：暂存 > 已修改 > 未跟踪
+    files.sort_by(|a, b| {
+        let order = |f: &GitFileStatus| match (f.staged, f.status.as_str()) {
+            (true, _) => 0,
+            (false, "untracked") => 2,
+            _ => 1,
+        };
+        order(a).cmp(&order(b))
+    });
+
+    Ok(GitStatusResult {
+        branch,
+        ahead,
+        behind,
+        files,
+    })
+}
+
+/// 暂存文件
+#[tauri::command]
+fn git_add(cwd: &str, paths: Vec<String>) -> Result<(), String> {
+    let args: Vec<&str> = vec!["add", "--"]
+        .into_iter()
+        .chain(paths.iter().map(|s| s.as_str()))
+        .collect();
+    run_git(&args, cwd)?;
+    Ok(())
+}
+
+/// 取消暂存文件
+#[tauri::command]
+fn git_reset(cwd: &str, paths: Vec<String>) -> Result<(), String> {
+    let args: Vec<&str> = vec!["reset", "HEAD", "--"]
+        .into_iter()
+        .chain(paths.iter().map(|s| s.as_str()))
+        .collect();
+    run_git(&args, cwd)?;
+    Ok(())
+}
+
+/// 提交更改
+#[tauri::command]
+fn git_commit(cwd: &str, message: &str) -> Result<(), String> {
+    run_git(&["commit", "-m", message], cwd)?;
+    Ok(())
+}
+
+/// 推送到远程
+#[tauri::command]
+fn git_push(cwd: &str) -> Result<(), String> {
+    run_git(&["push"], cwd)?;
+    Ok(())
+}
+
+/// 拉取远程
+#[tauri::command]
+fn git_pull(cwd: &str) -> Result<(), String> {
+    run_git(&["pull"], cwd)?;
+    Ok(())
+}
+
+/// 获取提交历史
+#[tauri::command]
+fn git_log(cwd: &str, count: usize) -> Result<Vec<GitLogEntry>, String> {
+    let count_str = count.to_string();
+    let output = run_git(
+        &["log", &count_str, "--pretty=format:%H%n%h%n%an%n%ai%n%s%n---END---"],
+        cwd,
+    )?;
+
+    let mut entries = Vec::new();
+    for block in output.split("---END---") {
+        let lines: Vec<&str> = block.lines().collect();
+        if lines.len() >= 5 {
+            entries.push(GitLogEntry {
+                hash: lines[0].trim().to_string(),
+                short_hash: lines[1].trim().to_string(),
+                author: lines[2].trim().to_string(),
+                date: lines[3].trim().to_string(),
+                message: lines[4].trim().to_string(),
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
+/// 获取分支列表
+#[tauri::command]
+fn git_branches(cwd: &str) -> Result<Vec<String>, String> {
+    let output = run_git(&["branch", "--list"], cwd)?;
+    let branches: Vec<String> = output
+        .lines()
+        .map(|l| l.trim_start_matches('*').trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    Ok(branches)
+}
+
+/// 切换分支
+#[tauri::command]
+fn git_checkout(cwd: &str, branch: &str) -> Result<(), String> {
+    run_git(&["checkout", branch], cwd)?;
+    Ok(())
+}
+
+/// 丢弃文件更改
+#[tauri::command]
+fn git_discard(cwd: &str, paths: Vec<String>) -> Result<(), String> {
+    for path in &paths {
+        let full_path = Path::new(cwd).join(path);
+        if full_path.exists() {
+            // 已跟踪文件的修改：git checkout -- <file>
+            run_git(&["checkout", "--", path], cwd)?;
+        }
+        // 注意：未跟踪文件无法通过 git checkout 恢复，需要 git clean
+        // 但为了安全，暂不自动删除未跟踪文件
+    }
+    Ok(())
+}
+
+/// 递归复制目录
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| format!("创建目录失败: {}", e))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("读取目录失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| format!("复制文件失败: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+/// 复制文件或目录
+#[tauri::command]
+fn copy_item(source_path: &str, dest_path: &str) -> Result<(), String> {
+    let src = Path::new(source_path);
+    if !src.exists() {
+        return Err("源路径不存在".to_string());
+    }
+    if src.is_dir() {
+        copy_dir_recursive(src, Path::new(dest_path))
+    } else {
+        fs::copy(src, dest_path).map(|_| ()).map_err(|e| format!("复制文件失败: {}", e))
+    }
+}
+
+/// 移动文件或目录
+#[tauri::command]
+fn move_item(source_path: &str, dest_path: &str) -> Result<(), String> {
+    fs::rename(source_path, dest_path).map_err(|e| format!("移动失败: {}", e))
+}
+
+// ==================== 后端进程管理 ====================
+
+/// 全局后端进程句柄
+static BACKEND_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+
+/// 检查 soloncode 命令是否可用
+fn find_soloncode_command() -> Option<String> {
+    // Windows: 检查 ~/.soloncode/bin/soloncode.ps1
+    if cfg!(windows) {
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            let ps1 = Path::new(&home).join(".soloncode").join("bin").join("soloncode.ps1");
+            if ps1.exists() {
+                return Some(ps1.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    // 通用: 尝试 which/where 查找
+    let check = Command::new(if cfg!(windows) { "where" } else { "which" })
+        .arg("soloncode")
+        .output();
+
+    if let Ok(output) = check {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(path.lines().next().unwrap_or(&path).to_string());
+            }
+        }
+    }
+
+    None
+}
+
+/// 启动后端 CLI 进程
+#[tauri::command]
+fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
+    // 先停止已有进程
+    stop_backend()?;
+
+    // 查找 soloncode 命令
+    let soloncode_cmd = find_soloncode_command()
+        .ok_or("未找到 soloncode 命令。请先运行 setup.ps1 安装 SolonCode CLI。")?;
+
+    // 确保工作区 .soloncode 目录存在
+    let soloncode_dir = Path::new(workspace_path).join(".soloncode");
+    if !soloncode_dir.exists() {
+        fs::create_dir_all(&soloncode_dir)
+            .map_err(|e| format!("创建 .soloncode 目录失败: {}", e))?;
+    }
+
+    // 日志文件
+    let log_path = soloncode_dir.join("cli.log");
+    let log_file = fs::File::create(&log_path)
+        .map_err(|e| format!("创建日志文件失败: {}", e))?;
+    let log_file_clone = log_file.try_clone()
+        .map_err(|e| format!("复制文件句柄失败: {}", e))?;
+
+    let child = if cfg!(windows) && soloncode_cmd.ends_with(".ps1") {
+        // Windows: 通过 powershell 运行 .ps1
+        Command::new("powershell")
+            .args([
+                "-ExecutionPolicy", "Bypass",
+                "-File", &soloncode_cmd,
+                &format!("--server.port={}", port),
+            ])
+            .current_dir(workspace_path)
+            .stdout(log_file)
+            .stderr(log_file_clone)
+            .spawn()
+            .map_err(|e| format!("启动后端进程失败: {}", e))?
+    } else {
+        // Unix 或非 .ps1: 直接运行
+        Command::new(&soloncode_cmd)
+            .args([&format!("--server.port={}", port)])
+            .current_dir(workspace_path)
+            .stdout(log_file)
+            .stderr(log_file_clone)
+            .spawn()
+            .map_err(|e| format!("启动后端进程失败: {}", e))?
+    };
+
+    let pid = child.id();
+
+    let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
+    *proc = Some(child);
+
+    Ok(pid)
+}
+
+/// 停止后端 CLI 进程
+#[tauri::command]
+fn stop_backend() -> Result<(), String> {
+    let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
+
+    if let Some(mut child) = proc.take() {
+        // 尝试优雅终止
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    Ok(())
+}
+
+/// 检查后端进程是否运行中
+#[tauri::command]
+fn backend_status() -> Result<bool, String> {
+    let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
+
+    match proc.as_mut() {
+        Some(child) => {
+            // 尝试检查进程状态（非阻塞）
+            match child.try_wait() {
+                Ok(Some(_status)) => {
+                    // 进程已退出
+                    *proc = None;
+                    Ok(false)
+                }
+                Ok(None) => Ok(true), // 仍在运行
+                Err(e) => Err(format!("检查进程状态失败: {}", e)),
+            }
+        }
+        None => Ok(false),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -245,8 +663,34 @@ pub fn run() {
             rename_item,
             path_exists,
             get_workspace_info,
-            init_workspace_config
+            init_workspace_config,
+            git_status,
+            git_add,
+            git_reset,
+            git_commit,
+            git_push,
+            git_pull,
+            git_log,
+            git_branches,
+            git_checkout,
+            git_discard,
+            copy_item,
+            move_item,
+            start_backend,
+            stop_backend,
+            backend_status
         ])
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                // 应用退出时停止后端进程
+                if let Ok(mut proc) = BACKEND_PROCESS.lock() {
+                    if let Some(mut child) = proc.take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

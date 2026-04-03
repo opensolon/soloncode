@@ -5,6 +5,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { watch, type WatchEvent } from '@tauri-apps/plugin-fs';
 
 // 文件信息接口
 export interface FileInfo {
@@ -356,6 +357,51 @@ export const fileService = {
   },
 
   /**
+   * 复制文件或目录
+   */
+  async copyItem(sourcePath: string, destPath: string): Promise<void> {
+    if (isTauriEnv()) {
+      await invoke('copy_item', { sourcePath, destPath });
+    }
+  },
+
+  /**
+   * 移动文件或目录
+   */
+  async moveItem(sourcePath: string, destPath: string): Promise<void> {
+    if (isTauriEnv()) {
+      await invoke('move_item', { sourcePath, destPath });
+    }
+  },
+
+  /**
+   * 启动后端 CLI 进程（通过 soloncode 命令）
+   */
+  async startBackend(workspacePath: string, port: number): Promise<number> {
+    if (!isTauriEnv()) {
+      console.log('[fileService] mock startBackend');
+      return 0;
+    }
+    return await invoke<number>('start_backend', { workspacePath, port });
+  },
+
+  /**
+   * 停止后端 CLI 进程
+   */
+  async stopBackend(): Promise<void> {
+    if (!isTauriEnv()) return;
+    await invoke('stop_backend');
+  },
+
+  /**
+   * 检查后端进程状态
+   */
+  async backendStatus(): Promise<boolean> {
+    if (!isTauriEnv()) return false;
+    return await invoke<boolean>('backend_status');
+  },
+
+  /**
    * 重命名文件或目录
    */
   async renameItem(oldPath: string, newPath: string): Promise<void> {
@@ -456,6 +502,125 @@ export const fileService = {
       modified: false,
       language,
     };
+  },
+
+  // ==================== 文件监听 ====================
+
+  /** 活跃的监听器取消函数 */
+  _watcherUnsubs: [] as Array<() => void>,
+
+  /** 轮询定时器（非 Tauri 环境备用） */
+  _pollingTimers: [] as Array<ReturnType<typeof setInterval>>,
+
+  /**
+   * 监听指定路径的文件变化
+   * @param path 监听路径（目录）
+   * @param callback 变化回调
+   * @param options 监听选项
+   * @returns 取消监听函数
+   */
+  async watchPath(
+    path: string,
+    callback: (events: WatchEvent) => void,
+    options?: { recursive?: boolean }
+  ): Promise<() => void> {
+    const recursive = options?.recursive ?? true;
+
+    if (isTauriEnv()) {
+      try {
+        console.log('[fileService] 启动文件监听:', path);
+        const unwatch = await watch(
+          path,
+          (event: WatchEvent) => {
+            callback(event);
+          },
+          { recursive }
+        );
+        const unsub = () => {
+          try { unwatch(); } catch (_) { /* ignore */ }
+        };
+        this._watcherUnsubs.push(unsub);
+        return unsub;
+      } catch (err) {
+        console.error('[fileService] Tauri 文件监听失败，回退到轮询:', err);
+        return this._startPolling(path, callback);
+      }
+    }
+
+    // 非 Tauri 环境：轮询模式
+    return this._startPolling(path, callback);
+  },
+
+  /**
+   * 轮询模式监听（非 Tauri 环境备用方案）
+   */
+  _startPolling(
+    path: string,
+    callback: (events: WatchEvent) => void,
+    interval: number = 3000
+  ): () => void {
+    let lastSnapshot: Map<string, number> = new Map();
+
+    const poll = async () => {
+      try {
+        const files = await this.listDirectoryTree(path, 3);
+        const currentSnapshot = new Map<string, number>();
+
+        const flatten = (items: FileInfo[]) => {
+          for (const item of items) {
+            currentSnapshot.set(item.path, item.isDir ? 1 : 0);
+            if (item.children) flatten(item.children);
+          }
+        };
+        flatten(files);
+
+        // 检测变化
+        const created: string[] = [];
+        const removed: string[] = [];
+
+        for (const [p] of currentSnapshot) {
+          if (!lastSnapshot.has(p)) created.push(p);
+        }
+        for (const [p] of lastSnapshot) {
+          if (!currentSnapshot.has(p)) removed.push(p);
+        }
+
+        if (created.length > 0 || removed.length > 0) {
+          callback({
+            type: created.length > 0
+              ? (removed.length > 0 ? 'rename' : 'create')
+              : 'remove',
+            paths: [...created, ...removed],
+          } as WatchEvent);
+        }
+
+        lastSnapshot = currentSnapshot;
+      } catch (err) {
+        // 轮询错误静默处理
+      }
+    };
+
+    // 首次初始化快照
+    poll();
+    const timer = setInterval(poll, interval);
+    this._pollingTimers.push(timer);
+
+    return () => {
+      clearInterval(timer);
+      const idx = this._pollingTimers.indexOf(timer);
+      if (idx >= 0) this._pollingTimers.splice(idx, 1);
+    };
+  },
+
+  /**
+   * 停止所有文件监听
+   */
+  unwatchAll(): void {
+    this._watcherUnsubs.forEach(unsub => { try { unsub(); } catch (_) {} });
+    this._watcherUnsubs = [];
+    this._pollingTimers.forEach(timer => clearInterval(timer));
+    this._pollingTimers = [];
+    console.log('[fileService] 已停止所有文件监听');
   },
 };
 

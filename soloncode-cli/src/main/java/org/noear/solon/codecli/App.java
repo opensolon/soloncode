@@ -30,6 +30,8 @@ import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.portal.CliShellNew;
 import org.noear.solon.codecli.portal.CliShellOld;
 import org.noear.solon.codecli.portal.WebGate;
+import org.noear.solon.codecli.remoting.WebSocketGate;
+import org.noear.solon.net.websocket.WebSocketRouter;
 
 import java.net.URL;
 import java.nio.file.Paths;
@@ -64,6 +66,10 @@ public class App {
 
             if (c.isAcpEnabled() && "stdio".equals(c.getAcpTransport()) == false) {
                 app.enableHttp(true);
+                app.enableWebSocket(true);
+            }
+
+            if (c.isWsEnabled()) {
                 app.enableWebSocket(true);
             }
         });
@@ -102,7 +108,6 @@ public class App {
             //未来可以支持更多控制标记
         }
 
-        //----
 
 
         //cli
@@ -130,6 +135,10 @@ public class App {
             }
 
             new AcpLink(agentRuntime, agentTransport).run();
+        }
+
+        if (agentProperties.isWsEnabled()){
+            WebSocketRouter.getInstance().of("ws", new WebSocketGate(agentRuntime));
         }
     }
 }

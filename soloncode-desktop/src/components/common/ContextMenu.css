@@ -1,0 +1,22 @@
+.context-menu {
+  position: fixed;
+  min-width: 180px;
+  background: var(--cb-vscode-sideBar-background, #252526);
+  border: 1px solid var(--cb-vscode-panel-border, #474747);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+  z-index: 10000;
+  animation: contextMenuIn 0.12s ease-out;
+}
+
+@keyframes contextMenuIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

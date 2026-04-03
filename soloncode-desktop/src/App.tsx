@@ -1,17 +1,22 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { ActivityBar, type ActivityType } from './components/layout/ActivityBar';
 import { TitleBar } from './components/layout/TitleBar';
 import { SidePanel } from './components/layout/SidePanel';
+import { StatusBar } from './components/layout/StatusBar';
 import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
 import { SearchPanel } from './components/sidebar/SearchPanel';
-import { GitPanel, type GitStatus } from './components/sidebar/GitPanel';
+import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session } from './components/sidebar/SessionsPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
 import { EditorPanel } from './components/editor/EditorPanel';
 import { ChatView } from './components/ChatView';
-import { Icon } from './components/common/Icon';
-import { fileService, type FileInfo, type OpenFile } from './services/fileService';
+import { fileService, type FileInfo } from './services/fileService';
+import { gitService, type GitStatus } from './services/gitService';
+import { settingsService } from './services/settingsService';
+import { backendService } from './services/backendService';
+import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath } from './components/ChatView';
+import { useFileWatcher } from './hooks/useFileWatcher';
 import type { Conversation, Plugin } from './types';
 import './App.css';
 
@@ -33,17 +38,12 @@ function convertToFileTree(files: FileInfo[]): FileTreeNode[] {
   }));
 }
 
-// 模拟 Git 状态
-const mockGitStatus: GitStatus = {
-  branch: 'main',
-  ahead: 2,
+// 空 Git 状态（初始值）
+const emptyGitStatus: GitStatus = {
+  branch: '',
+  ahead: 0,
   behind: 0,
-  files: [
-    { path: 'src/App.tsx', status: 'modified' as const, staged: false },
-    { path: 'src/components/ChatView.tsx', status: 'modified' as const, staged: false },
-    { path: 'src/components/NewFeature.tsx', status: 'added' as const, staged: true },
-    { path: 'temp.ts', status: 'untracked' as const, staged: false },
-  ]
+  files: [],
 };
 
 // 模拟扩展
@@ -54,6 +54,11 @@ const mockExtensions = [
   { id: '4', name: 'Java 支持', description: 'Java 语言支持', version: '1.2.0', installed: false, enabled: false, author: 'Community' },
 ];
 
+// 插件（不变数据，放组件外）
+const plugins: Plugin[] = [
+  { id: 'none', name: '插件暂不支持', icon: 'cube', description: '插件暂不支持', enabled: true, version: '1.0.0' }
+];
+
 // 模拟会话
 const mockSessions: Session[] = [
   { id: 'solonclaw', title: 'SolonClaw', timestamp: '固定', messageCount: 0, isPermanent: true },
@@ -62,21 +67,8 @@ const mockSessions: Session[] = [
   { id: '3', title: '新功能实现', timestamp: '3天前', messageCount: 23 },
 ];
 
-// 模拟设置
-const defaultSettings: Settings = {
-  apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-  apiKey: '',
-  model: 'glm-4.7',
-  maxSteps: 30,
-  theme: 'dark',
-  fontSize: 14,
-  language: 'zh-CN',
-  tabSize: 2,
-  autoSave: true,
-  formatOnSave: true,
-  shell: 'bash',
-  terminalFontSize: 14,
-};
+// 默认设置（从 settingsService 加载持久化配置）
+const defaultSettings: Settings = settingsService.load();
 
 // 面板位置类型
 type PanelPosition = 'editor' | 'chat';
@@ -92,12 +84,46 @@ interface PanelState {
 function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityType>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [settings, setSettings] = useState(defaultSettings);
+  const [settings, setSettings] = useState<Settings>(defaultSettings);
+
+  // 设置变化时自动持久化
+  const handleSettingsChange = useCallback((newSettings: Settings) => {
+    setSettings(newSettings);
+    settingsService.save(newSettings as any);
+  }, []);
 
   // 工作区状态
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState<string>('');
   const [workspaceFiles, setWorkspaceFiles] = useState<FileTreeNode[]>([]);
+
+  // Git 状态
+  const [gitStatus, setGitStatus] = useState<GitStatus>(emptyGitStatus);
+
+  // 后端端口状态
+  const [backendPort, setBackendPortState] = useState<number | null>(null);
+
+  // 同步后端端口到 ChatView
+  useEffect(() => {
+    setChatBackendPort(backendPort);
+  }, [backendPort]);
+
+  // 刷新 Git 状态
+  const refreshGitStatus = useCallback(async () => {
+    if (workspacePath) {
+      const status = await gitService.status(workspacePath);
+      setGitStatus(status);
+    } else {
+      setGitStatus(emptyGitStatus);
+    }
+  }, [workspacePath]);
+
+  // 工作区变化时加载 Git 状态 + 定时刷新
+  useEffect(() => {
+    refreshGitStatus();
+    const timer = setInterval(refreshGitStatus, 5000);
+    return () => clearInterval(timer);
+  }, [refreshGitStatus]);
 
   // 面板状态 - 默认比例 1:2:5:2 (活动栏:侧边栏:编辑器:对话框)
   const [panelState, setPanelState] = useState<PanelState>({
@@ -149,20 +175,32 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>(mockSessions);
   const [currentSessionId, setCurrentSessionId] = useState<string>('solonclaw');
 
+  // 当前活动文件（用于状态栏）
+  const activeFile = openFiles.find(f => f.path === activeFilePath);
+
   // 拖拽调整大小
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentConversation: Conversation = {
+  // 文件监听 - 工作区文件变化时自动刷新文件树
+  useFileWatcher({
+    workspacePath,
+    onChange: async (_changedPaths) => {
+      if (workspacePath) {
+        const files = await fileService.listDirectoryTree(workspacePath, 10);
+        setWorkspaceFiles(convertToFileTree(files));
+      }
+    },
+    enabled: !!workspacePath,
+  });
+
+  // useMemo 稳定 currentConversation，仅 sessionId/sessions 变化时重建
+  const currentConversation: Conversation = useMemo(() => ({
     id: currentSessionId,
     title: sessions.find(s => s.id === currentSessionId)?.title || '新会话',
     timestamp: new Date().toLocaleString(),
     status: 'active',
-  };
-
-  const plugins: Plugin[] = [
-    { id: 'none', name: '插件暂不支持', icon: 'cube', description: '插件暂不支持', enabled: true, version: '1.0.0' }
-  ];
+  }), [currentSessionId, sessions]);
 
   // 切换面板可见性
   const togglePanel = useCallback((panel: 'editor' | 'chat') => {
@@ -334,36 +372,144 @@ function App() {
       const selectedPath = await fileService.openFolderDialog();
       console.log('[App] 选择的路径:', selectedPath);
       if (selectedPath) {
-        // 初始化工作区配置（创建 .soloncode/settings.json）
+        // 1. 清理旧工作区：停后端 → 断 WS → 重置状态
+        if (workspacePath) {
+          try {
+            await backendService.stop();
+          } catch (_) { /* ignore */ }
+          setChatBackendPort(null);
+          setChatWorkspacePath(null);
+          setBackendPortState(null);
+          setOpenFiles([]);
+          setActiveFilePath(null);
+          setGitStatus(emptyGitStatus);
+        }
+
+        // 2. 初始化工作区配置（创建 .soloncode/settings.json）
         await fileService.initWorkspaceConfig(selectedPath);
 
         const info = await fileService.getWorkspaceInfo(selectedPath);
         console.log('[App] 工作区信息:', info);
-        // 加载目录树，深度10层
+
+        // 3. 先设置工作区路径（WS 连接需要）
+        setWorkspacePath(selectedPath);
+        setChatWorkspacePath(selectedPath);
+        setWorkspaceName(info.name);
+
+        // 4. 启动后端 CLI 服务（异步，不阻塞）
+        backendService.start(selectedPath).then((port) => {
+          if (port) {
+            setBackendPortState(port);
+            setChatBackendPort(port);
+            console.log('[App] 后端已启动，端口:', port);
+          } else {
+            setBackendPortState(null);
+            console.warn('[App] 后端启动失败或 JAR 不存在，AI 功能不可用');
+          }
+        }).catch((err) => {
+          console.warn('[App] 后端启动异常:', err);
+          setBackendPortState(null);
+        });
+
+        // 5. 加载目录树
         const files = await fileService.listDirectoryTree(selectedPath, 10);
         console.log('[App] 加载文件树:', files, '数量:', files.length);
-        setWorkspacePath(selectedPath);
-        setWorkspaceName(info.name);
         setWorkspaceFiles(convertToFileTree(files));
         setActiveActivity('explorer');
       }
     } catch (err) {
       console.error('[App] 打开文件夹失败:', err);
     }
-  }, []);
+  }, [workspacePath]);
 
-  // 新建文件
-  const handleNewFile = useCallback(() => {
-    const newFile: OpenFile = {
-      path: `untitled-${Date.now()}.ts`,
-      name: '未命名',
-      content: '',
-      modified: true,
-      language: 'TypeScript',
-    };
-    setOpenFiles(prev => [...prev, newFile]);
-    setActiveFilePath(newFile.path);
-  }, []);
+  // 刷新文件树
+  const refreshFileTree = useCallback(async () => {
+    if (workspacePath) {
+      const files = await fileService.listDirectoryTree(workspacePath, 10);
+      setWorkspaceFiles(convertToFileTree(files));
+    }
+  }, [workspacePath]);
+
+  // 新建文件（在工作区根目录）
+  const handleNewFile = useCallback(async () => {
+    if (!workspacePath) return;
+    const name = 'untitled';
+    let path = `${workspacePath}/${name}`;
+    let counter = 1;
+    while (await fileService.pathExists(path)) {
+      path = `${workspacePath}/${name}-${counter}`;
+      counter++;
+    }
+    await fileService.createFile(path);
+    await refreshFileTree();
+    handleFileSelect(path);
+  }, [workspacePath, refreshFileTree, handleFileSelect]);
+
+  // 新建文件夹（在工作区根目录）
+  const handleNewFolder = useCallback(async () => {
+    if (!workspacePath) return;
+    const name = 'new-folder';
+    let path = `${workspacePath}/${name}`;
+    let counter = 1;
+    while (await fileService.pathExists(path)) {
+      path = `${workspacePath}/${name}-${counter}`;
+      counter++;
+    }
+    await fileService.createDirectory(path);
+    await refreshFileTree();
+  }, [workspacePath, refreshFileTree]);
+
+  // 重命名文件/文件夹
+  const handleRename = useCallback(async (oldPath: string, newPath: string) => {
+    await fileService.renameItem(oldPath, newPath);
+    // 更新已打开的文件路径
+    setOpenFiles(prev => prev.map(f =>
+      f.path === oldPath ? { ...f, path: newPath, name: newPath.split(/[/\\]/).pop() || f.name } : f
+    ));
+    if (activeFilePath === oldPath) {
+      setActiveFilePath(newPath);
+    }
+    await refreshFileTree();
+  }, [refreshFileTree, activeFilePath]);
+
+  // 删除文件/文件夹
+  const handleDelete = useCallback(async (path: string, type: 'file' | 'folder') => {
+    if (type === 'folder') {
+      await fileService.deleteDirectory(path);
+    } else {
+      await fileService.deleteFile(path);
+    }
+    // 关闭已打开的该文件
+    setOpenFiles(prev => {
+      const remaining = prev.filter(f => !f.path.startsWith(path));
+      if (activeFilePath?.startsWith(path) && remaining.length > 0) {
+        setActiveFilePath(remaining[remaining.length - 1].path);
+      } else if (remaining.length === 0) {
+        setActiveFilePath(null);
+      }
+      return remaining;
+    });
+    await refreshFileTree();
+  }, [refreshFileTree, activeFilePath]);
+
+  // 复制文件/文件夹
+  const handleCopy = useCallback(async (sourcePath: string, destPath: string) => {
+    await fileService.copyItem(sourcePath, destPath);
+    await refreshFileTree();
+  }, [refreshFileTree]);
+
+  // 移动文件/文件夹
+  const handleMove = useCallback(async (sourcePath: string, destPath: string) => {
+    await fileService.moveItem(sourcePath, destPath);
+    // 更新已打开的文件路径
+    setOpenFiles(prev => prev.map(f =>
+      f.path === sourcePath ? { ...f, path: destPath, name: destPath.split(/[/\\]/).pop() || f.name } : f
+    ));
+    if (activeFilePath === sourcePath) {
+      setActiveFilePath(destPath);
+    }
+    await refreshFileTree();
+  }, [refreshFileTree, activeFilePath]);
 
   // 保存当前文件
   const handleSaveCurrentFile = useCallback(() => {
@@ -403,14 +549,16 @@ function App() {
             files={workspaceFiles}
             workspaceName={workspaceName}
             hasWorkspace={!!workspacePath}
+            workspacePath={workspacePath || undefined}
             onFileSelect={handleFileSelect}
             onOpenFolder={handleOpenFolder}
-            onRefresh={async () => {
-              if (workspacePath) {
-                const files = await fileService.listDirectoryTree(workspacePath, 10);
-                setWorkspaceFiles(convertToFileTree(files));
-              }
-            }}
+            onRefresh={refreshFileTree}
+            onNewFile={handleNewFile}
+            onNewFolder={handleNewFolder}
+            onRename={handleRename}
+            onDelete={handleDelete}
+            onCopy={handleCopy}
+            onMove={handleMove}
           />
         );
       case 'search':
@@ -423,12 +571,26 @@ function App() {
       case 'git':
         return (
           <GitPanel
-            status={mockGitStatus}
-            onCommit={async (msg) => console.log('提交:', msg)}
-            onStage={async (path) => console.log('暂存:', path)}
-            onUnstage={async (path) => console.log('取消暂存:', path)}
-            onPush={async () => console.log('推送')}
-            onPull={async () => console.log('拉取')}
+            status={gitStatus}
+            cwd={workspacePath || undefined}
+            onCommit={async (msg) => {
+              if (workspacePath) { await gitService.commit(workspacePath, msg); refreshGitStatus(); }
+            }}
+            onStage={async (path) => {
+              if (workspacePath) { await gitService.add(workspacePath, [path]); refreshGitStatus(); }
+            }}
+            onUnstage={async (path) => {
+              if (workspacePath) { await gitService.reset(workspacePath, [path]); refreshGitStatus(); }
+            }}
+            onPush={async () => {
+              if (workspacePath) { await gitService.push(workspacePath); refreshGitStatus(); }
+            }}
+            onPull={async () => {
+              if (workspacePath) { await gitService.pull(workspacePath); refreshGitStatus(); }
+            }}
+            onDiscard={async (path) => {
+              if (workspacePath) { await gitService.discard(workspacePath, [path]); refreshGitStatus(); }
+            }}
             onFileClick={handleFileSelect}
           />
         );
@@ -455,7 +617,7 @@ function App() {
         return (
           <SettingsPanel
             settings={settings}
-            onSettingsChange={setSettings}
+            onSettingsChange={handleSettingsChange}
           />
         );
       default:
@@ -476,6 +638,7 @@ function App() {
             onFileClose={handleFileClose}
             onContentChange={handleContentChange}
             onFileSave={handleFileSave}
+            theme={settings.theme}
           />
           <div
             className="resize-handle vertical"
@@ -486,12 +649,20 @@ function App() {
     }
 
     if (panel === 'chat') {
-      if (!panelState.chatVisible) return null;
+      // 始终渲染 ChatView，用 CSS 控制显隐，防止非切换操作刷新对话框
       return (
-        <div key="chat" className="panel-wrapper chat-wrapper" style={{ width: panelState.chatWidth, flex: '1 1 auto' }}>
+        <div key="chat" className="panel-wrapper chat-wrapper" style={{
+          width: panelState.chatVisible ? panelState.chatWidth : 0,
+          flex: panelState.chatVisible ? '1 1 auto' : '0 0 0',
+          overflow: 'hidden',
+          opacity: panelState.chatVisible ? 1 : 0,
+          pointerEvents: panelState.chatVisible ? 'auto' : 'none',
+          transition: 'width 0.2s, opacity 0.2s',
+        }}>
           <ChatView
             currentConversation={currentConversation}
             plugins={plugins}
+            workspacePath={workspacePath || undefined}
           />
         </div>
       );
@@ -549,22 +720,19 @@ function App() {
       </div>
 
       {/* 底部状态栏 */}
-      <div className="status-bar">
-        <div className="status-left">
-          <span className="status-item">
-            <Icon name="bot" size={12} />
-            {settings.model}
-          </span>
-          <span className="status-item">
-            <Icon name="git" size={12} />
-            main
-          </span>
-        </div>
-        <div className="status-right">
-          <span className="status-item">UTF-8</span>
-          <span className="status-item">TypeScript</span>
-        </div>
-      </div>
+      <StatusBar
+        model={settings.model}
+        branch={gitStatus.branch}
+        ahead={gitStatus.ahead}
+        behind={gitStatus.behind}
+        warningCount={0}
+        errorCount={0}
+        cursorLine={activeFile ? activeFile.content.split('\n').length : undefined}
+        cursorColumn={1}
+        encoding="UTF-8"
+        language={activeFile?.language}
+        hasUnsavedChanges={openFiles.some(f => f.modified)}
+      />
     </div>
   );
 }

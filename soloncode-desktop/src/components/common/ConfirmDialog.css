@@ -1,0 +1,82 @@
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  animation: overlayIn 0.15s ease;
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.confirm-dialog {
+  background: var(--cb-vscode-sideBar-background, #252526);
+  border: 1px solid var(--cb-vscode-panel-border, #474747);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: 20px 24px;
+  min-width: 320px;
+  max-width: 420px;
+  animation: dialogIn 0.15s ease;
+}
+
+@keyframes dialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cb-text-primary, #cccccc);
+  margin-bottom: 8px;
+}
+
+.confirm-message {
+  font-size: 13px;
+  color: var(--cb-text-secondary, #858699);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--cb-vscode-widget-border, #474747);
+  background: var(--cb-vscode-input-background, #3c3c3c);
+  color: var(--cb-text-primary, #cccccc);
+  transition: all 0.15s;
+}
+
+.confirm-btn:hover {
+  background: var(--cb-vscode-list-hoverBackground, #2a2d2e);
+}
+
+.confirm-btn.danger {
+  background: #c74e39;
+  border-color: #c74e39;
+  color: white;
+}
+
+.confirm-btn.danger:hover {
+  background: #d4563f;
+}

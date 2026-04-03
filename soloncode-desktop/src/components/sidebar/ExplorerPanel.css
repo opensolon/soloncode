@@ -106,3 +106,28 @@
 .open-folder-btn:hover {
   background: var(--cb-vscode-button-hoverBackground, #1177bb);
 }
+
+/* 内联重命名输入框 */
+.rename-input {
+  flex: 1;
+  font-size: 13px;
+  padding: 1px 4px;
+  margin: 0;
+  border: 1px solid var(--cb-accent);
+  background: var(--cb-vscode-input-background);
+  color: var(--cb-text-primary);
+  border-radius: 2px;
+  outline: none;
+  min-width: 0;
+  font-family: inherit;
+}
+
+.rename-input:focus {
+  border-color: var(--cb-accent);
+  box-shadow: 0 0 0 1px var(--cb-accent);
+}
+
+/* 剪切项半透明 */
+.file-node.cut-item {
+  opacity: 0.5;
+}
