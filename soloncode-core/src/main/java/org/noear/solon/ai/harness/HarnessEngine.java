@@ -42,10 +42,6 @@ public class HarnessEngine {
 
     public final static String SESSION_DEFAULT = "default";
 
-    public final static String SKILLHUB_SKILLS = ".skillhub/skills/";
-    public final static String OPENCODE_SKILLS = ".opencode/skills/";
-    public final static String CLAUDE_SKILLS = ".claude/skills/";
-
     public final static String NAME_CONFIG_YML = "config.yml";
     public final static String NAME_AGENTS_MD = "AGENTS.md";
     public final static String NAME_CLAUDE_MD = "CLAUDE.md";
@@ -129,12 +125,11 @@ public class HarnessEngine {
     }
 
 
-
-    private HarnessEngine(ChatModel chatModel, HarnessProperties props, AgentSessionProvider sessionProvider, Collection<ReActAgentExtension> extensions) {
+    private HarnessEngine(ChatModel chatModel, HarnessProperties props, AgentSessionProvider sessionProvider, SummarizationInterceptor summarizationInterceptor, Collection<ReActAgentExtension> extensions) {
         this.chatModel = chatModel;
         this.props = props;
         this.sessionProvider = sessionProvider;
-
+        this.summarizationInterceptor = summarizationInterceptor;
 
         this.todoSkill = new TodoSkill(props.HOME_SESSIONS());
         this.codeSkill = new CodeSkill(this);
@@ -167,12 +162,11 @@ public class HarnessEngine {
         cliSkills.getTerminalSkill().setSandboxMode(props.isSandboxMode());
 
         cliSkills.skillPool("@global", Paths.get(HarnessProperties.getUserHome(), props.HOME_SKILLS()));
-        cliSkills.skillPool("@skillhub", Paths.get(HarnessProperties.getUserHome(), HarnessEngine.SKILLHUB_SKILLS));
-        cliSkills.skillPool("@local", Paths.get(props.getWorkspace(), "skills"));
+        cliSkills.skillPool("@local", Paths.get(props.getWorkspace(), props.HOME_SKILLS()));
 
-        cliSkills.skillPool("@soloncode_skills", Paths.get(props.getWorkspace(), props.HOME_SKILLS()));
-        cliSkills.skillPool("@opencode_skills", Paths.get(props.getWorkspace(), HarnessEngine.OPENCODE_SKILLS));
-        cliSkills.skillPool("@claude_skills", Paths.get(props.getWorkspace(), HarnessEngine.CLAUDE_SKILLS));
+        cliSkills.skillPool("@skills", Paths.get(props.getWorkspace(), "skills"));
+        cliSkills.skillPool("@skillhub", Paths.get(HarnessProperties.getUserHome(), ".skillhub/skills/"));
+
 
         if (Assert.isNotEmpty(props.getSkillPools())) {
             props.getSkillPools().forEach((alias, dir) -> {
@@ -184,15 +178,6 @@ public class HarnessEngine {
         agentManager.agentPool(Paths.get(HarnessProperties.getUserHome(), props.HOME_AGENTS())); //global
         agentManager.agentPool(Paths.get(props.getWorkspace(), props.HOME_AGENTS())); //local
 
-        //上下文摘要
-        SummarizationStrategy strategy = new CompositeSummarizationStrategy()
-                .addStrategy(new KeyInfoExtractionStrategy(chatModel))      // 提取干货（去水）
-                .addStrategy(new HierarchicalSummarizationStrategy(chatModel)); // 滚动更新摘要
-
-        summarizationInterceptor = new SummarizationInterceptor(
-                props.getSummaryWindowSize(),
-                props.getSummaryWindowToken(),
-                strategy);
 
         AgentDefinition agentDefinition = new AgentDefinition();
 
@@ -266,6 +251,7 @@ public class HarnessEngine {
         private ChatModel chatModel;
         private HarnessProperties properties;
         private AgentSessionProvider sessionProvider;
+        private SummarizationInterceptor summarizationInterceptor;
         private List<ReActAgentExtension> extensions = new ArrayList<>();
 
         public Builder chatModel(ChatModel chatModel) {
@@ -283,6 +269,11 @@ public class HarnessEngine {
             return this;
         }
 
+        public Builder summarizationInterceptor(SummarizationInterceptor summarizationInterceptor) {
+            this.summarizationInterceptor = summarizationInterceptor;
+            return this;
+        }
+
         public Builder extension(ReActAgentExtension extension) {
             this.extensions.add(extension);
             return this;
@@ -293,7 +284,19 @@ public class HarnessEngine {
             Objects.nonNull(properties);
             Objects.nonNull(sessionProvider);
 
-            return new HarnessEngine(chatModel, properties, sessionProvider, extensions);
+            //上下文摘要
+            SummarizationStrategy strategy = new CompositeSummarizationStrategy()
+                    .addStrategy(new KeyInfoExtractionStrategy(chatModel))      // 提取干货（去水）
+                    .addStrategy(new HierarchicalSummarizationStrategy(chatModel)); // 滚动更新摘要
+
+            if (summarizationInterceptor == null) {
+                summarizationInterceptor = new SummarizationInterceptor(
+                        properties.getSummaryWindowSize(),
+                        properties.getSummaryWindowToken(),
+                        strategy);
+            }
+
+            return new HarnessEngine(chatModel, properties, sessionProvider, summarizationInterceptor, extensions);
         }
     }
 }

@@ -14,6 +14,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -43,10 +44,10 @@ public class HarnessProperties implements Serializable {
     private boolean hitlEnabled = false;
     private boolean subagentEnabled = true;
 
-    private Map<String, String> skillPools;
+    private Map<String, String> skillPools = new LinkedHashMap<>();
 
-    private Map<String, McpServerParameters> mcpServers;
-    private Map<String, ApiSource> restApis;
+    private Map<String, McpServerParameters> mcpServers = new LinkedHashMap<>();
+    private Map<String, ApiSource> restApis = new LinkedHashMap<>();
 
     public HarnessProperties(String home) {
         if (Assert.isEmpty(home)) {

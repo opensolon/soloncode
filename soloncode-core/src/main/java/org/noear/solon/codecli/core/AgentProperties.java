@@ -26,6 +26,9 @@ import java.util.Map;
 @Getter
 @Setter
 public class AgentProperties extends HarnessProperties {
+    public final static String OPENCODE_SKILLS = ".opencode/skills/";
+    public final static String CLAUDE_SKILLS = ".claude/skills/";
+
     private String uiType = "old";
 
     private boolean thinkPrinted = false;
@@ -45,5 +48,8 @@ public class AgentProperties extends HarnessProperties {
 
     public AgentProperties() {
         super(".soloncode/");
+
+        getSkillPools().put("@opencode_skills", Paths.get(getWorkspace(), OPENCODE_SKILLS).toString());
+        getSkillPools().put("@claude_skills", Paths.get(getWorkspace(), CLAUDE_SKILLS).toString());
     }
 }
