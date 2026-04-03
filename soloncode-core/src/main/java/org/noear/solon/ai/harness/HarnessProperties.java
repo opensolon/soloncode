@@ -27,7 +27,7 @@ import java.util.Map;
 public class HarnessProperties implements Serializable {
     private ChatConfig chatModel;
 
-    private final String home;
+    private final String harnessHome;
 
     private String workspace = "work";
 
@@ -49,14 +49,14 @@ public class HarnessProperties implements Serializable {
     private Map<String, McpServerParameters> mcpServers = new LinkedHashMap<>();
     private Map<String, ApiSource> restApis = new LinkedHashMap<>();
 
-    public HarnessProperties(String home) {
-        if (Assert.isEmpty(home)) {
-            home = ".solon/";
-        } else if (home.endsWith("/") == false) {
-            home = home + "/";
+    public HarnessProperties(String harnessHome) {
+        if (Assert.isEmpty(harnessHome)) {
+            harnessHome = ".solon/";
+        } else if (harnessHome.endsWith("/") == false) {
+            harnessHome = harnessHome + "/";
         }
 
-        this.home = home;
+        this.harnessHome = harnessHome;
     }
 
     /**
@@ -81,13 +81,13 @@ public class HarnessProperties implements Serializable {
         }
 
         //2. 工作区配置
-        Path path = Paths.get(HarnessProperties.getUserDir(), getHome(), HarnessEngine.NAME_CONFIG_YML);
+        Path path = Paths.get(HarnessProperties.getUserDir(), getHarnessHome(), HarnessEngine.NAME_CONFIG_YML);
         if (Files.exists(path)) {
             return path.toUri().toURL();
         }
 
         //3. 用户目录区配置
-        path = Paths.get(HarnessProperties.getUserHome(), getHome(), HarnessEngine.NAME_CONFIG_YML);
+        path = Paths.get(HarnessProperties.getUserHome(), getHarnessHome(), HarnessEngine.NAME_CONFIG_YML);
 
         if (Files.exists(path)) {
             return path.toUri().toURL();
@@ -104,13 +104,13 @@ public class HarnessProperties implements Serializable {
 
     public URL getAgentsUrl() throws MalformedURLException {
         //1. 工作区配置
-        Path path = Paths.get(getWorkspace(), getHome(), HarnessEngine.NAME_AGENTS_MD);
+        Path path = Paths.get(getWorkspace(), getHarnessHome(), HarnessEngine.NAME_AGENTS_MD);
         if (Files.exists(path)) {
             return path.toUri().toURL();
         }
 
         //2. 用户目录区配置
-        path = Paths.get(HarnessProperties.getUserHome(), getHome(), HarnessEngine.NAME_AGENTS_MD);
+        path = Paths.get(HarnessProperties.getUserHome(), getHarnessHome(), HarnessEngine.NAME_AGENTS_MD);
 
         if (Files.exists(path)) {
             return path.toUri().toURL();
@@ -125,19 +125,38 @@ public class HarnessProperties implements Serializable {
         return null;
     }
 
-    public final String HOME_SESSIONS() {
-        return getHome() + "sessions/";
+    /**
+     * 马具主目录
+     */
+    public final String getHarnessHome() {
+        return harnessHome;
     }
 
-    public final String HOME_SKILLS() {
-        return getHome() + "skills/";
+    /**
+     * 马具会话存放区
+     */
+    public final String getHarnessSessions() {
+        return getHarnessHome() + "sessions/";
     }
 
-    public final String HOME_AGENTS() {
-        return getHome() + "agents/";
+    /**
+     * 马具技能存放区
+     */
+    public final String getHarnessSkills() {
+        return getHarnessHome() + "skills/";
     }
 
-    public final String HOME_MEMORY() {
-        return getHome() + "memory/";
+    /**
+     * 马具子代理描述存放区
+     */
+    public final String getHarnessAgents() {
+        return getHarnessHome() + "agents/";
+    }
+
+    /**
+     * 马具主记忆存放区
+     */
+    public final String getHarnessMemory() {
+        return getHarnessHome() + "memory/";
     }
 }

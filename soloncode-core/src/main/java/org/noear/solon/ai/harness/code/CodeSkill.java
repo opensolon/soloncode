@@ -28,7 +28,7 @@ public class CodeSkill extends AbsSkill {
     }
 
     public String HOME_CLAUDE_MD(){
-        return engine.getProps().getHome() + engine.NAME_CLAUDE_MD;
+        return engine.getProps().getHarnessHome() + engine.NAME_CLAUDE_MD;
     }
 
 

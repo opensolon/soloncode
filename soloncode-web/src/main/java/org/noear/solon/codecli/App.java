@@ -64,7 +64,7 @@ public class App {
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, Paths.get(agentProps.getWorkspace(), agentProps.HOME_SESSIONS(), key).normalize().toFile().toString()));
+                new FileAgentSession(key, Paths.get(agentProps.getWorkspace(), agentProps.getHarnessSessions(), key).normalize().toFile().toString()));
 
 
         HarnessEngine agentKernel = HarnessEngine.builder()

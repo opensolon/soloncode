@@ -143,7 +143,7 @@ public class HarnessEngine {
         this.hitlInterceptor = hitlInterceptor;
         this.extensions = extensions;
 
-        this.todoSkill = new TodoSkill(props.HOME_SESSIONS());
+        this.todoSkill = new TodoSkill(props.getHarnessSessions());
         this.codeSkill = new CodeSkill(this);
         this.taskSkill = new TaskSkill(this);
         this.generateTool = new GenerateTool(this);
@@ -173,8 +173,8 @@ public class HarnessEngine {
 
         cliSkills.getTerminalSkill().setSandboxMode(props.isSandboxMode());
 
-        cliSkills.skillPool("@global", Paths.get(HarnessProperties.getUserHome(), props.HOME_SKILLS()));
-        cliSkills.skillPool("@local", Paths.get(props.getWorkspace(), props.HOME_SKILLS()));
+        cliSkills.skillPool("@global", Paths.get(HarnessProperties.getUserHome(), props.getHarnessSkills()));
+        cliSkills.skillPool("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()));
 
         cliSkills.skillPool("@skills", Paths.get(props.getWorkspace(), "skills"));
         cliSkills.skillPool("@skillhub", Paths.get(HarnessProperties.getUserHome(), ".skillhub/skills/"));
@@ -187,8 +187,8 @@ public class HarnessEngine {
         }
 
         agentManager = new AgentManager();
-        agentManager.agentPool(Paths.get(HarnessProperties.getUserHome(), props.HOME_AGENTS())); //global
-        agentManager.agentPool(Paths.get(props.getWorkspace(), props.HOME_AGENTS())); //local
+        agentManager.agentPool(Paths.get(HarnessProperties.getUserHome(), props.getHarnessAgents())); //global
+        agentManager.agentPool(Paths.get(props.getWorkspace(), props.getHarnessAgents())); //local
 
         mainAgent = createMainAgent();
     }
