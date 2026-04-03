@@ -2,20 +2,10 @@ package org.noear.solon.codecli.core;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.noear.solon.ai.chat.ChatConfig;
-import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessProperties;
-import org.noear.solon.ai.mcp.client.McpServerParameters;
-import org.noear.solon.ai.skills.restapi.ApiSource;
-import org.noear.solon.core.util.ResourceUtil;
 
-import java.io.Serializable;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import org.noear.solon.ai.harness.HarnessProperties;
+
 import java.nio.file.Paths;
-import java.util.Map;
 
 /**
  * 代理属性
