@@ -91,7 +91,7 @@ public class WebSocketGate extends SimpleWebSocketListener {
             AgentSession session = kernel.getSession(sessionId);
 
             if (Assert.isEmpty(req.getCwd())){
-                cwd = session.attrs().getOrDefault(AgentRuntime.ATTR_CWD, ".").toString();
+                cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
             }
 
 
