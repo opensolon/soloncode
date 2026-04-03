@@ -22,7 +22,8 @@ soloncode:
 
   cliEnabled: true # 是否启用控制台
   uiType: "new" # 新版 Portal UI；主题自定义仅对 new 生效
-  uiTheme: "solon" # 当前主题，可用 /theme list 查看内置和自定义主题
+  startupSessionMode: "resume" # 启动会话模式：resume=恢复当前目录最近会话；temp=进入临时新会话
+  uiTheme: "solon" # 当前主题；主题定义与默认主题都建议直接在 config 中维护
   cliPrintSimplified: true
 
 #  uiThemes: # 自定义主题表示例（按需取消注释）

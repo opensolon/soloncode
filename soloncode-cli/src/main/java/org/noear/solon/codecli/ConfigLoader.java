@@ -27,7 +27,7 @@ public class ConfigLoader {
      */
     public static Path loadConfig() {
         // 1. 当前目录的配置（项目级）
-        Path currentDirConfig = Paths.get(AgentProperties.getUserDir(), ".soloncode", "config.yml");
+        Path currentDirConfig = getWorkspaceConfigPath();
         if (Files.exists(currentDirConfig)) {
             return currentDirConfig;
         }
@@ -52,6 +52,13 @@ public class ConfigLoader {
     }
 
     /**
+     * 获取当前工作区配置路径
+     */
+    public static Path getWorkspaceConfigPath() {
+        return Paths.get(AgentProperties.getUserDir(), ".soloncode", "config.yml");
+    }
+
+    /**
      * 获取全局配置目录
      *
      * @return ~/.soloncode/
@@ -73,4 +80,5 @@ public class ConfigLoader {
             }
         }
     }
+
 }

@@ -12,7 +12,7 @@ Portal UI 的主题不再只靠内置常量切换，而是支持：
 - 通过 `soloncode.uiTheme` 指定当前主题
 - 通过 `soloncode.uiThemes` 定义用户自己的主题
 - 基于内置主题或其他自定义主题做局部覆盖
-- 在运行时通过 `/theme` 查看、预览和切换已加载主题
+- 在运行时通过 `/theme` 预览和切换已加载主题
 
 这套机制只作用于 `uiType: new` 的 Portal UI。
 
@@ -46,17 +46,14 @@ soloncode:
 
 - `/theme`
   打开主题选择面板
-- `/theme list`
-  查看当前已加载的全部主题，并标记 `builtin/custom`
-- `/theme tokens`
-  查看支持自定义的主题 token
 - `/theme <name>`
   直接切换到指定主题
 
 注意：
 
 - `/theme` 的切换是当前进程内生效，不会自动回写到配置文件
-- 如果要长期生效，仍然应该写入 `.soloncode/config.yml`
+- 自定义主题与默认主题都应该直接写在 `.soloncode/config.yml`
+- 如果运行时改了配置文件，需要重新启动 CLI 才会重新加载主题定义
 
 ## 4. 自定义主题
 
