@@ -37,6 +37,32 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
   const [selectedAgent, setSelectedAgent] = useState('default');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
 
+  // 监听侧边栏双击设置上下文事件
+  useEffect(() => {
+    const handleSetContext = (e: CustomEvent<string>) => {
+      const detail = e.detail;
+      // 解析 @folder path 或 @file path
+      const match = detail.match(/^@(folder|file)\s+(.+)$/);
+      if (match) {
+        const [, type, path] = match;
+        const name = path.split(/[/\\]/).pop() || path;
+        const newContext: ContextRef = {
+          id: `sidebar-${Date.now()}`,
+          type: type as 'file' | 'folder',
+          name,
+          path,
+        };
+        setContexts(prev => {
+          if (prev.some(c => c.path === path)) return prev;
+          return [...prev, newContext];
+        });
+      }
+    };
+
+    window.addEventListener('set-chat-context', handleSetContext as EventListener);
+    return () => window.removeEventListener('set-chat-context', handleSetContext as EventListener);
+  }, []);
+
   // 自动完成状态
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteType, setAutocompleteType] = useState<'context' | 'agent' | null>(null);
@@ -57,6 +83,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
     if (autocompleteType === 'context') {
       const defaultContexts: ContextRef[] = [
         { id: 'current-file', type: 'file', name: '当前文件' },
+        { id: 'current-folder', type: 'folder', name: '当前目录' },
         { id: 'selection', type: 'code', name: '选中代码' },
         { id: 'project', type: 'folder', name: '整个项目' },
       ];
@@ -343,12 +370,9 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
           </div>
         </form>
 
-        {/* 自动完成下拉框 */}
+        {/* 自动完成下拉框 - 简洁风格 */}
         {showAutocomplete && filteredOptions.length > 0 && (
           <div className="autocomplete-dropdown" ref={autocompleteRef}>
-            <div className="autocomplete-header">
-              {autocompleteType === 'agent' ? '选择智能体' : '引用上下文'}
-            </div>
             <div className="autocomplete-list">
               {filteredOptions.map((option, index) => (
                 <div
@@ -360,23 +384,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
                     autocompleteType === 'agent'
                       ? (option as any).icon || 'bot'
                       : (option as any).type === 'folder' ? 'folder' : 'file'
-                  } size={16} />
-                  <div className="item-info">
-                    <span className="item-name">{option.name}</span>
-                    {(option as any).description && (
-                      <span className="item-desc">{(option as any).description}</span>
-                    )}
-                    {(option as any).path && (
-                      <span className="item-path">{(option as any).path}</span>
-                    )}
-                  </div>
+                  } size={14} />
+                  <span className="item-name">{option.name}</span>
                 </div>
               ))}
-            </div>
-            <div className="autocomplete-footer">
-              <span>↑↓ 选择</span>
-              <span>Tab 确认</span>
-              <span>Esc 关闭</span>
             </div>
           </div>
         )}

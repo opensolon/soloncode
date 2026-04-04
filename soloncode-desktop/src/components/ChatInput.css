@@ -254,7 +254,7 @@
   opacity: 0.7;
 }
 
-/* 自动完成下拉框 */
+/* 自动完成下拉框 - 简洁风格 */
 .autocomplete-dropdown {
   position: absolute;
   bottom: calc(100% + 4px);
@@ -262,9 +262,9 @@
   right: 0;
   background-color: var(--cb-vscode-input-background);
   border: 1px solid var(--cb-vscode-panel-border);
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  max-height: 260px;
+  max-height: 200px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -285,17 +285,19 @@
   flex: 1;
   overflow-y: auto;
   max-height: 180px;
-  padding: 4px;
+  padding: 6px;
 }
 
 .autocomplete-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   cursor: pointer;
   transition: background-color 0.1s;
-  border-radius: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--cb-text-primary);
 }
 
 .autocomplete-item:hover,
@@ -307,45 +309,7 @@
   background-color: var(--cb-vscode-list-activeSelectionBackground);
 }
 
-.item-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
 .item-name {
-  font-size: 13px;
   color: var(--cb-text-primary);
   font-weight: 500;
-}
-
-.item-desc,
-.item-path {
-  font-size: 11px;
-  color: var(--cb-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.autocomplete-footer {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  padding: 8px 14px;
-  font-size: 10px;
-  color: var(--cb-text-secondary);
-  border-top: 1px solid var(--cb-vscode-panel-border);
-  background-color: var(--cb-vscode-sideBar-background);
-}
-
-.autocomplete-footer span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  background-color: var(--cb-vscode-input-background);
-  border-radius: 4px;
 }

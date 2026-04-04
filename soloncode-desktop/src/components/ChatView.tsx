@@ -6,12 +6,15 @@ import { ChatMessages } from './ChatMessages';
 import { ChatInput, type SendOptions } from './ChatInput';
 import '../views/ChatPage.css';
 
+import { ContextRef } from './ChatInput';
+
 interface ChatViewProps {
   currentConversation: Conversation;
   plugins?: Plugin[];
   workspacePath?: string;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
+  availableFiles?: ContextRef[];
 }
 
 // 全局 WebSocket 连接管理器（单例模式）
@@ -198,7 +201,7 @@ export function setWorkspacePath(path: string | null) {
   WebSocketManager.getInstance().setWorkspacePath(path);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession }: ChatViewProps) {
+export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession, availableFiles }: ChatViewProps) {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -602,7 +605,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         isLoading={isLoading}
         theme={currentTheme}
       />
-      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} />
+      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} availableFiles={availableFiles} workspacePath={workspacePath} />
     </main>
   );
 }

@@ -369,6 +369,18 @@ function App() {
     }
   }, [openFiles]);
 
+  // 双击文件/目录设置为聊天上下文
+  const handleFileDoubleClick = useCallback((path: string, type: 'file' | 'folder') => {
+    // 构建上下文引用文本
+    const name = path.split(/[/\\]/).pop() || path;
+    const contextRef = type === 'folder' 
+      ? `@folder ${path}` 
+      : `@file ${path}`;
+    
+    // 通过自定义事件发送到聊天输入框
+    window.dispatchEvent(new CustomEvent('set-chat-context', { detail: contextRef }));
+  }, []);
+
   const handleFileClose = useCallback((path: string) => {
     setOpenFiles(prev => {
       const newFiles = prev.filter(f => f.path !== path);
@@ -666,6 +678,7 @@ function App() {
             hasWorkspace={!!workspacePath}
             workspacePath={workspacePath || undefined}
             onFileSelect={handleFileSelect}
+            onFileDoubleClick={handleFileDoubleClick}
             onOpenFolder={handleOpenFolder}
             onRefresh={refreshFileTree}
             onNewFile={handleNewFile}
@@ -776,6 +789,7 @@ function App() {
             workspacePath={workspacePath || undefined}
             onUpdateSessionTitle={handleUpdateSessionTitle}
             onNewSession={handleNewSession}
+            availableFiles={workspaceFiles}
           />
         </div>
       );

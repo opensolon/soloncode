@@ -2,7 +2,7 @@
  * 资源管理器面板
  * @author bai
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Icon, getFileIconName } from '../common/Icon';
 import { ContextMenu } from '../common/ContextMenu';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -24,6 +24,7 @@ interface ExplorerPanelProps {
   hasWorkspace?: boolean;
   workspacePath?: string;
   onFileSelect: (path: string) => void;
+  onFileDoubleClick?: (path: string, type: 'file' | 'folder') => void;
   onOpenFolder?: () => void;
   onRefresh?: () => void;
   onNewFile?: () => void;
@@ -60,6 +61,7 @@ export function ExplorerPanel({
   hasWorkspace: hasWorkspaceProp,
   workspacePath,
   onFileSelect,
+  onFileDoubleClick,
   onOpenFolder,
   onRefresh,
   onNewFile,
@@ -70,6 +72,10 @@ export function ExplorerPanel({
   onMove,
 }: ExplorerPanelProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+
+  // 单击/双击区分
+  const lastClickRef = useRef<{ path: string; time: number } | null>(null);
+  const DOUBLE_CLICK_DELAY = 300;
 
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{
@@ -352,13 +358,38 @@ export function ExplorerPanel({
         <div
           className={`file-node ${node.type}${isExpanded ? ' expanded' : ''}${isCut ? ' cut-item' : ''}`}
           style={{ paddingLeft: `${indent + 8}px` }}
-          onClick={() => {
+          onClick={(e) => {
             if (isRenaming) return;
-            if (node.type === 'folder') {
-              toggleFolder(node.path);
-            } else {
-              onFileSelect(node.path);
+            const now = Date.now();
+            const lastClick = lastClickRef.current;
+            
+            // 检查是否是双击（在短时间内点击同一节点）
+            if (lastClick && lastClick.path === node.path && now - lastClick.time < DOUBLE_CLICK_DELAY) {
+              // 是双击，清除记录，不处理单击
+              lastClickRef.current = null;
+              return;
             }
+            
+            // 记录单击
+            lastClickRef.current = { path: node.path, time: now };
+            
+            // 延迟处理单击，等待确认不是双击
+            setTimeout(() => {
+              const current = lastClickRef.current;
+              if (current && current.path === node.path && now === current.time) {
+                // 确实是单击（不是双击）
+                if (node.type === 'folder') {
+                  toggleFolder(node.path);
+                } else {
+                  onFileSelect(node.path);
+                }
+              }
+            }, DOUBLE_CLICK_DELAY);
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation(); // 阻止单击事件
+            lastClickRef.current = null; // 清除单击记录
+            onFileDoubleClick?.(node.path, node.type);
           }}
           onContextMenu={(e) => handleContextMenu(e, node)}
         >

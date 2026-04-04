@@ -623,7 +623,14 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
         })
         .map_err(|e| format!("创建 PTY 失败: {}", e))?;
 
-    let mut cmd = PtyCommandBuilder::new("powershell");
+    // 根据操作系统选择默认 shell
+    let shell: String = if cfg!(target_os = "windows") {
+        "powershell".to_string()
+    } else {
+        // Mac/Linux 使用环境变量中的 shell，或默认 bash
+        std::env::var("SHELL").unwrap_or_else(|_| "bash".to_string())
+    };
+    let mut cmd = PtyCommandBuilder::new(&shell);
     if let Some(dir) = cwd {
         cmd.cwd(dir);
     }
@@ -631,7 +638,7 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("启动 PowerShell 失败: {}", e))?;
+        .map_err(|e| format!("启动终端失败: {}", e))?;
 
     let reader = pair
         .master
