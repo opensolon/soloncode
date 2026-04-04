@@ -1,7 +1,7 @@
 {
   "name": "soloncode-ide",
   "private": true,
-  "version": "0.1.0",
+  "version": "2026.4.5",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
