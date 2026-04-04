@@ -3,7 +3,7 @@ package org.noear.solon.codecli.remoting;
 import lombok.Data;
 
 @Data
-public class ChatMessage {
+public class WebMessage {
 
     String input;
 
@@ -14,6 +14,4 @@ public class ChatMessage {
     String agent;
 
     String cwd;
-
-    String context;
 }

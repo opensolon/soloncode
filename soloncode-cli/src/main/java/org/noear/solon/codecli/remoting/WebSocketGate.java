@@ -21,6 +21,7 @@ import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.codecli.core.AgentProperties;
@@ -29,7 +30,7 @@ import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Flux;
+import reactor.core.Disposable;
 
 import java.io.IOException;
 
@@ -80,7 +81,7 @@ public class WebSocketGate extends SimpleWebSocketListener {
     public void onMessage(WebSocket socket, String text) throws IOException {
         try {
             // 解析请求
-            ChatMessage req = ONode.ofJson(text).toBean(ChatMessage.class);
+            WebMessage req = ONode.ofJson(text).toBean(WebMessage.class);
             String sessionId = req.getSessionId();
             String input = req.getInput();
             String cwd = req.getCwd();
@@ -94,6 +95,17 @@ public class WebSocketGate extends SimpleWebSocketListener {
             }
 
             AgentSession session = kernel.getSession(sessionId);
+
+            if("[(sec)interrupt]".equals(req.getInput())) {
+                Disposable disposable = (Disposable)session.attrs().get("disposable");
+                if (disposable != null) {
+                    disposable.dispose();
+                }
+                session.addMessage(ChatMessage.ofAssistant("用户中途取消了这个任务."));
+                return;
+            }
+
+
 
             if (Assert.isEmpty(req.getCwd())) {
                 cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
@@ -120,14 +132,6 @@ public class WebSocketGate extends SimpleWebSocketListener {
                 return;
             }
 
-            final String finalInput;
-            if (Assert.isNotEmpty(req.getContext())) {
-                finalInput = input + "<context>" + req.getContext() + "</context>";
-            } else {
-                finalInput = input;
-            }
-
-
             // 记录开始时间
             final long startTime = System.currentTimeMillis();
 
@@ -139,14 +143,14 @@ public class WebSocketGate extends SimpleWebSocketListener {
             final String finalSessionId = sessionId;
 
             String finalCwd = cwd;
-            Flux<String> stringFlux = kernel.getMainAgent()
-                    .prompt(finalInput)
+            Disposable disposable = kernel.getMainAgent()
+                    .prompt(input)
                     .session(session)
                     .options(o -> {
                         o.toolContextPut(HarnessEngine.ATTR_CWD, finalCwd);
                     })
                     .stream()
-                    .map(chunk -> {
+                    .doOnNext(chunk -> {
                         String chunkType = chunk.getClass().getSimpleName();
                         LOG.debug("[WS] chunk: type={}, hasContent={}, isNormal={}",
                                 chunkType,
@@ -154,41 +158,38 @@ public class WebSocketGate extends SimpleWebSocketListener {
                                 chunk instanceof ReActChunk ? ((ReActChunk) chunk).isNormal() : "N/A");
 
                         // ReActChunk 需要优先处理 metrics 收集（无论 hasContent 状态）
+                        String msg = null;
                         if (chunk instanceof ReActChunk) {
-                            return onReActChunk((ReActChunk) chunk, finalSessionId, totalTokens, modelName);
+                            msg = onReActChunk((ReActChunk) chunk, finalSessionId, totalTokens, modelName);
                         } else if (chunk instanceof ReasonChunk) {
-                            return onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                            msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ActionEndChunk) {
-                            return onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
+                            msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ThoughtChunk) {
-                            return onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
+                            msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
                         }
 
-                        return "";
-                    })
-                    .filter(Assert::isNotEmpty)
-                    .onErrorResume(e -> {
-                        String message = new ONode().set("type", "error")
+                        if (Assert.isNotEmpty(msg)) {
+                            socket.send(msg);
+                        }
+                    }).doOnError(err -> {
+                        String msg = new ONode().set("type", "error")
                                 .set("sessionId", finalSessionId)
-                                .set("text", e.getMessage())
+                                .set("text", err.getMessage())
                                 .toJson();
 
-                        return Flux.just(message);
+                        socket.send(msg);
                     })
-                    .concatWithValues(new ONode().set("type", "done")
-                            .set("sessionId", finalSessionId)
-                            .set("modelName", modelName[0])
-                            .set("totalTokens", totalTokens[0])
-                            .set("elapsedMs", System.currentTimeMillis() - startTime).toJson());
+                    .doFinally(s -> {
+                        String msg = new ONode().set("type", "done")
+                                .set("sessionId", finalSessionId)
+                                .set("modelName", modelName[0])
+                                .set("totalTokens", totalTokens[0])
+                                .set("elapsedMs", System.currentTimeMillis() - startTime).toJson();
+                        socket.send(msg);
+                    }).subscribe();
 
-            // 订阅并发送
-            stringFlux.subscribe(msg -> {
-                try {
-                    socket.send(msg);
-                } catch (Exception e) {
-                    // 连接可能已关闭
-                }
-            });
+            session.attrs().put("disposable", disposable);
 
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
@@ -255,7 +256,7 @@ public class WebSocketGate extends SimpleWebSocketListener {
                 if ("main".equals(chunk.getAgentName())) {
                     oNode.set("toolName", chunk.getToolName());
                 } else {
-                    oNode.set("toolName", chunk.getAgentName() + "/" + chunk.getToolName());
+                    oNode.set("toolName", chunk.getAgentName() + "_" + chunk.getToolName());
                 }
                 oNode.set("args", chunk.getArgs());
             }
