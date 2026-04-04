@@ -20,7 +20,9 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
+import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -153,65 +155,13 @@ public class WebSocketGate extends SimpleWebSocketListener {
 
                         // ReActChunk 需要优先处理 metrics 收集（无论 hasContent 状态）
                         if (chunk instanceof ReActChunk) {
-                            ReActChunk react = (ReActChunk) chunk;
-
-                            // 收集 metrics 信息（无论 isNormal 和 hasContent 状态，trace 都可能携带 metrics）
-                            if (react.getTrace() != null) {
-                                if (react.getTrace().getMetrics() != null) {
-                                    totalTokens[0] = react.getTrace().getMetrics().getTotalTokens();
-                                }
-                                if (react.getTrace().getConfig() != null && react.getTrace().getConfig().getChatModel() != null) {
-                                    modelName[0] = react.getTrace().getConfig().getChatModel().toString();
-                                }
-                            }
-
-                            // 参考 CLI 的 CliShellNew.onFinalChunk 逻辑：
-                            // - isNormal==false: 内容通过 reason 类型发送（和 ReasonChunk 一样处理）
-                            // - isNormal==true: 这是最终汇总，内容已经通过 ReasonChunk 发送过了，跳过避免重复
-                            if (!react.isNormal() && react.hasContent()) {
-                                LOG.debug("[WS] sending reason from ReActChunk: {}",
-                                        chunk.getContent().substring(0, Math.min(50, chunk.getContent().length())));
-                                return new ONode().set("type", "reason")
-                                        .set("sessionId", finalSessionId)
-                                        .set("text", chunk.getContent())
-                                        .toJson();
-                            }
-
-                            // isNormal==true 或无内容时，内容已通过 ReasonChunk 完整发送，此处跳过
-                            LOG.debug("[WS] skipping ReActChunk (isNormal={}, hasContent={})",
-                                    react.isNormal(), react.hasContent());
-                            return "";
-                        }
-
-                        if (chunk.hasContent()) {
-                            if (chunk instanceof ReasonChunk) {
-                                ReasonChunk reason = (ReasonChunk) chunk;
-
-                                if (!reason.isToolCalls() && reason.hasContent()) {
-                                    // 检查是否是 thinking 内容
-                                    boolean isThinking = reason.getMessage() != null && reason.getMessage().isThinking();
-                                    String chunkTypeToSend = isThinking ? "think" : "reason";
-
-                                    LOG.debug("[WS] sending {}: {}", chunkTypeToSend,
-                                            chunk.getContent().substring(0, Math.min(50, chunk.getContent().length())));
-                                    return new ONode().set("type", chunkTypeToSend)
-                                            .set("sessionId", finalSessionId)
-                                            .set("text", chunk.getContent())
-                                            .toJson();
-                                }
-                            } else if (chunk instanceof ActionEndChunk) {
-                                ActionEndChunk action = (ActionEndChunk) chunk;
-                                ONode oNode = new ONode().set("type", "action")
-                                        .set("sessionId", finalSessionId)
-                                        .set("text", chunk.getContent());
-
-                                if (Assert.isNotEmpty(action.getToolName())) {
-                                    oNode.set("toolName", action.getToolName());
-                                    oNode.set("args", action.getArgs());
-                                }
-
-                                return oNode.toJson();
-                            }
+                            return onReActChunk((ReActChunk) chunk, finalSessionId, totalTokens, modelName);
+                        } else if (chunk instanceof ReasonChunk) {
+                            return onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ActionEndChunk) {
+                            return onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ThoughtChunk) {
+                            return onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
                         }
 
                         return "";
@@ -245,5 +195,95 @@ public class WebSocketGate extends SimpleWebSocketListener {
             socket.send(new ONode().set("type", "error")
                     .set("text", errorMsg).toJson());
         }
+    }
+
+    private String onReActChunk(ReActChunk chunk, String finalSessionId, long[] totalTokens, String[] modelName) {
+        // 收集 metrics 信息（无论 isNormal 和 hasContent 状态，trace 都可能携带 metrics）
+        if (chunk.getTrace() != null) {
+            if (chunk.getTrace().getMetrics() != null) {
+                totalTokens[0] = chunk.getTrace().getMetrics().getTotalTokens();
+            }
+            if (chunk.getTrace().getConfig() != null && chunk.getTrace().getConfig().getChatModel() != null) {
+                modelName[0] = chunk.getTrace().getConfig().getChatModel().toString();
+            }
+        }
+
+        // 参考 CLI 的 CliShellNew.onFinalChunk 逻辑：
+        // - isNormal==false: 内容通过 reason 类型发送（和 ReasonChunk 一样处理）
+        // - isNormal==true: 这是最终汇总，内容已经通过 ReasonChunk 发送过了，跳过避免重复
+        if (!chunk.isNormal() && chunk.hasContent()) {
+            LOG.debug("[WS] sending reason from ReActChunk: {}",
+                    chunk.getContent().substring(0, Math.min(50, chunk.getContent().length())));
+            return new ONode().set("type", "reason")
+                    .set("sessionId", finalSessionId)
+                    .set("text", chunk.getContent())
+                    .toJson();
+        }
+
+        // isNormal==true 或无内容时，内容已通过 ReasonChunk 完整发送，此处跳过
+        LOG.debug("[WS] skipping ReActChunk (isNormal={}, hasContent={})",
+                chunk.isNormal(), chunk.hasContent());
+        return "";
+    }
+
+    private String onReasonChunk(ReasonChunk chunk, String finalSessionId) {
+        if (chunk.hasContent()) {
+            if (!chunk.isToolCalls() && chunk.hasContent()) {
+                // 检查是否是 thinking 内容
+                boolean isThinking = chunk.getMessage() != null && chunk.getMessage().isThinking();
+                String chunkTypeToSend = isThinking ? "think" : "reason";
+
+                LOG.debug("[WS] sending {}: {}", chunkTypeToSend,
+                        chunk.getContent().substring(0, Math.min(50, chunk.getContent().length())));
+                return new ONode().set("type", chunkTypeToSend)
+                        .set("sessionId", finalSessionId)
+                        .set("text", chunk.getContent())
+                        .toJson();
+            }
+        }
+
+        return "";
+    }
+
+    private String onActionEndChunk(ActionEndChunk chunk, String finalSessionId) {
+        if (chunk.hasContent()) {
+            ONode oNode = new ONode().set("type", "action")
+                    .set("sessionId", finalSessionId)
+                    .set("text", chunk.getContent());
+
+            if (Assert.isNotEmpty(chunk.getToolName())) {
+                if ("main".equals(chunk.getAgentName())) {
+                    oNode.set("toolName", chunk.getToolName());
+                } else {
+                    oNode.set("toolName", chunk.getAgentName() + "/" + chunk.getToolName());
+                }
+                oNode.set("args", chunk.getArgs());
+            }
+
+            return oNode.toJson();
+        }
+
+        return "";
+    }
+
+    private String onThoughtChunk(ThoughtChunk chunk, String finalSessionId) {
+        if (chunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+            // 仅在多任务并行且有内容时输出
+            String content = chunk.getAssistantMessage().getResultContent();
+            if (Assert.isNotEmpty(content)) {
+                // 检查是否是 thinking 内容
+                boolean isThinking = chunk.getMessage() != null && chunk.getMessage().isThinking();
+                String chunkTypeToSend = isThinking ? "think" : "reason";
+
+                LOG.debug("[WS] sending {}: {}", chunkTypeToSend,
+                        chunk.getContent().substring(0, Math.min(50, chunk.getContent().length())));
+                return new ONode().set("type", chunkTypeToSend)
+                        .set("sessionId", finalSessionId)
+                        .set("text", chunk.getContent())
+                        .toJson();
+            }
+        }
+
+        return "";
     }
 }
