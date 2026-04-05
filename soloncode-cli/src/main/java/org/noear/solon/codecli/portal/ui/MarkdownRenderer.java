@@ -14,6 +14,7 @@ import org.noear.solon.codecli.portal.ui.theme.PortalThemes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * 流式 Markdown 渲染器 — 接收逐字符/逐 token 输入，输出 ANSI 彩色终端文本
@@ -33,6 +34,8 @@ import java.util.List;
  * @author solon-cli
  */
 public class MarkdownRenderer {
+    private static final Pattern TABLE_DIVIDER_CELL = Pattern.compile(":?-{3,}:?");
+    private static final int TABLE_TAB_WIDTH = 4;
 
     // ── ANSI 样式 ──
     private static final String RESET = "\033[0m";
@@ -69,6 +72,7 @@ public class MarkdownRenderer {
     private boolean atLineStart = true;
     private final List<String> pendingTableLines = new ArrayList<String>();
     private final StringBuilder tableLineBuffer = new StringBuilder();
+    private final StringBuilder lineStartWhitespace = new StringBuilder();
     private boolean bufferingTableLine = false;
     private final StringBuilder pendingBuf = new StringBuilder();
     private String codeBlockLang = "";
@@ -136,6 +140,7 @@ public class MarkdownRenderer {
         atLineStart = true;
         pendingTableLines.clear();
         tableLineBuffer.setLength(0);
+        lineStartWhitespace.setLength(0);
         bufferingTableLine = false;
         pendingBuf.setLength(0);
         codeBlockLang = "";
@@ -159,8 +164,52 @@ public class MarkdownRenderer {
             return;
         }
 
-        if (atLineStart && !pendingTableLines.isEmpty() && ch != '|') {
+        if (atLineStart && !pendingTableLines.isEmpty() && !isTableRowPrefixChar(ch)
+            && !pendingTableExpectsContinuation()) {
             flushPendingTable();
+        }
+
+        if (atLineStart && state == State.NORMAL) {
+            if (ch == ' ' || ch == '\t') {
+                lineStartWhitespace.append(ch);
+                return;
+            }
+
+            if (lineStartWhitespace.length() > 0) {
+                if (ch == '|') {
+                    bufferingTableLine = true;
+                    tableLineBuffer.setLength(0);
+                    tableLineBuffer.append(lineStartWhitespace);
+                    tableLineBuffer.append(ch);
+                    lineStartWhitespace.setLength(0);
+                    atLineStart = false;
+                    return;
+                }
+
+                if (pendingTableExpectsContinuation()) {
+                    bufferingTableLine = true;
+                    tableLineBuffer.setLength(0);
+                    tableLineBuffer.append(lineStartWhitespace);
+                    tableLineBuffer.append(ch);
+                    lineStartWhitespace.setLength(0);
+                    atLineStart = false;
+                    return;
+                }
+
+                String bufferedWhitespace = lineStartWhitespace.toString();
+                lineStartWhitespace.setLength(0);
+                for (int i = 0; i < bufferedWhitespace.length(); i++) {
+                    emitChar(bufferedWhitespace.charAt(i));
+                }
+            }
+
+            if (pendingTableExpectsContinuation() && ch != '\n' && ch != '\r') {
+                bufferingTableLine = true;
+                tableLineBuffer.setLength(0);
+                tableLineBuffer.append(ch);
+                atLineStart = false;
+                return;
+            }
         }
 
         // 有未决缓冲时，先判断能否凑出完整标记
@@ -617,6 +666,7 @@ public class MarkdownRenderer {
         output.flushLine();
         atLineStart = true;
         lineCharCount = 0;
+        lineStartWhitespace.setLength(0);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -648,6 +698,14 @@ public class MarkdownRenderer {
             tableLineBuffer.setLength(0);
             bufferingTableLine = false;
             atLineStart = true;
+        }
+
+        if (lineStartWhitespace.length() > 0) {
+            String text = lineStartWhitespace.toString();
+            lineStartWhitespace.setLength(0);
+            for (int i = 0; i < text.length(); i++) {
+                emitChar(text.charAt(i));
+            }
         }
 
         if (!pendingTableLines.isEmpty()) {
@@ -737,17 +795,23 @@ public class MarkdownRenderer {
 
     private List<TableRow> parseTableRows() {
         List<TableRow> rows = new ArrayList<TableRow>();
-        for (String rawLine : pendingTableLines) {
+        List<String> normalizedLines = mergeTableContinuationLines(pendingTableLines);
+        for (String rawLine : normalizedLines) {
             if (rawLine == null) {
                 continue;
             }
 
-            String line = rawLine.trim();
-            if (line.isEmpty() || line.charAt(0) != '|') {
+            String line = stripTableLineTrailingBreaks(rawLine);
+            if (line.isEmpty()) {
                 continue;
             }
 
-            List<String> cells = splitTableCells(line);
+            int firstContentIndex = firstNonWhitespaceIndex(line);
+            if (firstContentIndex < 0 || line.charAt(firstContentIndex) != '|') {
+                continue;
+            }
+
+            List<String> cells = splitTableCells(line.substring(firstContentIndex));
             if (cells.isEmpty()) {
                 continue;
             }
@@ -758,8 +822,79 @@ public class MarkdownRenderer {
         return rows;
     }
 
+    private List<String> mergeTableContinuationLines(List<String> lines) {
+        List<String> merged = new ArrayList<String>();
+        for (int i = 0; i < lines.size(); i++) {
+            String current = stripTableLineTrailingBreaks(lines.get(i));
+            if (current == null || current.isEmpty()) {
+                continue;
+            }
+
+            while (i + 1 < lines.size()) {
+                String next = stripTableLineTrailingBreaks(lines.get(i + 1));
+                if (next == null) {
+                    i++;
+                    continue;
+                }
+
+                if (hasUnclosedBacktick(current) || isTableContinuationLine(next)) {
+                    current = current + " " + next.trim();
+                    i++;
+                    continue;
+                }
+                break;
+            }
+
+            merged.add(current);
+        }
+        return merged;
+    }
+
+    private boolean pendingTableExpectsContinuation() {
+        if (pendingTableLines.isEmpty()) {
+            return false;
+        }
+
+        List<String> normalizedLines = mergeTableContinuationLines(pendingTableLines);
+        if (normalizedLines.isEmpty()) {
+            return false;
+        }
+
+        return hasUnclosedBacktick(normalizedLines.get(normalizedLines.size() - 1));
+    }
+
+    private boolean hasUnclosedBacktick(String line) {
+        if (line == null || line.isEmpty()) {
+            return false;
+        }
+
+        int count = 0;
+        boolean escaped = false;
+        for (int i = 0; i < line.length(); ) {
+            int codePoint = line.codePointAt(i);
+            if (escaped) {
+                escaped = false;
+            } else if (codePoint == '\\') {
+                escaped = true;
+            } else if (codePoint == '`') {
+                count++;
+            }
+            i += Character.charCount(codePoint);
+        }
+        return (count % 2) != 0;
+    }
+
+    private boolean isTableContinuationLine(String line) {
+        if (line == null) {
+            return false;
+        }
+
+        String trimmed = line.trim();
+        return trimmed.matches("^\\|\\s*$");
+    }
+
     private List<String> splitTableCells(String line) {
-        String text = line.trim();
+        String text = stripTableLineTrailingBreaks(line);
         if (text.startsWith("|")) {
             text = text.substring(1);
         }
@@ -770,29 +905,54 @@ public class MarkdownRenderer {
         List<String> cells = new ArrayList<String>();
         StringBuilder current = new StringBuilder();
         boolean escaped = false;
-        for (int i = 0; i < text.length(); i++) {
-            char ch = text.charAt(i);
+        boolean inCodeSpan = false;
+        int codeSpanTicks = 0;
+        for (int i = 0; i < text.length(); ) {
+            int codePoint = text.codePointAt(i);
             if (escaped) {
-                current.append(ch);
+                current.appendCodePoint(codePoint);
                 escaped = false;
+                i += Character.charCount(codePoint);
                 continue;
             }
 
-            if (ch == '\\') {
+            if (codePoint == '\\') {
                 escaped = true;
+                i += Character.charCount(codePoint);
                 continue;
             }
 
-            if (ch == '|') {
-                cells.add(current.toString().trim());
+            if (codePoint == '`') {
+                int tickCount = 0;
+                while (i + tickCount < text.length() && text.charAt(i + tickCount) == '`') {
+                    tickCount++;
+                }
+                if (!inCodeSpan) {
+                    inCodeSpan = true;
+                    codeSpanTicks = tickCount;
+                } else if (tickCount == codeSpanTicks) {
+                    inCodeSpan = false;
+                    codeSpanTicks = 0;
+                }
+                for (int j = 0; j < tickCount; j++) {
+                    current.append('`');
+                }
+                i += tickCount;
+                continue;
+            }
+
+            if (codePoint == '|' && !inCodeSpan) {
+                cells.add(current.toString());
                 current.setLength(0);
+                i += Character.charCount(codePoint);
                 continue;
             }
 
-            current.append(ch);
+            current.appendCodePoint(codePoint);
+            i += Character.charCount(codePoint);
         }
 
-        cells.add(current.toString().trim());
+        cells.add(current.toString());
         return cells;
     }
 
@@ -802,8 +962,8 @@ public class MarkdownRenderer {
         }
 
         for (String cell : cells) {
-            String text = cell == null ? "" : cell.trim().replace(" ", "");
-            if (!text.matches(":?-{3,}:?")) {
+            String text = cell == null ? "" : collapseDividerCell(cell);
+            if (!TABLE_DIVIDER_CELL.matcher(text).matches()) {
                 return false;
             }
         }
@@ -867,26 +1027,82 @@ public class MarkdownRenderer {
     }
 
     private void emitTableRow(TableRow row, int[] widths, boolean header) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("  ").append(cTableBorder).append("│").append(RESET);
-
+        List<List<String>> wrappedCells = new ArrayList<List<String>>(widths.length);
+        int rowHeight = 1;
         for (int i = 0; i < widths.length; i++) {
             String cell = i < row.cells.size() ? row.cells.get(i) : "";
-            String plain = plainTableCellText(cell);
-            String shownPlain = displayWidth(plain) > widths[i] ? clipToWidth(plain, widths[i]) : plain;
-            String styled = shownPlain.equals(plain)
-                    ? renderInlineTableCell(cell, header)
-                    : stylePlainTableCell(shownPlain, header);
-
-            builder.append(' ')
-                    .append(styled)
-                    .append(repeatChar(' ', Math.max(0, widths[i] - displayWidth(shownPlain))))
-                    .append(' ')
-                    .append(cTableBorder).append("│").append(RESET);
+            List<String> lines = wrapTableCell(cell, widths[i]);
+            wrappedCells.add(lines);
+            rowHeight = Math.max(rowHeight, lines.size());
         }
 
-        output.append(builder.toString());
-        output.flushLine();
+        for (int lineIndex = 0; lineIndex < rowHeight; lineIndex++) {
+            StringBuilder builder = new StringBuilder();
+            builder.append("  ").append(cTableBorder).append("│").append(RESET);
+
+            for (int columnIndex = 0; columnIndex < widths.length; columnIndex++) {
+                List<String> cellLines = wrappedCells.get(columnIndex);
+                String plain = lineIndex < cellLines.size() ? cellLines.get(lineIndex) : "";
+                String styled = stylePlainTableCell(plain, header);
+
+                builder.append(' ')
+                    .append(styled)
+                    .append(repeatChar(' ', Math.max(0, widths[columnIndex] - displayWidth(plain))))
+                    .append(' ')
+                    .append(cTableBorder).append("│").append(RESET);
+            }
+
+            output.append(builder.toString());
+            output.flushLine();
+        }
+    }
+
+    private List<String> wrapTableCell(String text, int maxWidth) {
+        List<String> lines = new ArrayList<String>();
+        String plain = plainTableCellText(text);
+        if (plain == null || plain.isEmpty()) {
+            lines.add("");
+            return lines;
+        }
+
+        if (maxWidth <= 0) {
+            lines.add(plain);
+            return lines;
+        }
+
+        StringBuilder current = new StringBuilder();
+        int currentWidth = 0;
+        for (int i = 0; i < plain.length(); ) {
+            int codePoint = plain.codePointAt(i);
+            String piece = new String(Character.toChars(codePoint));
+            int pieceWidth = displayWidth(piece);
+
+            if (currentWidth > 0 && currentWidth + pieceWidth > maxWidth) {
+                lines.add(current.toString());
+                current.setLength(0);
+                currentWidth = 0;
+            }
+
+            if (pieceWidth > maxWidth && currentWidth == 0) {
+                lines.add(piece);
+                i += Character.charCount(codePoint);
+                continue;
+            }
+
+            current.append(piece);
+            currentWidth += pieceWidth;
+            i += Character.charCount(codePoint);
+        }
+
+        if (current.length() > 0) {
+            lines.add(current.toString());
+        }
+
+        if (lines.isEmpty()) {
+            lines.add("");
+        }
+
+        return lines;
     }
 
     private String stylePlainTableCell(String text, boolean header) {
@@ -898,7 +1114,7 @@ public class MarkdownRenderer {
     }
 
     private String renderInlineTableCell(String text, boolean header) {
-        String source = text == null ? "" : text.trim().replace("\\|", "|");
+        String source = normalizeTableCellSource(text);
         String baseStyle = header ? cTableHeader : "";
         StringBuilder builder = new StringBuilder();
         if (!baseStyle.isEmpty()) {
@@ -947,11 +1163,128 @@ public class MarkdownRenderer {
     }
 
     private String plainTableCellText(String text) {
-        String value = text == null ? "" : text.trim().replace("\\|", "|");
+        String value = normalizeTableCellSource(text);
         return value
                 .replace("**", "")
                 .replace("`", "")
                 .replace("~~", "");
+    }
+
+    private String normalizeTableCellSource(String text) {
+        if (text == null) {
+            return "";
+        }
+
+        return expandTableWhitespace(text.replace("\\|", "|"));
+    }
+
+    private String expandTableWhitespace(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        int width = 0;
+        for (int i = 0; i < text.length(); ) {
+            int codePoint = text.codePointAt(i);
+            if (codePoint == '\t') {
+                int spaces = TABLE_TAB_WIDTH - (width % TABLE_TAB_WIDTH);
+                if (spaces <= 0) {
+                    spaces = TABLE_TAB_WIDTH;
+                }
+                builder.append(repeatChar(' ', spaces));
+                width += spaces;
+                i += Character.charCount(codePoint);
+                continue;
+            }
+
+            if (shouldEscapeTableCodePoint(codePoint)) {
+                String escaped = unicodeEscape(codePoint);
+                builder.append(escaped);
+                width += escaped.length();
+                i += Character.charCount(codePoint);
+                continue;
+            }
+
+            builder.appendCodePoint(codePoint);
+            width += displayWidth(new String(Character.toChars(codePoint)));
+            i += Character.charCount(codePoint);
+        }
+
+        return builder.toString();
+    }
+
+    private boolean shouldEscapeTableCodePoint(int codePoint) {
+        if (codePoint == 0x200B || codePoint == 0x200C || codePoint == 0x2060 || codePoint == 0xFEFF) {
+            return true;
+        }
+
+        int type = Character.getType(codePoint);
+        return type == Character.NON_SPACING_MARK
+            || type == Character.COMBINING_SPACING_MARK
+            || type == Character.ENCLOSING_MARK;
+    }
+
+    private String unicodeEscape(int codePoint) {
+        if (codePoint <= 0xFFFF) {
+            return String.format("\\u%04X", codePoint);
+        }
+
+        return String.format("\\U%08X", codePoint);
+    }
+
+    private String collapseDividerCell(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < text.length(); ) {
+            int codePoint = text.codePointAt(i);
+            if (!Character.isWhitespace(codePoint)) {
+                builder.appendCodePoint(codePoint);
+            }
+            i += Character.charCount(codePoint);
+        }
+        return builder.toString();
+    }
+
+    private String stripTableLineTrailingBreaks(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+
+        int end = text.length();
+        while (end > 0) {
+            char ch = text.charAt(end - 1);
+            if (ch == '\r' || ch == '\n') {
+                end--;
+            } else {
+                break;
+            }
+        }
+
+        return text.substring(0, end);
+    }
+
+    private int firstNonWhitespaceIndex(String text) {
+        if (text == null || text.isEmpty()) {
+            return -1;
+        }
+
+        for (int i = 0; i < text.length(); ) {
+            int codePoint = text.codePointAt(i);
+            if (!Character.isWhitespace(codePoint)) {
+                return i;
+            }
+            i += Character.charCount(codePoint);
+        }
+
+        return -1;
+    }
+
+    private boolean isTableRowPrefixChar(char ch) {
+        return ch == '|' || ch == ' ' || ch == '\t';
     }
 
     private int plainDisplayWidth(String text) {
@@ -971,81 +1304,11 @@ public class MarkdownRenderer {
     // ═══════════════════════════════════════════════════════════
 
     private int displayWidth(String text) {
-        if (text == null || text.isEmpty()) {
-            return 0;
-        }
-
-        int width = 0;
-        for (int i = 0; i < text.length(); ) {
-            int codePoint = text.codePointAt(i);
-            width += charDisplayWidth(codePoint);
-            i += Character.charCount(codePoint);
-        }
-        return width;
+        return DisplayWidthUtils.displayWidth(text);
     }
 
     private String clipToWidth(String text, int maxWidth) {
-        if (text == null || text.isEmpty() || maxWidth <= 0) {
-            return "";
-        }
-
-        if (displayWidth(text) <= maxWidth) {
-            return text;
-        }
-
-        String ellipsis = "...";
-        int targetWidth = Math.max(0, maxWidth - displayWidth(ellipsis));
-        StringBuilder builder = new StringBuilder();
-        int width = 0;
-        for (int i = 0; i < text.length(); ) {
-            int codePoint = text.codePointAt(i);
-            int charWidth = charDisplayWidth(codePoint);
-            if (width + charWidth > targetWidth) {
-                break;
-            }
-            builder.appendCodePoint(codePoint);
-            width += charWidth;
-            i += Character.charCount(codePoint);
-        }
-        builder.append(ellipsis);
-        return builder.toString();
-    }
-
-    private int charDisplayWidth(int codePoint) {
-        Character.UnicodeBlock block = Character.UnicodeBlock.of(codePoint);
-        if (block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_C
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_D
-                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT
-                || block == Character.UnicodeBlock.CJK_RADICALS_SUPPLEMENT
-                || block == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
-                || block == Character.UnicodeBlock.HIRAGANA
-                || block == Character.UnicodeBlock.KATAKANA
-                || block == Character.UnicodeBlock.KATAKANA_PHONETIC_EXTENSIONS
-                || block == Character.UnicodeBlock.HANGUL_JAMO
-                || block == Character.UnicodeBlock.HANGUL_JAMO_EXTENDED_A
-                || block == Character.UnicodeBlock.HANGUL_JAMO_EXTENDED_B
-                || block == Character.UnicodeBlock.HANGUL_SYLLABLES
-                || block == Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO
-                || block == Character.UnicodeBlock.BOPOMOFO
-                || block == Character.UnicodeBlock.BOPOMOFO_EXTENDED
-                || block == Character.UnicodeBlock.ENCLOSED_CJK_LETTERS_AND_MONTHS
-                || block == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS) {
-            return 2;
-        }
-
-        if (Character.isSupplementaryCodePoint(codePoint)) {
-            return 2;
-        }
-
-        if (Character.isISOControl(codePoint)) {
-            return 0;
-        }
-
-        return 1;
+        return DisplayWidthUtils.clipToWidth(text, maxWidth);
     }
 
     private static class TableRow {

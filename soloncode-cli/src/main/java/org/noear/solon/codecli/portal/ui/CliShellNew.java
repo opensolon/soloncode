@@ -21,7 +21,6 @@ import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.jline.utils.AttributedString;
-import org.jline.utils.InfoCmp;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
@@ -30,9 +29,11 @@ import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.ConfigLoader;
+import org.noear.solon.codecli.GlobalConfigWriter;
 import org.noear.solon.codecli.SessionManager;
-import org.noear.solon.codecli.core.AgentRuntime;
+import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.codecli.portal.ui.bottom.BottomInputController;
 import org.noear.solon.codecli.portal.ui.bottom.panel.BottomListPanel;
 import org.noear.solon.codecli.portal.ui.theme.PortalTheme;
@@ -69,19 +70,20 @@ public class CliShellNew implements Runnable {
     private static final String TOOL_BODY_PREFIX = "     ";
     // ANSI 颜色常量 - 对齐 Go TUI 主题
     private final static String BOLD = "\033[1m",
-            DIM = "\033[2m",
-            RESET = "\033[0m";
+        DIM = "\033[2m",
+        RESET = "\033[0m";
     // 图标常量 - 对齐 Go TUI
     private final static String ICON_ASSISTANT = "\u2726", // ✦
-            ICON_USER = "\u25C9", // ◉
-            ICON_PROMPT = "\u276F", // ❯
-            ICON_TOOL = "\u25C8", // ◈
-            ICON_CROSS = "\u2718", // ✘
-            ICON_WARN = "\u26A0", // ⚠
-            ICON_THINKING = "\u25CC", // ◌
-            ICON_CHECK = "\u2714"; // ✔
+        ICON_USER = "\u25C9", // ◉
+        ICON_PROMPT = "\u276F", // ❯
+        ICON_TOOL = "\u25C8", // ◈
+        ICON_CROSS = "\u2718", // ✘
+        ICON_WARN = "\u26A0", // ⚠
+        ICON_THINKING = "\u25CC", // ◌
+        ICON_CHECK = "\u2714"; // ✔
     private final static DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
-    private final AgentRuntime kernel;
+    private final HarnessEngine kernel;
+    private final AgentProperties agentProps;
     private final CommandRegistry commandRegistry;
     private final SessionManager sessionManager = new SessionManager();
     // ── 共享状态 ──
@@ -102,8 +104,6 @@ public class CliShellNew implements Runnable {
     private volatile boolean thinkingStarted = false;
     private volatile boolean thinkingLineStart = true;
     private volatile boolean lastContentLineBlank = true;
-    private volatile long thinkingStartedAt = 0L;
-    private volatile long assistantStartedAt = 0L;
     // ── 流式 Markdown 渲染器 ──
     private final MarkdownRenderer mdRenderer = new MarkdownRenderer(new MarkdownRenderer.LineOutput() {
         @Override
@@ -125,6 +125,8 @@ public class CliShellNew implements Runnable {
             return terminal == null ? 80 : terminal.getWidth();
         }
     });
+    private volatile long thinkingStartedAt = 0L;
+    private volatile long assistantStartedAt = 0L;
     private PortalTheme theme = PortalThemes.defaultTheme();
     private String ACCENT = theme.accent().ansiFg();
     private String ACCENT_BOLD = theme.accentStrong().ansiBoldFg();
@@ -155,17 +157,23 @@ public class CliShellNew implements Runnable {
     // ═══════════════════════════════════════════════════════════
     private volatile Disposable currentDisposable;
     private volatile boolean reasonAtLineStart = true;
-    public CliShellNew(AgentRuntime kernel) {
+
+    public CliShellNew(HarnessEngine kernel) {
+        this(kernel, resolveAgentProps(kernel));
+    }
+
+    public CliShellNew(HarnessEngine kernel, AgentProperties agentProps) {
         this.kernel = kernel;
+        this.agentProps = agentProps;
         this.commandRegistry = new CommandRegistry();
         registerBuiltinCommands();
 
         try {
             this.terminal = TerminalBuilder.builder()
-                    .jna(true).jansi(true).system(true)
-                    .encoding(StandardCharsets.UTF_8)
-                    .signalHandler(Terminal.SignalHandler.SIG_IGN) // 禁止默认信号处理
-                    .build();
+                .jna(true).jansi(true).system(true)
+                .encoding(StandardCharsets.UTF_8)
+                .signalHandler(Terminal.SignalHandler.SIG_IGN) // 禁止默认信号处理
+                .build();
 
             // 禁用 ISIG，让 Ctrl+C 作为普通按键传递而不是信号
             Attributes attrs = terminal.getAttributes();
@@ -180,76 +188,76 @@ public class CliShellNew implements Runnable {
             });
 
             this.bottomInputController = new BottomInputController(
-                    terminal,
-                    commandRegistry,
-                    java.nio.file.Paths.get(kernel.getProps().getWorkDir()),
-                    new BottomInputController.Listener() {
-                        @Override
-                        public boolean isTaskRunning() {
-                            return taskRunning.get();
-                        }
+                terminal,
+                commandRegistry,
+                java.nio.file.Paths.get(agentProps.getWorkspace()),
+                new BottomInputController.Listener() {
+                    @Override
+                    public boolean isTaskRunning() {
+                        return taskRunning.get();
+                    }
 
-                        @Override
-                        public void cancelRunningTask() {
-                            cancelRequested.set(true);
-                            Disposable d = currentDisposable;
-                            if (d != null && !d.isDisposed()) {
-                                d.dispose();
-                            }
+                    @Override
+                    public void cancelRunningTask() {
+                        cancelRequested.set(true);
+                        Disposable d = currentDisposable;
+                        if (d != null && !d.isDisposed()) {
+                            d.dispose();
                         }
+                    }
 
-                        @Override
-                        public int clearPendingInputs() {
-                            return clearPendingInputsInternal();
-                        }
+                    @Override
+                    public int clearPendingInputs() {
+                        return clearPendingInputsInternal();
+                    }
 
-                        @Override
-                        public List<String> getPendingInputs() {
-                            return getPendingInputsSnapshot();
-                        }
+                    @Override
+                    public List<String> getPendingInputs() {
+                        return getPendingInputsSnapshot();
+                    }
 
-                        @Override
-                        public int enqueuePendingInput(String text) {
-                            return enqueuePendingInputInternal(text);
-                        }
+                    @Override
+                    public int enqueuePendingInput(String text) {
+                        return enqueuePendingInputInternal(text);
+                    }
 
-                        @Override
-                        public int getPendingInputLimit() {
-                            return MAX_PENDING_INPUTS;
-                        }
+                    @Override
+                    public int getPendingInputLimit() {
+                        return MAX_PENDING_INPUTS;
+                    }
 
-                        @Override
-                        public boolean isHitlActive() {
-                            return HITL.isHitl(currentSession);
-                        }
+                    @Override
+                    public boolean isHitlActive() {
+                        return HITL.isHitl(currentSession);
+                    }
 
-                        @Override
-                        public void handleHitlInput(String text) {
-                            CliShellNew.this.handleHITLInput(text);
-                        }
+                    @Override
+                    public void handleHitlInput(String text) {
+                        CliShellNew.this.handleHITLInput(text);
+                    }
 
-                        @Override
-                        public void clearScreen() {
-                            if (screenRenderer != null) {
-                                screenRenderer.clearContent();
-                            }
+                    @Override
+                    public void clearScreen() {
+                        if (screenRenderer != null) {
+                            screenRenderer.clearContent();
                         }
+                    }
 
-                        @Override
-                        public void showTerminalCursor() {
-                            if (screenRenderer != null) {
-                                screenRenderer.showTerminalCursor();
-                            }
+                    @Override
+                    public void showTerminalCursor() {
+                        if (screenRenderer != null) {
+                            screenRenderer.showTerminalCursor();
                         }
+                    }
 
-                        @Override
-                        public void updateFooter(List<AttributedString> popupLines, AttributedString inputLine,
-                                org.jline.terminal.Cursor cursor) {
-                            if (statusBar != null) {
-                                statusBar.updateFooter(popupLines, inputLine, cursor);
-                            }
+                    @Override
+                    public void updateFooter(List<AttributedString> popupLines, AttributedString inputLine,
+                                             org.jline.terminal.Cursor cursor) {
+                        if (statusBar != null) {
+                            statusBar.updateFooter(popupLines, inputLine, cursor);
                         }
-                    });
+                    }
+                });
             applyTheme(resolveConfiguredTheme());
             this.reader = bottomInputController.createReader();
 
@@ -258,9 +266,18 @@ public class CliShellNew implements Runnable {
         }
     }
 
+    private static AgentProperties resolveAgentProps(HarnessEngine kernel) {
+        if (kernel.getProps() instanceof AgentProperties) {
+            return (AgentProperties) kernel.getProps();
+        }
+
+        throw new IllegalArgumentException("CliShellNew requires AgentProperties");
+    }
+
     private static String repeatChar(char c, int count) {
-        if (count <= 0)
+        if (count <= 0) {
             return "";
+        }
         StringBuilder sb = new StringBuilder(count);
         for (int i = 0; i < count; i++) {
             sb.append(c);
@@ -298,7 +315,7 @@ public class CliShellNew implements Runnable {
     }
 
     private PortalTheme resolveConfiguredTheme() {
-        String configured = kernel.getProps().getUiTheme();
+        String configured = agentProps.getUiTheme();
         PortalTheme resolved = PortalThemes.find(configured);
         if (resolved != null) {
             return resolved;
@@ -334,7 +351,7 @@ public class CliShellNew implements Runnable {
         commandRegistry.register("/clear", "清空当前会话历史", ctx -> {
             AgentSession session = ctx.getSession();
             session.clear();
-            sessionManager.clearPortalEvents(session.getSessionId(), kernel.getProps().getWorkDir());
+            sessionManager.clearPortalEvents(session.getSessionId(), agentProps.getWorkspace());
             if (screenRenderer != null) {
                 screenRenderer.clearContent();
             }
@@ -390,8 +407,8 @@ public class CliShellNew implements Runnable {
             }
 
             SessionManager.SessionMeta selected = bottomInputController.selectFromList(
-                    "/resume",
-                    buildSessionSelectionItems(sessions));
+                "/resume",
+                buildSessionSelectionItems(sessions));
             if (selected != null) {
                 resumeSession(selected, true);
             } else {
@@ -401,8 +418,8 @@ public class CliShellNew implements Runnable {
 
         commandRegistry.register("/model", "显示当前模型信息", ctx -> {
             String model = kernel.getProps().getChatModel() != null
-                    ? kernel.getProps().getChatModel().getModel()
-                    : "未配置";
+                ? kernel.getProps().getChatModel().getModel()
+                : "未配置";
             printAboveLine(DIM + "Model: " + RESET + BOLD + model + RESET);
         });
 
@@ -414,9 +431,7 @@ public class CliShellNew implements Runnable {
                     printAboveLine(ERROR_COLOR + "  Unknown theme: " + RESET + arg);
                     return;
                 }
-                applyTheme(matched);
-                kernel.getProps().setUiTheme(matched.name());
-                printAboveLine(DIM + "  Theme: " + RESET + TEXT + BOLD + matched.name() + RESET);
+                persistThemeSelection(matched);
                 return;
             }
 
@@ -430,17 +445,17 @@ public class CliShellNew implements Runnable {
         });
 
         commandRegistry.register("/thinking", "切换思考内容显示", ctx -> {
-            kernel.getProps().setThinkPrinted(!kernel.getProps().isThinkPrinted());
-            String mode = kernel.getProps().isThinkPrinted() ? "ON" : "OFF";
+            agentProps.setThinkPrinted(!agentProps.isThinkPrinted());
+            String mode = agentProps.isThinkPrinted() ? "ON" : "OFF";
             printAboveLine(DIM + "  Thinking display: " + RESET + BOLD + mode + RESET);
         });
 
         commandRegistry.register("/details", "切换工具调用详情显示", ctx -> {
-            kernel.getProps().setCliPrintSimplified(!kernel.getProps().isCliPrintSimplified());
-            String mode = kernel.getProps().isCliPrintSimplified() ? "simplified" : "detailed";
+            agentProps.setCliPrintSimplified(!agentProps.isCliPrintSimplified());
+            String mode = agentProps.isCliPrintSimplified() ? "simplified" : "detailed";
             printAboveLine(DIM + "  Tool details: " + RESET + BOLD + mode + RESET);
             if (statusBar != null) {
-                statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
+                statusBar.setCompactMode(agentProps.isCliPrintSimplified());
             }
         });
 
@@ -461,7 +476,7 @@ public class CliShellNew implements Runnable {
         if (System.getProperty("os.name").toLowerCase().contains("win")) {
             try {
                 new ProcessBuilder("cmd", "/c", "chcp", "65001")
-                        .inheritIO().start().waitFor();
+                    .inheritIO().start().waitFor();
             } catch (Exception ignored) {
             }
         }
@@ -477,8 +492,9 @@ public class CliShellNew implements Runnable {
                     break;
                 }
 
-                if (Assert.isEmpty(input))
+                if (Assert.isEmpty(input)) {
                     continue;
+                }
 
                 if (!isSystemCommand(currentSession, input)) {
                     // 延迟创建：第一条消息时才正式创建会话
@@ -496,6 +512,7 @@ public class CliShellNew implements Runnable {
             bottomInputController.close();
         }
     }
+    
 
     private void startAgentTask(AgentSession session, String input) {
         taskRunning.set(true);
@@ -515,74 +532,87 @@ public class CliShellNew implements Runnable {
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
         final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
-        currentDisposable = kernel.stream(session.getSessionId(), Prompt.of(input))
-                .subscribeOn(Schedulers.boundedElastic())
-                .doOnNext(chunk -> {
-                    if (cancelRequested.get())
-                        return;
+        String workDir = String.valueOf(session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, agentProps.getWorkspace()));
+        session.attrs().putIfAbsent(HarnessEngine.ATTR_CWD, workDir);
 
-                    if (chunk instanceof ReasonChunk) {
-                        onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
-                    } else if (chunk instanceof ActionEndChunk) {
-                        onActionEndChunk((ActionEndChunk) chunk, isFirstReasonChunk);
-                    } else if (chunk instanceof ReActChunk) {
-                        onFinalChunk((ReActChunk) chunk, isFirstReasonChunk, isFirstConversation);
-                    }
-                })
-                .doOnError(e -> {
-                    printAboveLine(ERROR_COLOR + "  " + ICON_CROSS + " Error: " + RESET + e.getMessage());
-                })
-                .doFinally(signal -> {
-                    flushLineBuffer();
+        currentDisposable = kernel.getMainAgent()
+            .prompt(Prompt.of(input))
+            .session(session)
+            .options(o -> {
+                o.toolContextPut(HarnessEngine.ATTR_CWD, workDir);
+            })
+            .stream()
+            .subscribeOn(Schedulers.boundedElastic())
+            .doOnNext(chunk -> {
+                if (cancelRequested.get()) {
+                    return;
+                }
 
-                    boolean wasCancelled = cancelRequested.getAndSet(false);
-                    taskRunning.set(false);
-                    currentDisposable = null;
+                if (chunk instanceof ReasonChunk) {
+                    onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
+                } else if (chunk instanceof ActionEndChunk) {
+                    onActionEndChunk((ActionEndChunk) chunk, isFirstReasonChunk);
+                } else if (chunk instanceof ReActChunk) {
+                    onFinalChunk((ReActChunk) chunk, isFirstReasonChunk, isFirstConversation);
+                }
+            })
+            .doOnError(e -> {
+                printAboveLine(ERROR_COLOR + "  " + ICON_CROSS + " Error: " + RESET + e.getMessage());
+            })
+            .doFinally(signal -> {
+                flushLineBuffer();
 
-                    if (wasCancelled) {
-                        printAboveLine(WARN + "  [Task cancelled]" + RESET);
-                        int discarded = clearPendingInputsInternal();
-                        refreshBottomFooter();
-                        if (discarded > 0) {
-                            printAboveLine(DIM + "  (" + discarded + " 条待发送输入已丢弃)" + RESET);
-                        }
-                        session.addMessage(ChatMessage.ofAssistant("Task interrupted by user."));
-                        // 状态栏：回到 idle
-                        if (statusBar != null) {
-                            statusBar.taskEnd(0);
-                        }
-                    }
+                boolean wasCancelled = cancelRequested.getAndSet(false);
+                taskRunning.set(false);
+                currentDisposable = null;
 
-                    // HITL 检查
-                    if (HITL.isHitl(session)) {
-                        showHITLPrompt(session);
-                        return;
-                    }
-
-                    // 待发送输入 → 渲染用户历史 + 合并为一条发送
-                    List<String> queuedInputs = drainPendingInputs();
+                if (wasCancelled) {
+                    printAboveLine(WARN + "  [Task cancelled]" + RESET);
+                    int discarded = clearPendingInputsInternal();
                     refreshBottomFooter();
-                    if (!queuedInputs.isEmpty() && !wasCancelled) {
-                        // 显示每条待发送输入作为用户历史
-                        for (String pi : queuedInputs) {
-                            printUserInput(pi);
-                        }
-                        String merged = String.join("\n", queuedInputs);
-                        startAgentTask(session, merged);
+                    if (discarded > 0) {
+                        printAboveLine(DIM + "  (" + discarded + " 条待发送输入已丢弃)" + RESET);
                     }
-                })
-                .subscribe();
+                    session.addMessage(ChatMessage.ofAssistant("Task interrupted by user."));
+                    // 状态栏：回到 idle
+                    if (statusBar != null) {
+                        statusBar.taskEnd(0);
+                    }
+                }
+
+                // HITL 检查
+                if (HITL.isHitl(session)) {
+                    showHITLPrompt(session);
+                    return;
+                }
+
+                // 待发送输入 → 渲染用户历史 + 合并为一条发送
+                List<String> queuedInputs = drainPendingInputs();
+                refreshBottomFooter();
+                if (!queuedInputs.isEmpty() && !wasCancelled) {
+                    // 显示每条待发送输入作为用户历史
+                    for (String pi : queuedInputs) {
+                        printUserInput(pi);
+                    }
+                    String merged = String.join("\n", queuedInputs);
+                    startAgentTask(session, merged);
+                }
+            })
+            .subscribe();
     }
 
     // ═══════════════════════════════════════════════════════════
     // 流式回调 — 全部通过行缓冲 + printAbove
     // ═══════════════════════════════════════════════════════════
 
-    /** 后台线程调用 — 通过 printAbove 显示 HITL 提示 */
+    /**
+     * 后台线程调用 — 通过 printAbove 显示 HITL 提示
+     */
     private void showHITLPrompt(AgentSession session) {
         HITLTask task = HITL.getPendingTask(session);
-        if (task == null)
+        if (task == null) {
             return;
+        }
 
         // 状态栏同步
         if (statusBar != null) {
@@ -593,7 +623,9 @@ public class CliShellNew implements Runnable {
         printAboveLine(MUTED + "  " + repeatChar('\u2500', 20) + RESET);
         printAboveLine(WARN + "  " + ICON_WARN + " Permission Required" + RESET);
         if ("bash".equals(task.getToolName())) {
-            printAboveLine(TOOL_META + "     Command: " + RESET + TOOL_VALUE + String.valueOf(task.getArgs().get("command")) + RESET);
+            printAboveLine(
+                TOOL_META + "     Command: " + RESET + TOOL_VALUE + String.valueOf(task.getArgs().get("command")) +
+                    RESET);
         } else {
             printAboveLine(TOOL_META + "     Tool: " + RESET + TOOL_VALUE + task.getToolName() + RESET);
         }
@@ -604,11 +636,14 @@ public class CliShellNew implements Runnable {
         printAboveLine("");
     }
 
-    /** 主线程调用 — 处理用户在 readLine() 中输入的 HITL 选择 */
+    /**
+     * 主线程调用 — 处理用户在 readLine() 中输入的 HITL 选择
+     */
     private void handleHITLInput(String input) {
         HITLTask task = HITL.getPendingTask(currentSession);
-        if (task == null)
+        if (task == null) {
             return;
+        }
 
         String choice = input.trim().toLowerCase();
         if ("allow".equals(choice) || "y".equals(choice) || "yes".equals(choice) || "a".equals(choice)) {
@@ -623,13 +658,13 @@ public class CliShellNew implements Runnable {
     }
 
     private void onFinalChunk(ReActChunk react, AtomicBoolean isFirstReasonChunk,
-            AtomicBoolean isFirstConversation) {
+                              AtomicBoolean isFirstConversation) {
         String delta = clearThink(react.getContent());
         if (Assert.isNotEmpty(delta) && (react.isNormal() == false || isFirstReasonChunk.get())) {
             onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
         }
 
-        if (isFirstReasonChunk.get() && kernel.getProps().isThinkPrinted()) {
+        if (isFirstReasonChunk.get() && agentProps.isThinkPrinted()) {
             String thinkingFallback = consumeThinkingTranscript();
             if (Assert.isNotEmpty(thinkingFallback)) {
                 stopThinkingOutput(true);
@@ -663,7 +698,7 @@ public class CliShellNew implements Runnable {
     }
 
     private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk,
-            AtomicBoolean isFirstConversation) {
+                               AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             boolean isThinking = reason.getMessage().isThinking();
 
@@ -672,7 +707,7 @@ public class CliShellNew implements Runnable {
                     statusBar.updateStatus("thinking");
                 }
 
-                if (!kernel.getProps().isThinkPrinted()) {
+                if (!agentProps.isThinkPrinted()) {
                     stopThinkingOutput(false);
                     return;
                 }
@@ -784,7 +819,7 @@ public class CliShellNew implements Runnable {
             sessionManager.bootstrapPortalEvents(meta);
         }
 
-        sessionManager.appendPortalEvent(sessionId, kernel.getProps().getWorkDir(), event);
+        sessionManager.appendPortalEvent(sessionId, agentProps.getWorkspace(), event);
     }
 
     private void persistThinkingEventIfNeeded() {
@@ -818,7 +853,7 @@ public class CliShellNew implements Runnable {
     }
 
     private void onReasonChunkDo(String delta, AtomicBoolean isFirstReasonChunk,
-            AtomicBoolean isFirstConversation) {
+                                 AtomicBoolean isFirstConversation) {
         if (Assert.isNotEmpty(delta)) {
             if (isFirstReasonChunk.get()) {
                 String trimmed = delta.replaceAll("^[\\s\\n]+", "");
@@ -857,7 +892,7 @@ public class CliShellNew implements Runnable {
         if (Assert.isNotEmpty(action.getToolName())) {
             final String fullToolName;
 
-            if(kernel.getName().equals(action.getAgentName())){
+            if (kernel.getName().equals(action.getAgentName())) {
                 fullToolName = action.getToolName();
             } else {
                 fullToolName = action.getAgentName() + "/" + action.getToolName();
@@ -877,16 +912,16 @@ public class CliShellNew implements Runnable {
             long toolTimestamp = System.currentTimeMillis();
             printTimedHeader(ICON_TOOL, fullToolName, TOOL_TITLE, toLocalDateTime(toolTimestamp));
 
-            List<String> primaryLines = kernel.getProps().isCliPrintSimplified()
-                    ? buildCompactToolPrimaryLines(argsStr, MAX_TOOL_PRIMARY_LINES)
-                    : buildDetailedToolPrimaryLines(argSegments, MAX_TOOL_PRIMARY_LINES);
+            List<String> primaryLines = agentProps.isCliPrintSimplified()
+                ? buildCompactToolPrimaryLines(argsStr, MAX_TOOL_PRIMARY_LINES)
+                : buildDetailedToolPrimaryLines(argSegments, MAX_TOOL_PRIMARY_LINES);
             for (String line : primaryLines) {
                 printAboveLine(line);
             }
 
             List<String> resultLines = buildToolResultLines(content, MAX_TOOL_RESULT_LINES);
             if (!resultLines.isEmpty()) {
-                if (!kernel.getProps().isCliPrintSimplified()) {
+                if (!agentProps.isCliPrintSimplified()) {
                     printAboveLine("");
                 }
                 for (String line : resultLines) {
@@ -1088,8 +1123,8 @@ public class CliShellNew implements Runnable {
         }
 
         return TOOL_META + key + RESET
-                + SOFT + "=" + RESET
-                + TOOL_VALUE + value + RESET;
+            + SOFT + "=" + RESET
+            + TOOL_VALUE + value + RESET;
     }
 
     private String trimToolBodyPrefix(String text) {
@@ -1125,14 +1160,14 @@ public class CliShellNew implements Runnable {
 
         for (int i = 0; i < limit; i++) {
             lines.add(TOOL_META + TOOL_BODY_PREFIX + "\u2502 " + RESET
-                    + TOOL_PREVIEW
-                    + clipToWidth(rawLines[i], Math.max(10, terminal.getWidth() - displayWidth(TOOL_BODY_PREFIX) - 2))
-                    + RESET);
+                + TOOL_PREVIEW
+                + clipToWidth(rawLines[i], Math.max(10, terminal.getWidth() - displayWidth(TOOL_BODY_PREFIX) - 2))
+                + RESET);
         }
 
         if (truncated) {
             lines.add(TOOL_META + TOOL_BODY_PREFIX + "\u2502 " + RESET
-                    + TOOL_RESULT + "... +" + (rawLines.length - limit) + " more lines" + RESET);
+                + TOOL_RESULT + "... +" + (rawLines.length - limit) + " more lines" + RESET);
         }
 
         return lines;
@@ -1212,14 +1247,18 @@ public class CliShellNew implements Runnable {
         return lines;
     }
 
-    /** 向行缓冲追加内容（不立即输出） */
+    /**
+     * 向行缓冲追加内容（不立即输出）
+     */
     private void appendToLineBuffer(String text) {
         synchronized (lineBuffer) {
             lineBuffer.append(text);
         }
     }
 
-    /** 将行缓冲内容 flush 到 printAbove（一整行） */
+    /**
+     * 将行缓冲内容 flush 到 printAbove（一整行）
+     */
     private void flushLineBuffer() {
         synchronized (lineBuffer) {
             if (lineBuffer.length() > 0) {
@@ -1229,7 +1268,9 @@ public class CliShellNew implements Runnable {
         }
     }
 
-    /** 直接输出到主缓冲区。底部输入已自管，不能再使用 printAbove。 */
+    /**
+     * 直接输出到主缓冲区。底部输入已自管，不能再使用 printAbove。
+     */
     private void printAboveLine(String line) {
         lastContentLineBlank = isVisualBlank(line);
         if (screenRenderer != null) {
@@ -1285,7 +1326,7 @@ public class CliShellNew implements Runnable {
             return titleStyle + clippedLeft + RESET;
         }
         return titleStyle + clippedLeft + RESET
-                + TIME_COLOR + timeSuffix + RESET;
+            + TIME_COLOR + timeSuffix + RESET;
     }
 
     private LocalDateTime toLocalDateTime(long epochMillis) {
@@ -1342,26 +1383,26 @@ public class CliShellNew implements Runnable {
     private int charDisplayWidth(int codePoint) {
         Character.UnicodeBlock block = Character.UnicodeBlock.of(codePoint);
         if (block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_C
-                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_D
-                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT
-                || block == Character.UnicodeBlock.CJK_RADICALS_SUPPLEMENT
-                || block == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
-                || block == Character.UnicodeBlock.HIRAGANA
-                || block == Character.UnicodeBlock.KATAKANA
-                || block == Character.UnicodeBlock.KATAKANA_PHONETIC_EXTENSIONS
-                || block == Character.UnicodeBlock.HANGUL_JAMO
-                || block == Character.UnicodeBlock.HANGUL_JAMO_EXTENDED_A
-                || block == Character.UnicodeBlock.HANGUL_JAMO_EXTENDED_B
-                || block == Character.UnicodeBlock.HANGUL_SYLLABLES
-                || block == Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO
-                || block == Character.UnicodeBlock.BOPOMOFO
-                || block == Character.UnicodeBlock.BOPOMOFO_EXTENDED
-                || block == Character.UnicodeBlock.ENCLOSED_CJK_LETTERS_AND_MONTHS
-                || block == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS) {
+            || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+            || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+            || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_C
+            || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_D
+            || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+            || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT
+            || block == Character.UnicodeBlock.CJK_RADICALS_SUPPLEMENT
+            || block == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
+            || block == Character.UnicodeBlock.HIRAGANA
+            || block == Character.UnicodeBlock.KATAKANA
+            || block == Character.UnicodeBlock.KATAKANA_PHONETIC_EXTENSIONS
+            || block == Character.UnicodeBlock.HANGUL_JAMO
+            || block == Character.UnicodeBlock.HANGUL_JAMO_EXTENDED_A
+            || block == Character.UnicodeBlock.HANGUL_JAMO_EXTENDED_B
+            || block == Character.UnicodeBlock.HANGUL_SYLLABLES
+            || block == Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO
+            || block == Character.UnicodeBlock.BOPOMOFO
+            || block == Character.UnicodeBlock.BOPOMOFO_EXTENDED
+            || block == Character.UnicodeBlock.ENCLOSED_CJK_LETTERS_AND_MONTHS
+            || block == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS) {
             return 2;
         }
 
@@ -1399,36 +1440,47 @@ public class CliShellNew implements Runnable {
         int selectedIndex = Math.max(0, PortalThemes.names().indexOf(theme.name()));
 
         PortalTheme selected = bottomInputController.selectFromList(
-                "/theme",
-                items,
-                selectedIndex,
-                new BottomInputController.SelectionCallbacks<PortalTheme>() {
-                    @Override
-                    public void onFocus(PortalTheme value) {
-                        if (value != null) {
-                            applyTheme(value);
-                        }
+            "/theme",
+            items,
+            selectedIndex,
+            new BottomInputController.SelectionCallbacks<PortalTheme>() {
+                @Override
+                public void onFocus(PortalTheme value) {
+                    if (value != null) {
+                        applyTheme(value);
                     }
+                }
 
-                    @Override
-                    public void onConfirm(PortalTheme value) {
-                        if (value != null) {
-                            applyTheme(value);
-                        }
+                @Override
+                public void onConfirm(PortalTheme value) {
+                    if (value != null) {
+                        applyTheme(value);
                     }
+                }
 
-                    @Override
-                    public void onCancel() {
-                        applyTheme(originalTheme);
-                    }
-        });
+                @Override
+                public void onCancel() {
+                    applyTheme(originalTheme);
+                }
+            });
 
         if (selected != null) {
-            applyTheme(selected);
-            kernel.getProps().setUiTheme(selected.name());
-            printAboveLine(DIM + "  Theme: " + RESET + TEXT + BOLD + selected.name() + RESET);
+            persistThemeSelection(selected);
         } else {
             printAboveLine(DIM + "  Cancelled." + RESET);
+        }
+    }
+
+    private void persistThemeSelection(PortalTheme selected) {
+        applyTheme(selected);
+        agentProps.setUiTheme(selected.name());
+        printAboveLine(DIM + "  Theme: " + RESET + TEXT + BOLD + selected.name() + RESET);
+
+        try {
+            GlobalConfigWriter.persistUiTheme(selected.name());
+        } catch (RuntimeException e) {
+            LOG.warn("Persist theme to global config failed", e);
+            printAboveLine(WARN + "  Theme save failed: " + RESET + e.getMessage());
         }
     }
 
@@ -1441,10 +1493,10 @@ public class CliShellNew implements Runnable {
                 secondary += " · current";
             }
             items.add(new BottomListPanel.Item<PortalTheme>(
-                    item,
-                    item.name(),
-                    secondary,
-                    current ? BottomListPanel.Tone.ACCENT : BottomListPanel.Tone.TEXT));
+                item,
+                item.name(),
+                secondary,
+                current ? BottomListPanel.Tone.ACCENT : BottomListPanel.Tone.TEXT));
         }
         return items;
     }
@@ -1456,13 +1508,13 @@ public class CliShellNew implements Runnable {
         int idx = 1;
         for (SessionManager.SessionMeta m : sessions) {
             boolean isCurrent = currentSession != null
-                    && currentSession.getSessionId().equals(m.id);
+                && currentSession.getSessionId().equals(m.id);
             String marker = isCurrent ? ACCENT_BOLD + " * " + RESET : "   ";
             String title = displaySessionTitle(m);
             String secondary = buildSessionSecondary(m);
             printAboveLine(marker + ACCENT_BOLD + idx + RESET
-                    + MUTED + "  [" + m.id + "]  " + RESET
-                    + TEXT + title + RESET);
+                + MUTED + "  [" + m.id + "]  " + RESET
+                + TEXT + title + RESET);
             printAboveLine("      " + MUTED + secondary + RESET);
             idx++;
         }
@@ -1477,7 +1529,7 @@ public class CliShellNew implements Runnable {
         String sid = currentSession.getSessionId();
         if (sid.startsWith("_tmp_")) {
             // First real message — create a persistent session
-            String newId = sessionManager.createSession(kernel.getProps().getWorkDir());
+            String newId = sessionManager.createSession(agentProps.getWorkspace());
             sessionManager.updateTitle(newId, firstMessage);
             sessionManager.touch(newId);
             currentSession = kernel.getSession(newId);
@@ -1501,8 +1553,8 @@ public class CliShellNew implements Runnable {
 
         SessionManager.SessionMeta byId = sessionManager.getSessionMeta(input);
         if (byId != null
-                && kernel.getProps().getWorkDir().equals(byId.cwd)
-                && sessionManager.hasSessionData(byId)) {
+            && agentProps.getWorkspace().equals(byId.cwd)
+            && sessionManager.hasSessionData(byId)) {
             return byId;
         }
 
@@ -1510,7 +1562,7 @@ public class CliShellNew implements Runnable {
             int idx = Integer.parseInt(input);
             if (idx < 1 || idx > sessions.size()) {
                 printAboveLine(ERROR_COLOR + "  Invalid number: " + idx
-                        + " (1-" + sessions.size() + ")" + RESET);
+                    + " (1-" + sessions.size() + ")" + RESET);
                 return null;
             }
             return sessions.get(idx - 1);
@@ -1521,18 +1573,18 @@ public class CliShellNew implements Runnable {
     }
 
     private List<BottomListPanel.Item<SessionManager.SessionMeta>> buildSessionSelectionItems(
-            List<SessionManager.SessionMeta> sessions) {
+        List<SessionManager.SessionMeta> sessions) {
         List<BottomListPanel.Item<SessionManager.SessionMeta>> items =
-                new ArrayList<BottomListPanel.Item<SessionManager.SessionMeta>>();
+            new ArrayList<BottomListPanel.Item<SessionManager.SessionMeta>>();
 
         for (SessionManager.SessionMeta meta : sessions) {
             String title = displaySessionTitle(meta);
             String secondary = buildSessionSecondary(meta);
             items.add(new BottomListPanel.Item<SessionManager.SessionMeta>(
-                    meta,
-                    title,
-                    secondary,
-                    BottomListPanel.Tone.TEXT));
+                meta,
+                title,
+                secondary,
+                BottomListPanel.Tone.TEXT));
         }
 
         return items;
@@ -1585,7 +1637,7 @@ public class CliShellNew implements Runnable {
     }
 
     private boolean shouldResumeSessionOnStartup() {
-        String mode = kernel.getProps().getStartupSessionMode();
+        String mode = agentProps.getStartupSessionMode();
         if (Assert.isEmpty(mode)) {
             return true;
         }
@@ -1612,7 +1664,7 @@ public class CliShellNew implements Runnable {
     }
 
     private List<SessionManager.SessionMeta> getRestorableSessionsForCurrentDir() {
-        return sessionManager.listRestorableSessions(kernel.getProps().getWorkDir());
+        return sessionManager.listRestorableSessions(agentProps.getWorkspace());
     }
 
     private String displaySessionTitle(SessionManager.SessionMeta meta) {
@@ -1648,7 +1700,7 @@ public class CliShellNew implements Runnable {
         List<String> lines = new ArrayList<String>();
         if (announce) {
             lines.add(DIM + "  Resumed: " + RESET + TEXT + BOLD + displaySessionTitle(meta) + RESET
-                    + DIM + " · " + meta.id + RESET);
+                + DIM + " · " + meta.id + RESET);
         }
 
         List<SessionManager.SessionEvent> events = sessionManager.readPortalEvents(meta);
@@ -1767,16 +1819,16 @@ public class CliShellNew implements Runnable {
         lines.add(buildTimedHeader(ICON_TOOL, toolName, TOOL_TITLE, time));
 
         List<String> detailSegments = event.argSegments == null ? new ArrayList<String>() : event.argSegments;
-        List<String> primaryLines = kernel.getProps().isCliPrintSimplified()
-                ? buildCompactToolPrimaryLines(event.argsText, MAX_TOOL_PRIMARY_LINES)
-                : buildDetailedToolPrimaryLines(detailSegments.isEmpty() && Assert.isNotEmpty(event.argsText)
-                ? java.util.Collections.singletonList(event.argsText)
-                : detailSegments, MAX_TOOL_PRIMARY_LINES);
+        List<String> primaryLines = agentProps.isCliPrintSimplified()
+            ? buildCompactToolPrimaryLines(event.argsText, MAX_TOOL_PRIMARY_LINES)
+            : buildDetailedToolPrimaryLines(detailSegments.isEmpty() && Assert.isNotEmpty(event.argsText)
+                                            ? java.util.Collections.singletonList(event.argsText)
+                                            : detailSegments, MAX_TOOL_PRIMARY_LINES);
         lines.addAll(primaryLines);
 
         List<String> resultLines = buildToolResultLines(event.content, MAX_TOOL_RESULT_LINES);
         if (!resultLines.isEmpty()) {
-            if (!kernel.getProps().isCliPrintSimplified()) {
+            if (!agentProps.isCliPrintSimplified()) {
                 lines.add("");
             }
             lines.addAll(resultLines);
@@ -1938,13 +1990,13 @@ public class CliShellNew implements Runnable {
         });
         statusBar.setTheme(theme);
         String modelName = kernel.getProps().getChatModel() != null
-                ? kernel.getProps().getChatModel().getModel()
-                : "unknown";
+            ? kernel.getProps().getChatModel().getModel()
+            : "unknown";
         statusBar.setModelName(modelName);
-        statusBar.setWorkDir(new File(kernel.getProps().getWorkDir()).getAbsolutePath());
+        statusBar.setWorkDir(new File(agentProps.getWorkspace()).getAbsolutePath());
         statusBar.setVersion(kernel.getVersion());
         statusBar.setSessionId("cli");
-        statusBar.setCompactMode(kernel.getProps().isCliPrintSimplified());
+        statusBar.setCompactMode(agentProps.isCliPrintSimplified());
         statusBar.setup();
         statusBar.setJLineLock(terminalLock);
         screenRenderer.setTerminalLock(terminalLock);
@@ -1968,28 +2020,28 @@ public class CliShellNew implements Runnable {
             LOG.warn("Cannot access JLine internal lock, fallback terminal lock will be used", e);
         }
 
-        String path = new File(kernel.getProps().getWorkDir()).getAbsolutePath();
+        String path = new File(agentProps.getWorkspace()).getAbsolutePath();
         String version = kernel.getVersion();
         List<String> welcomeLines = new ArrayList<String>();
 
         // ── ASCII Art Logo (对齐 Go TUI renderWelcomeLogo) ──
         welcomeLines.add("");
         welcomeLines.add(ACCENT_BOLD + "   ███████  ██████  ██      ██████  ███    ██" + RESET + SOFT + BOLD
-                + "   ██████  ██████  ██████  ███████" + RESET);
+            + "   ██████  ██████  ██████  ███████" + RESET);
         welcomeLines.add(ACCENT_BOLD + "   ██      ██    ██ ██     ██    ██ ████   ██" + RESET + SOFT + BOLD
-                + "  ██      ██    ██ ██   ██ ██" + RESET);
+            + "  ██      ██    ██ ██   ██ ██" + RESET);
         welcomeLines.add(ACCENT_BOLD + "   ███████ ██    ██ ██     ██    ██ ██ ██  ██" + RESET + SOFT + BOLD
-                + "  ██      ██    ██ ██   ██ █████" + RESET);
+            + "  ██      ██    ██ ██   ██ █████" + RESET);
         welcomeLines.add(ACCENT_BOLD + "        ██ ██    ██ ██     ██    ██ ██  ██ ██" + RESET + SOFT + BOLD
-                + "  ██      ██    ██ ██   ██ ██" + RESET);
+            + "  ██      ██    ██ ██   ██ ██" + RESET);
         welcomeLines.add(ACCENT_BOLD + "   ███████  ██████  ██████  ██████  ██   ████" + RESET + SOFT + BOLD
-                + "   ██████  ██████  ██████  ███████" + RESET);
+            + "   ██████  ██████  ██████  ███████" + RESET);
         welcomeLines.add("");
 
         // ── Meta info ──
         String configSource = ConfigLoader.loadConfig() != null
-                ? ConfigLoader.loadConfig().toAbsolutePath().toString()
-                : "(built-in)";
+            ? ConfigLoader.loadConfig().toAbsolutePath().toString()
+            : "(built-in)";
 
         welcomeLines.add(SOFT + "  Model   " + RESET + TEXT + BOLD + modelName + RESET);
         welcomeLines.add(SOFT + "  Dir     " + RESET + SOFT + path + RESET);
@@ -1997,11 +2049,13 @@ public class CliShellNew implements Runnable {
         welcomeLines.add(SOFT + "  Ver     " + RESET + SOFT + version + RESET);
         welcomeLines.add("");
         welcomeLines.add(MUTED + "  " + ICON_PROMPT + " " + RESET + ACCENT + "Tip" + RESET + SOFT + " Type "
-                + RESET + TEXT + BOLD + "/help" + RESET + SOFT + " to see all commands" + RESET);
+            + RESET + TEXT + BOLD + "/help" + RESET + SOFT + " to see all commands" + RESET);
         welcomeLines.add(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Use " + RESET + TEXT + BOLD + "Tab"
-                + RESET + SOFT + " for auto-completion, " + RESET + TEXT + BOLD + "\\" + RESET + SOFT + "+Enter for newline" + RESET);
+            + RESET + SOFT + " for auto-completion, " + RESET + TEXT + BOLD + "\\" + RESET + SOFT +
+            "+Enter for newline" + RESET);
         welcomeLines.add(MUTED + "  " + ICON_PROMPT + " " + RESET + SOFT + "Press " + RESET + TEXT + BOLD
-                + "Esc" + RESET + SOFT + "/" + RESET + TEXT + BOLD + "Ctrl+C" + RESET + SOFT + " to cancel operation" + RESET);
+            + "Esc" + RESET + SOFT + "/" + RESET + TEXT + BOLD + "Ctrl+C" + RESET + SOFT + " to cancel operation" +
+            RESET);
         welcomeLines.add("");
         welcomeLines.add(MUTED + "  " + repeatChar('\u2500', 40) + RESET);
         welcomeLines.add("");
