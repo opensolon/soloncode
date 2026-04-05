@@ -6,6 +6,7 @@ import lombok.Setter;
 import org.noear.solon.ai.harness.HarnessProperties;
 
 import java.nio.file.Paths;
+import java.util.Map;
 
 /**
  * 代理属性
@@ -16,6 +17,7 @@ import java.nio.file.Paths;
 @Getter
 @Setter
 public class AgentProperties extends HarnessProperties {
+
     public final static String OPENCODE_SKILLS = ".opencode/skills/";
     public final static String CLAUDE_SKILLS = ".claude/skills/";
 
@@ -43,7 +45,9 @@ public class AgentProperties extends HarnessProperties {
 
     private boolean wsEnabled = false;
     private String wsEndpoint = "/ws";
-
+    private String startupSessionMode = "resume";
+    private String uiTheme = "solon";
+    private Map<String, Map<String, String>> uiThemes;
     public AgentProperties() {
         super(".soloncode/");
 

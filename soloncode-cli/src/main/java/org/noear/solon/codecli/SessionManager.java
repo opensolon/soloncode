@@ -1,5 +1,6 @@
 package org.noear.solon.codecli;
 
+import org.noear.snack4.ONode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,6 +8,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -112,10 +115,280 @@ public class SessionManager {
     }
 
     /**
+     * 列出可恢复的会话（即消息文件存在）
+     */
+    public List<SessionMeta> listRestorableSessions(String filterCwd) {
+        List<SessionMeta> sessions = listSessions(filterCwd);
+        if (sessions.isEmpty()) {
+            return sessions;
+        }
+
+        List<SessionMeta> result = new ArrayList<SessionMeta>();
+        for (SessionMeta meta : sessions) {
+            if (hasSessionData(meta)) {
+                result.add(meta);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 获取指定目录最近可恢复的会话
+     */
+    public SessionMeta getLatestRestorableSession(String filterCwd) {
+        List<SessionMeta> sessions = listRestorableSessions(filterCwd);
+        return sessions.isEmpty() ? null : sessions.get(0);
+    }
+
+    /**
      * 获取单个会话的 meta
      */
     public SessionMeta getSessionMeta(String sessionId) {
         return readMeta(sessionsDir.resolve(sessionId));
+    }
+
+    public boolean hasSessionData(SessionMeta meta) {
+        return resolveMessageFile(meta) != null;
+    }
+
+    public boolean hasPortalEvents(SessionMeta meta) {
+        Path file = resolvePortalEventFile(meta);
+        if (file == null || !Files.exists(file)) {
+            return false;
+        }
+
+        try {
+            return Files.size(file) > 0;
+        } catch (IOException e) {
+            LOG.warn("Failed to inspect portal event file: {}", file, e);
+            return false;
+        }
+    }
+
+    public List<SessionMessage> readMessages(SessionMeta meta) {
+        Path file = resolveMessageFile(meta);
+        if (file == null || !Files.exists(file)) {
+            return Collections.emptyList();
+        }
+
+        List<SessionMessage> messages = new ArrayList<SessionMessage>();
+        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) {
+                    continue;
+                }
+
+                ONode node = ONode.ofJson(line);
+                SessionMessage message = new SessionMessage();
+                message.role = node.get("role").getString();
+                message.content = node.get("content").getString();
+                message.contentRaw = node.get("contentRaw").getString();
+                message.thinking = node.get("isThinking").getBoolean();
+
+                if (isBlank(message.content) && !isBlank(message.contentRaw)) {
+                    message.content = message.contentRaw;
+                }
+
+                if (!isBlank(message.role) && !isBlank(message.content)) {
+                    messages.add(message);
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to read session messages: {}", file, e);
+        }
+
+        return messages;
+    }
+
+    public List<SessionEvent> readPortalEvents(SessionMeta meta) {
+        Path file = resolvePortalEventFile(meta);
+        if (file == null || !Files.exists(file)) {
+            return Collections.emptyList();
+        }
+
+        List<SessionEvent> events = new ArrayList<SessionEvent>();
+        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) {
+                    continue;
+                }
+
+                ONode node = ONode.ofJson(line);
+                SessionEvent event = new SessionEvent();
+                event.type = node.get("type").getString();
+                event.timestamp = node.get("timestamp").getLong(0L);
+                event.content = node.get("content").getString();
+                event.toolName = node.get("toolName").getString();
+                event.argsText = node.get("argsText").getString();
+
+                ONode segmentsNode = node.get("argSegments");
+                if (segmentsNode != null && segmentsNode.isArray()) {
+                    for (ONode item : segmentsNode.getArray()) {
+                        String value = item.getString();
+                        if (!isBlank(value)) {
+                            event.argSegments.add(value);
+                        }
+                    }
+                }
+
+                if (!isBlank(event.type)) {
+                    events.add(event);
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to read portal events: {}", file, e);
+        }
+
+        return events;
+    }
+
+    public String extractLastUserMessage(SessionMeta meta) {
+        List<SessionMessage> messages = readMessages(meta);
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            SessionMessage message = messages.get(i);
+            if ("USER".equalsIgnoreCase(message.role) && !isBlank(message.content)) {
+                return message.content;
+            }
+        }
+
+        return "";
+    }
+
+    public Path resolveSessionDataDir(SessionMeta meta) {
+        if (meta == null || isBlank(meta.id) || isBlank(meta.cwd)) {
+            return null;
+        }
+
+        return Paths.get(meta.cwd, ".soloncode", "sessions", meta.id).normalize();
+    }
+
+    public Path resolvePortalEventFile(SessionMeta meta) {
+        Path sessionDir = resolveSessionDataDir(meta);
+        if (sessionDir == null) {
+            return null;
+        }
+
+        return sessionDir.resolve("portal.events.ndjson");
+    }
+
+    public Path resolveMessageFile(SessionMeta meta) {
+        Path sessionDir = resolveSessionDataDir(meta);
+        if (sessionDir == null || !Files.exists(sessionDir)) {
+            return null;
+        }
+
+        Path named = sessionDir.resolve(meta.id + ".messages.ndjson");
+        if (Files.exists(named)) {
+            return named;
+        }
+
+        try (Stream<Path> files = Files.list(sessionDir)) {
+            return files
+                    .filter(path -> Files.isRegularFile(path) && path.getFileName().toString().endsWith(".messages.ndjson"))
+                    .findFirst()
+                    .orElse(null);
+        } catch (IOException e) {
+            LOG.warn("Failed to resolve message file: {}", sessionDir, e);
+            return null;
+        }
+    }
+
+    public void appendPortalEvent(String sessionId, String cwd, SessionEvent event) {
+        if (event == null || isBlank(sessionId) || isBlank(cwd)) {
+            return;
+        }
+
+        Path file = resolvePortalEventFile(sessionId, cwd);
+        if (file == null) {
+            return;
+        }
+
+        ensureDir(file.getParent());
+
+        ONode node = new ONode().asObject();
+        node.set("type", event.type);
+        node.set("timestamp", event.timestamp);
+        if (!isBlank(event.content)) {
+            node.set("content", event.content);
+        }
+        if (!isBlank(event.toolName)) {
+            node.set("toolName", event.toolName);
+        }
+        if (!isBlank(event.argsText)) {
+            node.set("argsText", event.argsText);
+        }
+        if (event.argSegments != null && !event.argSegments.isEmpty()) {
+            node.set("argSegments", event.argSegments);
+        }
+
+        try (BufferedWriter writer = Files.newBufferedWriter(file,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND)) {
+            writer.write(node.toJson());
+            writer.write('\n');
+        } catch (IOException e) {
+            LOG.warn("Failed to append portal event: {}", file, e);
+        }
+    }
+
+    public void clearPortalEvents(String sessionId, String cwd) {
+        Path file = resolvePortalEventFile(sessionId, cwd);
+        if (file == null || !Files.exists(file)) {
+            return;
+        }
+
+        try {
+            Files.delete(file);
+        } catch (IOException e) {
+            LOG.warn("Failed to clear portal events: {}", file, e);
+        }
+    }
+
+    public void bootstrapPortalEvents(SessionMeta meta) {
+        if (meta == null) {
+            return;
+        }
+
+        Path file = resolvePortalEventFile(meta);
+        if (file == null || Files.exists(file)) {
+            return;
+        }
+
+        List<SessionMessage> messages = readMessages(meta);
+        if (messages.isEmpty()) {
+            return;
+        }
+
+        ensureDir(file.getParent());
+        try (BufferedWriter writer = Files.newBufferedWriter(file,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING)) {
+            for (SessionMessage message : messages) {
+                SessionEvent event = new SessionEvent();
+                event.content = message.content;
+                if ("USER".equalsIgnoreCase(message.role)) {
+                    event.type = "user";
+                } else if ("ASSISTANT".equalsIgnoreCase(message.role)) {
+                    event.type = message.thinking ? "thinking" : "assistant";
+                } else {
+                    event.type = "message";
+                }
+
+                ONode node = new ONode().asObject();
+                node.set("type", event.type);
+                node.set("content", event.content);
+                writer.write(node.toJson());
+                writer.write('\n');
+            }
+        } catch (IOException e) {
+            LOG.warn("Failed to bootstrap portal events: {}", file, e);
+        }
     }
 
     /**
@@ -240,6 +513,18 @@ public class SessionManager {
         }
     }
 
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private Path resolvePortalEventFile(String sessionId, String cwd) {
+        if (isBlank(sessionId) || isBlank(cwd)) {
+            return null;
+        }
+
+        return Paths.get(cwd, ".soloncode", "sessions", sessionId, "portal.events.ndjson").normalize();
+    }
+
     /**
      * 会话元信息
      */
@@ -250,5 +535,21 @@ public class SessionManager {
         public long createdAt;
         public long updatedAt;
         public int messageCount;
+    }
+
+    public static class SessionMessage {
+        public String role;
+        public String content;
+        public String contentRaw;
+        public boolean thinking;
+    }
+
+    public static class SessionEvent {
+        public String type;
+        public long timestamp;
+        public String content;
+        public String toolName;
+        public String argsText;
+        public List<String> argSegments = new ArrayList<String>();
     }
 }

@@ -21,7 +21,26 @@ soloncode:
   subagentEnabled: true # 是否启用子代理模式
 
   cliEnabled: true # 是否启用控制台
+  uiType: "new" # 新版 Portal UI；主题自定义仅对 new 生效
+  startupSessionMode: "resume" # 启动会话模式：resume=恢复当前目录最近会话；temp=进入临时新会话
+  uiTheme: "solon" # 当前主题；主题定义与默认主题都建议直接在 config 中维护
   cliPrintSimplified: true
+
+#  uiThemes: # 自定义主题表示例（按需取消注释）
+#    my-theme:
+#      extends: solon
+#      accent: "#ff7d90"
+#      accentStrong: "#ff9aa8"
+#      userTitle: "#ffcad4"
+#      assistantTitle: "#ff8fa3"
+#      thinkingTitle: "#c4cddf"
+#      thinkingBorder: "#a0a8b8"
+#      toolTitle: "#ff7d90"
+#      toolMeta: "#a0a8b8"
+#      toolValue: "#f3f5f7"
+#      toolResult: "#e7f1fa"
+#      toolPreview: "#727b89"
+#      blockTime: "#727b89"
 
   webEnabled: false # 是否启用 WebApi
   webEndpoint: "/cli"
@@ -61,3 +80,4 @@ soloncode:
 
 # 1. chatModel 按需配置，不熟的看下 solon ai 官网资料
 # 2. SolonCodeCLI 兼容 Claude Code Agent Skills
+# 3. Portal UI 主题自定义说明见 soloncode-cli/docs/portal-ui-theme-customization.md
