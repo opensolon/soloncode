@@ -206,33 +206,6 @@ export function TerminalPanel({ terminalId: terminalIdProp, title: titleProp, vi
 
   return (
     <div className={`terminal-panel${visible ? '' : ' hidden'}`}>
-      <div className="terminal-header">
-        <span className="terminal-title">{title}</span>
-        <div className="terminal-actions">
-          <button
-            className="terminal-action"
-            onClick={() => xtermRef.current?.clear()}
-            title="清除"
-          >
-            &#x1F5D1;
-          </button>
-          <button
-            className="terminal-action"
-            onClick={async () => {
-              if (!isTauriEnv()) return;
-              xtermRef.current?.dispose();
-              xtermRef.current = null;
-              fitAddonRef.current = null;
-              startedRef.current = false;
-              await invoke('terminal_kill').catch(() => {});
-              initTerminal();
-            }}
-            title="重启终端"
-          >
-            &#x21BB;
-          </button>
-        </div>
-      </div>
       <div className="terminal-body" ref={termRef} />
     </div>
   );
