@@ -9,7 +9,6 @@ import './TerminalPanel.css';
 interface TerminalPanelProps {
   // 新增：独立面板模式（用于多终端）
   terminalId?: string;
-  title?: string;
   visible?: boolean;
   // 原有：兼容模式
   cwd?: string;
@@ -74,10 +73,8 @@ const TERM_THEMES = {
   },
 };
 
-export function TerminalPanel({ terminalId: terminalIdProp, title: titleProp, visible: visibleProp, cwd }: TerminalPanelProps) {
-  // 兼容新旧模式：新模式用 terminalId/title/visible，旧模式用 visible
-  const _terminalId = terminalIdProp || 'default';
-  const title = titleProp || 'TERMINAL';
+export function TerminalPanel({ terminalId: terminalIdProp, visible: visibleProp, cwd }: TerminalPanelProps) {
+  // 兼容新旧模式：新模式用 terminalId/visible，旧模式用 visible
   const visible = visibleProp !== undefined ? visibleProp : true;
   
   const termRef = useRef<HTMLDivElement>(null);
@@ -85,8 +82,16 @@ export function TerminalPanel({ terminalId: terminalIdProp, title: titleProp, vi
   const fitAddonRef = useRef<FitAddon | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const startedRef = useRef(false);
+  const terminalIdRef = useRef(terminalIdProp || 'default');
+
+  // 当 terminalId 变化时，重置 startedRef 以支持新终端
+  useEffect(() => {
+    terminalIdRef.current = terminalIdProp || 'default';
+    startedRef.current = false;
+  }, [terminalIdProp]);
 
   const initTerminal = useCallback(async () => {
+    const terminalId = terminalIdRef.current;
     if (!termRef.current || xtermRef.current || startedRef.current) return;
     startedRef.current = true;
 
@@ -123,7 +128,7 @@ export function TerminalPanel({ terminalId: terminalIdProp, title: titleProp, vi
     term.onData(async (data) => {
       if (!isTauriEnv()) return;
       try {
-        await invoke('terminal_write', { data });
+        await invoke('terminal_write', { terminalId, data });
       } catch (e) {
         console.error('[Terminal] write error:', e);
       }
@@ -131,8 +136,9 @@ export function TerminalPanel({ terminalId: terminalIdProp, title: titleProp, vi
 
     // 监听 PTY 输出 → 写入 xterm
     if (isTauriEnv()) {
-      const unlisten = await listen<string>('terminal-output', (event) => {
-        if (event.payload === '' && !event.payload) {
+      const eventName = `terminal-output-${terminalId}`;
+      const unlisten = await listen<string>(eventName, (event) => {
+        if (event.payload === '') {
           term.writeln('\r\n[终端已关闭]');
           return;
         }
@@ -143,7 +149,7 @@ export function TerminalPanel({ terminalId: terminalIdProp, title: titleProp, vi
       const rows = term.rows;
       const cols = term.cols;
       try {
-        await invoke('terminal_start', { rows, cols, cwd: cwd || null });
+        await invoke('terminal_start', { terminalId, rows, cols, cwd: cwd || null });
       } catch (e) {
         term.writeln(`\x1b[31m启动终端失败: ${e}\x1b[0m`);
       }
@@ -158,6 +164,7 @@ export function TerminalPanel({ terminalId: terminalIdProp, title: titleProp, vi
           fitAddonRef.current.fit();
           if (xtermRef.current && isTauriEnv()) {
             invoke('terminal_resize', {
+              terminalId,
               rows: xtermRef.current.rows,
               cols: xtermRef.current.cols,
             }).catch(() => {});

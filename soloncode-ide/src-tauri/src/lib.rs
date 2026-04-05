@@ -1,11 +1,12 @@
+use portable_pty::{native_pty_system, CommandBuilder as PtyCommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read as IoRead, Write as IoWrite};
 use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::Mutex;
-use tauri::{Manager, Emitter};
-use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
+use tauri::{Emitter, Manager};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
@@ -26,7 +27,7 @@ pub struct WorkspaceInfo {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitFileStatus {
     path: String,
-    status: String,  // "modified", "added", "deleted", "untracked"
+    status: String, // "modified", "added", "deleted", "untracked"
     staged: bool,
 }
 
@@ -285,8 +286,10 @@ fn git_status(cwd: &str) -> Result<GitStatusResult, String> {
     let mut branch = String::from("HEAD");
     let mut ahead: u32 = 0;
     let mut behind: u32 = 0;
-    let mut staged_files: std::collections::HashMap<String, GitFileStatus> = std::collections::HashMap::new();
-    let mut unstaged_files: std::collections::HashMap<String, GitFileStatus> = std::collections::HashMap::new();
+    let mut staged_files: std::collections::HashMap<String, GitFileStatus> =
+        std::collections::HashMap::new();
+    let mut unstaged_files: std::collections::HashMap<String, GitFileStatus> =
+        std::collections::HashMap::new();
     let mut untracked_files: Vec<GitFileStatus> = Vec::new();
 
     for line in branch_output.lines() {
@@ -299,8 +302,16 @@ fn git_status(cwd: &str) -> Result<GitStatusResult, String> {
             let ab = line.trim_start_matches("# branch.ab ").trim();
             let parts: Vec<&str> = ab.split_whitespace().collect();
             if parts.len() >= 2 {
-                ahead = parts[0].trim_start_matches('+').parse::<i32>().unwrap_or(0).max(0) as u32;
-                behind = parts[1].trim_start_matches('-').parse::<i32>().unwrap_or(0).max(0) as u32;
+                ahead = parts[0]
+                    .trim_start_matches('+')
+                    .parse::<i32>()
+                    .unwrap_or(0)
+                    .max(0) as u32;
+                behind = parts[1]
+                    .trim_start_matches('-')
+                    .parse::<i32>()
+                    .unwrap_or(0)
+                    .max(0) as u32;
             }
         } else if line.starts_with("1 ") {
             // 已跟踪文件的变更
@@ -321,11 +332,14 @@ fn git_status(cwd: &str) -> Result<GitStatusResult, String> {
                         'M' | 'R' | 'C' => "modified",
                         _ => "modified",
                     };
-                    staged_files.insert(file_path.clone(), GitFileStatus {
-                        path: file_path.clone(),
-                        status: status.to_string(),
-                        staged: true,
-                    });
+                    staged_files.insert(
+                        file_path.clone(),
+                        GitFileStatus {
+                            path: file_path.clone(),
+                            status: status.to_string(),
+                            staged: true,
+                        },
+                    );
                 }
 
                 // 工作区变更
@@ -335,11 +349,14 @@ fn git_status(cwd: &str) -> Result<GitStatusResult, String> {
                         'M' => "modified",
                         _ => "modified",
                     };
-                    unstaged_files.insert(file_path.clone(), GitFileStatus {
-                        path: file_path.clone(),
-                        status: status.to_string(),
-                        staged: false,
-                    });
+                    unstaged_files.insert(
+                        file_path.clone(),
+                        GitFileStatus {
+                            path: file_path.clone(),
+                            status: status.to_string(),
+                            staged: false,
+                        },
+                    );
                 }
             }
         } else if line.starts_with("? ") {
@@ -431,7 +448,11 @@ fn git_pull(cwd: &str) -> Result<(), String> {
 fn git_log(cwd: &str, count: usize) -> Result<Vec<GitLogEntry>, String> {
     let count_str = count.to_string();
     let output = run_git(
-        &["log", &count_str, "--pretty=format:%H%n%h%n%an%n%ai%n%s%n---END---"],
+        &[
+            "log",
+            &count_str,
+            "--pretty=format:%H%n%h%n%an%n%ai%n%s%n---END---",
+        ],
         cwd,
     )?;
 
@@ -491,8 +512,8 @@ fn git_discard(cwd: &str, paths: Vec<String>) -> Result<(), String> {
 /// Diff 行变更信息
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DiffLine {
-    line: u32,          // 文件中的行号（1-based）
-    r#type: String,     // "added" | "modified" | "deleted"
+    line: u32,      // 文件中的行号（1-based）
+    r#type: String, // "added" | "modified" | "deleted"
 }
 
 /// 获取单个文件的 git diff（与 HEAD 比较）
@@ -523,7 +544,9 @@ fn git_diff_file(cwd: &str, file_path: &str) -> Result<Vec<DiffLine>, String> {
         if line.starts_with("@@") {
             if let Some(pos) = line.find('+') {
                 let rest = &line[pos + 1..];
-                let end = rest.find(|c: char| c == ' ' || c == ',').unwrap_or(rest.len());
+                let end = rest
+                    .find(|c: char| c == ' ' || c == ',')
+                    .unwrap_or(rest.len());
                 if let Ok(n) = rest[..end].parse::<u32>() {
                     new_line = n;
                 }
@@ -579,7 +602,9 @@ fn copy_item(source_path: &str, dest_path: &str) -> Result<(), String> {
     if src.is_dir() {
         copy_dir_recursive(src, Path::new(dest_path))
     } else {
-        fs::copy(src, dest_path).map(|_| ()).map_err(|e| format!("复制文件失败: {}", e))
+        fs::copy(src, dest_path)
+            .map(|_| ())
+            .map_err(|e| format!("复制文件失败: {}", e))
     }
 }
 
@@ -599,16 +624,23 @@ struct PtyState {
     _child: Box<dyn portable_pty::Child + Send + 'static>,
 }
 
-static PTY_STATE: Mutex<Option<PtyState>> = Mutex::new(None);
+static PTY_STATE: std::sync::LazyLock<Mutex<HashMap<String, PtyState>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// 启动终端（PowerShell）
 #[tauri::command]
-fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Option<String>) -> Result<(), String> {
-    // 先关闭已有终端
+fn terminal_start(
+    app_handle: tauri::AppHandle,
+    terminal_id: String,
+    rows: u16,
+    cols: u16,
+    cwd: Option<String>,
+) -> Result<(), String> {
+    // 关闭该 terminal_id 对应的已有终端（如果存在）
     {
         let mut pty = PTY_STATE.lock().map_err(|e| format!("锁错误: {}", e))?;
-        if pty.is_some() {
-            *pty = None;
+        if pty.remove(&terminal_id).is_some() {
+            // 原有终端被关闭，不做特殊处理
         }
     }
 
@@ -652,31 +684,36 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
         .map_err(|e| format!("获取 PTY writer 失败: {}", e))?;
 
     let master = pair.master;
+    let terminal_id_clone = terminal_id.clone();
 
     // 保存 PTY 状态
     {
         let mut pty = PTY_STATE.lock().map_err(|e| format!("锁错误: {}", e))?;
-        *pty = Some(PtyState {
-            master,
-            writer: std::sync::Mutex::new(writer),
-            _child: child,
-        });
+        pty.insert(
+            terminal_id,
+            PtyState {
+                master,
+                writer: std::sync::Mutex::new(writer),
+                _child: child,
+            },
+        );
     }
 
     // 在独立线程中读取 PTY 输出并通过 Tauri 事件发送到前端
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 4096];
+        let event_name = format!("terminal-output-{}", terminal_id_clone);
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => {
                     // EOF
-                    let _ = app_handle.emit("terminal-output", "".to_string());
+                    let _ = app_handle.emit(&event_name, "".to_string());
                     break;
                 }
                 Ok(n) => {
                     let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = app_handle.emit("terminal-output", data);
+                    let _ = app_handle.emit(&event_name, data);
                 }
                 Err(_) => {
                     break;
@@ -690,11 +727,13 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
 
 /// 向终端写入数据
 #[tauri::command]
-fn terminal_write(data: String) -> Result<(), String> {
+fn terminal_write(terminal_id: String, data: String) -> Result<(), String> {
     let pty = PTY_STATE.lock().map_err(|e| format!("锁错误: {}", e))?;
-    if let Some(state) = pty.as_ref() {
+    if let Some(state) = pty.get(&terminal_id) {
         let mut writer = state.writer.lock().map_err(|e| format!("锁错误: {}", e))?;
-        writer.write_all(data.as_bytes()).map_err(|e| format!("写入失败: {}", e))?;
+        writer
+            .write_all(data.as_bytes())
+            .map_err(|e| format!("写入失败: {}", e))?;
         writer.flush().map_err(|e| format!("flush 失败: {}", e))?;
     }
     Ok(())
@@ -702,9 +741,9 @@ fn terminal_write(data: String) -> Result<(), String> {
 
 /// 调整终端大小
 #[tauri::command]
-fn terminal_resize(rows: u16, cols: u16) -> Result<(), String> {
+fn terminal_resize(terminal_id: String, rows: u16, cols: u16) -> Result<(), String> {
     let pty = PTY_STATE.lock().map_err(|e| format!("锁错误: {}", e))?;
-    if let Some(state) = pty.as_ref() {
+    if let Some(state) = pty.get(&terminal_id) {
         state
             .master
             .resize(PtySize {
@@ -720,9 +759,9 @@ fn terminal_resize(rows: u16, cols: u16) -> Result<(), String> {
 
 /// 关闭终端
 #[tauri::command]
-fn terminal_kill() -> Result<(), String> {
+fn terminal_kill(terminal_id: String) -> Result<(), String> {
     let mut pty = PTY_STATE.lock().map_err(|e| format!("锁错误: {}", e))?;
-    *pty = None;
+    pty.remove(&terminal_id);
     Ok(())
 }
 
@@ -772,10 +811,14 @@ fn find_install_script(app_handle: &tauri::AppHandle) -> Option<std::path::PathB
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
         if cfg!(windows) {
             let bat = resource_dir.join("build").join("install-cli.bat");
-            if bat.exists() { return Some(bat); }
+            if bat.exists() {
+                return Some(bat);
+            }
         } else {
             let sh = resource_dir.join("build").join("install-cli.sh");
-            if sh.exists() { return Some(sh); }
+            if sh.exists() {
+                return Some(sh);
+            }
         }
     }
 
@@ -785,11 +828,18 @@ fn find_install_script(app_handle: &tauri::AppHandle) -> Option<std::path::PathB
         for _ in 0..10 {
             if let Some(d) = dir {
                 if cfg!(windows) {
-                    let bat = d.join("soloncode-ide").join("build").join("install-cli.bat");
-                    if bat.exists() { return Some(bat); }
+                    let bat = d
+                        .join("soloncode-ide")
+                        .join("build")
+                        .join("install-cli.bat");
+                    if bat.exists() {
+                        return Some(bat);
+                    }
                 } else {
                     let sh = d.join("soloncode-ide").join("build").join("install-cli.sh");
-                    if sh.exists() { return Some(sh); }
+                    if sh.exists() {
+                        return Some(sh);
+                    }
                 }
                 dir = d.parent();
             } else {
@@ -806,10 +856,14 @@ fn find_release_resource_dir(app_handle: &tauri::AppHandle) -> Option<std::path:
     // 1. Tauri 打包资源
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
         let release = resource_dir.join("soloncode-cli").join("release");
-        if release.join("bin").exists() { return Some(release); }
+        if release.join("bin").exists() {
+            return Some(release);
+        }
         // resources 可能直接平铺
         let release_flat = resource_dir.join("release");
-        if release_flat.join("bin").exists() { return Some(release_flat); }
+        if release_flat.join("bin").exists() {
+            return Some(release_flat);
+        }
     }
 
     // 2. 开发模式
@@ -818,7 +872,9 @@ fn find_release_resource_dir(app_handle: &tauri::AppHandle) -> Option<std::path:
         for _ in 0..10 {
             if let Some(d) = dir {
                 let release = d.join("soloncode-cli").join("release");
-                if release.join("bin").exists() { return Some(release); }
+                if release.join("bin").exists() {
+                    return Some(release);
+                }
                 dir = d.parent();
             } else {
                 break;
@@ -831,11 +887,10 @@ fn find_release_resource_dir(app_handle: &tauri::AppHandle) -> Option<std::path:
 
 /// 自动安装 CLI（通过调用 install-cli 脚本）
 fn auto_install_cli(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    let install_script = find_install_script(app_handle)
-        .ok_or("未找到 install-cli 安装脚本")?;
+    let install_script = find_install_script(app_handle).ok_or("未找到 install-cli 安装脚本")?;
 
-    let release_dir = find_release_resource_dir(app_handle)
-        .ok_or("未找到 soloncode-cli/release 资源目录")?;
+    let release_dir =
+        find_release_resource_dir(app_handle).ok_or("未找到 soloncode-cli/release 资源目录")?;
 
     println!("[soloncode] Running install script: {:?}", install_script);
     println!("[soloncode] Release dir: {:?}", release_dir);
@@ -871,7 +926,11 @@ fn auto_install_cli(app_handle: &tauri::AppHandle) -> Result<(), String> {
 
 /// 启动后端 CLI 进程
 #[tauri::command]
-fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) -> Result<u32, String> {
+fn start_backend(
+    app_handle: tauri::AppHandle,
+    workspace_path: &str,
+    port: u16,
+) -> Result<u32, String> {
     // 先停止已有进程
     stop_backend()?;
 
@@ -881,8 +940,7 @@ fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) 
         None => {
             println!("[soloncode] CLI not found, auto-installing...");
             auto_install_cli(&app_handle)?;
-            find_soloncode_command()
-                .ok_or("CLI 安装后仍未找到 soloncode 命令".to_string())?
+            find_soloncode_command().ok_or("CLI 安装后仍未找到 soloncode 命令".to_string())?
         }
     };
 
@@ -895,17 +953,19 @@ fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) 
 
     // 日志文件
     let log_path = soloncode_dir.join("cli.log");
-    let log_file = fs::File::create(&log_path)
-        .map_err(|e| format!("创建日志文件失败: {}", e))?;
-    let log_file_clone = log_file.try_clone()
+    let log_file = fs::File::create(&log_path).map_err(|e| format!("创建日志文件失败: {}", e))?;
+    let log_file_clone = log_file
+        .try_clone()
         .map_err(|e| format!("复制文件句柄失败: {}", e))?;
 
     let child = if cfg!(windows) && soloncode_cmd.ends_with(".ps1") {
         // Windows: 通过 powershell 运行 .ps1
         Command::new("powershell")
             .args([
-                "-ExecutionPolicy", "Bypass",
-                "-File", &soloncode_cmd,
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                &soloncode_cmd,
                 &format!("--server.port={}", port),
             ])
             .current_dir(workspace_path)
@@ -935,7 +995,9 @@ fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) 
 
     let pid = child.id();
 
-    let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
+    let mut proc = BACKEND_PROCESS
+        .lock()
+        .map_err(|e| format!("锁错误: {}", e))?;
     *proc = Some(child);
 
     Ok(pid)
@@ -944,7 +1006,9 @@ fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) 
 /// 停止后端 CLI 进程
 #[tauri::command]
 fn stop_backend() -> Result<(), String> {
-    let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
+    let mut proc = BACKEND_PROCESS
+        .lock()
+        .map_err(|e| format!("锁错误: {}", e))?;
 
     if let Some(mut child) = proc.take() {
         // 尝试优雅终止
@@ -958,7 +1022,9 @@ fn stop_backend() -> Result<(), String> {
 /// 检查后端进程是否运行中
 #[tauri::command]
 fn backend_status() -> Result<bool, String> {
-    let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
+    let mut proc = BACKEND_PROCESS
+        .lock()
+        .map_err(|e| format!("锁错误: {}", e))?;
 
     match proc.as_mut() {
         Some(child) => {
@@ -1026,9 +1092,9 @@ pub fn run() {
                         let _ = child.wait();
                     }
                 }
-                // 关闭终端
+                // 关闭所有终端
                 if let Ok(mut pty) = PTY_STATE.lock() {
-                    *pty = None;
+                    pty.clear();
                 }
             }
         })

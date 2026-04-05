@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { ActivityBar, type ActivityType } from './components/layout/ActivityBar';
 import { TitleBar } from './components/layout/TitleBar';
 import { SidePanel } from './components/layout/SidePanel';
@@ -914,8 +915,13 @@ function App() {
                   {terminalTabs.length > 1 && (
                     <button
                       className="terminal-tab-close"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
+                        try {
+                          await invoke('terminal_kill', { terminalId: tab.id });
+                        } catch (e) {
+                          console.error('[Terminal] kill error:', e);
+                        }
                         setTerminalTabs(prev => prev.filter(t => t.id !== tab.id));
                         if (activeTerminalId === tab.id) {
                           setActiveTerminalId(terminalTabs[0].id);
@@ -942,7 +948,6 @@ function App() {
               <TerminalPanel
                 key={tab.id}
                 terminalId={tab.id}
-                title={tab.title}
                 visible={terminalVisible && activeTerminalId === tab.id}
                 cwd={workspacePath || undefined}
               />
