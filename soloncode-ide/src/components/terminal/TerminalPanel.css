@@ -40,6 +40,7 @@
   height: 35px;
   background-color: var(--cb-vscode-sideBar-background);
   border-bottom: 1px solid var(--cb-vscode-panel-border);
+  border-top: 1px solid var(--cb-vscode-panel-border);
   padding: 0 8px;
   gap: 2px;
   overflow-x: auto;

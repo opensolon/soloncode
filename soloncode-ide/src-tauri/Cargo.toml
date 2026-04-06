@@ -2,7 +2,7 @@
 name = "SolonCode"
 version = "2026.4.5"
 description = "A Tauri App"
-authors = ["","noear"]
+authors = ["bai", "noear"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
