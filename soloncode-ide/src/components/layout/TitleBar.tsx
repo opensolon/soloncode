@@ -175,6 +175,7 @@ export function TitleBar({
 
       {/* 中间标题 */}
       <div className="title-bar-center">
+        <span className="app-title">SolonCode</span>
         {workspaceName && (
           <span className="workspace-name"> - {workspaceName}</span>
         )}
