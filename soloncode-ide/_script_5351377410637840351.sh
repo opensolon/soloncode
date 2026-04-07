@@ -1,1 +1,0 @@
-cd .. && mv soloncode-desktop soloncode-ide

@@ -1,0 +1,351 @@
+.chat-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--cb-vscode-editor-background);
+  padding: 8px 12px 12px;
+}
+
+/* 上下文标签 */
+.context-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.context-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background-color: var(--cb-vscode-input-background);
+  border-radius: 16px;
+  font-size: 12px;
+  color: var(--cb-text-primary);
+  border: 1px solid var(--cb-vscode-panel-border);
+}
+
+.context-tag-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--cb-text-secondary);
+  cursor: pointer;
+  border-radius: 50%;
+  margin-left: 2px;
+  transition: all 0.15s;
+}
+
+.context-tag-remove:hover {
+  color: white;
+  background-color: var(--cb-error);
+}
+
+/* 输入区域 - Claude Desktop 风格 */
+.input-area {
+  position: relative;
+}
+
+.input-container {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 20px;
+  padding: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  overflow: hidden;
+}
+
+.input-container:focus-within {
+  border-color: var(--cb-accent);
+  box-shadow: 0 0 0 2px rgba(107, 124, 255, 0.15);
+}
+
+/* 工具栏 - 内置在输入框顶部 */
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 0;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-right {
+  margin-left: auto;
+}
+
+/* 模型选择 */
+.model-select {
+  padding: 4px 10px;
+  background-color: transparent;
+  border: none;
+  border-radius: 14px;
+  color: var(--cb-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.15s;
+}
+
+.model-select:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.model-select option {
+  background-color: var(--cb-vscode-sideBar-background);
+  color: var(--cb-text-primary);
+}
+
+/* 智能体按钮 */
+.agent-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background-color: transparent;
+  border: none;
+  border-radius: 14px;
+  color: var(--cb-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.agent-btn:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+/* 工具栏按钮 */
+.toolbar-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: none;
+  border-radius: 14px;
+  color: var(--cb-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toolbar-btn:hover {
+  color: var(--cb-text-primary);
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+/* 分隔线 */
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background-color: var(--cb-vscode-panel-border);
+  margin: 0 4px;
+}
+
+/* 输入行 */
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px 10px;
+}
+
+.message-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--cb-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  min-height: 24px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: inherit;
+  outline: none;
+}
+
+.message-input::placeholder {
+  color: var(--cb-text-secondary);
+}
+
+/* 发送按钮 */
+.send-button {
+  width: 36px;
+  height: 36px;
+  background-color: var(--cb-accent);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.send-button:hover:not(:disabled) {
+  background-color: var(--cb-accent-light);
+  transform: scale(1.05);
+}
+
+.send-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: scale(1);
+}
+
+/* 停止按钮 */
+.stop-button {
+  width: 36px;
+  height: 36px;
+  background-color: var(--cb-error, #ef4444);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.stop-button:hover {
+  opacity: 0.85;
+  transform: scale(1.05);
+}
+
+/* 底部操作栏（左下角） */
+.input-bottom-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 8px 12px;
+}
+
+/* 底部提示 */
+.input-footer {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 0;
+}
+
+.input-hint {
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+  opacity: 0.7;
+}
+
+/* 自动完成下拉框 */
+.autocomplete-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  max-height: 260px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.autocomplete-header {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cb-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+}
+
+.autocomplete-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 180px;
+  padding: 4px;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+  border-radius: 12px;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.autocomplete-item.selected {
+  background-color: var(--cb-vscode-list-activeSelectionBackground);
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-name {
+  font-size: 13px;
+  color: var(--cb-text-primary);
+  font-weight: 500;
+}
+
+.item-desc,
+.item-path {
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autocomplete-footer {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 14px;
+  font-size: 10px;
+  color: var(--cb-text-secondary);
+  border-top: 1px solid var(--cb-vscode-panel-border);
+  background-color: var(--cb-vscode-sideBar-background);
+}
+
+.autocomplete-footer span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background-color: var(--cb-vscode-input-background);
+  border-radius: 4px;
+}

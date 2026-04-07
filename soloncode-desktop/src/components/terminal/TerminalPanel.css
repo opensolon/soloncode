@@ -1,0 +1,74 @@
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  height: 200px;
+  min-height: 100px;
+  background-color: var(--cb-vscode-editor-background);
+  border-top: 1px solid var(--cb-vscode-panel-border);
+  flex-shrink: 0;
+  transition: height 0.2s;
+}
+
+.terminal-panel.hidden {
+  display: none;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 8px;
+  background-color: var(--cb-vscode-sideBar-background);
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.terminal-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cb-text-secondary);
+}
+
+.terminal-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.terminal-action {
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--cb-text-secondary);
+  font-size: 14px;
+  transition: background-color 0.15s;
+  padding: 0;
+}
+
+.terminal-action:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+  color: var(--cb-text-primary);
+}
+
+.terminal-body {
+  flex: 1;
+  padding: 4px 8px;
+  overflow: hidden;
+}
+
+.terminal-body .xterm {
+  height: 100%;
+}
+
+.terminal-body .xterm-viewport {
+  overflow-y: auto !important;
+}
