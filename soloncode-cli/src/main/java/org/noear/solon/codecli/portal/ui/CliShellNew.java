@@ -33,6 +33,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.ConfigLoader;
 import org.noear.solon.codecli.GlobalConfigWriter;
 import org.noear.solon.codecli.SessionManager;
+import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.codecli.portal.ui.bottom.BottomInputController;
 import org.noear.solon.codecli.portal.ui.bottom.panel.BottomListPanel;
@@ -1994,7 +1995,7 @@ public class CliShellNew implements Runnable {
             : "unknown";
         statusBar.setModelName(modelName);
         statusBar.setWorkDir(new File(agentProps.getWorkspace()).getAbsolutePath());
-        statusBar.setVersion(kernel.getVersion());
+        statusBar.setVersion(AgentFlags.getVersion());
         statusBar.setSessionId("cli");
         statusBar.setCompactMode(agentProps.isCliPrintSimplified());
         statusBar.setup();
@@ -2021,7 +2022,7 @@ public class CliShellNew implements Runnable {
         }
 
         String path = new File(agentProps.getWorkspace()).getAbsolutePath();
-        String version = kernel.getVersion();
+        String version = AgentFlags.getVersion();
         List<String> welcomeLines = new ArrayList<String>();
 
         // ── ASCII Art Logo (对齐 Go TUI renderWelcomeLogo) ──

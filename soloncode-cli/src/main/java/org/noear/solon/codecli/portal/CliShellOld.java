@@ -36,6 +36,7 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
@@ -506,7 +507,7 @@ public class CliShellOld implements Runnable {
 
         String path = new File(agentRuntime.getProps().getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + agentRuntime.getVersion() + " PID-" + Utils.pid() + RESET);
+        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + RESET);
         terminal.writer().println(DIM + path + RESET);
         terminal.writer().print(DIM + "Tips: " + RESET + "(esc)" + DIM + " interrupt | " +
                 RESET + "'/exit'" + DIM + ": quit | " +
