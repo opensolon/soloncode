@@ -1,5 +1,7 @@
 import { useState, FormEvent, KeyboardEvent, useRef, useEffect, useCallback } from 'react';
 import { Icon } from './common/Icon';
+import type { ModelProvider } from '../services/settingsService';
+import { PROVIDER_PRESETS } from '../services/settingsService';
 import './ChatInput.css';
 
 // 可用的智能体列表
@@ -23,6 +25,8 @@ interface ChatInputProps {
   isLoading?: boolean;
   onStop?: () => void;
   availableFiles?: ContextRef[];
+  providers?: ModelProvider[];
+  activeProviderId?: string;
 }
 
 export interface SendOptions {
@@ -31,11 +35,22 @@ export interface SendOptions {
   contexts: ContextRef[];
 }
 
-export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: ChatInputProps) {
+export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId }: ChatInputProps) {
+  const enabledProviders = providers.filter(p => p.enabled && p.model);
+
   const [userInput, setUserInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('default');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
+
+  // 同步 activeProviderId 到 selectedModel
+  useEffect(() => {
+    if (activeProviderId) {
+      setSelectedModel(activeProviderId);
+    } else if (enabledProviders.length > 0) {
+      setSelectedModel(enabledProviders[0].id);
+    }
+  }, [activeProviderId, enabledProviders]);
 
   // 自动完成状态
   const [showAutocomplete, setShowAutocomplete] = useState(false);
@@ -71,33 +86,25 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
   // 处理输入变化
   function handleInput(event: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = event.target.value;
-    const cursorPos = event.target.selectionStart || 0;
-    const beforeCursor = value.substring(0, cursorPos);
 
-    const lastAtIndex = beforeCursor.lastIndexOf('@');
-    const lastHashIndex = beforeCursor.lastIndexOf('#');
+    const lastAtIndex = value.lastIndexOf('@');
+    const lastHashIndex = value.lastIndexOf('#');
 
     let triggerType: 'agent' | 'context' | null = null;
     let triggerIndex = -1;
 
     if (lastAtIndex > lastHashIndex && lastAtIndex !== -1) {
-      const afterAt = beforeCursor.substring(lastAtIndex + 1);
-      if (!afterAt.includes(' ') && !afterAt.includes('\n')) {
-        triggerType = 'agent';
-        triggerIndex = lastAtIndex;
-      }
+      triggerType = 'agent';
+      triggerIndex = lastAtIndex;
     } else if (lastHashIndex !== -1) {
-      const afterHash = beforeCursor.substring(lastHashIndex + 1);
-      if (!afterHash.includes(' ') && !afterHash.includes('\n')) {
-        triggerType = 'context';
-        triggerIndex = lastHashIndex;
-      }
+      triggerType = 'context';
+      triggerIndex = lastHashIndex;
     }
 
     if (triggerType && triggerIndex !== -1) {
       setAutocompleteType(triggerType);
-      setAutocompleteQuery(beforeCursor.substring(triggerIndex + 1));
-      setAutocompletePosition({ start: triggerIndex, end: cursorPos });
+      setAutocompleteQuery(value.substring(triggerIndex + 1));
+      setAutocompletePosition({ start: triggerIndex, end: value.length });
       setShowAutocomplete(true);
       setSelectedIndex(0);
     } else {
@@ -222,7 +229,9 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
   }, []);
 
   const filteredOptions = getFilteredOptions();
-  const selectedAgentInfo = AVAILABLE_AGENTS.find(a => a.id === selectedAgent);
+
+  // 获取当前选中的 provider 信息用于显示
+  const currentProvider = enabledProviders.find(p => p.id === selectedModel);
 
   return (
     <div className="chat-input-wrapper">
@@ -250,42 +259,25 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
           {/* 工具栏 */}
           <div className="input-toolbar">
             {/* 模型选择 */}
-            {/* <div className="toolbar-group">
-              <select
-                className="model-select"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-              >
-                {AVAILABLE_MODELS.map(model => (
-                  <option key={model.id} value={model.id}>{model.name}</option>
-                ))}
-              </select>
-            </div> */}
-
-            {/* 智能体选择 */}
-            {/* <div className="toolbar-group">
-              <button
-                type="button"
-                className="agent-btn"
-                onClick={() => {
-                  if (textareaRef.current) {
-                    const pos = textareaRef.current.selectionStart;
-                    setUserInput(prev => prev.slice(0, pos) + '@' + prev.slice(pos));
-                    textareaRef.current.focus();
-                    setTimeout(() => {
-                      setAutocompleteType('agent');
-                      setAutocompleteQuery('');
-                      setAutocompletePosition({ start: pos, end: pos + 1 });
-                      setShowAutocomplete(true);
-                    }, 0);
-                  }
-                }}
-              >
-                <Icon name={selectedAgentInfo?.icon as any || 'bot'} size={14} />
-                <span>{selectedAgentInfo?.name}</span>
-              </button>
-            </div> */}
-
+            {enabledProviders.length > 0 && (
+              <div className="toolbar-group">
+                <select
+                  className="model-select"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                >
+                  {enabledProviders.map(p => {
+                    const preset = PROVIDER_PRESETS[p.type as keyof typeof PROVIDER_PRESETS];
+                    const modelLabel = preset?.models.find(m => m.value === p.model)?.label || p.model;
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.name} / {modelLabel || p.model}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* 输入行 */}
@@ -295,7 +287,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [] }: Ch
               value={userInput}
               onChange={handleInput}
               className="message-input"
-              placeholder="输入消息..."
+              placeholder={currentProvider ? `${currentProvider.name} / ${currentProvider.model}` : '输入消息...'}
               rows={1}
               onKeyDown={handleKeyDown}
             />

@@ -21,6 +21,7 @@ import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -81,8 +82,17 @@ public class WebSocketGate extends SimpleWebSocketListener {
     @Override
     public void onMessage(WebSocket socket, String text) throws IOException {
         try {
+            // 先判断消息类型（config 消息结构不同于 chat 消息）
+            ONode root = ONode.ofJson(text);
+            String msgType = root.get("type") != null ? root.get("type").getString() : null;
+
+            if ("config".equals(msgType)) {
+                handleConfigMessage(socket, root);
+                return;
+            }
+
             // 解析请求
-            WebMessage req = ONode.ofJson(text).toBean(WebMessage.class);
+            WebMessage req = root.toBean(WebMessage.class);
             String sessionId = req.getSessionId();
             String input = req.getInput();
             String cwd = req.getCwd();
@@ -289,5 +299,48 @@ public class WebSocketGate extends SimpleWebSocketListener {
         }
 
         return "";
+    }
+
+    /**
+     * 处理前端推送的配置变更
+     * 消息格式: {"type":"config","chatModel":{"apiUrl":"...","apiKey":"...","model":"..."}}
+     */
+    private void handleConfigMessage(WebSocket socket, ONode root) {
+        try {
+            ONode chatModelNode = root.get("chatModel");
+            if (chatModelNode != null && !chatModelNode.isNull()) {
+                String apiUrl = chatModelNode.get("apiUrl") != null ? chatModelNode.get("apiUrl").getString() : null;
+                String apiKey = chatModelNode.get("apiKey") != null ? chatModelNode.get("apiKey").getString() : null;
+                String model = chatModelNode.get("model") != null ? chatModelNode.get("model").getString() : null;
+
+                if (apiUrl != null || apiKey != null || model != null) {
+                    // 更新 AgentProperties 的 chatModel 配置
+                    if (agentPros.getChatModel() != null) {
+                        if (apiUrl != null) agentPros.getChatModel().setApiUrl(apiUrl);
+                        if (apiKey != null) agentPros.getChatModel().setApiKey(apiKey);
+                        if (model != null) agentPros.getChatModel().setModel(model);
+                    }
+
+                    // 重建 ChatModel 并注入 kernel
+                    ChatModel newChatModel = ChatModel.of(agentPros.getChatModel()).build();
+                    kernel.setChatModel(newChatModel);
+
+                    LOG.info("[WS] Config updated: model={}", model);
+
+                    socket.send(new ONode()
+                            .set("type", "config")
+                            .set("status", "ok")
+                            .set("model", model)
+                            .toJson());
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("[WS] Config update failed", e);
+            socket.send(new ONode()
+                    .set("type", "config")
+                    .set("status", "error")
+                    .set("text", e.getMessage())
+                    .toJson());
+        }
     }
 }

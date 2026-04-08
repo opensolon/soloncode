@@ -4,7 +4,6 @@ import { TitleBar } from './components/layout/TitleBar';
 import { SidePanel } from './components/layout/SidePanel';
 import { StatusBar } from './components/layout/StatusBar';
 import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
-import { SearchPanel } from './components/sidebar/SearchPanel';
 import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session } from './components/sidebar/SessionsPanel';
@@ -17,7 +16,7 @@ import { fileService, type FileInfo } from './services/fileService';
 import { gitService, type GitStatus, type DiffLine } from './services/gitService';
 import { settingsService } from './services/settingsService';
 import { backendService } from './services/backendService';
-import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath } from './components/ChatView';
+import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import type { Conversation, Plugin } from './types';
 import './App.css';
@@ -59,9 +58,14 @@ const plugins: Plugin[] = [
   { id: 'none', name: '插件暂不支持', icon: 'cube', description: '插件暂不支持', enabled: true, version: '1.0.0' }
 ];
 
-// 模拟会话
-// 默认设置（从 settingsService 加载持久化配置）
-const defaultSettings: Settings = settingsService.load();
+// 默认设置（从 IndexedDB 异步加载）
+const defaultSettings: Settings = {
+  theme: 'dark', fontSize: 14, language: 'zh-CN',
+  tabSize: 2, autoSave: true, formatOnSave: true,
+  shell: 'bash', terminalFontSize: 14,
+  providers: [], activeProviderId: '', maxSteps: 30,
+  mcpServers: [],
+};
 
 // 面板位置类型
 type PanelPosition = 'editor' | 'chat';
@@ -80,10 +84,25 @@ function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [settingsVisible, setSettingsVisible] = useState(false);
 
-  // 设置变化时自动持久化
+  // 启动时从 IndexedDB 加载设置
+  useEffect(() => {
+    settingsService.load().then(s => setSettings(s));
+  }, []);
+
+  // 设置变化时自动持久化 + 推送配置到后端
   const handleSettingsChange = useCallback((newSettings: Settings) => {
     setSettings(newSettings);
-    settingsService.save(newSettings as any);
+    settingsService.save(newSettings);
+
+    // 推送当前激活供应商的模型配置到后端
+    const activeProvider = newSettings.providers.find(p => p.id === newSettings.activeProviderId);
+    if (activeProvider) {
+      sendModelConfig({
+        apiUrl: activeProvider.apiUrl,
+        apiKey: activeProvider.apiKey,
+        model: activeProvider.model,
+      });
+    }
   }, []);
 
   // 工作区状态
@@ -681,13 +700,6 @@ function App() {
             onMove={handleMove}
           />
         );
-      case 'search':
-        return (
-          <SearchPanel
-            onSearch={async (query) => { console.log('搜索:', query); return []; }}
-            onResultClick={(result) => console.log('点击结果:', result)}
-          />
-        );
       case 'git':
         return (
           <GitPanel
@@ -787,6 +799,8 @@ function App() {
             workspacePath={workspacePath || undefined}
             onUpdateSessionTitle={handleUpdateSessionTitle}
             onNewSession={handleNewSession}
+            providers={settings.providers}
+            activeProviderId={settings.activeProviderId}
           />
         </div>
       );

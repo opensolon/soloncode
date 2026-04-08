@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message, Conversation, Theme, Plugin, ContentType, ContentItem } from '../types';
+import type { ModelProvider } from '../services/settingsService';
 import { saveMessage, getMessagesByConversation } from '../db';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
@@ -12,6 +13,8 @@ interface ChatViewProps {
   workspacePath?: string;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
+  providers?: ModelProvider[];
+  activeProviderId?: string;
 }
 
 // 全局 WebSocket 连接管理器（单例模式）
@@ -161,6 +164,15 @@ class WebSocketManager {
     this.messageCallbacks.clear();
   }
 
+  /** 推送配置变更到后端 */
+  async sendConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }): Promise<void> {
+    const ws = await this.connect();
+    ws.send(JSON.stringify({
+      type: 'config',
+      chatModel,
+    }));
+  }
+
   /** 只关闭连接，保留回调注册（端口/路径变化时使用） */
   closeConnection() {
     if (this.ws) {
@@ -193,7 +205,17 @@ export function setWorkspacePath(path: string | null) {
   WebSocketManager.getInstance().setWorkspacePath(path);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession }: ChatViewProps) {
+/** 推送模型配置到后端（供 App.tsx 保存设置时调用） */
+export async function sendModelConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }) {
+  try {
+    await WebSocketManager.getInstance().sendConfig(chatModel);
+    console.log('[ChatView] 模型配置已推送到后端');
+  } catch (err) {
+    console.warn('[ChatView] 推送模型配置失败:', err);
+  }
+}
+
+export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId }: ChatViewProps) {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -597,7 +619,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         isLoading={isLoading}
         theme={currentTheme}
       />
-      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} />
+      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} />
     </main>
   );
 }

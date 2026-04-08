@@ -1,4 +1,6 @@
-import Dexie, { Table } from 'dexie';
+import Dexie, { type Table } from 'dexie';
+
+// ==================== 消息 & 会话 ====================
 
 export interface DbMessage {
   id?: number;
@@ -17,29 +19,53 @@ export interface DbConversation {
   icon?: string;
 }
 
-/** 全局设置（单行记录，key-value 模式） */
+// ==================== 设置相关表 ====================
+
+/** 全局设置键值对（常规配置） */
 export interface DbGlobalSetting {
   key: string;
   value: string; // JSON 序列化存储
 }
 
-/** 工作区状态 */
-export interface WorkspaceState {
-  lastFolder: string | null;
-  lastSessionId: string | null;
+/** 模型供应商 */
+export interface DbProvider {
+  id: string;
+  type: string;        // ProviderType: zhipu | openai | deepseek | claude | custom
+  name: string;
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  enabled: number;     // SQLite 风格: 0 | 1
+  sortOrder: number;   // 排序
 }
+
+/** MCP 服务器 */
+export interface DbMcpServer {
+  id?: number;
+  name: string;
+  command: string;
+  args: string;        // JSON 序列化 string[]
+  enabled: number;     // 0 | 1
+  sortOrder: number;
+}
+
+// ==================== 数据库定义 ====================
 
 class SolonCodeDatabase extends Dexie {
   messages!: Table<DbMessage>;
   conversations!: Table<DbConversation>;
   globalSettings!: Table<DbGlobalSetting>;
+  providers!: Table<DbProvider>;
+  mcpServers!: Table<DbMcpServer>;
 
   constructor() {
     super('SolonCodeDB');
-    this.version(2).stores({
+    this.version(3).stores({
       messages: '++id, conversationId, timestamp',
       conversations: '++id, title, timestamp, status',
       globalSettings: 'key',
+      providers: 'id, type, enabled, sortOrder',
+      mcpServers: '++id, name, enabled, sortOrder',
     });
   }
 }
@@ -81,7 +107,7 @@ export async function updateConversation(id: string | number, updates: Partial<D
   await db.conversations.where('id').equals(id).modify(updates);
 }
 
-// ==================== 全局设置 ====================
+// ==================== 全局设置（键值对） ====================
 
 async function getSetting<T>(key: string, defaultValue: T): Promise<T> {
   const row = await db.globalSettings.get(key);
@@ -116,3 +142,5 @@ export async function saveLastSessionId(folderPath: string, sessionId: string): 
 export async function loadLastSessionId(folderPath: string): Promise<string | null> {
   return await getSetting<string | null>(`lastSession:${folderPath}`, null);
 }
+
+export { getSetting, setSetting };
