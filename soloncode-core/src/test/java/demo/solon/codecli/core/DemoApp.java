@@ -19,7 +19,8 @@ public class DemoApp {
     public static void main(String[] args) throws Throwable {
         //--- 初始化（AgentRuntime 建议单测）
         AgentProperties properties = new AgentProperties();
-        ChatModel chatModel = ChatModel.of(properties.getChatModel()).build();
+        properties.getModels().add("xxx", null);
+
         AgentSessionProvider sessionProvider = new AgentSessionProvider() {
             private Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
@@ -31,7 +32,6 @@ public class DemoApp {
 
         HarnessEngine agentRuntime = HarnessEngine.builder()
                 .properties(properties)
-                .chatModel(chatModel)
                 .sessionProvider(sessionProvider)
                 .build();
 

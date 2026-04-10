@@ -418,9 +418,7 @@ public class CliShellNew implements Runnable {
         });
 
         commandRegistry.register("/model", "显示当前模型信息", ctx -> {
-            String model = kernel.getProps().getChatModel() != null
-                ? kernel.getProps().getChatModel().getModel()
-                : "未配置";
+            String model = kernel.getMainModel().getModel();
             printAboveLine(DIM + "Model: " + RESET + BOLD + model + RESET);
         });
 
@@ -1990,9 +1988,7 @@ public class CliShellNew implements Runnable {
             }
         });
         statusBar.setTheme(theme);
-        String modelName = kernel.getProps().getChatModel() != null
-            ? kernel.getProps().getChatModel().getModel()
-            : "unknown";
+        String modelName = kernel.getMainModel().getModel();
         statusBar.setModelName(modelName);
         statusBar.setWorkDir(new File(agentProps.getWorkspace()).getAbsolutePath());
         statusBar.setVersion(AgentFlags.getVersion());

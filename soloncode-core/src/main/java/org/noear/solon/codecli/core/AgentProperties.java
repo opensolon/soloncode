@@ -3,6 +3,7 @@ package org.noear.solon.codecli.core;
 import lombok.Getter;
 import lombok.Setter;
 
+import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessProperties;
 
 import java.nio.file.Paths;
@@ -17,6 +18,11 @@ import java.util.Map;
 @Getter
 @Setter
 public class AgentProperties extends HarnessProperties {
+    /**
+     * @deprecated 2026.4.10 {@link #getModels()}
+     * */
+    @Deprecated
+    private ChatConfig chatModel;
 
     public final static String OPENCODE_SKILLS = ".opencode/skills/";
     public final static String CLAUDE_SKILLS = ".claude/skills/";

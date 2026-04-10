@@ -60,7 +60,6 @@ public class App {
             throw new RuntimeException("ChatModel config not found");
         }
 
-        ChatModel chatModel = ChatModel.of(agentProps.getChatModel()).build();
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         // 会话数据存到全局目录 ~/.soloncode/sessions/<sessionId>/
@@ -68,7 +67,6 @@ public class App {
                 new FileAgentSession(key, Paths.get(agentProps.getWorkspace(), agentProps.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
 
         HarnessEngine agentRuntime = HarnessEngine.builder()
-                .chatModel(chatModel)
                 .properties(agentProps)
                 .sessionProvider(sessionProvider)
                 .build();
@@ -136,7 +134,7 @@ public class App {
         new AcpLink(agentRuntime, agentTransport, agentProps).run();
     }
 
-    private static void initAgentProperties(SolonApp app) throws Throwable {
+    private static void initAgentProperties(SolonApp app) throws Exception {
         //加载配置文件
         AgentProperties c = new AgentProperties();
         URL configUrl = c.getConfigUrl();
@@ -145,6 +143,10 @@ public class App {
         //获取命令行运行的当前用户工作区
         String workspace = Paths.get(AgentProperties.getUserDir()).toAbsolutePath().normalize().toString();
         app.cfg().getProp("soloncode").bindTo(c);
+
+        if(c.getChatModel() != null){
+            c.addModel(c.getChatModel().getModel(), c.getChatModel());
+        }
 
         //设定默认会话id
         String sessionId = Solon.cfg().argx().get(AgentProperties.ARG_SESSION);
