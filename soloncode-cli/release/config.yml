@@ -21,26 +21,7 @@ soloncode:
   subagentEnabled: true # 是否启用子代理模式
 
   cliEnabled: true # 是否启用控制台
-  uiType: "new" # 新版 Portal UI；主题自定义仅对 new 生效
-  startupSessionMode: "resume" # 启动会话模式：resume=恢复当前目录最近会话；temp=进入临时新会话
-  uiTheme: "solon" # 当前主题；主题定义与默认主题都建议直接在 config 中维护
   cliPrintSimplified: true
-
-#  uiThemes: # 自定义主题表示例（按需取消注释）
-#    my-theme:
-#      extends: solon
-#      accent: "#ff7d90"
-#      accentStrong: "#ff9aa8"
-#      userTitle: "#ffcad4"
-#      assistantTitle: "#ff8fa3"
-#      thinkingTitle: "#c4cddf"
-#      thinkingBorder: "#a0a8b8"
-#      toolTitle: "#ff7d90"
-#      toolMeta: "#a0a8b8"
-#      toolValue: "#f3f5f7"
-#      toolResult: "#e7f1fa"
-#      toolPreview: "#727b89"
-#      blockTime: "#727b89"
 
   webEnabled: false # 是否启用 WebApi
   webEndpoint: "/cli"
@@ -49,21 +30,21 @@ soloncode:
   acpTransport: "websocket" # "stdio" or "websocket"
   acpEndpoint: "/acp"
 
-  chatModel: # llm 配置（参考 solon ai chatmodel 配置）
-    apiUrl: "https://ai.gitee.com/v1/chat/completions"
-    apiKey: "******"
-    model: "glm-5.0"
-    timeout: "120s"
-    userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
-#    defaultOptions:
-#      enable_thinking: false #不同模型可能不同
-#      temperature: 0.2
-#      top_p: 0.5
-#      frequency_penalty: 0.5
-#      presence_penalty: 0.4
+  models: # llm 配置（参考 solon ai chatmodel 配置）
+    - apiUrl: "https://ai.gitee.com/v1/chat/completions"
+      apiKey: "******"
+      model: "glm-5.0"
+      timeout: "120s"
+      userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
+#      defaultOptions:
+#        enable_thinking: false #不同模型可能不同
+#        temperature: 0.2
+#        top_p: 0.5
+#        frequency_penalty: 0.5
+#        presence_penalty: 0.4
 #  skillPools: # 技能池（可以多个）
 #    "@shared": "/path/to/shared-skills"
-#  restApis: # rest-api
+#  apiServers: # rest-api
 #    api1:
 #      docUrl: ""
 #      apiBaseUrl: ""
