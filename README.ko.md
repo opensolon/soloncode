@@ -30,8 +30,8 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 설정 (설치 후 반드시 수정 필요):
 
 * 설치 디렉토리: `~/soloncode/bin/`
-* `~/soloncode/config.yml` 설정 파일을 찾아 `chatModel` 설정을 수정합니다 (필수).
-* `chatModel` 설정 옵션은 다음을 참조하세요: [모델 설정 및 요청 옵션](https://solon.noear.org/article/1087)
+* `~/soloncode/config.yml` 설정 파일을 찾아 `models` 설정을 수정합니다 (필수).
+* `models` 설정 옵션은 다음을 참조하세요: [모델 설정 및 요청 옵션](https://solon.noear.org/article/1087)
 
 ## 실행
 

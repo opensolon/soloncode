@@ -30,8 +30,8 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Konfiguracija (mora se modificirati nakon instalacije):
 
 * Instalacijski direktorij: `~/soloncode/bin/`
-* Pronađite konfiguracijsku datoteku `~/soloncode/config.yml` i modificirajte `chatModel` konfiguraciju (primarno)
-* Za `chatModel` konfiguracijske opcije, pogledajte: [Konfiguracija modela i opcije zahtjeva](https://solon.noear.org/article/1087)
+* Pronađite konfiguracijsku datoteku `~/soloncode/config.yml` i modificirajte `models` konfiguraciju (primarno)
+* Za `models` konfiguracijske opcije, pogledajte: [Konfiguracija modela i opcije zahtjeva](https://solon.noear.org/article/1087)
 
 ## Pokretanje
 

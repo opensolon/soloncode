@@ -30,8 +30,8 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Cấu hình (bắt buộc phải sửa sau khi cài đặt):
 
 * Thư mục cài đặt: `~/soloncode/bin/`
-* Tìm tệp cấu hình `~/soloncode/config.yml` và sửa cấu hình `chatModel` (chủ yếu)
-* Đối với các tùy chọn cấu hình `chatModel`, tham khảo: [Cấu hình Mô hình và Tùy chọn Yêu cầu](https://solon.noear.org/article/1087)
+* Tìm tệp cấu hình `~/soloncode/config.yml` và sửa cấu hình `models` (chủ yếu)
+* Đối với các tùy chọn cấu hình `models`, tham khảo: [Cấu hình Mô hình và Tùy chọn Yêu cầu](https://solon.noear.org/article/1087)
 
 ## Chạy
 

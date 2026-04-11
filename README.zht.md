@@ -30,8 +30,8 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 修改設定（安裝後，必須先修改設定）：
 
 * 安裝後的目錄：`~/soloncode/bin/`
-* 找到 `~/soloncode/config.yml` 設定檔，（主要）修改 `chatModel` 設定
-* `chatModel` 設定項，可參考：《模型設定與請求選項》
+* 找到 `~/soloncode/config.yml` 設定檔，（主要）修改 `models` 設定
+* `models` 設定項，可參考：《模型設定與請求選項》
 
 ## 執行
 
