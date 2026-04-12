@@ -159,16 +159,19 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
 
     return (
       <div className="chat-messages" ref={chatContainer}>
+        {messages.length === 0 && !isLoading && (
+          <div className="empty-messages">
+            <div className="empty-logo">SolonCode</div>
+            <div className="empty-slogan">做你想做的事</div>
+          </div>
+        )}
+
         {messages.map((message) => (
           <div
             key={message.id}
             className={`message ${message.role}`}
           >
             <div className="message-bubble">
-              <div className="message-header">
-                <Icon name={getRoleIcon(message.role)} size={12} />
-                <span className="message-role">{getRoleLabel(message.role)}</span>
-              </div>
               <div className="message-text">
                 {message.contents.map((item, index) => (
                   <ContentItemRenderer key={index} item={item} theme={theme} />

@@ -1,12 +1,14 @@
 /**
  * 后端服务管理
  * 通过 soloncode 命令启动/停止后端 CLI 进程
+ *
+ * Solon 框架端口规则：
+ *   server.port = HTTP + WebSocket 共用端口
  */
 import { fileService } from './fileService';
 
-const DEFAULT_PORT = 8080;
-// Solon 默认 WebSocket 端口 = HTTP 端口 + 10000（见 app.yml server.websocket.port）
-const WS_PORT_OFFSET = 10000;
+const SERVER_PORT = 4808;  // HTTP 端口（传给 --server.port）
+const WS_PORT = 4808;      // WebSocket 端口（与 HTTP 共用）
 
 // 检测 Tauri 环境
 function isTauriEnv(): boolean {
@@ -65,7 +67,7 @@ function waitForReady(port: number, maxRetries: number = 60): Promise<boolean> {
 export const backendService = {
   /**
    * 启动后端服务
-   * @returns 成功返回端口号，失败返回 null
+   * @returns 成功返回 WS 端口号，失败返回 null
    */
   async start(workspacePath: string): Promise<number | null> {
     if (!isTauriEnv()) {
@@ -74,19 +76,18 @@ export const backendService = {
     }
 
     try {
-      console.log('[backendService] 启动后端...', { workspacePath, port: DEFAULT_PORT });
-      const pid = await fileService.startBackend(workspacePath, DEFAULT_PORT);
+      console.log('[backendService] 启动后端...', { workspacePath, serverPort: SERVER_PORT, wsPort: WS_PORT });
+      const pid = await fileService.startBackend(workspacePath, SERVER_PORT);
       console.log('[backendService] 后端进程 PID:', pid);
 
-      // 等待就绪（检测 WebSocket 端口）
-      const wsPort = DEFAULT_PORT + WS_PORT_OFFSET;
-      const ready = await waitForReady(wsPort);
+      // 等待 WebSocket 端口就绪（Solon WS 端口 = server.port + 10000）
+      const ready = await waitForReady(WS_PORT);
       if (!ready) {
         console.error('[backendService] 后端启动超时');
         return null;
       }
 
-      return wsPort;
+      return WS_PORT;
     } catch (err) {
       console.warn('[backendService] 后端启动失败:', err);
       return null;

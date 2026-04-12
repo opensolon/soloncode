@@ -243,3 +243,31 @@
   margin-left: 2px;
   border-radius: 2px;
 }
+
+/* ===== 图片预览 ===== */
+.image-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background-color: var(--cb-vscode-editor-background);
+}
+
+.image-preview-img {
+  max-width: 100%;
+  max-height: calc(100% - 32px);
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.image-preview-info {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+}

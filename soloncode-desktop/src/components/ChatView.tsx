@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message, Conversation, Theme, Plugin, ContentType, ContentItem } from '../types';
+import type { ModelProvider } from '../services/settingsService';
 import { saveMessage, getMessagesByConversation } from '../db';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
@@ -12,6 +13,10 @@ interface ChatViewProps {
   workspacePath?: string;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
+  providers?: ModelProvider[];
+  activeProviderId?: string;
+  activeFileName?: string;
+  activeFilePath?: string;
 }
 
 // 全局 WebSocket 连接管理器（单例模式）
@@ -32,24 +37,18 @@ class WebSocketManager {
 
   /** 设置后端端口（由 App.tsx 调用，打开工作区后设置） */
   setBackendPort(port: number | null) {
-    if (this.backendPort !== port) {
-      this.backendPort = port;
-      this.closeConnection(); // 只关闭连接，不清除回调
-    }
+    this.backendPort = port;
   }
 
   /** 设置工作区路径（由 App.tsx 调用） */
   setWorkspacePath(path: string | null) {
-    if (this.workspacePath !== path) {
-      this.workspacePath = path;
-      this.closeConnection(); // 只关闭连接，不清除回调
-    }
+    this.workspacePath = path;
   }
 
   private getWebSocketUrl(): string {
     const host = this.backendPort
       ? `localhost:${this.backendPort}`
-      : (import.meta.env.VITE_WS_HOST || 'localhost:18080');
+      : (import.meta.env.VITE_WS_HOST || 'localhost:4808');
     const protocol = import.meta.env.VITE_WS_PROTOCOL || 'ws';
     const params = new URLSearchParams();
     if (this.workspacePath) {
@@ -89,6 +88,7 @@ class WebSocketManager {
       }
 
       const wsUrl = this.getWebSocketUrl();
+      console.log('[WS] Connecting to:', wsUrl);
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
@@ -101,8 +101,8 @@ class WebSocketManager {
         reject(new Error('WebSocket connection failed'));
       };
 
-      this.ws.onclose = () => {
-        console.log('[WS] Disconnected');
+      this.ws.onclose = (event) => {
+        console.log('[WS] Disconnected, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean);
         this.ws = null;
       };
 
@@ -166,6 +166,15 @@ class WebSocketManager {
     this.messageCallbacks.clear();
   }
 
+  /** 推送配置变更到后端 */
+  async sendConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }): Promise<void> {
+    const ws = await this.connect();
+    ws.send(JSON.stringify({
+      type: 'config',
+      chatModel,
+    }));
+  }
+
   /** 只关闭连接，保留回调注册（端口/路径变化时使用） */
   closeConnection() {
     if (this.ws) {
@@ -198,7 +207,17 @@ export function setWorkspacePath(path: string | null) {
   WebSocketManager.getInstance().setWorkspacePath(path);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession }: ChatViewProps) {
+/** 推送模型配置到后端（供 App.tsx 保存设置时调用） */
+export async function sendModelConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }) {
+  try {
+    await WebSocketManager.getInstance().sendConfig(chatModel);
+    console.log('[ChatView] 模型配置已推送到后端');
+  } catch (err) {
+    console.warn('[ChatView] 推送模型配置失败:', err);
+  }
+}
+
+export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, activeFileName, activeFilePath }: ChatViewProps) {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -331,12 +350,12 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
             return [...filtered, finalMsg];
           });
 
-          // 保存到数据库
+          // 保存到数据库（包含 metadata）
           saveMessage({
             conversationId: msgSessionId,
             role: 'assistant',
             timestamp: finalMsg.timestamp,
-            contents: JSON.stringify(contentItems)
+            contents: JSON.stringify({ items: contentItems, metadata: finalMsg.metadata })
           }).catch(err => console.error('Failed to save message:', err));
         }
 
@@ -457,6 +476,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
 
     let fullMessage = messageText;
 
+    if (activeFilePath) {
+      // Todo 需要将当前文件加入到上下文中
+    }
+
     if (options.contexts.length > 0) {
       const contextStr = options.contexts.map(c => `[${c.name}]`).join(' ');
       fullMessage = `${contextStr}\n\n${messageText}`;
@@ -501,6 +524,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     try {
       const wsManager = WebSocketManager.getInstance();
 
+      // 热更新：发消息前推送当前选择的供应商配置
+      const selectedProvider = providers.find(p => p.id === options.model);
+      if (selectedProvider) {
+        await wsManager.sendConfig({
+          apiUrl: selectedProvider.apiUrl,
+          apiKey: selectedProvider.apiKey,
+          model: selectedProvider.model,
+        });
+      }
+
       const request = {
         input: fullMessage,
         sessionId: sessionId,
@@ -529,19 +562,25 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
       });
       setIsLoading(false);
     }
-  }, [currentConversation, onNewSession, onUpdateSessionTitle, workspacePath]);
+  }, [currentConversation, onNewSession, onUpdateSessionTitle, workspacePath, providers]);
 
   async function loadConversationMessages(convId: string | number) {
     const storedMessages = await getMessagesByConversation(convId);
 
     if (storedMessages.length > 0) {
-      setMessages(storedMessages.map((msg, index) => ({
-        ...msg,
-        id: Date.now() + index,
-        role: msg.role as Message['role'],
-        timestamp: msg.timestamp || new Date().toLocaleTimeString(),
-        contents: typeof msg.contents === 'string' ? JSON.parse(msg.contents) : msg.contents
-      })));
+      setMessages(storedMessages.map((msg, index) => {
+        let parsed: any = typeof msg.contents === 'string' ? JSON.parse(msg.contents) : msg.contents;
+        // 兼容新旧格式：新格式 { items, metadata }，旧格式为数组
+        let contents = Array.isArray(parsed) ? parsed : parsed.items || [];
+        let metadata = !Array.isArray(parsed) && parsed.metadata ? parsed.metadata : undefined;
+        return {
+          id: Date.now() + index,
+          role: msg.role as Message['role'],
+          timestamp: msg.timestamp || new Date().toLocaleTimeString(),
+          contents,
+          metadata,
+        };
+      }));
     } else {
       setMessages([]);
     }
@@ -588,21 +627,42 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     };
   }, []);
 
+  // 模型切换时推送配置到后端
+  const handleModelChange = useCallback(async (providerId: string) => {
+    const provider = providers.find(p => p.id === providerId);
+    if (provider) {
+      try {
+        await WebSocketManager.getInstance().sendConfig({
+          apiUrl: provider.apiUrl,
+          apiKey: provider.apiKey,
+          model: provider.model,
+        });
+        console.log('[ChatView] 模型配置已推送:', provider.name, provider.model);
+      } catch (err) {
+        console.warn('[ChatView] 推送模型配置失败:', err);
+      }
+    }
+  }, [providers]);
+
+  const isEmpty = messages.length === 0 && !isLoading;
+
   return (
     <main className="main-content">
+      {!isEmpty && (
       <ChatHeader
         title={currentConversation.title}
         status={currentConversation.status}
         theme={currentTheme}
         onToggleTheme={toggleTheme}
       />
+      )}
       <ChatMessages
         ref={chatMessagesRef}
         messages={messages}
         isLoading={isLoading}
         theme={currentTheme}
       />
-      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} />
+      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} />
     </main>
   );
 }

@@ -427,7 +427,8 @@ input[type="checkbox"] {
   background-color: var(--cb-vscode-editor-background);
 }
 
-.panels-container > .panel-wrapper:first-child {
+/* 只有两个面板都可见时才显示分割线 */
+.panels-container > .panel-wrapper:first-child:nth-last-child(2) {
   border-right: 1px solid var(--cb-vscode-panel-border);
 }
 

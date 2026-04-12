@@ -11,6 +11,9 @@ interface OpenFile {
   content: string;
   modified: boolean;
   language: string;
+  isImage?: boolean;
+  imageBase64?: string;
+  imageMimeType?: string;
 }
 
 interface EditorPanelProps {
@@ -220,6 +223,19 @@ export function EditorPanel({
 
       {activeFile && (
         <div className="editor-content">
+          {activeFile.isImage && activeFile.imageBase64 ? (
+            <div className="image-preview">
+              <img
+                src={`data:${activeFile.imageMimeType};base64,${activeFile.imageBase64}`}
+                alt={activeFile.name}
+                className="image-preview-img"
+              />
+              <div className="image-preview-info">
+                <span>{activeFile.name}</span>
+                <span>{activeFile.imageMimeType}</span>
+              </div>
+            </div>
+          ) : (
           <Editor
             height="100%"
             language={getMonacoLanguage(activeFile.path)}
@@ -253,10 +269,11 @@ export function EditorPanel({
             }}
             path={activeFile.path}
           />
+          )}
         </div>
       )}
 
-      {activeFile && (
+      {activeFile && !activeFile.isImage && (
         <div className="editor-status">
           <span className="status-item">{activeFile.language}</span>
           <span className="status-item">UTF-8</span>

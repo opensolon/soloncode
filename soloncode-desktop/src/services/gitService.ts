@@ -203,6 +203,32 @@ export const gitService = {
       return [];
     }
   },
+
+  /**
+   * 获取文件在 HEAD 中的内容（原始版本）
+   */
+  async showHead(cwd: string, filePath: string): Promise<string> {
+    if (!isTauriEnv()) return '';
+    try {
+      return await invoke<string>('git_show_head', { cwd, filePath });
+    } catch (err) {
+      console.warn('[gitService] git_show_head 失败:', err);
+      return '';
+    }
+  },
+
+  /**
+   * 获取文件的完整 diff 文本
+   */
+  async diffText(cwd: string, filePath: string): Promise<string> {
+    if (!isTauriEnv()) return '';
+    try {
+      return await invoke<string>('git_diff_text', { cwd, filePath });
+    } catch (err) {
+      console.warn('[gitService] git_diff_text 失败:', err);
+      return '';
+    }
+  },
 };
 
 export default gitService;

@@ -4,7 +4,6 @@ import { TitleBar } from './components/layout/TitleBar';
 import { SidePanel } from './components/layout/SidePanel';
 import { StatusBar } from './components/layout/StatusBar';
 import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
-import { SearchPanel } from './components/sidebar/SearchPanel';
 import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session } from './components/sidebar/SessionsPanel';
@@ -17,7 +16,7 @@ import { fileService, type FileInfo } from './services/fileService';
 import { gitService, type GitStatus, type DiffLine } from './services/gitService';
 import { settingsService } from './services/settingsService';
 import { backendService } from './services/backendService';
-import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath } from './components/ChatView';
+import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import type { Conversation, Plugin } from './types';
 import './App.css';
@@ -59,9 +58,14 @@ const plugins: Plugin[] = [
   { id: 'none', name: '插件暂不支持', icon: 'cube', description: '插件暂不支持', enabled: true, version: '1.0.0' }
 ];
 
-// 模拟会话
-// 默认设置（从 settingsService 加载持久化配置）
-const defaultSettings: Settings = settingsService.load();
+// 默认设置（从 IndexedDB 异步加载）
+const defaultSettings: Settings = {
+  theme: 'dark', fontSize: 14, language: 'zh-CN',
+  tabSize: 2, autoSave: true, formatOnSave: true,
+  shell: 'bash', terminalFontSize: 14,
+  providers: [], activeProviderId: '', maxSteps: 30,
+  mcpServers: [],
+};
 
 // 面板位置类型
 type PanelPosition = 'editor' | 'chat';
@@ -80,10 +84,25 @@ function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [settingsVisible, setSettingsVisible] = useState(false);
 
-  // 设置变化时自动持久化
+  // 启动时从 IndexedDB 加载设置
+  useEffect(() => {
+    settingsService.load().then(s => setSettings(s));
+  }, []);
+
+  // 设置变化时自动持久化 + 推送配置到后端
   const handleSettingsChange = useCallback((newSettings: Settings) => {
     setSettings(newSettings);
-    settingsService.save(newSettings as any);
+    settingsService.save(newSettings);
+
+    // 推送当前激活供应商的模型配置到后端
+    const activeProvider = newSettings.providers.find(p => p.id === newSettings.activeProviderId);
+    if (activeProvider) {
+      sendModelConfig({
+        apiUrl: activeProvider.apiUrl,
+        apiKey: activeProvider.apiKey,
+        model: activeProvider.model,
+      });
+    }
   }, []);
 
   // 工作区状态
@@ -124,7 +143,7 @@ function App() {
 
   // 面板状态 - 默认比例 1:2:5:2 (活动栏:侧边栏:编辑器:对话框)
   const [panelState, setPanelState] = useState<PanelState>({
-    editorVisible: true,
+    editorVisible: false,
     chatVisible: true,
     editorWidth: 0, // 将在 useEffect 中根据比例计算
     chatWidth: 0,   // 将在 useEffect 中根据比例计算
@@ -169,6 +188,9 @@ function App() {
     content: string;
     modified: boolean;
     language: string;
+    isImage?: boolean;
+    imageBase64?: string;
+    imageMimeType?: string;
   }>>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
 
@@ -271,10 +293,17 @@ function App() {
 
   // 切换面板可见性
   const togglePanel = useCallback((panel: 'editor' | 'chat') => {
-    setPanelState(prev => ({
-      ...prev,
-      [`${panel}Visible`]: !prev[`${panel}Visible`],
-    }));
+    setPanelState(prev => {
+      const newVisible = !prev[`${panel}Visible`];
+      // 收起对话面板时，同时收起侧边栏
+      if (panel === 'chat' && !newVisible) {
+        setSidebarCollapsed(true);
+      }
+      return {
+        ...prev,
+        [`${panel}Visible`]: newVisible,
+      };
+    });
   }, []);
 
   // 交换面板位置
@@ -493,12 +522,17 @@ function App() {
     }
   }, [openFolderByPath]);
 
-  // 刷新文件树
+  // 刷新文件树（带防抖，避免短时间内多次全量扫描）
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshFileTree = useCallback(async () => {
-    if (workspacePath) {
+    if (!workspacePath) return;
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = setTimeout(async () => {
       const files = await fileService.listDirectoryTree(workspacePath, 10);
       setWorkspaceFiles(convertToFileTree(files));
-    }
+    }, 300);
   }, [workspacePath]);
 
   // 新建文件（在工作区根目录）
@@ -676,13 +710,6 @@ function App() {
             onMove={handleMove}
           />
         );
-      case 'search':
-        return (
-          <SearchPanel
-            onSearch={async (query) => { console.log('搜索:', query); return []; }}
-            onResultClick={(result) => console.log('点击结果:', result)}
-          />
-        );
       case 'git':
         return (
           <GitPanel
@@ -706,7 +733,13 @@ function App() {
             onDiscard={async (path) => {
               if (workspacePath) { await gitService.discard(workspacePath, [path]); refreshGitStatus(); }
             }}
-            onFileClick={handleFileSelect}
+            onFileClick={(relPath) => {
+              // Git 返回相对路径，拼接为完整路径后打开
+              if (workspacePath) {
+                const fullPath = workspacePath.replace(/\\/g, '/') + '/' + relPath;
+                handleFileSelect(fullPath);
+              }
+            }}
           />
         );
       case 'extensions':
@@ -751,24 +784,25 @@ function App() {
             theme={settings.theme}
             diffLines={diffLines}
           />
+          {panelState.chatVisible && (
           <div
             className="resize-handle vertical"
             onMouseDown={(e) => startResize('editor', e)}
           />
+          )}
         </div>
       );
     }
 
     if (panel === 'chat') {
-      // 始终渲染 ChatView，用 CSS 控制显隐，防止非切换操作刷新对话框
+      if (!panelState.chatVisible) return null;
+      // 仅对话面板可见时，居中显示并左右各留 15%
+      const onlyChat = !panelState.editorVisible;
       return (
         <div key="chat" className="panel-wrapper chat-wrapper" style={{
-          width: panelState.chatVisible ? panelState.chatWidth : 0,
-          flex: panelState.chatVisible ? '1 1 auto' : '0 0 0',
-          overflow: 'hidden',
-          opacity: panelState.chatVisible ? 1 : 0,
-          pointerEvents: panelState.chatVisible ? 'auto' : 'none',
-          transition: 'width 0.2s, opacity 0.2s',
+          width: onlyChat ? '70%' : panelState.chatWidth,
+          flex: onlyChat ? 'none' : '1 1 auto',
+          margin: onlyChat ? '0 15%' : undefined,
         }}>
           <ChatView
             currentConversation={currentConversation}
@@ -776,6 +810,10 @@ function App() {
             workspacePath={workspacePath || undefined}
             onUpdateSessionTitle={handleUpdateSessionTitle}
             onNewSession={handleNewSession}
+            providers={settings.providers}
+            activeProviderId={settings.activeProviderId}
+            activeFileName={activeFile?.name}
+            activeFilePath={activeFilePath || undefined}
           />
         </div>
       );

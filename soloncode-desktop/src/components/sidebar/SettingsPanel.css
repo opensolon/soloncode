@@ -1,10 +1,7 @@
-/* 设置弹窗遮罩 */
+/* ==================== 设置弹窗 ==================== */
 .settings-modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
@@ -12,10 +9,9 @@
   z-index: 1000;
 }
 
-/* 设置弹窗 */
 .settings-modal {
-  width: 680px;
-  max-height: 80vh;
+  width: 800px;
+  height: 80vh;
   display: flex;
   flex-direction: column;
   background-color: var(--cb-vscode-sideBar-background);
@@ -41,8 +37,7 @@
 }
 
 .settings-modal-close {
-  width: 28px;
-  height: 28px;
+  width: 28px; height: 28px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -53,95 +48,92 @@
   color: var(--cb-text-secondary);
   transition: background-color 0.15s;
 }
-
 .settings-modal-close:hover {
   background-color: var(--cb-vscode-list-hoverBackground);
   color: var(--cb-text-primary);
 }
 
-.settings-modal-search {
+/* 主内容区：左侧菜单 + 右侧详情 */
+.settings-modal-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 左侧菜单 */
+.settings-menu {
+  width: 160px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--cb-vscode-panel-border);
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.settings-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--cb-vscode-panel-border);
-}
-
-.search-container {
-  padding: 8px;
-}
-
-.search-input {
-  width: 100%;
-  padding: 6px 8px;
-  background-color: var(--cb-vscode-input-background);
-  border: 1px solid var(--cb-vscode-widget-border);
-  border-radius: 4px;
-  color: var(--cb-text-primary);
   font-size: 13px;
-  outline: none;
-  box-sizing: border-box;
-}
-
-.search-input:focus {
-  border-color: var(--cb-accent);
-}
-
-.search-input::placeholder {
   color: var(--cb-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+}
+.settings-menu-item:hover {
+  color: var(--cb-text-primary);
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+.settings-menu-item.active {
+  color: var(--cb-text-primary);
+  background-color: var(--cb-vscode-list-hoverBackground);
+  border-left: 2px solid var(--cb-accent);
+  padding-left: 14px;
 }
 
-.settings-modal-body {
+/* 右侧详情 */
+.settings-detail {
   flex: 1;
   overflow-y: auto;
-  padding: 0;
 }
 
-.settings-section {
-  border-bottom: 1px solid var(--cb-vscode-panel-border);
+.settings-section-content {
+  padding: 8px 0;
 }
 
-.section-header {
-  padding: 10px 16px;
-  font-size: 12px;
+.settings-section-title {
+  padding: 10px 20px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--cb-text-primary);
   background-color: var(--cb-vscode-input-background);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
+/* 设置行 */
 .setting-item {
-  padding: 8px 16px;
+  padding: 8px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
-
 .setting-item:hover {
   background-color: var(--cb-vscode-list-hoverBackground);
-}
-
-.setting-item.checkbox {
-  justify-content: flex-start;
-}
-
-.setting-item.checkbox .setting-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.setting-item.checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
 }
 
 .setting-label {
   font-size: 13px;
   color: var(--cb-text-primary);
-  flex: 1;
+  flex-shrink: 0;
+  min-width: 100px;
+}
+
+.setting-control {
+  display: flex;
+  align-items: center;
 }
 
 .setting-input {
@@ -152,14 +144,12 @@
   color: var(--cb-text-primary);
   font-size: 13px;
   outline: none;
-  width: 220px;
+  width: 280px;
   box-sizing: border-box;
 }
-
 .setting-input:focus {
   border-color: var(--cb-accent);
 }
-
 .setting-input.number {
   width: 70px;
   text-align: center;
@@ -174,16 +164,28 @@
   font-size: 13px;
   outline: none;
   cursor: pointer;
-  min-width: 140px;
+  min-width: 160px;
 }
-
 .setting-select:focus {
   border-color: var(--cb-accent);
 }
-
 .setting-select option {
   background-color: var(--cb-vscode-sideBar-background);
   color: var(--cb-text-primary);
+}
+
+/* checkbox */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--cb-text-primary);
+}
+.checkbox-label input[type="checkbox"] {
+  width: 16px; height: 16px;
+  cursor: pointer;
 }
 
 /* 底部按钮 */
@@ -203,31 +205,184 @@
   border: 1px solid var(--cb-vscode-widget-border);
   transition: all 0.15s;
 }
-
 .settings-btn.cancel {
   background: transparent;
   color: var(--cb-text-primary);
 }
-
 .settings-btn.cancel:hover {
   background-color: var(--cb-vscode-list-hoverBackground);
 }
-
 .settings-btn.save {
   background-color: var(--cb-accent);
   color: #fff;
   border-color: var(--cb-accent);
 }
-
 .settings-btn.save:hover {
   opacity: 0.9;
 }
 
-.checkbox-label {
+/* ==================== Provider 供应商卡片 ==================== */
+.provider-card {
+  margin: 6px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  background-color: transparent;
+}
+.provider-card:hover {
+  border-color: var(--cb-text-secondary);
+}
+.provider-card.active {
+  border-color: var(--cb-accent);
+  background-color: rgba(0, 122, 204, 0.06);
+}
+.provider-card.disabled {
+  opacity: 0.5;
+}
+
+.provider-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.provider-card-info {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
+}
+
+.provider-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background-color: var(--cb-vscode-input-background);
+  color: var(--cb-text-secondary);
+  border: 1px solid var(--cb-vscode-widget-border);
+}
+
+.provider-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cb-text-primary);
+}
+
+.provider-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-card-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  display: flex;
+  gap: 6px;
+}
+
+.provider-card-sep {
+  color: var(--cb-vscode-widget-border);
+}
+
+/* 添加供应商下拉菜单 */
+.provider-add-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background-color: var(--cb-vscode-sideBar-background);
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  min-width: 140px;
+  padding: 4px 0;
+}
+
+.provider-add-item {
+  padding: 6px 14px;
   font-size: 13px;
   color: var(--cb-text-primary);
+  cursor: pointer;
+}
+.provider-add-item:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+/* ==================== MCP 服务器 ==================== */
+.mcp-add-btn {
+  padding: 2px 10px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--cb-accent);
+  border: 1px solid var(--cb-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.mcp-add-btn:hover {
+  background-color: var(--cb-accent);
+  color: #fff;
+}
+
+.mcp-empty {
+  padding: 24px 20px;
+  font-size: 13px;
+  color: var(--cb-text-secondary);
+  text-align: center;
+}
+
+.mcp-server-card {
+  margin: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 6px;
+  background-color: var(--cb-vscode-input-background);
+}
+
+.mcp-server-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mcp-remove-btn {
+  width: 22px; height: 22px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: var(--cb-text-secondary);
+}
+.mcp-remove-btn:hover {
+  background-color: rgba(255, 80, 80, 0.15);
+  color: #ff5050;
+}
+
+.mcp-server-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcp-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcp-field label {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  width: 100px;
+  flex-shrink: 0;
+}
+.mcp-field .setting-input {
+  flex: 1;
+  width: auto;
 }

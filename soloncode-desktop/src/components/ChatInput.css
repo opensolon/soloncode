@@ -244,6 +244,7 @@
 /* 底部提示 */
 .input-footer {
   display: flex;
+  align-items: center;
   justify-content: center;
   padding: 6px 0 0;
 }
@@ -252,6 +253,15 @@
   font-size: 11px;
   color: var(--cb-text-secondary);
   opacity: 0.7;
+}
+
+.input-active-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+  opacity: 0.6;
 }
 
 /* 自动完成下拉框 */

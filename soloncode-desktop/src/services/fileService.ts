@@ -46,6 +46,30 @@ export interface OpenFile {
   content: string;
   modified: boolean;
   language: string;
+  isImage?: boolean;
+  imageBase64?: string;
+  imageMimeType?: string;
+}
+
+// 图片扩展名集合
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'avif']);
+
+/** 根据文件路径判断是否是图片文件 */
+export function isImageFile(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  if (ext === 'svg') return false; // SVG 是文本，用编辑器打开
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+/** 根据扩展名获取 MIME 类型 */
+function getImageMimeType(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  const mimeMap: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
+    ico: 'image/x-icon', tiff: 'image/tiff', tif: 'image/tiff', avif: 'image/avif',
+  };
+  return mimeMap[ext] || 'image/png';
 }
 
 // 检测是否在 Tauri 环境中运行
@@ -488,19 +512,28 @@ export const fileService = {
   },
 
   /**
-   * 打开文件并返回 OpenFile 对象
+   * 打开文件并返回 OpenFile 对象（支持图片预览）
    */
   async openFile(path: string): Promise<OpenFile> {
-    const content = await this.readFile(path);
     const name = path.split(/[/\\]/).pop() || '';
     const language = this.getLanguageFromPath(path);
 
+    if (isImageFile(path)) {
+      const base64 = await invoke<string>('read_file_binary', { path });
+      return {
+        path, name,
+        content: '',
+        modified: false,
+        language,
+        isImage: true,
+        imageBase64: base64,
+        imageMimeType: getImageMimeType(path),
+      };
+    }
+
+    const content = await this.readFile(path);
     return {
-      path,
-      name,
-      content,
-      modified: false,
-      language,
+      path, name, content, modified: false, language,
     };
   },
 

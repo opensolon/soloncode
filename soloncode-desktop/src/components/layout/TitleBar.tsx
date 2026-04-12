@@ -159,9 +159,6 @@ export function TitleBar({
     <div className="title-bar" data-tauri-drag-region>
       {/* 左侧菜单 */}
       <div className="title-bar-left">
-        <div className="app-logo">
-          <Icon name="bot" size={16} />
-        </div>
         <DropdownMenu
           trigger={<span className="menu-trigger">文件</span>}
           items={fileMenuItems}

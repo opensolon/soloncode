@@ -21,6 +21,7 @@ import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -34,6 +35,10 @@ import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Code CLI WebSocket 网关
@@ -81,8 +86,17 @@ public class WebSocketGate extends SimpleWebSocketListener {
     @Override
     public void onMessage(WebSocket socket, String text) throws IOException {
         try {
+            // 先判断消息类型（config 消息结构不同于 chat 消息）
+            ONode root = ONode.ofJson(text);
+            String msgType = root.get("type") != null ? root.get("type").getString() : null;
+
+            if ("config".equals(msgType)) {
+                handleConfigMessage(socket, root);
+                return;
+            }
+
             // 解析请求
-            WebMessage req = ONode.ofJson(text).toBean(WebMessage.class);
+            WebMessage req = root.toBean(WebMessage.class);
             String sessionId = req.getSessionId();
             String input = req.getInput();
             String cwd = req.getCwd();
@@ -146,12 +160,6 @@ public class WebSocketGate extends SimpleWebSocketListener {
             if (Assert.isEmpty(input)) {
                 return;
             }
-
-            // 记录开始时间
-            final long startTime = System.currentTimeMillis();
-
-            // 用于收集 metrics 的容器
-            final String[] modelName = {""};
 
             // 流式处理
             final String finalSessionId = sessionId;
@@ -295,5 +303,90 @@ public class WebSocketGate extends SimpleWebSocketListener {
         }
 
         return "";
+    }
+
+    /**
+     * 处理前端推送的配置变更
+     * 消息格式: {"type":"config","chatModel":{"apiUrl":"...","apiKey":"...","model":"..."}}
+     */
+    private void handleConfigMessage(WebSocket socket, ONode root) {
+        try {
+            ONode chatModelNode = root.get("chatModel");
+            if (chatModelNode != null && !chatModelNode.isNull()) {
+                String apiUrl = chatModelNode.get("apiUrl") != null ? chatModelNode.get("apiUrl").getString() : null;
+                String apiKey = chatModelNode.get("apiKey") != null ? chatModelNode.get("apiKey").getString() : null;
+                String model = chatModelNode.get("model") != null ? chatModelNode.get("model").getString() : null;
+
+                if (apiUrl != null || apiKey != null || model != null) {
+                    // 更新 AgentProperties 的 chatModel 配置
+                    if (agentPros.getChatModel() != null) {
+                        if (apiUrl != null) agentPros.getChatModel().setApiUrl(apiUrl);
+                        if (apiKey != null) agentPros.getChatModel().setApiKey(apiKey);
+                        if (model != null) agentPros.getChatModel().setModel(model);
+                    }
+
+                    // 重建 ChatModel 并注入 kernel
+                    ChatModel newChatModel = ChatModel.of(agentPros.getChatModel()).build();
+                    kernel.setChatModel(newChatModel);
+
+                    LOG.info("[WS] Config updated: model={}", model);
+
+                    // 持久化到 YAML 文件
+                    saveConfigToFile(apiUrl, apiKey, model);
+
+                    socket.send(new ONode()
+                            .set("type", "config")
+                            .set("status", "ok")
+                            .set("model", model)
+                            .toJson());
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("[WS] Config update failed", e);
+            socket.send(new ONode()
+                    .set("type", "config")
+                    .set("status", "error")
+                    .set("text", e.getMessage())
+                    .toJson());
+        }
+    }
+
+    /**
+     * 将 chatModel 配置持久化到 YAML 文件（~/.soloncode/chat-model.yml）
+     */
+    private void saveConfigToFile(String apiUrl, String apiKey, String model) {
+        try {
+            String home = System.getProperty("user.home");
+            Path configDir = Paths.get(home, ".soloncode");
+            Files.createDirectories(configDir);
+
+            Path configFile = configDir.resolve("chat-model.yml");
+
+            // 读取已有配置，保留未更新的字段
+            String existApiUrl = agentPros.getChatModel() != null ? agentPros.getChatModel().getApiUrl() : null;
+            String existApiKey = agentPros.getChatModel() != null ? agentPros.getChatModel().getApiKey() : null;
+            String existModel = agentPros.getChatModel() != null ? agentPros.getChatModel().getModel() : null;
+
+            String finalApiUrl = apiUrl != null ? apiUrl : existApiUrl;
+            String finalApiKey = apiKey != null ? apiKey : existApiKey;
+            String finalModel = model != null ? model : existModel;
+
+            StringBuilder yaml = new StringBuilder();
+            yaml.append("soloncode:\n");
+            yaml.append("  chatModel:\n");
+            if (finalApiUrl != null) yaml.append("    apiUrl: \"").append(escapeYaml(finalApiUrl)).append("\"\n");
+            if (finalApiKey != null) yaml.append("    apiKey: \"").append(escapeYaml(finalApiKey)).append("\"\n");
+            if (finalModel != null) yaml.append("    model: \"").append(escapeYaml(finalModel)).append("\"\n");
+
+            Files.write(configFile, yaml.toString().getBytes(StandardCharsets.UTF_8));
+            LOG.info("[WS] Config persisted to: {}", configFile);
+        } catch (Exception e) {
+            LOG.error("[WS] Failed to persist config to YAML", e);
+        }
+    }
+
+    private String escapeYaml(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

@@ -30,7 +30,7 @@ export default defineConfig(async () => ({
     },
     proxy: {
       '/cli': {
-        target: 'http://127.0.0.1:8080',
+        target: 'http://127.0.0.1:4808',
         changeOrigin: true,
         secure: false
       }

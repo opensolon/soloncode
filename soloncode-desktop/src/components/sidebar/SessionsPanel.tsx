@@ -58,10 +58,6 @@ export function SessionsPanel({
 
         {regularSessions.length > 0 && (
           <div className="session-group">
-            <div className="group-header">
-              <span>历史会话</span>
-              <span className="group-count">{regularSessions.length}</span>
-            </div>
             {regularSessions.map(session => (
               <div
                 key={session.id}

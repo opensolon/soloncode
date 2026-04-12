@@ -121,12 +121,16 @@
 
 .editor-wrapper {
   min-width: 300px;
-  border-right: 1px solid var(--cb-vscode-panel-border);
 }
 
 .chat-wrapper {
   min-width: 200px;
   flex: none;
+}
+
+/* 只有两个面板都可见时才显示分割线 */
+.editor-wrapper + .chat-wrapper,
+.chat-wrapper + .editor-wrapper {
   border-left: 1px solid var(--cb-vscode-panel-border);
 }
 
@@ -295,11 +299,6 @@ select option {
 
 /* 侧边栏分割线 */
 .side-panel {
-  border-right: 1px solid var(--cb-vscode-panel-border);
-}
-
-/* 编辑器区域分割线 */
-.editor-panel {
   border-right: 1px solid var(--cb-vscode-panel-border);
 }
 

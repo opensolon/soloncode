@@ -3564,6 +3564,7 @@ dependencies = [
 name = "soloncode-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "portable-pty",
  "serde",
  "serde_json",
