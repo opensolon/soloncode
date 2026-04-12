@@ -219,7 +219,16 @@ JAVA_OPTS="-Dfile.encoding=UTF-8"
 if [ -n "$JAVA_VER" ] && [ "$JAVA_VER" -ge 21 ]; then
     JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
 fi
-java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
+
+# Git Bash / MSYS terminals on Windows often need winpty for correct line editing.
+if [ -n "$MSYSTEM" ]; then
+    JAVA_OPTS="$JAVA_OPTS -Djline.terminal.type=xterm-256color"
+    if [ -t 0 ] && [ -t 1 ] && command -v winpty >/dev/null 2>&1; then
+        exec winpty java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
+    fi
+fi
+
+exec java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
 LAUNCHER_EOF
 chmod +x "$TARGET_BIN_DIR/soloncode"
 echo "      Created: $TARGET_BIN_DIR/soloncode"
