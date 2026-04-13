@@ -1,5 +1,5 @@
 
-### v2026.4.12
+### v2026.4.14
 
 * 优化 soloncode-cli agent 日志打印级别
 * 修复 soloncode-cli 在 window git bash 环境下 backspace 删除输入文字乱的问题
