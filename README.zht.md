@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>基於 Solon AI 與 Java 實現的開源編碼智能體（支援 Java8 到 Java26 環境啟動）</p>
-<p>最新版本：v2026.4.11</p>
+<p>最新版本：v2026.4.14</p>
 <img width="600" src="SHOW.png" />
 </div>
 
