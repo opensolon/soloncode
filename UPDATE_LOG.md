@@ -1,8 +1,9 @@
 
 
-### v2026.4.16
+### v2026.4.15
 
 * 优化 soloncode-cli chunk 的打印，不再需要 isNormal 判断了（内部溶进了 ReasonChunk）
+* 修复 soloncode-cli 在某些 llm 工具调用时会失败的问题（v2026.4.14 引起的）
 
 ### v2026.4.14
 
