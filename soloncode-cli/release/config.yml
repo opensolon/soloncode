@@ -11,7 +11,7 @@ soloncode:
 
   sessionWindowSize: 8 # 会话历史窗口大小（即，新指令时使用几条历史消息）
 
-  summaryWindowSize: 13 # 触发摘要压缩的消息条数阈值（即，工作上下文压缩时留几条消息不压缩）
+  summaryWindowSize: 15 # 触发摘要压缩的消息条数阈值（即，工作上下文压缩时留几条消息不压缩）
   summaryWindowToken: 13000 # 触发摘要压缩的内容长度阈值（即，工作上下文压缩时留多长内容不压缩）
 #  summaryModel: "xxx"
 
