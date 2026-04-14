@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a>とJavaで構築されたオープンソースのコーディングエージェント（Java8からJava26のランタイム環境をサポート）</p>
-<p>最新バージョン: v2026.4.15</p>
+<p>最新バージョン: v2026.4.16</p>
 <img width="600" src="SHOW.png" />
 </div>
 
@@ -39,7 +39,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.15
+SolonCode v2026.4.16
 /Users/noear
 Tips: (esc) interrupt | '/exit': quit | '/resume': resume | '/clear': reset
 

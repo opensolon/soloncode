@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Um agente de codificação de código aberto construído com <a href="https://github.com/opensolon/solon-ai">Solon AI</a> e Java (suporta ambientes de runtime Java8 a Java26)</p>
-<p>Versão Mais Recente: v2026.4.15</p>
+<p>Versão Mais Recente: v2026.4.16</p>
 <img width="600" src="SHOW.png" />
 </div>
 
@@ -39,7 +39,7 @@ Execute o comando `soloncode` em qualquer diretório no console (ou seja, seu es
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.15
+SolonCode v2026.4.16
 /Users/noear
 Tips: (esc) interrupt | '/exit': quit | '/resume': resume | '/clear': reset
 

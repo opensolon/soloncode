@@ -1,7 +1,7 @@
 <div dir="rtl" align="right">
 <h1>SolonCode</h1>
 <p>وكيل برمجة مفتوح المصدر مبني باستخدام <a href="https://github.com/opensolon/solon-ai">Solon AI</a> وجافا (يدعم بيئات تشغيل Java8 إلى Java26)</p>
-<p>أحدث إصدار: v2026.4.15</p>
+<p>أحدث إصدار: v2026.4.16</p>
 <img width="600" src="SHOW.png" />
 </div>
 
@@ -41,7 +41,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.15
+SolonCode v2026.4.16
 /Users/noear
 Tips: (esc) interrupt | '/exit': quit | '/resume': resume | '/clear': reset
 
