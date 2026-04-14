@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a> ve Java ile oluşturulmuş açık kaynaklı bir kodlama ajanıdır (Java8'den Java26'ya kadar olan çalışma ortamlarını destekler)</p>
-<p>En Son Sürüm: v2026.4.14</p>
+<p>En Son Sürüm: v2026.4.15</p>
 <img width="600" src="SHOW.png" />
 </div>
 
@@ -39,7 +39,7 @@ Konsolda herhangi bir dizinden `soloncode` komutunu çalıştırın (yani çalı
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.14
+SolonCode v2026.4.15
 /Users/noear
 İpuçları: (esc) kesme | '/exit': çıkış | '/resume': devam et | '/clear': sıfırla
 

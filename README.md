@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>An open-source coding agent built with <a href="https://github.com/opensolon/solon-ai">Solon AI</a> and Java (supports Java8 to Java26 runtime environments)</p>
-<p>Latest Version: v2026.4.14</p>
+<p>Latest Version: v2026.4.15</p>
 <img width="600" src="SHOW.png" />
 </div>
 
@@ -40,7 +40,7 @@ Run the `soloncode` command from any directory in the console (i.e., your worksp
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.14
+SolonCode v2026.4.15
 /Users/noear
 Tips: (esc) interrupt | '/exit': quit | '/resume': resume | '/clear': reset
 

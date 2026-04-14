@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Ein Open-Source-Coding-Agent, der mit <a href="https://github.com/opensolon/solon-ai">Solon AI</a> und Java entwickelt wurde (unterstützt Java8 bis Java26 Laufzeitumgebungen)</p>
-<p>Aktuelle Version: v2026.4.14</p>
+<p>Aktuelle Version: v2026.4.15</p>
 <img width="600" src="SHOW.png" />
 </div>
 
@@ -39,7 +39,7 @@ Führen Sie den Befehl `soloncode` in einem beliebigen Verzeichnis in der Konsol
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.14
+SolonCode v2026.4.15
 /Users/noear
 Tips: (esc) interrupt | '/exit': quit | '/resume': resume | '/clear': reset
 
