@@ -38,8 +38,9 @@ if (CloudClient.lock().tryLock("demo.lock.key", 3)) {
 }
 
 // 文件服务
-CloudClient.file().upload(fileName, inputStream);
-InputStream stream = CloudClient.file().download(fileName);
+CloudClient.file().put(key, new Media(stream));
+Media media = CloudClient.file().get(key);
+CloudClient.file().delete(key);
 
 // 分布式计数（指标监控）
 CloudClient.metric().addCount("demo", "demo.api.user.add", 1);
@@ -68,7 +69,7 @@ try (AutoCloseable entry = CloudClient.breaker().entry("main")) {
 | `nacos2-solon-cloud-plugin` | tcp 实时 | tcp | 支持 | 支持 |
 | `nacos3-solon-cloud-plugin` | tcp 实时 | tcp | 支持 | 支持 |
 | `consul-solon-cloud-plugin` | 定时拉取 | http | 不支持 | 支持 |
-| `zookeeper-solon-cloud-plugin` | 实时 | tcp | 不支持 | 支持 |
+| `zookeeper-solon-cloud-plugin` | 支持 | tcp | 不支持 | 支持 |
 | `polaris-solon-cloud-plugin` | 实时 | grpc | 支持 | 支持 |
 | `etcd-solon-cloud-plugin` | 事件通知 | http | 不支持 | 支持 |
 | `water-solon-cloud-plugin` | 事件通知 | http | 不支持 | 支持 |
@@ -78,9 +79,8 @@ try (AutoCloseable entry = CloudClient.breaker().entry("main")) {
 ```yaml
 solon.cloud.nacos:
   server: "127.0.0.1:8848"
+  namespace: "dev"
   config:
-    server: "127.0.0.1:8848"
-    namespace: "dev"
     group: "DEFAULT_GROUP"
 ```
 
@@ -96,6 +96,8 @@ solon.cloud.nacos:
 | `jmdns-solon-cloud-plugin` | 支持 | dns | 不支持 | 支持 |
 | `nacos-solon-cloud-plugin` | 实时 | tcp | 支持 | 支持 |
 | `nacos2-solon-cloud-plugin` | 实时 | tcp | 支持 | 支持 |
+| `nacos3-solon-cloud-plugin` | 实时 | tcp | 支持 | 支持 |
+| `water-solon-cloud-plugin` | 实时 | tcp | 不支持 | 支持 |
 | `consul-solon-cloud-plugin` | 定时拉取 | http | 不支持 | 不支持 |
 | `zookeeper-solon-cloud-plugin` | 实时 | tcp | 不支持 | 不支持 |
 | `polaris-solon-cloud-plugin` | 实时 | grpc | 支持 | 支持 |
@@ -106,8 +108,8 @@ solon.cloud.nacos:
 ```yaml
 solon.cloud.nacos:
   server: "127.0.0.1:8848"
+  namespace: "dev"
   discovery:
-    namespace: "dev"
     group: "DEFAULT_GROUP"
     serviceName: "demo-service"
 ```
@@ -126,7 +128,9 @@ solon.cloud.nacos:
 | `rabbitmq-solon-cloud-plugin` | 支持 | 支持 | 支持(内存) | 支持 |
 | `rocketmq-solon-cloud-plugin` | 支持 | 支持 | 半支持 | / |
 | `rocketmq5-solon-cloud-plugin` | 支持 | 支持 | 支持 | 半支持 |
+| `aliyun-ons-solon-cloud-plugin` | 支持 | 支持 | 支持 | 支持 |
 | `activemq-solon-cloud-plugin` | 支持 | 支持 | 支持(内存) | 支持 |
+| `water-solon-cloud-plugin` | 支持 | 支持 | 支持 | 支持 |
 | `mqtt-solon-cloud-plugin` | 支持 | / | / | / |
 | `mqtt5-solon-cloud-plugin` | 支持 | / | / | / |
 | `jedis-solon-cloud-plugin` | / | / | / | / |
@@ -137,10 +141,14 @@ solon.cloud.nacos:
 // 发布
 CloudClient.event().publish(new Event("topic.order", "order-1"));
 
-// 订阅
+// 订阅（@CloudEvent 标注在类上，实现 CloudEventHandler 接口）
 @CloudEvent("topic.order")
-public void onOrder(Event event) {
-    System.out.println(event.content());
+public class OrderEventHandler implements CloudEventHandler {
+    @Override
+    public boolean handle(Event event) throws Throwable {
+        System.out.println(event.content());
+        return true;
+    }
 }
 ```
 
@@ -170,7 +178,7 @@ solon.cloud.water:
 
 ```java
 @CloudJob("demoJob")
-public class DemoJob implements JobHandler {
+public class DemoJob implements CloudJobHandler {
     @Override
     public void handle(Context ctx) throws Throwable {
         // 任务逻辑
@@ -205,11 +213,17 @@ solon.cloud.local:
 ### 文件操作
 
 ```java
-// 上传
-CloudClient.file().upload("test.txt", inputStream);
+import org.noear.solon.cloud.model.Media;
 
-// 下载
-InputStream content = CloudClient.file().download("test.txt");
+// 上传（put）
+CloudClient.file().put("test.txt", new Media(inputStream));
+
+// 下载（get），返回 Media 对象
+Media media = CloudClient.file().get("test.txt");
+InputStream stream = media.body();
+
+// 删除
+CloudClient.file().delete("test.txt");
 ```
 
 ---
@@ -244,6 +258,7 @@ solon.cloud.local:
 |---|---|---|
 | `value` | 断路器名字 | |
 | `name` | 断路器名字 | 与 `value` 互为别名，用一个即可 |
+| `fallback` | 降级方法名 | 被限流时执行的后备方法 |
 
 > 阈值不支持代码里写死，需要通过上述配置实现。
 

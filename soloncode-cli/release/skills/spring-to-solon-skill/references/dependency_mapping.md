@@ -48,7 +48,7 @@
 <parent>
     <groupId>org.noear</groupId>
     <artifactId>solon-parent</artifactId>
-    <version>3.10.0</version>
+    <version>3.10.3</version>
     <relativePath/> <!-- 从仓库查找 -->
 </parent>
 ```
@@ -181,13 +181,13 @@ Servlet API 扩展支持（用于兼容传统 Servlet 组件）。
 
 | Spring 容器 | Solon 替代方案 | 说明 |
 |---|---|---|
-| spring-boot-starter-tomcat | **无直接对应** | **Solon 不再支持 Tomcat**，需替换为 Jetty 或 Undertow |
-| spring-boot-starter-undertow | solon-boot-undertow | Undertow 容器 |
-| spring-boot-starter-jetty | solon-boot-jetty | Jetty 容器 |
+| spring-boot-starter-tomcat | solon-server-tomcat | Tomcat 容器 |
+| spring-boot-starter-undertow | solon-server-undertow | Undertow 容器（旧名 solon-boot-* 仍可兼容） |
+| spring-boot-starter-jetty | solon-server-jetty | Jetty 容器（旧名 solon-boot-* 仍可兼容） |
 
-> **重要提示：** 如果原 Spring 项目使用 Tomcat，迁移时必须选择 Jetty 或 Undertow 作为替代容器。
+> **说明：** Solon 支持多种容器（Tomcat、Jetty、Undertow、JdkHttp 等），推荐使用 Undertow 或 Jetty。
 
-**spring-boot-starter-undertow → solon-boot-undertow：**
+**spring-boot-starter-undertow → solon-server-undertow：**
 
 ```xml
 <!-- Before -->
@@ -199,11 +199,11 @@ Servlet API 扩展支持（用于兼容传统 Servlet 组件）。
 <!-- After -->
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-boot-undertow</artifactId>
+    <artifactId>solon-server-undertow</artifactId>
 </dependency>
 ```
 
-**spring-boot-starter-jetty → solon-boot-jetty：**
+**spring-boot-starter-jetty → solon-server-jetty：**
 
 ```xml
 <!-- Before -->
@@ -215,7 +215,7 @@ Servlet API 扩展支持（用于兼容传统 Servlet 组件）。
 <!-- After -->
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-boot-jetty</artifactId>
+    <artifactId>solon-server-jetty</artifactId>
 </dependency>
 ```
 
@@ -394,6 +394,12 @@ JPA（Hibernate 实现）。
 ---
 
 ### 3.4 消息队列
+
+> **Cloud 插件 vs 数据插件说明：**
+>
+> - `rabbitmq-solon-cloud-plugin` / `kafka-solon-cloud-plugin` 属于 **Cloud 生态**，采用事件总线模式（`CloudEventSubscriber`），适合微服务间的事件驱动架构，支持注册发现与配置中心集成。
+> - `solon-data-rabbitmq` / `solon-data-kafka` 属于 **数据层插件**，提供更直接的 RabbitMQ/Kafka 客户端操作 API，适合只需要简单消息收发、不涉及微服务治理的场景。
+> - 如果原 Spring 项目仅使用 `spring-boot-starter-amqp` / `spring-kafka` 做基础消息收发（不依赖 Spring Cloud Stream），建议优先评估 `solon-data-*` 系列插件；如需云端事件总线能力，则使用 `*-solon-cloud-plugin`。
 
 #### spring-boot-starter-amqp → rabbitmq-solon-cloud-plugin
 
@@ -972,7 +978,7 @@ org.springframework.cloud   →  org.noear
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solon-parent</artifactId>
-        <version>3.10.0</version>
+        <version>3.10.3</version>
         <relativePath/>
     </parent>
 
@@ -1081,7 +1087,7 @@ org.springframework.cloud   →  org.noear
 | Spring 组件 | 说明 |
 |---|---|
 | `spring-boot-starter-hateoas` | Solon 无直接对应，需手动实现或寻找第三方库 |
-| `spring-boot-starter-tomcat` | **Solon 不再支持 Tomcat**，必须替换为 `solon-boot-jetty` 或 `solon-boot-undertow` |
+| `spring-boot-starter-tomcat` | 可迁移至 `solon-server-tomcat`，或选择 `solon-server-jetty` / `solon-server-undertow` |
 
 ### 6.2 不需要迁移的依赖
 
@@ -1101,7 +1107,7 @@ org.springframework.cloud   →  org.noear
 ### 6.4 版本管理
 
 - 使用 `solon-parent` 作为 Parent POM 后，大部分 Solon 依赖无需指定版本号（由 Parent 统一管理）。
-- 当前目标版本为 **Solon 3.10.0**，请确保所有 Solon 插件使用相同版本。
+- 当前目标版本为 **Solon 3.10.3**，请确保所有 Solon 插件使用相同版本。
 
 ### 6.5 快速对照速查表
 
@@ -1111,9 +1117,9 @@ org.springframework.cloud   →  org.noear
 | spring-boot-starter-webflux | solon-web | Web |
 | spring-boot-starter-websocket | solon-server-websocket | Web |
 | spring-boot-starter-servlet | solon-web-servlet | Web |
-| spring-boot-starter-undertow | solon-boot-undertow | 容器 |
-| spring-boot-starter-jetty | solon-boot-jetty | 容器 |
-| spring-boot-starter-tomcat | solon-boot-jetty / solon-boot-undertow | 容器（替换） |
+| spring-boot-starter-undertow | solon-server-undertow | 容器 |
+| spring-boot-starter-jetty | solon-server-jetty | 容器 |
+| spring-boot-starter-tomcat | solon-server-tomcat / solon-server-jetty / solon-server-undertow | 容器 |
 | spring-boot-starter-jdbc | solon-data | 数据 |
 | spring-boot-starter-data-jpa | solon-data-jpa | 数据 |
 | mybatis-spring-boot-starter | mybatis-solon-plugin | 数据 |

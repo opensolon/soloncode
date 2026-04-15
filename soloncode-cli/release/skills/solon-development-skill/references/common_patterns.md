@@ -89,10 +89,20 @@ public class LogFilter implements Filter {
 
 With `solon-scheduling-simple`:
 
+> **注意**：必须先在启动类上添加 `@EnableScheduling` 注解，`@Scheduled` 才会生效。`@Scheduled` 的完整包名为 `org.noear.solon.scheduling.annotation.Scheduled`。
+
 ```java
+@EnableScheduling  // 在启动类上启用调度
+@SolonMain
+public class App {
+    public static void main(String[] args) {
+        Solon.start(App.class, args);
+    }
+}
+
 @Component
 public class MyJob {
-    @Scheduled(cron = "0 0/5 * * * ?")
+    @Scheduled(cron = "0 0/5 * * * ? *")  // Solon 官方规范要求 7 位 cron 表达式
     public void run() {
         // Execute every 5 minutes
     }

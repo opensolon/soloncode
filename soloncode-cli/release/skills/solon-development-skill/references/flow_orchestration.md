@@ -130,28 +130,28 @@ engine.eval(graphNew);
 
 ### FlowContext（流程上下文）
 
-| 方法 | 返回类型 | 描述 |
-|---|---|---|
-| `of()` | `FlowContext` | 获取上下文实例 |
-| `of(instanceId)` | `FlowContext` | 获取上下文实例（指定实例ID） |
+| 方法 | 返回类型 | 描述                    |
+|---|---|-----------------------|
+| `of()` | `FlowContext` | 获取上下文实例               |
+| `of(instanceId)` | `FlowContext` | 获取上下文实例（指定实例ID）       |
 | `fromJson(json)` | `FlowContext` | 从 JSON 加载上下文（v3.8.1+） |
-| `toJson()` | `String` | 序列化为 JSON（v3.8.1+） |
-| `getInstanceId()` | `String` | 获取实例 ID |
-| `model()` | `Map` | 参数集合 |
-| `put(key, value)` | `FlowContext` | 推入参数 |
-| `getAs(key)` | `T` | 获取参数（泛型） |
-| `getOrDefault(key, def)` | `T` | 获取参数或默认 |
-| `remove(key)` | `Object` | 移除参数 |
-| `containsKey(key)` | `boolean` | 是否包含参数 |
-| `interrupt()` | | 中断当前分支（其他分支仍执行） |
-| `stop()` | | 停止执行（整个流不再前进） |
-| `isStopped()` | `boolean` | 是否已停止 |
-| `trace()` | `FlowTrace` | 执行跟踪（v3.8.1+） |
-| `lastRecord()` | `NodeRecord` | 最后执行的节点记录 |
-| `lastNodeId()` | `String` | 最后执行的节点 ID |
-| `eventBus()` | `DamiBus` | 当前实例事件总线 |
+| `toJson()` | `String` | 序列化为 JSON（v3.8.1+）    |
+| `getInstanceId()` | `String` | 获取实例 ID               |
+| `vars()` | `Map<String, Object>` | 上下文变量                 |
+| `put(key, value)` | `FlowContext` | 推入参数                  |
+| `getAs(key)` | `T` | 获取参数（泛型）              |
+| `getOrDefault(key, def)` | `T` | 获取参数或默认               |
+| `remove(key)` | `void` | 移除参数                  |
+| `containsKey(key)` | `boolean` | 是否包含参数                |
+| `interrupt()` | | 中断当前分支（其他分支仍执行）       |
+| `stop()` | | 停止执行（整个流不再前进）         |
+| `isStopped()` | `boolean` | 是否已停止                 |
+| `trace()` | `FlowTrace` | 执行跟踪（v3.8.1+）         |
+| `lastRecord()` | `NodeRecord` | 最后执行的节点记录             |
+| `lastNodeId()` | `String` | 最后执行的节点 ID            |
+| `eventBus()` | `DamiBus` | 当前实例事件总线              |
 
-> **脚本中的变量规则**：FlowContext 实例在脚本里的变量名为 `context`；model 中所有参数在脚本中可直接作为变量使用。
+> **脚本中的变量规则**：FlowContext 实例在脚本里的变量名为 `context`；vars 中所有变量在脚本中可直接作为变量使用。
 
 ### Graph / GraphSpec
 
@@ -396,7 +396,7 @@ engine.addInterceptor(new FlowInterceptor() {
 ```java
 FlowContext context = FlowContext.of();
 context.eventBus().<String, String>listen("demo.topic", event -> {
-    System.out.println(event.getContent());
+    System.out.println(event.getPayload());
 });
 
 engine.eval("c1", context);

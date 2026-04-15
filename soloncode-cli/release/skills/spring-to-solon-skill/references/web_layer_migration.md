@@ -25,15 +25,15 @@
   - [4.1 @ControllerAdvice → Filter](#41-controlleradvice--filter)
   - [4.2 GlobalExceptionFilter 完整实现](#42-globalexceptionfilter-完整实现)
 - [5. CORS 迁移](#5-cors-迁移)
-  - [5.1 @CrossOrigin / WebMvcConfigurer → solon.web.cors](#51-crossorigin--webmvcconfigurer--solonwebcors)
-  - [5.2 配置式 CORS](#52-配置式-cors)
-  - [5.3 编程式 CORS（Filter）](#53-编程式-corsfilter)
+  - [5.1 @CrossOrigin / WebMvcConfigurer → @CrossOrigin](#51-crossorigin--webmvcconfigurer--crossorigin)
+  - [5.2 注解式 CORS](#52-注解式-cors)
+  - [5.3 编程式 CORS（CrossFilter）](#53-编程式-corscrossfilter)
 - [6. 文件上传 / 下载](#6-文件上传--下载)
   - [6.1 MultipartFile → UploadedFile](#61-multipartfile--uploadedfile)
   - [6.2 文件下载（DownloadedFile）](#62-文件下载downloadedfile)
   - [6.3 多文件上传](#63-多文件上传)
 - [7. SSE / WebSocket](#7-sse--websocket)
-  - [7.1 SseEmitter → Context + SSE](#71-sseemitter--context--sse)
+  - [7.1 SseEmitter → SseEmitter (solon-web-sse)](#71-sseemitter--sseemitter-solon-web-sse)
   - [7.2 Spring WebSocket → Solon WebSocket](#72-spring-websocket--solon-websocket)
 - [8. 请求参数校验](#8-请求参数校验)
   - [8.1 @Valid + @Validated → @Valid](#81-valid--validated--valid)
@@ -348,7 +348,7 @@ public class DemoController {
         Map<String, Object> info = new HashMap<>();
         info.put("path", ctx.path());              // 请求路径
         info.put("method", ctx.method());           // 请求方法
-        info.put("clientIp", ctx.ip());             // 客户端 IP
+        info.put("clientIp", ctx.remoteIp());        // 客户端 IP
         info.put("contentType", ctx.contentType()); // 内容类型
         info.put("userAgent", ctx.header("User-Agent")); // 请求头
         return info;
@@ -375,18 +375,18 @@ public class DemoController {
 |---|---|---|
 | **请求信息** | `ctx.path()` | 请求路径 |
 | | `ctx.method()` | HTTP 方法 |
-| | `ctx.ip()` / `ctx.realIp()` | 客户端 IP |
+| | `ctx.remoteIp()` / `ctx.realIp()` | 客户端 IP |
 | | `ctx.contentType()` | Content-Type |
 | | `ctx.url()` | 完整 URL |
 | **请求参数** | `ctx.param("name")` | 获取请求参数（等价 `request.getParameter()`） |
-| | `ctx.params()` | 获取所有请求参数 |
+| | `ctx.paramMap()` | 获取所有请求参数 |
 | | `ctx.header("name")` | 获取请求头 |
 | | `ctx.cookie("name")` | 获取 Cookie 值 |
 | **请求体** | `ctx.body()` | 获取请求体字符串 |
 | | `ctx.bodyAsStream()` | 获取请求体输入流 |
-| | `ctx.bodyToBean(User.class)` | 请求体反序列化为 Bean |
-| **响应输出** | `ctx.output(obj)` | 输出对象（自动转换） |
-| | `ctx.outputAsJson(obj)` | 输出 JSON |
+| | `ctx.bodyAsBean(User.class)` | 请求体反序列化为 Bean |
+| **响应输出** | `ctx.render(obj)` | 输出对象（自动 JSON 序列化） |
+| | `ctx.output(str)` | 输出字符串（仅接受 String/byte[]/InputStream） |
 | | `ctx.outputAsHtml(str)` | 输出 HTML |
 | | `ctx.outputAsFile(file)` | 输出文件 |
 | **响应控制** | `ctx.redirect(url)` | 重定向 |
@@ -395,10 +395,10 @@ public class DemoController {
 | | `ctx.contentType("text/html")` | 设置响应 Content-Type |
 | | `ctx.headerSet("name", "value")` | 设置响应头 |
 | **会话** | `ctx.sessionSet(key, val)` | 设置会话属性 |
-| | `ctx.sessionGet(key)` | 获取会话属性 |
+| | `ctx.session(key)` | 获取会话属性 |
 | | `ctx.sessionRemove(key)` | 移除会话属性 |
 | **请求属性** | `ctx.attrSet(key, val)` | 设置请求属性 |
-| | `ctx.attrGet(key)` | 获取请求属性 |
+| | `ctx.attr(key)` | 获取请求属性 |
 
 ---
 
@@ -415,7 +415,7 @@ public class ContextController {
     @Get
     @Mapping("/demo1")
     public String demo1(Context ctx) {
-        return "客户端 IP: " + ctx.ip();
+        return "客户端 IP: " + ctx.remoteIp();
     }
 
     // 方式二：在 Filter/Interceptor 中通过回调参数获取
@@ -683,11 +683,13 @@ public class GlobalExceptionFilter implements Filter {
         } catch (IllegalArgumentException e) {
             // 参数异常 → 400
             ctx.status(400);
-            ctx.outputAsJson("{\"code\":400,\"message\":\"" + e.getMessage() + "\"}");
+            ctx.contentType("application/json");
+            ctx.output("{\"code\":400,\"message\":\"" + e.getMessage() + "\"}");
         } catch (Exception e) {
             // 其他异常 → 500
             ctx.status(500);
-            ctx.outputAsJson("{\"code\":500,\"message\":\"服务器内部错误\"}");
+            ctx.contentType("application/json");
+            ctx.output("{\"code\":500,\"message\":\"服务器内部错误\"}");
             e.printStackTrace();  // 打印异常堆栈（生产环境应使用日志框架）
         }
     }
@@ -716,21 +718,26 @@ public class GlobalExceptionFilter implements Filter {
             chain.doFilter(ctx);
 
             // 处理控制器抛出但已被框架捕获的异常
-            if (ctx.errors > 0) {
-                ctx.outputAsJson(buildError(500, "服务器内部错误"));
+            if (ctx.errors != null) {
+                ctx.contentType("application/json");
+                ctx.output(buildError(500, "服务器内部错误"));
             }
         } catch (IllegalArgumentException e) {
             ctx.status(400);
-            ctx.outputAsJson(buildError(400, e.getMessage()));
+            ctx.contentType("application/json");
+            ctx.output(buildError(400, e.getMessage()));
         } catch (NullPointerException e) {
             ctx.status(500);
-            ctx.outputAsJson(buildError(500, "空指针异常"));
+            ctx.contentType("application/json");
+            ctx.output(buildError(500, "空指针异常"));
         } catch (RuntimeException e) {
             ctx.status(500);
-            ctx.outputAsJson(buildError(500, e.getMessage()));
+            ctx.contentType("application/json");
+            ctx.output(buildError(500, e.getMessage()));
         } catch (Throwable e) {
             ctx.status(500);
-            ctx.outputAsJson(buildError(500, "服务器内部错误"));
+            ctx.contentType("application/json");
+            ctx.output(buildError(500, "服务器内部错误"));
         }
     }
 
@@ -744,7 +751,7 @@ public class GlobalExceptionFilter implements Filter {
 
 ## 5. CORS 迁移
 
-### 5.1 @CrossOrigin / WebMvcConfigurer → solon.web.cors
+### 5.1 @CrossOrigin / WebMvcConfigurer → @CrossOrigin
 
 #### Before — Spring（注解方式）
 
@@ -779,26 +786,11 @@ public class CorsConfig implements WebMvcConfigurer {
 
 ---
 
-### 5.2 配置式 CORS
+### 5.2 注解式 CORS
 
-#### After — Solon（推荐：配置文件方式）
+#### After — Solon（推荐：@CrossOrigin 注解方式）
 
-在 `app.yml` 中添加 CORS 配置：
-
-```yaml
-solon:
-  app:
-    name: demo-app
-  cors:
-    enable: true                          # 启用 CORS
-    allowedOrigins: "http://localhost:3000"  # 允许的来源
-    allowedMethods: "GET,POST,PUT,DELETE"  # 允许的方法
-    allowedHeaders: "*"                   # 允许的请求头
-    allowCredentials: true                # 允许携带凭证
-    maxAge: 3600                          # 预检请求缓存时间（秒）
-```
-
-> **说明**：引入 `solon-web-cors` 插件后，通过配置文件即可启用 CORS，无需编写任何 Java 代码。
+引入 `solon-web-cors` 插件后，可直接使用 `@CrossOrigin` 注解：
 
 对应 Maven 依赖：
 
@@ -809,9 +801,32 @@ solon:
 </dependency>
 ```
 
+```java
+import org.noear.solon.annotation.CrossOrigin;
+import org.noear.solon.annotation.*;
+
+@Controller
+@Mapping("/api")
+@CrossOrigin(origins = "http://localhost:3000",
+             methods = {"GET", "POST", "PUT", "DELETE"},
+             headers = "*",
+             credentials = true,
+             maxAge = 3600)
+public class ApiController {
+    // 该控制器下所有接口都启用 CORS
+}
+```
+
+> **说明**：`solon-web-cors` 插件**不提供 YAML 配置式支持**。CORS 的配置方式有三种：
+> 1. `@CrossOrigin` 注解（推荐，如上所示）
+> 2. `CrossFilter` 编程式（见 5.3 节）
+> 3. `CrossInterceptor` 路由拦截器
+>
+> 不要尝试在 `app.yml` 中配置 `solon.cors.*`，该配置项不存在。
+
 ---
 
-### 5.3 编程式 CORS（Filter）
+### 5.3 编程式 CORS（CrossFilter）
 
 #### After — Solon（Filter 方式，适合动态场景）
 
@@ -847,7 +862,7 @@ public class CorsFilter implements Filter {
 > **陷阱**：
 > - CORS Filter 必须在所有其他 Filter 之前执行，否则预检请求（OPTIONS）可能被后续 Filter 拦截。
 > - 生产环境中 `allowedOrigins` 不应设置为 `*`，应明确指定允许的域名。
-> - 推荐使用配置文件方式管理 CORS，避免硬编码。
+> - 推荐使用 `@CrossOrigin` 注解方式管理 CORS，避免硬编码。
 
 ---
 
@@ -989,9 +1004,8 @@ public DownloadedFile download(@Path String filename) {
     }
 
     // DownloadedFile 会自动设置 Content-Disposition 等响应头
-    return new DownloadedFile(file)
-            .asAttachment(true)              // 作为附件下载
-            .contentType("application/octet-stream");
+    // 注意：DownloadedFile 不支持链式调用，通过构造器传入参数
+    return new DownloadedFile("application/octet-stream", file, filename);
 }
 
 // 或者通过 Context 直接输出文件
@@ -1035,8 +1049,8 @@ public Map<String, Object> batchUpload(@RequestParam("files") MultipartFile[] fi
 @Post
 @Mapping("/batch-upload")
 public Map<String, Object> batchUpload(Context ctx) {
-    // 通过 Context 获取所有上传文件
-    List<UploadedFile> files = ctx.files("files");
+    // 通过 Context 获取所有上传文件（返回 UploadedFile 数组）
+    UploadedFile[] files = ctx.fileValues("files");
     int count = 0;
     for (UploadedFile file : files) {
         String name = file.getName();
@@ -1047,13 +1061,13 @@ public Map<String, Object> batchUpload(Context ctx) {
 }
 ```
 
-> **注意**：多文件上传时，Solon 通过 `ctx.files("fieldName")` 获取文件列表，而非通过方法参数绑定。
+> **注意**：多文件上传时，Solon 通过 `ctx.fileValues("fieldName")` 获取 `UploadedFile[]` 数组，而非通过方法参数绑定。
 
 ---
 
 ## 7. SSE / WebSocket
 
-### 7.1 SseEmitter → Context + SSE
+### 7.1 SseEmitter → SseEmitter (solon-web-sse)
 
 #### Before — Spring
 
@@ -1094,54 +1108,52 @@ public class SseController {
 
 #### After — Solon
 
+需要引入 `solon-web-sse` 插件：
+
+```xml
+<dependency>
+    <groupId>org.noear</groupId>
+    <artifactId>solon-web-sse</artifactId>
+</dependency>
+```
+
 ```java
-import org.noear.solon.core.handle.Context;
+import org.noear.solon.web.sse.SseEmitter;
+import org.noear.solon.web.sse.SseEvent;
 import org.noear.solon.annotation.*;
+import java.util.HashMap;
+import java.util.Map;
 
 @Controller
 @Mapping("/api/sse")
 public class SseController {
 
-    // 用于保存活跃的 SSE 连接
-    private final List<Context> clients = new CopyOnWriteArrayList<>();
+    static Map<String, SseEmitter> emitterMap = new HashMap<>();
 
     @Get
-    @Mapping("/connect")
-    public void connect(Context ctx) throws Throwable {
-        // 设置 SSE 必需的响应头
-        ctx.contentType("text/event-stream");
-        ctx.headerSet("Cache-Control", "no-cache");
-        ctx.headerSet("Connection", "keep-alive");
-
-        clients.add(ctx);
-
-        // 发送初始消息
-        ctx.output("event: connected\ndata: {\"status\":\"ok\"}\n\n");
-        ctx.flush();
-
-        // 注意：SSE 连接通常是长连接，Solon 会保持连接直到客户端断开
+    @Mapping("/connect/{id}")
+    public SseEmitter connect(String id) {
+        return new SseEmitter(3000L)
+                .onCompletion(() -> emitterMap.remove(id))
+                .onInited(s -> emitterMap.put(id, s));
     }
 
-    @Post
-    @Mapping("/send")
-    public void sendMessage(@Body String message) {
-        for (Context client : clients) {
-            try {
-                // SSE 格式：event: xxx\ndata: xxx\n\n
-                client.output("event: message\ndata: " + message + "\n\n");
-                client.flush();
-            } catch (Exception e) {
-                clients.remove(client);
-            }
+    @Get
+    @Mapping("/send/{id}")
+    public String send(String id) {
+        SseEmitter emitter = emitterMap.get(id);
+        if (emitter != null) {
+            emitter.send(new SseEvent().data("message content"));
         }
+        return "Ok";
     }
 }
 ```
 
 > **关键差异**：
-> - Spring 使用 `SseEmitter` 对象管理 SSE 连接；Solon 直接使用 `Context` 输出 SSE 格式数据。
-> - SSE 数据格式遵循标准规范：`event: xxx\ndata: xxx\n\n`（注意结尾是两个换行符）。
-> - Solon 没有 `SseEmitter` 的等价物，但通过 `Context` 实现同样简洁。
+> - Spring 使用 `SseEmitter`（`spring-webmvc`）；Solon 同样提供 `SseEmitter` 类（`solon-web-sse` 插件），API 风格相似但包名不同。
+> - Solon 的 `SseEmitter` 支持 `onCompletion`、`onInited` 等回调，通过 `SseEvent` 构建事件数据。
+> - 需要单独引入 `solon-web-sse` 依赖，不是 `solon-web` 内置功能。
 
 ---
 
@@ -1197,58 +1209,52 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
 ```java
 import org.noear.solon.net.annotation.ServerEndpoint;
-import org.noear.solon.net.websocket.WebSocketSession;
+import org.noear.solon.net.websocket.WebSocket;
+import org.noear.solon.net.websocket.WebSocketListener;
 import org.noear.solon.annotation.Component;
-import org.noear.solon.annotation.Inject;
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 // @ServerEndpoint 将类标记为 WebSocket 服务端点
 @ServerEndpoint("/ws/chat")
 @Component
-public class ChatWebSocketEndpoint {
+public class ChatWebSocketEndpoint implements WebSocketListener {
 
     // 保存所有活跃的 WebSocket 会话
-    private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
+    private final List<WebSocket> sessions = new CopyOnWriteArrayList<>();
 
-    @Inject
-    private MessageService messageService;
-
-    // 连接建立时触发
-    @OnOpen
-    public void onOpen(WebSocketSession session) {
-        sessions.add(session);
-        System.out.println("新连接: " + session.getSessionId());
+    @Override
+    public void onOpen(WebSocket socket) {
+        sessions.add(socket);
     }
 
-    // 接收到文本消息时触发
-    @OnMessage
-    public void onMessage(WebSocketSession session, String message) {
+    @Override
+    public void onMessage(WebSocket socket, String text) throws IOException {
         // 广播消息给所有连接
-        for (WebSocketSession s : sessions) {
-            s.send(message);
+        for (WebSocket s : sessions) {
+            s.send(text);
         }
     }
 
-    // 连接关闭时触发
-    @OnClose
-    public void onClose(WebSocketSession session) {
-        sessions.remove(session);
-        System.out.println("连接关闭: " + session.getSessionId());
+    @Override
+    public void onClose(WebSocket socket) {
+        sessions.remove(socket);
     }
 
-    // 发生异常时触发
-    @OnError
-    public void onError(WebSocketSession session, Throwable error) {
-        System.out.println("WebSocket 异常: " + error.getMessage());
-        sessions.remove(session);
+    @Override
+    public void onError(WebSocket socket, Throwable error) {
+        // 处理异常
     }
 }
 ```
 
 > **关键差异**：
-> - Spring 使用 `TextWebSocketHandler` + `WebSocketConfigurer` 注册；Solon 使用 `@ServerEndpoint` 注解声明式定义。
+> - Spring 使用 `TextWebSocketHandler` + `WebSocketConfigurer` 注册；Solon 使用 `@ServerEndpoint` 注解 + `WebSocketListener` 接口。
 > - Spring 需要额外的 `@Configuration` 类注册端点；Solon 的 `@ServerEndpoint` + `@Component` 一步完成。
-> - Solon 使用 `@OnOpen`、`@OnMessage`、`@OnClose`、`@OnError` 生命周期注解，与 Java EE WebSocket API 风格一致。
-> - 需要引入 `solon-server-websocket` 依赖。
+> - Solon **不使用** `@OnOpen`、`@OnMessage`、`@OnClose`、`@OnError` 注解，而是实现 `WebSocketListener` 接口的同名方法。
+> - Solon 的 WebSocket 会话类型是 `WebSocket`（不是 `WebSocketSession`）。
+> - 需要引入 `solon-websocket` 依赖。
 
 ---
 
@@ -1325,7 +1331,8 @@ public class UserController {
     }
 }
 
-// DTO 类（使用 javax.validation 或 Solon 内置校验注解）
+// DTO 类（使用 Solon 内置校验注解，org.noear.solon.validation.annotation.*）
+// 注意：Solon 不兼容 javax.validation 注解，必须使用 Solon 自己的校验注解
 public class UserDTO {
     @NotBlank(message = "用户名不能为空")
     private String username;
@@ -1500,8 +1507,8 @@ public class SessionController {
     @Mapping("/info")
     public Map<String, Object> getInfo(Context ctx) {
         // 通过 Context 获取会话属性
-        Long userId = ctx.sessionGet("userId", Long.class);
-        String username = ctx.sessionGet("username", String.class);
+        Long userId = (Long) ctx.session("userId");
+        String username = (String) ctx.session("username");
 
         if (userId == null) {
             return Map.of("code", 401, "message", "未登录");
@@ -1520,10 +1527,10 @@ public class SessionController {
 ```
 
 > **关键差异**：
-> - `HttpSession` → 通过 `Context` 的 `sessionSet` / `sessionGet` / `sessionClear` 方法管理。
+> - `HttpSession` → 通过 `Context` 的 `sessionSet` / `session` / `sessionClear` 方法管理。
 > - Solon 没有独立的 `HttpSession` 对象，会话管理是 `Context` 的一部分。
 > - `sessionSet(key, val)` 等价于 `session.setAttribute(key, val)`。
-> - `sessionGet(key)` 等价于 `session.getAttribute(key)`，支持泛型转换：`sessionGet("userId", Long.class)`。
+> - `session(key)` 等价于 `session.getAttribute(key)`，返回 Object 类型，需手动类型转换。
 > - `sessionClear()` 等价于 `session.invalidate()`。
 > - `sessionRemove(key)` 等价于 `session.removeAttribute(key)`。
 
@@ -1564,12 +1571,12 @@ server:
 | 4 | **Filter 顺序需显式指定** | 高 | 多个 Filter 的执行顺序通过 `@Component(index=N)` 控制。不指定 index 时执行顺序不确定，可能导致认证/日志等逻辑错乱。 |
 | 5 | **没有 @ControllerAdvice** | 高 | 全局异常处理需通过 Filter 的 try-catch 实现，不能使用 `@ControllerAdvice` + `@ExceptionHandler`。 |
 | 6 | **没有 BindingResult** | 中 | 参数校验失败由框架自动返回 400 错误，不能通过 `BindingResult` 手动处理校验结果。自定义错误响应需通过 Filter 拦截。 |
-| 7 | **CORS 需引入独立插件** | 低 | 需要引入 `solon-web-cors` 或自行实现 Filter。不像 Spring 默认集成。 |
-| 8 | **文件上传参数无需注解** | 低 | `UploadedFile` 参数不需要 `@RequestParam` 注解，框架自动绑定。多文件通过 `ctx.files()` 获取。 |
+| 7 | **CORS 需引入独立插件** | 低 | 需要引入 `solon-web-cors` 插件。支持 `@CrossOrigin` 注解、`CrossFilter` 编程式和 `CrossInterceptor` 路由拦截器三种方式。**不提供 YAML 配置式支持**。 |
+| 8 | **文件上传参数无需注解** | 低 | `UploadedFile` 参数不需要 `@RequestParam` 注解，框架自动绑定。多文件通过 `ctx.fileValues()` 获取 `UploadedFile[]`。 |
 | 9 | **会话超时单位不同** | 中 | Solon 的会话超时单位是**秒**，Spring Boot 支持 `30m` 这样的字符串格式。迁移时注意换算。 |
 | 10 | **控制器继承行为** | 低 | Solon 支持基类的 `@Mapping` public 函数继承。但注意被继承的方法必须是 public，protected 方法不会被路由。 |
-| 11 | **SSE 无专用对象** | 低 | Solon 没有 `SseEmitter`，通过 `Context` 直接输出 SSE 格式数据。需手动设置 `Content-Type: text/event-stream`。 |
-| 12 | **WebSocket 端点声明方式不同** | 中 | Spring 使用 `TextWebSocketHandler` + 配置类注册；Solon 使用 `@ServerEndpoint` 注解 + `@OnOpen/@OnMessage/@OnClose/@OnError` 生命周期。 |
+| 11 | **SSE 需引入专用插件** | 低 | Solon 提供 `SseEmitter`（`solon-web-sse` 插件），用法与 Spring 的 `SseEmitter` 类似。 |
+| 12 | **WebSocket 端点声明方式不同** | 中 | Spring 使用 `TextWebSocketHandler` + 配置类注册；Solon 使用 `@ServerEndpoint` 注解 + `implements WebSocketListener` 接口。 |
 
 ### Web 层迁移检查清单
 
@@ -1582,14 +1589,14 @@ server:
 - [ ] `@RequestHeader` → `@Header`
 - [ ] `@CookieValue` → `@Cookie`
 - [ ] `HttpServletRequest` + `HttpServletResponse` → `Context`
-- [ ] `HttpSession` → `Context.sessionSet/sessionGet/sessionClear`
+- [ ] `HttpSession` → `Context.sessionSet/session/sessionClear`
 - [ ] `OncePerRequestFilter` → `Filter` 接口
 - [ ] `HandlerInterceptor` → `RouterInterceptor`
 - [ ] `@ControllerAdvice` + `@ExceptionHandler` → `Filter` + try-catch
-- [ ] `@CrossOrigin` / `WebMvcConfigurer` → `solon-web-cors` 配置或 Filter
+- [ ] `@CrossOrigin` / `WebMvcConfigurer` → `@CrossOrigin`（注解）或 `CrossFilter`（编程式），不支持 YAML 配置
 - [ ] `MultipartFile` → `UploadedFile`
-- [ ] `SseEmitter` → `Context` + SSE 格式输出
-- [ ] `TextWebSocketHandler` → `@ServerEndpoint` + `@OnOpen/@OnMessage/@OnClose/@OnError`
+- [ ] `SseEmitter`(Spring) → `SseEmitter`(Solon, solon-web-sse 插件)
+- [ ] `TextWebSocketHandler` → `@ServerEndpoint` + `implements WebSocketListener`
 - [ ] `@Valid` + `BindingResult` → `@Valid`（类级）+ 框架自动处理
 - [ ] `produces`/`consumes` 属性 → `@Produces`/`@Consumes` 注解
 - [ ] 多路径映射 → 拆分为多个方法或多个路由

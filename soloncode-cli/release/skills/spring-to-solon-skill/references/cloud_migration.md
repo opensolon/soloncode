@@ -355,22 +355,24 @@ public interface UserServiceClient {
 @NamiClient(name = "user-service", path = "/api/users")
 public interface UserServiceClient {
 
-    @NamiClientMapping("GET /{id}")
+    @NamiMapping("GET /{id}")
     User getUser(@Param("id") Long id);
 
-    @NamiClientMapping("POST /")
-    User createUser(@Body User user);
+    @NamiMapping("POST /")
+    User createUser(@NamiBody User user);
 
-    @NamiClientMapping("GET /")
+    @NamiMapping("GET /")
     List<User> listUsers();
 }
 ```
 
 **关键差异：**
 - `@FeignClient` → `@NamiClient`
-- `@GetMapping` / `@PostMapping` → `@NamiClientMapping("METHOD /path")`
+- `@GetMapping` / `@PostMapping` → `@NamiMapping("METHOD /path")`
 - `@PathVariable` → `@Param`
-- `@RequestBody` → `@Body`
+- `@RequestBody` → `@NamiBody`
+
+> 补充：Solon v3.3.0+ 也支持使用 Solon 原生注解（`@Get`、`@Post`、`@Mapping`、`@Body`、`@Param` 等），效果与 `@NamiMapping` + `@NamiBody` 等价。
 
 ### 4.3 客户端使用迁移
 
@@ -624,7 +626,7 @@ public class OrderEventListener {
     // 通过 @CloudEvent 注解声明订阅
     @CloudEvent("order.topic")
     public void handleOrder(Event event) throws Throwable {
-        OrderEvent order = event.data().toBean(OrderEvent.class);
+        OrderEvent order = Solon.json().toBean(event.data(), OrderEvent.class);
         System.out.println("收到订单事件: " + order.getOrderId());
     }
 }
@@ -1043,15 +1045,19 @@ public class OrderService {
 public class OrderService {
     public void processOrder(String orderId) {
         // 通过 CloudClient 获取分布式锁服务
-        CloudClient.lock().tryLock(orderId, 10, () -> {
-            // 处理订单逻辑（在锁的保护下执行）
-        });
+        if (CloudClient.lock().tryLock(orderId, 10)) {
+            try {
+                // 处理订单逻辑
+            } finally {
+                CloudClient.lock().unlock(orderId);
+            }
+        }
     }
 }
 ```
 
 **关键差异：**
-- Solon 使用回调式 API `tryLock(key, seconds, runnable)`，更简洁且避免忘记释放锁。
+- Solon 使用 `tryLock(key, seconds)` 返回 boolean，需要手动 `unlock()`。
 - 无需注入特定的 LockRegistry，统一通过 `CloudClient.lock()` 访问。
 
 ---
@@ -1104,14 +1110,14 @@ public class OrderService {
 public class FileService {
     public String upload(byte[] data, String fileName) {
         // 上传文件到分布式文件存储
-        CloudFile file = new CloudFile(fileName, "text/plain", data);
-        String url = CloudClient.file().upload(file);
-        return url;
+        Media media = new Media(data, "text/plain");
+        CloudClient.file().put(fileName, media);
+        return fileName;
     }
 
-    public byte[] download(String url) {
-        CloudFile file = CloudClient.file().download(url);
-        return file.data();
+    public byte[] download(String key) {
+        Media result = CloudClient.file().get(key);
+        return result.bodyAsBytes();
     }
 }
 ```
@@ -1143,7 +1149,7 @@ public class IpBlacklistService {
 
     // 检查IP是否在黑名单中
     public boolean isBlacklisted(String ip) {
-        return CloudClient.list().inOf("ip-blacklist", ip);
+        return CloudClient.list().inListOfIp("ip-blacklist", ip);
     }
 
     // 移除IP
@@ -1175,7 +1181,7 @@ public class IpBlacklistService {
 public class OrderMetric {
     public void recordOrderCount() {
         // 记录自定义指标
-        CloudClient.metric().add("order.count", 1);
+        CloudClient.metric().addCount("order", "order.count", 1);
     }
 }
 ```

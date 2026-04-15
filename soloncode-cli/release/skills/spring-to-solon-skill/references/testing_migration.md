@@ -38,38 +38,22 @@
 
 > `spring-boot-starter-test` 包含 JUnit 5、Mockito、AssertJ、JsonPath、Hamcrest 等。
 
-**Solon (JUnit 5)：**
+**Solon (推荐)：**
 
 ```xml
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-test-junit5</artifactId>
+    <artifactId>solon-test</artifactId>
     <scope>test</scope>
 </dependency>
 ```
 
-**Solon (JUnit 4 用户)：**
-
-```xml
-<dependency>
-    <groupId>org.noear</groupId>
-    <artifactId>solon-test-junit4</artifactId>
-    <scope>test</scope>
-</dependency>
-```
+> 也可按需选择 `solon-test-junit5` 或 `solon-test-junit4`。
 
 **关键差异：**
 - Spring Boot 提供一个统一的 `spring-boot-starter-test`，包含所有测试工具。
-- Solon 提供 `solon-test-junit5`（推荐）和 `solon-test-junit4` 两个选择。
-- Mockito 需要单独引入（Solon 测试依赖不内置 Mockito）：
-
-```xml
-<dependency>
-    <groupId>org.mockito</groupId>
-    <artifactId>mockito-core</artifactId>
-    <scope>test</scope>
-</dependency>
-```
+- Solon 推荐使用 `solon-test`，也可按需选择 `solon-test-junit5` 或 `solon-test-junit4`。
+- `solon-test` 已内置 Mockito，无需单独引入。
 
 ### 1.2 完整测试依赖配置
 
@@ -90,16 +74,10 @@
 
 ```xml
 <dependencies>
-    <!-- Solon 测试核心 -->
+    <!-- Solon 测试核心（已内置 Mockito） -->
     <dependency>
         <groupId>org.noear</groupId>
-        <artifactId>solon-test-junit5</artifactId>
-        <scope>test</scope>
-    </dependency>
-    <!-- Mockito（如需要） -->
-    <dependency>
-        <groupId>org.mockito</groupId>
-        <artifactId>mockito-core</artifactId>
+        <artifactId>solon-test</artifactId>
         <scope>test</scope>
     </dependency>
     <!-- AssertJ（如需要） -->
@@ -154,7 +132,7 @@ class UserServiceTest {
 **关键差异：**
 - `@SpringBootTest` → `@SolonTest(App.class)`
 - `@Autowired` → `@Inject`
-- `@SolonTest` **必须指定**启动类（App.class），而 `@SpringBootTest` 可自动推断。
+- `@SolonTest` **推荐指定**启动类（App.class），不指定时当前测试类将作为启动类；`@SpringBootTest` 可自动推断。
 - Solon 不需要 `@RunWith(SpringRunner.class)`（JUnit 5 原生支持）。
 
 ### 2.2 JUnit 4 兼容迁移
@@ -221,7 +199,7 @@ class UserRepositoryTest { ... }
 class IntegrationTest extends HttpTester { ... }
 
 // 不启动 Web 容器（通过属性控制）
-@SolonTest(value = App.class, args = "-server.port:-1")
+@SolonTest(value = App.class, args = "--server.port=-1")
 class ServiceTest { ... }
 ```
 
@@ -269,7 +247,7 @@ class UserControllerTest {
 
     @Test
     void testDeleteUser() throws Exception {
-        mockMvc.perform(delete("/api/users/1")))
+        mockMvc.perform(delete("/api/users/1"))
                .andExpect(status().isOk());
     }
 }
@@ -291,7 +269,7 @@ class UserControllerTest extends HttpTester {
 
     @Test
     void testCreateUser() throws Throwable {
-        String body = "{\"name\":\"李四\",\"email\":\"lisi@example.com\"\"}";
+        String body = "{\"name\":\"李四\",\"email\":\"lisi@example.com\"}";
         // 发起 POST 请求
         String json = path("/api/users").bodyOfJson(body).post();
         assertNotNull(json);
@@ -339,10 +317,10 @@ mockMvc.perform(get("/api/users/1"))
 
 ```java
 // 获取完整响应进行验证
-HttpResponse<String> resp = path("/api/users/1").exec("GET");
+HttpResponse resp = path("/api/users/1").exec("GET");
 
 assertEquals(200, resp.code());                              // 验证状态码
-String body = resp.body();
+String body = resp.bodyAsString();
 assertTrue(body.contains("张三"));                            // 验证响应内容
 ```
 
@@ -405,9 +383,9 @@ class UserServiceTest { ... }
 **Solon：**
 
 ```java
-// 方式1：通过 @SolonTest 的 args 传入属性
-@SolonTest(value = App.class, args = {
-    "-app.cache.enabled=false"
+// 方式1：通过 @SolonTest 的 properties 传入属性
+@SolonTest(value = App.class, properties = {
+    "app.cache.enabled=false"
 })
 class UserServiceTest { ... }
 
@@ -416,13 +394,18 @@ class UserServiceTest { ... }
 @Import(TestConfig.class)
 class UserServiceTest { ... }
 
-// 方式3：测试资源文件（src/test/resources/application.yml）
+// 方式3：指定环境
+@SolonTest(value = App.class, env = "test")
+class UserServiceTest { ... }
+
+// 方式4：测试资源文件（src/test/resources/app.yml）
 // 自动加载，无需额外配置
 ```
 
 **关键差异：**
-- `@TestPropertySource` → `@SolonTest(args=...)` 或测试资源文件。
-- Solon 自动加载 `src/test/resources/application.yml`，优先级高于主配置。
+- `@TestPropertySource` → `@SolonTest(properties=...)` 或测试资源文件。
+- `@ActiveProfiles("test")` → `@SolonTest(env="test")`。
+- Solon 自动加载 `src/test/resources/app.yml`，优先级高于主配置。
 
 ### 4.2 测试配置类
 
@@ -766,7 +749,7 @@ class OrderServiceTest {
     @Test
     void testWithManualTransaction() {
         // 使用 Solon 的事务管理工具
-        TranasctionUtils.execute(() -> {
+        TransactionUtils.execute(() -> {
             // 业务操作
             orderService.createOrder(...);
         });
@@ -1150,7 +1133,7 @@ class UserRepositoryTest {
 solon:
   app:
     name: test-app
-  datasource:
+  dataSources:
     url: jdbc:h2:mem:testdb
     driverClassName: org.h2.Driver
 ```
@@ -1326,7 +1309,7 @@ public class UserControllerTest extends HttpTester {
     @Test
     public void testGetUserNotFound() throws Throwable {
         // 对于 404 场景，需要捕获响应状态码
-        HttpResponse<String> resp = path("/api/users/999").exec("GET");
+        HttpResponse resp = path("/api/users/999").exec("GET");
         assertEquals(404, resp.code());
     }
 }
@@ -1456,11 +1439,11 @@ spring:
 **Solon：**
 
 ```yaml
-# src/test/resources/application.yml（Solon 自动加载测试配置）
+# src/test/resources/app.yml（Solon 自动加载测试配置）
 solon:
   app:
     name: test-app
-  datasource:
+  dataSources:
     url: jdbc:h2:mem:testdb
     driverClassName: org.h2.Driver
 ```
@@ -1478,26 +1461,26 @@ solon:
 | 依赖注入 | `@Autowired` | `@Inject` |
 | Mock Bean | `@MockBean` | `Solon.context().wrapAndPut()` |
 | HTTP 测试 | `@AutoConfigureMockMvc` + `MockMvc` | `extends HttpTester` |
-| 测试属性 | `@TestPropertySource` | `@SolonTest(args=...)` |
+| 测试属性 | `@TestPropertySource` | `@SolonTest(properties=...)` |
 | 测试配置 | `@TestConfiguration` | `@Configuration` + `@Import` |
-| Profile | `@ActiveProfiles("test")` | 测试资源文件自动生效 |
+| Profile | `@ActiveProfiles("test")` | `@SolonTest(env="test")` 或测试资源文件自动生效 |
 | 切片测试 | `@WebMvcTest` / `@DataJpaTest` | 无对应（使用 `@Import` 控制） |
 | 事务回滚 | `@Transactional` + `@Rollback` | `@Rollback` |
 | 条件执行 | JUnit 5 原生注解 | JUnit 5 原生注解（一致） |
 
-### 13.2 @SolonTest 必须指定启动类
+### 13.2 @SolonTest 推荐指定启动类
 
 ```java
-// 错误：未指定启动类
-@SolonTest  // 编译可通过，但运行时会报错
+// 不指定启动类时，当前测试类将作为启动类
+@SolonTest
 class MyTest { ... }
 
-// 正确：指定启动类
+// 推荐：显式指定启动类
 @SolonTest(App.class)
 class MyTest { ... }
 ```
 
-**陷阱提醒：** `@SpringBootTest` 可以自动推断启动类，但 `@SolonTest` 必须显式指定。
+**提示：** `@SolonTest` 不指定启动类时，当前测试类将作为启动类。推荐显式指定以明确意图。
 
 ### 13.3 Mock 注入时机
 
@@ -1533,10 +1516,10 @@ class UserServiceTest {
 - 如果测试之间有端口冲突，可指定不同端口：
 
 ```java
-@SolonTest(value = App.class, args = "-server.port:8081")
+@SolonTest(value = App.class, args = "--server.port=8081")
 class FirstTest extends HttpTester { ... }
 
-@SolonTest(value = App.class, args = "-server.port:8082")
+@SolonTest(value = App.class, args = "--server.port=8082")
 class SecondTest extends HttpTester { ... }
 ```
 
@@ -1556,8 +1539,8 @@ class UserControllerTest extends HttpTester {
 ### 13.6 测试资源文件优先级
 
 ```
-src/test/resources/application.yml    ← 测试专用配置（优先级高）
-src/main/resources/application.yml    ← 主配置（优先级低）
+src/test/resources/app.yml    ← 测试专用配置（优先级高）
+src/main/resources/app.yml    ← 主配置（优先级低）
 ```
 
 - Solon 测试自动加载 `src/test/resources/` 下的配置文件。
@@ -1566,16 +1549,16 @@ src/main/resources/application.yml    ← 主配置（优先级低）
 
 ### 13.7 迁移检查清单
 
-- [ ] 替换 `spring-boot-starter-test` 为 `solon-test-junit5`
-- [ ] `@SpringBootTest` → `@SolonTest(App.class)`（必须指定启动类）
+- [ ] 替换 `spring-boot-starter-test` 为 `solon-test`
+- [ ] `@SpringBootTest` → `@SolonTest(App.class)`（推荐指定启动类）
 - [ ] 删除 `@RunWith(SpringRunner.class)`（JUnit 5 不需要）
 - [ ] `@Autowired` → `@Inject`
 - [ ] `@MockBean` → `Solon.context().wrapAndPut()` 手动注入
 - [ ] `MockMvc` → `extends HttpTester` + `path("/api/...").get()`
 - [ ] `@AutoConfigureMockMvc` → 删除（`HttpTester` 自带）
-- [ ] `@TestPropertySource` → `@SolonTest(args=...)` 或测试资源文件
+- [ ] `@TestPropertySource` → `@SolonTest(properties=...)` 或测试资源文件
 - [ ] `@TestConfiguration` → `@Configuration` + `@Import`
-- [ ] `@ActiveProfiles("test")` → 测试资源文件自动生效
+- [ ] `@ActiveProfiles("test")` → `@SolonTest(env="test")` 或测试资源文件自动生效
 - [ ] `@Transactional` + `@Rollback` → `@Rollback`
 - [ ] `@WebMvcTest` / `@DataJpaTest` → `@SolonTest` + `@Import` 控制范围
 - [ ] 纯单元测试（不依赖容器）无需修改

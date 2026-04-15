@@ -4,10 +4,11 @@
 
 ## 测试框架选择
 
-| 插件 | 支持能力 | 备注 |
-|---|---|---|
-| `solon-test` | JUnit 5 | **默认推荐** |
-| `solon-test-junit4` | JUnit 4 | 在 solon-test 基础上增加 JUnit 4 支持 |
+| 插件 | 支持能力 | 备注                                                |
+|---|---|---------------------------------------------------|
+| `solon-test` | JUnit 5 | **默认推荐**，仅 JUnit5（v2.8.1 之前，同时支持 JUnit4 和 JUnit5） |
+| `solon-test-junit5` | JUnit 5 | 仅 JUnit5                                          |
+| `solon-test-junit4` | JUnit 4 | 额外 JUnit4 支持                                      |
 
 > 注意：Junit5 的 `@Test` 为 `org.junit.jupiter.api.Test`，Junit4 的 `@Test` 为 `org.junit.Test`，不要搞混。
 
@@ -32,7 +33,9 @@
 | `args` | 启动参数 | `"--server.port=9999"` |
 | `properties` | 应用属性 | `"solon.app.name=demo"` |
 | `debug` | 是否调试模式（默认 true） | |
-| `isAot` | 是否 AOT 运行（默认 false） | |
+| `isAot` | 是否 AOT 运行（默认 false） |
+| `scanning` | 是否扫描（默认 true） |
+| `enableHttp` | 是否启用 http（默认 false） | |
 
 ---
 
@@ -191,6 +194,7 @@ public class MockTest {
 <dependency>
     <groupId>com.squareup.okhttp3</groupId>
     <artifactId>mockwebserver</artifactId>
+    <version>${okhttp.version}</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -206,6 +210,7 @@ public class MockWebTest extends HttpTester {
     public void testSimple() throws IOException {
         server.enqueue(new MockResponse().setBody(EXPECTED));
         String rst = http(server.getPort()).get();
+        assert rst != null;
         assert EXPECTED.equals(rst);
     }
 }

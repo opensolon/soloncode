@@ -11,12 +11,12 @@
 |---|---|---|
 | `@SolonMain` | Class | Solon 主类标识（即 main 函数所在类） |
 | `@Configuration` | Class | 托管配置组件类（与 `@Inject`、`@Bean` 共同完成初始化配置、构建托管对象等） |
-| `@Bean` | Method | 配置托管对象（作用在 `@Configuration` 类的函数上才有效） |
-| `@Component` | Class | 通用托管组件（支持自动代理，v2.5.2 开始支持自动代理） |
+| `@Bean` | Method | 配置托管对象（作用在 `@Configuration` 类的函数上才有效）。属性：value/name, typed, index, priority, delivered, injected, initMethod, destroyMethod, tag |
+| `@Component` | Class | 通用托管组件（支持自动代理，v2.5.2 开始支持自动代理）。属性：value/name, tag, typed, index, delivered |
 | `@Controller` | Class | Web MVC 控制器组件类（支持函数拦截） |
 | `@Remoting` | Class | 远程控制器类（有类代理，即 RPC 服务端） |
 | `@Import` | Class | 导入组件或属性源（作用在启动主类上或 `@Configuration` 类上才有效） |
-| `@Condition` | Class/Method | 配置条件（v2.1.0 支持） |
+| `@Condition` | Class/Method | 配置条件（v2.0 支持） |
 | `@SolonTest` | Class | Solon 测试标识（一般在测试时使用） |
 | `@Rollback` | Method/Class | 执行回滚（一般在测试时使用） |
 
@@ -24,7 +24,7 @@
 
 | Annotation | Target | Description |
 |---|---|---|
-| `@Inject` | Field/Param | 注入托管对象（by type） |
+| `@Inject` | Field/Param | 注入托管对象（by type）。属性：value, required, autoRefreshed |
 | `@Inject("name")` | Field/Param | 注入托管对象（by name） |
 | `@Inject("${key}")` | Field/Param/Type | 注入应用属性（可由基础类型或结构体接收） |
 | `@BindProps(prefix="xx")` | Type | 绑定应用属性（绑定配置类或方法结果） |
@@ -35,14 +35,19 @@
 
 | Annotation | Target | Description |
 |---|---|---|
-| `@Mapping("/path")` | Class/Method | URL 路径映射（可附加 `@Get`、`@Post`、`@Socket` 等限定注解） |
+| `@Mapping("/path")` | Class/Method | URL 路径映射（可附加 `@Get`、`@Post`、`@Socket` 等限定注解）。属性：value/path, method, consumes, produces, multipart, name, description, headers |
 | `@Get` | Method/Type | 限定为 GET 请求（配合 `@Mapping` 使用） |
 | `@Post` | Method/Type | 限定为 POST 请求 |
 | `@Put` | Method/Type | 限定为 PUT 请求 |
 | `@Delete` | Method/Type | 限定为 DELETE 请求 |
 | `@Patch` | Method/Type | 限定为 PATCH 请求 |
+| `@Options` | Method/Type | 限定为 OPTIONS 请求 |
+| `@Head` | Method/Type | 限定为 HEAD 请求 |
 | `@Socket` | Method/Type | 限定为 Socket 请求 |
-| `@Param` | Parameter | 请求参数（需要默认值或名字不同时使用） |
+| `@Http` | Method/Type | 限定为 HTTP 协议 |
+| `@Message` | Method/Type | 限定为 Message 协议 |
+| `@To` | Method | 发送到（指定目标） |
+| `@Param` | Parameter | 请求参数（需要默认值或名字不同时使用）。属性：value/name, required, defaultValue |
 | `@Header` | Parameter | 绑定请求 Header |
 | `@Cookie` | Parameter | 绑定 Cookie 值 |
 | `@Body` | Parameter | 绑定请求体（仅在主体的 String、InputStream、Map 时才需要） |

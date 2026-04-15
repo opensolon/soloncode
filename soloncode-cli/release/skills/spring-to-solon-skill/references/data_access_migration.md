@@ -366,9 +366,12 @@ mybatis:
 **Solon After：**
 
 ```xml
+<!-- 自 mybatis-plus 3.5.9 起，官方（baomidou）已自行发布 Solon 适配插件 -->
+<!-- 注意：mybatis-plus 插件需要显式指定版本号（不由 solon-parent 管理） -->
 <dependency>
-    <groupId>org.noear</groupId>
+    <groupId>com.baomidou</groupId>
     <artifactId>mybatis-plus-solon-plugin</artifactId>
+    <version>3.5.12</version>
 </dependency>
 ```
 
@@ -438,7 +441,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 ```
 
 > **关键差异**：
-> - 用法基本相同，核心差异在依赖包替换。
+> - 用法基本相同，核心差异在依赖包替换（自 3.5.9 起已改为使用 baomidou 官方发布的 `com.baomidou:mybatis-plus-solon-plugin`，不再使用 `org.noear:mybatis-plus-solon-plugin`）。
 > - `@Mapper` 注解移除（Solon 自动扫描）。
 > - `@Service` → `@Component`（Solon 不区分 Service/Repository/Controller 注解语义，统一使用 `@Component`；但 `@Controller` 在 Web 层仍保留）。
 > - `ServiceImpl` 基类保持兼容。
@@ -927,6 +930,27 @@ public class CacheService {
 ---
 
 ## 7. Redis 迁移
+
+> **重要提示：Redis 集成场景区分**
+>
+> Solon 生态中 Redis 有两类用途，请根据实际需求选择合适的依赖：
+>
+> **场景一：缓存服务实现（配合 `@Cache` / `@CacheRemove` 注解使用）**
+>
+> 如果你需要的是声明式缓存（类似 Spring 的 `@Cacheable`），应使用缓存服务实现插件：
+> - `solon-cache-jedis`：基于 Jedis 的缓存服务实现
+> - `solon-cache-redisson`：基于 Redisson 的缓存服务实现
+>
+> 这类插件会自动注册 `CacheService`，被 `@Cache`、`@CacheRemove` 注解底层调用。详见 [第 6 章 缓存迁移](#6-缓存迁移)。
+>
+> **场景二：Redis 客户端直接使用（编程式操作 Redis）**
+>
+> 如果你需要直接操作 Redis（如存取数据、发布订阅、分布式锁等），应使用客户端插件：
+> - `redisx`（`solon-data-redisx`）：基于 Jedis 封装的高性能客户端，推荐大多数场景使用
+> - `redisson-solon-plugin`：基于 Redisson 的客户端，适合需要分布式锁、分布式集合等高级特性的场景
+> - `lettuce-solon-plugin`：基于 Lettuce 的客户端，适合异步/响应式场景
+>
+> 本章节（7.x）聚焦**场景二**，即 Redis 客户端的直接使用。
 
 ### 7.1 依赖替换
 

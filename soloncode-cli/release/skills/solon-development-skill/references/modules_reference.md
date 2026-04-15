@@ -2,7 +2,7 @@
 
 > 适用场景：选择服务器实现、序列化方式、视图引擎、数据访问、ORM 集成。
 >
-> 所有坐标 groupId 为 `org.noear`，版本号 `3.10.0`。
+> Solon 官方坐标 groupId 为 `org.noear`，版本号 `3.10.0`。部分第三方适配插件的 groupId 不同，见各表标注。
 
 ## Shortcut Dependencies（快捷组合包）
 
@@ -10,7 +10,7 @@
 
 | Artifact | Description | Includes |
 |---|---|---|
-| `solon-web` | 完整 Web 应用开发（推荐 Web 项目使用）。包含 Web 服务器 + 序列化 + 会话 + 静态文件 + 跨域 + 验证 | solon-lib + solon-server-smarthttp + solon-serialization-snack3 + solon-sessionstate-local + solon-web-staticfiles + solon-web-cors + solon-security-validation |
+| `solon-web` | 完整 Web 应用开发（推荐 Web 项目使用）。包含 Web 服务器 + 序列化 + 会话 + 静态文件 + 跨域 + 验证 | solon-lib + solon-server-smarthttp + solon-serialization-snack4 + solon-sessionstate-local + solon-web-staticfiles + solon-web-cors + solon-security-validation |
 | `solon-lib` | 基础开发组合包（不含 Web 服务器）。适用于 CLI 工具、后台任务、非 Web 微服务等场景 | solon + solon-data + solon-proxy + solon-config-yaml + solon-config-plus |
 
 > **solon-web vs solon-lib 选择指南：** 需要启动 HTTP 服务、处理 Web 请求 → 用 `solon-web`；仅做数据处理、定时任务、消息消费等无需 HTTP 的场景 → 用 `solon-lib`。
@@ -30,7 +30,8 @@
 
 | Artifact | Format |
 |---|---|
-| `solon-serialization-snack3` | JSON (default in solon-web, based on Snack3) |
+| `solon-serialization-snack3` | JSON (default before v3.7.0, based on Snack3) |
+| `solon-serialization-snack4` | JSON (default in solon-web since v3.7.0, based on Snack4) |
 | `solon-serialization-jackson` | JSON (Jackson) |
 | `solon-serialization-jackson3` | JSON (Jackson 3.x) |
 | `solon-serialization-fastjson2` | JSON (Fastjson2) |
@@ -39,6 +40,8 @@
 | `solon-serialization-hessian` | Binary (Hessian) |
 | `solon-serialization-fury` | Binary (Fury) |
 | `solon-serialization-protostuff` | Binary (Protobuf) |
+| `solon-serialization-kryo` | Binary (Kryo) |
+| `solon-serialization-abc` | Binary (ABC) |
 
 ## View Templates
 
@@ -49,6 +52,7 @@
 | `solon-view-enjoy` | Enjoy |
 | `solon-view-velocity` | Velocity |
 | `solon-view-beetl` | Beetl |
+| `solon-view-jsp` | JSP |
 
 ## Data Access
 
@@ -148,10 +152,10 @@ public class OrderService {
 | Plugin | ORM | 说明 |
 |---|---|---|
 | `activerecord-solon-plugin` | ActiveRecord | 自主内核 |
-| `beetlsql-solon-plugin` | BeetlSQL | 自主内核 |
-| `easy-query-solon-plugin` | EasyQuery | 自主内核 |
-| `sagacity-sqltoy-solon-plugin` | SQLToy | 自主内核 |
-| `dbvisitor-solon-plugin` | DbVisitor | 自主内核 |
+| `beetlsql-solon-plugin` | BeetlSQL | 自主内核 (groupId: `com.ibeetl`, artifact: `sql-solon-plugin`) |
+| `easy-query-solon-plugin` | EasyQuery | 自主内核 (groupId: `com.easy-query`, artifact: `sql-solon-plugin`) |
+| `sagacity-sqltoy-solon-plugin` | SQLToy | 自主内核 (groupId: `com.sagframe`) |
+| `dbvisitor-solon-plugin` | DbVisitor | 自主内核 (groupId: `net.hasor`) |
 | `wood-solon-plugin` | Wood | 自主内核 |
 
 ### MyBatis 体系
@@ -159,12 +163,12 @@ public class OrderService {
 | Plugin | ORM | 说明 |
 |---|---|---|
 | `mybatis-solon-plugin` | MyBatis | 基础 MyBatis 适配 |
-| `mybatis-plus-solon-plugin` | MyBatis-Plus | MyBatis 增强工具 |
-| `mybatis-plus-join-solon-plugin` | MyBatis-Plus-Join | MyBatis-Plus 多表关联 |
-| `mybatis-flex-solon-plugin` | MyBatis-Flex | MyBatis-Flex 适配 |
-| `mapper-solon-plugin` | TkMapper | 基于 mybatis-tkMapper 适配 |
-| `fastmybatis-solon-plugin` | FastMyBatis | FastMyBatis 适配 |
-| `xbatis-solon-plugin` | XBaties | XBaties 适配 |
+| `mybatis-plus-solon-plugin` | MyBatis-Plus | MyBatis 增强工具 (groupId: `com.baomidou`) |
+| `mybatis-plus-join-solon-plugin` | MyBatis-Plus-Join | MyBatis-Plus 多表关联 (groupId: `com.github.yulichang`) |
+| `mybatis-flex-solon-plugin` | MyBatis-Flex | MyBatis-Flex 适配 (groupId: `com.mybatis-flex`) |
+| `mapper-solon-plugin` | TkMapper | 基于 mybatis-tkMapper 适配 (groupId: `tk.mybatis`) |
+| `fastmybatis-solon-plugin` | FastMyBatis | FastMyBatis 适配 (groupId: `net.oschina.durcframework`) |
+| `xbatis-solon-plugin` | XBatis | XBatis 适配 (groupId: `cn.xbatis`) |
 
 ### JPA/Hibernate 体系
 

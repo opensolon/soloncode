@@ -817,10 +817,9 @@ public class CustomConfig { }
 #### After — Solon
 
 ```java
-// @Import 统一导入属性源文件
+// @Import 统一导入属性源文件（使用 profiles 属性指定配置文件路径）
 @SolonMain
-@Import("classpath:custom.properties")
-@Import("classpath:db.properties")
+@Import(profiles = {"classpath:custom.properties","classpath:db.properties"})
 public class App {
     public static void main(String[] args) {
         Solon.start(App.class, args);
@@ -1067,7 +1066,7 @@ public class MultiDataSourceConfig {
 |---|---|---|
 | 代理范围 | public 和 protected 方法 | **仅 public 方法** |
 | 代理策略 | 默认对所有组件创建代理 | **按需代理**（仅当存在拦截器注册时才代理） |
-| 代理创建时机 | 容器启动时统一创建 | 首次使用时按需创建 |
+| 代理方式 | CGLIB/JDK 动态代理 | MethodWrap 方法包装（基于运行时拦截链，开销极低） |
 | 性能影响 | 较重（CGLIB/JDK 动态代理） | 较轻（这是 Solon 启动快的原因之一） |
 | 内部方法调用 | `@Transactional` 等注解在同 Bean 内部调用时失效 | 同样失效（代理机制决定） |
 
@@ -1262,31 +1261,34 @@ public class ApiService {
 #### After — Solon
 
 ```java
-// 1. 定义注解（相同）
+// 自定义注解
+@Around(RateLimitInterceptor.class)
 @Target({ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RateLimit {
     int value() default 100;
 }
 
-// 2. 定义拦截器
-public class RateLimitInterceptor implements MethodInterceptor, MethodInterceptor<RateLimit> {
-
+// 拦截器实现
+@Component
+public class RateLimitInterceptor implements MethodInterceptor {
     @Override
-    public Object intercept(Invocation inv, RateLimit anno, Object... args) throws Throwable {
+    public Object intercept(Invocation inv) throws Throwable {
+        RateLimit anno = inv.method().getAnnotation(RateLimit.class);
         int maxRequests = anno.value();
-        // 限流逻辑
         if (isOverLimit(maxRequests)) {
             throw new RuntimeException("请求过于频繁");
         }
         return inv.invoke();
     }
+
+    private boolean isOverLimit(int max) {
+        // 限流逻辑
+        return false;
+    }
 }
 
-// 3. 注册拦截器（在 Plugin 或启动类中）
-Solon.context().beanInterceptorAdd(RateLimit.class, new RateLimitInterceptor());
-
-// 4. 使用（相同）
+// 使用（相同）
 @Component
 public class ApiService {
     @RateLimit(50)
@@ -1407,7 +1409,7 @@ public class EmailNotifier implements EventListener<OrderCreatedEvent> {
     }
 }
 
-// 4. 监听事件（异步 —— 使用 publishAsync 或 subscribeAsync）
+// 4. 手动订阅模式
 @Component
 public class StatisticsService {
 
