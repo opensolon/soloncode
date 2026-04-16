@@ -151,10 +151,12 @@ public class CliShellOld implements Runnable {
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
-                    break;
+                    continue;
                 }
 
-                if (Assert.isEmpty(input)) continue;
+                if (Assert.isEmpty(input)) {
+                    continue;
+                }
 
                 if (!isSystemCommand(session, input)) {
                     performAgentTask(session, input);
