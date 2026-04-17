@@ -151,7 +151,7 @@ public class CliShellOld implements Runnable {
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
-                    continue;
+                    break;
                 }
 
                 if (Assert.isEmpty(input)) {
