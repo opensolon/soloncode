@@ -146,7 +146,10 @@ public class WebGate implements Handler {
                     return "";
                 })
                 .filter(Assert::isNotEmpty)
-                .doOnSubscribe(disposable -> {
+                .doOnSubscribe(subscription -> {
+                    // 将 Subscription 包装为 Disposable
+                    Disposable disposable = subscription::cancel;
+
                     // 在订阅开始时，将 disposable 存入 session
                     Disposable old = (Disposable) session.attrs().put("disposable", disposable);
                     if (old != null && !old.isDisposed()) {
