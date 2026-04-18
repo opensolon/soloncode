@@ -2,6 +2,7 @@
 
 ### v2026.4.20
 
+* 新增 soloncode web 界面
 * 优化 soloncode-cli 启动时打印主代理模型
 * 添加 soloncode 重试次数配置支持
 * 调整 soloncode 取消 isCliEnabled, isWebEnabled, isWsEnabled, isAcpEnabled 配置。统一由命令控制：`soloncode server`（启动后端服务，cli 会自动关闭）, 统一由命令控制：`soloncode web`（启动 web 服务）, `soloncode acp`（启动 acp 服务）
