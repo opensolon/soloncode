@@ -188,6 +188,7 @@ public class App {
         app.enableWebSocket(true);
 
         //开始控制台日志
+        app.cfg().setProperty("solon.logging.appender.console.level", "INFO");
         app.cfg().setProperty("solon.logging.appender.console.enable", "true");
     }
 
@@ -197,6 +198,7 @@ public class App {
             app.enableHttp(true);
             app.enableWebSocket(true);
         }
+        app.cfg().setProperty("solon.logging.appender.console.level", "INFO");
         app.cfg().setProperty("solon.logging.appender.console.enable", "true");
     }
 }
