@@ -43,8 +43,8 @@ import java.util.List;
 
 /**
  * Web Chat Controller
- * @author oisin
- * @date 2026年3月13日
+ * @author oisin 2026-3-13
+ * @author noear 2026-4-18
  */
 @Controller
 public class WebController {
