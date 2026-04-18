@@ -173,6 +173,9 @@ public class WsGate extends SimpleWebSocketListener {
                         o.toolContextPut(HarnessEngine.ATTR_CWD, finalCwd);
                     })
                     .stream()
+                    .doFinally(signal -> {
+                        session.attrs().remove("disposable");
+                    })
                     .doOnNext(chunk -> {
                         // ReActChunk 需要优先处理 metrics 收集（无论 hasContent 状态）
                         String msg = null;
@@ -199,8 +202,10 @@ public class WsGate extends SimpleWebSocketListener {
                         socket.send(msg);
                     }).subscribe();
 
-            session.attrs().put("disposable", disposable);
-
+            Disposable old = (Disposable) session.attrs().put("disposable", disposable);
+            if (old != null && !old.isDisposed()) {
+                old.dispose();
+            }
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             socket.send(new ONode().set("type", "error")

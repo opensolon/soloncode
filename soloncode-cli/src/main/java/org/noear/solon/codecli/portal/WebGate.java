@@ -32,6 +32,7 @@ import org.noear.solon.core.handle.Handler;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.MimeType;
 import org.noear.solon.lang.Preview;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
