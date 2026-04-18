@@ -2,6 +2,7 @@ server.port: 4808
 
 solon.app:
   name: "soloncode"
+  title: "SolonCode"
 
 solon.logging.appender:
   console:

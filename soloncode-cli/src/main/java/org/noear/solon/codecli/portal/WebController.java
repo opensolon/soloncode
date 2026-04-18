@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.portal;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.Solon;
 import org.noear.solon.annotation.Controller;
 import org.noear.solon.annotation.Inject;
 import org.noear.solon.annotation.Mapping;
@@ -54,8 +55,9 @@ public class WebController {
     @Mapping("/")
     public ModelAndView chat() {
         ModelAndView mv = new ModelAndView("chat.html");
-        mv.put("nickname","Solon Code");
+        mv.put("appTitle", Solon.cfg().appTitle());
         mv.put("sseEndpoint", config.getWebEndpoint());
+        mv.put("workspace", config.getWorkspace());
         return mv;
     }
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title th:text="${nickname} + ' - Web'">Solon Code Web</title>
+    <title th:text="${appTitle} + ' - ' + ${workspace}">Solon Code Web</title>
     <link rel="stylesheet" href="/layui/css/layui.css"/>
     <link rel="stylesheet" href="/css/theme.css"/>
     <style>
@@ -245,7 +245,7 @@
         <div class="sidebar-list" id="historyList"></div>
         <div class="sidebar-footer">
             <i class="layui-icon layui-icon-util" style="font-size:16px;color:var(--text-secondary)"></i>
-            <span style="font-size:12px;color:var(--text-secondary)" th:text="${nickname}">AI</span>
+            <span style="font-size:12px;color:var(--text-secondary)" th:text="${appTitle}">AI</span>
         </div>
     </div>
 
@@ -263,7 +263,7 @@
                 <div class="blob blob-outer"></div>
                 <div class="blob-core"></div>
             </div>
-            <div class="welcome-title" th:text="'你好，我是 ' + ${nickname} + ' Web ！'">你好，我是 Solon Code Web ！</div>
+            <div class="welcome-title" th:text="'你好，我是 ' + ${appTitle} + ' Web ！'">你好，我是 SolonCode Web ！</div>
             <div class="welcome-sub">有什么我可以帮你的吗?</div>
             <div class="welcome-input-box">
                 <div class="img-preview-wrap" id="welcomeImgWrap">
