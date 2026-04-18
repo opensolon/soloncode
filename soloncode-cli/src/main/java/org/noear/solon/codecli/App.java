@@ -93,6 +93,13 @@ public class App {
     }
 
     private static void enabledWeb(SolonApp app, AgentProperties c) {
+        String port = app.cfg().argx().flagAt(1);
+
+        if(Assert.isNotEmpty(port) && Assert.isNumber(port)){
+            // soloncode web 1212 //= soloncode web -server.port=1212
+            app.cfg().setProperty("server.port", port);
+        }
+
         app.enableHttp(true);
         app.enableWebSocket(true);
 
