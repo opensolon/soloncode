@@ -23,11 +23,6 @@ soloncode:
 
   cliPrintSimplified: true
 
-  webEndpoint: "/cli"
-
-  acpTransport: "websocket" # "stdio" or "websocket"
-  acpEndpoint: "/acp"
-
   models: # llm 配置（参考 solon ai chatmodel 配置）
     - apiUrl: "https://ai.gitee.com/v1/chat/completions"
       apiKey: "******"
