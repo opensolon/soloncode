@@ -151,10 +151,7 @@ public class WebGate implements Handler {
                     Disposable disposable = subscription::cancel;
 
                     // 在订阅开始时，将 disposable 存入 session
-                    Disposable old = (Disposable) session.attrs().put("disposable", disposable);
-                    if (old != null && !old.isDisposed()) {
-                        old.dispose();
-                    }
+                    session.attrs().put("disposable", disposable);
                 })
                 .doFinally(signal -> {
                     // 流结束或被取消后，清理掉引用，避免内存泄漏
@@ -183,7 +180,8 @@ public class WebGate implements Handler {
                         }
                     }
                     return Flux.just("[DONE]");
-                }));
+                }))
+                .delayElements(Duration.ofMillis(50));
     }
 
     private String onReasonChunk(ReasonChunk reason) {
