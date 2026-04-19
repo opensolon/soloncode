@@ -93,6 +93,14 @@ public class CliShell implements Runnable {
         }
     }
 
+    public Terminal getTerminal() {
+        return terminal;
+    }
+
+    public LineReader getReader() {
+        return reader;
+    }
+
     /**
      * 预备开始
      */
@@ -103,7 +111,8 @@ public class CliShell implements Runnable {
                 Process process = new ProcessBuilder("cmd", "/c", "chcp", "65001").start();
                 // 读取并丢弃输出，避免显示到控制台
                 try (java.io.InputStream is = process.getInputStream()) {
-                    while (is.read() != -1) {}
+                    while (is.read() != -1) {
+                    }
                 }
                 process.waitFor();
             } catch (Exception ignored) {
@@ -504,16 +513,22 @@ public class CliShell implements Runnable {
 
         String path = new File(agentRuntime.getProps().getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + agentRuntime.getMainModel().getModel() + RESET );
+        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + agentRuntime.getMainModel().getModel() + RESET);
         terminal.writer().println(DIM + path + RESET);
-        terminal.writer().print(DIM + "Tips: " + RESET + "(esc)" + DIM + " interrupt | " +
+        terminal.writer().println(DIM + "Tips: " + RESET + "(esc)" + DIM + " interrupt | " +
                 RESET + "'/exit'" + DIM + ": quit | " +
                 RESET + "'/resume'" + DIM + ": resume | " +
                 RESET + "'/clear'" + DIM + ": reset" + RESET);
 
-        //terminal.writer().println(DIM + "Commands: " + RESET + "exit" + DIM + ", " + RESET + "init (code)" + DIM + ", " + RESET + "clear (session)" + RESET);
-        // 仅保留一个空行
-        terminal.writer().println();
+        terminal.flush();
+    }
+
+    public void printWelcome(String text) {
+        String path = new File(agentRuntime.getProps().getWorkspace()).getAbsolutePath();
+        // 连带版本号，紧凑排列
+        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + agentRuntime.getMainModel().getModel() + RESET);
+        terminal.writer().println(DIM + path + RESET);
+        terminal.writer().println(text);
         terminal.flush();
     }
 }

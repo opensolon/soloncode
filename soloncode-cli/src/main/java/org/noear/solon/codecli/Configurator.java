@@ -61,6 +61,9 @@ public class Configurator {
 
     @Init
     public void init() {
+
+        CliShell cliShell = new CliShell(agentRuntime, agentProps);
+
         if (AgentFlags.checkUpdate()) {
             // 使用颜色代码让提示更醒目
             System.out.println("\033[33mDiscover the new version: " + AgentFlags.getLastVersion() + "\033[0m");
@@ -86,18 +89,18 @@ public class Configurator {
             }
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
-                runWeb(agentRuntime, agentProps);
-                runAcp(agentRuntime, agentProps);
+                runWeb(agentRuntime, agentProps, cliShell);
+                runAcp(agentRuntime, agentProps, cliShell);
                 return;
             }
 
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
-                runWeb(agentRuntime, agentProps);
+                runWeb(agentRuntime, agentProps, cliShell);
                 return;
             }
 
             if (AgentFlags.FLAG_ACP.equals(flag)) { // java -jar soloncode.jar acp // soloncode acp
-                runAcp(agentRuntime, agentProps);
+                runAcp(agentRuntime, agentProps, cliShell);
                 return;
             }
 
@@ -106,52 +109,37 @@ public class Configurator {
 
 
         //cli - default
-        new Thread(new CliShell(agentRuntime, agentProps), "CLI-Interactive-Thread").start();
+        new Thread(cliShell, "CLI-Interactive-Thread").start();
     }
 
 
-    private void runWeb(HarnessEngine agentRuntime, AgentProperties agentProps) {
+    private void runWeb(HarnessEngine agentRuntime, AgentProperties agentProps, CliShell cliShell) {
         WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
         Solon.app().router().get(agentProps.getWebEndpoint(), new WebGate(agentRuntime, agentProps));
 
         RunUtil.async(() -> {
             try {
-                // 等待一小会儿确保服务完全就绪
                 Thread.sleep(500);
+
                 String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
-                openSystemBrowser(url);
-            } catch (Throwable e) {
-                // 仅静默处理，不影响程序运行
-                LOG.warn("Failed to open browser: " + e.getMessage());
+
+                if (JavaUtil.IS_WINDOWS) {
+                    new ProcessBuilder("cmd", "/c", "start", url.replace("&", "^&")).start();
+                } else if (JavaUtil.IS_MAC) {
+                    new ProcessBuilder("open", url).start();
+                } else {
+                    new ProcessBuilder("xdg-open", url).start();
+                }
+
+                cliShell.printWelcome("Web interface: " + url);
+            } catch (Throwable e) { // 使用 Throwable 捕获更全面
+                LOG.warn("Failed to open browser: {}", e.getMessage());
             }
         });
     }
 
-    /**
-     * 针对不同操作系统的备选打开方案
-     */
-    private void openSystemBrowser(String url) throws Exception {
-        try {
-            if (JavaUtil.IS_WINDOWS) {
-                new ProcessBuilder("cmd", "/c", "start", url.replace("&", "^&")).start();
-            } else if (JavaUtil.IS_MAC) {
-                new ProcessBuilder("open", url).start();
-            } else {
-                new ProcessBuilder("xdg-open", url).start();
-            }
 
-            String path = new File(agentRuntime.getProps().getWorkspace()).getAbsolutePath();
-            // 连带版本号，紧凑排列
-            System.out.println("SolonCode" + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + agentRuntime.getMainModel().getModel());
-            System.out.println(path);
-
-            System.out.println("Web interface: " + url);
-        } catch (Throwable e) { // 使用 Throwable 捕获更全面
-            LOG.warn("Backup browser launch failed: {}", e.getMessage());
-        }
-    }
-
-    private void runAcp(HarnessEngine agentRuntime, AgentProperties agentProps) {
+    private void runAcp(HarnessEngine agentRuntime, AgentProperties agentProps, CliShell cliShell) {
         AcpAgentTransport agentTransport;
         if ("stdio".equals(agentProps.getAcpTransport())) {
             agentTransport = new StdioAcpAgentTransport();
@@ -161,5 +149,8 @@ public class Configurator {
         }
 
         new AcpLink(agentRuntime, agentTransport, agentProps).run();
+
+        //String url = "ws://localhost:" + Solon.cfg().serverPort() + "/acp";
+        //cliShell.printWelcome("Acp interface: " + url);
     }
 }
