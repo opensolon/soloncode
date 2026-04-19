@@ -2,7 +2,8 @@
 <h1>SolonCode</h1>
 <p>Ένας ανοιχτού κώδικα πράκτορας κωδικοποίησης βασισμένος στο <a href="https://github.com/opensolon/solon-ai">Solon AI</a> και Java (υποστηρίζει περιβάλλοντα εκτέλεσης Java8 έως Java26)</p>
 <p>Τελευταία Έκδοση: v2026.4.20</p>
-<img width="600" src="SHOW.png" />
+<img height="260" src="SHOW.png" />
+<img height="260" src="SHOW2.png" />
 </div>
 
 <div align="center">

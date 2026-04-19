@@ -2,7 +2,8 @@
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a>とJavaで構築されたオープンソースのコーディングエージェント（Java8からJava26のランタイム環境をサポート）</p>
 <p>最新バージョン: v2026.4.20</p>
-<img width="600" src="SHOW.png" />
+<img height="260" src="SHOW.png" />
+<img height="260" src="SHOW2.png" />
 </div>
 
 <div align="center">

@@ -2,7 +2,8 @@
 <h1>SolonCode</h1>
 <p>En open-source kodningsagent bygget med <a href="https://github.com/opensolon/solon-ai">Solon AI</a> og Java (understøtter Java8 til Java26 runtime-miljøer)</p>
 <p>Nyeste version: v2026.4.20</p>
-<img width="600" src="SHOW.png" />
+<img height="260" src="SHOW.png" />
+<img height="260" src="SHOW2.png" />
 </div>
 
 <div align="center">

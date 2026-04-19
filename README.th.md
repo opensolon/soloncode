@@ -2,7 +2,8 @@
 <h1>SolonCode</h1>
 <p>เอเจนต์การเขียนโค้ดโอเพ่นซอร์สที่สร้างด้วย <a href="https://github.com/opensolon/solon-ai">Solon AI</a> และ Java (รองรับสภาพแวดล้อมรันไทม์ Java8 ถึง Java26)</p>
 <p>เวอร์ชันล่าสุด: v2026.4.20</p>
-<img width="600" src="SHOW.png" />
+<img height="260" src="SHOW.png" />
+<img height="260" src="SHOW2.png" />
 </div>
 
 <div align="center">

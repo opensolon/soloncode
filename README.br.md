@@ -2,7 +2,8 @@
 <h1>SolonCode</h1>
 <p>Um agente de codificação de código aberto construído com <a href="https://github.com/opensolon/solon-ai">Solon AI</a> e Java (suporta ambientes de runtime Java8 a Java26)</p>
 <p>Versão Mais Recente: v2026.4.20</p>
-<img width="600" src="SHOW.png" />
+<img height="260" src="SHOW.png" />
+<img height="260" src="SHOW2.png" />
 </div>
 
 <div align="center">

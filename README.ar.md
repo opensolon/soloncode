@@ -2,7 +2,8 @@
 <h1>SolonCode</h1>
 <p>وكيل برمجة مفتوح المصدر مبني باستخدام <a href="https://github.com/opensolon/solon-ai">Solon AI</a> وجافا (يدعم بيئات تشغيل Java8 إلى Java26)</p>
 <p>أحدث إصدار: v2026.4.20</p>
-<img width="600" src="SHOW.png" />
+<img height="260" src="SHOW.png" />
+<img height="260" src="SHOW2.png" />
 </div>
 
 <div align="center">
