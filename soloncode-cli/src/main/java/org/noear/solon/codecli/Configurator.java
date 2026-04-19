@@ -89,8 +89,8 @@ public class Configurator {
             }
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
-                runWeb(agentRuntime, agentProps, cliShell);
-                runAcp(agentRuntime, agentProps, cliShell);
+                runWeb(agentRuntime, agentProps, null);
+                runAcp(agentRuntime, agentProps, null);
                 return;
             }
 
@@ -117,6 +117,10 @@ public class Configurator {
         WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
         Solon.app().router().get(agentProps.getWebEndpoint(), new WebGate(agentRuntime, agentProps));
 
+        if (cliShell == null) {
+            return;
+        }
+
         RunUtil.async(() -> {
             try {
                 Thread.sleep(500);
@@ -131,7 +135,9 @@ public class Configurator {
                     new ProcessBuilder("xdg-open", url).start();
                 }
 
-                cliShell.printWelcome("Web interface: " + url);
+                if (cliShell != null) {
+                    cliShell.printWelcome("Web interface: " + url);
+                }
             } catch (Throwable e) { // 使用 Throwable 捕获更全面
                 LOG.warn("Failed to open browser: {}", e.getMessage());
             }
@@ -150,7 +156,9 @@ public class Configurator {
 
         new AcpLink(agentRuntime, agentTransport, agentProps).run();
 
-        //String url = "ws://localhost:" + Solon.cfg().serverPort() + "/acp";
-        //cliShell.printWelcome("Acp interface: " + url);
+        if (cliShell != null) {
+            String url = "ws://localhost:" + Solon.cfg().serverPort() + "/acp";
+            cliShell.printWelcome("Acp interface: " + url);
+        }
     }
 }
