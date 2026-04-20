@@ -18,5 +18,4 @@
         <module>soloncode-parent</module>
         <module>soloncode-cli</module>
     </modules>
-
 </project>
