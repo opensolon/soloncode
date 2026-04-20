@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>SolonCode là một tác nhân mã hóa mã nguồn mở được xây dựng dựa trên <a href="https://github.com/opensolon/solon-ai">Solon AI</a> và Java, hỗ trợ môi trường từ Java8 đến Java26.</p>
-<p>Phiên bản mới nhất: v2026.4.20</p>
+<p>Phiên bản mới nhất: v2026.4.22</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -40,7 +40,7 @@ Chạy lệnh `soloncode` từ bất kỳ thư mục nào trong bảng điều k
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.20
+SolonCode v2026.4.22
 /Users/noear
 Mẹo: (esc) ngắt | '/exit': thoát | '/resume': tiếp tục | '/clear': đặt lại
 
