@@ -17,5 +17,7 @@
     <modules>
         <module>soloncode-parent</module>
         <module>soloncode-cli</module>
+
+        <module>examples/extension_demo</module>
     </modules>
 </project>

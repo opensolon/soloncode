@@ -33,21 +33,28 @@ import java.nio.file.Paths;
 public class App {
 
     public static void main(String[] args) {
+        AgentProperties agentProps = new AgentProperties();
+
+        //配置用户扩展目录
+       System.setProperty("solon.extend", "!" + agentProps.getUserExtensions());
+
         Solon.start(App.class, args, app -> {
-            initAgentProperties(app);
+            initAgentProperties(app, agentProps);
         });
     }
 
-    private static void initAgentProperties(SolonApp app) throws Exception {
+    private static void initAgentProperties(SolonApp app, AgentProperties c) throws Exception {
         //加载配置文件
-        AgentProperties c = new AgentProperties();
+
         URL configUrl = c.getConfigUrl();
+
         app.cfg().loadAdd(configUrl);
 
         //获取命令行运行的当前用户工作区
         String workspace = Paths.get(AgentProperties.getUserDir()).toAbsolutePath().normalize().toString();
         app.cfg().getProp("soloncode").bindTo(c);
 
+        //兼容旧的模型配置
         if (c.getChatModel() != null) {
             c.addModel(c.getChatModel());
         }

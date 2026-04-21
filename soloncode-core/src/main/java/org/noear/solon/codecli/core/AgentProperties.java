@@ -96,6 +96,10 @@ public class AgentProperties extends HarnessProperties {
         return System.getProperty("user.home");
     }
 
+    public  String getUserExtensions(){
+       return Paths.get(getUserHome(), getHarnessHome(), "extensions").toString();
+    }
+
     public URL getConfigUrl() throws MalformedURLException {
         //1. 资源文件（一般开发时）
         URL tmp = ResourceUtil.getResource(NAME_CONFIG_YML);

@@ -1,7 +1,12 @@
 
+
+### v2026.4.24
+
+* 新增 soloncode 扩展机制
+
 ### v2026.4.22
 
-* 添加 soloncode lsp 功能
+* 新增 soloncode lsp 功能
 * 添加 soloncode agentPools（子代理池） 配置支持
 * 添加 soloncode chatModel.internalStream 添加流接收超时处理（避免因 llm 服务原因一直卡着）
 * 优化 soloncode ExpertSkill 引导词
