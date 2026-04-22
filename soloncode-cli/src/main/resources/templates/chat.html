@@ -551,7 +551,7 @@
                 try {
                     //提交 interrupt
                     let xhr = new XMLHttpRequest();
-                    xhr.open('POST', '/chat/interrupt?sessionId=' + encodeURIComponent(sess.sessionId), true);
+                    xhr.open('POST', '/chat/interrupt?sessionId=' + encodeURIComponent(activeSessionId), true);
                     xhr.send();
                 }finally {
                     // 停止流
