@@ -30,9 +30,7 @@ if ! command -v java &> /dev/null; then
     echo -e "${RED}[Error] Java is not installed or not in PATH${NC}"
     echo ""
     echo "  Please install Java 8 or later:"
-    echo "    - Ubuntu/Debian: sudo apt install openjdk-17-jdk"
-    echo "    - macOS: brew install openjdk@17"
-    echo "    - Or download from: https://adoptium.net/"
+    echo "    - Download from: https://adoptium.net/"
     echo ""
     # If not called from setup.sh, wait for user input
     if [ -z "$SOLONCODE_SETUP" ]; then

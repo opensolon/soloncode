@@ -19,7 +19,6 @@ if (-not $javaPath) {
     Write-Host ""
     Write-Host "  Please install Java 8 or later:" -ForegroundColor White
     Write-Host "    - Download from: https://adoptium.net/" -ForegroundColor White
-    Write-Host "    - Or use: winget install EclipseAdoptium.Temurin.17" -ForegroundColor White
     Write-Host ""
     Read-Host "Press Enter to exit"
     exit 1
