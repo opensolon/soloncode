@@ -14,7 +14,7 @@
 
 ### v2026.4.20
 
-* 新增 soloncode web 界面
+* 新增 soloncode web 交互模式
 * 优化 soloncode-cli 启动时打印主代理模型
 * 添加 soloncode 重试次数配置支持
 * 添加 新指令 `soloncode web`（默认端口） `soloncode web 1212`（指定端口）
