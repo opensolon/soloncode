@@ -185,6 +185,8 @@ public class WebController {
 
         session.getContext().put(AgentFlags.VAR_MODEL_SELECTED, modelName);
 
+        session.updateSnapshot();
+
         return Result.succeed();
     }
 

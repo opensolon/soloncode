@@ -225,10 +225,10 @@
 
         /* Model Selector */
         .model-selector { position: relative; display: flex; align-items: center; }
-        .model-selector-current { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.2s; white-space: nowrap; max-width: 200px; }
+        .model-selector-current { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: all 0.2s; white-space: nowrap; max-width: 200px; }
         .model-selector-current:hover { border-color: var(--accent); color: var(--text-primary); background: var(--bg-hover); }
         .model-selector-current .model-name { overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
-        .model-selector-current .model-arrow { font-size: 12px; transition: transform 0.2s; }
+        .model-selector-current .model-arrow { font-size: 12px; transition: transform 0.2s; opacity: 0.5; }
         .model-selector.open .model-arrow { transform: rotate(180deg); }
         .model-dropdown { position: absolute; bottom: 100%; left: 0; margin-bottom: 6px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); min-width: 220px; max-height: 280px; overflow-y: auto; display: none; z-index: 100; animation: drop-up 0.15s ease-out; }
         .model-selector.open .model-dropdown { display: block; }
@@ -300,7 +300,7 @@
                     <div class="model-selector" id="welcomeModelSelector">
                         <div class="model-selector-current" id="welcomeModelCurrent" title="切换模型">
                             <span class="model-name" id="welcomeModelName">加载中...</span>
-                            <i class="layui-icon layui-icon-down model-arrow"></i>
+                            <span class="model-arrow">&#9662;</span>
                         </div>
                         <div class="model-dropdown" id="welcomeModelDropdown"></div>
                     </div>
@@ -326,7 +326,7 @@
                         <div class="model-selector" id="chatModelSelector">
                             <div class="model-selector-current" id="chatModelCurrent" title="切换模型">
                                 <span class="model-name" id="chatModelName">加载中...</span>
-                                <i class="layui-icon layui-icon-down model-arrow"></i>
+                                <span class="model-arrow">&#9662;</span>
                             </div>
                             <div class="model-dropdown" id="chatModelDropdown"></div>
                         </div>
@@ -419,6 +419,8 @@
             userScrolledUp = false;
             if (isStreaming) setBtnStopMode();
             else setBtnSendMode();
+            // Refresh model selector for this session
+            if (modelsLoaded) refreshSessionModel(sessionId);
         }
 
         function deactivateSession() {
@@ -519,6 +521,8 @@
             welcomeView.style.display = '';
             chatView.classList.remove('active');
             welcomeInput.focus();
+            // Reset model UI to default
+            if (modelsLoaded) renderModelUI();
         }
 
         /* ===== Auto-resize ===== */
@@ -786,26 +790,71 @@
         loadSessionHistory();
 
         /* ===== Model Selector ===== */
-        var modelList = [];       // [{name, desc}, ...]
-        var selectedModel = '';   // current selected model name
+        var modelList = [];        // [{name, desc}, ...] (shared, only loaded once)
+        var modelsLoaded = false;  // whether model list has been fetched
+        var sessionModelMap = {};  // { sessionId: selectedModelName }
 
-        function loadModels() {
+        // Get the effective selected model for current context
+        function getSelectedModel() {
+            if (activeSessionId && sessionModelMap[activeSessionId]) {
+                return sessionModelMap[activeSessionId];
+            }
+            return sessionModelMap['_default'] || '';
+        }
+
+        // Load model list (once) + selected model for given session
+        function loadModels(sessionId, callback) {
+            var url = '/chat/models';
+            if (sessionId) url += '?sessionId=' + encodeURIComponent(sessionId);
+
             var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/chat/models', true);
+            xhr.open('GET', url, true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     try {
                         var resp = JSON.parse(xhr.responseText).data;
-                        selectedModel = resp.selected || '';
-                        modelList = [];
-                        var list = resp.list || [];
-                        for (let obj of list) {
-                            modelList.push({ name: obj.model, desc: obj.description });
+                        var selected = resp.selected || '';
+
+                        // Store selected model per session
+                        if (sessionId) {
+                            sessionModelMap[sessionId] = selected;
+                        } else {
+                            sessionModelMap['_default'] = selected;
                         }
+
+                        // Only parse list once (it's the same for all sessions)
+                        if (!modelsLoaded) {
+                            modelList = [];
+                            var list = resp.list || [];
+                            for (var i = 0; i < list.length; i++) {
+                                modelList.push({ name: list[i].model, desc: list[i].description });
+                            }
+                            modelsLoaded = true;
+                        }
+
                         renderModelUI();
+                        if (callback) callback();
                     } catch (e) {
                         console.error('Failed to parse models:', e);
                     }
+                }
+            };
+            xhr.send();
+        }
+
+        // Refresh selected model for a specific session (e.g. when switching sessions)
+        function refreshSessionModel(sessionId) {
+            if (!sessionId) return;
+            var url = '/chat/models?sessionId=' + encodeURIComponent(sessionId);
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText).data;
+                        sessionModelMap[sessionId] = resp.selected || '';
+                        renderModelUI();
+                    } catch (e) {}
                 }
             };
             xhr.send();
@@ -817,14 +866,15 @@
             var chatDropdown = document.getElementById('chatModelDropdown');
             var welcomeDropdown = document.getElementById('welcomeModelDropdown');
 
-            var displayName = selectedModel.length > 24 ? selectedModel.substring(0, 24) + '...' : selectedModel;
+            var currentModel = getSelectedModel();
+            var displayName = currentModel.length > 24 ? currentModel.substring(0, 24) + '...' : currentModel;
             if (chatName) chatName.textContent = displayName || '默认模型';
             if (welcomeName) welcomeName.textContent = displayName || '默认模型';
 
             var html = '';
             for (var i = 0; i < modelList.length; i++) {
                 var m = modelList[i];
-                var cls = m.name === selectedModel ? ' active' : '';
+                var cls = m.name === currentModel ? ' active' : '';
                 html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
                     + '<span class="model-item-name">' + escapeHtml(m.name) + '</span>'
                     + (m.desc ? '<span class="model-item-desc">' + escapeHtml(m.desc) + '</span>' : '')
@@ -835,12 +885,12 @@
         }
 
         function selectModel(modelName) {
-            var sid = SESSION_ID;
+            var sid = activeSessionId || SESSION_ID;
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/chat/models/select?sessionId=' + encodeURIComponent(sid) + '&modelName=' + encodeURIComponent(modelName), true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
-                    selectedModel = modelName;
+                    sessionModelMap[sid] = modelName;
                     renderModelUI();
                 }
             };
@@ -868,7 +918,7 @@
                 if (!item) return;
                 e.stopPropagation();
                 var modelName = item.getAttribute('data-model');
-                if (modelName && modelName !== selectedModel) {
+                if (modelName && modelName !== getSelectedModel()) {
                     selectModel(modelName);
                 }
                 selector.classList.remove('open');
@@ -885,7 +935,8 @@
         initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
         initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
 
-        loadModels();
+        // Initial load (no specific session, get default selected)
+        loadModels(null);
 
         /* ===== Message Rendering (Session-Aware) ===== */
         function appendUserMessage(sess, text, imageDataUrl) {

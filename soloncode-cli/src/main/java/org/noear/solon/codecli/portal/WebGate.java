@@ -255,16 +255,22 @@ public class WebGate implements Handler {
 
         buf.append(" (");
 
-        if (react.getTrace().getMetrics() != null) {
-            buf.append(react.getTrace().getMetrics().getTotalTokens()).append(" tokens");
-        }
+        buf.append(react.getTrace().getOptions().getChatModel().getModel());
 
-        if (start_time != null) {
-            long seconds = Duration.ofMillis(System.currentTimeMillis() - start_time).getSeconds();
+        if (react.getTrace().getMetrics() != null) {
             if (buf.length() > 2) {
                 buf.append(", ");
             }
 
+            buf.append(react.getTrace().getMetrics().getTotalTokens()).append(" tokens");
+        }
+
+        if (start_time != null) {
+            if (buf.length() > 2) {
+                buf.append(", ");
+            }
+
+            long seconds = Duration.ofMillis(System.currentTimeMillis() - start_time).getSeconds();
             buf.append(seconds).append(" seconds");
         }
 
