@@ -818,12 +818,15 @@
         var welcomeVoiceBtn = document.getElementById('welcomeVoiceBtn');
         var chatVoiceBtn = document.getElementById('chatVoiceBtn');
 
+        var voiceRafPending = false; // 限制 DOM 更新频率
+
         function initVoice() {
             if (!SpeechRecognition) return; // 浏览器不支持
             recognition = new SpeechRecognition();
             recognition.lang = 'zh-CN';
             recognition.continuous = false; // 关闭连续模式，静音自动停止
             recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
 
             recognition.onresult = function(event) {
                 var interimTranscript = '';
@@ -840,9 +843,16 @@
                 if (finalTranscript) {
                     voiceFinalTranscript += finalTranscript;
                 }
-                if (voiceTargetInput) {
-                    voiceTargetInput.value = voiceBaseText + voiceFinalTranscript + interimTranscript;
-                    autoResize(voiceTargetInput);
+                // 用 RAF 节流 DOM 更新，避免频繁重绘拖慢感知
+                if (!voiceRafPending && voiceTargetInput) {
+                    voiceRafPending = true;
+                    requestAnimationFrame(function() {
+                        voiceRafPending = false;
+                        if (voiceTargetInput) {
+                            voiceTargetInput.value = voiceBaseText + voiceFinalTranscript + interimTranscript;
+                            autoResize(voiceTargetInput);
+                        }
+                    });
                 }
             };
 
