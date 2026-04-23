@@ -24,7 +24,7 @@ public class AgentFlags {
     public final static String VAR_MODEL_SELECTED = "_model_selected";
 
     public static String getVersion() {
-        return "v2026.4.25";
+        return "v2026.4.26";
     }
 
     private static String lastVersion;
