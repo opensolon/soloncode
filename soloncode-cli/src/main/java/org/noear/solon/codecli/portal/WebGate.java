@@ -59,7 +59,8 @@ public class WebGate implements Handler {
     @Override
     public void handle(Context ctx) throws Throwable {
         String input = ctx.param("input");
-        String mode = ctx.param("m");
+        String methods = ctx.param("m");
+        String modelSelected = ctx.param("model");
         String sessionId = ctx.param("sessionId");
         if (sessionId == null || sessionId.isEmpty()) {
             sessionId = ctx.headerOrDefault("X-Session-Id", "web");
@@ -82,7 +83,7 @@ public class WebGate implements Handler {
         }
 
         final AgentSession session = agentRuntime.getSession(sessionId);
-        final String modelSelected = session.getContext().getAs(AgentFlags.VAR_MODEL_SELECTED);
+        session.getContext().put(AgentFlags.VAR_MODEL_SELECTED, modelSelected);
         final ChatModel chatModel = agentRuntime.getModelOrMain(modelSelected);
 
         // HITL approve/reject handling
@@ -104,7 +105,7 @@ public class WebGate implements Handler {
 
 
         if (Assert.isNotEmpty(input)) {
-            if ("call".equals(mode)) {
+            if ("call".equals(methods)) {
                 ctx.contentType(MimeType.TEXT_PLAIN_UTF8_VALUE);
                 String result = agentRuntime.prompt(input)
                         .session(session)

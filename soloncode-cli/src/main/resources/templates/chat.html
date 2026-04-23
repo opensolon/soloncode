@@ -892,15 +892,8 @@
 
         function selectModel(modelName) {
             var sid = activeSessionId || SESSION_ID;
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', '/chat/models/select?sessionId=' + encodeURIComponent(sid) + '&modelName=' + encodeURIComponent(modelName), true);
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState === 4 && xhr.status === 200) {
-                    sessionModelMap[sid] = modelName;
-                    renderModelUI();
-                }
-            };
-            xhr.send();
+            sessionModelMap[sid] = modelName;
+            renderModelUI();
         }
 
         // Toggle dropdown open/close
@@ -1283,8 +1276,10 @@
 
         function sendWithEventSource(sess, text) {
             if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
+            var model = getSelectedModel();
             var url = SSE_ENDPOINT + '?input=' + encodeURIComponent(text)
-                + '&sessionId=' + encodeURIComponent(sess.sessionId);
+                + '&sessionId=' + encodeURIComponent(sess.sessionId)
+                + (model ? '&model=' + encodeURIComponent(model) : '');
 
             sess.eventSource = new EventSource(url);
             sess.eventSource.onmessage = function(event) { handleSSEData(sess, event.data); };
@@ -1300,7 +1295,8 @@
 
         function sendWithFetch(sess, text, imageBase64, imageMime) {
             if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
-            var body = JSON.stringify({ input: text, sessionId: sess.sessionId, imageBase64: imageBase64, imageMime: imageMime });
+            var model = getSelectedModel();
+            var body = JSON.stringify({ input: text, sessionId: sess.sessionId, imageBase64: imageBase64, imageMime: imageMime, model: model || undefined });
             var abortCtrl = new AbortController();
             sess.eventSource = { close: function() { abortCtrl.abort(); } };
 
