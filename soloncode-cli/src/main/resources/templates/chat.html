@@ -242,24 +242,16 @@
         .model-dropdown::-webkit-scrollbar { width: 4px; }
         .model-dropdown::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
 
-        /* Image Preview */
-        .img-preview-wrap { padding: 8px 14px 0; display: none; }
-        .img-preview-wrap.has-img { display: flex; align-items: flex-start; gap: 8px; }
-        .img-preview-wrap.has-file { display: flex; align-items: flex-start; gap: 8px; }
-        .img-preview { position: relative; display: none; }
-        .img-preview-wrap.has-img .img-preview { display: inline-block; }
-        .img-preview img { max-height: 80px; max-width: 200px; border-radius: 8px; border: 1px solid var(--border-color); object-fit: cover; }
-        .img-preview-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #ef4444; color: #fff; border: 2px solid var(--bg-input-box); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; }
-        .img-preview-remove:hover { background: #dc2626; }
-
-        /* File Tag Preview (for text/binary attachments) */
-        .file-tag-preview { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; max-width: 260px; }
-        .file-tag-icon { font-size: 20px; color: var(--accent); flex-shrink: 0; }
-        .file-tag-info { display: flex; flex-direction: column; min-width: 0; }
-        .file-tag-name { font-size: 13px; font-weight: 500; color: var(--text-primary) !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-        .file-tag-size { font-size: 11px; color: var(--text-secondary) !important; }
-        .file-tag-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #ef4444; color: #fff; border: 2px solid var(--bg-input-box); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; }
-        .file-tag-remove:hover { background: #dc2626; }
+        /* Attachments Preview */
+        .attachments-wrap { padding: 8px 14px 0; display: none; }
+        .attachments-wrap.has-items { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+        .attachment-item { position: relative; display: inline-flex; flex-shrink: 0; }
+        .attachment-item img { height: 60px; max-width: 120px; border-radius: 6px; border: 1px solid var(--border-color); object-fit: cover; }
+        .attachment-item-file { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 6px; max-width: 200px; }
+        .attachment-item-file .file-icon { font-size: 16px; color: var(--accent); }
+        .attachment-item-file .file-name { font-size: 12px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+        .attachment-item-remove { position: absolute; top: -5px; right: -5px; width: 18px; height: 18px; border-radius: 50%; background: #ef4444; color: #fff; border: 2px solid var(--bg-input-box); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; }
+        .attachment-item-remove:hover { background: #dc2626; }
 
         /* Attach Button */
         .attach-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
@@ -318,17 +310,7 @@
             <div class="welcome-title" th:text="'你好，我是 ' + ${appTitle} + ' Web ！'">你好，我是 SolonCode Web ！</div>
             <div class="welcome-sub">有什么我可以帮你的吗?</div>
             <div class="welcome-input-box">
-                <div class="img-preview-wrap" id="welcomeImgWrap">
-                    <div class="img-preview"><img id="welcomeImgPreview" src="" alt=""/><span class="img-preview-remove" id="welcomeImgRemove">&times;</span></div>
-                    <div class="file-tag-preview" id="welcomeFileTag" style="display:none">
-                        <span class="file-tag-icon" id="welcomeFileIcon">◎</span>
-                        <div class="file-tag-info">
-                            <span class="file-tag-name" id="welcomeFileName"></span>
-                            <span class="file-tag-size" id="welcomeFileSize"></span>
-                        </div>
-                        <span class="file-tag-remove" id="welcomeFileRemove">&times;</span>
-                    </div>
-                </div>
+                <div class="attachments-wrap" id="welcomeAttachmentsWrap"></div>
                 <textarea id="welcomeInput" placeholder="和我聊聊天吧..." rows="1" autofocus></textarea>
                 <div class="welcome-toolbar">
                     <div class="model-selector" id="welcomeModelSelector">
@@ -342,7 +324,7 @@
                         <button class="attach-btn" id="welcomeAttachBtn" title="添加附件">
                             <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                         </button>
-                        <input type="file" class="attach-input" id="welcomeAttachInput" accept="image/*,.txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
+                        <input type="file" class="attach-input" id="welcomeAttachInput" multiple accept="image/*,.txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
                         <button class="voice-btn hidden" id="welcomeVoiceBtn" title="语音输入">
                             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
                         </button>
@@ -361,17 +343,7 @@
             </div>
             <div class="input-wrap">
                 <div class="input-box">
-                    <div class="img-preview-wrap" id="chatImgWrap">
-                        <div class="img-preview"><img id="chatImgPreview" src="" alt=""/><span class="img-preview-remove" id="chatImgRemove">&times;</span></div>
-                        <div class="file-tag-preview" id="chatFileTag" style="display:none">
-                            <span class="file-tag-icon" id="chatFileIcon">◎</span>
-                            <div class="file-tag-info">
-                                <span class="file-tag-name" id="chatFileName"></span>
-                                <span class="file-tag-size" id="chatFileSize"></span>
-                            </div>
-                            <span class="file-tag-remove" id="chatFileRemove">&times;</span>
-                        </div>
-                    </div>
+                    <div class="attachments-wrap" id="chatAttachmentsWrap"></div>
                     <textarea id="chatInput" placeholder="请输入消息..." rows="1"></textarea>
                     <div class="input-toolbar">
                         <div class="model-selector" id="chatModelSelector">
@@ -385,7 +357,7 @@
                             <button class="attach-btn" id="chatAttachBtn" title="添加附件">
                                 <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                             </button>
-                            <input type="file" class="attach-input" id="chatAttachInput" accept="image/*,.txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
+                            <input type="file" class="attach-input" id="chatAttachInput" multiple accept="image/*,.txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
                             <button class="voice-btn hidden" id="chatVoiceBtn" title="语音输入">
                                 <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
                             </button>
@@ -456,7 +428,8 @@
         var inChatMode = false;
         var chatHistory = [];
         var currentChatIndex = -1;
-        var pendingFile = null; // { type: 'image'|'file', name, size, file? }
+        var pendingFiles = []; // [{ type: 'image'|'file', name, size, file, dataUrl? }, ...]
+        var MAX_ATTACHMENTS = 10;
         var userScrolledUp = false;
 
         /* ===== Session Helpers ===== */
@@ -492,13 +465,9 @@
             setBtnSendMode();
         }
 
-        /* ===== Image Paste ===== */
-        var welcomeImgWrap = document.getElementById('welcomeImgWrap');
-        var welcomeImgPreview = document.getElementById('welcomeImgPreview');
-        var welcomeImgRemove = document.getElementById('welcomeImgRemove');
-        var chatImgWrap = document.getElementById('chatImgWrap');
-        var chatImgPreview = document.getElementById('chatImgPreview');
-        var chatImgRemove = document.getElementById('chatImgRemove');
+        /* ===== Attachment Helpers ===== */
+        var welcomeAttachmentsWrap = document.getElementById('welcomeAttachmentsWrap');
+        var chatAttachmentsWrap = document.getElementById('chatAttachmentsWrap');
 
         function handlePasteImage(e) {
             var items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -512,34 +481,49 @@
             }
         }
 
-        function showImagePreview(dataUrl, file) {
-            clearAttachmentPreview(); // clear any previous attachment
-            pendingFile = { type: 'image', name: file.name, size: file.size, file: file };
-            if (inChatMode) {
-                chatImgPreview.src = dataUrl;
-                chatImgWrap.classList.add('has-img');
-            } else {
-                welcomeImgPreview.src = dataUrl;
-                welcomeImgWrap.classList.add('has-img');
+        function getAttachmentsWrap() {
+            return inChatMode ? chatAttachmentsWrap : welcomeAttachmentsWrap;
+        }
+
+        function renderAttachments() {
+            // Render both wraps to keep them in sync when switching views
+            renderAttachmentsWrap(welcomeAttachmentsWrap);
+            renderAttachmentsWrap(chatAttachmentsWrap);
+        }
+
+        function renderAttachmentsWrap(wrap) {
+            wrap.innerHTML = '';
+            if (pendingFiles.length === 0) {
+                wrap.classList.remove('has-items');
+                return;
+            }
+            wrap.classList.add('has-items');
+            for (var i = 0; i < pendingFiles.length; i++) {
+                var item = pendingFiles[i];
+                var el = document.createElement('div');
+                el.className = 'attachment-item';
+                if (item.type === 'image') {
+                    el.innerHTML = '<img src="' + item.dataUrl + '"/>'
+                        + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>';
+                } else {
+                    el.innerHTML = '<div class="attachment-item-file">'
+                        + '<span class="file-icon">📎</span>'
+                        + '<span class="file-name">' + escapeHtml(item.name) + '</span>'
+                        + '</div>'
+                        + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>';
+                }
+                wrap.appendChild(el);
             }
         }
 
-        function clearImagePreview() {
-            welcomeImgPreview.src = '';
-            welcomeImgWrap.classList.remove('has-img');
-            chatImgPreview.src = '';
-            chatImgWrap.classList.remove('has-img');
-        }
-
-        function clearFileTagPreview() {
-            document.getElementById('welcomeFileTag').style.display = 'none';
-            document.getElementById('chatFileTag').style.display = 'none';
-        }
-
         function clearAttachmentPreview() {
-            pendingFile = null;
-            clearImagePreview();
-            clearFileTagPreview();
+            pendingFiles = [];
+            renderAttachments();
+        }
+
+        function removeAttachment(idx) {
+            pendingFiles.splice(idx, 1);
+            renderAttachments();
         }
 
 
@@ -552,42 +536,40 @@
 
         function processSelectedFile(file) {
             if (!file) return;
-            clearAttachmentPreview();
+            if (pendingFiles.length >= MAX_ATTACHMENTS) return;
 
             if (file.type.indexOf('image') !== -1) {
-                // Image file - keep File object for FormData upload, show preview via URL
                 var reader = new FileReader();
-                reader.onload = function(evt) { showImagePreview(evt.target.result, file); };
+                reader.onload = function(evt) {
+                    pendingFiles.push({ type: 'image', name: file.name, size: file.size, file: file, dataUrl: evt.target.result });
+                    renderAttachments();
+                };
                 reader.readAsDataURL(file);
             } else {
-                // All non-image files - keep File object for FormData upload
-                pendingFile = { type: 'file', name: file.name, size: file.size, file: file };
-                showFileTagPreview(file.name, file.size);
+                pendingFiles.push({ type: 'file', name: file.name, size: file.size, file: file });
+                renderAttachments();
             }
         }
 
-        function showFileTagPreview(name, size) {
-            if (inChatMode) {
-                document.getElementById('chatFileIcon').textContent = '📎';
-                document.getElementById('chatFileName').textContent = name;
-                document.getElementById('chatFileSize').textContent = formatFileSize(size);
-                document.getElementById('chatFileTag').style.display = 'inline-flex';
-                chatImgWrap.classList.add('has-file');
-            } else {
-                document.getElementById('welcomeFileIcon').textContent = '📎';
-                document.getElementById('welcomeFileName').textContent = name;
-                document.getElementById('welcomeFileSize').textContent = formatFileSize(size);
-                document.getElementById('welcomeFileTag').style.display = 'inline-flex';
-                welcomeImgWrap.classList.add('has-file');
+        function processSelectedFiles(fileList) {
+            for (var i = 0; i < fileList.length; i++) {
+                if (pendingFiles.length >= MAX_ATTACHMENTS) break;
+                processSelectedFile(fileList[i]);
             }
         }
 
         welcomeInput.addEventListener('paste', handlePasteImage);
         chatInput.addEventListener('paste', handlePasteImage);
-        welcomeImgRemove.addEventListener('click', clearAttachmentPreview);
-        chatImgRemove.addEventListener('click', clearAttachmentPreview);
-        document.getElementById('welcomeFileRemove').addEventListener('click', clearAttachmentPreview);
-        document.getElementById('chatFileRemove').addEventListener('click', clearAttachmentPreview);
+
+        // Attachment remove buttons - use event delegation on both wraps
+        welcomeAttachmentsWrap.addEventListener('click', function(e) {
+            var btn = e.target.closest('.attachment-item-remove');
+            if (btn) removeAttachment(parseInt(btn.getAttribute('data-idx')));
+        });
+        chatAttachmentsWrap.addEventListener('click', function(e) {
+            var btn = e.target.closest('.attachment-item-remove');
+            if (btn) removeAttachment(parseInt(btn.getAttribute('data-idx')));
+        });
 
         // Attach button handlers
         document.getElementById('welcomeAttachBtn').addEventListener('click', function(e) {
@@ -599,11 +581,11 @@
             document.getElementById('chatAttachInput').click();
         });
         document.getElementById('welcomeAttachInput').addEventListener('change', function(e) {
-            if (e.target.files && e.target.files[0]) processSelectedFile(e.target.files[0]);
-            e.target.value = ''; // reset so same file can be selected again
+            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files);
+            e.target.value = '';
         });
         document.getElementById('chatAttachInput').addEventListener('change', function(e) {
-            if (e.target.files && e.target.files[0]) processSelectedFile(e.target.files[0]);
+            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files);
             e.target.value = '';
         });
 
@@ -1171,25 +1153,37 @@
         loadModels(null);
 
         /* ===== Message Rendering (Session-Aware) ===== */
-        function appendUserMessage(sess, text, imageDataUrl, fileAttachment) {
+        function appendUserMessage(sess, text, imageDataUrls, fileAttachments) {
             var row = document.createElement('div');
             row.className = 'msg-row user';
             row.innerHTML = '<button class="user-copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i></button><div class="msg-bubble"></div><div class="msg-avatar">我</div>';
             var bubble = row.querySelector('.msg-bubble');
-            if (imageDataUrl) {
-                var img = document.createElement('img');
-                img.src = imageDataUrl;
-                img.style.cssText = 'max-height:120px;max-width:240px;border-radius:8px;display:block;margin-bottom:8px;';
-                bubble.appendChild(img);
+
+            // Multiple images
+            if (imageDataUrls && imageDataUrls.length > 0) {
+                var imgWrap = document.createElement('div');
+                imgWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;';
+                for (var i = 0; i < imageDataUrls.length; i++) {
+                    var img = document.createElement('img');
+                    img.src = imageDataUrls[i].dataUrl || imageDataUrls[i];
+                    img.style.cssText = 'max-height:120px;max-width:200px;border-radius:8px;object-fit:cover;';
+                    imgWrap.appendChild(img);
+                }
+                bubble.appendChild(imgWrap);
             }
-            if (fileAttachment) {
-                var tag = document.createElement('div');
-                tag.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);border-radius:6px;margin-bottom:8px;font-size:13px;color:#fff;';
-                tag.innerHTML = '<span>📎</span>'
-                    + '<span style="font-weight:500">' + escapeHtml(fileAttachment.name) + '</span>'
-                    + '<span style="opacity:0.7;font-size:11px">(' + formatFileSize(fileAttachment.size) + ')</span>';
-                bubble.appendChild(tag);
+
+            // Multiple file attachments
+            if (fileAttachments && fileAttachments.length > 0) {
+                for (var j = 0; j < fileAttachments.length; j++) {
+                    var tag = document.createElement('div');
+                    tag.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);border-radius:6px;margin-bottom:6px;font-size:13px;color:#fff;';
+                    tag.innerHTML = '<span>📎</span>'
+                        + '<span style="font-weight:500">' + escapeHtml(fileAttachments[j].name) + '</span>'
+                        + '<span style="opacity:0.7;font-size:11px">(' + formatFileSize(fileAttachments[j].size) + ')</span>';
+                    bubble.appendChild(tag);
+                }
             }
+
             var span = document.createElement('span');
             span.textContent = text;
             bubble.appendChild(span);
@@ -1479,23 +1473,17 @@
         /* ===== Send ===== */
         function sendMessage() {
             var text = getInputText();
-            if (!text && !pendingFile) return;
+            if (!text && pendingFiles.length === 0) return;
             /* Block only if the active session is currently streaming */
             if (activeSessionId && sessionMap[activeSessionId] && sessionMap[activeSessionId].isStreaming) return;
 
-            var imageDataUrl = null;
-            var fileAttachment = pendingFile;
+            var filesToSend = pendingFiles.slice(); // snapshot
 
-            if (fileAttachment && fileAttachment.type === 'image') {
-                // Generate dataUrl for display only (from stored preview)
-                var previewEl = inChatMode ? chatImgPreview : welcomeImgPreview;
-                imageDataUrl = previewEl.src;
-            }
-
-            // Use original text, backend handles attachment formatting
+            // Build display text
             var displayText = text || '';
-            if (!displayText && fileAttachment) {
-                displayText = fileAttachment.type === 'image' ? '请描述这张图片' : '请帮我处理这个文件';
+            if (!displayText && filesToSend.length > 0) {
+                var first = filesToSend[0];
+                displayText = first.type === 'image' ? '请描述这些图片' : '请帮我处理这些文件';
             }
 
             if (currentChatIndex === -1) {
@@ -1509,14 +1497,14 @@
 
             var sess = sessionMap[SESSION_ID];
 
-            // Show user message with appropriate preview
-            if (imageDataUrl) {
-                appendUserMessage(sess, displayText, imageDataUrl);
-            } else if (fileAttachment && fileAttachment.type === 'file') {
-                appendUserMessage(sess, displayText, null, fileAttachment);
-            } else {
-                appendUserMessage(sess, displayText);
+            // Show user message with attachment previews
+            var imageDataUrls = [];
+            var fileAttachments = [];
+            for (var i = 0; i < filesToSend.length; i++) {
+                if (filesToSend[i].type === 'image') imageDataUrls.push(filesToSend[i]);
+                else fileAttachments.push(filesToSend[i]);
             }
+            appendUserMessage(sess, displayText, imageDataUrls, fileAttachments);
 
             sess.isStreaming = true;
             isStreaming = true;
@@ -1524,18 +1512,18 @@
             resetStreamState(sess);
             showThinking(sess);
 
-            sendWithFormData(sess, text, fileAttachment);
+            sendWithFormData(sess, text, filesToSend);
         }
 
-        function sendWithFormData(sess, text, fileAttachment) {
+        function sendWithFormData(sess, text, filesToSend) {
             if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
             var model = getSelectedModel();
             var formData = new FormData();
             formData.append('input', text);
             formData.append('sessionId', sess.sessionId);
             if (model) formData.append('model', model);
-            if (fileAttachment) {
-                formData.append('attachment', fileAttachment.file, fileAttachment.name);
+            for (var i = 0; i < filesToSend.length; i++) {
+                formData.append('attachments', filesToSend[i].file, filesToSend[i].name);
             }
 
             var abortCtrl = new AbortController();

@@ -23,7 +23,12 @@ import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.chat.content.Contents;
+import org.noear.solon.ai.chat.content.ImageBlock;
+import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.ai.chat.message.UserMessage;
+import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.core.AgentFlags;
@@ -316,7 +321,7 @@ public class WebController {
     }
 
     @Mapping("/chat/input")
-    public void chat_input(Context ctx, String input, UploadedFile attachment, String model, String sessionId) throws Throwable {
+    public void chat_input(Context ctx, String input, UploadedFile[] attachments, String model, String sessionId) throws Throwable {
         if (sessionId == null || sessionId.isEmpty()) {
             sessionId = ctx.headerOrDefault("X-Session-Id", "web");
         }
@@ -359,38 +364,66 @@ public class WebController {
         }
 
         // Handle file upload (multipart/form-data)
-        String imageBase64 = null;
-        String imageMime = null;
+        List<ImageBlock> imageBlocks = new ArrayList<>();
+        List<String> fileAttachments = new ArrayList<>();
 
-        if (attachment != null) {
-            String fileName = attachment.getName();
-            if (fileName != null && !fileName.contains("..") && !fileName.contains("/") && !fileName.contains("\\")) {
-                String ext = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase() : "";
+        if (attachments != null) {
+            for (UploadedFile attachment : attachments) {
+                String fileName = attachment.getName();
+                if (fileName != null && !fileName.contains("..") && !fileName.contains("/") && !fileName.contains("\\")) {
+                    String ext = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase() : "";
 
-                // All files: save to workspace first
-                Path savePath = Paths.get(engine.getProps().getWorkspace(), fileName).toAbsolutePath().normalize();
-                if (savePath.startsWith(Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize())) {
-                    Files.copy(attachment.getContent(), savePath, StandardCopyOption.REPLACE_EXISTING);
+                    // All files: save to workspace first
+                    Path savePath = Paths.get(engine.getProps().getWorkspace(), fileName).toAbsolutePath().normalize();
+                    if (savePath.startsWith(Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize())) {
+                        Files.copy(attachment.getContent(), savePath, StandardCopyOption.REPLACE_EXISTING);
 
-                    if (isImageExtension(ext)) {
-                        // Image: read back from saved file, convert to base64
-                        byte[] bytes = Files.readAllBytes(savePath);
-                        imageBase64 = Base64.getEncoder().encodeToString(bytes);
-                        imageMime = extensionToMime(ext);
-                    } else {
-                        // Other: just reference the saved file
-                        input = "[附件: " + fileName + "]\n" + (input != null && !input.isEmpty() ? input : "请帮我处理这个附件");
+                        if (isImageExtension(ext)) {
+                            // Image: read back from saved file, convert to base64
+                            byte[] bytes = Files.readAllBytes(savePath);
+                            String base64 = Base64.getEncoder().encodeToString(bytes);
+                            String mime = extensionToMime(ext);
+                            imageBlocks.add(ImageBlock.ofBase64(mime, base64));
+                        } else {
+                            // Other: collect file names for prefix
+                            fileAttachments.add(fileName);
+                        }
                     }
                 }
             }
         }
 
-        if (Assert.isNotEmpty(input) || Assert.isNotEmpty(imageBase64)) {
+        // Build input text with file attachment prefix
+        if (!fileAttachments.isEmpty()) {
+            String filePrefix = fileAttachments.stream()
+                    .map(f -> "[附件: " + f + "]")
+                    .collect(java.util.stream.Collectors.joining("\n"));
             if (input == null || input.isEmpty()) {
-                input = "请描述这张图片";
+                input = filePrefix + "\n请帮我处理这些附件";
+            } else {
+                input = filePrefix + "\n" + input;
             }
+        }
+
+        if (Assert.isNotEmpty(input) || !imageBlocks.isEmpty()) {
+            if (input == null || input.isEmpty()) {
+                input = imageBlocks.size() > 1 ? "请描述这些图片" : "请描述这张图片";
+            }
+
+            Prompt prompt;
+            if (!imageBlocks.isEmpty()) {
+                Contents contents = new Contents();
+                contents.addBlock(TextBlock.of(input));
+                for (ImageBlock block : imageBlocks) {
+                    contents.addBlock(block);
+                }
+                prompt = Prompt.of(new UserMessage(contents));
+            } else {
+                prompt = Prompt.of(input);
+            }
+
             ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-            ctx.returnValue(streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, input, imageBase64, imageMime));
+            ctx.returnValue(streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, prompt));
         }
     }
 }

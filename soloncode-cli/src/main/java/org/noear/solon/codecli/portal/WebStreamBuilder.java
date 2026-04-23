@@ -49,23 +49,16 @@ public class WebStreamBuilder {
         this.engine = engine;
     }
 
-
-    public Flux<String> buildStreamFlux(AgentSession session, ChatModel chatModel, String sessionCwd, String input) {
-        return buildStreamFlux(session, chatModel, sessionCwd, input, null, null);
-    }
-
-    public Flux<String> buildStreamFlux(AgentSession session, ChatModel chatModel, String sessionCwd, String input, String imageBase64, String imageMime) {
-        final Prompt prompt;
-        if ("/resume".equals(input)) {
-            prompt = Prompt.of().attrPut("start_time", System.currentTimeMillis());
-        } else if (Assert.isNotEmpty(imageBase64)) {
-            // Multimodal: text + image
-            ChatMessage userMsg = ChatMessage.ofUser(input, org.noear.solon.ai.chat.content.ImageBlock.ofBase64(imageBase64, imageMime != null ? imageMime : "image/png"));
-            prompt = Prompt.of().addMessage(userMsg).attrPut("start_time", System.currentTimeMillis());
-        } else {
-            prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+    public Flux<String> buildStreamFlux(AgentSession session, ChatModel chatModel, String sessionCwd, Prompt prompt) {
+        if (prompt == null) {
+            prompt = Prompt.of();
         }
 
+        if ("/resume".equals(prompt.getUserContent())) {
+            prompt = Prompt.of();
+        }
+
+        prompt.attrPut("start_time", System.currentTimeMillis());
 
         return engine.prompt(prompt)
                 .session(session)
