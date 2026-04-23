@@ -69,18 +69,6 @@ public class AgentProperties extends HarnessProperties {
 
     public AgentProperties() {
         super(".soloncode/");
-
-        getSkillPools().put("@global", Paths.get(getUserHome(), getHarnessSkills()).toString());
-        getSkillPools().put("@local", Paths.get(getWorkspace(), getHarnessSkills()).toString());
-
-        getSkillPools().put("@skills", Paths.get(getWorkspace(), "skills").toString());
-        getSkillPools().put("@skillhub", Paths.get(getUserHome(), ".skillhub/skills/").toString());
-
-        getSkillPools().put("@opencode_skills", Paths.get(getWorkspace(), OPENCODE_SKILLS).toString());
-        getSkillPools().put("@claude_skills", Paths.get(getWorkspace(), CLAUDE_SKILLS).toString());
-
-        getAgentPools().add(Paths.get(getUserHome(), getHarnessAgents()).toString()); //global
-        getAgentPools().add(Paths.get(getWorkspace(), getHarnessAgents()).toString()); //local
     }
 
     /**

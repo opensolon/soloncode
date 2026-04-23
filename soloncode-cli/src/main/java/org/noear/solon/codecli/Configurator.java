@@ -48,6 +48,20 @@ public class Configurator {
 
     @Bean
     public HarnessEngine agentRuntime(AppContext context, AgentProperties props) {
+        props.getSkillPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
+        props.getSkillPools().put("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()).toString());
+
+        props.getSkillPools().put("@skills", Paths.get(props.getWorkspace(), "skills").toString());
+        props.getSkillPools().put("@skillhub", Paths.get(props.getUserHome(), ".skillhub/skills/").toString());
+
+        props.getSkillPools().put("@opencode_skills", Paths.get(props.getWorkspace(), props.OPENCODE_SKILLS).toString());
+        props.getSkillPools().put("@claude_skills", Paths.get(props.getWorkspace(), props.CLAUDE_SKILLS).toString());
+
+        props.getAgentPools().add(Paths.get(props.getUserHome(), props.getHarnessAgents()).toString()); //global
+        props.getAgentPools().add(Paths.get(props.getWorkspace(), props.getHarnessAgents()).toString()); //local
+
+
+
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         // 会话数据存到全局目录 ~/.soloncode/sessions/<sessionId>/

@@ -3,6 +3,7 @@
 ### v2026.4.26
 
 * 新增 soloncode web 附件上传功能
+* 修复 sololcode 没有加载工作区的 skills 问题（25 引起的）
 
 ### v2026.4.25
 
