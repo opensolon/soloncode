@@ -40,8 +40,7 @@ import reactor.core.publisher.Flux;
 import java.time.Duration;
 
 /**
- * Code CLI 终端 (Pool-Box 模型)
- * <p>基于 ReAct 模式的代码协作终端，提供多池挂载与任务盒隔离体验</p>
+ * Web 接收网关（用于接收 web 发送的消息，并输出 sse）
  *
  * @author noear
  * @since 3.9.1
