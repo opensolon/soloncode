@@ -246,7 +246,8 @@
         .img-preview-wrap { padding: 8px 14px 0; display: none; }
         .img-preview-wrap.has-img { display: flex; align-items: flex-start; gap: 8px; }
         .img-preview-wrap.has-file { display: flex; align-items: flex-start; gap: 8px; }
-        .img-preview { position: relative; display: inline-block; }
+        .img-preview { position: relative; display: none; }
+        .img-preview-wrap.has-img .img-preview { display: inline-block; }
         .img-preview img { max-height: 80px; max-width: 200px; border-radius: 8px; border: 1px solid var(--border-color); object-fit: cover; }
         .img-preview-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #ef4444; color: #fff; border: 2px solid var(--bg-input-box); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; }
         .img-preview-remove:hover { background: #dc2626; }
@@ -1213,10 +1214,10 @@
             }
             if (fileAttachment) {
                 var tag = document.createElement('div');
-                tag.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:var(--bg-hover);border:1px solid var(--border-color);border-radius:6px;margin-bottom:8px;font-size:13px;';
+                tag.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(0,0,0,0.08);border:1px solid rgba(0,0,0,0.12);border-radius:6px;margin-bottom:8px;font-size:13px;color:var(--text-primary);';
                 tag.innerHTML = '<span>' + (fileAttachment.type === 'text' ? '📄' : '📎') + '</span>'
                     + '<span style="font-weight:500">' + escapeHtml(fileAttachment.name) + '</span>'
-                    + '<span style="color:var(--text-secondary);font-size:11px">(' + formatFileSize(fileAttachment.size) + ')</span>';
+                    + '<span style="opacity:0.65;font-size:11px">(' + formatFileSize(fileAttachment.size) + ')</span>';
                 bubble.appendChild(tag);
             }
             var span = document.createElement('span');
@@ -1522,7 +1523,7 @@
             if (fileAttachment && fileAttachment.type === 'text') {
                 finalText = '[文件: ' + fileAttachment.name + ']\n' + fileAttachment.content + '\n\n' + (text || '请帮我处理这个文件');
             } else if (fileAttachment && fileAttachment.type === 'binary') {
-                finalText = '[附件: ' + fileAttachment.name + '，已保存到工作区]\n' + (text || '请帮我处理这个附件');
+                finalText = '[附件: ' + fileAttachment.name + ']\n' + (text || '请帮我处理这个附件');
             }
             if (!finalText) finalText = '请描述这张图片';
 
