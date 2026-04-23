@@ -49,11 +49,9 @@ import java.time.Duration;
 @Preview("3.9.1")
 public class WebGate implements Handler {
     private final HarnessEngine agentRuntime;
-    private final AgentProperties agentProps;
 
-    public WebGate(HarnessEngine agentRuntime, AgentProperties agentProps) {
+    public WebGate(HarnessEngine agentRuntime) {
         this.agentRuntime = agentRuntime;
-        this.agentProps = agentProps;
     }
 
     @Override

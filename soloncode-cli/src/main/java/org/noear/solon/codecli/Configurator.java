@@ -123,7 +123,7 @@ public class Configurator {
 
     private void runWeb(HarnessEngine agentRuntime, AgentProperties agentProps, CliShell cliShell) {
         WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
-        Solon.app().router().get(agentProps.getWebEndpoint(), new WebGate(agentRuntime, agentProps));
+        Solon.app().router().get(agentProps.getWebEndpoint(), new WebGate(agentRuntime));
 
         if (cliShell == null) {
             return;
