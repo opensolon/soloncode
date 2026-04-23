@@ -264,7 +264,6 @@ public class WebController {
     }
 
     private static final Set<String> IMAGE_EXTENSIONS = Utils.asSet(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg");
-
     private static boolean isImageExtension(String ext) {
         return IMAGE_EXTENSIONS.contains(ext);
     }
@@ -360,31 +359,28 @@ public class WebController {
         // Handle file upload (multipart/form-data)
         String imageBase64 = null;
         String imageMime = null;
-        String fileHint = null;
 
         if (attachment != null) {
             String fileName = attachment.getName();
             if (fileName != null && !fileName.contains("..") && !fileName.contains("/") && !fileName.contains("\\")) {
                 String ext = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase() : "";
 
-                if (isImageExtension(ext)) {
-                    // Image file: read content and convert to base64
-                    byte[] bytes = IoUtil.transferToBytes(attachment.getContent());
-                    imageBase64 = Base64.getEncoder().encodeToString(bytes);
-                    imageMime = extensionToMime(ext);
-                } else {
-                    // Non-image file: save to workspace
-                    Path savePath = Paths.get(engine.getProps().getWorkspace(), fileName).toAbsolutePath().normalize();
-                    if (savePath.startsWith(Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize())) {
-                        Files.copy(attachment.getContent(), savePath, StandardCopyOption.REPLACE_EXISTING);
-                        fileHint = "[附件: " + fileName + "]\n";
+                // All files: save to workspace first
+                Path savePath = Paths.get(engine.getProps().getWorkspace(), fileName).toAbsolutePath().normalize();
+                if (savePath.startsWith(Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize())) {
+                    Files.copy(attachment.getContent(), savePath, StandardCopyOption.REPLACE_EXISTING);
+
+                    if (isImageExtension(ext)) {
+                        // Image: read back from saved file, convert to base64
+                        byte[] bytes = Files.readAllBytes(savePath);
+                        imageBase64 = Base64.getEncoder().encodeToString(bytes);
+                        imageMime = extensionToMime(ext);
+                    } else {
+                        // Other: just reference the saved file
+                        input = "[附件: " + fileName + "]\n" + (input != null && !input.isEmpty() ? input : "请帮我处理这个附件");
                     }
                 }
             }
-        }
-
-        if (fileHint != null) {
-            input = fileHint + (input != null ? input : "请帮我处理这个附件");
         }
 
         if (Assert.isNotEmpty(input) || Assert.isNotEmpty(imageBase64)) {

@@ -456,7 +456,7 @@
         var inChatMode = false;
         var chatHistory = [];
         var currentChatIndex = -1;
-        var pendingFile = null; // { type: 'image'|'text'|'binary', name, size, content?, file? }
+        var pendingFile = null; // { type: 'image'|'file', name, size, file? }
         var userScrolledUp = false;
 
         /* ===== Session Helpers ===== */
@@ -542,17 +542,7 @@
             clearFileTagPreview();
         }
 
-        /* ===== File Attachment ===== */
-        var TEXT_EXTENSIONS = ['.txt','.md','.csv','.json','.xml','.yml','.yaml','.log','.html','.css','.js','.ts','.java','.py','.go','.rs','.sql','.sh','.env','.conf','.ini','.toml'];
-        var MAX_TEXT_SIZE = 50 * 1024; // 50KB
 
-        function isTextFile(name) {
-            var lower = name.toLowerCase();
-            for (var i = 0; i < TEXT_EXTENSIONS.length; i++) {
-                if (lower.endsWith(TEXT_EXTENSIONS[i])) return true;
-            }
-            return false;
-        }
 
         function formatFileSize(bytes) {
             if (bytes < 1024) return bytes + ' B';
@@ -569,35 +559,22 @@
                 var reader = new FileReader();
                 reader.onload = function(evt) { showImagePreview(evt.target.result, file); };
                 reader.readAsDataURL(file);
-            } else if (isTextFile(file.name)) {
-                // Text file - read content
-                var reader = new FileReader();
-                reader.onload = function(evt) {
-                    var content = evt.target.result;
-                    if (content.length > MAX_TEXT_SIZE) {
-                        content = content.substring(0, MAX_TEXT_SIZE) + '\n...(文件过大，已截断)';
-                    }
-                    pendingFile = { type: 'text', name: file.name, size: file.size, content: content };
-                    showFileTagPreview(file.name, file.size, 'text');
-                };
-                reader.readAsText(file);
             } else {
-                // Binary file - keep File object for FormData upload
-                pendingFile = { type: 'binary', name: file.name, size: file.size, file: file };
-                showFileTagPreview(file.name, file.size, 'binary');
+                // All non-image files - keep File object for FormData upload
+                pendingFile = { type: 'file', name: file.name, size: file.size, file: file };
+                showFileTagPreview(file.name, file.size);
             }
         }
 
-        function showFileTagPreview(name, size, fileType) {
-            var icon = fileType === 'text' ? '📄' : '📎';
+        function showFileTagPreview(name, size) {
             if (inChatMode) {
-                document.getElementById('chatFileIcon').textContent = icon;
+                document.getElementById('chatFileIcon').textContent = '📎';
                 document.getElementById('chatFileName').textContent = name;
                 document.getElementById('chatFileSize').textContent = formatFileSize(size);
                 document.getElementById('chatFileTag').style.display = 'inline-flex';
                 chatImgWrap.classList.add('has-file');
             } else {
-                document.getElementById('welcomeFileIcon').textContent = icon;
+                document.getElementById('welcomeFileIcon').textContent = '📎';
                 document.getElementById('welcomeFileName').textContent = name;
                 document.getElementById('welcomeFileSize').textContent = formatFileSize(size);
                 document.getElementById('welcomeFileTag').style.display = 'inline-flex';
@@ -1208,7 +1185,7 @@
             if (fileAttachment) {
                 var tag = document.createElement('div');
                 tag.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);border-radius:6px;margin-bottom:8px;font-size:13px;color:#fff;';
-                tag.innerHTML = '<span>' + (fileAttachment.type === 'text' ? '📄' : '📎') + '</span>'
+                tag.innerHTML = '<span>📎</span>'
                     + '<span style="font-weight:500">' + escapeHtml(fileAttachment.name) + '</span>'
                     + '<span style="opacity:0.7;font-size:11px">(' + formatFileSize(fileAttachment.size) + ')</span>';
                 bubble.appendChild(tag);
@@ -1507,26 +1484,22 @@
             if (activeSessionId && sessionMap[activeSessionId] && sessionMap[activeSessionId].isStreaming) return;
 
             var imageDataUrl = null;
-            if (pendingFile && pendingFile.type === 'image') {
+            var fileAttachment = pendingFile;
+
+            if (fileAttachment && fileAttachment.type === 'image') {
                 // Generate dataUrl for display only (from stored preview)
                 var previewEl = inChatMode ? chatImgPreview : welcomeImgPreview;
                 imageDataUrl = previewEl.src;
             }
-            var fileAttachment = pendingFile;
 
-            // Build final input text
-            var finalText = text;
-            if (fileAttachment && fileAttachment.type === 'text') {
-                finalText = '[文件: ' + fileAttachment.name + ']\n' + fileAttachment.content + '\n\n' + (text || '请帮我处理这个文件');
-            } else if (fileAttachment && fileAttachment.type === 'binary') {
-                finalText = '[附件: ' + fileAttachment.name + ']\n' + (text || '请帮我处理这个附件');
-            } else if (fileAttachment && fileAttachment.type === 'image') {
-                if (!finalText) finalText = '请描述这张图片';
+            // Use original text, backend handles attachment formatting
+            var displayText = text || '';
+            if (!displayText && fileAttachment) {
+                displayText = fileAttachment.type === 'image' ? '请描述这张图片' : '请帮我处理这个文件';
             }
-            if (!finalText) finalText = '请描述这张图片';
 
             if (currentChatIndex === -1) {
-                saveChatToHistory(finalText);
+                saveChatToHistory(displayText);
             }
 
             clearInput();
@@ -1538,11 +1511,11 @@
 
             // Show user message with appropriate preview
             if (imageDataUrl) {
-                appendUserMessage(sess, finalText, imageDataUrl);
-            } else if (fileAttachment && (fileAttachment.type === 'text' || fileAttachment.type === 'binary')) {
-                appendUserMessage(sess, finalText, null, fileAttachment);
+                appendUserMessage(sess, displayText, imageDataUrl);
+            } else if (fileAttachment && fileAttachment.type === 'file') {
+                appendUserMessage(sess, displayText, null, fileAttachment);
             } else {
-                appendUserMessage(sess, finalText);
+                appendUserMessage(sess, displayText);
             }
 
             sess.isStreaming = true;
@@ -1551,7 +1524,7 @@
             resetStreamState(sess);
             showThinking(sess);
 
-            sendWithFormData(sess, finalText, fileAttachment);
+            sendWithFormData(sess, text, fileAttachment);
         }
 
         function sendWithFormData(sess, text, fileAttachment) {
