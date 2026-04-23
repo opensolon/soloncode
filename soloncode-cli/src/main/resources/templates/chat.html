@@ -256,8 +256,8 @@
         .messages-wrap::-webkit-scrollbar-track, .sidebar-list::-webkit-scrollbar-track, .thinking-block-body::-webkit-scrollbar-track { background: transparent; }
 
         /* Voice Input */
-        .voice-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: all 0.2s; flex-shrink: 0; }
-        .voice-btn:hover { background: var(--bg-hover); color: var(--accent); }
+        .voice-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--accent); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.2s; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .voice-btn:hover { background: color-mix(in srgb, var(--accent) 85%, #000); transform: scale(1.05); box-shadow: 0 3px 12px rgba(0,0,0,0.2); }
         .voice-btn.recording { background: #ef4444; color: #fff; animation: voice-pulse 1.2s ease-in-out infinite; }
         .voice-btn.recording:hover { background: #dc2626; color: #fff; }
         .voice-btn.hidden { display: none; }
@@ -813,6 +813,7 @@
         var voiceRecording = false;
         var voiceTargetInput = null; // 当前语音目标 textarea
         var voiceBaseText = '';      // 开始录音时 textarea 已有文本
+        var voiceFinalTranscript = ''; // 累计的最终识别文本
 
         var welcomeVoiceBtn = document.getElementById('welcomeVoiceBtn');
         var chatVoiceBtn = document.getElementById('chatVoiceBtn');
@@ -821,7 +822,7 @@
             if (!SpeechRecognition) return; // 浏览器不支持
             recognition = new SpeechRecognition();
             recognition.lang = 'zh-CN';
-            recognition.continuous = true;
+            recognition.continuous = false; // 关闭连续模式，静音自动停止
             recognition.interimResults = true;
 
             recognition.onresult = function(event) {
@@ -835,8 +836,12 @@
                         interimTranscript += transcript;
                     }
                 }
+                // 累积最终结果
+                if (finalTranscript) {
+                    voiceFinalTranscript += finalTranscript;
+                }
                 if (voiceTargetInput) {
-                    voiceTargetInput.value = voiceBaseText + finalTranscript + interimTranscript;
+                    voiceTargetInput.value = voiceBaseText + voiceFinalTranscript + interimTranscript;
                     autoResize(voiceTargetInput);
                 }
             };
@@ -847,10 +852,8 @@
             };
 
             recognition.onend = function() {
-                // 如果还在录音状态（非手动停止），自动重启（continuous 模式下浏览器可能自动断开）
-                if (voiceRecording) {
-                    try { recognition.start(); } catch(e) { stopVoiceRecording(); }
-                }
+                // 静音自动停止 — 不再自动重启
+                stopVoiceRecording();
             };
 
             // 显示语音按钮
@@ -864,6 +867,7 @@
 
             voiceTargetInput = inputEl;
             voiceBaseText = inputEl.value;
+            voiceFinalTranscript = '';
             voiceRecording = true;
 
             try { recognition.start(); } catch(e) {}
@@ -871,11 +875,12 @@
             // 更新按钮状态
             var btn = (inputEl === welcomeInput) ? welcomeVoiceBtn : chatVoiceBtn;
             btn.classList.add('recording');
-            btn.title = '正在录音，点击停止';
+            btn.title = '正在录音，静音自动停止';
         }
 
         function stopVoiceRecording() {
             if (!recognition) return;
+            var wasRecording = voiceRecording;
             voiceRecording = false;
             try { recognition.stop(); } catch(e) {}
 
@@ -889,6 +894,7 @@
             if (voiceTargetInput) {
                 voiceBaseText = voiceTargetInput.value;
             }
+            voiceFinalTranscript = '';
             voiceTargetInput = null;
         }
 
