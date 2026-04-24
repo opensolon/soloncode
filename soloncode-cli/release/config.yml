@@ -30,11 +30,9 @@ soloncode:
 
   modelRetries: 3
   models: # llm 配置（参考 solon ai chatmodel 配置）
-    - name: "gitee-gml5"
-      description: ""
-      apiUrl: "https://ai.gitee.com/v1/chat/completions"
+    - apiUrl: "https://api.deepseek.com/v1/chat/completions"
       apiKey: "******"
-      model: "glm-5.0"
+      model: "deepseek-v4-flash"
       timeout: "300s"
 #      defaultOptions:
 #        enable_thinking: false #不同模型可能不同
