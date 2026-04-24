@@ -42,9 +42,9 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.4.27
 /Users/noear
-Подсказки: (esc) прерывание | '/exit': выход | '/resume': продолжить | '/clear': сбросить
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
-Пользователь
+User
 > 
 ```
 

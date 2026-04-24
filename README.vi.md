@@ -42,9 +42,9 @@ Chạy lệnh `soloncode` từ bất kỳ thư mục nào trong bảng điều k
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.4.27
 /Users/noear
-Mẹo: (esc) ngắt | '/exit': thoát | '/resume': tiếp tục | '/clear': đặt lại
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
-Người dùng
+User
 > 
 ```
 

@@ -42,9 +42,9 @@ Konsolda herhangi bir dizinden `soloncode` komutunu çalıştırın (yani çalı
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.4.27
 /Users/noear
-İpuçları: (esc) kesme | '/exit': çıkış | '/resume': devam et | '/clear': sıfırla
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
-Kullanıcı
+User
 > 
 ```
 

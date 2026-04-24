@@ -42,7 +42,7 @@ Pokrenite naredbu `soloncode` iz bilo kojeg direktorija u konzoli (tj. vaš radn
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.4.27
 /Users/noear
-Tips: (esc) interrupt | '/exit': quit | '/resume': resume | '/clear': reset
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
 User
 > 

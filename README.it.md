@@ -42,7 +42,7 @@ Eseguire il comando `soloncode` da qualsiasi directory nella console (ovvero, la
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.4.27
 /Users/noear
-Tips: (esc) interrompi | '/exit': esci | '/resume': riprendi | '/clear': reimposta
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
 User
 > 

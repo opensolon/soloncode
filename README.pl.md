@@ -42,9 +42,9 @@ Uruchom polecenie `soloncode` z dowolnego katalogu w konsoli (czyli w swoim obsz
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.4.27
 /Users/noear
-Wskazówki: (esc) przerwij | '/exit': wyjdź | '/resume': wznów | '/clear': resetuj
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
-Użytkownik
+User
 > 
 ```
 

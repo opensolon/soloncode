@@ -38,6 +38,24 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 在控制台「任意」目錄（即工作區）下，執行 `soloncode` 命令即可。
 
+
+```bash
+demo@MacBook-Pro ~ % soloncode
+SolonCode v2026.4.27
+/Users/noear
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
+
+User
+> 
+```
+
+效果测试（分别尝试以下任务，从简单到复杂）：
+
+* `你好`
+* `用网络分析下 ai mcp 协议，然后生成个 ppt` //最好提前安装些 skill
+* `帮我设计一个 agent team（设计案存为 demo-dis.md），开发一个 solon + java17 的经典权限管理系统（demo-web），前端用 vue3，界面要简洁好看`
+
+
 ## 文檔
 
 更多設定說明請查看我們的 官方文檔。

@@ -42,7 +42,7 @@ Kjør `soloncode`-kommandoen fra hvilken som helst katalog i konsollen (dvs. arb
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.4.27
 /Users/noear
-Tips: (esc) avbryt | '/exit': avslutt | '/resume': gjenoppta | '/clear': nullstill
+Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
 User
 > 
