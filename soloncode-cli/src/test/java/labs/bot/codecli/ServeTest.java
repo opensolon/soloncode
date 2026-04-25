@@ -7,8 +7,8 @@ import org.noear.solon.codecli.App;
  * @author noear 2026/4/18 created
  *
  */
-public class ServerTest {
+public class ServeTest {
     public static void main(String[] args) {
-        App.main(new String[]{"server"});
+        App.main(new String[]{"serve"});
     }
 }
