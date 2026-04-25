@@ -51,6 +51,7 @@ import reactor.core.scheduler.Schedulers;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -498,10 +499,18 @@ public class CliShell implements Runnable {
             Map<String, Object> args = action.getArgs();
             if (args != null && !args.isEmpty()) {
                 args.forEach((k, v) -> {
-                    if (argsBuilder.length() > 0) argsBuilder.append(" ");
-                    argsBuilder.append(k).append("=").append(v);
+                    if (argsBuilder.length() > 0) {
+                        argsBuilder.append(" ");
+                    }
+
+                    if (v instanceof List) {
+                        argsBuilder.append(k).append("=[").append(((List) v).size()).append("项]");
+                    } else {
+                        argsBuilder.append(k).append("=").append(v);
+                    }
                 });
             }
+
             String argsStr = argsBuilder.toString().replace("\n", " ");
             boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
