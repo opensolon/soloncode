@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>SolonCode je open-source kodirajući agent izgrađen s <a href="https://github.com/opensolon/solon-ai">Solon AI</a> i Javom (podržava Java8 do Java26 runtime okruženja)</p>
-<p>Najnovija verzija: v2026.4.27</p>
+<p>Najnovija verzija: v2026.4.28</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -40,7 +40,7 @@ Pokrenite naredbu `soloncode` iz bilo kojeg direktorija u konzoli (tj. vaš radn
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.27
+SolonCode v2026.4.28
 /Users/noear
 Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 
