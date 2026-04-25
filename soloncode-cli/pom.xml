@@ -19,7 +19,7 @@
     <dependencies>
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>soloncode-core</artifactId>
+            <artifactId>solon-ai-harness</artifactId>
         </dependency>
 
         <dependency>

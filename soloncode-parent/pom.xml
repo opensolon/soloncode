@@ -28,20 +28,6 @@
         <flexmark.version>0.50.50</flexmark.version>
     </properties>
 
-   <modules>
-       <module>../soloncode-core</module>
-   </modules>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.noear</groupId>
-                <artifactId>soloncode-core</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
     <repositories>
         <repository>
             <id>sonatype-snapshots</id>
