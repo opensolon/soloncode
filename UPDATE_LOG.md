@@ -1,4 +1,9 @@
 
+### v2026.4.29
+
+* 添加 soloncode openai baseUrl 配置支持（其它的仍要配置全地址）
+* 添加 soloncode commands 命令支持
+
 ### v2026.4.28
 
 * 优化 soloncode web tool-call 打印

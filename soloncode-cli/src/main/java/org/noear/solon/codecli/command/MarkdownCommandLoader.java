@@ -17,6 +17,7 @@ package org.noear.solon.codecli.command;
 
 import org.noear.solon.ai.util.Markdown;
 import org.noear.solon.ai.util.MarkdownUtil;
+import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +45,6 @@ public class MarkdownCommandLoader {
      *
      * @param dirPath  命令目录根路径
      * @param registry 注册表
-     * @param source   命令来源
      */
     public static void loadFromDirectory(String dirPath, CommandRegistry registry) {
         Path dir = Paths.get(dirPath);
@@ -56,10 +56,23 @@ public class MarkdownCommandLoader {
         try (Stream<Path> files = Files.walk(dir)) {
             files.filter(p -> p.toString().endsWith(".md"))
                  .filter(p -> Files.isRegularFile(p))
-                 .forEach(p -> registerMarkdownCommand(p, registry));
+                    .forEach(p -> registerMarkdownCommand(p, dir, registry));
         } catch (IOException e) {
             LOG.warn("Failed to load commands from {}: {}", dirPath, e.getMessage());
         }
+    }
+
+    private static String buildCommandName(Path mdFile, Path baseDir) {
+        Path relative = baseDir.relativize(mdFile);
+
+        // 去掉 .md 后缀
+        String relativeStr = relative.toString();
+        if (relativeStr.endsWith(".md")) {
+            relativeStr = relativeStr.substring(0, relativeStr.length() - 3);
+        }
+
+        // 将路径分隔符替换为冒号（命名空间分隔符）
+        return relativeStr.replace('/', ':').replace('\\', ':');
     }
 
     /**
@@ -68,7 +81,7 @@ public class MarkdownCommandLoader {
      * @param mdFile   文件路径
      * @param registry 注册表
      */
-    private static void registerMarkdownCommand(Path mdFile, CommandRegistry registry) {
+    private static void registerMarkdownCommand(Path mdFile, Path baseDir, CommandRegistry registry) {
         // 1. 计算命令名（含命名空间）
 
         try {
@@ -79,7 +92,8 @@ public class MarkdownCommandLoader {
             Markdown md = MarkdownUtil.resolve(lines);
 
             // 4. 提取元数据
-            String name = md.getName();
+            String name = buildCommandName(mdFile, baseDir);
+
             String description = md.getDescription();
             String argumentHint = md.getMeta("argument-hint").getString();
             List<String> allowedTools = parseAllowedTools(md.getMeta("allowed-tools").getString());
