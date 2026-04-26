@@ -34,15 +34,15 @@ import java.util.List;
  */
 public class CommandDispatcher {
 
-    /**
-     * Agent 任务回调函数（由各端实现）
-     *
-     * @param command 触发的命令
-     * @param ctx     Web 命令上下文（包含 agentTaskPrompt）
-     * @return Flux 流（Web 端）或 null（CLI 端直接在回调内处理）
-     */
     @FunctionalInterface
     public interface AgentTaskHandler {
+        /**
+         * Agent 任务回调函数（由各端实现）
+         *
+         * @param command 触发的命令
+         * @param ctx     Web 命令上下文（包含 agentTaskPrompt）
+         * @return Flux 流（Web 端）或 null（CLI 端直接在回调内处理）
+         */
         Flux<String> handle(Command command, WebCommandContext ctx);
     }
 
