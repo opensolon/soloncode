@@ -576,11 +576,7 @@ public class CliShell implements Runnable {
         terminal.writer().println(DIM + path + RESET);
         terminal.writer().println(DIM + "Tips: " +
                 RESET + "(esc)" + DIM + " interrupt | " +
-                RESET + "/(tab)" + DIM + " commands | " +
-                RESET + "'/exit'" + DIM + " | " +
-                RESET + "'/resume'" + DIM + " | " +
-                RESET + "'/clear'" + DIM + " | " +
-                RESET + "'/model'" + DIM +  RESET);
+                RESET + "/(tab)" + DIM + " commands" +  RESET);
 
         terminal.flush();
     }
