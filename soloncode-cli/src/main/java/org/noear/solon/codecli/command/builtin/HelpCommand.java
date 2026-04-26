@@ -15,10 +15,10 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
-import org.noear.solon.codecli.command.CliCommand;
-import org.noear.solon.codecli.command.CliCommandContext;
-import org.noear.solon.codecli.command.CliCommandRegistry;
-import org.noear.solon.codecli.command.CliCommandType;
+import org.noear.solon.codecli.command.Command;
+import org.noear.solon.codecli.command.CommandContext;
+import org.noear.solon.codecli.command.CommandRegistry;
+import org.noear.solon.codecli.command.CommandType;
 
 /**
  * /help 命令
@@ -26,15 +26,15 @@ import org.noear.solon.codecli.command.CliCommandType;
  * @author noear
  * @since 2026.4.28
  */
-public class HelpCommand implements CliCommand {
+public class HelpCommand implements Command {
     private static final String BOLD = "\033[1m";
     private static final String DIM = "\033[2m";
     private static final String CYAN = "\033[36m";
     private static final String RESET = "\033[0m";
 
-    private final CliCommandRegistry registry;
+    private final CommandRegistry registry;
 
-    public HelpCommand(CliCommandRegistry registry) {
+    public HelpCommand(CommandRegistry registry) {
         this.registry = registry;
     }
 
@@ -49,15 +49,21 @@ public class HelpCommand implements CliCommand {
     }
 
     @Override
-    public CliCommandType type() {
-        return CliCommandType.SYSTEM;
+    public CommandType type() {
+        return CommandType.SYSTEM;
     }
 
     @Override
-    public boolean execute(CliCommandContext ctx) {
+    public boolean cliOnly() {
+        return true;
+    }
+
+    @Override
+    public boolean execute(CommandContext ctx) {
         ctx.println(BOLD + "Available Commands:" + RESET);
-        for (CliCommand cmd : registry.all()) {
-            ctx.println("  " + CYAN + "/" + cmd.name() + RESET + " - " + cmd.description());
+        for (Command cmd : registry.all()) {
+            String suffix = cmd.cliOnly() ? DIM + " (cli-only)" + RESET : "";
+            ctx.println("  " + CYAN + "/" + cmd.name() + RESET + " - " + cmd.description() + suffix);
         }
         ctx.println(DIM + "\nType /<command> to execute" + RESET);
         return true;

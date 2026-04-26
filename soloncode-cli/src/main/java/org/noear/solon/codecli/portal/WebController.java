@@ -31,7 +31,17 @@ import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.*;
+import org.noear.solon.codecli.command.Command;
+import org.noear.solon.codecli.command.CommandDispatcher;
+import org.noear.solon.codecli.command.CommandRegistry;
+import org.noear.solon.codecli.command.CommandResult;
+import org.noear.solon.codecli.command.MarkdownCommandLoader;
+import org.noear.solon.codecli.command.builtin.ClearCommand;
+import org.noear.solon.codecli.command.builtin.HelpCommand;
+import org.noear.solon.codecli.command.builtin.ModelCommand;
+import org.noear.solon.codecli.command.builtin.ResumeCommand;
 import org.noear.solon.codecli.core.AgentFlags;
+import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.ModelAndView;
 import org.noear.solon.core.handle.Result;
@@ -41,6 +51,7 @@ import org.noear.solon.core.util.MimeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -62,10 +73,27 @@ public class WebController {
 
     private final HarnessEngine engine;
     private final WebStreamBuilder streamBuilder;
+    private final CommandRegistry commandRegistry;
 
     public WebController(HarnessEngine engine) {
         this.engine = engine;
         this.streamBuilder = new WebStreamBuilder(engine);
+        this.commandRegistry = new CommandRegistry();
+
+        // 注册内置命令（不包含 ExitCommand，仅 CLI 适用）
+        commandRegistry.register(new ClearCommand());
+        commandRegistry.register(new ResumeCommand());
+        commandRegistry.register(new ModelCommand());
+        commandRegistry.register(new HelpCommand(commandRegistry));
+
+        // 加载自定义命令（用户级 + 项目级）
+        AgentProperties agentProps = (AgentProperties) engine.getProps();
+        MarkdownCommandLoader.loadFromDirectory(
+                Paths.get(AgentProperties.getUserHome(), ".soloncode", "commands").toString(),
+                commandRegistry);
+        MarkdownCommandLoader.loadFromDirectory(
+                Paths.get(agentProps.getWorkspace(), ".soloncode", "commands").toString(),
+                commandRegistry);
     }
 
     /**
@@ -320,6 +348,82 @@ public class WebController {
         return null;
     }
 
+    /**
+     * 处理命令输入（所有结果统一走 SSE 格式返回，与前端 fetch+SSE 解析保持一致）
+     */
+    private void handleCommand(Context ctx, AgentSession session, ChatModel chatModel,
+                               String sessionCwd, String input) throws Throwable {
+        CommandDispatcher dispatcher = new CommandDispatcher(commandRegistry);
+        CommandResult result = dispatcher.dispatch(input, session, engine, (AgentProperties) engine.getProps(), "web",
+                (command, webCtx) -> {
+                    // AGENT 类型命令的回调：返回 Flux 流
+                    try {
+                        List<String> allowedTools = command.allowedTools();
+                        if (allowedTools != null && !allowedTools.isEmpty()) {
+                            session.getContext().put(AgentFlags.VAR_ALLOWED_TOOLS, allowedTools);
+                        }
+                        Prompt prompt = Prompt.of(webCtx.getAgentTaskPrompt());
+                        return streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, prompt);
+                    } finally {
+                        session.getContext().remove(AgentFlags.VAR_ALLOWED_TOOLS);
+                    }
+                });
+
+        if (result == null) {
+            // 不是有效命令，当作普通输入
+            Prompt prompt = Prompt.of(input);
+            ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
+            ctx.returnValue(streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, prompt));
+            return;
+        }
+
+        if (result.isAgentTask()) {
+            // AGENT 类型命令：返回 SSE 流
+            ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
+            ctx.returnValue(result.getAgentFlux());
+        } else {
+            // SYSTEM/CONFIG 类型命令：将输出包装为 SSE 格式返回
+            ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
+            Flux<String> commandFlux = Flux.create(sink -> {
+                try {
+                    for (String line : result.getOutput()) {
+                        ONode chunk = new ONode();
+                        chunk.set("type", "command");
+                        chunk.set("text", line);
+                        sink.next("data: " + chunk.toJson() + "\n\n");
+                    }
+                    sink.next("data: [DONE]\n\n");
+                    sink.complete();
+                } catch (Exception e) {
+                    sink.error(e);
+                }
+            });
+            ctx.returnValue(commandFlux);
+        }
+    }
+
+    /**
+     * 获取可用命令列表
+     */
+    @Get
+    @Mapping("/chat/commands")
+    public Result<List<Map>> commands() {
+        List<Map> data = new ArrayList<>();
+        for (Command cmd : commandRegistry.all()) {
+            // 跳过 CLI 专属命令（不在 Web 端展示）
+            if (cmd.cliOnly()) {
+                continue;
+            }
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("name", cmd.name());
+            item.put("description", cmd.description());
+            item.put("argumentHint", cmd.argumentHint() != null ? cmd.argumentHint() : "");
+            item.put("type", cmd.type().name());
+            data.add(item);
+        }
+        return Result.succeed(data);
+    }
+
     @Mapping("/chat/input")
     public void chat_input(Context ctx, String input, UploadedFile[] attachments, String model, String sessionId) throws Throwable {
         if (sessionId == null || sessionId.isEmpty()) {
@@ -408,6 +512,12 @@ public class WebController {
         if (Assert.isNotEmpty(input) || !imageBlocks.isEmpty()) {
             if (input == null || input.isEmpty()) {
                 input = imageBlocks.size() > 1 ? "请描述这些图片" : "请描述这张图片";
+            }
+
+            // 命令分发：检测 / 前缀
+            if (input.startsWith("/") && imageBlocks.isEmpty()) {
+                handleCommand(ctx, session, chatModel, sessionCwd, input);
+                return;
             }
 
             Prompt prompt;

@@ -15,9 +15,9 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
-import org.noear.solon.codecli.command.CliCommand;
-import org.noear.solon.codecli.command.CliCommandContext;
-import org.noear.solon.codecli.command.CliCommandType;
+import org.noear.solon.codecli.command.Command;
+import org.noear.solon.codecli.command.CommandContext;
+import org.noear.solon.codecli.command.CommandType;
 
 /**
  * /clear 命令
@@ -25,7 +25,7 @@ import org.noear.solon.codecli.command.CliCommandType;
  * @author noear
  * @since 2026.4.28
  */
-public class ClearCommand implements CliCommand {
+public class ClearCommand implements Command {
     @Override
     public String name() {
         return "clear";
@@ -37,12 +37,17 @@ public class ClearCommand implements CliCommand {
     }
 
     @Override
-    public CliCommandType type() {
-        return CliCommandType.SYSTEM;
+    public CommandType type() {
+        return CommandType.SYSTEM;
     }
 
     @Override
-    public boolean execute(CliCommandContext ctx) {
+    public boolean cliOnly() {
+        return true;
+    }
+
+    @Override
+    public boolean execute(CommandContext ctx) {
         ctx.getSession().clear();
         return true;
     }

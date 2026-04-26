@@ -15,17 +15,19 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
-import org.noear.solon.codecli.command.CliCommand;
-import org.noear.solon.codecli.command.CliCommandContext;
-import org.noear.solon.codecli.command.CliCommandType;
+import org.noear.solon.codecli.command.Command;
+import org.noear.solon.codecli.command.CommandContext;
+import org.noear.solon.codecli.command.CommandType;
+
+
 
 /**
- * /exit 命令
+ * /exit 命令（仅 CLI 环境）
  *
  * @author noear
  * @since 2026.4.28
  */
-public class ExitCommand implements CliCommand {
+public class ExitCommand implements Command {
     private static final String DIM = "\033[2m";
     private static final String RESET = "\033[0m";
 
@@ -40,12 +42,17 @@ public class ExitCommand implements CliCommand {
     }
 
     @Override
-    public CliCommandType type() {
-        return CliCommandType.SYSTEM;
+    public CommandType type() {
+        return CommandType.SYSTEM;
     }
 
     @Override
-    public boolean execute(CliCommandContext ctx) {
+    public boolean cliOnly() {
+        return true;
+    }
+
+    @Override
+    public boolean execute(CommandContext ctx) {
         ctx.println(DIM + "Exiting..." + RESET);
         System.exit(0);
         return true;

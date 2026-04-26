@@ -23,21 +23,21 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * CLI 命令注册表
+ * 命令注册表（通用，CLI 和 Web 共用）
  *
  * @author noear
  * @since 2026.4.28
  */
-public class CliCommandRegistry {
-    private static final Logger LOG = LoggerFactory.getLogger(CliCommandRegistry.class);
+public class CommandRegistry {
+    private static final Logger LOG = LoggerFactory.getLogger(CommandRegistry.class);
 
-    private final Map<String, CliCommand> commands = new ConcurrentHashMap<>();
+    private final Map<String, Command> commands = new ConcurrentHashMap<>();
 
     /**
      * 注册命令
      */
-    public void register(CliCommand command) {
-        CliCommand existing = commands.putIfAbsent(command.name(), command);
+    public void register(Command command) {
+        Command existing = commands.putIfAbsent(command.name(), command);
         if (existing != null) {
             LOG.warn("Command '{}' already registered by {}, skip: {}",
                     command.name(), existing.getClass().getSimpleName(), command.getClass().getSimpleName());
@@ -47,16 +47,16 @@ public class CliCommandRegistry {
     /**
      * 查找命令
      */
-    public CliCommand find(String name) {
+    public Command find(String name) {
         return commands.get(name);
     }
 
     /**
      * 获取所有命令（排序后）
      */
-    public List<CliCommand> all() {
+    public List<Command> all() {
         return commands.values().stream()
-                .sorted(Comparator.comparing(CliCommand::name))
+                .sorted(Comparator.comparing(Command::name))
                 .collect(Collectors.toList());
     }
 

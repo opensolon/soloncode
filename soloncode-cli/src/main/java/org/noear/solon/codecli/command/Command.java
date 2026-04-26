@@ -15,57 +15,60 @@
  */
 package org.noear.solon.codecli.command;
 
-import java.util.Collections;
+import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessEngine;
+
 import java.util.List;
 
 /**
- * CLI 命令接口
- * <p>
- * 兼容 Claude Code 的 Custom Command 规范（YAML Frontmatter + Markdown body）
+ * 通用命令接口（适用于 CLI、Web 等所有端）
  *
  * @author noear
  * @since 2026.4.28
  */
-public interface CliCommand {
-
+public interface Command {
     /**
-     * 命令名（不含 /），如 "model"、"exit"、"deploy:staging"
+     * 命令名（不含 / 前缀）
      */
     String name();
 
     /**
-     * 命令描述，用于帮助文本
+     * 命令描述
      */
     String description();
 
     /**
      * 命令类型
      */
-    CliCommandType type();
+    CommandType type();
 
     /**
-     * 参数提示（对标 Claude Code 的 argument-hint）
-     * <p>
-     * 用于 Tab 补全和 /help 输出，如 "[message]"、"&lt;file&gt;"
+     * 参数提示文本
      */
     default String argumentHint() {
-        return "";
+        return null;
     }
 
     /**
-     * 允许使用的工具列表（对标 Claude Code 的 allowed-tools）
-     * <p>
-     * 空列表表示不限制（使用默认工具集）
+     * 允许使用的工具列表（null 或空表示不限制）
      */
     default List<String> allowedTools() {
-        return Collections.emptyList();
+        return null;
+    }
+
+    /**
+     * 是否仅 CLI 环境可用
+     * <p>
+     * 返回 true 时，Web 端将不展示也不执行该命令
+     */
+    default boolean cliOnly() {
+        return false;
     }
 
     /**
      * 执行命令
      *
-     * @param context 命令上下文（session, terminal, args 等）
-     * @return true 表示命令已处理，false 表示未处理
+     * @return true 表示已处理该输入（不再触发 Agent 任务）
      */
-    boolean execute(CliCommandContext context) throws Exception;
+    boolean execute(CommandContext ctx) throws Exception;
 }

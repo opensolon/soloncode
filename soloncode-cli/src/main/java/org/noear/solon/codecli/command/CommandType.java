@@ -21,7 +21,7 @@ package org.noear.solon.codecli.command;
  * @author noear
  * @since 2026.4.28
  */
-public enum CliCommandType {
+public enum CommandType {
     /**
      * 系统级：直接操作 CLI 状态，如 /exit, /clear
      */

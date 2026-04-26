@@ -16,9 +16,9 @@
 package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.chat.ChatConfig;
-import org.noear.solon.codecli.command.CliCommand;
-import org.noear.solon.codecli.command.CliCommandContext;
-import org.noear.solon.codecli.command.CliCommandType;
+import org.noear.solon.codecli.command.Command;
+import org.noear.solon.codecli.command.CommandContext;
+import org.noear.solon.codecli.command.CommandType;
 import org.noear.solon.codecli.core.AgentFlags;
 
 /**
@@ -27,7 +27,7 @@ import org.noear.solon.codecli.core.AgentFlags;
  * @author noear
  * @since 2026.4.28
  */
-public class ModelCommand implements CliCommand {
+public class ModelCommand implements Command {
     private static final String BOLD = "\033[1m";
     private static final String DIM = "\033[2m";
     private static final String GREEN = "\033[32m";
@@ -45,12 +45,12 @@ public class ModelCommand implements CliCommand {
     }
 
     @Override
-    public CliCommandType type() {
-        return CliCommandType.CONFIG;
+    public CommandType type() {
+        return CommandType.CONFIG;
     }
 
     @Override
-    public boolean execute(CliCommandContext ctx) throws Exception {
+    public boolean execute(CommandContext ctx) throws Exception {
         String flag = ctx.argAt(0);
 
         if ("ls".equals(flag) || flag == null || flag.isEmpty()) {

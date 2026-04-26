@@ -15,52 +15,44 @@
  */
 package org.noear.solon.codecli.command;
 
-import org.jline.reader.LineReader;
-import org.jline.terminal.Terminal;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.core.AgentProperties;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * CLI 命令执行上下文（实现通用 CommandContext 接口，持有 JLine Terminal/Reader）
+ * Web 端命令上下文实现
+ * <p>
+ * println() 收集到缓冲区，runAgentTask() 记录 prompt 供外部回调处理。
  *
  * @author noear
  * @since 2026.4.28
  */
-public class CliCommandContext implements CommandContext {
+public class WebCommandContext implements CommandContext {
+
     private final AgentSession session;
-    private final Terminal terminal;
-    private final LineReader reader;
     private final HarnessEngine agentRuntime;
     private final AgentProperties agentProps;
     private final String rawInput;
     private final String commandName;
     private final List<String> args;
-    private final AgentTaskRunner agentTaskRunner;
 
-    /**
-     * Agent 任务回调接口
-     */
-    @FunctionalInterface
-    public interface AgentTaskRunner {
-        void run(AgentSession session, String prompt);
-    }
+    private final List<String> outputBuffer = new ArrayList<>();
+    private boolean agentTaskRequested = false;
+    private String agentTaskPrompt;
 
-    public CliCommandContext(AgentSession session, Terminal terminal, LineReader reader,
-                             HarnessEngine agentRuntime, AgentProperties agentProps,
-                             String rawInput, String commandName, List<String> args,
-                             AgentTaskRunner agentTaskRunner) {
+    public WebCommandContext(AgentSession session, HarnessEngine agentRuntime,
+                              AgentProperties agentProps,
+                              String rawInput, String commandName, List<String> args) {
         this.session = session;
-        this.terminal = terminal;
-        this.reader = reader;
         this.agentRuntime = agentRuntime;
         this.agentProps = agentProps;
         this.rawInput = rawInput;
         this.commandName = commandName;
-        this.args = args;
-        this.agentTaskRunner = agentTaskRunner;
+        this.args = args != null ? args : Collections.emptyList();
     }
 
     @Override
@@ -68,28 +60,9 @@ public class CliCommandContext implements CommandContext {
         return session;
     }
 
-    /**
-     * 获取 JLine Terminal（CLI 专属，不在通用接口上）
-     */
-    public Terminal getTerminal() {
-        return terminal;
-    }
-
-    /**
-     * 获取 JLine LineReader（CLI 专属，不在通用接口上）
-     */
-    public LineReader getReader() {
-        return reader;
-    }
-
     @Override
     public HarnessEngine getAgentRuntime() {
         return agentRuntime;
-    }
-
-    @Override
-    public AgentProperties getAgentProps() {
-        return agentProps;
     }
 
     @Override
@@ -108,25 +81,42 @@ public class CliCommandContext implements CommandContext {
     }
 
     @Override
-    public boolean supportsAnsi() {
-        return true;
+    public AgentProperties getAgentProps() {
+        return agentProps;
     }
 
     @Override
     public void println(String text) {
-        terminal.writer().println(text);
-        terminal.flush();
+        outputBuffer.add(text);
     }
 
     @Override
-    public void runAgentTask(String input) {
-        if (agentTaskRunner != null) {
-            agentTaskRunner.run(session, input);
-        }
+    public boolean supportsAnsi() {
+        return false;
+    }
+
+    @Override
+    public void runAgentTask(String prompt) {
+        this.agentTaskRequested = true;
+        this.agentTaskPrompt = prompt;
     }
 
     @Override
     public String getAgentTaskPrompt() {
-        return null; // CLI 端不需要此方法，直接在 runAgentTask 回调中处理
+        return agentTaskPrompt;
+    }
+
+    /**
+     * 是否请求了 Agent 任务
+     */
+    public boolean isAgentTaskRequested() {
+        return agentTaskRequested;
+    }
+
+    /**
+     * 获取 println 收集的输出缓冲区
+     */
+    public List<String> getOutputBuffer() {
+        return outputBuffer;
     }
 }

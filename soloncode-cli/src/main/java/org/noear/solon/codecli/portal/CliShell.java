@@ -36,11 +36,11 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskSkill;
-import org.noear.solon.codecli.command.CliCommand;
 import org.noear.solon.codecli.command.CliCommandCompleter;
 import org.noear.solon.codecli.command.CliCommandContext;
-import org.noear.solon.codecli.command.CliCommandRegistry;
-import org.noear.solon.codecli.command.CustomCommandLoader;
+import org.noear.solon.codecli.command.Command;
+import org.noear.solon.codecli.command.CommandRegistry;
+import org.noear.solon.codecli.command.MarkdownCommandLoader;
 import org.noear.solon.codecli.command.builtin.ClearCommand;
 import org.noear.solon.codecli.command.builtin.ExitCommand;
 import org.noear.solon.codecli.command.builtin.HelpCommand;
@@ -77,7 +77,7 @@ public class CliShell implements Runnable {
     private LineReader reader;
     private final HarnessEngine agentRuntime;
     private final AgentProperties agentProps;
-    private final CliCommandRegistry commandRegistry = new CliCommandRegistry();
+    private final CommandRegistry commandRegistry = new CommandRegistry();
 
     // ANSI 颜色常量
     private final static String
@@ -215,12 +215,12 @@ public class CliShell implements Runnable {
      */
     private void loadCustomCommands() {
         // 1. 用户级命令：~/.soloncode/commands/
-        CustomCommandLoader.loadFromDirectory(
+        MarkdownCommandLoader.loadFromDirectory(
                 Paths.get(AgentProperties.getUserHome(), ".soloncode", "commands").toString(),
                 commandRegistry);
 
         // 2. 项目级命令：.soloncode/commands/
-        CustomCommandLoader.loadFromDirectory(
+        MarkdownCommandLoader.loadFromDirectory(
                 Paths.get(agentProps.getWorkspace(), ".soloncode", "commands").toString(),
                 commandRegistry);
     }
@@ -238,7 +238,7 @@ public class CliShell implements Runnable {
                 : Collections.emptyList();
 
         // 查找命令
-        CliCommand command = commandRegistry.find(cmdName);
+        Command command = commandRegistry.find(cmdName);
         if (command == null) {
             terminal.writer().println(RED + "Unknown command: /" + cmdName + RESET);
             terminal.writer().println(DIM + "Type /help for available commands." + RESET);
@@ -249,7 +249,7 @@ public class CliShell implements Runnable {
         // 构建 context（注入 agentTaskRunner 回调）
         CliCommandContext ctx = new CliCommandContext(session, terminal, reader,
                 agentRuntime, agentProps, input, cmdName, args,
-                prompt -> {
+                (sess, prompt) -> {
                     try {
                         // 将命令的 allowedTools 传入 session 上下文
                         List<String> allowedTools = command.allowedTools();

@@ -15,9 +15,9 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
-import org.noear.solon.codecli.command.CliCommand;
-import org.noear.solon.codecli.command.CliCommandContext;
-import org.noear.solon.codecli.command.CliCommandType;
+import org.noear.solon.codecli.command.Command;
+import org.noear.solon.codecli.command.CommandContext;
+import org.noear.solon.codecli.command.CommandType;
 
 /**
  * /resume 命令
@@ -25,7 +25,7 @@ import org.noear.solon.codecli.command.CliCommandType;
  * @author noear
  * @since 2026.4.28
  */
-public class ResumeCommand implements CliCommand {
+public class ResumeCommand implements Command {
     @Override
     public String name() {
         return "resume";
@@ -37,12 +37,12 @@ public class ResumeCommand implements CliCommand {
     }
 
     @Override
-    public CliCommandType type() {
-        return CliCommandType.AGENT;
+    public CommandType type() {
+        return CommandType.AGENT;
     }
 
     @Override
-    public boolean execute(CliCommandContext ctx) throws Exception {
+    public boolean execute(CommandContext ctx) throws Exception {
         ctx.runAgentTask(null);
         return true;
     }

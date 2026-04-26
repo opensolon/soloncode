@@ -36,8 +36,8 @@ import java.util.stream.Stream;
  * @author noear
  * @since 2026.4.28
  */
-public class CustomCommandLoader {
-    private static final Logger LOG = LoggerFactory.getLogger(CustomCommandLoader.class);
+public class MarkdownCommandLoader {
+    private static final Logger LOG = LoggerFactory.getLogger(MarkdownCommandLoader.class);
 
     /**
      * 扫描目录（含子目录），注册 .md 文件为命令
@@ -46,7 +46,7 @@ public class CustomCommandLoader {
      * @param registry 注册表
      * @param source   命令来源
      */
-    public static void loadFromDirectory(String dirPath, CliCommandRegistry registry) {
+    public static void loadFromDirectory(String dirPath, CommandRegistry registry) {
         Path dir = Paths.get(dirPath);
         if (!Files.isDirectory(dir)) {
             return;
@@ -68,7 +68,7 @@ public class CustomCommandLoader {
      * @param mdFile   文件路径
      * @param registry 注册表
      */
-    private static void registerMarkdownCommand(Path mdFile, CliCommandRegistry registry) {
+    private static void registerMarkdownCommand(Path mdFile, CommandRegistry registry) {
         // 1. 计算命令名（含命名空间）
 
         try {

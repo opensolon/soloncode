@@ -34,7 +34,7 @@ import java.util.List;
  * @author noear
  * @since 2026.4.28
  */
-public class MarkdownCommand implements CliCommand {
+public class MarkdownCommand implements Command {
     private final String name;
     private final String description;
     private final String argumentHint;
@@ -65,8 +65,8 @@ public class MarkdownCommand implements CliCommand {
     }
 
     @Override
-    public CliCommandType type() {
-        return CliCommandType.AGENT;
+    public CommandType type() {
+        return CommandType.AGENT;
     }
 
     @Override
@@ -116,7 +116,7 @@ public class MarkdownCommand implements CliCommand {
     }
 
     @Override
-    public boolean execute(CliCommandContext ctx) throws Exception {
+    public boolean execute(CommandContext ctx) throws Exception {
         // 替换变量得到 prompt
         String prompt = getResolvedPrompt(ctx.getArgs());
 

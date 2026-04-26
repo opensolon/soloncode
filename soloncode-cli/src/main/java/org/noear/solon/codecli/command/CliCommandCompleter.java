@@ -29,9 +29,9 @@ import java.util.List;
  * @since 2026.4.28
  */
 public class CliCommandCompleter implements Completer {
-    private final CliCommandRegistry registry;
+    private final CommandRegistry registry;
 
-    public CliCommandCompleter(CliCommandRegistry registry) {
+    public CliCommandCompleter(CommandRegistry registry) {
         this.registry = registry;
     }
 
@@ -41,7 +41,7 @@ public class CliCommandCompleter implements Completer {
             String prefix = line.word().substring(1).toLowerCase();
             for (String name : registry.names()) {
                 if (name.startsWith(prefix)) {
-                    CliCommand cmd = registry.find(name);
+                    Command cmd = registry.find(name);
                     // 构建补全提示：description + argument-hint
                     String hint = buildHint(cmd);
                     candidates.add(new Candidate("/" + name, "/" + name, null, hint, null, null, true));
@@ -55,7 +55,7 @@ public class CliCommandCompleter implements Completer {
      * <p>
      * 格式：description  [argument-hint]
      */
-    private String buildHint(CliCommand cmd) {
+    private String buildHint(Command cmd) {
         StringBuilder sb = new StringBuilder();
         sb.append(cmd.description());
 
