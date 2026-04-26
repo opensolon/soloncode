@@ -15,6 +15,8 @@
  */
 package org.noear.solon.codecli.command;
 
+import org.noear.solon.ai.util.Markdown;
+import org.noear.solon.ai.util.MarkdownUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,13 +32,6 @@ import java.util.stream.Stream;
 
 /**
  * 从 .soloncode/commands/ 目录加载 Markdown 自定义命令
- * <p>
- * 兼容 Claude Code 的 Custom Command 格式规范：
- * <ul>
- *   <li>支持 YAML Frontmatter（--- 包裹的头部元数据）</li>
- *   <li>支持子目录命名空间（deploy/staging.md → /deploy:staging）</li>
- *   <li>支持 description、argument-hint、allowed-tools 等元数据字段</li>
- * </ul>
  *
  * @author noear
  * @since 2026.4.28
@@ -51,7 +46,7 @@ public class CustomCommandLoader {
      * @param registry 注册表
      * @param source   命令来源
      */
-    public static void loadFromDirectory(String dirPath, CliCommandRegistry registry, CliCommandSource source) {
+    public static void loadFromDirectory(String dirPath, CliCommandRegistry registry) {
         Path dir = Paths.get(dirPath);
         if (!Files.isDirectory(dir)) {
             return;
@@ -61,7 +56,7 @@ public class CustomCommandLoader {
         try (Stream<Path> files = Files.walk(dir)) {
             files.filter(p -> p.toString().endsWith(".md"))
                  .filter(p -> Files.isRegularFile(p))
-                 .forEach(p -> registerMarkdownCommand(p, dir, registry, source));
+                 .forEach(p -> registerMarkdownCommand(p, registry));
         } catch (IOException e) {
             LOG.warn("Failed to load commands from {}: {}", dirPath, e.getMessage());
         }
@@ -71,122 +66,38 @@ public class CustomCommandLoader {
      * 注册单个 Markdown 命令
      *
      * @param mdFile   文件路径
-     * @param baseDir  基础目录（用于计算相对路径，生成命名空间）
      * @param registry 注册表
-     * @param source   命令来源
      */
-    private static void registerMarkdownCommand(Path mdFile, Path baseDir, CliCommandRegistry registry, CliCommandSource source) {
+    private static void registerMarkdownCommand(Path mdFile, CliCommandRegistry registry) {
         // 1. 计算命令名（含命名空间）
-        String cmdName = buildCommandName(mdFile, baseDir);
 
         try {
-            // 2. 读取文件内容
-            String content = new String(Files.readAllBytes(mdFile), StandardCharsets.UTF_8);
+            // 2. 读取文件所有行
+            List<String> lines = Files.readAllLines(mdFile, StandardCharsets.UTF_8);
 
-            // 3. 解析 YAML Frontmatter
-            FrontmatterResult fm = parseFrontmatter(content);
+            // 3. 使用 MarkdownUtil 解析（自动处理 YAML Frontmatter）
+            Markdown md = MarkdownUtil.resolve(lines);
 
-            // 4. 注册命令
-            registry.register(new MarkdownCommand(cmdName, fm.description, fm.argumentHint,
-                    fm.body, fm.allowedTools, source));
+            // 4. 提取元数据
+            String name = md.getName();
+            String description = md.getDescription();
+            String argumentHint = md.getMeta("argument-hint").getString();
+            List<String> allowedTools = parseAllowedTools(md.getMeta("allowed-tools").getString());
+            String body = md.getContent();
+
+            // 5. 如果没有 Frontmatter 的 description，尝试从 HTML 注释提取（向后兼容）
+            if (description == null && !lines.isEmpty()) {
+                String firstLine = lines.get(0).trim();
+                if (firstLine.startsWith("<!--") && firstLine.endsWith("-->")) {
+                    description = firstLine.substring(4, firstLine.length() - 3).trim();
+                }
+            }
+
+            // 6. 注册命令
+            registry.register(new MarkdownCommand(name, description, argumentHint, body, allowedTools));
 
         } catch (IOException e) {
             LOG.warn("Failed to read command file {}: {}", mdFile, e.getMessage());
-        }
-    }
-
-    /**
-     * 构建命令名（含命名空间）
-     * <p>
-     * 规则（对齐 Claude Code）：
-     * - 根目录下：review.md → review
-     * - 子目录下：deploy/staging.md → deploy:staging
-     * - 多层子目录：ci/docker/build.md → ci:docker:build
-     */
-    static String buildCommandName(Path mdFile, Path baseDir) {
-        Path relative = baseDir.relativize(mdFile);
-
-        // 去掉 .md 后缀
-        String relativeStr = relative.toString();
-        if (relativeStr.endsWith(".md")) {
-            relativeStr = relativeStr.substring(0, relativeStr.length() - 3);
-        }
-
-        // 将路径分隔符替换为冒号（命名空间分隔符）
-        return relativeStr.replace('/', ':').replace('\\', ':');
-    }
-
-    /**
-     * 解析 YAML Frontmatter
-     * <p>
-     * 格式：
-     * <pre>
-     * ---
-     * description: Create a git commit
-     * argument-hint: [message]
-     * allowed-tools: Bash(git add:*), Bash(git status:*)
-     * ---
-     * </pre>
-     * <p>
-     * 如果没有 Frontmatter（无 --- 包裹），则整个文件作为模板，尝试从 HTML 注释提取描述（向后兼容）。
-     */
-    static FrontmatterResult parseFrontmatter(String content) {
-        FrontmatterResult result = new FrontmatterResult();
-
-        String trimmed = content.trim();
-
-        // 检测 YAML Frontmatter：以 --- 开始和结束
-        if (trimmed.startsWith("---")) {
-            int endMarker = trimmed.indexOf("---", 3);
-            if (endMarker > 3) {
-                String frontmatter = trimmed.substring(3, endMarker).trim();
-                result.body = trimmed.substring(endMarker + 3).trim();
-                parseYamlFields(frontmatter, result);
-                return result;
-            }
-        }
-
-        // 无 Frontmatter：向后兼容（整个文件为模板，尝试 HTML 注释提取描述）
-        result.body = content;
-        String[] lines = content.split("\n");
-        if (lines.length > 0) {
-            String firstLine = lines[0].trim();
-            if (firstLine.startsWith("<!--") && firstLine.endsWith("-->")) {
-                result.description = firstLine.substring(4, firstLine.length() - 3).trim();
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * 简易 YAML 字段解析（不支持嵌套，仅解析 key: value 平铺格式）
-     */
-    private static void parseYamlFields(String yaml, FrontmatterResult result) {
-        String[] lines = yaml.split("\n");
-        for (String line : lines) {
-            int colonIdx = line.indexOf(':');
-            if (colonIdx <= 0) {
-                continue;
-            }
-
-            String key = line.substring(0, colonIdx).trim();
-            String value = line.substring(colonIdx + 1).trim();
-
-            switch (key) {
-                case "description":
-                    result.description = value;
-                    break;
-                case "argument-hint":
-                    result.argumentHint = value;
-                    break;
-                case "allowed-tools":
-                    result.allowedTools = parseAllowedTools(value);
-                    break;
-                default:
-                    // 忽略不认识的字段，保持前向兼容
-                    break;
-            }
         }
     }
 
@@ -226,15 +137,5 @@ public class CustomCommandLoader {
         }
 
         return tools;
-    }
-
-    /**
-     * Frontmatter 解析结果
-     */
-    static class FrontmatterResult {
-        String description = null;
-        String argumentHint = null;
-        String body = "";
-        List<String> allowedTools = Collections.emptyList();
     }
 }

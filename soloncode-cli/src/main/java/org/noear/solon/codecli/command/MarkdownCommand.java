@@ -40,20 +40,18 @@ public class MarkdownCommand implements CliCommand {
     private final String argumentHint;
     private final String template;
     private final List<String> allowedTools;
-    private final CliCommandSource source;
 
-    public MarkdownCommand(String name, String template, CliCommandSource source) {
-        this(name, null, null, template, null, source);
+    public MarkdownCommand(String name, String template) {
+        this(name, null, null, template, null);
     }
 
     public MarkdownCommand(String name, String description, String argumentHint,
-                           String template, List<String> allowedTools, CliCommandSource source) {
+                           String template, List<String> allowedTools) {
         this.name = name;
         this.description = description != null ? description : "Custom command: " + name;
         this.argumentHint = argumentHint != null ? argumentHint : "";
         this.template = template;
         this.allowedTools = allowedTools != null ? allowedTools : Collections.<String>emptyList();
-        this.source = source;
     }
 
     @Override
@@ -69,11 +67,6 @@ public class MarkdownCommand implements CliCommand {
     @Override
     public CliCommandType type() {
         return CliCommandType.AGENT;
-    }
-
-    @Override
-    public CliCommandSource source() {
-        return source;
     }
 
     @Override

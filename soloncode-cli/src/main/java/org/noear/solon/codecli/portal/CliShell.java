@@ -40,7 +40,6 @@ import org.noear.solon.codecli.command.CliCommand;
 import org.noear.solon.codecli.command.CliCommandCompleter;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.command.CliCommandRegistry;
-import org.noear.solon.codecli.command.CliCommandSource;
 import org.noear.solon.codecli.command.CustomCommandLoader;
 import org.noear.solon.codecli.command.builtin.ClearCommand;
 import org.noear.solon.codecli.command.builtin.ExitCommand;
@@ -218,12 +217,12 @@ public class CliShell implements Runnable {
         // 1. 用户级命令：~/.soloncode/commands/
         CustomCommandLoader.loadFromDirectory(
                 Paths.get(AgentProperties.getUserHome(), ".soloncode", "commands").toString(),
-                commandRegistry, CliCommandSource.USER);
+                commandRegistry);
 
         // 2. 项目级命令：.soloncode/commands/
         CustomCommandLoader.loadFromDirectory(
                 Paths.get(agentProps.getWorkspace(), ".soloncode", "commands").toString(),
-                commandRegistry, CliCommandSource.PROJECT);
+                commandRegistry);
     }
 
     private boolean isSystemCommand(AgentSession session, String input) throws Exception {

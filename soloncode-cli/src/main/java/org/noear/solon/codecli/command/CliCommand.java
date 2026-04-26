@@ -44,13 +44,6 @@ public interface CliCommand {
     CliCommandType type();
 
     /**
-     * 命令来源
-     */
-    default CliCommandSource source() {
-        return CliCommandSource.BUILTIN;
-    }
-
-    /**
      * 参数提示（对标 Claude Code 的 argument-hint）
      * <p>
      * 用于 Tab 补全和 /help 输出，如 "[message]"、"&lt;file&gt;"
