@@ -46,7 +46,7 @@ public class CliCompleter implements Completer {
                     Command cmd = registry.find(name);
                     // 构建补全提示：description + argument-hint
                     String hint = buildHint(cmd);
-                    candidates.add(new Candidate("/" + name, "/" + name, null, hint, null, null, true));
+                    candidates.add(new Candidate("/" + name, "/" + name + "  " + hint, null, null, null, null, true));
                 }
             }
         }
@@ -58,14 +58,6 @@ public class CliCompleter implements Completer {
      * 格式：description  [argument-hint]
      */
     private String buildHint(Command cmd) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(cmd.description());
-
-        String argHint = cmd.argumentHint();
-        if (argHint != null && !argHint.isEmpty()) {
-            sb.append("  ").append(argHint);
-        }
-
-        return sb.toString();
+        return cmd.description();
     }
 }

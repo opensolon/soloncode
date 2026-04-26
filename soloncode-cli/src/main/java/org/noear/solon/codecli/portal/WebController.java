@@ -386,7 +386,6 @@ public class WebController {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", cmd.name());
             item.put("description", cmd.description());
-            item.put("argumentHint", cmd.argumentHint() != null ? cmd.argumentHint() : "");
             item.put("type", cmd.type().name());
             data.add(item);
         }

@@ -1021,7 +1021,7 @@
         initVoice();
 
         /* ===== Command System ===== */
-        var commandList = []; // [{name, description, argumentHint, type}, ...]
+        var commandList = []; // [{name, description}, ...]
         var commandsLoaded = false;
 
         function loadCommands() {
@@ -1063,7 +1063,6 @@
                     cmdVisibleItems.push(cmd);
                     html += '<div class="cmd-complete-item" data-index="' + (cmdVisibleItems.length - 1) + '">'
                         + '<span class="cmd-name">/' + escapeHtml(cmd.name) + '</span>'
-                        + (cmd.argumentHint ? '<span class="cmd-args">' + escapeHtml(cmd.argumentHint) + '</span>' : '')
                         + '<span class="cmd-desc">' + escapeHtml(cmd.description || '') + '</span>'
                         + '</div>';
                 }
