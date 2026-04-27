@@ -204,7 +204,7 @@ public class CliShell implements Runnable {
         // 构建 context（注入 agentTaskRunner 回调）
         CliCommandContext ctx = new CliCommandContext(session, terminal, reader,
                 agentRuntime, input, cmdName, args,
-                (sess, prompt, model) -> {
+                (prompt, model) -> {
                     try {
                         performAgentTask(session, prompt, model);
                     } catch (Exception e) {
