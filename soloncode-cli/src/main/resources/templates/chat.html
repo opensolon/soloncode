@@ -29,6 +29,32 @@
         .sidebar-item-del:hover { background: #ef444422; color: #ef4444; }
         .sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; }
 
+        /* Sidebar collapse toggle */
+        .sidebar-toggle-btn {
+            position: fixed;
+            top: 20px;
+            left: calc(var(--sidebar-width) - 14px);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid var(--border-color);
+            background: var(--bg-sidebar);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            z-index: 100;
+            transition: left 0.25s ease, background 0.2s;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+            line-height: 1;
+        }
+        .sidebar-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .sidebar-toggle-btn.collapsed { left: 4px; }
+        .sidebar.collapsed { width: 0 !important; min-width: 0 !important; flex: 0 1 0 !important; overflow: hidden; border-right: none; padding: 0 !important; }
+        @media (max-width: 768px) { .sidebar-toggle-btn { display: none !important; } }
+
         /* Streaming indicator for sidebar items */
         .sidebar-item.streaming { border-left: 3px solid var(--accent); padding-left: 9px; }
         .sidebar-item.streaming:hover .sidebar-item-del { display: none; }
@@ -293,6 +319,7 @@
             <span style="font-size:12px;color:var(--text-secondary)" th:text="${appVersion}">AI</span>
         </div>
     </div>
+    <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="收起侧边栏">‹</button>
 
     <!-- Main -->
     <div class="main-area">
@@ -1658,6 +1685,28 @@
             }
             loadSessionHistory();
         }
+
+        /* ===== Sidebar Collapse Toggle ===== */
+        (function() {
+            var btn = document.getElementById('sidebarToggleBtn');
+            if (!btn) return;
+            btn.addEventListener('click', function() {
+                var sidebar = document.querySelector('.sidebar');
+                sidebar.classList.toggle('collapsed');
+                var collapsed = sidebar.classList.contains('collapsed');
+                btn.classList.toggle('collapsed', collapsed);
+                btn.innerHTML = collapsed ? '›' : '‹';
+                btn.title = collapsed ? '展开侧边栏' : '收起侧边栏';
+                localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+            });
+            // Restore state
+            if (localStorage.getItem('sidebar-collapsed') === '1') {
+                document.querySelector('.sidebar').classList.add('collapsed');
+                btn.classList.add('collapsed');
+                btn.innerHTML = '›';
+                btn.title = '展开侧边栏';
+            }
+        })();
     </script>
 </body>
 </html>
