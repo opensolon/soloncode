@@ -36,6 +36,7 @@ import org.noear.solon.ai.harness.command.CommandResult;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.command.WebCommandDispatcher;
 import org.noear.solon.codecli.core.AgentFlags;
+import org.noear.solon.codecli.core.LoopScheduler;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.ModelAndView;
 import org.noear.solon.core.handle.Result;
@@ -67,10 +68,58 @@ public class WebController {
 
     private final HarnessEngine engine;
     private final WebStreamBuilder streamBuilder;
+    private final LoopScheduler loopScheduler;
 
-    public WebController(HarnessEngine engine) {
+    public WebController(HarnessEngine engine, LoopScheduler loopScheduler) {
         this.engine = engine;
         this.streamBuilder = new WebStreamBuilder(engine);
+        this.loopScheduler = loopScheduler;
+
+        // 注入 Web 端 Loop 任务执行器：通过 WebStreamBuilder 执行 AI 任务，收集结果摘要
+        if (loopScheduler != null) {
+            loopScheduler.setReactiveTaskExecutor((sessionId, prompt) -> {
+                return executeLoopTask(sessionId, prompt);
+            });
+        }
+    }
+
+    /**
+     * Web 端 Loop 任务执行：调用 AI 并收集结果摘要
+     */
+    private String executeLoopTask(String sessionId, String prompt) {
+        try {
+            AgentSession session = engine.getSession(sessionId);
+            ChatModel chatModel = engine.getMainModel();
+
+            StringBuilder resultBuilder = new StringBuilder();
+
+            // 阻塞执行 AI 任务，收集结果文本
+            streamBuilder.buildStreamFlux(session, chatModel, null, Prompt.of(prompt))
+                    .filter(line -> !"[DONE]".equals(line))
+                    .doOnNext(line -> {
+                        try {
+                            ONode node = ONode.ofJson(line);
+                            String type = node.get("type").getString();
+                            if ("text".equals(type) || "reason".equals(type)) {
+                                String text = node.get("text").getString();
+                                if (text != null && !text.isEmpty()) {
+                                    if (resultBuilder.length() > 0) resultBuilder.append(" ");
+                                    resultBuilder.append(text.trim());
+                                }
+                            }
+                        } catch (Exception ignored) {
+                            // 非 JSON 行，跳过
+                        }
+                    })
+                    .blockLast();
+
+            // 截断摘要，避免过长
+            String result = resultBuilder.toString().trim();
+            return result.isEmpty() ? "ok" : (result.length() > 200 ? result.substring(0, 200) + "..." : result);
+        } catch (Exception e) {
+            LOG.error("Web loop task failed for session {}: {}", sessionId, e.getMessage());
+            return "error: " + e.getMessage();
+        }
     }
 
     /**

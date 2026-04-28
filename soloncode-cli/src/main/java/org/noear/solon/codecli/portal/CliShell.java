@@ -41,6 +41,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.core.LoopScheduler;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
@@ -69,6 +70,7 @@ public class CliShell implements Runnable {
     private LineReader reader;
     private final HarnessEngine agentRuntime;
     private final AgentProperties agentProps;
+    private final LoopScheduler loopScheduler;
 
     // ANSI 颜色常量
     private final static String
@@ -81,8 +83,25 @@ public class CliShell implements Runnable {
             RESET = "\033[0m";
 
     public CliShell(HarnessEngine agentRuntime, AgentProperties agentProps) {
+        this(agentRuntime, agentProps, null);
+    }
+
+    public CliShell(HarnessEngine agentRuntime, AgentProperties agentProps, LoopScheduler loopScheduler) {
         this.agentRuntime = agentRuntime;
         this.agentProps = agentProps;
+        this.loopScheduler = loopScheduler;
+
+        // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
+        if (loopScheduler != null) {
+            loopScheduler.setTaskExecutor((sessionId, prompt) -> {
+                try {
+                    AgentSession session = agentRuntime.getSession(sessionId);
+                    performAgentTask(session, prompt, null);
+                } catch (Exception e) {
+                    LOG.error("Loop task execution failed: {}", e.getMessage(), e);
+                }
+            });
+        }
 
         try {
             this.terminal = TerminalBuilder.builder()
@@ -151,6 +170,11 @@ public class CliShell implements Runnable {
     @Override
     public void run() {
         AgentSession session = prepare(agentProps.getSessionId());
+
+        // 恢复上次未过期的 loop 定时任务（如果有）
+        if (loopScheduler != null) {
+            loopScheduler.restore(session.getSessionId(), agentProps.getWorkspace(), agentProps.getHarnessSessions());
+        }
 
         // 2. 主循环
         while (true) {

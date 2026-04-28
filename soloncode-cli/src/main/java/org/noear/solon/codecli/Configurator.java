@@ -14,6 +14,7 @@ import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.core.LoopScheduler;
 import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.portal.CliShell;
 import org.noear.solon.codecli.portal.WebController;
@@ -44,6 +45,8 @@ public class Configurator {
 
     @Inject
     AgentProperties agentProps;
+
+    private LoopScheduler loopScheduler;
 
     @Bean
     public HarnessEngine agentRuntime(AppContext context, AgentProperties props) {
@@ -84,13 +87,17 @@ public class Configurator {
         engine.getCommandRegistry().register(new ResumeCommand());
         engine.getCommandRegistry().register(new ModelCommand());
 
+        // loop scheduler
+        this.loopScheduler = new LoopScheduler();
+        engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
+
         return engine;
     }
 
     @Init
     public void init() {
 
-        CliShell cliShell = new CliShell(agentRuntime, agentProps);
+        CliShell cliShell = new CliShell(agentRuntime, agentProps, loopScheduler);
 
         if (AgentFlags.checkUpdate()) {
             // 使用颜色代码让提示更醒目
@@ -147,7 +154,7 @@ public class Configurator {
         //ws
         WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
         //web
-        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime));
+        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler));
         Solon.app().router().add(webBean);
 
         if (cliShell == null) {

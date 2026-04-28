@@ -29,6 +29,11 @@
 
         <dependency>
             <groupId>org.noear</groupId>
+            <artifactId>solon-scheduling-simple</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
             <artifactId>solon-server-smarthttp</artifactId>
         </dependency>
 
