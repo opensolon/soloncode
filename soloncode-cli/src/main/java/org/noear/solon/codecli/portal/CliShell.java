@@ -163,12 +163,12 @@ public class CliShell implements Runnable {
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
             loopScheduler.setTaskExecutor((sessionId, prompt) -> {
-                try {
-                    performAgentTask(session, prompt, null);
-                } catch (Exception e) {
-                    LOG.error("Loop task execution failed: {}", e.getMessage(), e);
-                } finally {
-                    if (terminal != null) {
+                if (reader != null && reader.isReading()) {
+                    try {
+                        performAgentTask(session, prompt, null);
+                    } catch (Exception e) {
+                        LOG.error("Loop task execution failed: {}", e.getMessage(), e);
+                    } finally {
                         //打断主线程的 readLine 阻塞 // 触发 run() 循环中的 UserInterruptException
                         terminal.raise(Terminal.Signal.INT);
                     }
