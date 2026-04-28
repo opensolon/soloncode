@@ -204,6 +204,7 @@ public class CliShell implements Runnable {
                     performAgentTask(session, input, null);
                 }
             } catch (Throwable e) {
+                LOG.warn(e.getMessage(), e);
                 terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
             }
         }
