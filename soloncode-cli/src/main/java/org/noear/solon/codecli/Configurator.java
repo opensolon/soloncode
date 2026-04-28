@@ -118,7 +118,7 @@ public class Configurator {
             if (AgentFlags.FLAG_RUN.equals(flag)) { // java -jar soloncode.jar run '你好' // soloncode run '你好'
                 //单次任务态
                 String prompt = Solon.cfg().argx().flagAt(1);
-                new CliShell(agentRuntime, agentProps).call(prompt);
+                new CliShell(agentRuntime, agentProps, null).call(prompt);
                 Solon.stop();
                 return;
             }

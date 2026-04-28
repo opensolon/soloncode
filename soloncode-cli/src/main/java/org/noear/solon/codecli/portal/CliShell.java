@@ -82,26 +82,11 @@ public class CliShell implements Runnable {
             CYAN = "\033[36m",
             RESET = "\033[0m";
 
-    public CliShell(HarnessEngine agentRuntime, AgentProperties agentProps) {
-        this(agentRuntime, agentProps, null);
-    }
 
     public CliShell(HarnessEngine agentRuntime, AgentProperties agentProps, LoopScheduler loopScheduler) {
         this.agentRuntime = agentRuntime;
         this.agentProps = agentProps;
         this.loopScheduler = loopScheduler;
-
-        // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
-        if (loopScheduler != null) {
-            loopScheduler.setTaskExecutor((sessionId, prompt) -> {
-                try {
-                    AgentSession session = agentRuntime.getSession(sessionId);
-                    performAgentTask(session, prompt, null);
-                } catch (Exception e) {
-                    LOG.error("Loop task execution failed: {}", e.getMessage(), e);
-                }
-            });
-        }
 
         try {
             this.terminal = TerminalBuilder.builder()
@@ -171,9 +156,24 @@ public class CliShell implements Runnable {
     public void run() {
         AgentSession session = prepare(agentProps.getSessionId());
 
-        // 恢复上次未过期的 loop 定时任务（如果有）
+
         if (loopScheduler != null) {
+            // 恢复上次未过期的 loop 定时任务（如果有）
             loopScheduler.restore(session.getSessionId(), agentProps.getWorkspace(), agentProps.getHarnessSessions());
+
+            // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
+            loopScheduler.setTaskExecutor((sessionId, prompt) -> {
+                try {
+                    performAgentTask(session, prompt, null);
+                } catch (Exception e) {
+                    LOG.error("Loop task execution failed: {}", e.getMessage(), e);
+                } finally {
+                    if (terminal != null) {
+                        //打断主线程的 readLine 阻塞 // 触发 run() 循环中的 UserInterruptException
+                        terminal.raise(Terminal.Signal.INT);
+                    }
+                }
+            });
         }
 
         // 2. 主循环
