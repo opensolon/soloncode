@@ -1887,6 +1887,46 @@
             loadSessionHistory();
         }
 
+        /* ===== Loop Event SSE Listener ===== */
+        var loopEventSource = null;
+
+        function connectLoopEvents() {
+            if (loopEventSource) return; // 已连接
+            var sess = getOrCreateSession(SESSION_ID);
+            var url = '/chat/events?sessionId=' + encodeURIComponent(sess.sessionId);
+            loopEventSource = new EventSource(url);
+            loopEventSource.onmessage = function(event) {
+                var raw = event.data;
+                if (raw === '[DONE]') {
+                    finishStream(sess);
+                    return;
+                }
+                // Loop 触发时，先进入流式状态（如果尚未处于）
+                if (!sess.isStreaming) {
+                    sess.isStreaming = true;
+                    if (sess.sessionId === activeSessionId) {
+                        isStreaming = true;
+                        setBtnStopMode();
+                    }
+                    resetStreamState(sess);
+                    showThinking(sess);
+                }
+                handleSSEData(sess, raw);
+            };
+            loopEventSource.onerror = function() {
+                // 断开后自动清理，下次有 loop 任务时会自动重连
+                if (loopEventSource) {
+                    loopEventSource.close();
+                    loopEventSource = null;
+                }
+                // 5秒后自动重连
+                setTimeout(connectLoopEvents, 5000);
+            };
+        }
+
+        // 页面加载后自动连接 Loop 事件流
+        connectLoopEvents();
+
         /* ===== Sidebar Collapse Toggle ===== */
         (function() {
             var btn = document.getElementById('sidebarToggleBtn');

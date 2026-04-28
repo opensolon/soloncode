@@ -57,6 +57,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Web Chat Controller
@@ -69,34 +70,40 @@ public class WebController {
     private final HarnessEngine engine;
     private final WebStreamBuilder streamBuilder;
     private final LoopScheduler loopScheduler;
+    private final WebSessionSink sessionSink;
 
     public WebController(HarnessEngine engine, LoopScheduler loopScheduler) {
         this.engine = engine;
         this.streamBuilder = new WebStreamBuilder(engine);
         this.loopScheduler = loopScheduler;
+        this.sessionSink = new WebSessionSink();
 
-        // 注入 Web 端 Loop 任务执行器：通过 WebStreamBuilder 执行 AI 任务，收集结果摘要
+        // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，流式推送到前端
         if (loopScheduler != null) {
             loopScheduler.setReactiveTaskExecutor((sessionId, prompt) -> {
-                return executeLoopTask(sessionId, prompt);
+                return executeLoopTaskAsync(sessionId, prompt);
             });
         }
     }
 
     /**
-     * Web 端 Loop 任务执行：调用 AI 并收集结果摘要
+     * Web 端 Loop 任务异步执行：调用 AI，流式推送到前端，并收集结果摘要
      */
-    private String executeLoopTask(String sessionId, String prompt) {
+    private CompletableFuture<String> executeLoopTaskAsync(String sessionId, String prompt) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+
         try {
             AgentSession session = engine.getSession(sessionId);
             ChatModel chatModel = engine.getMainModel();
 
             StringBuilder resultBuilder = new StringBuilder();
 
-            // 阻塞执行 AI 任务，收集结果文本
             streamBuilder.buildStreamFlux(session, chatModel, null, Prompt.of(prompt))
                     .filter(line -> !"[DONE]".equals(line))
                     .doOnNext(line -> {
+                        // 1) 广播到前端 SSE
+                        sessionSink.emit(sessionId, line);
+                        // 2) 收集摘要
                         try {
                             ONode node = ONode.ofJson(line);
                             String type = node.get("type").getString();
@@ -108,18 +115,44 @@ public class WebController {
                                 }
                             }
                         } catch (Exception ignored) {
-                            // 非 JSON 行，跳过
                         }
                     })
-                    .blockLast();
-
-            // 截断摘要，避免过长
-            String result = resultBuilder.toString().trim();
-            return result.isEmpty() ? "ok" : (result.length() > 200 ? result.substring(0, 200) + "..." : result);
+                    .doOnComplete(() -> {
+                        // 流结束时广播 [DONE]
+                        sessionSink.emit(sessionId, "[DONE]");
+                        String result = resultBuilder.toString().trim();
+                        future.complete(result.isEmpty() ? "ok" : (result.length() > 200 ? result.substring(0, 200) + "..." : result));
+                    })
+                    .doOnError(e -> {
+                        sessionSink.emit(sessionId, "[DONE]");
+                        future.complete("error: " + e.getMessage());
+                    })
+                    .subscribe();
         } catch (Exception e) {
             LOG.error("Web loop task failed for session {}: {}", sessionId, e.getMessage());
-            return "error: " + e.getMessage();
+            future.complete("error: " + e.getMessage());
         }
+
+        return future;
+    }
+
+    /**
+     * SSE 端点：前端通过此长连接订阅 Loop 定时任务及其他后台推送事件
+     *
+     * <p>前端使用 EventSource 建立连接后，所有 emit 到 sessionSink 的数据行
+     * 都会以 SSE 格式实时推送到前端，复用 handleSSEData() 渲染。
+     */
+    @Get
+    @Mapping("/chat/events")
+    public void chatEvents(Context ctx, String sessionId) throws Throwable {
+        if (sessionId == null || sessionId.isEmpty()
+                || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            ctx.status(400);
+            return;
+        }
+
+        ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
+        ctx.returnValue(sessionSink.asFlux(sessionId));
     }
 
     /**
