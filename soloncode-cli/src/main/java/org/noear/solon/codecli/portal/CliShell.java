@@ -191,18 +191,9 @@ public class CliShell implements Runnable {
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
-                    LOG.warn("Received EOF exception. Checking if terminal is still valid...");
-
-                    // 如果 System.in 没关，且不是在重定向模式下，尝试重新 readLine
-                    if (terminal.paused() || System.in == null) {
-                        LOG.error("Input stream is actually closed. Breaking loop.");
-                        break;
-                    }
-
-                    // 给用户一个提示，避免死循环刷屏
-                    terminal.writer().println(DIM + " (Input stream reset) " + RESET);
-                    Thread.sleep(1000);
-                    continue; // 尝试下一次循环，而不是直接退出
+                    terminal.writer().println("\nBye!");
+                    terminal.flush();
+                    break; // 直接跳出主循环，优雅退出
                 }
 
                 if (Assert.isEmpty(input)) {
