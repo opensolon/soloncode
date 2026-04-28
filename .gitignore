@@ -27,6 +27,7 @@ nbbuild/
 dist/
 nbdist/
 .nb-gradle/
+soloncode-ee/
 
 ### Mac files ###
 *.DS_Store
