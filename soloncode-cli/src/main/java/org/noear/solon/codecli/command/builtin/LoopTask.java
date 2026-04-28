@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.core;
+package org.noear.solon.codecli.command.builtin;
 
 import lombok.Getter;
 import org.noear.snack4.ONode;

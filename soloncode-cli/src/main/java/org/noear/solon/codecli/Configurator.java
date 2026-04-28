@@ -14,7 +14,7 @@ import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
-import org.noear.solon.codecli.core.LoopScheduler;
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.portal.CliShell;
 import org.noear.solon.codecli.portal.WebController;

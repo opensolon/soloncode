@@ -19,8 +19,6 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.CommandType;
 import org.noear.solon.codecli.core.AgentProperties;
-import org.noear.solon.codecli.core.LoopScheduler;
-import org.noear.solon.codecli.core.LoopTask;
 
 import java.time.Duration;
 import java.time.Instant;

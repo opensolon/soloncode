@@ -41,7 +41,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
-import org.noear.solon.codecli.core.LoopScheduler;
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;

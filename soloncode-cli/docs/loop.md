@@ -261,6 +261,7 @@ public class LoopTask {
 package org.noear.solon.codecli.core;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.codecli.command.builtin.LoopTask;
 import org.noear.solon.scheduling.scheduled.IJobManager;
 import org.noear.solon.scheduling.scheduled.JobManager;
 import org.noear.solon.scheduling.ScheduledAnno;
@@ -271,7 +272,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -499,12 +499,12 @@ public class LoopScheduler {
             saveToJson(session, alive);
             // 同时清理 IJobManager 中过期的
             tasks.stream()
-                .filter(t -> t.isCancelled() || t.isExpired())
-                .forEach(t -> {
-                    if (jobManager.jobExists(t.getJobName())) {
-                        jobManager.jobRemove(t.getJobName());
-                    }
-                });
+                    .filter(t -> t.isCancelled() || t.isExpired())
+                    .forEach(t -> {
+                        if (jobManager.jobExists(t.getJobName())) {
+                            jobManager.jobRemove(t.getJobName());
+                        }
+                    });
         }
 
         return alive;
@@ -649,8 +649,6 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.CommandType;
-import org.noear.solon.codecli.core.LoopScheduler;
-import org.noear.solon.codecli.core.LoopTask;
 
 import java.util.List;
 import java.util.regex.Matcher;
@@ -664,16 +662,24 @@ public class LoopCommand implements Command {
     }
 
     @Override
-    public String name() { return "loop"; }
+    public String name() {
+        return "loop";
+    }
 
     @Override
-    public String description() { return "定时任务管理（循环执行提示词）"; }
+    public String description() {
+        return "定时任务管理（循环执行提示词）";
+    }
 
     @Override
-    public CommandType type() { return CommandType.SYSTEM; }
+    public CommandType type() {
+        return CommandType.SYSTEM;
+    }
 
     @Override
-    public boolean cliOnly() { return true; } // 第一版仅 CLI
+    public boolean cliOnly() {
+        return true;
+    } // 第一版仅 CLI
 
     @Override
     public boolean execute(CommandContext ctx) throws Exception {

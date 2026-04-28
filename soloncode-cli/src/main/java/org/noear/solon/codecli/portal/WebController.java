@@ -36,7 +36,7 @@ import org.noear.solon.ai.harness.command.CommandResult;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.command.WebCommandDispatcher;
 import org.noear.solon.codecli.core.AgentFlags;
-import org.noear.solon.codecli.core.LoopScheduler;
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.ModelAndView;
 import org.noear.solon.core.handle.Result;
