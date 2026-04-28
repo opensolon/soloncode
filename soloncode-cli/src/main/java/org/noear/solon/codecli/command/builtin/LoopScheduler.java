@@ -46,7 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LoopScheduler {
     private static final Logger LOG = LoggerFactory.getLogger(LoopScheduler.class);
     private static final int MAX_TASKS_PER_SESSION = 50;
-    private static final String TASKS_FILE = "loop_tasks.json";
+    private static final String TASKS_FILE = "loop-tasks.json";
 
     // Solon 原生调度管理器
     private final IJobManager jobManager;
