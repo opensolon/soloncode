@@ -95,6 +95,13 @@ public class WebController {
 
         try {
             AgentSession session = engine.getSession(sessionId);
+            if(session.attrs().containsKey("disposable")){
+                //说明当前还有任务在跑（则不执行 loop task）
+                future.complete("ok");
+                return future;
+            }
+
+
             ChatModel chatModel = engine.getMainModel();
 
             StringBuilder resultBuilder = new StringBuilder();
