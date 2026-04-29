@@ -62,7 +62,7 @@ public class LoopCommand implements Command {
 
     @Override
     public String description() {
-        return "定时任务管理 (ls, stop, stop-all, <interval> <prompt>)";
+        return "循环任务管理 (ls, stop, stop-all, <interval> <prompt>)";
     }
 
     @Override
