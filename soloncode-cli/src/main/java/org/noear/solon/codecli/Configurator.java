@@ -46,6 +46,9 @@ public class Configurator {
     @Inject
     AgentProperties agentProps;
 
+    @Inject
+    org.noear.solon.codecli.provider.ModelProviderFactory modelProviderFactory;
+
     @Bean
     public HarnessEngine agentRuntime(AppContext context, AgentProperties props) {
         props.getSkillPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
@@ -140,7 +143,7 @@ public class Configurator {
         //ws
         WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
         //web
-        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime));
+        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, modelProviderFactory));
         Solon.app().router().add(webBean);
 
         if (cliShell == null) {

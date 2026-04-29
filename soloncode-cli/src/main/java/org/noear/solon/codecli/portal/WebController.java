@@ -32,6 +32,9 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.core.AgentFlags;
+import org.noear.solon.codecli.provider.ModelInfo;
+import org.noear.solon.codecli.provider.ModelProvider;
+import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.ModelAndView;
 import org.noear.solon.core.handle.Result;
@@ -62,10 +65,12 @@ public class WebController {
 
     private final HarnessEngine engine;
     private final WebStreamBuilder streamBuilder;
+    private final ModelProviderFactory modelProviderFactory;
 
-    public WebController(HarnessEngine engine) {
+    public WebController(HarnessEngine engine, ModelProviderFactory modelProviderFactory) {
         this.engine = engine;
         this.streamBuilder = new WebStreamBuilder(engine);
+        this.modelProviderFactory = modelProviderFactory;
     }
 
     /**
@@ -201,6 +206,102 @@ public class WebController {
 
         session.updateSnapshot();
 
+        return Result.succeed();
+    }
+
+    /**
+     * 通过 ModelProviderFactory 从远程 API 获取可用模型列表
+     */
+    @Get
+    @Mapping("/chat/models/fetch")
+    public Result<List<Map>> fetchModels(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("provider") String provider) throws Exception {
+        if (Assert.isEmpty(apiUrl)) {
+            return Result.failure("apiUrl is required");
+        }
+
+        ModelProvider modelProvider = modelProviderFactory.getProvider(provider);
+        String baseUrl = modelProvider.deriveBaseUrl(apiUrl);
+        List<ModelInfo> models = modelProvider.fetchModels(baseUrl, null, apiKey);
+
+        List<Map> list = new ArrayList<>();
+        for (ModelInfo mi : models) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", mi.getId());
+            item.put("object", mi.getObject());
+            item.put("ownedBy", mi.getOwnedBy());
+            list.add(item);
+        }
+
+        return Result.succeed(list);
+    }
+
+    /**
+     * 动态添加模型配置
+     */
+    @Post
+    @Mapping("/chat/models/add")
+    public Result models_add(Context ctx) throws Exception {
+        ONode root = ONode.ofJson(ctx.body());
+
+        String apiUrl = root.get("apiUrl").getString();
+        String apiKey = root.get("apiKey").getString();
+        String model = root.get("model").getString();
+        String provider = root.get("provider").getString();
+
+        if (Assert.isEmpty(apiUrl) || Assert.isEmpty(model)) {
+            return Result.failure("apiUrl and model are required");
+        }
+
+        String name = root.get("name").getString();
+        if (Assert.isEmpty(name)) {
+            name = model;
+        }
+
+        ChatConfig config = new ChatConfig();
+        config.setName(name);
+        config.setApiUrl(apiUrl);
+        config.setApiKey(apiKey);
+        config.setModel(model);
+        if (Assert.isNotEmpty(provider)) {
+            config.setProvider(provider);
+        }
+
+        // timeout
+        String timeout = root.get("timeout").getString();
+        if (Assert.isNotEmpty(timeout)) {
+            config.setTimeout(java.time.Duration.parse(timeout));
+        }
+
+        // userAgent
+        String userAgent = root.get("userAgent").getString();
+        if (Assert.isNotEmpty(userAgent)) {
+            config.setUserAgent(userAgent);
+        }
+
+        engine.getProps().addModel(config);
+
+        LOG.info("[Web] Model added: {}", name);
+        return Result.succeed(name);
+    }
+
+    /**
+     * 动态移除模型配置
+     */
+    @Post
+    @Mapping("/chat/models/remove")
+    public Result models_remove(@Param("modelName") String modelName) throws Exception {
+        if (Assert.isEmpty(modelName)) {
+            return Result.failure("modelName is required");
+        }
+
+        // 不允许移除当前正在使用的主模型
+        if (modelName.equals(engine.getMainModel().getNameOrModel())) {
+            return Result.failure("Cannot remove the active main model");
+        }
+
+        engine.getProps().removeModel(modelName);
+
+        LOG.info("[Web] Model removed: {}", modelName);
         return Result.succeed();
     }
 
