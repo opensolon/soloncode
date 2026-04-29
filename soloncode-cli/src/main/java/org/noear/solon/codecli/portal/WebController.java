@@ -82,6 +82,10 @@ public class WebController {
         // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，流式推送到前端
         if (loopScheduler != null) {
             loopScheduler.setReactiveTaskExecutor((sessionId, prompt) -> {
+                if (sessionId.startsWith("web-") == false) {
+                    return null;
+                }
+
                 return executeLoopTaskAsync(sessionId, prompt);
             });
         }

@@ -17,6 +17,7 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
+import org.noear.snack4.Options;
 import org.noear.solon.scheduling.ScheduledAnno;
 import org.noear.solon.scheduling.scheduled.manager.IJobManager;
 import org.noear.solon.scheduling.simple.JobManager;
@@ -47,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LoopScheduler {
     private static final Logger LOG = LoggerFactory.getLogger(LoopScheduler.class);
     private static final int MAX_TASKS_PER_SESSION = 50;
-    private static final String TASKS_FILE = "loop_tasks.json";
+    private static final String TASKS_FILE = "loop-tasks.json";
 
     // Solon 原生调度管理器
     private final IJobManager jobManager;
@@ -269,19 +270,22 @@ public class LoopScheduler {
         try {
             if (reactiveTaskExecutor != null) {
                 // Web 端：异步 Reactive 执行，返回结果摘要
-                reactiveTaskExecutor.execute(sessionId, task.getPrompt())
-                        .whenComplete((result, err) -> {
-                            try {
-                                if (err != null) {
-                                    LOG.error("Loop task '{}' async failed: {}", task.getId(), err.getMessage());
-                                    task.updateLastExecution("error: " + err.getMessage());
-                                } else {
-                                    task.updateLastExecution(result != null ? result : "ok");
-                                }
-                            } finally {
-                                task.finish();
+                CompletableFuture<String> future = reactiveTaskExecutor.execute(sessionId, task.getPrompt());
+
+                if(future != null) {
+                    future.whenComplete((result, err) -> {
+                        try {
+                            if (err != null) {
+                                LOG.error("Loop task '{}' async failed: {}", task.getId(), err.getMessage());
+                                task.updateLastExecution("error: " + err.getMessage());
+                            } else {
+                                task.updateLastExecution(result != null ? result : "ok");
                             }
-                        });
+                        } finally {
+                            task.finish();
+                        }
+                    });
+                }
             } else if (taskExecutor != null) {
                 // CLI 端：同步执行
                 taskExecutor.execute(sessionId, task.getPrompt());
@@ -351,7 +355,7 @@ public class LoopScheduler {
             Path filePath = getFilePath(sessionId, workspace, harnessSessions);
             Files.createDirectories(filePath.getParent());
 
-            ONode root = new ONode(Feature.Write_PrettyFormat);
+            ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
             for (LoopTask t : tasks) {
                 root.add(t.toONode());
             }

@@ -163,6 +163,10 @@ public class CliShell implements Runnable {
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
             loopScheduler.setTaskExecutor((sessionId, prompt) -> {
+                if (agentProps.getSessionId().equals(sessionId) == false) {
+                    return;
+                }
+
                 if (reader != null && reader.isReading()) {
                     try {
                         performAgentTask(session, prompt, null);
