@@ -20,6 +20,7 @@ import org.noear.solon.SolonApp;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;
 
 import java.net.URL;
@@ -31,6 +32,7 @@ import java.nio.file.Paths;
  * @author noear
  * @since 3.9.1
  */
+@EnableScheduling
 public class App {
 
     public static void main(String[] args) {

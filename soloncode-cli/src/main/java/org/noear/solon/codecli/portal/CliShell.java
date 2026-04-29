@@ -19,7 +19,6 @@ import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.UserInterruptException;
-import org.jline.reader.impl.completer.FileNameCompleter;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -32,16 +31,18 @@ import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
-import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.core.util.Assert;
-import org.noear.solon.core.util.MultiMap;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +52,8 @@ import reactor.core.scheduler.Schedulers;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -67,6 +70,7 @@ public class CliShell implements Runnable {
     private LineReader reader;
     private final HarnessEngine agentRuntime;
     private final AgentProperties agentProps;
+    private final LoopScheduler loopScheduler;
 
     // ANSI 颜色常量
     private final static String
@@ -78,9 +82,11 @@ public class CliShell implements Runnable {
             CYAN = "\033[36m",
             RESET = "\033[0m";
 
-    public CliShell(HarnessEngine agentRuntime, AgentProperties agentProps) {
+
+    public CliShell(HarnessEngine agentRuntime, AgentProperties agentProps, LoopScheduler loopScheduler) {
         this.agentRuntime = agentRuntime;
         this.agentProps = agentProps;
+        this.loopScheduler = loopScheduler;
 
         try {
             this.terminal = TerminalBuilder.builder()
@@ -90,7 +96,7 @@ public class CliShell implements Runnable {
 
             this.reader = LineReaderBuilder.builder()
                     .terminal(terminal)
-                    .completer(new FileNameCompleter())
+                    .completer(new CliCompleter(agentRuntime.getCommandRegistry()))
                     .build();
         } catch (Throwable e) {
             LOG.error("JLine initialization failed", e);
@@ -135,8 +141,8 @@ public class CliShell implements Runnable {
         AgentSession session = prepare(agentProps.getSessionId());
 
         try {
-            if (!isSystemCommand(session, input)) {
-                performAgentTask(session, input);
+            if (!isCommand(session, input)) {
+                performAgentTask(session, input, null);
             }
         } catch (Throwable e) {
             terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
@@ -149,6 +155,30 @@ public class CliShell implements Runnable {
     @Override
     public void run() {
         AgentSession session = prepare(agentProps.getSessionId());
+
+
+        if (loopScheduler != null) {
+            // 恢复上次未过期的 loop 定时任务（如果有）
+            loopScheduler.restore(session.getSessionId(), agentProps.getWorkspace(), agentProps.getHarnessSessions());
+
+            // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
+            loopScheduler.setTaskExecutor((sessionId, prompt) -> {
+                if (agentProps.getSessionId().equals(sessionId) == false) {
+                    return;
+                }
+
+                if (reader != null && reader.isReading()) {
+                    try {
+                        performAgentTask(session, prompt, null);
+                    } catch (Exception e) {
+                        LOG.error("Loop task execution failed: {}", e.getMessage(), e);
+                    } finally {
+                        //打断主线程的 readLine 阻塞 // 触发 run() 循环中的 UserInterruptException
+                        terminal.raise(Terminal.Signal.INT);
+                    }
+                }
+            });
+        }
 
         // 2. 主循环
         while (true) {
@@ -165,96 +195,76 @@ public class CliShell implements Runnable {
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
-                    break;
+                    terminal.writer().println("\nBye!");
+                    terminal.flush();
+                    break; // 直接跳出主循环，优雅退出
                 }
 
                 if (Assert.isEmpty(input)) {
                     continue;
                 }
 
-                if (!isSystemCommand(session, input)) {
-                    performAgentTask(session, input);
+                if (!isCommand(session, input)) {
+                    performAgentTask(session, input, null);
                 }
             } catch (Throwable e) {
+                LOG.warn(e.getMessage(), e);
                 terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
             }
         }
     }
 
-
-    private boolean isSystemCommand(AgentSession session, String input) throws Exception {
-        String cmd = input.trim().toLowerCase();
-        if ("/exit".equals(cmd)) {
-            terminal.writer().println(DIM + "Exiting..." + RESET);
-            System.exit(0);
-            return true;
+    private boolean isCommand(AgentSession session, String input) throws Exception {
+        if (!input.startsWith("/")) {
+            return false;
         }
 
-        if ("/resume".equals(cmd)) {
-            performAgentTask(session, null);
-            return true;
+        // 解析命令名和参数
+        String[] parts = input.trim().substring(1).split("\\s+");
+        String cmdName = parts[0].toLowerCase();
+        List<String> args = parts.length > 1
+                ? Arrays.asList(Arrays.copyOfRange(parts, 1, parts.length))
+                : Collections.emptyList();
+
+        // 查找命令
+        Command command = agentRuntime.getCommandRegistry().find(cmdName);
+        if (command == null) {
+            return false;
         }
 
-        if ("/clear".equals(cmd)) {
-            session.clear();
-            printWelcome(session); // 推荐加上，让用户清屏后不至于面对一个完全的黑洞
-            return true;
+        // 构建 context（注入 agentTaskRunner 回调）
+        CliCommandContext ctx = new CliCommandContext(session, terminal, reader,
+                agentRuntime, input, cmdName, args,
+                (prompt, model) -> {
+                    try {
+                        performAgentTask(session, prompt, model);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+
+        // 执行命令
+        boolean handled = command.execute(ctx);
+
+        // clear 命令后重新打印 welcome
+        if ("clear".equals(cmdName)) {
+            printWelcome(session);
         }
 
-        if (cmd.startsWith("/model")) {
-            MultiMap<String> args = MultiMap.from(cmd.split(" "));
-            String flag = args.flagAt(1);
-
-            if ("ls".equals(flag) || Assert.isEmpty(flag)) {
-                String currentModel = session.getContext().getAs(AgentFlags.VAR_MODEL_SELECTED);
-                currentModel = agentRuntime.getModelOrMain(currentModel).getNameOrModel();
-
-                // 列出所有可用模型，当前模型高亮标记
-                terminal.writer().println(BOLD + "Models:" + RESET);
-                for (ChatConfig m : agentProps.getModels()) {
-                    String model = m.getNameOrModel();
-                    String desc = m.getDescriptionOrModel();
-                    String suffix = model.equals(currentModel) ? " " + GREEN + "(active)" + RESET : "";
-                    String label = model.equals(desc) ? model : model + DIM + " - " + desc + RESET;
-                    terminal.writer().println("  " + label + suffix);
-                }
-                terminal.writer().println(DIM + "\nUsage: /model <name>" + RESET);
-                terminal.flush();
-            } else if ("help".equals(flag)) {
-                terminal.writer().println(BOLD + "/model" + RESET + " - Model management");
-                terminal.writer().println(DIM + "  /model" + RESET + "          List all available models");
-                terminal.writer().println(DIM + "  /model ls" + RESET + "       List all available models");
-                terminal.writer().println(DIM + "  /model <name>" + RESET + "   Switch to the specified model");
-                terminal.flush();
-            } else {
-                // 切换模型
-                if (agentProps.getModelOrNil(flag) == null) {
-                    terminal.writer().println(RED + "Model not found: " + RESET + BOLD + flag + RESET);
-                    terminal.writer().println(DIM + "Use '/model' to see available models." + RESET);
-                    terminal.flush();
-                } else {
-                    session.getContext().put(AgentFlags.VAR_MODEL_SELECTED, flag);
-                    session.updateSnapshot();
-
-                    terminal.writer().println(GREEN + "Model switched to: " + RESET + BOLD + flag + RESET);
-                    terminal.flush();
-                }
-            }
-
-            return true;
-        }
-
-        return false;
+        return handled;
     }
 
-    private void performAgentTask(AgentSession session, String input) throws Exception {
+    private void performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
         terminal.writer().println("\n" + BOLD + "Assistant" + RESET);
 
         String currentInput = input;
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
 
-        String modelSelected = session.getContext().getAs(AgentFlags.VAR_MODEL_SELECTED);
+        if (modelSelected == null) {
+            modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+        }
+
         ChatModel chatModel = agentRuntime.getModelOrMain(modelSelected);
 
         while (true) {
@@ -587,7 +597,7 @@ public class CliShell implements Runnable {
         if (session == null) {
             chatModel = agentRuntime.getMainModel();
         } else {
-            String modelSelected = session.getContext().getAs(AgentFlags.VAR_MODEL_SELECTED);
+            String modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
             chatModel = agentRuntime.getModelOrMain(modelSelected);
         }
 
@@ -595,11 +605,9 @@ public class CliShell implements Runnable {
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + chatModel.getNameOrModel() + RESET);
         terminal.writer().println(DIM + path + RESET);
-        terminal.writer().println(DIM + "Tips: " + RESET + "(esc)" + DIM + " interrupt | " +
-                RESET + "'/exit'" + DIM + " | " +
-                RESET + "'/resume'" + DIM + " | " +
-                RESET + "'/clear'" + DIM + " | " +
-                RESET + "'/model'" + DIM + RESET);
+        terminal.writer().println(DIM + "Tips: " +
+                RESET + "(esc)" + DIM + " interrupt | " +
+                RESET + "/(tab)" + DIM + " ls commands" + RESET);
 
         terminal.flush();
     }

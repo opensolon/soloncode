@@ -30,20 +30,27 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessFlags;
+import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.harness.command.CommandResult;
 import org.noear.solon.annotation.*;
+import org.noear.solon.codecli.command.WebCommandDispatcher;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.provider.ModelInfo;
 import org.noear.solon.codecli.provider.ModelProvider;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.ModelAndView;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.MimeType;
+import org.noear.solon.web.sse.SseEmitter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -54,6 +61,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Web Chat Controller
@@ -66,11 +74,102 @@ public class WebController {
     private final HarnessEngine engine;
     private final WebStreamBuilder streamBuilder;
     private final ModelProviderFactory modelProviderFactory;
+    private final LoopScheduler loopScheduler;
+    private final WebSessionSink sessionSink;
 
-    public WebController(HarnessEngine engine, ModelProviderFactory modelProviderFactory) {
+    public WebController(HarnessEngine engine, LoopScheduler loopScheduler, ModelProviderFactory modelProviderFactory) {
         this.engine = engine;
         this.streamBuilder = new WebStreamBuilder(engine);
         this.modelProviderFactory = modelProviderFactory;
+        this.loopScheduler = loopScheduler;
+        this.sessionSink = new WebSessionSink();
+
+        // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，流式推送到前端
+        if (loopScheduler != null) {
+            loopScheduler.setReactiveTaskExecutor((sessionId, prompt) -> {
+                if (sessionId.startsWith("web-") == false) {
+                    return null;
+                }
+
+                return executeLoopTaskAsync(sessionId, prompt);
+            });
+        }
+    }
+
+    /**
+     * Web 端 Loop 任务异步执行：调用 AI，流式推送到前端，并收集结果摘要
+     */
+    private CompletableFuture<String> executeLoopTaskAsync(String sessionId, String prompt) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+
+        try {
+            AgentSession session = engine.getSession(sessionId);
+            if(session.attrs().containsKey("disposable")){
+                //说明当前还有任务在跑（则不执行 loop task）
+                future.complete("ok");
+                return future;
+            }
+
+
+            ChatModel chatModel = engine.getMainModel();
+
+            StringBuilder resultBuilder = new StringBuilder();
+
+            streamBuilder.buildStreamFlux(session, chatModel, null, Prompt.of(prompt))
+                    .filter(line -> !"[DONE]".equals(line))
+                    .doOnNext(line -> {
+                        // 1) 广播到前端 SSE
+                        sessionSink.emit(sessionId, line);
+                        // 2) 收集摘要
+                        try {
+                            ONode node = ONode.ofJson(line);
+                            String type = node.get("type").getString();
+                            if ("text".equals(type) || "reason".equals(type)) {
+                                String text = node.get("text").getString();
+                                if (text != null && !text.isEmpty()) {
+                                    if (resultBuilder.length() > 0) resultBuilder.append(" ");
+                                    resultBuilder.append(text.trim());
+                                }
+                            }
+                        } catch (Exception ignored) {
+                        }
+                    })
+                    .doOnComplete(() -> {
+                        // 流结束时广播 [DONE]
+                        sessionSink.emit(sessionId, "[DONE]");
+                        String result = resultBuilder.toString().trim();
+                        future.complete(result.isEmpty() ? "ok" : (result.length() > 200 ? result.substring(0, 200) + "..." : result));
+                    })
+                    .doOnError(e -> {
+                        sessionSink.emit(sessionId, "[DONE]");
+                        future.complete("error: " + e.getMessage());
+                    })
+                    .subscribe();
+        } catch (Exception e) {
+            LOG.error("Web loop task failed for session {}: {}", sessionId, e.getMessage());
+            future.complete("error: " + e.getMessage());
+        }
+
+        return future;
+    }
+
+    /**
+     * SSE 端点：前端通过此长连接订阅 Loop 定时任务及其他后台推送事件
+     *
+     * <p>前端使用 EventSource 建立连接后，所有 emit 到 sessionSink 的数据行
+     * 都会以 SSE 格式实时推送到前端，复用 handleSSEData() 渲染。
+     */
+    @Get
+    @Mapping("/chat/events")
+    public SseEmitter chatEvents(String sessionId) throws Throwable {
+        if (sessionId == null || sessionId.isEmpty()
+                || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            SseEmitter emitter = new SseEmitter(0L);
+            emitter.complete();
+            return emitter;
+        }
+
+        return sessionSink.createEmitter(sessionId);
     }
 
     /**
@@ -132,6 +231,9 @@ public class WebController {
                     item.put("label", label.length() > 30 ? label.substring(0, 30) + "..." : label);
                     item.put("time", dir.lastModified());
                     data.add(item);
+
+                    //恢复定时任务
+                    loopScheduler.restore(sid, engine.getProps().getWorkspace(), engine.getProps().getHarnessSessions());
                 }
             }
         }
@@ -186,7 +288,7 @@ public class WebController {
 
         if (Assert.isNotEmpty(sessionId)) {
             AgentSession session = engine.getSession(sessionId);
-            String selected = session.getContext().getOrDefault(AgentFlags.VAR_MODEL_SELECTED,
+            String selected = session.getContext().getOrDefault(HarnessFlags.VAR_MODEL_SELECTED,
                     engine.getMainModel().getNameOrModel());
 
             data.put("selected", selected);
@@ -202,7 +304,7 @@ public class WebController {
     public Result models_select(@Param("sessionId") String sessionId, @Param("modelName") String modelName) throws Exception {
         AgentSession session = engine.getSession(sessionId);
 
-        session.getContext().put(AgentFlags.VAR_MODEL_SELECTED, modelName);
+        session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
 
         session.updateSnapshot();
 
@@ -431,6 +533,78 @@ public class WebController {
         return null;
     }
 
+    /**
+     * 处理命令输入（所有结果统一走 SSE 格式返回，与前端 fetch+SSE 解析保持一致）
+     */
+    private void handleCommand(Context ctx, AgentSession session, ChatModel chatModel,
+                               String sessionCwd, String input) throws Throwable {
+        WebCommandDispatcher dispatcher = new WebCommandDispatcher(engine.getCommandRegistry());
+        CommandResult result = dispatcher.dispatch(input, session, engine,
+                (String prompt, String model) -> {
+                    final ChatModel chatModelSelected;
+                    if(model != null){
+                        chatModelSelected = engine.getModelOrMain(model);
+                    } else {
+                        chatModelSelected = chatModel;
+                    }
+
+                    return streamBuilder.buildStreamFlux(session, chatModelSelected, sessionCwd, Prompt.of(prompt));
+                });
+
+        if (result == null) {
+            // 不是有效命令，当作普通输入
+            Prompt prompt = Prompt.of(input);
+            ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
+            ctx.returnValue(streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, prompt));
+            return;
+        }
+
+        if (result.isAgentTask()) {
+            // AGENT 类型命令：返回 SSE 流
+            ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
+            ctx.returnValue(result.getAgentFlux());
+        } else {
+            // SYSTEM/CONFIG 类型命令：将输出包装为 SSE 格式返回
+            ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
+            Flux<String> commandFlux = Flux.create(sink -> {
+                try {
+                    for (String line : result.getOutput()) {
+                        ONode chunk = new ONode();
+                        chunk.set("type", "command");
+                        chunk.set("text", line);
+                        sink.next(chunk.toJson());
+                    }
+                    sink.next("[DONE]");
+                    sink.complete();
+                } catch (Exception e) {
+                    sink.error(e);
+                }
+            });
+            ctx.returnValue(commandFlux);
+        }
+    }
+
+    /**
+     * 获取可用命令列表
+     */
+    @Get
+    @Mapping("/chat/commands")
+    public Result<List<Map>> commands() {
+        List<Map> data = new ArrayList<>();
+        for (Command cmd : engine.getCommandRegistry().all()) {
+            // 跳过 CLI 专属命令（不在 Web 端展示）
+            if (cmd.cliOnly()) {
+                continue;
+            }
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("name", cmd.name());
+            item.put("description", cmd.description());
+            item.put("type", cmd.type().name());
+            data.add(item);
+        }
+        return Result.succeed(data);
+    }
+
     @Mapping("/chat/input")
     public void chat_input(Context ctx, String input, UploadedFile[] attachments, String model, String sessionId) throws Throwable {
         if (sessionId == null || sessionId.isEmpty()) {
@@ -454,7 +628,7 @@ public class WebController {
         }
 
         final AgentSession session = engine.getSession(sessionId);
-        session.getContext().put(AgentFlags.VAR_MODEL_SELECTED, model);
+        session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, model);
         final ChatModel chatModel = engine.getModelOrMain(model);
 
         // HITL approve/reject handling
@@ -519,6 +693,12 @@ public class WebController {
         if (Assert.isNotEmpty(input) || !imageBlocks.isEmpty()) {
             if (input == null || input.isEmpty()) {
                 input = imageBlocks.size() > 1 ? "请描述这些图片" : "请描述这张图片";
+            }
+
+            // 命令分发：检测 / 前缀
+            if (input.startsWith("/") && imageBlocks.isEmpty()) {
+                handleCommand(ctx, session, chatModel, sessionCwd, input);
+                return;
             }
 
             Prompt prompt;

@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>基於 Solon AI 與 Java 實現的開源編碼智能體（支援 Java8 到 Java26 環境啟動）</p>
-<p>最新版本：v2026.4.28</p>
+<p>最新版本：v2026.4.30</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -41,7 +41,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.28
+SolonCode v2026.4.30
 /Users/noear
 Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 

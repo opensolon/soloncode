@@ -21,10 +21,8 @@ public class AgentFlags {
     public final static String FLAG_ACP = "acp";
     public final static String FLAG_WEB = "web";
 
-    public final static String VAR_MODEL_SELECTED = "_model_selected";
-
     public static String getVersion() {
-        return "v2026.4.28";
+        return "v2026.4.30";
     }
 
     private static String lastVersion;
@@ -38,7 +36,7 @@ public class AgentFlags {
 
                 lastVersion = ONode.ofJson(json).get("cli_version").getValueAs();
             } catch (Throwable e) {
-                LOG.warn("Update detection failed", e);
+                LOG.warn("Update detection failed: {}", e.getMessage());
             }
         }
 

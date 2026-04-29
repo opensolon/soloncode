@@ -300,6 +300,17 @@
         .voice-btn.hidden { display: none; }
         @keyframes voice-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 50% { transform: scale(1.08); box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
 
+        /* Command Completion */
+        .cmd-complete { position: absolute; bottom: 100%; left: 0; right: 0; margin-bottom: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); max-height: 240px; overflow-y: auto; display: none; z-index: 100; animation: drop-up 0.15s ease-out; }
+        .cmd-complete.show { display: block; }
+        .cmd-complete-item { padding: 10px 14px; cursor: pointer; font-size: 13px; transition: background 0.15s; display: flex; align-items: flex-start; gap: 10px; }
+        .cmd-complete-item:hover, .cmd-complete-item.active { background: var(--bg-hover); }
+        .cmd-complete-item .cmd-name { font-weight: 600; color: var(--accent); white-space: nowrap; font-family: var(--font-mono); font-size: 13px; }
+        .cmd-complete-item .cmd-desc { color: var(--text-secondary); font-size: 12px; line-height: 1.4; }
+        .cmd-complete-item .cmd-args { color: var(--text-secondary); font-size: 11px; font-family: var(--font-mono); white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
+        .cmd-complete::-webkit-scrollbar { width: 4px; }
+        .cmd-complete::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
         @media (max-width: 768px) { .sidebar { display: none; } }
     </style>
 </head>
@@ -339,7 +350,10 @@
             <div class="welcome-sub">有什么我可以帮你的吗?</div>
             <div class="welcome-input-box">
                 <div class="attachments-wrap" id="welcomeAttachmentsWrap"></div>
-                <textarea id="welcomeInput" placeholder="..." rows="1" autofocus></textarea>
+                <div style="position:relative">
+                    <div class="cmd-complete" id="welcomeCmdComplete"></div>
+                    <textarea id="welcomeInput" placeholder="..." rows="1" autofocus style="width: 100%;"></textarea>
+                </div>
                 <div class="welcome-toolbar">
                     <div class="model-selector" id="welcomeModelSelector">
                         <div class="model-selector-current" id="welcomeModelCurrent" title="切换模型">
@@ -372,7 +386,10 @@
             <div class="input-wrap">
                 <div class="input-box">
                     <div class="attachments-wrap" id="chatAttachmentsWrap"></div>
-                    <textarea id="chatInput" placeholder="请输入消息..." rows="1"></textarea>
+                    <div style="position:relative;">
+                        <div class="cmd-complete" id="chatCmdComplete"></div>
+                        <textarea id="chatInput" placeholder="请输入消息..." rows="1" style="width:100%"></textarea>
+                    </div>
                     <div class="input-toolbar">
                         <div class="model-selector" id="chatModelSelector">
                             <div class="model-selector-current" id="chatModelCurrent" title="切换模型">
@@ -676,8 +693,6 @@
             else { welcomeInput.value = ''; welcomeInput.style.height = 'auto'; }
         }
 
-        welcomeInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
-        chatInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
         welcomeSendBtn.addEventListener('click', function() { sendMessage(); });
         chatSendBtn.addEventListener('click', function() {
             if (isStreaming && activeSessionId && sessionMap[activeSessionId]) {
@@ -1031,6 +1046,181 @@
         });
 
         initVoice();
+
+        /* ===== Command System ===== */
+        var commandList = []; // [{name, description}, ...]
+        var commandsLoaded = false;
+
+        function loadCommands() {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/chat/commands', true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        commandList = resp.data || [];
+                        commandsLoaded = true;
+                    } catch (e) {}
+                }
+            };
+            xhr.send();
+        }
+
+        loadCommands();
+
+        var welcomeCmdComplete = document.getElementById('welcomeCmdComplete');
+        var chatCmdComplete = document.getElementById('chatCmdComplete');
+        var cmdActiveIndex = -1;
+        var cmdVisibleItems = [];
+
+        function getActiveCmdComplete() {
+            return inChatMode ? chatCmdComplete : welcomeCmdComplete;
+        }
+
+        function showCmdComplete(inputEl, completeEl, prefix) {
+            if (!commandsLoaded || commandList.length === 0) return;
+
+            var query = prefix.substring(1).toLowerCase(); // remove '/'
+            cmdVisibleItems = [];
+            var html = '';
+
+            for (var i = 0; i < commandList.length; i++) {
+                var cmd = commandList[i];
+                if (cmd.name.indexOf(query) === 0 || query.length === 0) {
+                    cmdVisibleItems.push(cmd);
+                    html += '<div class="cmd-complete-item" data-index="' + (cmdVisibleItems.length - 1) + '">'
+                        + '<span class="cmd-name">/' + escapeHtml(cmd.name) + '</span>'
+                        + '<span class="cmd-desc">' + escapeHtml(cmd.description || '') + '</span>'
+                        + '</div>';
+                }
+            }
+
+            if (cmdVisibleItems.length === 0) {
+                hideCmdComplete();
+                return;
+            }
+
+            cmdActiveIndex = -1;
+            completeEl.innerHTML = html;
+            completeEl.classList.add('show');
+        }
+
+        function hideCmdComplete() {
+            welcomeCmdComplete.classList.remove('show');
+            chatCmdComplete.classList.remove('show');
+            cmdActiveIndex = -1;
+            cmdVisibleItems = [];
+        }
+
+        function applyCmdSelection(inputEl, completeEl) {
+            if (cmdActiveIndex >= 0 && cmdActiveIndex < cmdVisibleItems.length) {
+                var cmd = cmdVisibleItems[cmdActiveIndex];
+                var parts = inputEl.value.trim().split(/\s+/);
+                // Keep existing args after command name
+                var argsStr = parts.length > 1 ? parts.slice(1).join(' ') : '';
+                inputEl.value = '/' + cmd.name + (argsStr ? ' ' + argsStr : '');
+                autoResize(inputEl);
+            }
+            hideCmdComplete();
+        }
+
+        function navigateCmdComplete(e, inputEl, completeEl) {
+            if (!completeEl.classList.contains('show')) return false;
+
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                var items = completeEl.querySelectorAll('.cmd-complete-item');
+                if (items.length === 0) return true;
+
+                // Remove old active
+                if (cmdActiveIndex >= 0 && items[cmdActiveIndex]) {
+                    items[cmdActiveIndex].classList.remove('active');
+                }
+
+                if (e.key === 'ArrowDown') {
+                    cmdActiveIndex = (cmdActiveIndex + 1) % items.length;
+                } else {
+                    cmdActiveIndex = cmdActiveIndex <= 0 ? items.length - 1 : cmdActiveIndex - 1;
+                }
+
+                items[cmdActiveIndex].classList.add('active');
+                items[cmdActiveIndex].scrollIntoView({ block: 'nearest' });
+                return true;
+            }
+
+            if (e.key === 'Tab' || (e.key === 'Enter' && cmdActiveIndex >= 0)) {
+                e.preventDefault();
+                applyCmdSelection(inputEl, completeEl);
+                return true;
+            }
+
+            if (e.key === 'Escape') {
+                hideCmdComplete();
+                return true;
+            }
+
+            return false;
+        }
+
+        function handleInputForCommands(e) {
+            var inputEl = e.target;
+            var completeEl = (inputEl === welcomeInput) ? welcomeCmdComplete : chatCmdComplete;
+            var val = inputEl.value;
+
+            if (val.indexOf('/') === 0) {
+                // Only show completion when cursor is at the command name part (no spaces yet or just after /)
+                var cursorPos = inputEl.selectionStart;
+                var textBeforeCursor = val.substring(0, cursorPos);
+                var spaceIndex = textBeforeCursor.indexOf(' ');
+                if (spaceIndex === -1) {
+                    showCmdComplete(inputEl, completeEl, textBeforeCursor);
+                } else {
+                    hideCmdComplete();
+                }
+            } else {
+                hideCmdComplete();
+            }
+        }
+
+        welcomeInput.addEventListener('input', handleInputForCommands);
+        chatInput.addEventListener('input', handleInputForCommands);
+
+        // Keyboard navigation for command completion
+        welcomeInput.addEventListener('keydown', function(e) {
+            var handled = navigateCmdComplete(e, welcomeInput, welcomeCmdComplete);
+            if (handled) return;
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        });
+        chatInput.addEventListener('keydown', function(e) {
+            var handled = navigateCmdComplete(e, chatInput, chatCmdComplete);
+            if (handled) return;
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        });
+
+        // Click on completion item
+        welcomeCmdComplete.addEventListener('click', function(e) {
+            var item = e.target.closest('.cmd-complete-item');
+            if (item) {
+                cmdActiveIndex = parseInt(item.getAttribute('data-index'));
+                applyCmdSelection(welcomeInput, welcomeCmdComplete);
+                welcomeInput.focus();
+            }
+        });
+        chatCmdComplete.addEventListener('click', function(e) {
+            var item = e.target.closest('.cmd-complete-item');
+            if (item) {
+                cmdActiveIndex = parseInt(item.getAttribute('data-index'));
+                applyCmdSelection(chatInput, chatCmdComplete);
+                chatInput.focus();
+            }
+        });
+
+        // Hide on outside click
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.cmd-complete') && !e.target.closest('textarea')) {
+                hideCmdComplete();
+            }
+        });
 
         /* ===== Model Selector ===== */
         var modelList = [];        // [{name, desc}, ...] (shared, only loaded once)
@@ -1422,6 +1612,16 @@
             if (sess.sessionId === activeSessionId) scrollToBottom();
         }
 
+        /* ===== Command Output ===== */
+        function appendCommandOutput(sess, text) {
+            ensureAssistantBubble(sess);
+            var mdEl = document.createElement('div');
+            mdEl.className = 'md-content';
+            mdEl.innerHTML = renderMd(text);
+            insertBeforeActions(sess, mdEl);
+            if (sess.sessionId === activeSessionId) scrollToBottom();
+        }
+
         /* ===== Thinking Indicators ===== */
         function showThinking(sess) {
             removeThinking(sess);
@@ -1632,6 +1832,7 @@
                 removeInlineThinking(sess);
 
                 switch (chunk.type) {
+                    case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
                     case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
                     case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
                     case 'action': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); break;
@@ -1685,6 +1886,46 @@
             }
             loadSessionHistory();
         }
+
+        /* ===== Loop Event SSE Listener ===== */
+        var loopEventSource = null;
+
+        function connectLoopEvents() {
+            if (loopEventSource) return; // 已连接
+            var sess = getOrCreateSession(SESSION_ID);
+            var url = '/chat/events?sessionId=' + encodeURIComponent(sess.sessionId);
+            loopEventSource = new EventSource(url);
+            loopEventSource.onmessage = function(event) {
+                var raw = event.data;
+                if (raw === '[DONE]') {
+                    finishStream(sess);
+                    return;
+                }
+                // Loop 触发时，先进入流式状态（如果尚未处于）
+                if (!sess.isStreaming) {
+                    sess.isStreaming = true;
+                    if (sess.sessionId === activeSessionId) {
+                        isStreaming = true;
+                        setBtnStopMode();
+                    }
+                    resetStreamState(sess);
+                    showThinking(sess);
+                }
+                handleSSEData(sess, raw);
+            };
+            loopEventSource.onerror = function() {
+                // 断开后自动清理，下次有 loop 任务时会自动重连
+                if (loopEventSource) {
+                    loopEventSource.close();
+                    loopEventSource = null;
+                }
+                // 5秒后自动重连
+                setTimeout(connectLoopEvents, 5000);
+            };
+        }
+
+        // 页面加载后自动连接 Loop 事件流
+        connectLoopEvents();
 
         /* ===== Sidebar Collapse Toggle ===== */
         (function() {

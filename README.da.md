@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>En open-source kodningsagent bygget med <a href="https://github.com/opensolon/solon-ai">Solon AI</a> og Java (understøtter Java8 til Java26 runtime-miljøer)</p>
-<p>Nyeste version: v2026.4.28</p>
+<p>Nyeste version: v2026.4.30</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -40,7 +40,7 @@ Kør `soloncode`-kommandoen fra en hvilken som helst mappe i konsollen (dvs. dit
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.28
+SolonCode v2026.4.30
 /Users/noear
 Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 

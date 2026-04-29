@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a> এবং জাভা দিয়ে তৈরি একটি ওপেন-সোর্স কোডিং এজেন্ট (Java8 থেকে Java26 রানটাইম পরিবেশ সমর্থিত)</p>
-<p>সর্বশেষ সংস্করণ: v2026.4.28</p>
+<p>সর্বশেষ সংস্করণ: v2026.4.30</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -40,7 +40,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.28
+SolonCode v2026.4.30
 /Users/noear
 Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
 

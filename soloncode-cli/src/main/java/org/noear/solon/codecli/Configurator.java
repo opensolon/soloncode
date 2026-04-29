@@ -5,19 +5,21 @@ import com.agentclientprotocol.sdk.agent.transport.WebSocketSolonAcpAgentTranspo
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.noear.solon.Solon;
-import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.annotation.*;
+import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.portal.CliShell;
 import org.noear.solon.codecli.portal.WebController;
 import org.noear.solon.codecli.portal.WsGate;
+import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
 import org.noear.solon.core.util.JavaUtil;
@@ -26,7 +28,6 @@ import org.noear.solon.net.websocket.WebSocketRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,7 +48,9 @@ public class Configurator {
     AgentProperties agentProps;
 
     @Inject
-    org.noear.solon.codecli.provider.ModelProviderFactory modelProviderFactory;
+    ModelProviderFactory modelProviderFactory;
+
+    private LoopScheduler loopScheduler;
 
     @Bean
     public HarnessEngine agentRuntime(AppContext context, AgentProperties props) {
@@ -80,13 +83,25 @@ public class Configurator {
                 .sessionProvider(sessionProvider)
                 .build();
 
+        engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
+        engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), props.getHarnessCommands()));
+
+        engine.getCommandRegistry().register(new ExitCommand());
+        engine.getCommandRegistry().register(new ClearCommand());
+        engine.getCommandRegistry().register(new ResumeCommand());
+        engine.getCommandRegistry().register(new ModelCommand());
+
+        // loop scheduler
+        this.loopScheduler = new LoopScheduler();
+        engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
+
         return engine;
     }
 
     @Init
     public void init() {
 
-        CliShell cliShell = new CliShell(agentRuntime, agentProps);
+        CliShell cliShell = new CliShell(agentRuntime, agentProps, loopScheduler);
 
         if (AgentFlags.checkUpdate()) {
             // 使用颜色代码让提示更醒目
@@ -107,7 +122,7 @@ public class Configurator {
             if (AgentFlags.FLAG_RUN.equals(flag)) { // java -jar soloncode.jar run '你好' // soloncode run '你好'
                 //单次任务态
                 String prompt = Solon.cfg().argx().flagAt(1);
-                new CliShell(agentRuntime, agentProps).call(prompt);
+                new CliShell(agentRuntime, agentProps, null).call(prompt);
                 Solon.stop();
                 return;
             }
@@ -143,7 +158,7 @@ public class Configurator {
         //ws
         WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
         //web
-        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, modelProviderFactory));
+        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler, modelProviderFactory));
         Solon.app().router().add(webBean);
 
         if (cliShell == null) {
