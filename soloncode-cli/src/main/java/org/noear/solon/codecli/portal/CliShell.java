@@ -38,6 +38,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
@@ -491,7 +492,8 @@ public class CliShell implements Runnable {
     private void onActionEndChunk(ActionEndChunk action, AtomicBoolean isFirstReasonChunk) {
         if (Assert.isNotEmpty(action.getToolName())) {
             if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
-                    TaskSkill.TOOL_TASK.equals(action.getToolName())) {
+                    TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
+                    MemorySkill.isMemoryTool(action.getToolName())) {
                 return;
             }
 

@@ -10,11 +10,13 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
+import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.memory.MemoryManger;
 import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.portal.CliShell;
 import org.noear.solon.codecli.portal.WebController;
@@ -73,6 +75,14 @@ public class Configurator {
         //订阅容器扩展
         context.subBeansOfType(HarnessExtension.class, extension -> {
             props.addExtension(extension);
+        });
+
+        //添加记忆能力
+        MemorySkill memorySkill = new MemorySkill(new MemoryManger(agentProps)).sessionIsolation(false);
+        props.addExtension((agentName, agentBuilder) -> {
+            if("main".equals(agentName)){
+                agentBuilder.defaultSkillAdd(memorySkill);
+            }
         });
 
         HarnessEngine engine = HarnessEngine.of(props)

@@ -28,6 +28,7 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -156,7 +157,8 @@ public class WebStreamBuilder {
     private String onActionEndChunk(ActionEndChunk action) {
         if (Assert.isNotEmpty(action.getToolName())) {
             if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
-                    TaskSkill.TOOL_TASK.equals(action.getToolName())) {
+                    TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
+                    MemorySkill.isMemoryTool(action.getToolName())) {
                 return "";
             }
 
