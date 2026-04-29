@@ -350,7 +350,7 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
           <div className="provider-card-detail">
             <span>{p.model || '未选择模型'}</span>
             <span className="provider-card-sep">|</span>
-            <span>{p.apiUrl ? new URL(p.apiUrl).host : '未配置'}</span>
+            <span>{p.apiUrl ? (() => { try { return new URL(p.apiUrl).host; } catch { return p.apiUrl; } })() : '未配置'}</span>
           </div>
         </div>
       ))}
@@ -395,7 +395,7 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
             <ApiKeyInput value={activeProvider.apiKey} onChange={v => onUpdateProvider(activeProvider.id, { apiKey: v })} />
           </SettingRow>
           <SettingRow label="模型">
-            <ProviderModelSelect provider={activeProvider} onChange={m => onUpdateProvider(activeProvider.id, { model: m })} backendPort={backendPort} />
+            <ProviderModelSelect provider={activeProvider} onChange={m => onUpdateProvider(activeProvider.id, { model: m })} onModelsLoaded={models => onUpdateProvider(activeProvider.id, { availableModels: models })} backendPort={backendPort} />
           </SettingRow>
         </>
       )}
@@ -409,86 +409,80 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
   );
 }
 
-/** 模型选择：实时从后端API获取模型列表 */
-function ProviderModelSelect({ provider, onChange, backendPort }: {
+const FALLBACK_PORT = 4808;
+
+/** 模型选择：手动点击测试按钮获取，结果持久化到 provider */
+function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }: {
   provider: ModelProvider;
   onChange: (model: string) => void;
+  onModelsLoaded: (models: { id: string; ownedBy?: string }[]) => void;
   backendPort?: number | null;
 }) {
-  const [models, setModels] = useState<{ id: string; ownedBy?: string }[]>([]);
+  const models = provider.availableModels || [];
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const fetchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const fetchModels = useCallback(async () => {
+  const handleFetch = useCallback(async () => {
     if (!provider.apiUrl || !provider.apiKey) {
-      setModels([]);
-      setError(provider.apiUrl || provider.apiKey ? '请填写完整的 API 地址和密钥' : '');
-      return;
-    }
-    if (!backendPort) {
-      setModels([]);
-      setError('后端服务未就绪，请确认已打开工作区');
+      setError('请填写完整的 API 地址和密钥');
       return;
     }
 
+    const port = backendPort || FALLBACK_PORT;
     setLoading(true);
     setError('');
 
     try {
-      const url = `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}`;
-      console.log('[SettingsPanel] fetchModels url:', url);
+      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}`;
       const resp = await fetch(url);
       if (!resp.ok) {
         setError('API地址或密钥不正确');
-        setModels([]);
         return;
       }
 
       const result = await resp.json();
-      console.log('[SettingsPanel] fetchModels response:', JSON.stringify(result).substring(0, 500));
       const modelList = result.data;
       if (!Array.isArray(modelList) || modelList.length === 0) {
         setError('未获取到可用模型');
-        setModels([]);
         return;
       }
 
-      setModels(modelList);
+      onModelsLoaded(modelList);
+      if (!provider.model && modelList.length > 0) {
+        onChange(modelList[0].id);
+      }
       setError('');
     } catch (err) {
       console.error('[SettingsPanel] fetchModels error:', err);
-      setError('API地址或密钥不正确');
-      setModels([]);
+      setError('后端服务未就绪或API地址不正确');
     } finally {
       setLoading(false);
     }
-  }, [backendPort, provider.apiUrl, provider.apiKey, provider.type]);
-
-  // apiUrl 或 apiKey 变化时自动获取（带防抖）
-  useEffect(() => {
-    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
-    fetchTimerRef.current = setTimeout(fetchModels, 600);
-    return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
-  }, [fetchModels]);
+  }, [backendPort, provider.apiUrl, provider.apiKey, provider.type, provider.model, onChange, onModelsLoaded]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-      {models.length > 0 ? (
-        <select className="setting-select" value={provider.model}
-          onChange={e => onChange(e.target.value)}>
-          <option value="">选择模型...</option>
-          {models.map(m => (
-            <option key={m.id} value={m.id}>{m.id}</option>
-          ))}
-        </select>
-      ) : (
-        <input type="text" className="setting-input" value={provider.model}
-          onChange={e => onChange(e.target.value)} placeholder="模型名称"
-          disabled={loading} />
-      )}
-      {loading && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>正在获取模型列表...</span>}
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <button className="mcp-add-btn" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+          onClick={handleFetch} disabled={loading}>
+          {loading ? '加载中...' : '获取模型'}
+        </button>
+        {models.length > 0 ? (
+          <select className="setting-select" value={provider.model}
+            onChange={e => onChange(e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+            <option value="">选择模型...</option>
+            {models.map(m => (
+              <option key={m.id} value={m.id}>{m.id}</option>
+            ))}
+          </select>
+        ) : (
+          <input type="text" className="setting-input" value={provider.model}
+            onChange={e => onChange(e.target.value)} placeholder="模型名称"
+            disabled={loading} style={{ flex: 1, minWidth: 0 }} />
+        )}
+      </div>
       {error && <span style={{ fontSize: '11px', color: '#f87171' }}>{error}</span>}
+      {models.length > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>已加载 {models.length} 个模型</span>}
     </div>
   );
 }

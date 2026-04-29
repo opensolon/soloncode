@@ -561,12 +561,15 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
       const wsManager = WebSocketManager.getInstance();
 
       // 开启会话时注册模型到后端
-      const selectedProvider = providers.find(p => p.id === options.model);
+      // options.model 格式: "providerId" 或 "providerId__modelId"
+      const sepIdx = options.model.indexOf('__');
+      const providerId = sepIdx >= 0 ? options.model.substring(0, sepIdx) : options.model;
+      const selectedProvider = providers.find(p => p.id === providerId);
       if (selectedProvider) {
         await registerModelToBackend(selectedProvider);
       }
 
-      // 用 selectedProvider.model 而非 options.modelName，确保与注册名一致
+      // 用实际模型名发送
       const modelName = selectedProvider?.model || options.modelName;
 
       const request = {
@@ -663,10 +666,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
   }, []);
 
   // 模型切换时推送配置到后端
-  const handleModelChange = useCallback(async (providerId: string) => {
+  const handleModelChange = useCallback(async (compositeId: string) => {
+    // compositeId 格式: "providerId__modelId" 或 "providerId"（无 availableModels 时）
+    const sepIdx = compositeId.indexOf('__');
+    const providerId = sepIdx >= 0 ? compositeId.substring(0, sepIdx) : compositeId;
     const provider = providers.find(p => p.id === providerId);
     if (provider) {
-      onActiveProviderChange?.(providerId);
+      onActiveProviderChange?.(compositeId);
       await registerModelToBackend(provider, true);
     }
   }, [providers, onActiveProviderChange]);

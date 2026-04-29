@@ -1,4 +1,4 @@
-import { useState, FormEvent, KeyboardEvent, useRef, useEffect, useCallback } from 'react';
+import { useState, FormEvent, KeyboardEvent, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Icon } from './common/Icon';
 import type { ModelProvider } from '../services/settingsService';
 import { PROVIDER_PRESETS } from '../services/settingsService';
@@ -46,7 +46,29 @@ function getModelDisplayName(p: ModelProvider): string {
 }
 
 export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName }: ChatInputProps) {
-  const enabledProviders = providers.filter(p => p.enabled && p.model);
+  // 从每个 provider 的 availableModels 展开为独立的可选模型
+  const allModels = useMemo(() => {
+    const result: ModelProvider[] = [];
+    for (const p of providers) {
+      if (!p.enabled) continue;
+      if (p.availableModels && p.availableModels.length > 0) {
+        for (const m of p.availableModels) {
+          result.push({
+            id: `${p.id}__${m.id}`,
+            type: p.type,
+            name: p.name,
+            apiUrl: p.apiUrl,
+            apiKey: p.apiKey,
+            model: m.id,
+            enabled: true,
+          });
+        }
+      } else if (p.model) {
+        result.push(p);
+      }
+    }
+    return result;
+  }, [providers]);
 
   const [userInput, setUserInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
@@ -61,10 +83,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   useEffect(() => {
     if (activeProviderId) {
       setSelectedModel(activeProviderId);
-    } else if (enabledProviders.length > 0) {
-      setSelectedModel(enabledProviders[0].id);
+    } else if (allModels.length > 0) {
+      setSelectedModel(allModels[0].id);
     }
-  }, [activeProviderId, enabledProviders]);
+  }, [activeProviderId, allModels]);
 
   // 点击外部关闭模型选择器
   useEffect(() => {
@@ -76,6 +98,15 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // 模型选择器下拉定位
+  const [pickerPos, setPickerPos] = useState<{ left: number; bottom: number }>({ left: 0, bottom: 0 });
+  useEffect(() => {
+    if (showModelPicker && modelPickerRef.current) {
+      const rect = modelPickerRef.current.getBoundingClientRect();
+      setPickerPos({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
+    }
+  }, [showModelPicker]);
 
   // 自动完成状态
   const [showAutocomplete, setShowAutocomplete] = useState(false);
@@ -218,7 +249,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   function sendMessage() {
     if (!userInput.trim()) return;
-    const provider = enabledProviders.find(p => p.id === selectedModel);
+    const provider = allModels.find(p => p.id === selectedModel);
     onSend(userInput, {
       model: selectedModel,
       modelName: provider?.model || selectedModel,
@@ -258,7 +289,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const filteredOptions = getFilteredOptions();
 
   // 当前选中的 provider
-  const currentProvider = enabledProviders.find(p => p.id === selectedModel);
+  const currentProvider = allModels.find(p => p.id === selectedModel);
 
   return (
     <div className="chat-input-wrapper">
@@ -332,11 +363,11 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
                 <span className={`model-picker-arrow${showModelPicker ? ' open' : ''}`}>▾</span>
               </button>
               {showModelPicker && (
-                <div className="model-picker-dropdown">
-                  {enabledProviders.length === 0 ? (
+                <div className="model-picker-dropdown" style={{ left: pickerPos.left, bottom: pickerPos.bottom }}>
+                  {allModels.length === 0 ? (
                     <div className="model-picker-empty">暂无可用模型</div>
                   ) : (
-                    enabledProviders.map(p => {
+                    allModels.map(p => {
                       const label = getModelDisplayName(p);
                       const isActive = p.id === selectedModel;
                       return (

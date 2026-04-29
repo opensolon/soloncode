@@ -129,18 +129,16 @@
 }
 
 .model-picker-dropdown {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 0;
-  min-width: 220px;
-  max-width: 320px;
-  max-height: 280px;
+  position: fixed;
+  min-width: 240px;
+  max-width: 360px;
+  max-height: 400px;
   overflow-y: auto;
   background-color: var(--cb-vscode-input-background);
   border: 1px solid var(--cb-vscode-panel-border);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  z-index: 200;
+  z-index: 9999;
   padding: 4px;
 }
 

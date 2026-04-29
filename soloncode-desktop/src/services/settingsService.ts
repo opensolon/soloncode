@@ -90,6 +90,7 @@ export interface ModelProvider {
   apiKey: string;
   model: string;
   enabled: boolean;
+  availableModels?: { id: string; ownedBy?: string }[];
 }
 
 /** 常规设置（键值对，存在 globalSettings 表） */
@@ -392,6 +393,7 @@ export const settingsService = {
       apiKey: r.apiKey,
       model: r.model,
       enabled: !!r.enabled,
+      availableModels: r.availableModels ? JSON.parse(r.availableModels) : undefined,
     }));
 
     // 3. MCP Servers
@@ -440,6 +442,7 @@ export const settingsService = {
         model: p.model,
         enabled: p.enabled ? 1 : 0,
         sortOrder: i,
+        availableModels: p.availableModels ? JSON.stringify(p.availableModels) : '',
       });
     }
 

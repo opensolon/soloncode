@@ -229,6 +229,15 @@ public class WebController {
             item.put("id", mi.getId());
             item.put("object", mi.getObject());
             item.put("ownedBy", mi.getOwnedBy());
+
+            ChatConfig config = new ChatConfig();
+            config.setName(mi.getObject());
+            config.setApiUrl(apiUrl);
+            config.setApiKey(apiKey);
+            config.setModel(mi.getObject());
+            config.setUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/2.0; +https://solon.noear.org/)");
+            engine.getProps().removeModel(mi.getObject());
+            engine.getProps().addModel(config);
             list.add(item);
         }
 
@@ -262,9 +271,10 @@ public class WebController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
-        if (Assert.isNotEmpty(provider)) {
-            config.setProvider(provider);
-        }
+        config.setUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/2.0; +https://solon.noear.org/)");
+//        if (Assert.isNotEmpty(provider)) {
+//            config.setProvider(provider);
+//        }
 
         // timeout
         String timeout = root.get("timeout").getString();
@@ -277,7 +287,7 @@ public class WebController {
         if (Assert.isNotEmpty(userAgent)) {
             config.setUserAgent(userAgent);
         }
-
+        engine.getProps().removeModel(model);
         engine.getProps().addModel(config);
 
         LOG.info("[Web] Model added: {}", name);

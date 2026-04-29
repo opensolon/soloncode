@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "node -e \"const p=require('path').resolve(__dirname,'../../soloncode-cli/target/soloncode-cli.jar');if(!require('fs').existsSync(p)){console.error('');console.error('ERROR: soloncode-cli.jar not found');console.error('  Expected: soloncode-cli/target/soloncode-cli.jar');console.error('  Run: cd soloncode-cli && mvn clean package -DskipTests');console.error('');process.exit(1)}\" && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -34,6 +34,7 @@
     ],
     "resources": [
       "../../soloncode-cli/release/**/*",
+      "../../soloncode-cli/target/soloncode-cli.jar",
       "../build/install-cli.*"
     ]
   }

@@ -37,6 +37,7 @@ export interface DbProvider {
   model: string;
   enabled: number;     // SQLite 风格: 0 | 1
   sortOrder: number;   // 排序
+  availableModels: string; // JSON 序列化 {id:string, ownedBy?:string}[]
 }
 
 /** MCP 服务器 */

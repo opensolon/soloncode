@@ -14,12 +14,14 @@ public interface ModelProvider {
     List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey);
 
     default String deriveBaseUrl(String apiUrl){
-        String[] suffixes = {"/chat/completions", "/images/generations", "/embeddings", "/completions", "/api/paas/v4"};
+        String[] suffixes = {"/api/anthropic/v1/messages","/api/paas/v4/chat/completions",
+                "/api/coding/paas/v4/chat/completions",
+                "/api/anthropic","/chat/completions", "/images/generations", "/embeddings",
+                "/completions",  };
         String url = apiUrl;
         for (String suffix : suffixes) {
             if (url.endsWith(suffix)) {
                 url = url.substring(0, url.length() - suffix.length());
-                break;
             }
         }
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
