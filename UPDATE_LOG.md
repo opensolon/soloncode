@@ -1,4 +1,10 @@
 
+### v2026.4.30
+
+* 新增 soloncode `/loop` 命令支持
+* 优化 soloncode `code` skill （增加更多编程语言支持）
+* 优化 soloncode 可能意外退出的提示输出
+
 ### v2026.4.29
 
 * 添加 soloncode openai baseUrl 配置支持（其它的仍要配置全地址）
