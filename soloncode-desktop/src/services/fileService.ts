@@ -426,6 +426,27 @@ export const fileService = {
   },
 
   /**
+   * 读取全局 chatModel 配置（apiUrl, apiKey, model）
+   * 从 ~/.soloncode/config.yml 和 ~/.soloncode/chat-model.yml 读取
+   */
+  async readGlobalChatModel(): Promise<{ apiUrl: string; apiKey: string; model: string } | null> {
+    if (!isTauriEnv()) return null;
+    try {
+      const result = await invoke<Record<string, string>>('read_global_chat_model');
+      if (result && result.apiUrl) {
+        return {
+          apiUrl: result.apiUrl,
+          apiKey: result.apiKey || '',
+          model: result.model || '',
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
    * 重命名文件或目录
    */
   async renameItem(oldPath: string, newPath: string): Promise<void> {

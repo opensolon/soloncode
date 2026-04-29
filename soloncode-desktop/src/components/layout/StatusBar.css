@@ -49,6 +49,24 @@
   gap: 3px;
 }
 
+/* 后端连接状态 */
+.status-connection {
+  gap: 3px;
+}
+
+.status-connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #666;
+  transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+.status-connection-dot.connected {
+  background-color: #4ade80;
+  box-shadow: 0 0 4px rgba(74, 222, 128, 0.5);
+}
+
 .status-badge {
   font-size: 10px;
   padding: 0 3px;

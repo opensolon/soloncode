@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon, type IconName } from '../common/Icon';
 import {
   type McpServerConfig,
@@ -40,6 +40,7 @@ interface SettingsPanelProps {
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
   onClose: () => void;
+  backendPort?: number | null;
 }
 
 const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
@@ -49,7 +50,7 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'skills', icon: 'skills', label: 'Skills' },
 ];
 
-export function SettingsPanel({ visible, settings, onSettingsChange, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ visible, settings, onSettingsChange, onClose, backendPort }: SettingsPanelProps) {
   const [activeMenu, setActiveMenu] = useState<SettingsMenuKey>('general');
   const [localSettings, setLocalSettings] = useState(settings);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -185,6 +186,7 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose }: 
                 onRemoveProvider={handleRemoveProvider}
                 onUpdateProvider={handleUpdateProvider}
                 onSetActive={(id) => updateSetting('activeProviderId', id)}
+                backendPort={backendPort}
               />
             )}
             {activeMenu === 'mcp' && (
@@ -277,7 +279,7 @@ function GeneralSettings({ settings, updateSetting }: {
 }
 
 /* ==================== 模型设置（多供应商） ==================== */
-function ModelSettings({ settings, updateSetting, providers, activeProviderId, onAddProvider, onRemoveProvider, onUpdateProvider, onSetActive }: {
+function ModelSettings({ settings, updateSetting, providers, activeProviderId, onAddProvider, onRemoveProvider, onUpdateProvider, onSetActive, backendPort }: {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   providers: ModelProvider[];
@@ -286,6 +288,7 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
   onRemoveProvider: (id: string) => void;
   onUpdateProvider: (id: string, updates: Partial<ModelProvider>) => void;
   onSetActive: (id: string) => void;
+  backendPort?: number | null;
 }) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const activeProvider = providers.find(p => p.id === activeProviderId);
@@ -389,12 +392,10 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
               placeholder="https://api.example.com/v1/chat/completions" />
           </SettingRow>
           <SettingRow label="API Key">
-            <input type="password" className="setting-input" value={activeProvider.apiKey}
-              onChange={e => onUpdateProvider(activeProvider.id, { apiKey: e.target.value })}
-              placeholder="sk-..." />
+            <ApiKeyInput value={activeProvider.apiKey} onChange={v => onUpdateProvider(activeProvider.id, { apiKey: v })} />
           </SettingRow>
           <SettingRow label="模型">
-            <ProviderModelSelect provider={activeProvider} onChange={m => onUpdateProvider(activeProvider.id, { model: m })} />
+            <ProviderModelSelect provider={activeProvider} onChange={m => onUpdateProvider(activeProvider.id, { model: m })} backendPort={backendPort} />
           </SettingRow>
         </>
       )}
@@ -408,24 +409,87 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
   );
 }
 
-/** 模型选择：根据供应商类型显示预设模型或手动输入 */
-function ProviderModelSelect({ provider, onChange }: { provider: ModelProvider; onChange: (model: string) => void }) {
-  const preset = PROVIDER_PRESETS[provider.type as keyof typeof PROVIDER_PRESETS];
-  const isPresetModel = preset?.models.some(m => m.value === provider.model);
+/** 模型选择：实时从后端API获取模型列表 */
+function ProviderModelSelect({ provider, onChange, backendPort }: {
+  provider: ModelProvider;
+  onChange: (model: string) => void;
+  backendPort?: number | null;
+}) {
+  const [models, setModels] = useState<{ id: string; ownedBy?: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  if (preset && (isPresetModel || !provider.model)) {
-    return (
-      <select className="setting-select" value={provider.model}
-        onChange={e => onChange(e.target.value)}>
-        {preset.models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-        <option value="__custom__">自定义模型...</option>
-      </select>
-    );
-  }
+  const fetchModels = useCallback(async () => {
+    if (!provider.apiUrl || !provider.apiKey) {
+      setModels([]);
+      setError(provider.apiUrl || provider.apiKey ? '请填写完整的 API 地址和密钥' : '');
+      return;
+    }
+    if (!backendPort) {
+      setModels([]);
+      setError('后端服务未就绪，请确认已打开工作区');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const url = `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}`;
+      console.log('[SettingsPanel] fetchModels url:', url);
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        setError('API地址或密钥不正确');
+        setModels([]);
+        return;
+      }
+
+      const result = await resp.json();
+      console.log('[SettingsPanel] fetchModels response:', JSON.stringify(result).substring(0, 500));
+      const modelList = result.data;
+      if (!Array.isArray(modelList) || modelList.length === 0) {
+        setError('未获取到可用模型');
+        setModels([]);
+        return;
+      }
+
+      setModels(modelList);
+      setError('');
+    } catch (err) {
+      console.error('[SettingsPanel] fetchModels error:', err);
+      setError('API地址或密钥不正确');
+      setModels([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort, provider.apiUrl, provider.apiKey, provider.type]);
+
+  // apiUrl 或 apiKey 变化时自动获取（带防抖）
+  useEffect(() => {
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    fetchTimerRef.current = setTimeout(fetchModels, 600);
+    return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
+  }, [fetchModels]);
 
   return (
-    <input type="text" className="setting-input" value={provider.model}
-      onChange={e => onChange(e.target.value)} placeholder="模型名称" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+      {models.length > 0 ? (
+        <select className="setting-select" value={provider.model}
+          onChange={e => onChange(e.target.value)}>
+          <option value="">选择模型...</option>
+          {models.map(m => (
+            <option key={m.id} value={m.id}>{m.id}</option>
+          ))}
+        </select>
+      ) : (
+        <input type="text" className="setting-input" value={provider.model}
+          onChange={e => onChange(e.target.value)} placeholder="模型名称"
+          disabled={loading} />
+      )}
+      {loading && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>正在获取模型列表...</span>}
+      {error && <span style={{ fontSize: '11px', color: '#f87171' }}>{error}</span>}
+    </div>
   );
 }
 
@@ -538,6 +602,50 @@ function SkillsSettings({ skills, onAdd, onRemove, onUpdate }: {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ==================== API Key 输入（带密码显隐切换） ==================== */
+function ApiKeyInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <input
+        type={visible ? 'text' : 'password'}
+        className="setting-input"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="sk-..."
+        style={{ paddingRight: '32px' }}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible(v => !v)}
+        style={{
+          position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)',
+          background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+          color: 'var(--text-secondary)', display: 'flex', alignItems: 'center',
+        }}
+        title={visible ? '隐藏密钥' : '显示密钥'}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {visible ? (
+            <>
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </>
+          ) : (
+            <>
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </>
+          )}
+        </svg>
+      </button>
     </div>
   );
 }

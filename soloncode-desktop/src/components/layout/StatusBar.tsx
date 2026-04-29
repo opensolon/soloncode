@@ -9,6 +9,8 @@ import './StatusBar.css';
 export interface StatusBarProps {
   /** 当前 AI 模型名称 */
   model?: string;
+  /** 后端是否已连接 */
+  connected?: boolean;
   /** Git 分支名 */
   branch?: string;
   /** ahead 数量 */
@@ -33,6 +35,7 @@ export interface StatusBarProps {
 
 export function StatusBar({
   model,
+  connected = false,
   branch,
   ahead = 0,
   behind = 0,
@@ -47,6 +50,12 @@ export function StatusBar({
   return (
     <div className="status-bar">
       <div className="status-left">
+        {/* 后端连接状态 */}
+        <span className="status-item status-connection" title={connected ? '后端已连接' : '后端未连接'}>
+          <span className={`status-connection-dot${connected ? ' connected' : ''}`} />
+          <span>{connected ? '已连接' : '未连接'}</span>
+        </span>
+
         {/* AI 模型 */}
         {model && (
           <span className="status-item status-model" title="当前模型">

@@ -86,8 +86,15 @@
   margin-left: auto;
 }
 
-/* 模型选择 */
-.model-select {
+/* 模型选择器 */
+.model-picker-wrapper {
+  position: relative;
+}
+
+.model-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 4px 10px;
   background-color: transparent;
   border: none;
@@ -96,17 +103,96 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  outline: none;
   transition: background-color 0.15s;
 }
 
-.model-select:hover {
+.model-picker-btn:hover,
+.model-picker-btn.active {
   background-color: var(--cb-vscode-list-hoverBackground);
 }
 
-.model-select option {
-  background-color: var(--cb-vscode-sideBar-background);
+.model-picker-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker-arrow {
+  font-size: 10px;
+  opacity: 0.6;
+  transition: transform 0.15s;
+}
+
+.model-picker-arrow.open {
+  transform: rotate(180deg);
+}
+
+.model-picker-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 200;
+  padding: 4px;
+}
+
+.model-picker-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+}
+
+.model-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
   color: var(--cb-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+  text-align: left;
+}
+
+.model-picker-item:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.model-picker-item.active {
+  background-color: var(--cb-vscode-list-activeSelectionBackground);
+}
+
+.model-picker-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.model-picker-item-source {
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+  flex-shrink: 0;
+}
+
+.model-picker-check {
+  color: var(--cb-accent);
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 /* 智能体按钮 */

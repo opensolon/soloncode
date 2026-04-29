@@ -236,6 +236,83 @@ export const settingsService = {
   },
 
   /**
+   * 从后端获取可用模型列表并生成为 ModelProvider[]
+   * 获取后自动注入到 CLI 后端的动态模型配置器
+   */
+  async fetchModelsFromBackend(
+    backendPort: number,
+    apiUrl: string,
+    apiKey: string,
+    existingProviders: ModelProvider[],
+    provider: string = 'openai',
+  ): Promise<{ providers: ModelProvider[]; activeProviderId: string } | null> {
+    try {
+      const resp = await fetch(
+        `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}`,
+      );
+      if (!resp.ok) return null;
+
+      const result = await resp.json();
+      const modelList = result.data;
+      if (!Array.isArray(modelList) || modelList.length === 0) return null;
+
+      const existingIds = new Set(existingProviders.map(p => p.id));
+      const existingModels = new Set(existingProviders.map(p => p.model));
+      const newProviders: ModelProvider[] = [];
+
+      for (const m of modelList) {
+        const modelId = m.id as string;
+        const providerId = `model_${modelId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
+        if (existingIds.has(providerId)) continue;
+
+        const provider: ModelProvider = {
+          id: providerId,
+          type: 'custom' as ProviderType,
+          name: m.ownedBy || '远程',
+          apiUrl,
+          apiKey,
+          model: modelId,
+          enabled: true,
+        };
+        newProviders.push(provider);
+
+        // 注入到 CLI 后端（仅注入尚未添加的模型）
+        if (!existingModels.has(modelId)) {
+          try {
+            await fetch(`http://localhost:${backendPort}/chat/models/add`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: modelId,
+                apiUrl,
+                apiKey,
+                model: modelId,
+                provider: 'openai',
+                timeout: 'PT120S',
+              }),
+            });
+          } catch (e) {
+            console.warn('[settingsService] 注入模型到CLI失败:', modelId, e);
+          }
+        }
+      }
+
+      if (newProviders.length === 0) return null;
+
+      const allProviders = [...existingProviders, ...newProviders];
+      const activeProviderId = existingProviders.length === 0 && allProviders.length > 0
+        ? allProviders[0].id
+        : '';
+
+      return { providers: allProviders, activeProviderId };
+    } catch (err) {
+      console.warn('[settingsService] 获取远程模型列表失败:', err);
+      return null;
+    }
+  },
+
+  /**
    * 加载完整设置（常规 + providers + mcpServers）
    */
   async load(): Promise<AppSettings> {
