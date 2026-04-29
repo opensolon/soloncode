@@ -2,7 +2,7 @@
 
 > 适用场景：理解 Solon 的 IoC 容器、配置系统、插件机制、表达式语言，以及与 Spring 的区别。
 >
-> 基于官方文档整理，目标版本 3.10.0。
+> 基于官方文档整理，目标版本 3.10.4。
 
 ## Annotations Mapping (Solon vs Spring equivalents)
 

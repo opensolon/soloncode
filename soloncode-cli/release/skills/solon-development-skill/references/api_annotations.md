@@ -1,7 +1,7 @@
 # API & Annotations Reference — 注解与配置参考
 
 > 适用场景：查找具体注解用法、配置文件属性、WebSocket/EventBus/Filter API。
-> 目标版本：3.10.0
+> 目标版本：3.10.4
 
 ## 1. Core Annotations
 

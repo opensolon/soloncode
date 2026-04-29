@@ -14,7 +14,7 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solon-parent</artifactId>
-        <version>3.10.0</version>
+        <version>3.10.4</version>
     </parent>
 
     <groupId>com.example</groupId>
