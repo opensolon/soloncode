@@ -226,6 +226,9 @@ public class WebController {
                     item.put("label", label.length() > 30 ? label.substring(0, 30) + "..." : label);
                     item.put("time", dir.lastModified());
                     data.add(item);
+
+                    //恢复定时任务
+                    loopScheduler.restore(sid, engine.getProps().getWorkspace(), engine.getProps().getHarnessSessions());
                 }
             }
         }

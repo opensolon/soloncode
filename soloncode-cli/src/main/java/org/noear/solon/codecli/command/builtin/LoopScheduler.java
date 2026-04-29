@@ -389,9 +389,12 @@ public class LoopScheduler {
             for (ONode node : root.getArray()) {
                 tasks.add(LoopTask.fromONode(node));
             }
+
+            LOG.info("Succeeded load loop tasks[{}]: {}项", sessionId, tasks.size());
+
             return tasks;
         } catch (Exception e) {
-            LOG.error("Failed to load loop tasks: {}", e.getMessage());
+            LOG.error("Failed to load loop tasks[{}]: {}", sessionId, e.getMessage());
             return null;
         }
     }
