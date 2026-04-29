@@ -8,6 +8,7 @@ import {
   PROVIDER_PRESETS,
   createProvider,
 } from '../../services/settingsService';
+import { fileService } from '../../services/fileService';
 import './SettingsPanel.css';
 
 export interface Settings {
@@ -33,7 +34,7 @@ export interface Settings {
   skills: SkillConfig[];
 }
 
-type SettingsMenuKey = 'general' | 'model' | 'mcp' | 'skills';
+type SettingsMenuKey = 'general' | 'model' | 'mcp' | 'skills' | 'logs';
 
 interface SettingsPanelProps {
   visible: boolean;
@@ -41,6 +42,7 @@ interface SettingsPanelProps {
   onSettingsChange: (settings: Settings) => void;
   onClose: () => void;
   backendPort?: number | null;
+  workspacePath?: string | null;
 }
 
 const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
@@ -48,9 +50,10 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'model', icon: 'bot', label: '模型' },
   { key: 'mcp', icon: 'extensions', label: 'MCP 服务器' },
   { key: 'skills', icon: 'skills', label: 'Skills' },
+  { key: 'logs', icon: 'terminal', label: '日志' },
 ];
 
-export function SettingsPanel({ visible, settings, onSettingsChange, onClose, backendPort }: SettingsPanelProps) {
+export function SettingsPanel({ visible, settings, onSettingsChange, onClose, backendPort, workspacePath }: SettingsPanelProps) {
   const [activeMenu, setActiveMenu] = useState<SettingsMenuKey>('general');
   const [localSettings, setLocalSettings] = useState(settings);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -204,6 +207,9 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
                 onRemove={handleRemoveSkill}
                 onUpdate={handleUpdateSkill}
               />
+            )}
+            {activeMenu === 'logs' && (
+              <LogsSettings workspacePath={workspacePath} />
             )}
           </div>
         </div>
@@ -596,6 +602,64 @@ function SkillsSettings({ skills, onAdd, onRemove, onUpdate }: {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ==================== 日志查看 ==================== */
+function LogsSettings({ workspacePath }: { workspacePath?: string | null }) {
+  const [activeLog, setActiveLog] = useState<'desktop' | 'cli'>('desktop');
+  const [desktopLog, setDesktopLog] = useState('');
+  const [cliLog, setCliLog] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const refreshLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [dLog, cLog] = await Promise.all([
+        fileService.readDesktopLog(),
+        workspacePath ? fileService.readCliLog(workspacePath) : Promise.resolve(''),
+      ]);
+      setDesktopLog(dLog || '暂无日志');
+      setCliLog(cLog || '暂无日志');
+    } catch {
+      setDesktopLog('读取失败');
+      setCliLog('读取失败');
+    }
+    setLoading(false);
+  }, [workspacePath]);
+
+  useEffect(() => { refreshLogs(); }, [refreshLogs]);
+
+  const content = activeLog === 'desktop' ? desktopLog : cliLog;
+
+  return (
+    <div className="settings-section-content">
+      <div className="settings-section-title">
+        日志
+        <button className="settings-btn cancel" style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: 12 }} onClick={refreshLogs} disabled={loading}>
+          {loading ? '刷新中...' : '刷新'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <button className={`settings-btn ${activeLog === 'desktop' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('desktop')}>桌面端日志</button>
+        <button className={`settings-btn ${activeLog === 'cli' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('cli')}>CLI 日志</button>
+      </div>
+      <pre style={{
+        background: 'var(--bg-secondary, #1e1e1e)',
+        color: 'var(--text-primary, #ccc)',
+        padding: 12,
+        borderRadius: 6,
+        fontSize: 12,
+        maxHeight: 400,
+        overflow: 'auto',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-all',
+        margin: 0,
+        fontFamily: 'monospace',
+      }}>
+        {content}
+      </pre>
     </div>
   );
 }

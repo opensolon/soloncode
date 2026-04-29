@@ -106,6 +106,30 @@ function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string>('default');
 
+  // 非 dev 模式下禁用浏览器默认右键菜单（刷新、另存为、检查元素等）
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    const handler = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener('contextmenu', handler);
+    return () => document.removeEventListener('contextmenu', handler);
+  }, []);
+
+  // 全局 JS 错误捕获
+  useEffect(() => {
+    const handler = (e: ErrorEvent) => {
+      console.error('[App] Uncaught error:', e.error || e.message);
+    };
+    const rejectHandler = (e: PromiseRejectionEvent) => {
+      console.error('[App] Unhandled rejection:', e.reason);
+    };
+    window.addEventListener('error', handler);
+    window.addEventListener('unhandledrejection', rejectHandler);
+    return () => {
+      window.removeEventListener('error', handler);
+      window.removeEventListener('unhandledrejection', rejectHandler);
+    };
+  }, []);
+
   // 启动时从 IndexedDB 加载设置
   useEffect(() => {
     settingsService.load().then(s => setSettings(s));
@@ -592,9 +616,8 @@ function App() {
   // 通过路径打开工作区（复用逻辑）
   const openFolderByPath = useCallback(async (selectedPath: string) => {
     try {
-      // 1. 清理旧工作区
+      // 1. 清理旧工作区（不停止后端进程，由 Rust 侧复用）
       if (workspacePath) {
-        try { await backendService.stop(); } catch (_) {}
         setChatBackendPort(null);
         setChatWorkspacePath(null);
         setBackendPortState(null);
@@ -1119,6 +1142,7 @@ function App() {
         onSettingsChange={handleSettingsChange}
         onClose={() => setSettingsVisible(false)}
         backendPort={backendPort}
+        workspacePath={workspacePath}
       />
     </div>
   );

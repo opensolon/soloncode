@@ -447,6 +447,30 @@ export const fileService = {
   },
 
   /**
+   * 读取桌面端日志（~/.soloncode/logs/desktop.log）
+   */
+  async readDesktopLog(): Promise<string> {
+    if (!isTauriEnv()) return '';
+    try {
+      return await invoke<string>('read_desktop_log');
+    } catch {
+      return '';
+    }
+  },
+
+  /**
+   * 读取工作区的 CLI 日志（.soloncode/cli.log）
+   */
+  async readCliLog(workspacePath: string): Promise<string> {
+    if (!isTauriEnv()) return '';
+    try {
+      return await invoke<string>('read_cli_log', { workspacePath });
+    } catch {
+      return '';
+    }
+  },
+
+  /**
    * 重命名文件或目录
    */
   async renameItem(oldPath: string, newPath: string): Promise<void> {

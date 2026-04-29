@@ -5,8 +5,42 @@ use base64::Engine;
 use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::time::SystemTime;
 use tauri::{Manager, Emitter};
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
+
+/// 应用日志文件
+static APP_LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
+
+/// 写入应用日志
+fn app_log(msg: &str) {
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let line = format!("[{}] {}\n", timestamp, msg);
+    println!("{}", line.trim());
+    if let Ok(mut log_file) = APP_LOG.lock() {
+        if let Some(f) = log_file.as_mut() {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+}
+
+/// 初始化日志文件
+fn init_app_log() {
+    let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    if let Ok(home) = std::env::var(home_var) {
+        let log_dir = Path::new(&home).join(".soloncode").join("logs");
+        let _ = fs::create_dir_all(&log_dir);
+        let log_path = log_dir.join("desktop.log");
+        if let Ok(f) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            if let Ok(mut log_file) = APP_LOG.lock() {
+                *log_file = Some(f);
+            }
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
@@ -862,8 +896,8 @@ fn auto_install_cli(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let release_dir = find_release_resource_dir(app_handle)
         .ok_or("未找到 soloncode-cli/release 资源目录")?;
 
-    println!("[soloncode] Running install script: {:?}", install_script);
-    println!("[soloncode] Release dir: {:?}", release_dir);
+    app_log(&format!("[soloncode] Running install script: {:?}", install_script));
+    app_log(&format!("[soloncode] Release dir: {:?}", release_dir));
 
     let release_dir_str = release_dir.to_string_lossy().to_string();
     let status = if cfg!(windows) {
@@ -888,28 +922,97 @@ fn auto_install_cli(app_handle: &tauri::AppHandle) -> Result<(), String> {
     // 输出脚本日志
     let stdout = String::from_utf8_lossy(&status.stdout);
     for line in stdout.lines() {
-        println!("{}", line);
+        app_log(line);
     }
 
     Ok(())
 }
 
-/// 启动后端 CLI 进程
+/// 查找 soloncode-cli.jar 文件路径
+fn find_cli_jar(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    // 1. Tauri 打包资源
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        // resources 中打包的 target/soloncode-cli.jar
+        let jar = resource_dir.join("soloncode-cli").join("target").join("soloncode-cli.jar");
+        if jar.exists() {
+            app_log(&format!("[soloncode] Found JAR in resources: {:?}", jar));
+            return Some(jar);
+        }
+        // resources 可能平铺
+        let jar_flat = resource_dir.join("target").join("soloncode-cli.jar");
+        if jar_flat.exists() {
+            app_log(&format!("[soloncode] Found JAR in resources (flat): {:?}", jar_flat));
+            return Some(jar_flat);
+        }
+    }
+
+    // 2. 开发模式：从可执行文件向上查找 soloncode-cli/target/soloncode-cli.jar
+    if let Ok(exe_dir) = std::env::current_exe() {
+        let mut dir = exe_dir.parent();
+        for _ in 0..10 {
+            if let Some(d) = dir {
+                let jar = d.join("soloncode-cli").join("target").join("soloncode-cli.jar");
+                if jar.exists() {
+                    app_log(&format!("[soloncode] Found JAR in dev mode: {:?}", jar));
+                    return Some(jar);
+                }
+                dir = d.parent();
+            } else {
+                break;
+            }
+        }
+    }
+
+    app_log("[soloncode] JAR not found, will trigger auto-install");
+    None
+}
+
+/// 启动后端 CLI 进程（如果已在运行则复用）
 #[tauri::command]
 fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) -> Result<u32, String> {
-    // 先停止已有进程
-    stop_backend()?;
+    // 检查已有进程是否仍在运行
+    {
+        let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
+        match proc.as_mut() {
+            Some(child) => {
+                match child.try_wait() {
+                    Ok(Some(_status)) => {
+                        *proc = None;
+                    }
+                    Ok(None) => {
+                        app_log(&format!("[soloncode] Backend already running, reusing PID {}", child.id()));
+                        return Ok(child.id());
+                    }
+                    Err(e) => {
+                        app_log(&format!("[soloncode] Failed to check process status: {}, restarting...", e));
+                        *proc = None;
+                    }
+                }
+            }
+            None => {}
+        }
+    }
 
-    // 查找 soloncode 命令，未找到则自动安装
-    let soloncode_cmd = match find_soloncode_command() {
-        Some(cmd) => cmd,
+    // 查找 JAR 文件，未找到则自动安装
+    let jar_path = match find_cli_jar(&app_handle) {
+        Some(p) => p,
         None => {
-            println!("[soloncode] CLI not found, auto-installing...");
+            app_log("[soloncode] CLI JAR not found, auto-installing...");
             auto_install_cli(&app_handle)?;
-            find_soloncode_command()
-                .ok_or("CLI 安装后仍未找到 soloncode 命令".to_string())?
+            // 安装后从 ~/.soloncode/bin/ 查找
+            let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+            let home = std::env::var(home_var).unwrap_or_default();
+            let installed_jar = Path::new(&home).join(".soloncode").join("bin").join("soloncode-cli.jar");
+            if installed_jar.exists() {
+                app_log(&format!("[soloncode] Found installed JAR: {:?}", installed_jar));
+                installed_jar
+            } else {
+                return Err("CLI 安装后仍未找到 soloncode-cli.jar".to_string());
+            }
         }
     };
+
+    app_log(&format!("[soloncode] Using JAR: {:?}", jar_path));
 
     // 确保工作区 .soloncode 目录存在
     let soloncode_dir = Path::new(workspace_path).join(".soloncode");
@@ -925,40 +1028,33 @@ fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) 
     let log_file_clone = log_file.try_clone()
         .map_err(|e| format!("复制文件句柄失败: {}", e))?;
 
-    let child = if cfg!(windows) && soloncode_cmd.ends_with(".ps1") {
-        // Windows: 通过 powershell 运行 .ps1
-        Command::new("powershell")
-            .args([
-                "-ExecutionPolicy", "Bypass",
-                "-File", &soloncode_cmd,
-                &format!("--server.port={}", port),
-            ])
-            .current_dir(workspace_path)
-            .stdout(log_file)
-            .stderr(log_file_clone)
-            .spawn()
-            .map_err(|e| format!("启动后端进程失败: {}", e))?
-    } else if cfg!(windows) && soloncode_cmd.ends_with(".bat") {
-        // Windows: 通过 cmd 运行 .bat
-        Command::new("cmd")
-            .args(["/C", &soloncode_cmd, &format!("--server.port={}", port)])
-            .current_dir(workspace_path)
-            .stdout(log_file)
-            .stderr(log_file_clone)
-            .spawn()
-            .map_err(|e| format!("启动后端进程失败: {}", e))?
-    } else {
-        // Unix 或非 .ps1: 直接运行
-        Command::new(&soloncode_cmd)
-            .args([&format!("--server.port={}", port)])
-            .current_dir(workspace_path)
-            .stdout(log_file)
-            .stderr(log_file_clone)
-            .spawn()
-            .map_err(|e| format!("启动后端进程失败: {}", e))?
-    };
+    let jar_str = jar_path.to_string_lossy().to_string();
+    let port_str = port.to_string();
+
+    app_log(&format!("[soloncode] Starting: java -jar {} serve {}", jar_str, port_str));
+
+    let child = Command::new("java")
+        .args([
+            "-Dfile.encoding=UTF-8",
+            "-Dstdout.encoding=UTF-8",
+            "-Dstderr.encoding=UTF-8",
+            "-Dstdin.encoding=UTF-8",
+            "-jar", &jar_str,
+            "serve",
+            &port_str,
+        ])
+        .current_dir(workspace_path)
+        .stdout(log_file)
+        .stderr(log_file_clone)
+        .spawn()
+        .map_err(|e| {
+            let msg = format!("启动后端进程失败: {}", e);
+            app_log(&format!("[soloncode] ERROR: {}", msg));
+            msg
+        })?;
 
     let pid = child.id();
+    app_log(&format!("[soloncode] Backend started, PID={}", pid));
 
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
     *proc = Some(child);
@@ -981,6 +1077,37 @@ fn stop_backend() -> Result<(), String> {
 }
 
 // ==================== 配置文件读写 ====================
+
+/// 读取桌面端日志
+#[tauri::command]
+fn read_desktop_log() -> Result<String, String> {
+    let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let home = std::env::var(home_var).unwrap_or_default();
+    let log_path = Path::new(&home).join(".soloncode").join("logs").join("desktop.log");
+    if log_path.exists() {
+        let content = fs::read_to_string(&log_path)
+            .map_err(|e| format!("读取日志失败: {}", e))?;
+        // 返回最后 200 行
+        let lines: Vec<&str> = content.lines().rev().take(200).collect();
+        Ok(lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
+    } else {
+        Ok("日志文件不存在".to_string())
+    }
+}
+
+/// 读取工作区的 CLI 日志
+#[tauri::command]
+fn read_cli_log(workspace_path: &str) -> Result<String, String> {
+    let log_path = Path::new(workspace_path).join(".soloncode").join("cli.log");
+    if log_path.exists() {
+        let content = fs::read_to_string(&log_path)
+            .map_err(|e| format!("读取日志失败: {}", e))?;
+        let lines: Vec<&str> = content.lines().rev().take(200).collect();
+        Ok(lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
+    } else {
+        Ok("CLI 日志文件不存在".to_string())
+    }
+}
 
 /// 读取 ~/.soloncode/config.yml 中的 chatModel 配置
 /// 返回 { apiUrl, apiKey, model } 的 JSON 字符串
@@ -1273,6 +1400,9 @@ fn backend_status() -> Result<bool, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_app_log();
+    app_log("[soloncode] Desktop app starting...");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1314,6 +1444,8 @@ pub fn run() {
             terminal_resize,
             terminal_kill,
             read_global_chat_model,
+            read_desktop_log,
+            read_cli_log,
             list_skills,
             toggle_skill,
             list_agents,
