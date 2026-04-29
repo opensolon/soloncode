@@ -15,8 +15,9 @@
  */
 package org.noear.solon.codecli.portal;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Sinks;
+import org.noear.solon.web.sse.SseEmitter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,58 +25,68 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Web 端 Session 级 SSE 广播管理器
  *
- * <p>为每个 Web 会话维护一个 {@link Sinks.Many} 广播通道，
+ * <p>为每个 Web 会话维护一个 {@link SseEmitter}，
  * 用于将 Loop 定时任务（及其他后台推送）产生的流式数据实时推送到前端 EventSource 客户端。
- *
- * <p>典型数据流：
- * <pre>
- *   LoopScheduler.onTrigger()
- *     → WebController.executeLoopTask() [异步]
- *       → Flux 流元素 emit 到 sessionSink.tryEmitNext(line)
- *         → 前端 /chat/events?sessionId=xxx 订阅的 SSE 流收到数据
- *           → handleSSEData() 渲染到聊天界面
- * </pre>
  *
  * @author noear 2026/4/28 created
  */
 public class WebSessionSink {
-    /**
-     * sessionId → Sinks.Many<String>（多播模式，支持多个前端页面同时订阅同一 session）
-     */
-    private final Map<String, Sinks.Many<String>> sinkMap = new ConcurrentHashMap<>();
+    private static final Logger LOG = LoggerFactory.getLogger(WebSessionSink.class);
 
     /**
-     * 获取（或创建）指定 session 的广播 Sink
+     * sessionId → SseEmitter（每个 session 一个长连接）
      */
-    public Sinks.Many<String> getOrCreate(String sessionId) {
-        return sinkMap.computeIfAbsent(sessionId,
-                k -> Sinks.many().multicast().onBackpressureBuffer(256));
+    private final Map<String, SseEmitter> emitterMap = new ConcurrentHashMap<>();
+
+    /**
+     * 创建并注册指定 session 的 SseEmitter
+     *
+     * <p>如果该 session 已有 emitter（比如前端重连），先关闭旧的再创建新的。
+     */
+    public SseEmitter createEmitter(String sessionId) {
+        // 关闭旧连接
+        SseEmitter old = emitterMap.get(sessionId);
+        if (old != null) {
+            try { old.complete(); } catch (Exception ignored) { }
+        }
+
+        SseEmitter emitter = new SseEmitter(0L); // 0 = 永不超时
+
+        emitter.onCompletion(() -> {
+            LOG.debug("SSE emitter completed for session: {}", sessionId);
+            emitterMap.remove(sessionId, emitter);
+        });
+        emitter.onError((e) -> {
+            LOG.debug("SSE emitter error for session: {}", sessionId);
+            emitterMap.remove(sessionId, emitter);
+        });
+
+        emitterMap.put(sessionId, emitter);
+        return emitter;
     }
 
     /**
-     * 将指定 session 的 Sink 转为 Flux（供 SSE 端点订阅）
+     * 向指定 session 广播一条 SSE 数据
      */
-    public Flux<String> asFlux(String sessionId) {
-        return getOrCreate(sessionId).asFlux();
-    }
-
-    /**
-     * 向指定 session 广播一条 SSE 数据行
-     */
-    public void emit(String sessionId, String line) {
-        Sinks.Many<String> sink = sinkMap.get(sessionId);
-        if (sink != null) {
-            sink.tryEmitNext(line);
+    public void emit(String sessionId, String data) {
+        SseEmitter emitter = emitterMap.get(sessionId);
+        if (emitter != null) {
+            try {
+                emitter.send(data);
+            } catch (Exception e) {
+                LOG.warn("Failed to emit SSE data for session {}: {}", sessionId, e.getMessage());
+                emitterMap.remove(sessionId, emitter);
+            }
         }
     }
 
     /**
-     * 关闭并移除指定 session 的 Sink（会话销毁时调用）
+     * 关闭并移除指定 session 的 Emitter
      */
     public void close(String sessionId) {
-        Sinks.Many<String> sink = sinkMap.remove(sessionId);
-        if (sink != null) {
-            sink.tryEmitComplete();
+        SseEmitter emitter = emitterMap.remove(sessionId);
+        if (emitter != null) {
+            try { emitter.complete(); } catch (Exception ignored) { }
         }
     }
 }

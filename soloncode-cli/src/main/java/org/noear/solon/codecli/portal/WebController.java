@@ -43,6 +43,7 @@ import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.MimeType;
+import org.noear.solon.web.sse.SseEmitter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
@@ -144,15 +145,15 @@ public class WebController {
      */
     @Get
     @Mapping("/chat/events")
-    public void chatEvents(Context ctx, String sessionId) throws Throwable {
+    public SseEmitter chatEvents(String sessionId) throws Throwable {
         if (sessionId == null || sessionId.isEmpty()
                 || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
-            ctx.status(400);
-            return;
+            SseEmitter emitter = new SseEmitter(0L);
+            emitter.complete();
+            return emitter;
         }
 
-        ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-        ctx.returnValue(sessionSink.asFlux(sessionId));
+        return sessionSink.createEmitter(sessionId);
     }
 
     /**
