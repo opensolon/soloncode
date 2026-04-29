@@ -105,6 +105,7 @@ mvn clean package -DskipTests           npm run tauri:build
         │                                       │
         ▼                                       ▼
   target/soloncode-cli.jar               beforeBuildCommand:
+                                          check-jar.cjs (检查JAR + 复制到src-tauri/)
                                           pnpm build (tsc + vite → dist/)
                                                  │
                                                  ▼
@@ -118,8 +119,9 @@ mvn clean package -DskipTests           npm run tauri:build
                                                  │
                                                  ▼
                                           生成安装包:
-                                           ├── *.msi
-                                           └── *.exe (NSIS)
+                                           ├── *.msi / *.exe (Windows)
+                                           ├── *.dmg / *.app (macOS)
+                                           └── *.deb / *.AppImage (Linux)
 ```
 
 #### 1. 构建 CLI JAR
@@ -133,44 +135,109 @@ mvn clean package -DskipTests
 
 #### 2. 构建桌面安装包
 
+**Windows:**
+
 ```bash
 cd soloncode-desktop
 npm run tauri:build
 ```
 
+**macOS:**
+
+```bash
+# 前置依赖
+brew install node rust
+npm install -g pnpm
+
+# 构建 CLI JAR
+cd soloncode-cli
+mvn clean package -DskipTests
+
+# 构建桌面安装包
+cd ../soloncode-desktop
+pnpm install
+pnpm tauri build
+```
+
+**Linux:**
+
+```bash
+# 前置依赖
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+# 构建 CLI JAR
+cd soloncode-cli
+mvn clean package -DskipTests
+
+# 构建桌面安装包
+cd ../soloncode-desktop
+pnpm install
+pnpm tauri build
+```
+
 产物位于 `src-tauri/target/release/bundle/`：
 
-| 格式 | 文件 |
-|------|------|
-| Windows MSI | `soloncode-desktop_0.1.0_x64_en-US.msi` |
-| Windows NSIS | `soloncode-desktop_0.1.0_x64-setup.exe` |
+| 平台 | 格式 | 文件 |
+|------|------|------|
+| Windows | MSI | `soloncode-desktop_0.1.0_x64_en-US.msi` |
+| Windows | NSIS | `soloncode-desktop_0.1.0_x64-setup.exe` |
+| macOS | DMG | `soloncode-desktop_0.1.0_x64.dmg` |
+| macOS | App | `soloncode-desktop.app` |
+| Linux | Deb | `soloncode-desktop_0.1.0_amd64.deb` |
+| Linux | AppImage | `soloncode-desktop_0.1.0_amd64.AppImage` |
+
+> **注意**：Tauri 不支持交叉编译，需要在对应平台上构建。如需自动化多平台构建，建议使用 GitHub Actions。
 
 ### 打包机制
 
-CLI JAR 通过 Tauri 的 `resources` 配置打包进安装包：
+`check-jar.cjs` 在构建前将 CLI 产物复制到 `src-tauri/` 下，Tauri 通过 `resources` 配置打包：
 
 // tauri.conf.json
 ```json
 {
   "bundle": {
+    "beforeBuildCommand": "node check-jar.cjs && pnpm build",
     "resources": [
-      "../../soloncode-cli/release/**/*",
-      "../../soloncode-cli/target/soloncode-cli.jar",
-      "../build/install-cli.*"
+      "release/**/*",
+      "target/soloncode-cli.jar",
+      "build/install-cli.*"
     ]
   }
 }
 ```
 
+**check-jar.cjs 做了什么**：
+1. 检查 `../soloncode-cli/target/soloncode-cli.jar` 是否存在（不存在则报错退出）
+2. 复制 JAR → `src-tauri/target/soloncode-cli.jar`
+3. 复制 release/ → `src-tauri/release/`
+4. 复制 build/install-cli.* → `src-tauri/build/`
+
 **resources 说明**：
 
 | 路径 | 内容 |
 |------|------|
-| `soloncode-cli/release/**/*` | config.yml、AGENTS.md、skills/、bin/（卸载脚本） |
-| `soloncode-cli/target/soloncode-cli.jar` | CLI JAR（Maven 构建产物） |
+| `release/**/*` | config.yml、AGENTS.md、skills/、bin/（卸载脚本）、install.ps1/sh |
+| `target/soloncode-cli.jar` | CLI JAR（Maven 构建产物） |
 | `build/install-cli.*` | 自动安装脚本（.bat / .sh） |
 
-> JAR 由 Maven 构建到 `target/`，不在 `release/` 中。安装脚本会自动从打包资源中定位 JAR。
+**安装后应用资源结构**：
+
+```
+{app_install_dir}/
+├── soloncode-desktop.exe
+├── target/
+│   └── soloncode-cli.jar
+├── release/
+│   ├── config.yml
+│   ├── AGENTS.md
+│   ├── install.ps1
+│   ├── install.sh
+│   ├── bin/
+│   └── skills/
+└── build/
+    ├── install-cli.bat
+    └── install-cli.sh
+```
 
 ### 首次启动流程
 
@@ -181,35 +248,29 @@ CLI JAR 通过 Tauri 的 `resources` 配置打包进安装包：
 start_backend(workspace, port)
   │
   ▼
-find_soloncode_command()
+find_cli_jar()
   → 查找 ~/.soloncode/bin/soloncode-cli.jar
   │
-  ├── 已安装 → 直接启动
+  ├── 已安装 → java -jar serve <port>
   │
   └── 未安装 → auto_install_cli()
         │
-        ▼
-      执行 install-cli.bat/sh <release资源路径>
-        │
-        ├─ 从打包资源定位 soloncode-cli.jar
-        ├─ 复制 JAR → ~/.soloncode/bin/
-        ├─ 复制 config.yml、AGENTS.md → ~/.soloncode/bin/
-        ├─ 复制 skills/ → ~/.soloncode/skills/
-        └─ 生成 soloncode.ps1 / soloncode.bat 启动器
+        ├─ 从打包资源复制 JAR → ~/.soloncode/bin/
+        ├─ 运行 install-cli 脚本（复制 release/、创建启动器、注册 PATH）
         │
         ▼
-      java -jar soloncode-cli.jar serve <port>
+      java -jar ~/.soloncode/bin/soloncode-cli.jar serve <port>
         │
         ▼
       前端 HTTP/WS 连接 localhost:<port>
 ```
 
-### 安装后目录结构
+### 用户目录结构
 
 ```
 ~/.soloncode/
 ├── bin/
-│   ├── soloncode-cli.jar    # CLI JAR
+│   ├── soloncode-cli.jar    # CLI JAR（每次桌面版更新时覆盖）
 │   ├── soloncode.ps1        # PowerShell 启动器
 │   ├── soloncode.bat        # CMD 启动器
 │   └── uninstall.ps1        # 卸载脚本

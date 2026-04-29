@@ -50,7 +50,7 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'model', icon: 'bot', label: '模型' },
   { key: 'mcp', icon: 'extensions', label: 'MCP 服务器' },
   { key: 'skills', icon: 'skills', label: 'Skills' },
-  { key: 'logs', icon: 'terminal', label: '日志' },
+  ...(import.meta.env.DEV ? [{ key: 'logs' as SettingsMenuKey, icon: 'terminal' as IconName, label: '日志' }] : []),
 ];
 
 export function SettingsPanel({ visible, settings, onSettingsChange, onClose, backendPort, workspacePath }: SettingsPanelProps) {

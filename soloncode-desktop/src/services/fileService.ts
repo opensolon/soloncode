@@ -447,7 +447,17 @@ export const fileService = {
   },
 
   /**
-   * 读取桌面端日志（~/.soloncode/logs/desktop.log）
+   * 写入应用日志
+   */
+  async writeLog(message: string): Promise<void> {
+    if (!isTauriEnv()) return;
+    try {
+      await invoke('write_app_log', { message });
+    } catch {}
+  },
+
+  /**
+   * 读取桌面端日志
    */
   async readDesktopLog(): Promise<string> {
     if (!isTauriEnv()) return '';

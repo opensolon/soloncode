@@ -33,9 +33,9 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../../soloncode-cli/release/**/*",
-      "../../soloncode-cli/target/soloncode-cli.jar",
-      "../build/install-cli.*"
+      "release/**/*",
+      "target/soloncode-cli.jar",
+      "build/install-cli.*"
     ]
   }
 }

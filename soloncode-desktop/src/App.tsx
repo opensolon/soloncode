@@ -301,49 +301,54 @@ function App() {
       setSessions(loaded);
     });
 
+    // 启动后端（与工作区无关，始终启动）
+    fileService.writeLog('Starting backend (no workspace dependency)');
+    backendService.start('').then(async (port) => {
+        if (port) {
+          backendPortRef.current = port;
+          setBackendPortState(port);
+          setBackendConnected(true);
+          setChatBackendPort(port);
+
+          const cliConfig = await fileService.readGlobalChatModel();
+          if (cliConfig && cliConfig.apiUrl) {
+            setSettings(prev => {
+              settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, prev.providers)
+                .then(result => {
+                  if (result) {
+                    setSettings(p => {
+                      const updated = { ...p, providers: result.providers };
+                      if (result.activeProviderId) {
+                        updated.activeProviderId = result.activeProviderId;
+                      }
+                      settingsService.save(updated);
+                      return updated;
+                    });
+                  }
+                });
+              return prev;
+            });
+          }
+        } else {
+          setBackendPortState(null);
+          setBackendConnected(false);
+        }
+      }).catch(() => { setBackendPortState(null); setBackendConnected(false); });
+
     // 启动时恢复上次打开的文件夹
     loadLastFolder().then(async (lastFolder) => {
-      if (!lastFolder) return;
+      if (!lastFolder) {
+        fileService.writeLog('loadLastFolder returned null, no workspace to restore');
+        return;
+      }
       try {
+        fileService.writeLog(`Restoring workspace: ${lastFolder}`);
         console.log('[App] 恢复上次工作区:', lastFolder);
         await fileService.initWorkspaceConfig(lastFolder);
         const info = await fileService.getWorkspaceInfo(lastFolder);
         setWorkspacePath(lastFolder);
         setChatWorkspacePath(lastFolder);
         setWorkspaceName(info.name);
-
-        backendService.start(lastFolder).then(async (port) => {
-          if (port) {
-            backendPortRef.current = port;
-            setBackendPortState(port);
-            setBackendConnected(true);
-            setChatBackendPort(port);
-
-            // 从 CLI 配置读取 baseUrl 和密钥，获取所有可用模型
-            const cliConfig = await fileService.readGlobalChatModel();
-            if (cliConfig && cliConfig.apiUrl) {
-              setSettings(prev => {
-                settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, prev.providers)
-                  .then(result => {
-                    if (result) {
-                      setSettings(p => {
-                        const updated = { ...p, providers: result.providers };
-                        if (result.activeProviderId) {
-                          updated.activeProviderId = result.activeProviderId;
-                        }
-                        settingsService.save(updated);
-                        return updated;
-                      });
-                    }
-                  });
-                return prev;
-              });
-            }
-          } else {
-            setBackendPortState(null);
-            setBackendConnected(false);
-          }
-        }).catch(() => { setBackendPortState(null); setBackendConnected(false); });
 
         const files = await fileService.listDirectoryTree(lastFolder, 10);
         setWorkspaceFiles(convertToFileTree(files));
