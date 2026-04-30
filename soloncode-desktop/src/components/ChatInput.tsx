@@ -4,6 +4,13 @@ import type { ModelProvider } from '../services/settingsService';
 import { PROVIDER_PRESETS } from '../services/settingsService';
 import './ChatInput.css';
 
+// 命令类型（从后端 /chat/commands 加载）
+interface CommandItem {
+  name: string;
+  description: string;
+  type: string; // SYSTEM | CONFIG | AGENT
+}
+
 // 可用的智能体列表
 const AVAILABLE_AGENTS = [
   { id: 'default', name: '助手', icon: 'bot', description: '通用编程助手' },
@@ -29,6 +36,7 @@ interface ChatInputProps {
   activeProviderId?: string;
   onModelChange?: (providerId: string) => void;
   activeFileName?: string;
+  backendPort?: number | null;
 }
 
 export interface SendOptions {
@@ -45,7 +53,7 @@ function getModelDisplayName(p: ModelProvider): string {
   return modelLabel || p.model;
 }
 
-export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName }: ChatInputProps) {
+export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort }: ChatInputProps) {
   // 从每个 provider 的 availableModels 展开为独立的可选模型
   const allModels = useMemo(() => {
     const result: ModelProvider[] = [];
@@ -110,16 +118,43 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   // 自动完成状态
   const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompleteType, setAutocompleteType] = useState<'context' | 'agent' | null>(null);
+  const [autocompleteType, setAutocompleteType] = useState<'context' | 'agent' | 'command' | null>(null);
   const [autocompleteQuery, setAutocompleteQuery] = useState('');
   const [autocompletePosition, setAutocompletePosition] = useState({ start: 0, end: 0 });
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // 命令列表（从后端加载，缓存）
+  const [commands, setCommands] = useState<CommandItem[]>([]);
+  const commandsLoadedRef = useRef(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autocompleteRef = useRef<HTMLDivElement>(null);
 
+  // 从后端加载命令列表
+  const loadCommands = useCallback(async () => {
+    if (commandsLoadedRef.current) return commands;
+    const port = backendPort || 4808;
+    try {
+      const resp = await fetch(`http://localhost:${port}/chat/commands`);
+      if (resp.ok) {
+        const json = await resp.json();
+        const list: CommandItem[] = json.data || json;
+        setCommands(list);
+        commandsLoadedRef.current = true;
+        return list;
+      }
+    } catch { /* ignore */ }
+    return commands;
+  }, [backendPort, commands]);
+
   // 获取过滤后的自动完成选项
   const getFilteredOptions = useCallback(() => {
+    if (autocompleteType === 'command') {
+      return commands.filter(c =>
+        c.name.toLowerCase().includes(autocompleteQuery.toLowerCase()) ||
+        c.description.toLowerCase().includes(autocompleteQuery.toLowerCase())
+      );
+    }
     if (autocompleteType === 'agent') {
       return AVAILABLE_AGENTS.filter(a =>
         a.name.toLowerCase().includes(autocompleteQuery.toLowerCase())
@@ -137,30 +172,47 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       );
     }
     return [];
-  }, [autocompleteType, autocompleteQuery, availableFiles]);
+  }, [autocompleteType, autocompleteQuery, availableFiles, commands]);
 
   // 处理输入变化
   function handleInput(event: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = event.target.value;
+    const cursorPos = event.target.selectionStart;
 
-    const lastAtIndex = value.lastIndexOf('@');
-    const lastHashIndex = value.lastIndexOf('#');
+    // 找到光标前的最后一个触发字符
+    const textBeforeCursor = value.substring(0, cursorPos);
+    const lastSlashIndex = textBeforeCursor.lastIndexOf('/');
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    const lastHashIndex = textBeforeCursor.lastIndexOf('#');
 
-    let triggerType: 'agent' | 'context' | null = null;
+    // 检查 / 后面是否有空格（有则不算命令触发）
+    let triggerType: 'agent' | 'context' | 'command' | null = null;
     let triggerIndex = -1;
 
-    if (lastAtIndex > lastHashIndex && lastAtIndex !== -1) {
-      triggerType = 'agent';
-      triggerIndex = lastAtIndex;
-    } else if (lastHashIndex !== -1) {
-      triggerType = 'context';
-      triggerIndex = lastHashIndex;
+    if (lastSlashIndex !== -1) {
+      const afterSlash = textBeforeCursor.substring(lastSlashIndex + 1);
+      if (!afterSlash.includes(' ') && lastSlashIndex >= lastAtIndex && lastSlashIndex >= lastHashIndex) {
+        triggerType = 'command';
+        triggerIndex = lastSlashIndex;
+        // 异步加载命令（首次）
+        loadCommands();
+      }
+    }
+
+    if (!triggerType) {
+      if (lastAtIndex > lastHashIndex && lastAtIndex !== -1) {
+        triggerType = 'agent';
+        triggerIndex = lastAtIndex;
+      } else if (lastHashIndex !== -1) {
+        triggerType = 'context';
+        triggerIndex = lastHashIndex;
+      }
     }
 
     if (triggerType && triggerIndex !== -1) {
       setAutocompleteType(triggerType);
-      setAutocompleteQuery(value.substring(triggerIndex + 1));
-      setAutocompletePosition({ start: triggerIndex, end: value.length });
+      setAutocompleteQuery(value.substring(triggerIndex + 1, cursorPos));
+      setAutocompletePosition({ start: triggerIndex, end: cursorPos });
       setShowAutocomplete(true);
       setSelectedIndex(0);
     } else {
@@ -176,7 +228,24 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     const beforeTrigger = userInput.substring(0, autocompletePosition.start);
     const afterCursor = userInput.substring(autocompletePosition.end);
 
-    const trigger = autocompleteType === 'agent' ? '@' : '#';
+    const trigger = autocompleteType === 'agent' ? '@' : autocompleteType === 'command' ? '/' : '#';
+
+    if (autocompleteType === 'command') {
+      // 命令选择后直接填入并触发发送
+      const newValue = beforeTrigger + `/${item.name}` + afterCursor;
+      setUserInput(newValue);
+      setShowAutocomplete(false);
+      setAutocompleteType(null);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          const newPos = beforeTrigger.length + 1 + item.name.length;
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(newPos, newPos);
+        }
+      }, 0);
+      return;
+    }
+
     const newValue = beforeTrigger + `${trigger}${item.name} ` + afterCursor;
 
     setUserInput(newValue);
@@ -424,22 +493,26 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
         {showAutocomplete && filteredOptions.length > 0 && (
           <div className="autocomplete-dropdown" ref={autocompleteRef}>
             <div className="autocomplete-header">
-              {autocompleteType === 'agent' ? '选择智能体' : '引用上下文'}
+              {autocompleteType === 'command' ? '命令' : autocompleteType === 'agent' ? '选择智能体' : '引用上下文'}
             </div>
             <div className="autocomplete-list">
               {filteredOptions.map((option, index) => (
                 <div
-                  key={option.id}
+                  key={option.id || (option as any).name}
                   className={`autocomplete-item${index === selectedIndex ? ' selected' : ''}`}
                   onClick={() => selectAutocompleteItem(option)}
                 >
                   <Icon name={
-                    autocompleteType === 'agent'
-                      ? (option as any).icon || 'bot'
-                      : (option as any).type === 'folder' ? 'folder' : 'file'
+                    autocompleteType === 'command'
+                      ? 'terminal'
+                      : autocompleteType === 'agent'
+                        ? (option as any).icon || 'bot'
+                        : (option as any).type === 'folder' ? 'folder' : 'file'
                   } size={16} />
                   <div className="item-info">
-                    <span className="item-name">{option.name}</span>
+                    <span className="item-name">
+                      {autocompleteType === 'command' ? `/${option.name}` : option.name}
+                    </span>
                     {(option as any).description && (
                       <span className="item-desc">{(option as any).description}</span>
                     )}
@@ -461,7 +534,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
         {/* 底部提示 */}
         <div className="input-footer">
           <span className="input-hint">
-            Enter 发送，Shift + Enter 换行，# 引用上下文，@ 选择智能体
+            Enter 发送，Shift + Enter 换行，/ 命令，# 引用上下文，@ 选择智能体
           </span>
         </div>
       </div>

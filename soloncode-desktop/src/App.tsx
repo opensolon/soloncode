@@ -20,7 +20,7 @@ import { settingsService } from './services/settingsService';
 import { backendService } from './services/backendService';
 import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
-import { startWindowDrag } from './hooks/useWindowDrag';
+import { startWindowDrag, startWindowResize } from './hooks/useWindowDrag';
 import type { Conversation, Plugin, Theme } from './types';
 import './App.css';
 
@@ -217,30 +217,36 @@ function App() {
 
   // 计算默认面板宽度比例
   useEffect(() => {
+    let rafId = 0;
     const updatePanelWidths = () => {
-      if (!containerRef.current) return;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (!containerRef.current) return;
 
-      const containerWidth = containerRef.current.clientWidth;
-      const activityBarWidth = 48; // 活动栏宽度
+        const containerWidth = containerRef.current.clientWidth;
+        const activityBarWidth = 48; // 活动栏宽度
 
-      // 侧边栏 20%, 编辑器 50%, 对话框 30%（按总宽度分配）
-      const sw = sidebarCollapsed ? 0 : Math.floor(containerWidth * 0.20);
-      setSidebarWidth(sw);
+        const sw = sidebarCollapsed ? 0 : Math.floor(containerWidth * 0.20);
+        setSidebarWidth(sw);
 
-      const remainingWidth = containerWidth - activityBarWidth - (sidebarCollapsed ? 0 : sw);
-      const editorWidth = Math.floor(remainingWidth * 0.45 / 0.75);
-      const chatWidth = remainingWidth - editorWidth;
+        const remainingWidth = containerWidth - activityBarWidth - (sidebarCollapsed ? 0 : sw);
+        const editorWidth = Math.floor(remainingWidth * 0.45 / 0.75);
+        const chatWidth = remainingWidth - editorWidth;
 
-      setPanelState(prev => ({
-        ...prev,
-        editorWidth: Math.max(300, editorWidth),
-        chatWidth: Math.max(200, chatWidth),
-      }));
+        setPanelState(prev => ({
+          ...prev,
+          editorWidth: Math.max(300, editorWidth),
+          chatWidth: Math.max(200, chatWidth),
+        }));
+      });
     };
 
     updatePanelWidths();
     window.addEventListener('resize', updatePanelWidths);
-    return () => window.removeEventListener('resize', updatePanelWidths);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', updatePanelWidths);
+    };
   }, [sidebarCollapsed]);
 
   // 编辑器状态
@@ -788,16 +794,18 @@ function App() {
       return '';
     }
 
-    // 记住项目上下文
-    if (projectId) {
+    // 记住项目上下文：有 projectId 则关联，否则清除（归入对话列表）
+    if (projectId && projectId !== UNLINKED_PROJECT) {
       setPendingSessionProject(projectId);
+    } else {
+      setPendingSessionProject(null);
     }
 
     // 只设临时 ID，不加入列表，不持久化。等第一条消息发送时再持久化并显示
     const tempId = `temp-${Date.now()}`;
     setCurrentSessionId(tempId);
     return tempId;
-  }, [currentSessionId, sessions, activeProjectPath, pendingSessionProject]);
+  }, [currentSessionId, sessions, activeProjectPath]);
 
   const handleDeleteSession = useCallback((id: string) => {
     const remaining = sessions.filter(s => s.id !== id);
@@ -1083,6 +1091,7 @@ function App() {
             workspacePath={activeProjectPath || undefined}
             projectName={workspaceName || undefined}
             theme={currentTheme}
+            backendPort={backendPort}
             onUpdateSessionTitle={handleUpdateSessionTitle}
             onNewSession={(title) => handleNewSession(undefined, title)}
             providers={settings.providers}
@@ -1105,10 +1114,14 @@ function App() {
 
   return (
     <div className="window-frame">
-      <div className="drag-edge drag-top" onMouseDown={startWindowDrag} />
-      <div className="drag-edge drag-bottom" onMouseDown={startWindowDrag} />
-      <div className="drag-edge drag-left" onMouseDown={startWindowDrag} />
-      <div className="drag-edge drag-right" onMouseDown={startWindowDrag} />
+      <div className="resize-edge resize-top" onMouseDown={e => startWindowResize(e, 'n')} />
+      <div className="resize-edge resize-bottom" onMouseDown={e => startWindowResize(e, 's')} />
+      <div className="resize-edge resize-left" onMouseDown={e => startWindowResize(e, 'w')} />
+      <div className="resize-edge resize-right" onMouseDown={e => startWindowResize(e, 'e')} />
+      <div className="resize-edge resize-top-left" onMouseDown={e => startWindowResize(e, 'nw')} />
+      <div className="resize-edge resize-top-right" onMouseDown={e => startWindowResize(e, 'ne')} />
+      <div className="resize-edge resize-bottom-left" onMouseDown={e => startWindowResize(e, 'sw')} />
+      <div className="resize-edge resize-bottom-right" onMouseDown={e => startWindowResize(e, 'se')} />
     <div className="app-container" ref={containerRef}>
       {/* 顶部标题栏/菜单栏 */}
       <TitleBar

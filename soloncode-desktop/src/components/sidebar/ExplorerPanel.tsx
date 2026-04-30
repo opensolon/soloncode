@@ -592,7 +592,11 @@ export function ExplorerPanel({
     <div className="explorer-panel">
       <div className="panel-header">
         <span className="panel-title">项目管理</span>
-        {hasProjects && (
+        {hasProjects ? (
+          <div className="projects-list">
+            {projects.map(project => renderProject(project))}
+          </div>
+        ) : (
           <div className="panel-actions">
             <button className="panel-action" title="打开文件夹" onClick={onOpenFolder}>
               <Icon name="folder-add" size={16} />
@@ -609,17 +613,8 @@ export function ExplorerPanel({
           {projects.map(project => renderProject(project))}
         </div>
       ) : (
-        <div className="empty-workspace">
-          <div className="empty-icon">
-            <Icon name="folder" size={48} />
-          </div>
-          <p className="empty-text">尚未打开项目</p>
-          <button className="open-folder-btn" onClick={onOpenFolder}>
-            打开文件夹
-          </button>
-          <button className="create-project-btn" onClick={onCreateProject}>
-            新建项目
-          </button>
+        <div className="empty-conversations" style={{ flex: 1 }}>
+          <span>暂无项目</span>
         </div>
       )}
 

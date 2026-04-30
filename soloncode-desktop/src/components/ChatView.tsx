@@ -13,6 +13,7 @@ interface ChatViewProps {
   workspacePath?: string;
   projectName?: string;
   theme?: Theme;
+  backendPort?: number | null;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
   providers?: ModelProvider[];
@@ -254,7 +255,7 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
   await registerModelToBackend(provider, true);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
@@ -425,6 +426,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       switch (type) {
         case 'think':
           acc.think += text;
+          break;
+        case 'command':
+          acc.text += text + '\n';
           break;
         case 'reason':
           // reason 也是正文内容
@@ -701,7 +705,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         isLoading={isLoading}
         theme={theme}
       />
-      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} />
+      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} />
     </main>
   );
 }

@@ -14,30 +14,58 @@
   background-color: var(--cb-vscode-editor-background);
 }
 
-/* 窗口边框拖拽区域 */
-.drag-edge {
+/* 窗口边缘调整大小区域 */
+.resize-edge {
   position: absolute;
   z-index: 9999;
 }
 
-.drag-top {
-  top: 0; left: 0; right: 0;
+.resize-top {
+  top: 0; left: 8px; right: 8px;
   height: 4px;
+  cursor: ns-resize;
 }
 
-.drag-bottom {
-  bottom: 0; left: 0; right: 0;
+.resize-bottom {
+  bottom: 0; left: 8px; right: 8px;
   height: 4px;
+  cursor: ns-resize;
 }
 
-.drag-left {
-  top: 0; bottom: 0; left: 0;
+.resize-left {
+  top: 8px; bottom: 8px; left: 0;
   width: 4px;
+  cursor: ew-resize;
 }
 
-.drag-right {
-  top: 0; bottom: 0; right: 0;
+.resize-right {
+  top: 8px; bottom: 8px; right: 0;
   width: 4px;
+  cursor: ew-resize;
+}
+
+.resize-top-left {
+  top: 0; left: 0;
+  width: 8px; height: 8px;
+  cursor: nwse-resize;
+}
+
+.resize-top-right {
+  top: 0; right: 0;
+  width: 8px; height: 8px;
+  cursor: nesw-resize;
+}
+
+.resize-bottom-left {
+  bottom: 0; left: 0;
+  width: 8px; height: 8px;
+  cursor: nesw-resize;
+}
+
+.resize-bottom-right {
+  bottom: 0; right: 0;
+  width: 8px; height: 8px;
+  cursor: nwse-resize;
 }
 
 /* 菜单栏 */
