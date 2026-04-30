@@ -54,6 +54,8 @@ public class AgentProperties extends HarnessProperties {
 
     private boolean cliPrintSimplified = true;
 
+    private boolean memoryIsolation = false;
+
     private String webEndpoint = "/cli";
 
     private String acpTransport = "stdio";
