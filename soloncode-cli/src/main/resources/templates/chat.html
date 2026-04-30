@@ -1126,6 +1126,8 @@
 
         function navigateCmdComplete(e, inputEl, completeEl) {
             if (!completeEl.classList.contains('show')) return false;
+            // 输入法组合中，不处理命令补全的回车
+            if (e.isComposing) return false;
 
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
@@ -1187,11 +1189,15 @@
 
         // Keyboard navigation for command completion
         welcomeInput.addEventListener('keydown', function(e) {
+            // 输入法正在组合中（如拼音选词），不触发发送
+            if (e.isComposing) return;
             var handled = navigateCmdComplete(e, welcomeInput, welcomeCmdComplete);
             if (handled) return;
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
         });
         chatInput.addEventListener('keydown', function(e) {
+            // 输入法正在组合中（如拼音选词），不触发发送
+            if (e.isComposing) return;
             var handled = navigateCmdComplete(e, chatInput, chatCmdComplete);
             if (handled) return;
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
