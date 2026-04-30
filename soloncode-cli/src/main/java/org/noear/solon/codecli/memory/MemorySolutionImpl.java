@@ -23,7 +23,7 @@ public class MemorySolutionImpl implements MemorySolution {
 
     public MemorySolutionImpl(String __cwd, HarnessProperties props) {
         String lucenePath = Paths.get(__cwd, props.getHarnessMemory(), "lucene").toAbsolutePath().toString();
-        String roguePath = Paths.get(__cwd, props.getHarnessMemory(), "rogue.db").toAbsolutePath().toString();
+        String roguePath = Paths.get(__cwd, props.getHarnessMemory(), "rogue").toAbsolutePath().toString();
 
         try {
             searchProvider = new MemorySearchProviderLuceneImpl(lucenePath);

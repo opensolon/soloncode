@@ -1,7 +1,7 @@
 package org.noear.solon.codecli.memory;
 
 import org.noear.solon.ai.skills.memory.MemorySolution;
-import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.config.AgentProperties;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

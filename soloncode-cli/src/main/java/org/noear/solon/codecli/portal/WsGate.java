@@ -26,7 +26,7 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskSkill;
-import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;

@@ -35,7 +35,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandResult;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.command.WebCommandDispatcher;
-import org.noear.solon.codecli.core.AgentFlags;
+import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.provider.ModelInfo;
 import org.noear.solon.codecli.provider.ModelProvider;
 import org.noear.solon.codecli.provider.ModelProviderFactory;

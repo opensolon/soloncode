@@ -18,7 +18,7 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.CommandType;
-import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.config.AgentProperties;
 
 import java.time.Duration;
 import java.time.Instant;

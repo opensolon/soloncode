@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.core;
+package org.noear.solon.codecli.config;
 
 import lombok.Getter;
 import lombok.Setter;
