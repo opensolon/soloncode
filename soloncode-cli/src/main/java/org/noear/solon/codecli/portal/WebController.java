@@ -273,6 +273,15 @@ public class WebController {
      * @date 2026年3月15日
      */
     @Get
+    @Mapping("/version")
+    public Result<Map> version() {
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("version", AgentFlags.getVersion());
+        data.put("workspace", engine.getProps().getWorkspace());
+        return Result.succeed(data);
+    }
+
+    @Get
     @Mapping("/chat/models")
     public Result<Map> models(@Param(value = "sessionId", required = false) String sessionId) throws Exception {
         Map<String, Object> data = new LinkedHashMap<>();

@@ -9,7 +9,7 @@ import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
-import { getAllConversations, saveConversation, deleteConversation, updateConversation, saveLastFolder, loadLastFolder, saveLastSessionId, loadLastSessionId, migrateConversationsToProjects, getAllProjects, addProject as dbAddProject, removeProject as dbRemoveProject, UNLINKED_PROJECT, saveLastActiveProject, loadLastActiveProject } from './db';
+import { getAllConversations, saveConversation, deleteConversation, updateConversation, saveLastFolder, loadLastFolder, saveLastSessionId, loadLastSessionId, migrateConversationsToProjects, getAllProjects, addProject as dbAddProject, removeProject as dbRemoveProject, UNLINKED_PROJECT, saveLastActiveProject, loadLastActiveProject, reassignMessages } from './db';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
 import { EditorPanel } from './components/editor/EditorPanel';
 import { ChatView } from './components/ChatView';
@@ -21,7 +21,7 @@ import { backendService } from './services/backendService';
 import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { startWindowDrag } from './hooks/useWindowDrag';
-import type { Conversation, Plugin } from './types';
+import type { Conversation, Plugin, Theme } from './types';
 import './App.css';
 
 // 空 Git 状态（初始值）
@@ -71,6 +71,21 @@ function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string>('default');
+  const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('soloncode-theme') as Theme | null;
+    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    return theme;
+  });
+
+  const toggleTheme = useCallback(() => {
+    setCurrentTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('soloncode-theme', next);
+      return next;
+    });
+  }, []);
 
   // 非 dev 模式下禁用浏览器默认右键菜单（刷新、另存为、检查元素等）
   useEffect(() => {
@@ -804,6 +819,8 @@ function App() {
         // 会话不在列表中，首次持久化
         saveConversation({ title, timestamp: '刚刚', status: 'active', workspacePath: wsPath }).then(dbId => {
           const realId = dbId.toString();
+          // 将以 temp ID 保存的消息重新关联到真实 ID
+          reassignMessages(sessionId, dbId);
           setSessions(p => [{ id: realId, title, timestamp: '刚刚', messageCount: 0, workspacePath: wsPath }, ...p]);
           setCurrentSessionId(realId);
         });
@@ -823,6 +840,8 @@ function App() {
       // 临时会话：首次持久化，替换临时 ID 为真实 ID
       saveConversation({ title, timestamp: exists.timestamp, status: 'active', workspacePath: exists.workspacePath || wsPath }).then(dbId => {
         const realId = dbId.toString();
+        // 将以 temp ID 保存的消息重新关联到真实 ID
+        reassignMessages(sessionId, dbId);
         setSessions(p => p.map(s => s.id === sessionId ? { ...s, id: realId, title } : s));
         setCurrentSessionId(realId);
       });
@@ -1063,6 +1082,7 @@ function App() {
             plugins={plugins}
             workspacePath={activeProjectPath || undefined}
             projectName={workspaceName || undefined}
+            theme={currentTheme}
             onUpdateSessionTitle={handleUpdateSessionTitle}
             onNewSession={(title) => handleNewSession(undefined, title)}
             providers={settings.providers}
@@ -1113,6 +1133,8 @@ function App() {
         {/* 左侧：活动栏 + 侧边栏 */}
         <ActivityBar
           activeActivity={activeActivity}
+          theme={currentTheme}
+          onToggleTheme={toggleTheme}
           onActivityChange={(activity) => {
             if (activity === 'settings') {
               setSettingsVisible(true);

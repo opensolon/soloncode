@@ -141,6 +141,13 @@ export async function saveMessage(message: Omit<DbMessage, 'id'>): Promise<numbe
   return await db.messages.add(message);
 }
 
+export async function reassignMessages(oldConvId: string | number, newConvId: string | number): Promise<void> {
+  await db.messages
+    .where('conversationId')
+    .equals(oldConvId)
+    .modify({ conversationId: newConvId });
+}
+
 export async function getMessagesByConversation(conversationId: string | number): Promise<DbMessage[]> {
   return await db.messages
     .where('conversationId')

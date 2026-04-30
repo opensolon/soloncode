@@ -12,6 +12,7 @@ interface ChatViewProps {
   plugins?: Plugin[];
   workspacePath?: string;
   projectName?: string;
+  theme?: Theme;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
   providers?: ModelProvider[];
@@ -253,8 +254,7 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
   await registerModelToBackend(provider, true);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, projectName, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
-  const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
@@ -287,6 +287,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     loadingTimerRef.current = setTimeout(() => {
       console.log('[ChatView] Loading timeout (120s), auto-stopping');
       setIsLoading(false);
+      isStreamingRef.current = false;
     }, 120000);
   }, []);
 
@@ -303,25 +304,6 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     sessionIdRef.current = currentConversation.id.toString();
     conversationIdRef.current = currentConversation.id;
   }, [currentConversation.id]);
-
-  function toggleTheme() {
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    setCurrentTheme(newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('soloncode-theme', newTheme);
-  }
-
-  function loadTheme() {
-    const savedTheme = localStorage.getItem('soloncode-theme') as Theme | null;
-    if (savedTheme) {
-      setCurrentTheme(savedTheme);
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setCurrentTheme(prefersDark ? 'dark' : 'light');
-    }
-    const themeToSet = savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', themeToSet);
-  }
 
   // 构建当前累积内容的 ContentItem 数组
   function buildContentItems(): ContentItem[] {
@@ -402,6 +384,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         };
 
         setIsLoading(false);
+        isStreamingRef.current = false;
         chatMessagesRef.current?.scrollToBottom();
         return;
       }
@@ -417,6 +400,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         };
         setMessages(prev => [...prev, errorMsg]);
         setIsLoading(false);
+        isStreamingRef.current = false;
         return;
       }
 
@@ -601,6 +585,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         contents: JSON.stringify(errorMessage.contents)
       });
       setIsLoading(false);
+      isStreamingRef.current = false;
     }
   }, [currentConversation, onNewSession, onUpdateSessionTitle, workspacePath, providers]);
 
@@ -626,16 +611,14 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
   }
 
-  useEffect(() => {
-    loadTheme();
-  }, []);
-
   // 跟踪是否正在流式输出，防止 ID 替换时重新加载覆盖消息
   const isStreamingRef = useRef(false);
 
   // 会话切换时加载/清空消息
+  // 依赖 currentConversation.id（string | number）而非整个对象，避免 sessions 变化导致误触发
+  const currentConversationId = currentConversation.id;
   useEffect(() => {
-    const id = currentConversation.id?.toString();
+    const id = currentConversationId?.toString();
 
     if (!id) {
       setMessages([]);
@@ -655,7 +638,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
     // 正常会话：从数据库加载历史消息
     loadConversationMessages(id);
-  }, [currentConversation]);
+  }, [currentConversationId]);
 
   // 停止当前请求
   const handleStop = useCallback(() => {
@@ -700,20 +683,23 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
   const isEmpty = messages.length === 0 && !isLoading;
 
+  // 空白会话且无项目关联时不显示头部
+  const showHeader = !isEmpty || !!projectName;
+
   return (
     <main className="main-content">
-      <ChatHeader
-        title={currentConversation.title}
-        status={currentConversation.status}
-        theme={currentTheme}
-        projectName={projectName}
-        onToggleTheme={toggleTheme}
-      />
+      {showHeader && (
+        <ChatHeader
+          title={currentConversation.title}
+          status={currentConversation.status}
+          projectName={projectName}
+        />
+      )}
       <ChatMessages
         ref={chatMessagesRef}
         messages={messages}
         isLoading={isLoading}
-        theme={currentTheme}
+        theme={theme}
       />
       <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} />
     </main>
