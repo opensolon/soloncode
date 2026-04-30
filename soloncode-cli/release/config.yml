@@ -23,7 +23,7 @@ soloncode:
 
   cliPrintSimplified: true # 控制台打印是否简化
 
-  memoryIsolation: false # 长记忆是否工作区隔离（如果隔离，每个工作区一份长记忆）
+  memoryIsolation: true # 长记忆是否工作区隔离（如果隔离，每个工作区一份长记忆）
 
   userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
 
