@@ -426,6 +426,61 @@ export const fileService = {
   },
 
   /**
+   * 读取全局 chatModel 配置（apiUrl, apiKey, model）
+   * 从 ~/.soloncode/config.yml 和 ~/.soloncode/chat-model.yml 读取
+   */
+  async readGlobalChatModel(): Promise<{ apiUrl: string; apiKey: string; model: string } | null> {
+    if (!isTauriEnv()) return null;
+    try {
+      const result = await invoke<Record<string, string>>('read_global_chat_model');
+      if (result && result.apiUrl) {
+        return {
+          apiUrl: result.apiUrl,
+          apiKey: result.apiKey || '',
+          model: result.model || '',
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * 写入应用日志
+   */
+  async writeLog(message: string): Promise<void> {
+    if (!isTauriEnv()) return;
+    try {
+      await invoke('write_app_log', { message });
+    } catch {}
+  },
+
+  /**
+   * 读取桌面端日志
+   */
+  async readDesktopLog(): Promise<string> {
+    if (!isTauriEnv()) return '';
+    try {
+      return await invoke<string>('read_desktop_log');
+    } catch {
+      return '';
+    }
+  },
+
+  /**
+   * 读取工作区的 CLI 日志（.soloncode/cli.log）
+   */
+  async readCliLog(workspacePath: string): Promise<string> {
+    if (!isTauriEnv()) return '';
+    try {
+      return await invoke<string>('read_cli_log', { workspacePath });
+    } catch {
+      return '';
+    }
+  },
+
+  /**
    * 重命名文件或目录
    */
   async renameItem(oldPath: string, newPath: string): Promise<void> {

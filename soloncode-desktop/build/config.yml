@@ -1,0 +1,24 @@
+solon.logging.appender:
+  console:
+    enable: false # 是否启用控制台日志（启用后，会对 cli console 有干扰）
+  file:
+    level: DEBUG
+
+soloncode:
+  tools: "**"
+  maxSteps: 30 # ReAct 最大循环步数
+  maxStepsAutoExtensible: true #最大步数自动续航（由 LLM 反思控制）
+
+  sessionWindowSize: 8 # 会话历史窗口大小（即，新指令时使用几条历史消息）
+
+  summaryWindowSize: 40 # 触发摘要压缩的消息条数阈值（即，工作上下文压缩时留几条消息不压缩）
+  summaryWindowToken: 40000 # 触发摘要压缩的内容长度阈值（即，工作上下文压缩时留多长内容不压缩）
+  sandboxMode: true # 沙盒模式，启用时禁止访问绝对路径
+  thinkPrinted: true # 内心思考，是否打印
+  hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
+  subagentEnabled: true # 是否启用子代理模式
+  cliPrintSimplified: true
+  userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
+  #  skillPools: # 技能池（可以多个）
+  #    "@media": "/path/to/media-skills"
+  modelRetries: 3

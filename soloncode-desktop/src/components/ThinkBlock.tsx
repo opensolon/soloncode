@@ -11,8 +11,14 @@ interface ThinkBlockProps {
   theme?: Theme;
 }
 
+/** 过滤 think/thinking 标签 */
+function stripThinkTags(text: string): string {
+  return text.replace(/<\/?(think|thinking)>/g, '');
+}
+
 export function ThinkBlock({ content, theme }: ThinkBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const cleanContent = stripThinkTags(content);
 
   return (
     <div className="think-block">
@@ -47,7 +53,7 @@ export function ThinkBlock({ content, theme }: ThinkBlockProps) {
               }
             }}
           >
-            {content}
+            {cleanContent}
           </ReactMarkdown>
         </div>
       )}

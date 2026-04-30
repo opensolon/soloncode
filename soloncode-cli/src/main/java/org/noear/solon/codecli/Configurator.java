@@ -19,6 +19,7 @@ import org.noear.solon.codecli.portal.AcpLink;
 import org.noear.solon.codecli.portal.CliShell;
 import org.noear.solon.codecli.portal.WebController;
 import org.noear.solon.codecli.portal.WsGate;
+import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
 import org.noear.solon.core.util.JavaUtil;
@@ -45,6 +46,9 @@ public class Configurator {
 
     @Inject
     AgentProperties agentProps;
+
+    @Inject
+    ModelProviderFactory modelProviderFactory;
 
     private LoopScheduler loopScheduler;
 
@@ -154,7 +158,7 @@ public class Configurator {
         //ws
         WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
         //web
-        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler));
+        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler, modelProviderFactory));
         Solon.app().router().add(webBean);
 
         if (cliShell == null) {

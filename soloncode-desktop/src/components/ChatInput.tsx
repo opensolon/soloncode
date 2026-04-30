@@ -1,4 +1,4 @@
-import { useState, FormEvent, KeyboardEvent, useRef, useEffect, useCallback } from 'react';
+import { useState, FormEvent, KeyboardEvent, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Icon } from './common/Icon';
 import type { ModelProvider } from '../services/settingsService';
 import { PROVIDER_PRESETS } from '../services/settingsService';
@@ -32,27 +32,81 @@ interface ChatInputProps {
 }
 
 export interface SendOptions {
-  model: string;
+  model: string;       // providerId，用于前端状态管理
+  modelName: string;   // 实际模型名，用于CLI后端识别
   agent: string;
   contexts: ContextRef[];
 }
 
+/** 获取模型显示名称 */
+function getModelDisplayName(p: ModelProvider): string {
+  const preset = PROVIDER_PRESETS[p.type as keyof typeof PROVIDER_PRESETS];
+  const modelLabel = preset?.models.find(m => m.value === p.model)?.label || p.model;
+  return modelLabel || p.model;
+}
+
 export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName }: ChatInputProps) {
-  const enabledProviders = providers.filter(p => p.enabled && p.model);
+  // 从每个 provider 的 availableModels 展开为独立的可选模型
+  const allModels = useMemo(() => {
+    const result: ModelProvider[] = [];
+    for (const p of providers) {
+      if (!p.enabled) continue;
+      if (p.availableModels && p.availableModels.length > 0) {
+        for (const m of p.availableModels) {
+          result.push({
+            id: `${p.id}__${m.id}`,
+            type: p.type,
+            name: p.name,
+            apiUrl: p.apiUrl,
+            apiKey: p.apiKey,
+            model: m.id,
+            enabled: true,
+          });
+        }
+      } else if (p.model) {
+        result.push(p);
+      }
+    }
+    return result;
+  }, [providers]);
 
   const [userInput, setUserInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('default');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
 
+  // 模型选择器弹出状态
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
+
   // 同步 activeProviderId 到 selectedModel
   useEffect(() => {
     if (activeProviderId) {
       setSelectedModel(activeProviderId);
-    } else if (enabledProviders.length > 0) {
-      setSelectedModel(enabledProviders[0].id);
+    } else if (allModels.length > 0) {
+      setSelectedModel(allModels[0].id);
     }
-  }, [activeProviderId, enabledProviders]);
+  }, [activeProviderId, allModels]);
+
+  // 点击外部关闭模型选择器
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(event.target as Node)) {
+        setShowModelPicker(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 模型选择器下拉定位
+  const [pickerPos, setPickerPos] = useState<{ left: number; bottom: number }>({ left: 0, bottom: 0 });
+  useEffect(() => {
+    if (showModelPicker && modelPickerRef.current) {
+      const rect = modelPickerRef.current.getBoundingClientRect();
+      setPickerPos({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
+    }
+  }, [showModelPicker]);
 
   // 自动完成状态
   const [showAutocomplete, setShowAutocomplete] = useState(false);
@@ -195,8 +249,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   function sendMessage() {
     if (!userInput.trim()) return;
+    const provider = allModels.find(p => p.id === selectedModel);
     onSend(userInput, {
       model: selectedModel,
+      modelName: provider?.model || selectedModel,
       agent: selectedAgent,
       contexts: [...contexts],
     });
@@ -232,8 +288,8 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   const filteredOptions = getFilteredOptions();
 
-  // 获取当前选中的 provider 信息用于显示
-  const currentProvider = enabledProviders.find(p => p.id === selectedModel);
+  // 当前选中的 provider
+  const currentProvider = allModels.find(p => p.id === selectedModel);
 
   return (
     <div className="chat-input-wrapper">
@@ -260,29 +316,6 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
         <form onSubmit={handleSubmit} className="input-container">
           {/* 工具栏 */}
           <div className="input-toolbar">
-            {/* 模型选择 */}
-            {enabledProviders.length > 0 && (
-              <div className="toolbar-group">
-                <select
-                  className="model-select"
-                  value={selectedModel}
-                  onChange={(e) => {
-                    setSelectedModel(e.target.value);
-                    onModelChange?.(e.target.value);
-                  }}
-                >
-                  {enabledProviders.map(p => {
-                    const preset = PROVIDER_PRESETS[p.type as keyof typeof PROVIDER_PRESETS];
-                    const modelLabel = preset?.models.find(m => m.value === p.model)?.label || p.model;
-                    return (
-                      <option key={p.id} value={p.id}>
-                        {p.name} / {modelLabel || p.model}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
           </div>
 
           {/* 输入行 */}
@@ -292,7 +325,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
               value={userInput}
               onChange={handleInput}
               className="message-input"
-              placeholder={currentProvider ? `${currentProvider.name} / ${currentProvider.model}` : '输入消息...'}
+              placeholder={currentProvider ? `${getModelDisplayName(currentProvider)}` : '输入消息...'}
               rows={1}
               onKeyDown={handleKeyDown}
             />
@@ -317,6 +350,47 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
           {/* 底部操作栏 */}
           <div className="input-bottom-bar">
+            {/* 模型选择器 */}
+            <div className="model-picker-wrapper" ref={modelPickerRef}>
+              <button
+                type="button"
+                className={`model-picker-btn${showModelPicker ? ' active' : ''}`}
+                onClick={() => setShowModelPicker(!showModelPicker)}
+              >
+                <span className="model-picker-name">
+                  {currentProvider ? getModelDisplayName(currentProvider) : '选择模型'}
+                </span>
+                <span className={`model-picker-arrow${showModelPicker ? ' open' : ''}`}>▾</span>
+              </button>
+              {showModelPicker && (
+                <div className="model-picker-dropdown" style={{ left: pickerPos.left, bottom: pickerPos.bottom }}>
+                  {allModels.length === 0 ? (
+                    <div className="model-picker-empty">暂无可用模型</div>
+                  ) : (
+                    allModels.map(p => {
+                      const label = getModelDisplayName(p);
+                      const isActive = p.id === selectedModel;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`model-picker-item${isActive ? ' active' : ''}`}
+                          onClick={() => {
+                            setSelectedModel(p.id);
+                            onModelChange?.(p.id);
+                            setShowModelPicker(false);
+                          }}
+                        >
+                          <span className="model-picker-item-name">{label}</span>
+                          <span className="model-picker-item-source">{p.name}</span>
+                          {isActive && <span className="model-picker-check">✓</span>}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="toolbar-btn"

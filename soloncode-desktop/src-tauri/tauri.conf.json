@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "node check-jar.cjs && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -33,8 +33,9 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../../soloncode-cli/release/**/*",
-      "../build/install-cli.*"
+      "release/**/*",
+      "target/soloncode-cli.jar",
+      "build/install-cli.*"
     ]
   }
 }

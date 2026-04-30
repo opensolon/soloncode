@@ -21,6 +21,7 @@ import org.noear.solon.codecli.core.AgentFlags;
 import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.scheduling.annotation.EnableScheduling;
+import org.noear.solon.web.cors.CrossFilter;
 
 import java.net.URL;
 import java.nio.file.Paths;
@@ -115,6 +116,9 @@ public class App {
 
         app.enableHttp(true);
         app.enableWebSocket(true);
+        // 允许跨域（桌面端前端通过 localhost 访问 CLI 后端）
+        app.filter(new CrossFilter().pathPatterns("/ws").allowedOrigins("*"));
+        app.filter(new CrossFilter().pathPatterns("/chat/**").allowedOrigins("*"));
     }
 
     private static void enabledAcp(SolonApp app, AgentProperties c) {
