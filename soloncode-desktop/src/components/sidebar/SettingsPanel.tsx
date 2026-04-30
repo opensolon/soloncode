@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon, type IconName } from '../common/Icon';
 import {
   type McpServerConfig,
@@ -8,6 +8,7 @@ import {
   PROVIDER_PRESETS,
   createProvider,
 } from '../../services/settingsService';
+import { fileService } from '../../services/fileService';
 import './SettingsPanel.css';
 
 export interface Settings {
@@ -33,13 +34,15 @@ export interface Settings {
   skills: SkillConfig[];
 }
 
-type SettingsMenuKey = 'general' | 'model' | 'mcp' | 'skills';
+type SettingsMenuKey = 'general' | 'model' | 'mcp' | 'skills' | 'logs';
 
 interface SettingsPanelProps {
   visible: boolean;
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
   onClose: () => void;
+  backendPort?: number | null;
+  workspacePath?: string | null;
 }
 
 const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
@@ -47,9 +50,10 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'model', icon: 'bot', label: '模型' },
   { key: 'mcp', icon: 'extensions', label: 'MCP 服务器' },
   { key: 'skills', icon: 'skills', label: 'Skills' },
+  ...(import.meta.env.DEV ? [{ key: 'logs' as SettingsMenuKey, icon: 'terminal' as IconName, label: '日志' }] : []),
 ];
 
-export function SettingsPanel({ visible, settings, onSettingsChange, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ visible, settings, onSettingsChange, onClose, backendPort, workspacePath }: SettingsPanelProps) {
   const [activeMenu, setActiveMenu] = useState<SettingsMenuKey>('general');
   const [localSettings, setLocalSettings] = useState(settings);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -185,6 +189,7 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose }: 
                 onRemoveProvider={handleRemoveProvider}
                 onUpdateProvider={handleUpdateProvider}
                 onSetActive={(id) => updateSetting('activeProviderId', id)}
+                backendPort={backendPort}
               />
             )}
             {activeMenu === 'mcp' && (
@@ -202,6 +207,9 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose }: 
                 onRemove={handleRemoveSkill}
                 onUpdate={handleUpdateSkill}
               />
+            )}
+            {activeMenu === 'logs' && (
+              <LogsSettings workspacePath={workspacePath} />
             )}
           </div>
         </div>
@@ -277,7 +285,7 @@ function GeneralSettings({ settings, updateSetting }: {
 }
 
 /* ==================== 模型设置（多供应商） ==================== */
-function ModelSettings({ settings, updateSetting, providers, activeProviderId, onAddProvider, onRemoveProvider, onUpdateProvider, onSetActive }: {
+function ModelSettings({ settings, updateSetting, providers, activeProviderId, onAddProvider, onRemoveProvider, onUpdateProvider, onSetActive, backendPort }: {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   providers: ModelProvider[];
@@ -286,6 +294,7 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
   onRemoveProvider: (id: string) => void;
   onUpdateProvider: (id: string, updates: Partial<ModelProvider>) => void;
   onSetActive: (id: string) => void;
+  backendPort?: number | null;
 }) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const activeProvider = providers.find(p => p.id === activeProviderId);
@@ -347,7 +356,7 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
           <div className="provider-card-detail">
             <span>{p.model || '未选择模型'}</span>
             <span className="provider-card-sep">|</span>
-            <span>{p.apiUrl ? new URL(p.apiUrl).host : '未配置'}</span>
+            <span>{p.apiUrl ? (() => { try { return new URL(p.apiUrl).host; } catch { return p.apiUrl; } })() : '未配置'}</span>
           </div>
         </div>
       ))}
@@ -389,12 +398,10 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
               placeholder="https://api.example.com/v1/chat/completions" />
           </SettingRow>
           <SettingRow label="API Key">
-            <input type="password" className="setting-input" value={activeProvider.apiKey}
-              onChange={e => onUpdateProvider(activeProvider.id, { apiKey: e.target.value })}
-              placeholder="sk-..." />
+            <ApiKeyInput value={activeProvider.apiKey} onChange={v => onUpdateProvider(activeProvider.id, { apiKey: v })} />
           </SettingRow>
           <SettingRow label="模型">
-            <ProviderModelSelect provider={activeProvider} onChange={m => onUpdateProvider(activeProvider.id, { model: m })} />
+            <ProviderModelSelect provider={activeProvider} onChange={m => onUpdateProvider(activeProvider.id, { model: m })} onModelsLoaded={models => onUpdateProvider(activeProvider.id, { availableModels: models })} backendPort={backendPort} />
           </SettingRow>
         </>
       )}
@@ -408,24 +415,81 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
   );
 }
 
-/** 模型选择：根据供应商类型显示预设模型或手动输入 */
-function ProviderModelSelect({ provider, onChange }: { provider: ModelProvider; onChange: (model: string) => void }) {
-  const preset = PROVIDER_PRESETS[provider.type as keyof typeof PROVIDER_PRESETS];
-  const isPresetModel = preset?.models.some(m => m.value === provider.model);
+const FALLBACK_PORT = 4808;
 
-  if (preset && (isPresetModel || !provider.model)) {
-    return (
-      <select className="setting-select" value={provider.model}
-        onChange={e => onChange(e.target.value)}>
-        {preset.models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-        <option value="__custom__">自定义模型...</option>
-      </select>
-    );
-  }
+/** 模型选择：手动点击测试按钮获取，结果持久化到 provider */
+function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }: {
+  provider: ModelProvider;
+  onChange: (model: string) => void;
+  onModelsLoaded: (models: { id: string; ownedBy?: string }[]) => void;
+  backendPort?: number | null;
+}) {
+  const models = provider.availableModels || [];
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFetch = useCallback(async () => {
+    if (!provider.apiUrl || !provider.apiKey) {
+      setError('请填写完整的 API 地址和密钥');
+      return;
+    }
+
+    const port = backendPort || FALLBACK_PORT;
+    setLoading(true);
+    setError('');
+
+    try {
+      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        setError('API地址或密钥不正确');
+        return;
+      }
+
+      const result = await resp.json();
+      const modelList = result.data;
+      if (!Array.isArray(modelList) || modelList.length === 0) {
+        setError('未获取到可用模型');
+        return;
+      }
+
+      onModelsLoaded(modelList);
+      if (!provider.model && modelList.length > 0) {
+        onChange(modelList[0].id);
+      }
+      setError('');
+    } catch (err) {
+      console.error('[SettingsPanel] fetchModels error:', err);
+      setError('后端服务未就绪或API地址不正确');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort, provider.apiUrl, provider.apiKey, provider.type, provider.model, onChange, onModelsLoaded]);
 
   return (
-    <input type="text" className="setting-input" value={provider.model}
-      onChange={e => onChange(e.target.value)} placeholder="模型名称" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <button className="mcp-add-btn" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+          onClick={handleFetch} disabled={loading}>
+          {loading ? '加载中...' : '获取模型'}
+        </button>
+        {models.length > 0 ? (
+          <select className="setting-select" value={provider.model}
+            onChange={e => onChange(e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+            <option value="">选择模型...</option>
+            {models.map(m => (
+              <option key={m.id} value={m.id}>{m.id}</option>
+            ))}
+          </select>
+        ) : (
+          <input type="text" className="setting-input" value={provider.model}
+            onChange={e => onChange(e.target.value)} placeholder="模型名称"
+            disabled={loading} style={{ flex: 1, minWidth: 0 }} />
+        )}
+      </div>
+      {error && <span style={{ fontSize: '11px', color: '#f87171' }}>{error}</span>}
+      {models.length > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>已加载 {models.length} 个模型</span>}
+    </div>
   );
 }
 
@@ -538,6 +602,108 @@ function SkillsSettings({ skills, onAdd, onRemove, onUpdate }: {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ==================== 日志查看 ==================== */
+function LogsSettings({ workspacePath }: { workspacePath?: string | null }) {
+  const [activeLog, setActiveLog] = useState<'desktop' | 'cli'>('desktop');
+  const [desktopLog, setDesktopLog] = useState('');
+  const [cliLog, setCliLog] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const refreshLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [dLog, cLog] = await Promise.all([
+        fileService.readDesktopLog(),
+        workspacePath ? fileService.readCliLog(workspacePath) : Promise.resolve(''),
+      ]);
+      setDesktopLog(dLog || '暂无日志');
+      setCliLog(cLog || '暂无日志');
+    } catch {
+      setDesktopLog('读取失败');
+      setCliLog('读取失败');
+    }
+    setLoading(false);
+  }, [workspacePath]);
+
+  useEffect(() => { refreshLogs(); }, [refreshLogs]);
+
+  const content = activeLog === 'desktop' ? desktopLog : cliLog;
+
+  return (
+    <div className="settings-section-content">
+      <div className="settings-section-title">
+        日志
+        <button className="settings-btn cancel" style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: 12 }} onClick={refreshLogs} disabled={loading}>
+          {loading ? '刷新中...' : '刷新'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <button className={`settings-btn ${activeLog === 'desktop' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('desktop')}>桌面端日志</button>
+        <button className={`settings-btn ${activeLog === 'cli' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('cli')}>CLI 日志</button>
+      </div>
+      <pre style={{
+        background: 'var(--bg-secondary, #1e1e1e)',
+        color: 'var(--text-primary, #ccc)',
+        padding: 12,
+        borderRadius: 6,
+        fontSize: 12,
+        maxHeight: 400,
+        overflow: 'auto',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-all',
+        margin: 0,
+        fontFamily: 'monospace',
+      }}>
+        {content}
+      </pre>
+    </div>
+  );
+}
+
+/* ==================== API Key 输入（带密码显隐切换） ==================== */
+function ApiKeyInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <input
+        type={visible ? 'text' : 'password'}
+        className="setting-input"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="sk-..."
+        style={{ paddingRight: '32px' }}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible(v => !v)}
+        style={{
+          position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)',
+          background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+          color: 'var(--text-secondary)', display: 'flex', alignItems: 'center',
+        }}
+        title={visible ? '隐藏密钥' : '显示密钥'}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {visible ? (
+            <>
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </>
+          ) : (
+            <>
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </>
+          )}
+        </svg>
+      </button>
     </div>
   );
 }

@@ -15,6 +15,7 @@ interface ChatViewProps {
   onNewSession?: (title?: string) => string;
   providers?: ModelProvider[];
   activeProviderId?: string;
+  onActiveProviderChange?: (providerId: string) => void;
   activeFileName?: string;
   activeFilePath?: string;
 }
@@ -38,6 +39,11 @@ class WebSocketManager {
   /** 设置后端端口（由 App.tsx 调用，打开工作区后设置） */
   setBackendPort(port: number | null) {
     this.backendPort = port;
+  }
+
+  /** 获取后端端口 */
+  getBackendPort(): number | null {
+    return this.backendPort;
   }
 
   /** 设置工作区路径（由 App.tsx 调用） */
@@ -207,17 +213,47 @@ export function setWorkspacePath(path: string | null) {
   WebSocketManager.getInstance().setWorkspacePath(path);
 }
 
-/** 推送模型配置到后端（供 App.tsx 保存设置时调用） */
-export async function sendModelConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }) {
+const FALLBACK_PORT = 4808;
+
+/** 通过 REST API 注册模型到后端 */
+async function registerModelToBackend(provider: { apiUrl: string; apiKey: string; model: string; type?: string }, select?: boolean) {
+  const port = WebSocketManager.getInstance().getBackendPort() || FALLBACK_PORT;
   try {
-    await WebSocketManager.getInstance().sendConfig(chatModel);
-    console.log('[ChatView] 模型配置已推送到后端');
+    const resp = await fetch(`http://localhost:${port}/chat/models/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: provider.model,
+        apiUrl: provider.apiUrl,
+        apiKey: provider.apiKey,
+        model: provider.model,
+        provider: provider.type || 'openai',
+        timeout: 'PT120S',
+      }),
+    });
+    if (!resp.ok) {
+      console.warn('[ChatView] 注册模型失败:', resp.status, await resp.text());
+      return;
+    }
+    if (select) {
+      await fetch(`http://localhost:${port}/chat/models/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `modelName=${encodeURIComponent(provider.model)}`,
+      });
+    }
+    console.log('[ChatView] 模型已注册:', provider.model);
   } catch (err) {
-    console.warn('[ChatView] 推送模型配置失败:', err);
+    console.warn('[ChatView] 注册模型失败:', err);
   }
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, activeFileName, activeFilePath }: ChatViewProps) {
+/** 推送模型配置到后端（供 App.tsx 保存设置时调用） */
+export async function sendModelConfig(provider: { apiUrl: string; apiKey: string; model: string; type?: string }) {
+  await registerModelToBackend(provider, true);
+}
+
+export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -524,20 +560,22 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     try {
       const wsManager = WebSocketManager.getInstance();
 
-      // 热更新：发消息前推送当前选择的供应商配置
-      const selectedProvider = providers.find(p => p.id === options.model);
+      // 开启会话时注册模型到后端
+      // options.model 格式: "providerId" 或 "providerId__modelId"
+      const sepIdx = options.model.indexOf('__');
+      const providerId = sepIdx >= 0 ? options.model.substring(0, sepIdx) : options.model;
+      const selectedProvider = providers.find(p => p.id === providerId);
       if (selectedProvider) {
-        await wsManager.sendConfig({
-          apiUrl: selectedProvider.apiUrl,
-          apiKey: selectedProvider.apiKey,
-          model: selectedProvider.model,
-        });
+        await registerModelToBackend(selectedProvider);
       }
+
+      // 用实际模型名发送
+      const modelName = selectedProvider?.model || options.modelName;
 
       const request = {
         input: fullMessage,
         sessionId: sessionId,
-        model: options.model,
+        model: modelName,
         agent: options.agent,
         cwd: workspacePath || undefined,
       };
@@ -628,21 +666,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
   }, []);
 
   // 模型切换时推送配置到后端
-  const handleModelChange = useCallback(async (providerId: string) => {
+  const handleModelChange = useCallback(async (compositeId: string) => {
+    // compositeId 格式: "providerId__modelId" 或 "providerId"（无 availableModels 时）
+    const sepIdx = compositeId.indexOf('__');
+    const providerId = sepIdx >= 0 ? compositeId.substring(0, sepIdx) : compositeId;
     const provider = providers.find(p => p.id === providerId);
     if (provider) {
-      try {
-        await WebSocketManager.getInstance().sendConfig({
-          apiUrl: provider.apiUrl,
-          apiKey: provider.apiKey,
-          model: provider.model,
-        });
-        console.log('[ChatView] 模型配置已推送:', provider.name, provider.model);
-      } catch (err) {
-        console.warn('[ChatView] 推送模型配置失败:', err);
-      }
+      onActiveProviderChange?.(compositeId);
+      await registerModelToBackend(provider, true);
     }
-  }, [providers]);
+  }, [providers, onActiveProviderChange]);
 
   const isEmpty = messages.length === 0 && !isLoading;
 

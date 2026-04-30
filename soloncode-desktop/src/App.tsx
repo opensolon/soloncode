@@ -106,6 +106,30 @@ function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string>('default');
 
+  // 非 dev 模式下禁用浏览器默认右键菜单（刷新、另存为、检查元素等）
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    const handler = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener('contextmenu', handler);
+    return () => document.removeEventListener('contextmenu', handler);
+  }, []);
+
+  // 全局 JS 错误捕获
+  useEffect(() => {
+    const handler = (e: ErrorEvent) => {
+      console.error('[App] Uncaught error:', e.error || e.message);
+    };
+    const rejectHandler = (e: PromiseRejectionEvent) => {
+      console.error('[App] Unhandled rejection:', e.reason);
+    };
+    window.addEventListener('error', handler);
+    window.addEventListener('unhandledrejection', rejectHandler);
+    return () => {
+      window.removeEventListener('error', handler);
+      window.removeEventListener('unhandledrejection', rejectHandler);
+    };
+  }, []);
+
   // 启动时从 IndexedDB 加载设置
   useEffect(() => {
     settingsService.load().then(s => setSettings(s));
@@ -113,19 +137,29 @@ function App() {
 
   // 设置变化时自动持久化 + 推送配置到后端
   const handleSettingsChange = useCallback((newSettings: Settings) => {
+    const prevActive = settings.providers.find(p => p.id === settings.activeProviderId);
+    const nextActive = newSettings.providers.find(p => p.id === newSettings.activeProviderId);
+
     setSettings(newSettings);
     settingsService.save(newSettings);
 
-    // 推送当前激活供应商的模型配置到后端
-    const activeProvider = newSettings.providers.find(p => p.id === newSettings.activeProviderId);
-    if (activeProvider) {
+    // 仅当激活供应商的模型配置实际变更时才注册到后端
+    if (nextActive && (
+      !prevActive ||
+      prevActive.apiUrl !== nextActive.apiUrl ||
+      prevActive.apiKey !== nextActive.apiKey ||
+      prevActive.model !== nextActive.model ||
+      prevActive.type !== nextActive.type ||
+      settings.activeProviderId !== newSettings.activeProviderId
+    )) {
       sendModelConfig({
-        apiUrl: activeProvider.apiUrl,
-        apiKey: activeProvider.apiKey,
-        model: activeProvider.model,
+        apiUrl: nextActive.apiUrl,
+        apiKey: nextActive.apiKey,
+        model: nextActive.model,
+        type: nextActive.type,
       });
     }
-  }, []);
+  }, [settings]);
 
   // 工作区状态
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -138,13 +172,40 @@ function App() {
   // 文件 Diff 行变更缓存
   const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
 
-  // 后端端口状态
+  // 后端端口（固定值，不因心跳失败清除）
+  const backendPortRef = useRef<number>(4808);
   const [backendPort, setBackendPortState] = useState<number | null>(null);
+
+  // 后端连接状态（独立管理，心跳可恢复）
+  const [backendConnected, setBackendConnected] = useState(false);
 
   // 同步后端端口到 ChatView
   useEffect(() => {
     setChatBackendPort(backendPort);
   }, [backendPort]);
+
+  // 心跳：每30s检测后端存活，失败只改状态不清端口，可自动恢复
+  // 检测成功时如果 port 未设置，自动补上（处理后端先于桌面版启动的场景）
+  useEffect(() => {
+    const port = backendPortRef.current;
+    let alive = false;
+    const check = async () => {
+      try {
+        const resp = await fetch(`http://localhost:${port}/chat/models`);
+        alive = resp.ok;
+      } catch {
+        alive = false;
+      }
+      setBackendConnected(alive);
+      if (alive) {
+        setBackendPortState(prev => prev ?? port);
+        setChatBackendPort(port);
+      }
+    };
+    check();
+    const timer = setInterval(check, 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 刷新 Git 状态
   const refreshGitStatus = useCallback(async () => {
@@ -240,25 +301,54 @@ function App() {
       setSessions(loaded);
     });
 
+    // 启动后端（与工作区无关，始终启动）
+    fileService.writeLog('Starting backend (no workspace dependency)');
+    backendService.start('').then(async (port) => {
+        if (port) {
+          backendPortRef.current = port;
+          setBackendPortState(port);
+          setBackendConnected(true);
+          setChatBackendPort(port);
+
+          const cliConfig = await fileService.readGlobalChatModel();
+          if (cliConfig && cliConfig.apiUrl) {
+            setSettings(prev => {
+              settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, prev.providers)
+                .then(result => {
+                  if (result) {
+                    setSettings(p => {
+                      const updated = { ...p, providers: result.providers };
+                      if (result.activeProviderId) {
+                        updated.activeProviderId = result.activeProviderId;
+                      }
+                      settingsService.save(updated);
+                      return updated;
+                    });
+                  }
+                });
+              return prev;
+            });
+          }
+        } else {
+          setBackendPortState(null);
+          setBackendConnected(false);
+        }
+      }).catch(() => { setBackendPortState(null); setBackendConnected(false); });
+
     // 启动时恢复上次打开的文件夹
     loadLastFolder().then(async (lastFolder) => {
-      if (!lastFolder) return;
+      if (!lastFolder) {
+        fileService.writeLog('loadLastFolder returned null, no workspace to restore');
+        return;
+      }
       try {
+        fileService.writeLog(`Restoring workspace: ${lastFolder}`);
         console.log('[App] 恢复上次工作区:', lastFolder);
         await fileService.initWorkspaceConfig(lastFolder);
         const info = await fileService.getWorkspaceInfo(lastFolder);
         setWorkspacePath(lastFolder);
         setChatWorkspacePath(lastFolder);
         setWorkspaceName(info.name);
-
-        backendService.start(lastFolder).then((port) => {
-          if (port) {
-            setBackendPortState(port);
-            setChatBackendPort(port);
-          } else {
-            setBackendPortState(null);
-          }
-        }).catch(() => setBackendPortState(null));
 
         const files = await fileService.listDirectoryTree(lastFolder, 10);
         setWorkspaceFiles(convertToFileTree(files));
@@ -531,12 +621,12 @@ function App() {
   // 通过路径打开工作区（复用逻辑）
   const openFolderByPath = useCallback(async (selectedPath: string) => {
     try {
-      // 1. 清理旧工作区
+      // 1. 清理旧工作区（不停止后端进程，由 Rust 侧复用）
       if (workspacePath) {
-        try { await backendService.stop(); } catch (_) {}
         setChatBackendPort(null);
         setChatWorkspacePath(null);
         setBackendPortState(null);
+        setBackendConnected(false);
         setOpenFiles([]);
         setActiveFilePath(null);
         setGitStatus(emptyGitStatus);
@@ -553,14 +643,38 @@ function App() {
       saveLastFolder(selectedPath);
 
       // 启动后端
-      backendService.start(selectedPath).then((port) => {
+      backendService.start(selectedPath).then(async (port) => {
         if (port) {
+          backendPortRef.current = port;
           setBackendPortState(port);
+          setBackendConnected(true);
           setChatBackendPort(port);
+
+          // 从 CLI 配置读取 baseUrl 和密钥，获取所有可用模型
+          const cliConfig = await fileService.readGlobalChatModel();
+          if (cliConfig && cliConfig.apiUrl) {
+            setSettings(prev => {
+              settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, prev.providers)
+                .then(result => {
+                  if (result) {
+                    setSettings(p => {
+                      const updated = { ...p, providers: result.providers };
+                      if (result.activeProviderId) {
+                        updated.activeProviderId = result.activeProviderId;
+                      }
+                      settingsService.save(updated);
+                      return updated;
+                    });
+                  }
+                });
+              return prev;
+            });
+          }
         } else {
           setBackendPortState(null);
+          setBackendConnected(false);
         }
-      }).catch(() => setBackendPortState(null));
+      }).catch(() => { setBackendPortState(null); setBackendConnected(false); });
 
       // 加载目录树
       const files = await fileService.listDirectoryTree(selectedPath, 10);
@@ -931,6 +1045,13 @@ function App() {
             onNewSession={handleNewSession}
             providers={settings.providers}
             activeProviderId={settings.activeProviderId}
+            onActiveProviderChange={(providerId: string) => {
+              setSettings(prev => {
+                const updated = { ...prev, activeProviderId: providerId };
+                settingsService.save(updated);
+                return updated;
+              });
+            }}
             activeFileName={activeFile?.name}
             activeFilePath={activeFilePath || undefined}
           />
@@ -1000,6 +1121,7 @@ function App() {
 
       {/* 底部状态栏 */}
       <StatusBar
+        connected={backendConnected}
         model={settings.model}
         branch={gitStatus.branch}
         ahead={gitStatus.ahead}
@@ -1024,6 +1146,8 @@ function App() {
         settings={settings}
         onSettingsChange={handleSettingsChange}
         onClose={() => setSettingsVisible(false)}
+        backendPort={backendPort}
+        workspacePath={workspacePath}
       />
     </div>
   );

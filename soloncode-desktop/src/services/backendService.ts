@@ -76,19 +76,27 @@ export const backendService = {
     }
 
     try {
+      await fileService.writeLog(`backendService.start called, workspacePath=${workspacePath}`);
       console.log('[backendService] 启动后端...', { workspacePath, serverPort: SERVER_PORT, wsPort: WS_PORT });
       const pid = await fileService.startBackend(workspacePath, SERVER_PORT);
+      await fileService.writeLog(`startBackend returned PID=${pid}`);
       console.log('[backendService] 后端进程 PID:', pid);
 
-      // 等待 WebSocket 端口就绪（Solon WS 端口 = server.port + 10000）
       const ready = await waitForReady(WS_PORT);
       if (!ready) {
+        await fileService.writeLog('waitForReady timeout');
         console.error('[backendService] 后端启动超时');
         return null;
       }
 
+      await fileService.writeLog(`backend ready on port ${WS_PORT}`);
       return WS_PORT;
-    } catch (err) {
+    } catch (err: any) {
+      const errMsg = String(err || '');
+      await fileService.writeLog(`start failed: ${errMsg}`);
+      if (errMsg.includes('端口') && errMsg.includes('已被占用')) {
+        alert(errMsg);
+      }
       console.warn('[backendService] 后端启动失败:', err);
       return null;
     }
