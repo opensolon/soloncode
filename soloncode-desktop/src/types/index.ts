@@ -29,6 +29,7 @@ export interface Conversation {
   status: string;
   isPermanent?: boolean;
   icon?: string;
+  workspacePath?: string;
 }
 
 export interface Plugin {

@@ -5,6 +5,8 @@
 import { DropdownMenu, type MenuItem } from '../common/DropdownMenu';
 import { Icon } from '../common/Icon';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { startWindowDrag } from '../../hooks/useWindowDrag';
+import logo from '../../assets/logo.png';
 import './TitleBar.css';
 
 interface TitleBarProps {
@@ -16,6 +18,7 @@ interface TitleBarProps {
   onNewFolder?: () => void;
   onOpenFile?: () => void;
   onOpenFolder?: () => void;
+  onNewProject?: () => void;
   onSave?: () => void;
   onSaveAs?: () => void;
   onSaveAll?: () => void;
@@ -35,6 +38,7 @@ export function TitleBar({
   onNewFolder,
   onOpenFile,
   onOpenFolder,
+  onNewProject,
   onSave,
   onSaveAs,
   onSaveAll,
@@ -66,6 +70,10 @@ export function TitleBar({
       id: 'open-folder',
       label: '打开文件夹...',
       shortcut: 'Ctrl+K Ctrl+O',
+    },
+    {
+      id: 'new-project',
+      label: '新建项目...',
     },
     { id: 'divider2', label: '', divider: true },
     {
@@ -130,6 +138,9 @@ export function TitleBar({
       case 'open-folder':
         onOpenFolder?.();
         break;
+      case 'new-project':
+        onNewProject?.();
+        break;
       case 'save':
         onSave?.();
         break;
@@ -168,9 +179,10 @@ export function TitleBar({
   };
 
   return (
-    <div className="title-bar">
+    <div className="title-bar" onMouseDown={startWindowDrag}>
       {/* 左侧菜单 */}
-      <div className="title-bar-left">
+      <div className="title-bar-left" data-no-drag>
+        <img className="app-logo" src={logo} alt="SolonCode" />
         <DropdownMenu
           trigger={<span className="menu-trigger">文件</span>}
           items={fileMenuItems}
@@ -200,7 +212,7 @@ export function TitleBar({
       </div>
 
       {/* 右侧工具栏 */}
-      <div className="title-bar-right">
+      <div className="title-bar-right" data-no-drag>
         <button
           className={`titlebar-btn${editorVisible ? ' active' : ''}`}
           onClick={onToggleEditor}

@@ -1,10 +1,43 @@
+.window-frame {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .app-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
   background-color: var(--cb-vscode-editor-background);
+}
+
+/* 窗口边框拖拽区域 */
+.drag-edge {
+  position: absolute;
+  z-index: 9999;
+}
+
+.drag-top {
+  top: 0; left: 0; right: 0;
+  height: 4px;
+}
+
+.drag-bottom {
+  bottom: 0; left: 0; right: 0;
+  height: 4px;
+}
+
+.drag-left {
+  top: 0; bottom: 0; left: 0;
+  width: 4px;
+}
+
+.drag-right {
+  top: 0; bottom: 0; right: 0;
+  width: 4px;
 }
 
 /* 菜单栏 */

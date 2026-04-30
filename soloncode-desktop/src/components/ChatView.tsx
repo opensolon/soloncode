@@ -11,6 +11,7 @@ interface ChatViewProps {
   currentConversation: Conversation;
   plugins?: Plugin[];
   workspacePath?: string;
+  projectName?: string;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
   providers?: ModelProvider[];
@@ -127,10 +128,9 @@ class WebSocketManager {
       const msg = JSON.parse(data);
       const sessionId = msg.sessionId;
 
-      // 按优先级查找回调：精确匹配 → connectingSessionId → 任意一个
+      // 按优先级查找回调：精确匹配 → connectingSessionId
       let callback = (sessionId && this.messageCallbacks.get(sessionId))
         || (this.connectingSessionId && this.messageCallbacks.get(this.connectingSessionId))
-        || this.messageCallbacks.values().next().value
         || null;
 
       if (callback) {
@@ -197,7 +197,7 @@ function filterEmptyTags(text: string): string {
   result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)><\/\1>/g, '');
   result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)\/>/g, '');
   // 过滤只有空白内容（包括空格、换行、回车）的标签
-  result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>[\s\n\r]*<\/\1>/g, '');
+  // result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>[\s\n\r]*<\/\1>/g, '');
   // 过滤连续的空行（超过2个换行符）
   result = result.replace(/\n{3,}/g, '\n\n');
   return result;
@@ -253,7 +253,7 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
   await registerModelToBackend(provider, true);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -353,14 +353,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     return items;
   }
 
-  // 注册消息回调
+  // 注册消息回调（只注册一次，通过 ref 获取当前 sessionId）
   useEffect(() => {
-    if (!currentConversation.id) return;
-    const sessionId = currentConversation.id.toString();
     const wsManager = WebSocketManager.getInstance();
+    const callbackId = '__chat__';
 
     const handleMessage = (data: any) => {
-      const msgSessionId = data.sessionId || sessionId;
+      const msgSessionId = data.sessionId || conversationIdRef.current.toString();
 
       // done / error 类型必须处理，不受 session 校验限制（保证 loading 状态正确）
       if (data.type === 'done') {
@@ -491,12 +490,12 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
       chatMessagesRef.current?.scrollToBottom();
     };
 
-    wsManager.registerCallback(sessionId, handleMessage);
+    wsManager.registerCallback(callbackId, handleMessage);
 
     return () => {
-      wsManager.unregisterCallback(sessionId);
+      wsManager.unregisterCallback(callbackId);
     };
-  }, [currentConversation.id]);
+  }, []);
 
   const sendMessage = useCallback(async (messageText: string, options: SendOptions) => {
     let sessionId = currentConversation.id?.toString();
@@ -530,8 +529,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
 
     setMessages(prev => [...prev, userMessage]);
 
-    // 将会话保存到列表（如果尚未保存）
-    if (onUpdateSessionTitle) {
+    // 首次发送时将会话保存到列表
+    if (onUpdateSessionTitle && !sessionId.startsWith('temp-')) {
+      // 已持久化的会话，仅首次更新标题
+    } else if (onUpdateSessionTitle) {
       const title = messageText.trim().slice(0, 20) + (messageText.trim().length > 20 ? '...' : '');
       onUpdateSessionTitle(sessionId, title);
     }
@@ -544,6 +545,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     });
 
     setIsLoading(true);
+    isStreamingRef.current = true;
     startLoadingTimer(); // 开始超时计时
 
     // 重置累积器
@@ -580,7 +582,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         cwd: workspacePath || undefined,
       };
 
-      await wsManager.sendMessage(sessionId, request);
+      await wsManager.sendMessage('__chat__', request);
 
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -628,12 +630,31 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     loadTheme();
   }, []);
 
+  // 跟踪是否正在流式输出，防止 ID 替换时重新加载覆盖消息
+  const isStreamingRef = useRef(false);
+
+  // 会话切换时加载/清空消息
   useEffect(() => {
-    if (currentConversation.id) {
-      loadConversationMessages(currentConversation.id);
-    } else {
+    const id = currentConversation.id?.toString();
+
+    if (!id) {
       setMessages([]);
+      return;
     }
+
+    // 临时会话：清空消息
+    if (id.startsWith('temp-') || id.startsWith('pending-')) {
+      setMessages([]);
+      return;
+    }
+
+    // 正在流式输出时（ID 从 temp 替换为 real），跳过加载
+    if (isStreamingRef.current) {
+      return;
+    }
+
+    // 正常会话：从数据库加载历史消息
+    loadConversationMessages(id);
   }, [currentConversation]);
 
   // 停止当前请求
@@ -681,14 +702,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
 
   return (
     <main className="main-content">
-      {!isEmpty && (
       <ChatHeader
         title={currentConversation.title}
         status={currentConversation.status}
         theme={currentTheme}
+        projectName={projectName}
         onToggleTheme={toggleTheme}
       />
-      )}
       <ChatMessages
         ref={chatMessagesRef}
         messages={messages}

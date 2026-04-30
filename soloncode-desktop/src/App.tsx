@@ -2,61 +2,27 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { ActivityBar, type ActivityType } from './components/layout/ActivityBar';
 import { TitleBar } from './components/layout/TitleBar';
 import { SidePanel } from './components/layout/SidePanel';
-import { StatusBar } from './components/layout/StatusBar';
+import { StatusBar, type BackendStatus } from './components/layout/StatusBar';
 import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
 import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
-import { SessionsPanel, type Session } from './components/sidebar/SessionsPanel';
+import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
-import { getAllConversations, saveConversation, deleteConversation, updateConversation, saveLastFolder, loadLastFolder, saveLastSessionId, loadLastSessionId } from './db';
+import { getAllConversations, saveConversation, deleteConversation, updateConversation, saveLastFolder, loadLastFolder, saveLastSessionId, loadLastSessionId, migrateConversationsToProjects, getAllProjects, addProject as dbAddProject, removeProject as dbRemoveProject, UNLINKED_PROJECT, saveLastActiveProject, loadLastActiveProject } from './db';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
 import { EditorPanel } from './components/editor/EditorPanel';
 import { ChatView } from './components/ChatView';
 import { TerminalPanel } from './components/terminal/TerminalPanel';
-import { fileService, type FileInfo } from './services/fileService';
+import { fileService } from './services/fileService';
 import { gitService, type GitStatus, type DiffLine } from './services/gitService';
 import { settingsService } from './services/settingsService';
 import { backendService } from './services/backendService';
 import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
+import { startWindowDrag } from './hooks/useWindowDrag';
 import type { Conversation, Plugin } from './types';
 import './App.css';
-
-// 文件树节点接口
-interface FileTreeNode {
-  name: string;
-  type: 'folder' | 'file';
-  path: string;
-  children?: FileTreeNode[];
-  gitStatus?: 'modified' | 'added' | 'deleted' | 'untracked';
-}
-
-// 将 FileInfo 转换为 FileTreeNode
-function convertToFileTree(files: FileInfo[]): FileTreeNode[] {
-  return files.map(f => ({
-    name: f.name,
-    type: f.isDir ? 'folder' as const : 'file' as const,
-    path: f.path,
-    children: f.children ? convertToFileTree(f.children) : undefined,
-  }));
-}
-
-// 将 git status 合并到文件树（git paths 是相对路径，file tree 是绝对路径）
-function mergeGitStatus(files: FileTreeNode[], gitFiles: { path: string; status: 'modified' | 'added' | 'deleted' | 'untracked' }[], workspacePath: string): FileTreeNode[] {
-  // 统一用 / 分隔的相对路径做 key
-  const normalize = (p: string) => p.replace(/\\/g, '/');
-  const wsPrefix = normalize(workspacePath).replace(/\/$/, '') + '/';
-  const map = new Map(gitFiles.map(f => [normalize(f.path), f.status]));
-  return files.map(f => {
-    const relPath = normalize(f.path).replace(wsPrefix, '');
-    return {
-      ...f,
-      gitStatus: map.get(relPath) || map.get(normalize(f.path)),
-      children: f.children ? mergeGitStatus(f.children, gitFiles, workspacePath) : undefined,
-    };
-  });
-}
 
 // 空 Git 状态（初始值）
 const emptyGitStatus: GitStatus = {
@@ -161,10 +127,9 @@ function App() {
     }
   }, [settings]);
 
-  // 工作区状态
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [workspaceName, setWorkspaceName] = useState<string>('');
-  const [workspaceFiles, setWorkspaceFiles] = useState<FileTreeNode[]>([]);
+  // 工作区状态 — activeProjectPath 替代原 workspacePath
+  const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
+  const [projectRefreshKey, setProjectRefreshKey] = useState(0);
 
   // Git 状态
   const [gitStatus, setGitStatus] = useState<GitStatus>(emptyGitStatus);
@@ -176,8 +141,8 @@ function App() {
   const backendPortRef = useRef<number>(4808);
   const [backendPort, setBackendPortState] = useState<number | null>(null);
 
-  // 后端连接状态（独立管理，心跳可恢复）
-  const [backendConnected, setBackendConnected] = useState(false);
+  // 后端连接状态：connecting -> connected / disconnected
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('connecting');
 
   // 同步后端端口到 ChatView
   useEffect(() => {
@@ -185,21 +150,20 @@ function App() {
   }, [backendPort]);
 
   // 心跳：每30s检测后端存活，失败只改状态不清端口，可自动恢复
-  // 检测成功时如果 port 未设置，自动补上（处理后端先于桌面版启动的场景）
   useEffect(() => {
     const port = backendPortRef.current;
-    let alive = false;
     const check = async () => {
       try {
         const resp = await fetch(`http://localhost:${port}/chat/models`);
-        alive = resp.ok;
+        if (resp.ok) {
+          setBackendStatus('connected');
+          setBackendPortState(prev => prev ?? port);
+          setChatBackendPort(port);
+        } else {
+          setBackendStatus(prev => prev === 'connecting' ? 'connecting' : 'disconnected');
+        }
       } catch {
-        alive = false;
-      }
-      setBackendConnected(alive);
-      if (alive) {
-        setBackendPortState(prev => prev ?? port);
-        setChatBackendPort(port);
+        setBackendStatus(prev => prev === 'connecting' ? 'connecting' : 'disconnected');
       }
     };
     check();
@@ -209,13 +173,13 @@ function App() {
 
   // 刷新 Git 状态
   const refreshGitStatus = useCallback(async () => {
-    if (workspacePath) {
-      const status = await gitService.status(workspacePath);
+    if (activeProjectPath) {
+      const status = await gitService.status(activeProjectPath);
       setGitStatus(status);
     } else {
       setGitStatus(emptyGitStatus);
     }
-  }, [workspacePath]);
+  }, [activeProjectPath]);
 
   // 工作区变化时加载 Git 状态 + 定时刷新
   useEffect(() => {
@@ -281,33 +245,61 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
 
+  // 记住上次新建会话时选择的项目（ChatView 发消息时关联用）
+  const [pendingSessionProject, setPendingSessionProject] = useState<string | null>(null);
+
+  // 项目列表
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  // 派生：活跃项目名称
+  const workspaceName = useMemo(() => {
+    const p = projects.find(p => p.id === activeProjectPath);
+    return p?.name || '';
+  }, [projects, activeProjectPath]);
+
   // 会话或工作区变化时，保存最后会话 ID
   useEffect(() => {
-    if (workspacePath && currentSessionId) {
-      saveLastSessionId(workspacePath, currentSessionId);
+    if (activeProjectPath && currentSessionId) {
+      saveLastSessionId(activeProjectPath, currentSessionId);
     }
-  }, [workspacePath, currentSessionId]);
+  }, [activeProjectPath, currentSessionId]);
 
-  // 从 IndexedDB 加载会话列表
+  // 从 IndexedDB 加载会话列表和项目
   useEffect(() => {
-    getAllConversations().then(convs => {
+    // 运行迁移 + 加载数据
+    (async () => {
+      await migrateConversationsToProjects();
+
+      const [convs, dbProjects] = await Promise.all([
+        getAllConversations(),
+        getAllProjects(),
+      ]);
+
       const loaded: Session[] = convs.map(c => ({
         id: c.id!.toString(),
         title: c.title,
         timestamp: c.timestamp,
         messageCount: 0,
         isPermanent: c.isPermanent,
+        workspacePath: c.workspacePath || UNLINKED_PROJECT,
       }));
       setSessions(loaded);
-    });
 
-    // 启动后端（与工作区无关，始终启动）
+      setProjects(dbProjects.map(p => ({
+        id: p.id,
+        name: p.name,
+        sortOrder: p.sortOrder,
+      })));
+    })();
+
+    // 启动后端（与工作区无关，始终启动，异步不阻塞）
+    setBackendStatus('connecting');
     fileService.writeLog('Starting backend (no workspace dependency)');
     backendService.start('').then(async (port) => {
         if (port) {
           backendPortRef.current = port;
           setBackendPortState(port);
-          setBackendConnected(true);
+          setBackendStatus('connected');
           setChatBackendPort(port);
 
           const cliConfig = await fileService.readGlobalChatModel();
@@ -331,66 +323,29 @@ function App() {
           }
         } else {
           setBackendPortState(null);
-          setBackendConnected(false);
+          setBackendStatus('disconnected');
         }
-      }).catch(() => { setBackendPortState(null); setBackendConnected(false); });
+      }).catch(() => { setBackendPortState(null); setBackendStatus('disconnected'); });
 
-    // 启动时恢复上次打开的文件夹
-    loadLastFolder().then(async (lastFolder) => {
-      if (!lastFolder) {
-        fileService.writeLog('loadLastFolder returned null, no workspace to restore');
+    // 启动时恢复上次的活跃项目（不扫描文件树，ExplorerPanel 懒加载）
+    loadLastActiveProject().then(async (lastActive) => {
+      if (!lastActive) {
+        fileService.writeLog('No last active project to restore');
         return;
       }
       try {
-        fileService.writeLog(`Restoring workspace: ${lastFolder}`);
-        console.log('[App] 恢复上次工作区:', lastFolder);
-        await fileService.initWorkspaceConfig(lastFolder);
-        const info = await fileService.getWorkspaceInfo(lastFolder);
-        setWorkspacePath(lastFolder);
-        setChatWorkspacePath(lastFolder);
-        setWorkspaceName(info.name);
-
-        const files = await fileService.listDirectoryTree(lastFolder, 10);
-        setWorkspaceFiles(convertToFileTree(files));
+        fileService.writeLog(`Restoring active project: ${lastActive}`);
+        setActiveProjectPath(lastActive);
+        setChatWorkspacePath(lastActive);
         setActiveActivity('explorer');
 
-        // 自动发现 skills（项目级 + 第三方）
-        const allDiscoveredSkills = [
-          ...await settingsService.scanSkillsDir(lastFolder),
-          ...await settingsService.scanThirdPartySkills(lastFolder),
-        ];
-        if (allDiscoveredSkills.length > 0) {
-          setSettings(prev => {
-            const existingPaths = new Set(prev.skills.map(s => s.path));
-            const newSkills = allDiscoveredSkills.filter(s => !existingPaths.has(s.path));
-            if (newSkills.length > 0) {
-              return { ...prev, skills: [...prev.skills, ...newSkills] };
-            }
-            return prev;
-          });
-        }
-
-        // 自动发现 agents
-        const discoveredAgents = await settingsService.scanAgentsDir(lastFolder);
-        if (discoveredAgents.length > 0) {
-          setSettings(prev => {
-            const existingPaths = new Set(prev.agents.map(a => a.path));
-            const newAgents = discoveredAgents.filter(a => !existingPaths.has(a.path));
-            if (newAgents.length > 0) {
-              return { ...prev, agents: [...prev.agents, ...newAgents] };
-            }
-            return prev;
-          });
-        }
-
-        // 恢复该文件夹的最后会话
-        const lastSessionId = await loadLastSessionId(lastFolder);
+        // 恢复该项目的最后会话
+        const lastSessionId = await loadLastSessionId(lastActive);
         if (lastSessionId) {
           setCurrentSessionId(lastSessionId);
-          setActiveActivity('sessions');
         }
       } catch (err) {
-        console.warn('[App] 恢复工作区失败:', err);
+        console.warn('[App] 恢复活跃项目失败:', err);
       }
     });
   }, []);
@@ -402,42 +357,39 @@ function App() {
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 文件监听 - 工作区文件变化时自动刷新文件树
+  // 文件监听 - 活跃项目文件变化时通知 ExplorerPanel 刷新
   useFileWatcher({
-    workspacePath,
+    workspacePath: activeProjectPath,
     onChange: async (_changedPaths) => {
-      if (workspacePath) {
-        const files = await fileService.listDirectoryTree(workspacePath, 10);
-        setWorkspaceFiles(convertToFileTree(files));
-      }
+      setProjectRefreshKey(prev => prev + 1);
     },
-    enabled: !!workspacePath,
+    enabled: !!activeProjectPath,
   });
 
   // 配置文件监听 - .soloncode/ 目录变化时自动重载设置
   useFileWatcher({
-    workspacePath: workspacePath ? `${workspacePath}/.soloncode` : null,
+    workspacePath: activeProjectPath ? `${activeProjectPath}/.soloncode` : null,
     onChange: async (_changedPaths) => {
-      if (workspacePath) {
-        const configUpdate = await settingsService.loadConfigFile(workspacePath);
+      if (activeProjectPath) {
+        const configUpdate = await settingsService.loadConfigFile(activeProjectPath);
         if (configUpdate) {
           setSettings(prev => ({ ...prev, ...configUpdate }));
           showToast('配置已重新加载');
         }
       }
     },
-    enabled: !!workspacePath,
+    enabled: !!activeProjectPath,
   });
 
   // 获取当前活跃文件的 git diff
   useEffect(() => {
-    if (!workspacePath || !activeFilePath) {
+    if (!activeProjectPath || !activeFilePath) {
       setDiffLines([]);
       return;
     }
-    const relPath = activeFilePath.replace(workspacePath.replace(/\\/g, '/').replace(/\/$/, '') + '/', '');
-    gitService.diffFile(workspacePath, relPath).then(setDiffLines).catch(() => setDiffLines([]));
-  }, [workspacePath, activeFilePath, gitStatus]);
+    const relPath = activeFilePath.replace(activeProjectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/', '');
+    gitService.diffFile(activeProjectPath, relPath).then(setDiffLines).catch(() => setDiffLines([]));
+  }, [activeProjectPath, activeFilePath, gitStatus]);
 
   // useMemo 稳定 currentConversation，仅 sessionId/sessions 变化时重建
   const currentConversation: Conversation = useMemo(() => ({
@@ -574,7 +526,7 @@ function App() {
 
   const handleFileSave = useCallback(async (path: string) => {
     const file = openFiles.find(f => f.path === path);
-    if (file && workspacePath) {
+    if (file && activeProjectPath) {
       try {
         await fileService.writeFile(path, file.content);
         setOpenFiles(prev => prev.map(f =>
@@ -588,7 +540,7 @@ function App() {
         f.path === path ? { ...f, modified: false } : f
       ));
     }
-  }, [openFiles, workspacePath]);
+  }, [openFiles, activeProjectPath]);
 
   // 打开文件对话框
   const handleOpenFile = useCallback(async () => {
@@ -618,67 +570,36 @@ function App() {
   }, []);
 
   // 打开文件夹对话框
-  // 通过路径打开工作区（复用逻辑）
+  // 通过路径打开工作区（追加项目，不替换）
   const openFolderByPath = useCallback(async (selectedPath: string) => {
     try {
-      // 1. 清理旧工作区（不停止后端进程，由 Rust 侧复用）
-      if (workspacePath) {
-        setChatBackendPort(null);
-        setChatWorkspacePath(null);
-        setBackendPortState(null);
-        setBackendConnected(false);
-        setOpenFiles([]);
-        setActiveFilePath(null);
-        setGitStatus(emptyGitStatus);
-      }
-
       await fileService.initWorkspaceConfig(selectedPath);
       const info = await fileService.getWorkspaceInfo(selectedPath);
 
-      setWorkspacePath(selectedPath);
+      // 添加到项目列表（如不存在）
+      if (!projects.find(p => p.id === selectedPath)) {
+        const project = { id: selectedPath, name: info.name, sortOrder: projects.length, addedAt: new Date().toISOString() };
+        await dbAddProject(project);
+        setProjects(prev => [...prev, { id: project.id, name: project.name, sortOrder: project.sortOrder }]);
+      }
+
+      // 设置为活跃项目
+      setActiveProjectPath(selectedPath);
       setChatWorkspacePath(selectedPath);
-      setWorkspaceName(info.name);
-
-      // 保存最后打开的文件夹
       saveLastFolder(selectedPath);
+      saveLastActiveProject(selectedPath);
 
-      // 启动后端
-      backendService.start(selectedPath).then(async (port) => {
-        if (port) {
-          backendPortRef.current = port;
-          setBackendPortState(port);
-          setBackendConnected(true);
-          setChatBackendPort(port);
+      // 清理编辑器状态
+      setOpenFiles([]);
+      setActiveFilePath(null);
+      setGitStatus(emptyGitStatus);
 
-          // 从 CLI 配置读取 baseUrl 和密钥，获取所有可用模型
-          const cliConfig = await fileService.readGlobalChatModel();
-          if (cliConfig && cliConfig.apiUrl) {
-            setSettings(prev => {
-              settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, prev.providers)
-                .then(result => {
-                  if (result) {
-                    setSettings(p => {
-                      const updated = { ...p, providers: result.providers };
-                      if (result.activeProviderId) {
-                        updated.activeProviderId = result.activeProviderId;
-                      }
-                      settingsService.save(updated);
-                      return updated;
-                    });
-                  }
-                });
-              return prev;
-            });
-          }
-        } else {
-          setBackendPortState(null);
-          setBackendConnected(false);
-        }
-      }).catch(() => { setBackendPortState(null); setBackendConnected(false); });
+      // 后端已在启动时连接，此处只更新工作区路径
+      if (backendPortRef.current) {
+        setChatBackendPort(backendPortRef.current);
+        setChatWorkspacePath(selectedPath);
+      }
 
-      // 加载目录树
-      const files = await fileService.listDirectoryTree(selectedPath, 10);
-      setWorkspaceFiles(convertToFileTree(files));
       setActiveActivity('explorer');
 
       // 自动发现 skills（项目级 + 第三方）
@@ -721,7 +642,7 @@ function App() {
       console.error('[App] 打开文件夹失败:', err);
       return false;
     }
-  }, [workspacePath]);
+  }, [projects]);
 
   // 打开文件夹对话框
   const handleOpenFolder = useCallback(async () => {
@@ -731,47 +652,45 @@ function App() {
     }
   }, [openFolderByPath]);
 
-  // 刷新文件树（带防抖，避免短时间内多次全量扫描）
+  // 刷新项目文件树（递增 refreshKey，ExplorerPanel 自行重扫）
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refreshFileTree = useCallback(async () => {
-    if (!workspacePath) return;
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = setTimeout(async () => {
-      const files = await fileService.listDirectoryTree(workspacePath, 10);
-      setWorkspaceFiles(convertToFileTree(files));
+  const refreshFileTree = useCallback(async (_projectPath?: string) => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => {
+      setProjectRefreshKey(prev => prev + 1);
     }, 300);
-  }, [workspacePath]);
+  }, []);
 
-  // 新建文件（在工作区根目录）
-  const handleNewFile = useCallback(async () => {
-    if (!workspacePath) return;
+  // 新建文件（在指定项目根目录）
+  const handleNewFile = useCallback(async (projectPath?: string) => {
+    const basePath = projectPath || activeProjectPath;
+    if (!basePath) return;
     const name = 'untitled';
-    let path = `${workspacePath}/${name}`;
+    let path = `${basePath}/${name}`;
     let counter = 1;
     while (await fileService.pathExists(path)) {
-      path = `${workspacePath}/${name}-${counter}`;
+      path = `${basePath}/${name}-${counter}`;
       counter++;
     }
     await fileService.createFile(path);
-    await refreshFileTree();
+    refreshFileTree(basePath);
     handleFileSelect(path);
-  }, [workspacePath, refreshFileTree, handleFileSelect]);
+  }, [activeProjectPath, refreshFileTree, handleFileSelect]);
 
-  // 新建文件夹（在工作区根目录）
-  const handleNewFolder = useCallback(async () => {
-    if (!workspacePath) return;
+  // 新建文件夹（在指定项目根目录）
+  const handleNewFolder = useCallback(async (projectPath?: string) => {
+    const basePath = projectPath || activeProjectPath;
+    if (!basePath) return;
     const name = 'new-folder';
-    let path = `${workspacePath}/${name}`;
+    let path = `${basePath}/${name}`;
     let counter = 1;
     while (await fileService.pathExists(path)) {
-      path = `${workspacePath}/${name}-${counter}`;
+      path = `${basePath}/${name}-${counter}`;
       counter++;
     }
     await fileService.createDirectory(path);
-    await refreshFileTree();
-  }, [workspacePath, refreshFileTree]);
+    refreshFileTree(basePath);
+  }, [activeProjectPath, refreshFileTree]);
 
   // 重命名文件/文件夹
   const handleRename = useCallback(async (oldPath: string, newPath: string) => {
@@ -846,28 +765,24 @@ function App() {
   }, []);
 
   // 会话操作
-  const handleNewSession = useCallback((title?: string): string => {
-    // 点击"+"无标题时，当前已是空会话则提示
-    if (!title && currentSessionId && !sessions.find(s => s.id === currentSessionId)) {
+  const handleNewSession = useCallback((projectId?: string, _title?: string): string => {
+    // 如果当前是临时会话且无消息，提示
+    const currentSession = sessions.find(s => s.id === currentSessionId);
+    if (currentSessionId && !currentSessionId.startsWith('temp-') && !currentSession) {
       showToast('已是最新对话');
       return '';
     }
 
-    const newSession: Session = {
-      id: Date.now().toString(),
-      title: title || '新会话',
-      timestamp: '刚刚',
-      messageCount: 0,
-    };
-
-    // 有标题（发送消息触发）才加入列表显示；点击"+"只设ID不显示
-    if (title) {
-      setSessions(prev => [newSession, ...prev]);
-      saveConversation({ id: newSession.id, title: newSession.title, timestamp: newSession.timestamp, status: 'active' });
+    // 记住项目上下文
+    if (projectId) {
+      setPendingSessionProject(projectId);
     }
-    setCurrentSessionId(newSession.id);
-    return newSession.id;
-  }, [currentSessionId, sessions]);
+
+    // 只设临时 ID，不加入列表，不持久化。等第一条消息发送时再持久化并显示
+    const tempId = `temp-${Date.now()}`;
+    setCurrentSessionId(tempId);
+    return tempId;
+  }, [currentSessionId, sessions, activeProjectPath, pendingSessionProject]);
 
   const handleDeleteSession = useCallback((id: string) => {
     const remaining = sessions.filter(s => s.id !== id);
@@ -878,23 +793,124 @@ function App() {
     }
   }, [currentSessionId, sessions]);
 
-  // 更新会话标题（首次发送消息时自动命名，同时将未保存的会话加入列表）
+  // 更新会话标题（首次发送消息时触发：持久化会话 + 用首条消息做标题）
   const handleUpdateSessionTitle = useCallback((sessionId: string, title: string) => {
+    const wsPath = pendingSessionProject || activeProjectPath || UNLINKED_PROJECT;
+
     setSessions(prev => {
       const exists = prev.find(s => s.id === sessionId);
+
       if (!exists) {
-        // 会话不在列表中，加入并持久化
-        saveConversation({ id: sessionId, title, timestamp: '刚刚', status: 'active' });
-        return [{ id: sessionId, title, timestamp: '刚刚', messageCount: 0 }, ...prev];
+        // 会话不在列表中，首次持久化
+        saveConversation({ title, timestamp: '刚刚', status: 'active', workspacePath: wsPath }).then(dbId => {
+          const realId = dbId.toString();
+          setSessions(p => [{ id: realId, title, timestamp: '刚刚', messageCount: 0, workspacePath: wsPath }, ...p]);
+          setCurrentSessionId(realId);
+        });
+        return prev;
       }
-      if (exists.title === '新会话') {
-        updateConversation(sessionId, { title });
+
+      // 已持久化的会话：更新标题
+      if (!sessionId.startsWith('temp-')) {
+        if (exists.title === '新会话') {
+          updateConversation(sessionId, { title });
+        }
+        return prev.map(s =>
+          s.id === sessionId && s.title === '新会话' ? { ...s, title } : s
+        );
       }
+
+      // 临时会话：首次持久化，替换临时 ID 为真实 ID
+      saveConversation({ title, timestamp: exists.timestamp, status: 'active', workspacePath: exists.workspacePath || wsPath }).then(dbId => {
+        const realId = dbId.toString();
+        setSessions(p => p.map(s => s.id === sessionId ? { ...s, id: realId, title } : s));
+        setCurrentSessionId(realId);
+      });
       return prev.map(s =>
-        s.id === sessionId && s.title === '新会话' ? { ...s, title } : s
+        s.id === sessionId ? { ...s, title } : s
       );
     });
+    setPendingSessionProject(null);
+  }, [activeProjectPath, pendingSessionProject]);
+
+  // 添加项目（打开文件夹对话框）
+  const handleAddProject = useCallback(async () => {
+    const selectedPath = await fileService.openFolderDialog();
+    if (selectedPath) {
+      await openFolderByPath(selectedPath);
+    }
+  }, [openFolderByPath]);
+
+  // 新建空项目
+  const handleCreateProject = useCallback(async () => {
+    try {
+      const homeDir = await import('@tauri-apps/api/path').then(m => m.homeDir());
+      const sep = homeDir.includes('\\') ? '\\' : '/';
+      const baseDir = `${homeDir}Documents${sep}SolonCode`;
+
+      // 确保基础目录存在
+      await fileService.createDirectory(baseDir);
+
+      // 生成不重复的项目名
+      let name = '未命名项目';
+      let projectPath = `${baseDir}${sep}${name}`;
+      let counter = 1;
+      while (await fileService.pathExists(projectPath)) {
+        name = `未命名项目-${counter}`;
+        projectPath = `${baseDir}${sep}${name}`;
+        counter++;
+      }
+
+      await fileService.createDirectory(projectPath);
+      await fileService.initWorkspaceConfig(projectPath);
+
+      // 添加到数据库
+      const project = { id: projectPath, name, sortOrder: projects.length, addedAt: new Date().toISOString() };
+      await dbAddProject(project);
+      setProjects(prev => [...prev, { id: project.id, name: project.name, sortOrder: project.sortOrder }]);
+
+      // 设为活跃项目
+      setActiveProjectPath(projectPath);
+      setChatWorkspacePath(projectPath);
+      saveLastActiveProject(projectPath);
+      setActiveActivity('explorer');
+    } catch (err) {
+      console.error('[App] 创建项目失败:', err);
+    }
+  }, [projects]);
+
+  // 切换活跃项目
+  const handleSetActiveProject = useCallback(async (path: string) => {
+    setActiveProjectPath(path);
+    setChatWorkspacePath(path);
+    saveLastActiveProject(path);
+    setOpenFiles([]);
+    setActiveFilePath(null);
+
+    await fileService.initWorkspaceConfig(path);
   }, []);
+
+  // 移除项目
+  const handleRemoveProject = useCallback(async (projectId: string) => {
+    await dbRemoveProject(projectId);
+    setProjects(prev => prev.filter(p => p.id !== projectId));
+    // 如果移除的是活跃项目，清除编辑器状态
+    if (activeProjectPath === projectId) {
+      setActiveProjectPath(null);
+      setChatWorkspacePath(null);
+      setOpenFiles([]);
+      setActiveFilePath(null);
+      setGitStatus(emptyGitStatus);
+    }
+    // 该项目的会话移至未关联
+    setSessions(prev => prev.map(s => s.workspacePath === projectId ? { ...s, workspacePath: UNLINKED_PROJECT } : s));
+    const convs = await getAllConversations();
+    for (const c of convs) {
+      if (c.workspacePath === projectId) {
+        await updateConversation(c.id!, { workspacePath: UNLINKED_PROJECT });
+      }
+    }
+  }, [activeProjectPath]);
 
   // 渲染侧边栏内容
   const renderSidebarContent = () => {
@@ -904,13 +920,15 @@ function App() {
       case 'explorer':
         return (
           <ExplorerPanel
-            files={mergeGitStatus(workspaceFiles, gitStatus.files, workspacePath || '')}
-            workspaceName={workspaceName}
-            hasWorkspace={!!workspacePath}
-            workspacePath={workspacePath || undefined}
+            projects={projects}
+            activeProjectPath={activeProjectPath}
+            refreshKey={projectRefreshKey}
             onFileSelect={handleFileSelect}
             onOpenFolder={handleOpenFolder}
-            onRefresh={refreshFileTree}
+            onCreateProject={handleCreateProject}
+            onRemoveProject={handleRemoveProject}
+            onSetActiveProject={handleSetActiveProject}
+            onRefreshProject={refreshFileTree}
             onNewFile={handleNewFile}
             onNewFolder={handleNewFolder}
             onRename={handleRename}
@@ -923,29 +941,28 @@ function App() {
         return (
           <GitPanel
             status={gitStatus}
-            cwd={workspacePath || undefined}
+            cwd={activeProjectPath || undefined}
             onCommit={async (msg) => {
-              if (workspacePath) { await gitService.commit(workspacePath, msg); refreshGitStatus(); }
+              if (activeProjectPath) { await gitService.commit(activeProjectPath, msg); refreshGitStatus(); }
             }}
             onStage={async (path) => {
-              if (workspacePath) { await gitService.add(workspacePath, [path]); refreshGitStatus(); }
+              if (activeProjectPath) { await gitService.add(activeProjectPath, [path]); refreshGitStatus(); }
             }}
             onUnstage={async (path) => {
-              if (workspacePath) { await gitService.reset(workspacePath, [path]); refreshGitStatus(); }
+              if (activeProjectPath) { await gitService.reset(activeProjectPath, [path]); refreshGitStatus(); }
             }}
             onPush={async () => {
-              if (workspacePath) { await gitService.push(workspacePath); refreshGitStatus(); }
+              if (activeProjectPath) { await gitService.push(activeProjectPath); refreshGitStatus(); }
             }}
             onPull={async () => {
-              if (workspacePath) { await gitService.pull(workspacePath); refreshGitStatus(); }
+              if (activeProjectPath) { await gitService.pull(activeProjectPath); refreshGitStatus(); }
             }}
             onDiscard={async (path) => {
-              if (workspacePath) { await gitService.discard(workspacePath, [path]); refreshGitStatus(); }
+              if (activeProjectPath) { await gitService.discard(activeProjectPath, [path]); refreshGitStatus(); }
             }}
             onFileClick={(relPath) => {
-              // Git 返回相对路径，拼接为完整路径后打开
-              if (workspacePath) {
-                const fullPath = workspacePath.replace(/\\/g, '/') + '/' + relPath;
+              if (activeProjectPath) {
+                const fullPath = activeProjectPath.replace(/\\/g, '/') + '/' + relPath;
                 handleFileSelect(fullPath);
               }
             }}
@@ -963,11 +980,15 @@ function App() {
       case 'sessions':
         return (
           <SessionsPanel
+            projects={projects}
             sessions={sessions}
             currentSessionId={currentSessionId}
+            currentProjectId={activeProjectPath}
             onSelectSession={setCurrentSessionId}
             onNewSession={handleNewSession}
             onDeleteSession={handleDeleteSession}
+            onAddProject={handleAddProject}
+            onRemoveProject={handleRemoveProject}
           />
         );
       case 'skills':
@@ -1040,11 +1061,11 @@ function App() {
           <ChatView
             currentConversation={currentConversation}
             plugins={plugins}
-            workspacePath={workspacePath || undefined}
+            workspacePath={activeProjectPath || undefined}
+            projectName={workspaceName || undefined}
             onUpdateSessionTitle={handleUpdateSessionTitle}
-            onNewSession={handleNewSession}
+            onNewSession={(title) => handleNewSession(undefined, title)}
             providers={settings.providers}
-            activeProviderId={settings.activeProviderId}
             onActiveProviderChange={(providerId: string) => {
               setSettings(prev => {
                 const updated = { ...prev, activeProviderId: providerId };
@@ -1063,14 +1084,20 @@ function App() {
   };
 
   return (
+    <div className="window-frame">
+      <div className="drag-edge drag-top" onMouseDown={startWindowDrag} />
+      <div className="drag-edge drag-bottom" onMouseDown={startWindowDrag} />
+      <div className="drag-edge drag-left" onMouseDown={startWindowDrag} />
+      <div className="drag-edge drag-right" onMouseDown={startWindowDrag} />
     <div className="app-container" ref={containerRef}>
       {/* 顶部标题栏/菜单栏 */}
       <TitleBar
-        workspacePath={workspacePath || undefined}
+        workspacePath={activeProjectPath || undefined}
         workspaceName={workspaceName}
-        onNewFile={handleNewFile}
+        onNewFile={() => handleNewFile()}
         onOpenFile={handleOpenFile}
         onOpenFolder={handleOpenFolder}
+        onNewProject={handleCreateProject}
         onSave={handleSaveCurrentFile}
         onSaveAll={() => openFiles.forEach(f => handleFileSave(f.path))}
         editorVisible={panelState.editorVisible}
@@ -1115,13 +1142,13 @@ function App() {
           <div className="panels-container">
             {panelState.panelOrder.map(panel => renderPanel(panel))}
           </div>
-          <TerminalPanel visible={terminalVisible} cwd={workspacePath || undefined} />
+          <TerminalPanel visible={terminalVisible} cwd={activeProjectPath || undefined} />
         </div>
       </div>
 
       {/* 底部状态栏 */}
       <StatusBar
-        connected={backendConnected}
+        backendStatus={backendStatus}
         model={settings.model}
         branch={gitStatus.branch}
         ahead={gitStatus.ahead}
@@ -1147,8 +1174,9 @@ function App() {
         onSettingsChange={handleSettingsChange}
         onClose={() => setSettingsVisible(false)}
         backendPort={backendPort}
-        workspacePath={workspacePath}
+        workspacePath={activeProjectPath}
       />
+    </div>
     </div>
   );
 }
