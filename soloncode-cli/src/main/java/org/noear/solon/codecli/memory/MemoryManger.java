@@ -16,7 +16,7 @@ public class MemoryManger implements MemorySolution.Factory {
 
     @Override
     public MemorySolution get(String __cwd) {
-        if (properties.isMemoryIsolation()) {
+        if (properties.isMemoryIsolation() == false) {
             __cwd = properties.getUserHome();
         }
 
