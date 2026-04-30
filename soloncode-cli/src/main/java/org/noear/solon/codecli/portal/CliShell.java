@@ -374,6 +374,8 @@ public class CliShell implements Runnable {
                     break;
                 }
             }
+        } catch (Throwable e) {
+            LOG.warn(e.getMessage(), e);
         } finally {
             terminal.setAttributes(originalAttributes);
         }
