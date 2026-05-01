@@ -286,6 +286,15 @@
         .attach-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
         .attach-input { display: none; }
 
+        /* Toolbar left section */
+        .toolbar-left { display: flex; align-items: center; gap: 2px; }
+        .toolbar-right { display: flex; align-items: center; gap: 6px; }
+
+        /* Image attachment type tag */
+        .attachment-type-tag { position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); font-size: 9px; padding: 0 4px; border-radius: 3px; line-height: 1.4; white-space: nowrap; pointer-events: none; }
+        .attachment-type-tag.image { background: rgba(79,110,247,0.85); color: #fff; }
+        .attachment-type-tag.file { background: rgba(34,197,94,0.85); color: #fff; }
+
         /* Scrollbar */
         .messages-wrap::-webkit-scrollbar, .sidebar-list::-webkit-scrollbar, .thinking-block-body::-webkit-scrollbar { width: 5px; }
         .messages-wrap::-webkit-scrollbar-thumb, .sidebar-list::-webkit-scrollbar-thumb, .thinking-block-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
@@ -355,18 +364,24 @@
                     <textarea id="welcomeInput" placeholder="..." rows="1" autofocus style="width: 100%;"></textarea>
                 </div>
                 <div class="welcome-toolbar">
-                    <div class="model-selector" id="welcomeModelSelector">
-                        <div class="model-selector-current" id="welcomeModelCurrent" title="切换模型">
-                            <span class="model-name" id="welcomeModelName">加载中...</span>
-                            <i class="layui-icon layui-icon-down model-arrow"></i>
+                    <div class="toolbar-left">
+                        <div class="model-selector" id="welcomeModelSelector">
+                            <div class="model-selector-current" id="welcomeModelCurrent" title="切换模型">
+                                <span class="model-name" id="welcomeModelName">加载中...</span>
+                                <i class="layui-icon layui-icon-down model-arrow"></i>
+                            </div>
+                            <div class="model-dropdown" id="welcomeModelDropdown"></div>
                         </div>
-                        <div class="model-dropdown" id="welcomeModelDropdown"></div>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:6px">
-                        <button class="attach-btn" id="welcomeAttachBtn" title="添加附件">
+                        <button class="attach-btn" id="welcomeAttachBtn" title="添加文件附件">
                             <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                         </button>
-                        <input type="file" class="attach-input" id="welcomeAttachInput" multiple accept="image/*,.txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
+                        <input type="file" class="attach-input" id="welcomeAttachInput" multiple accept=".txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
+                        <button class="attach-btn" id="welcomeImageBtn" title="添加图片附件（多模态）">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                        </button>
+                        <input type="file" class="attach-input" id="welcomeImageInput" multiple accept="image/*"/>
+                    </div>
+                    <div class="toolbar-right">
                         <button class="voice-btn hidden" id="welcomeVoiceBtn" title="语音输入">
                             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
                         </button>
@@ -391,18 +406,24 @@
                         <textarea id="chatInput" placeholder="请输入消息..." rows="1" style="width:100%"></textarea>
                     </div>
                     <div class="input-toolbar">
-                        <div class="model-selector" id="chatModelSelector">
-                            <div class="model-selector-current" id="chatModelCurrent" title="切换模型">
-                                <span class="model-name" id="chatModelName">加载中...</span>
-                                <i class="layui-icon layui-icon-down model-arrow"></i>
+                        <div class="toolbar-left">
+                            <div class="model-selector" id="chatModelSelector">
+                                <div class="model-selector-current" id="chatModelCurrent" title="切换模型">
+                                    <span class="model-name" id="chatModelName">加载中...</span>
+                                    <i class="layui-icon layui-icon-down model-arrow"></i>
+                                </div>
+                                <div class="model-dropdown" id="chatModelDropdown"></div>
                             </div>
-                            <div class="model-dropdown" id="chatModelDropdown"></div>
-                        </div>
-                        <div style="display:flex;align-items:center;gap:6px">
-                            <button class="attach-btn" id="chatAttachBtn" title="添加附件">
+                            <button class="attach-btn" id="chatAttachBtn" title="添加文件附件">
                                 <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                             </button>
-                            <input type="file" class="attach-input" id="chatAttachInput" multiple accept="image/*,.txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
+                            <input type="file" class="attach-input" id="chatAttachInput" multiple accept=".txt,.md,.csv,.json,.xml,.yml,.yaml,.log,.html,.css,.js,.ts,.java,.py,.go,.rs,.sql,.sh,.env,.conf,.ini,.toml,.xlsx,.xls,.doc,.docx,.pdf,.ppt,.pptx,.zip,.rar"/>
+                            <button class="attach-btn" id="chatImageBtn" title="添加图片附件（多模态）">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            </button>
+                            <input type="file" class="attach-input" id="chatImageInput" multiple accept="image/*"/>
+                        </div>
+                        <div class="toolbar-right">
                             <button class="voice-btn hidden" id="chatVoiceBtn" title="语音输入">
                                 <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
                             </button>
@@ -473,7 +494,7 @@
         var inChatMode = false;
         var chatHistory = [];
         var currentChatIndex = -1;
-        var pendingFiles = []; // [{ type: 'image'|'file', name, size, file, dataUrl? }, ...]
+        var pendingFiles = []; // [{ type: 'image'|'file', name, size, file, dataUrl?, attachmentsType: 'image'|'file' }, ...]
         var MAX_ATTACHMENTS = 10;
         var userScrolledUp = false;
 
@@ -520,7 +541,7 @@
                 if (items[i].type.indexOf('image') !== -1) {
                     e.preventDefault();
                     var file = items[i].getAsFile();
-                    processSelectedFile(file);
+                    processSelectedFile(file, 'image');
                     return;
                 }
             }
@@ -547,14 +568,17 @@
                 var item = pendingFiles[i];
                 var el = document.createElement('div');
                 el.className = 'attachment-item';
+                var typeTag = '<span class="attachment-type-tag ' + (item.attachmentsType || 'file') + '">' + (item.attachmentsType === 'image' ? '多模态' : '文件') + '</span>';
                 if (item.type === 'image') {
                     el.innerHTML = '<img src="' + item.dataUrl + '"/>'
+                        + typeTag
                         + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>';
                 } else {
                     el.innerHTML = '<div class="attachment-item-file">'
                         + '<span class="file-icon">📎</span>'
                         + '<span class="file-name">' + escapeHtml(item.name) + '</span>'
                         + '</div>'
+                        + typeTag
                         + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>';
                 }
                 wrap.appendChild(el);
@@ -579,27 +603,36 @@
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
-        function processSelectedFile(file) {
+        function processSelectedFile(file, attachmentsType) {
             if (!file) return;
             if (pendingFiles.length >= MAX_ATTACHMENTS) return;
 
-            if (file.type.indexOf('image') !== -1) {
+            if (attachmentsType === 'image') {
+                // Image attachment: always treated as multimodal image
                 var reader = new FileReader();
                 reader.onload = function(evt) {
-                    pendingFiles.push({ type: 'image', name: file.name, size: file.size, file: file, dataUrl: evt.target.result });
+                    pendingFiles.push({ type: 'image', name: file.name, size: file.size, file: file, dataUrl: evt.target.result, attachmentsType: 'image' });
+                    renderAttachments();
+                };
+                reader.readAsDataURL(file);
+            } else if (file.type.indexOf('image') !== -1) {
+                // File attachment + image file: show preview but mark as file type
+                var reader = new FileReader();
+                reader.onload = function(evt) {
+                    pendingFiles.push({ type: 'image', name: file.name, size: file.size, file: file, dataUrl: evt.target.result, attachmentsType: 'file' });
                     renderAttachments();
                 };
                 reader.readAsDataURL(file);
             } else {
-                pendingFiles.push({ type: 'file', name: file.name, size: file.size, file: file });
+                pendingFiles.push({ type: 'file', name: file.name, size: file.size, file: file, attachmentsType: 'file' });
                 renderAttachments();
             }
         }
 
-        function processSelectedFiles(fileList) {
+        function processSelectedFiles(fileList, attachmentsType) {
             for (var i = 0; i < fileList.length; i++) {
                 if (pendingFiles.length >= MAX_ATTACHMENTS) break;
-                processSelectedFile(fileList[i]);
+                processSelectedFile(fileList[i], attachmentsType);
             }
         }
 
@@ -626,11 +659,28 @@
             document.getElementById('chatAttachInput').click();
         });
         document.getElementById('welcomeAttachInput').addEventListener('change', function(e) {
-            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files);
+            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'file');
             e.target.value = '';
         });
         document.getElementById('chatAttachInput').addEventListener('change', function(e) {
-            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files);
+            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'file');
+            e.target.value = '';
+        });
+        // Image button handlers
+        document.getElementById('welcomeImageBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.getElementById('welcomeImageInput').click();
+        });
+        document.getElementById('chatImageBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.getElementById('chatImageInput').click();
+        });
+        document.getElementById('welcomeImageInput').addEventListener('change', function(e) {
+            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'image');
+            e.target.value = '';
+        });
+        document.getElementById('chatImageInput').addEventListener('change', function(e) {
+            if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'image');
             e.target.value = '';
         });
 
@@ -1745,7 +1795,11 @@
             var displayText = text || '';
             if (!displayText && filesToSend.length > 0) {
                 var first = filesToSend[0];
-                displayText = first.type === 'image' ? '请描述这些图片' : '请帮我处理这些文件';
+                if (first.attachmentsType === 'image') {
+                    displayText = '请描述这些图片';
+                } else {
+                    displayText = '请帮我处理这些文件';
+                }
             }
 
             if (currentChatIndex === -1) {
@@ -1778,11 +1832,47 @@
         }
 
         function sendWithFormData(sess, text, filesToSend) {
+            // Determine dominant attachmentsType: if any file has attachmentsType='image', use 'image'
+            var hasImageAttach = false;
+            var hasFileAttach = false;
+            for (var i = 0; i < filesToSend.length; i++) {
+                if (filesToSend[i].attachmentsType === 'image') hasImageAttach = true;
+                else hasFileAttach = true;
+            }
+
+            if (hasImageAttach && !hasFileAttach) {
+                // All image attachments
+                sendWithFormDataGrouped(sess, text, filesToSend, 'image');
+            } else if (hasFileAttach && !hasImageAttach) {
+                // All file attachments
+                sendWithFormDataGrouped(sess, text, filesToSend, 'file');
+            } else {
+                // Mixed: send image group first, then file group (sequential)
+                var imageFiles = [];
+                var fileFiles = [];
+                for (var j = 0; j < filesToSend.length; j++) {
+                    if (filesToSend[j].attachmentsType === 'image') imageFiles.push(filesToSend[j]);
+                    else fileFiles.push(filesToSend[j]);
+                }
+                // Send the larger group; the other group will be appended to same session
+                // For simplicity: send file group first (as file), then image group (as image) sequentially
+                if (fileFiles.length > 0) {
+                    sendWithFormDataGrouped(sess, text, fileFiles, 'file');
+                }
+                if (imageFiles.length > 0) {
+                    // Image attachments sent separately with a follow-up
+                    sendWithFormDataGrouped(sess, '(image attachments)', imageFiles, 'image');
+                }
+            }
+        }
+
+        function sendWithFormDataGrouped(sess, text, filesToSend, attachmentsType) {
             if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
             var model = getSelectedModel();
             var formData = new FormData();
             formData.append('input', text);
             formData.append('sessionId', sess.sessionId);
+            formData.append('attachmentsType', attachmentsType);
             if (model) formData.append('model', model);
             for (var i = 0; i < filesToSend.length; i++) {
                 formData.append('attachments', filesToSend[i].file, filesToSend[i].name);
