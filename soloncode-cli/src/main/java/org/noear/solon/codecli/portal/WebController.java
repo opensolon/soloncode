@@ -476,8 +476,8 @@ public class WebController {
 
     private static final Set<String> IMAGE_EXTENSIONS = Utils.asSet(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg");
 
-    private static boolean isImageExtension(String ext) {
-        return IMAGE_EXTENSIONS.contains(ext);
+    private static boolean isImageAttachment(String ext, String attachmentsType) {
+        return "image".equals(attachmentsType) && IMAGE_EXTENSIONS.contains(ext);
     }
 
     private static String extensionToMime(String ext) {
@@ -606,7 +606,7 @@ public class WebController {
     }
 
     @Mapping("/chat/input")
-    public void chat_input(Context ctx, String input, UploadedFile[] attachments, String model, String sessionId) throws Throwable {
+    public void chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentsType, String model, String sessionId) throws Throwable {
         if (sessionId == null || sessionId.isEmpty()) {
             sessionId = ctx.headerOrDefault("X-Session-Id", "web");
         }
@@ -663,7 +663,7 @@ public class WebController {
                     if (savePath.startsWith(Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize())) {
                         Files.copy(attachment.getContent(), savePath, StandardCopyOption.REPLACE_EXISTING);
 
-                        if (isImageExtension(ext)) {
+                        if (isImageAttachment(ext, attachmentsType)) {
                             // Image: read back from saved file, convert to base64
                             byte[] bytes = Files.readAllBytes(savePath);
                             String base64 = Base64.getEncoder().encodeToString(bytes);
