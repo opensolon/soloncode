@@ -1,5 +1,11 @@
 
 
+### v2026.5.2
+
+* 添加 soloncode web 图片上传模式（原附件分为：普通文件，图片文件）
+* 优化 soloncode 对 skill.sh 的兼容性（并内置 find-skills）
+
+
 ### v2026.5.1
 
 * 添加 soloncode 心智记忆功能（越用越聪明）
