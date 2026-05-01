@@ -6,7 +6,7 @@ solon.logging.appender:
 
 soloncode:
   tools: "**"
-  maxSteps: 30 # ReAct 最大循环步数
+  maxSteps: 20 # ReAct 最大循环步数
   maxStepsAutoExtensible: true #最大步数自动续航（由 LLM 反思控制）
 
   sessionWindowSize: 8 # 会话历史窗口大小（即，新指令时使用几条历史消息）
