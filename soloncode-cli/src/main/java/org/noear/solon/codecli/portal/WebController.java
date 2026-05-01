@@ -605,6 +605,9 @@ public class WebController {
         return Result.succeed(data);
     }
 
+    /**
+     * @param attachmentsType (file or image)
+     * */
     @Mapping("/chat/input")
     public void chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentsType, String model, String sessionId) throws Throwable {
         if (sessionId == null || sessionId.isEmpty()) {
