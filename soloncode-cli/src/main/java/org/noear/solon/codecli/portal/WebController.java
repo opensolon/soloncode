@@ -620,7 +620,7 @@ public class WebController {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", definition.getName());
             item.put("description", definition.getDescription());
-            item.put("type", "command");
+            item.put("type", "subagent");
             data.add(item);
         }
 
