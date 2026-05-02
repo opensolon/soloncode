@@ -42,7 +42,7 @@ Führen Sie den Befehl `soloncode` in einem beliebigen Verzeichnis in der Konsol
 demo@MacBook-Pro ~ % soloncode
 SolonCode v2026.5.2
 /Users/noear
-Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
+Tips: (esc) interrupt | /(tab) ls commands
 
 User
 > 
