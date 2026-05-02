@@ -38,6 +38,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.skills.cli.TodoSkill;
 import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.config.AgentFlags;
@@ -525,10 +526,11 @@ public class CliShell implements Runnable {
                 });
             }
 
+            boolean isTodo = TodoSkill.TOOL_TODOREAD.equals(action.getToolName()) || TodoSkill.TOOL_TODOWRITE.equals(action.getToolName());
             String argsStr = argsBuilder.toString().replace("\n", " ");
             boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
-            if (agentProps.isCliPrintSimplified()) {
+            if (agentProps.isCliPrintSimplified() && isTodo == false) {
                 // --- 简化风格：单行摘要模式 ---
                 String content = action.getContent() == null ? "" : action.getContent().trim();
                 String summary;
@@ -555,22 +557,29 @@ public class CliShell implements Runnable {
                 // --- 全量风格 ---
                 // 1. 打印指令行
                 terminal.writer().println();
-                if (!hasBigArgs) {
-                    // 短参数直接跟在后面
+                if (TodoSkill.TOOL_TODOWRITE.equals(action.getToolName())) {
+                    //优化 todowrite 打印
+                    argsStr = "\n" + ((String) args.get("todos")).trim();
                     terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
                 } else {
-                    // 大参数块，指令名独占一行，参数作为缩进内容打印（类似 write_file 的 content 部分）
-                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET);
-                    if (args != null) {
-                        args.forEach((k, v) -> {
-                            String val = String.valueOf(v).trim();
-                            if ("content".equals(k) && val.split("\n").length > 10) {
-                                // 如果是写文件，且内容太长，只显示头尾
-                                String[] lines = val.split("\n");
-                                val = lines[0] + "\n    ...\n    " + lines[lines.length - 1];
-                            }
-                            terminal.writer().println(DIM + "  [" + k + "]: " + val.replace("\n", "\n    ") + RESET);
-                        });
+
+                    if (!hasBigArgs) {
+                        // 短参数直接跟在后面
+                        terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
+                    } else {
+                        // 大参数块，指令名独占一行，参数作为缩进内容打印（类似 write_file 的 content 部分）
+                        terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET);
+                        if (args != null) {
+                            args.forEach((k, v) -> {
+                                String val = String.valueOf(v).trim();
+                                if ("content".equals(k) && val.split("\n").length > 10) {
+                                    // 如果是写文件，且内容太长，只显示头尾
+                                    String[] lines = val.split("\n");
+                                    val = lines[0] + "\n    ...\n    " + lines[lines.length - 1];
+                                }
+                                terminal.writer().println(DIM + "  [" + k + "]: " + val.replace("\n", "\n    ") + RESET);
+                            });
+                        }
                     }
                 }
 
