@@ -362,7 +362,7 @@ public class CliShell implements Runnable {
             while (latch.getCount() > 0) {
                 int c = terminal.reader().read(50);
                 if (c > 0) {
-                    if (c == 27 || c == '\r' || c == '\n') {
+                    if (c == 27) { //|| c == '\r' || c == '\n'
                         disposable.dispose();
                         isInterrupted.set(true);
                         latch.countDown();
