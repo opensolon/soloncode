@@ -1002,7 +1002,7 @@
             if (!SpeechRecognition) return; // 浏览器不支持
             recognition = new SpeechRecognition();
             recognition.lang = 'zh-CN';
-            recognition.continuous = false; // 关闭连续模式，静音自动停止
+            recognition.continuous = true; // 按住期间持续识别
             recognition.interimResults = true;
             recognition.maxAlternatives = 1;
 
@@ -1040,8 +1040,12 @@
             };
 
             recognition.onend = function() {
-                // 静音自动停止 — 不再自动重启
-                stopVoiceRecording();
+                // 如果还在按住状态（voiceRecording），自动重启继续识别
+                if (voiceRecording) {
+                    try { recognition.start(); } catch(e) {}
+                } else {
+                    stopVoiceRecording();
+                }
             };
 
             // 显示语音按钮
@@ -1051,7 +1055,7 @@
 
         function startVoiceRecording(inputEl) {
             if (!recognition) return;
-            if (voiceRecording) { stopVoiceRecording(); return; }
+            if (voiceRecording) return;
 
             voiceTargetInput = inputEl;
             voiceBaseText = inputEl.value;
@@ -1063,20 +1067,19 @@
             // 更新按钮状态
             var btn = (inputEl === welcomeInput) ? welcomeVoiceBtn : chatVoiceBtn;
             btn.classList.add('recording');
-            btn.title = '正在录音，静音自动停止';
+            btn.title = '松开结束录音';
         }
 
         function stopVoiceRecording() {
-            if (!recognition) return;
-            var wasRecording = voiceRecording;
+            if (!voiceRecording && !recognition) return;
             voiceRecording = false;
-            try { recognition.stop(); } catch(e) {}
+            try { if (recognition) recognition.stop(); } catch(e) {}
 
             // 更新按钮状态
             welcomeVoiceBtn.classList.remove('recording');
             chatVoiceBtn.classList.remove('recording');
-            welcomeVoiceBtn.title = '语音输入';
-            chatVoiceBtn.title = '语音输入';
+            welcomeVoiceBtn.title = '按住说话';
+            chatVoiceBtn.title = '按住说话';
 
             // 保留识别到的文本，重置基线以便下次追加
             if (voiceTargetInput) {
@@ -1086,14 +1089,45 @@
             voiceTargetInput = null;
         }
 
-        welcomeVoiceBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            startVoiceRecording(welcomeInput);
-        });
-        chatVoiceBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            startVoiceRecording(chatInput);
-        });
+        // --- 按住说话事件绑定 ---
+        function bindVoiceHold(btn, inputEl) {
+            // 阻止 click 默认行为（避免松手后触发 click）
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+
+            // 鼠标：按下开始，松开/离开结束
+            btn.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                startVoiceRecording(inputEl);
+            });
+            btn.addEventListener('mouseup', function(e) {
+                e.stopPropagation();
+                stopVoiceRecording();
+            });
+            btn.addEventListener('mouseleave', function(e) {
+                stopVoiceRecording();
+            });
+
+            // 触摸：按下开始，松开/取消结束
+            btn.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                startVoiceRecording(inputEl);
+            }, { passive: false });
+            btn.addEventListener('touchend', function(e) {
+                e.stopPropagation();
+                stopVoiceRecording();
+            });
+            btn.addEventListener('touchcancel', function(e) {
+                stopVoiceRecording();
+            });
+        }
+
+        bindVoiceHold(welcomeVoiceBtn, welcomeInput);
+        bindVoiceHold(chatVoiceBtn, chatInput);
 
         initVoice();
 
