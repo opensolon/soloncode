@@ -985,7 +985,7 @@
         /* Load on startup */
         loadSessionHistory();
 
-        /* ===== Voice Input (Web Speech API) ===== */
+        /* ===== Voice Input (Web Speech API) - 按住说话（类似微信） ===== */
         var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         var recognition = null;
         var voiceRecording = false;
@@ -1055,7 +1055,7 @@
 
         function startVoiceRecording(inputEl) {
             if (!recognition) return;
-            if (voiceRecording) { stopVoiceRecording(); return; }
+            if (voiceRecording) return;
 
             voiceTargetInput = inputEl;
             voiceBaseText = inputEl.value;
@@ -1067,7 +1067,7 @@
             // 更新按钮状态
             var btn = (inputEl === welcomeInput) ? welcomeVoiceBtn : chatVoiceBtn;
             btn.classList.add('recording');
-            btn.title = '正在录音，点击停止';
+            btn.title = '松开结束';
         }
 
         function stopVoiceRecording() {
@@ -1078,8 +1078,8 @@
             // 更新按钮状态
             welcomeVoiceBtn.classList.remove('recording');
             chatVoiceBtn.classList.remove('recording');
-            welcomeVoiceBtn.title = '语音输入';
-            chatVoiceBtn.title = '语音输入';
+            welcomeVoiceBtn.title = '按住说话';
+            chatVoiceBtn.title = '按住说话';
 
             // 保留识别到的文本，重置基线以便下次追加
             if (voiceTargetInput) {
@@ -1089,15 +1089,37 @@
             voiceTargetInput = null;
         }
 
-        // --- 点击切换录音 ---
-        welcomeVoiceBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            startVoiceRecording(welcomeInput);
-        });
-        chatVoiceBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            startVoiceRecording(chatInput);
-        });
+        // --- 按住说话：按下开始录音，松开结束（类似微信） ---
+        function bindVoiceHold(btn, inputEl) {
+            // 鼠标：按下开始，松开结束
+            btn.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                startVoiceRecording(inputEl);
+            });
+            btn.addEventListener('mouseup', function(e) {
+                e.preventDefault();
+                stopVoiceRecording();
+            });
+            btn.addEventListener('mouseleave', function() {
+                if (voiceRecording) stopVoiceRecording();
+            });
+
+            // 触摸：按下开始，松开结束
+            btn.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                startVoiceRecording(inputEl);
+            });
+            btn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                stopVoiceRecording();
+            });
+            btn.addEventListener('touchcancel', function() {
+                if (voiceRecording) stopVoiceRecording();
+            });
+        }
+
+        bindVoiceHold(welcomeVoiceBtn, welcomeInput);
+        bindVoiceHold(chatVoiceBtn, chatInput);
 
         initVoice();
 
