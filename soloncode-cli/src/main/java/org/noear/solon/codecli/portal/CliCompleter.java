@@ -19,6 +19,8 @@ import org.jline.reader.Candidate;
 import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
+import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandRegistry;
 
@@ -31,33 +33,31 @@ import java.util.List;
  * @since 2026.4.28
  */
 public class CliCompleter implements Completer {
-    private final CommandRegistry registry;
+    private final HarnessEngine engine;
 
-    public CliCompleter(CommandRegistry registry) {
-        this.registry = registry;
+    public CliCompleter(HarnessEngine engine) {
+        this.engine = engine;
     }
 
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
         if (line.word().startsWith("/")) {
             String prefix = line.word().substring(1).toLowerCase();
-            for (String name : registry.names()) {
+            for (String name : engine.getCommandRegistry().names()) {
                 if (name.startsWith(prefix)) {
-                    Command cmd = registry.find(name);
+                    Command cmd = engine.getCommandRegistry().find(name);
                     // 构建补全提示：description + argument-hint
-                    String hint = buildHint(cmd);
-                    candidates.add(new Candidate("/" + name, "/" + name + "  " + hint, null, null, null, null, true));
+                    candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(), null, null, null, null, true));
+                }
+            }
+        } else if(line.word().startsWith("@")){
+            String prefix = line.word().substring(1).toLowerCase();
+            for (AgentDefinition definition : engine.getAgentManager().getAgents()) {
+                if (definition.getName().startsWith(prefix)) {
+                    // 构建补全提示：description + argument-hint
+                    candidates.add(new Candidate("@" + definition.getName(), "@" + definition.getName() + "  " + definition.getDescription(), null, null, null, null, true));
                 }
             }
         }
-    }
-
-    /**
-     * 构建补全提示文本
-     * <p>
-     * 格式：description  [argument-hint]
-     */
-    private String buildHint(Command cmd) {
-        return cmd.description();
     }
 }

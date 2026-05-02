@@ -24,6 +24,7 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
@@ -70,7 +71,7 @@ public class CliShell implements Runnable {
 
     private Terminal terminal;
     private LineReader reader;
-    private final HarnessEngine agentRuntime;
+    private final HarnessEngine engine;
     private final AgentProperties agentProps;
     private final LoopScheduler loopScheduler;
 
@@ -85,8 +86,8 @@ public class CliShell implements Runnable {
             RESET = "\033[0m";
 
 
-    public CliShell(HarnessEngine agentRuntime, AgentProperties agentProps, LoopScheduler loopScheduler) {
-        this.agentRuntime = agentRuntime;
+    public CliShell(HarnessEngine engine, AgentProperties agentProps, LoopScheduler loopScheduler) {
+        this.engine = engine;
         this.agentProps = agentProps;
         this.loopScheduler = loopScheduler;
 
@@ -98,7 +99,7 @@ public class CliShell implements Runnable {
 
             this.reader = LineReaderBuilder.builder()
                     .terminal(terminal)
-                    .completer(new CliCompleter(agentRuntime.getCommandRegistry()))
+                    .completer(new CliCompleter(engine))
                     .build();
         } catch (Throwable e) {
             LOG.error("JLine initialization failed", e);
@@ -131,7 +132,7 @@ public class CliShell implements Runnable {
             }
         }
 
-        AgentSession session = agentRuntime.getSession(sessionId);
+        AgentSession session = engine.getSession(sessionId);
         printWelcome(session);
         return session;
     }
@@ -229,14 +230,14 @@ public class CliShell implements Runnable {
                 : Collections.emptyList();
 
         // 查找命令
-        Command command = agentRuntime.getCommandRegistry().find(cmdName);
+        Command command = engine.getCommandRegistry().find(cmdName);
         if (command == null) {
             return false;
         }
 
         // 构建 context（注入 agentTaskRunner 回调）
         CliCommandContext ctx = new CliCommandContext(session, terminal, reader,
-                agentRuntime, input, cmdName, args,
+                engine, input, cmdName, args,
                 (prompt, model) -> {
                     try {
                         performAgentTask(session, prompt, model);
@@ -259,6 +260,7 @@ public class CliShell implements Runnable {
     private void performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
         terminal.writer().println("\n" + BOLD + "Assistant" + RESET);
 
+        String agentName = null;
         String currentInput = input;
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
@@ -267,7 +269,17 @@ public class CliShell implements Runnable {
             modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
         }
 
-        ChatModel chatModel = agentRuntime.getModelOrMain(modelSelected);
+
+        if(input.startsWith("@")) {
+            int agentNameIdx = input.indexOf(" ");
+            if (agentNameIdx > 0) {
+                agentName = input.substring(1, agentNameIdx);
+                currentInput = currentInput.substring(agentNameIdx + 1);
+            }
+        }
+
+        ChatModel chatModel = engine.getModelOrMain(modelSelected);
+        ReActAgent agent = engine.getAgentOrMain(agentName);
 
         while (true) {
             // 简化状态提示：只在非首次且任务未完成时打印等待符
@@ -282,7 +294,7 @@ public class CliShell implements Runnable {
 
             Prompt prompt = Prompt.of(currentInput).attrPut("start_time", System.currentTimeMillis());
 
-            Disposable disposable = agentRuntime.prompt(prompt)
+            Disposable disposable = agent.prompt(prompt)
                     .session(session)
                     .options(o -> {
                         o.chatModel(chatModel);
@@ -502,7 +514,7 @@ public class CliShell implements Runnable {
 
             final String fullToolName;
 
-            if (agentRuntime.getName().equals(action.getAgentName())) {
+            if (engine.getName().equals(action.getAgentName())) {
                 fullToolName = action.getToolName();
             } else {
                 fullToolName = action.getAgentName() + "/" + action.getToolName();
@@ -608,13 +620,13 @@ public class CliShell implements Runnable {
         final ChatModel chatModel;
 
         if (session == null) {
-            chatModel = agentRuntime.getMainModel();
+            chatModel = engine.getMainModel();
         } else {
             String modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
-            chatModel = agentRuntime.getModelOrMain(modelSelected);
+            chatModel = engine.getModelOrMain(modelSelected);
         }
 
-        String path = new File(agentRuntime.getProps().getWorkspace()).getAbsolutePath();
+        String path = new File(engine.getProps().getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + chatModel.getNameOrModel() + RESET);
         terminal.writer().println(DIM + path + RESET);
@@ -626,9 +638,9 @@ public class CliShell implements Runnable {
     }
 
     public void printWelcome(String text) {
-        final ChatModel chatModel = agentRuntime.getMainModel();
+        final ChatModel chatModel = engine.getMainModel();
 
-        String path = new File(agentRuntime.getProps().getWorkspace()).getAbsolutePath();
+        String path = new File(engine.getProps().getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + chatModel.getNameOrModel() + RESET);
         terminal.writer().println(DIM + path + RESET);

@@ -17,6 +17,7 @@ package org.noear.solon.codecli.portal;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
@@ -50,7 +51,7 @@ public class WebStreamBuilder {
         this.engine = engine;
     }
 
-    public Flux<String> buildStreamFlux(AgentSession session, ChatModel chatModel, String sessionCwd, Prompt prompt) {
+    public Flux<String> buildStreamFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt) {
         if (prompt == null) {
             prompt = Prompt.of();
         }
@@ -61,7 +62,7 @@ public class WebStreamBuilder {
 
         prompt.attrPut("start_time", System.currentTimeMillis());
 
-        return engine.prompt(prompt)
+        return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.chatModel(chatModel);
