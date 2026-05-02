@@ -1832,56 +1832,19 @@
         }
 
         function sendWithFormData(sess, text, filesToSend) {
-            if (filesToSend.length === 0) {
-                // No attachments: plain text message
-                sendWithFormDataGrouped(sess, text, filesToSend, 'file');
-                return;
-            }
-
-            // Determine dominant attachmentsType: if any file has attachmentsType='image', use 'image'
-            var hasImageAttach = false;
-            var hasFileAttach = false;
-            for (var i = 0; i < filesToSend.length; i++) {
-                if (filesToSend[i].attachmentsType === 'image') hasImageAttach = true;
-                else hasFileAttach = true;
-            }
-
-            if (hasImageAttach && !hasFileAttach) {
-                // All image attachments
-                sendWithFormDataGrouped(sess, text, filesToSend, 'image');
-            } else if (hasFileAttach && !hasImageAttach) {
-                // All file attachments
-                sendWithFormDataGrouped(sess, text, filesToSend, 'file');
-            } else {
-                // Mixed: send image group first, then file group (sequential)
-                var imageFiles = [];
-                var fileFiles = [];
-                for (var j = 0; j < filesToSend.length; j++) {
-                    if (filesToSend[j].attachmentsType === 'image') imageFiles.push(filesToSend[j]);
-                    else fileFiles.push(filesToSend[j]);
-                }
-                // Send the larger group; the other group will be appended to same session
-                // For simplicity: send file group first (as file), then image group (as image) sequentially
-                if (fileFiles.length > 0) {
-                    sendWithFormDataGrouped(sess, text, fileFiles, 'file');
-                }
-                if (imageFiles.length > 0) {
-                    // Image attachments sent separately with a follow-up
-                    sendWithFormDataGrouped(sess, '(image attachments)', imageFiles, 'image');
-                }
-            }
+            sendWithFormDataGrouped(sess, text, filesToSend);
         }
 
-        function sendWithFormDataGrouped(sess, text, filesToSend, attachmentsType) {
+        function sendWithFormDataGrouped(sess, text, filesToSend) {
             if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
             var model = getSelectedModel();
             var formData = new FormData();
             formData.append('input', text);
             formData.append('sessionId', sess.sessionId);
-            formData.append('attachmentsType', attachmentsType);
             if (model) formData.append('model', model);
             for (var i = 0; i < filesToSend.length; i++) {
                 formData.append('attachments', filesToSend[i].file, filesToSend[i].name);
+                formData.append('attachmentTypes', filesToSend[i].attachmentsType || 'file');
             }
 
             var abortCtrl = new AbortController();
