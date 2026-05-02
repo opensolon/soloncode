@@ -1832,6 +1832,12 @@
         }
 
         function sendWithFormData(sess, text, filesToSend) {
+            if (filesToSend.length === 0) {
+                // No attachments: plain text message
+                sendWithFormDataGrouped(sess, text, filesToSend, 'file');
+                return;
+            }
+
             // Determine dominant attachmentsType: if any file has attachmentsType='image', use 'image'
             var hasImageAttach = false;
             var hasFileAttach = false;
