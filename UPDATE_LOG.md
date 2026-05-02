@@ -5,6 +5,7 @@
 * 添加 soloncode web 图片上传模式（原附件分为：普通文件，图片文件）
 * 添加 soloncode 自然语言查找 skill 和安装 skill（基于 skill.sh find-skills）
 * 优化 soloncode 对 skill.sh 的兼容性（并内置 find-skills）
+* 优化 soloncode web 语音输入体验，改成微信风格（按住说明，松开结束）
 
 
 ### v2026.5.1
