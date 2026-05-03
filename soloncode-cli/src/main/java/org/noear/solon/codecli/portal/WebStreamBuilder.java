@@ -17,6 +17,7 @@ package org.noear.solon.codecli.portal;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
@@ -28,6 +29,7 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +51,7 @@ public class WebStreamBuilder {
         this.engine = engine;
     }
 
-    public Flux<String> buildStreamFlux(AgentSession session, ChatModel chatModel, String sessionCwd, Prompt prompt) {
+    public Flux<String> buildStreamFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt) {
         if (prompt == null) {
             prompt = Prompt.of();
         }
@@ -60,7 +62,7 @@ public class WebStreamBuilder {
 
         prompt.attrPut("start_time", System.currentTimeMillis());
 
-        return engine.prompt(prompt)
+        return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.chatModel(chatModel);
@@ -156,7 +158,8 @@ public class WebStreamBuilder {
     private String onActionEndChunk(ActionEndChunk action) {
         if (Assert.isNotEmpty(action.getToolName())) {
             if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
-                    TaskSkill.TOOL_TASK.equals(action.getToolName())) {
+                    TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
+                    MemorySkill.isMemoryTool(action.getToolName())) {
                 return "";
             }
 

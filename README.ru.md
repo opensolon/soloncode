@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Открытый исходный код интеллектуального агента для программирования, построенный на <a href="https://github.com/opensolon/solon-ai">Solon AI</a> и Java (поддерживает среды выполнения Java8 до Java26)</p>
-<p>Последняя версия: v2026.4.30</p>
+<p>Последняя версия: v2026.5.3</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -40,9 +40,9 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.30
+SolonCode v2026.5.3
 /Users/noear
-Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
+Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 

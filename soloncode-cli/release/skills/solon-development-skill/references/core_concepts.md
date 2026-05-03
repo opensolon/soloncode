@@ -2,7 +2,7 @@
 
 > 适用场景：理解 Solon 的 IoC 容器、配置系统、插件机制、表达式语言，以及与 Spring 的区别。
 >
-> 基于官方文档整理，目标版本 3.10.0。
+> 基于官方文档整理，目标版本 3.10.4。
 
 ## Annotations Mapping (Solon vs Spring equivalents)
 
@@ -365,9 +365,301 @@ Solon SPI goes beyond simple discovery — plugins can programmatically extend t
 - Register field injectors (e.g., custom injection logic)
 - Register method extractors (e.g., `@CloudJob` job collection)
 
-Additionally, Solon supports:
-- **E-SPI (External SPI)**: Extension mechanism outside the application classpath
-- **H-SPI (Hot-SPI)**: Hot-pluggable plugin management
+### E-SPI (External SPI) — Plugin External Extension Mechanism
+
+E-SPI solves extension needs when deploying as fatjar. It allows loading plugin jars and config files from **outside the application classpath** (i.e., an external directory). `.properties` and `.yml` files are loaded as extension configs; `.jar` and `.zip` files are loaded as plugin packages.
+
+#### Key Characteristics
+
+- All plugins **share** ClassLoader, AppContext, and configuration
+- Plugins can be packaged independently (loaded externally) or bundled with the main app — "split" or "merge" freely
+- Updating external plugins or config files **requires restarting** the main service
+- E-SPI is provided by the Solon core — **no additional dependencies needed**
+
+#### ClassLoader Sharing
+
+E-SPI is implemented via `AppClassLoader:addJar(URL | File)`. On startup, Solon automatically loads from the configured extension directory:
+- All `.jar` and `.zip` packages
+- All `.properties` and `.yml` configuration files
+
+Programmatic API for custom loading:
+
+```java
+@SolonMain
+public class Application {
+    public static void main(String[] args) throws Exception {
+        Solon.start(Application.class, args, app -> {
+            // Load jar package
+            app.classLoader().addJar(new File("/demo.jar"));
+
+            // Load properties file
+            app.cfg().loadAdd(new File("/demo.yml"));
+        });
+    }
+}
+```
+
+#### Configuration
+
+Declare the extension directory in `app.yml`:
+
+```yaml
+# Extension directory (directory must be manually created)
+solon.extend: "demo_ext"
+
+# Extension directory (prefix "!" auto-creates the directory)
+solon.extend: "!demo_ext"
+```
+
+#### File Layout Example
+
+```
+demo.jar
+demo_ext/_db.properties       # external config file
+demo_ext/demo_user.jar         # external plugin package
+demo_ext/demo_order.jar        # external plugin package
+```
+
+#### Packaging Notes
+
+- Either package the plugin as a fatjar (using `maven-assembly-plugin`)
+- Or include the plugin's dependencies in the main app (recommended for shared/common dependencies)
+- Best practice: put common dependencies in the main app packaging; mark them as `<optional>` in the plugin's `pom.xml`
+
+### H-SPI (Hot-SPI) — Plugin Hot-Pluggable Management
+
+H-SPI is an advanced extension mechanism for production use. Compared to E-SPI, H-SPI focuses on **isolation**, **hot-swap**, and **management**. Each business module is developed as a unit and packaged as an independent plugin.
+
+> Requires dependency: `solon-hotplug`
+
+#### Key Characteristics
+
+- Each plugin has its **own isolated** ClassLoader, AppContext, and configuration — fully isolated
+  - Can still access main program resources via `Solon.app()`, `Solon.cfg()`, `Solon.context()`, etc.
+- Plugins can be packaged independently or bundled with the main app
+- Updating a plugin does **not require restarting** the main service — hot update!
+- All resources must be self-managed; resources added in `start()` **must be removed** in `stop()`
+- Inter-plugin communication should use EventBus with weak-typed data (Map, JsonString). Consider using [DamiBus](https://gitee.com/noear/dami) for decoupled communication
+
+#### ClassLoader Isolation Rules
+
+| Relationship | Access Rule |
+|---|---|
+| Parent ClassLoader (public resources) | Child can access classes/resources; if anything is registered, it must be unregistered in plugin `stop()` |
+| Sibling ClassLoaders | Cannot access each other's classes/resources; use EventBus for interaction with weak-typed data or parent ClassLoader entity classes |
+
+#### Plugin Development Example
+
+```java
+public class Plugin1Impl implements Plugin {
+    AppContext context;
+    StaticRepository staticRepository;
+
+    @Override
+    public void start(AppContext context) {
+        this.context = context;
+
+        // Add own config file
+        context.cfg().loadAdd("demo1011.plugin1.yml");
+        // Scan own beans
+        context.beanScan(Plugin1Impl.class);
+
+        // Add own static file repository (register classloader)
+        staticRepository = new ClassPathStaticRepository(context.getClassLoader(), "plugin1_static");
+        StaticMappings.add("/html/", staticRepository);
+    }
+
+    @Override
+    public void stop() throws Throwable {
+        // Remove HTTP handlers (use prefix for easy removal)
+        Solon.app().router().remove("/user");
+
+        // Remove scheduled jobs (use a solution that supports manual removal)
+        JobManager.getInstance().jobRemove("job1");
+
+        // Remove event subscriptions
+        context.beanForeach(bw -> {
+            if (bw.raw() instanceof EventListener) {
+                EventBus.unsubscribe(bw.raw());
+            }
+        });
+
+        // Remove static file repository
+        StaticMappings.remove(staticRepository);
+    }
+}
+```
+
+When using template rendering in H-SPI plugins, be mindful of ClassLoader context:
+
+```java
+public class BaseController implements Render {
+    // Must consider the ClassLoader where templates reside
+    static final FreemarkerRender viewRender = new FreemarkerRender(BaseController.class.getClassLoader());
+
+    @Override
+    public void render(Object data, Context ctx) throws Throwable {
+        if (data instanceof Throwable) {
+            throw (Throwable) data;
+        }
+        if (data instanceof ModelAndView) {
+            viewRender.render(data, ctx);
+        } else {
+            ctx.render(data);
+        }
+    }
+}
+```
+
+#### Plugin Management
+
+With `solon-hotplug` dependency, plugins can be managed (install/uninstall/update at runtime). Plugins can further be repository-based and platform-based.
+
+### E-SPI vs H-SPI Comparison
+
+| Aspect | E-SPI | H-SPI |
+|---|---|---|
+| ClassLoader | Shared | Isolated (each plugin has its own) |
+| AppContext | Shared | Isolated |
+| Hot update | No (requires restart) | Yes |
+| Extra dependency | None (core support) | `solon-hotplug` |
+| Use case | Simple external extension | Production hot-swap, module isolation |
+
+### Plugin SPI Configuration Hint Metadata
+
+Plugin packages can provide configuration hint metadata for IDE support (auto-completion, documentation). The metadata file is placed at:
+
+```
+resource/META-INF/solon/solon-configuration-metadata.json
+```
+
+#### File Format
+
+The JSON file has two top-level arrays: `properties` and `hints`.
+
+**properties** — describes available configuration properties:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Full property name in lowercase dot-separated form (e.g., `server.port`) |
+| `type` | string | Yes | Data type (e.g., `java.lang.String`, `java.lang.Integer`) or full generic type |
+| `defaultValue` | object | No | Default value |
+| `description` | string | No | Short human-readable description |
+
+**hints** — provides value suggestions for properties:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Full property name (must match a property) |
+| `values` | array | No | List of possible values |
+| `values[].value` | object | Yes | The value |
+| `values[].description` | string | No | Description of the value |
+
+#### Complete Example
+
+```json
+{
+  "properties": [
+    {
+      "name": "server.port",
+      "type": "java.lang.Integer",
+      "defaultValue": "8080",
+      "description": "服务端口"
+    },
+    {
+      "name": "cache.driverType",
+      "type": "java.lang.String",
+      "defaultValue": "local",
+      "description": "缓存驱动类型"
+    },
+    {
+      "name": "beetlsql.inters",
+      "type": "java.lang.String[]",
+      "description": "数据管理插件列表"
+    }
+  ],
+  "hints": [
+    {
+      "name": "cache.driverType",
+      "values": [
+        { "value": "local", "description": "本地缓存" },
+        { "value": "redis", "description": "Redis缓存" },
+        { "value": "memcached", "description": "Memcached缓存" }
+      ]
+    }
+  ]
+}
+```
+
+### Plugin SPI Configuration Metadata Auto-Processing
+
+Writing `solon-configuration-metadata.json` manually is tedious. Using `@BindProps` annotation combined with the `solon-configuration-processor` compiler plugin, metadata files are **auto-generated** at compile time.
+
+#### Dependency Setup
+
+Maven:
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.noear</groupId>
+        <artifactId>solon-configuration-processor</artifactId>
+        <scope>provided</scope> <!-- Must be provided scope -->
+    </dependency>
+</dependencies>
+
+<!-- After JDK 25, also add annotationProcessorPaths -->
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <configuration>
+        <annotationProcessorPaths>
+            <path>
+                <groupId>org.noear</groupId>
+                <artifactId>solon-configuration-processor</artifactId>
+            </path>
+        </annotationProcessorPaths>
+    </configuration>
+</plugin>
+```
+
+Gradle:
+
+```gradle
+compileOnly("org.noear:solon-configuration-processor")
+annotationProcessor("org.noear:solon-configuration-processor")
+```
+
+#### Usage Examples
+
+Class-based property binding:
+
+```java
+@BindProps(prefix = "server")
+@Configuration
+public class ServerProps {
+    private Integer port;
+    private String host;
+}
+```
+
+Method-based property binding:
+
+```java
+public class ServerProps {
+    private Integer port;
+    private String host;
+}
+
+@Configuration
+public class ServerConfig {
+    @BindProps(prefix = "server")
+    @Bean
+    public ServerProps serverProps() {
+        return new ServerProps();
+    }
+}
+```
 
 ## Solon Expression (SnEL)
 

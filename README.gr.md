@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Ένας ανοιχτού κώδικα πράκτορας κωδικοποίησης βασισμένος στο <a href="https://github.com/opensolon/solon-ai">Solon AI</a> και Java (υποστηρίζει περιβάλλοντα εκτέλεσης Java8 έως Java26)</p>
-<p>Τελευταία Έκδοση: v2026.4.30</p>
+<p>Τελευταία Έκδοση: v2026.5.3</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -40,9 +40,9 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.4.30
+SolonCode v2026.5.3
 /Users/noear
-Tips: (esc) interrupt | '/exit' | '/resume' | '/clear' | '/model'
+Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 

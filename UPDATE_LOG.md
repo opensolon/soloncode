@@ -1,4 +1,22 @@
 
+
+### v2026.5.3
+
+* 添加 soloncode `@agent` 功能
+
+### v2026.5.2
+
+* 优化 soloncode 内置 skill.sh 的 find-skills 专家技能（可以自然语言查找 skill 和安装 skill。先查找再安装）
+* 优化 soloncode web 附件上传功能（原附件分为：普通文件，多模态图片文件）
+* 优化 soloncode web 语音输入体验，改成微信风格（按住说话，松开结束）
+* 优化 soloncode 大模型兼容性（原上下文摘要由系统消息，改为用户消息）
+* 调整 soloncode cli 取消回车中断（容易误输）
+
+
+### v2026.5.1
+
+* 添加 soloncode 心智记忆功能（越用越聪明）
+
 ### v2026.4.30
 
 * 新增 soloncode `/loop` 命令支持

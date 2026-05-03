@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.core;
+package org.noear.solon.codecli.config;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -53,6 +53,8 @@ public class AgentProperties extends HarnessProperties {
     private boolean thinkPrinted = false;
 
     private boolean cliPrintSimplified = true;
+
+    private boolean memoryIsolation = true;
 
     private String webEndpoint = "/cli";
 

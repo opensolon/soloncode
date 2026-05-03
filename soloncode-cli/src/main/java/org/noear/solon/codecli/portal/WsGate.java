@@ -29,6 +29,7 @@ import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.harness.command.CommandResult;
 import org.noear.solon.codecli.command.WebCommandDispatcher;
 import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
@@ -74,6 +75,7 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
         }
+
         if (Assert.isNotEmpty(sessionCwd)) {
             if (sessionCwd.contains("..")) {
                 socket.send("{\"type\":\"error\",\"text\":\"Invalid Session Cwd\"}");

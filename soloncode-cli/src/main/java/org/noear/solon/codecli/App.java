@@ -17,8 +17,8 @@ package org.noear.solon.codecli;
 
 import org.noear.solon.Solon;
 import org.noear.solon.SolonApp;
-import org.noear.solon.codecli.core.AgentFlags;
-import org.noear.solon.codecli.core.AgentProperties;
+import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;

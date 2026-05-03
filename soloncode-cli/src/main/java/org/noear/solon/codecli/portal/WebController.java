@@ -19,6 +19,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.Solon;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.ChatConfig;
@@ -31,11 +32,12 @@ import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
+import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandResult;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.command.WebCommandDispatcher;
-import org.noear.solon.codecli.core.AgentFlags;
+import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.provider.ModelInfo;
 import org.noear.solon.codecli.provider.ModelProvider;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
@@ -99,7 +101,7 @@ public class WebController {
     /**
      * Web 端 Loop 任务异步执行：调用 AI，流式推送到前端，并收集结果摘要
      */
-    private CompletableFuture<String> executeLoopTaskAsync(String sessionId, String prompt) {
+    private CompletableFuture<String> executeLoopTaskAsync(String sessionId, String input) {
         CompletableFuture<String> future = new CompletableFuture<>();
 
         try {
@@ -110,12 +112,23 @@ public class WebController {
                 return future;
             }
 
+            String agentName = null;
+            String currentInput = input;
+
+            if(input.startsWith("@")) {
+                int agentNameIdx = input.indexOf(" ");
+                if (agentNameIdx > 0) {
+                    agentName = input.substring(1, agentNameIdx);
+                    currentInput = currentInput.substring(agentNameIdx + 1);
+                }
+            }
 
             ChatModel chatModel = engine.getMainModel();
+            ReActAgent agent = engine.getAgentOrMain(agentName);
 
             StringBuilder resultBuilder = new StringBuilder();
 
-            streamBuilder.buildStreamFlux(session, chatModel, null, Prompt.of(prompt))
+            streamBuilder.buildStreamFlux(session, agent, chatModel, null, Prompt.of(currentInput))
                     .filter(line -> !"[DONE]".equals(line))
                     .doOnNext(line -> {
                         // 1) 广播到前端 SSE
@@ -485,8 +498,8 @@ public class WebController {
 
     private static final Set<String> IMAGE_EXTENSIONS = Utils.asSet(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg");
 
-    private static boolean isImageExtension(String ext) {
-        return IMAGE_EXTENSIONS.contains(ext);
+    private static boolean isImageAttachment(String ext, String attachmentsType) {
+        return "image".equals(attachmentsType) && IMAGE_EXTENSIONS.contains(ext);
     }
 
     private static String extensionToMime(String ext) {
@@ -545,7 +558,7 @@ public class WebController {
     /**
      * 处理命令输入（所有结果统一走 SSE 格式返回，与前端 fetch+SSE 解析保持一致）
      */
-    private void handleCommand(Context ctx, AgentSession session, ChatModel chatModel,
+    private void handleCommand(Context ctx, AgentSession session, ReActAgent agent, ChatModel chatModel,
                                String sessionCwd, String input) throws Throwable {
         WebCommandDispatcher dispatcher = new WebCommandDispatcher(engine.getCommandRegistry());
         CommandResult result = dispatcher.dispatch(input, session, engine,
@@ -557,14 +570,14 @@ public class WebController {
                         chatModelSelected = chatModel;
                     }
 
-                    return streamBuilder.buildStreamFlux(session, chatModelSelected, sessionCwd, Prompt.of(prompt));
+                    return streamBuilder.buildStreamFlux(session, agent, chatModelSelected, sessionCwd, Prompt.of(prompt));
                 });
 
         if (result == null) {
             // 不是有效命令，当作普通输入
             Prompt prompt = Prompt.of(input);
             ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-            ctx.returnValue(streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, prompt));
+            ctx.returnValue(streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt));
             return;
         }
 
@@ -608,14 +621,26 @@ public class WebController {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", cmd.name());
             item.put("description", cmd.description());
-            item.put("type", cmd.type().name());
+            item.put("type", "command");
             data.add(item);
         }
+
+        for (AgentDefinition definition : engine.getAgentManager().getAgents()) {
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("name", definition.getName());
+            item.put("description", definition.getDescription());
+            item.put("type", "subagent");
+            data.add(item);
+        }
+
         return Result.succeed(data);
     }
 
+    /**
+     * @param attachmentTypes (item: file or image) 与 attachments 一一对应
+     * */
     @Mapping("/chat/input")
-    public void chat_input(Context ctx, String input, UploadedFile[] attachments, String model, String sessionId) throws Throwable {
+    public void chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentTypes[], String model, String sessionId) throws Throwable {
         if (sessionId == null || sessionId.isEmpty()) {
             sessionId = ctx.headerOrDefault("X-Session-Id", "web");
         }
@@ -636,9 +661,20 @@ public class WebController {
             }
         }
 
+        String agentName = null;
+        String currentInput = input;
+        if(input.startsWith("@")) {
+            int agentNameIdx = input.indexOf(" ");
+            if (agentNameIdx > 0) {
+                agentName = input.substring(1, agentNameIdx);
+                currentInput = currentInput.substring(agentNameIdx + 1);
+            }
+        }
+
         final AgentSession session = engine.getSession(sessionId);
         session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, model);
         final ChatModel chatModel = engine.getModelOrMain(model);
+        final ReActAgent agent = engine.getAgentOrMain(agentName);
 
         // HITL approve/reject handling
         String hitlAction = ctx.param("hitlAction");
@@ -653,7 +689,7 @@ public class WebController {
             }
             // Resume streaming after HITL decision
             ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-            ctx.returnValue(streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, null));
+            ctx.returnValue(streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, null));
             return;
         }
 
@@ -662,7 +698,9 @@ public class WebController {
         List<String> fileAttachments = new ArrayList<>();
 
         if (attachments != null) {
-            for (UploadedFile attachment : attachments) {
+            for (int i=0, len = attachments.length; i< len; i++) {
+                UploadedFile attachment = attachments[i];
+
                 String fileName = attachment.getName();
                 if (fileName != null && !fileName.contains("..") && !fileName.contains("/") && !fileName.contains("\\")) {
                     String ext = "." + attachment.getExtension();
@@ -672,7 +710,7 @@ public class WebController {
                     if (savePath.startsWith(Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize())) {
                         Files.copy(attachment.getContent(), savePath, StandardCopyOption.REPLACE_EXISTING);
 
-                        if (isImageExtension(ext)) {
+                        if (isImageAttachment(ext, attachmentTypes[i])) {
                             // Image: read back from saved file, convert to base64
                             byte[] bytes = Files.readAllBytes(savePath);
                             String base64 = Base64.getEncoder().encodeToString(bytes);
@@ -692,38 +730,38 @@ public class WebController {
             String filePrefix = fileAttachments.stream()
                     .map(f -> "[附件: " + f + "]")
                     .collect(java.util.stream.Collectors.joining("\n"));
-            if (input == null || input.isEmpty()) {
-                input = filePrefix + "\n请帮我处理这些附件";
+            if (currentInput == null || currentInput.isEmpty()) {
+                currentInput = filePrefix + "\n请帮我处理这些附件";
             } else {
-                input = filePrefix + "\n" + input;
+                currentInput = filePrefix + "\n" + currentInput;
             }
         }
 
-        if (Assert.isNotEmpty(input) || !imageBlocks.isEmpty()) {
-            if (input == null || input.isEmpty()) {
-                input = imageBlocks.size() > 1 ? "请描述这些图片" : "请描述这张图片";
+        if (Assert.isNotEmpty(currentInput) || !imageBlocks.isEmpty()) {
+            if (currentInput == null || currentInput.isEmpty()) {
+                currentInput = imageBlocks.size() > 1 ? "请描述这些图片" : "请描述这张图片";
             }
 
             // 命令分发：检测 / 前缀
-            if (input.startsWith("/") && imageBlocks.isEmpty()) {
-                handleCommand(ctx, session, chatModel, sessionCwd, input);
+            if (currentInput.startsWith("/") && imageBlocks.isEmpty()) {
+                handleCommand(ctx, session, agent, chatModel, sessionCwd, currentInput);
                 return;
             }
 
             Prompt prompt;
             if (!imageBlocks.isEmpty()) {
                 Contents contents = new Contents();
-                contents.addBlock(TextBlock.of(input));
+                contents.addBlock(TextBlock.of(currentInput));
                 for (ImageBlock block : imageBlocks) {
                     contents.addBlock(block);
                 }
                 prompt = Prompt.of(new UserMessage(contents));
             } else {
-                prompt = Prompt.of(input);
+                prompt = Prompt.of(currentInput);
             }
 
             ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
-            ctx.returnValue(streamBuilder.buildStreamFlux(session, chatModel, sessionCwd, prompt));
+            ctx.returnValue(streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt));
         }
     }
 }

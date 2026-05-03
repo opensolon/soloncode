@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.core;
+package org.noear.solon.codecli.config;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.core.util.DateUtil;
@@ -22,7 +22,7 @@ public class AgentFlags {
     public final static String FLAG_WEB = "web";
 
     public static String getVersion() {
-        return "v2026.4.30";
+        return "v2026.5.3";
     }
 
     private static String lastVersion;
