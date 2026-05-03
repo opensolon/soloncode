@@ -26,6 +26,7 @@ import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
+import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
@@ -270,7 +271,7 @@ public class CliShell implements Runnable {
         }
 
 
-        if(input.startsWith("@")) {
+        if (input.startsWith("@")) {
             int agentNameIdx = input.indexOf(" ");
             if (agentNameIdx > 0) {
                 agentName = input.substring(1, agentNameIdx);
@@ -424,20 +425,20 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void onFinalChunk(ReActChunk react) {
-        Long start_time = react.getTrace().getOriginalPrompt().attrAs("start_time");
+    private StringBuilder getTraceInfo(ReActTrace trace) {
+        Long start_time = trace.getOriginalPrompt().attrAs("start_time");
 
         StringBuilder buf = new StringBuilder();
         buf.append(" (");
 
-        buf.append(react.getTrace().getOptions().getChatModel().getNameOrModel());
+        buf.append(trace.getOptions().getChatModel().getNameOrModel());
 
-        if (react.getTrace().getMetrics() != null) {
+        if (trace.getMetrics() != null) {
             if (buf.length() > 2) {
                 buf.append(", ");
             }
 
-            buf.append(react.getTrace().getMetrics().getTotalTokens()).append(" tokens");
+            buf.append(trace.getMetrics().getTotalTokens()).append("tk");
         }
 
         if (start_time != null) {
@@ -446,14 +447,19 @@ public class CliShell implements Runnable {
             }
 
             long seconds = Duration.ofMillis(System.currentTimeMillis() - start_time).getSeconds();
-            buf.append(seconds).append(" seconds");
+            buf.append(seconds).append("s");
         }
 
         buf.append(")");
 
+        return buf;
+    }
 
-        if (buf.length() > 4) {
-            terminal.writer().println(DIM + buf + RESET);
+    private void onFinalChunk(ReActChunk react) {
+        StringBuilder traceInfo = getTraceInfo(react.getTrace());
+
+        if (traceInfo.length() > 4) {
+            terminal.writer().println(DIM + traceInfo + RESET);
         }
     }
 
@@ -508,23 +514,9 @@ public class CliShell implements Runnable {
 
                 //---------
 
-                StringBuilder buf = new StringBuilder();
-                buf.append(" (");
-
-                buf.append(thought.getTrace().getOptions().getChatModel().getNameOrModel());
-
-                if (thought.getTrace().getMetrics() != null) {
-                    if (buf.length() > 2) {
-                        buf.append(", ");
-                    }
-
-                    buf.append(thought.getTrace().getMetrics().getTotalTokens()).append(" tokens");
-                }
-
-                buf.append(")");
-
-                if (buf.length() > 4) {
-                    terminal.writer().println(DIM + buf + RESET);
+                StringBuilder traceInfo = getTraceInfo(thought.getTrace());
+                if (traceInfo.length() > 4) {
+                    terminal.writer().println(DIM + traceInfo + RESET);
                 }
             }
         }

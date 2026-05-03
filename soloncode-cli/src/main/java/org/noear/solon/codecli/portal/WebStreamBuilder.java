@@ -19,6 +19,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
+import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
@@ -125,6 +126,36 @@ public class WebStreamBuilder {
                 });
     }
 
+    private StringBuilder getTraceInfo(ReActTrace trace) {
+        Long start_time = trace.getOriginalPrompt().attrAs("start_time");
+
+        StringBuilder buf = new StringBuilder();
+        buf.append(" `(");
+
+        buf.append(trace.getOptions().getChatModel().getNameOrModel());
+
+        if (trace.getMetrics() != null) {
+            if (buf.length() > 2) {
+                buf.append(", ");
+            }
+
+            buf.append(trace.getMetrics().getTotalTokens()).append("tk");
+        }
+
+        if (start_time != null) {
+            if (buf.length() > 2) {
+                buf.append(", ");
+            }
+
+            long seconds = Duration.ofMillis(System.currentTimeMillis() - start_time).getSeconds();
+            buf.append(seconds).append("s");
+        }
+
+        buf.append(")`\n");
+
+        return buf;
+    }
+
     private String onReasonChunk(ReasonChunk reason) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             if (reason.getMessage().isThinking()) {
@@ -146,24 +177,10 @@ public class WebStreamBuilder {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
-                StringBuilder buf = new StringBuilder();
-                buf.append("` (");
-
-                buf.append(thought.getTrace().getOptions().getChatModel().getNameOrModel());
-
-                if (thought.getTrace().getMetrics() != null) {
-                    if (buf.length() > 2) {
-                        buf.append(", ");
-                    }
-
-                    buf.append(thought.getTrace().getMetrics().getTotalTokens()).append(" tokens");
-                }
-
-                buf.append(")`\n");
-
+                StringBuilder traceInfo = getTraceInfo(thought.getTrace());
 
                 return new ONode().set("type", "text")
-                        .set("text", content + buf)
+                        .set("text", content + traceInfo)
                         .toJson();
             }
         }
@@ -206,36 +223,10 @@ public class WebStreamBuilder {
     }
 
     private String onFinalChunk(ReActChunk react) {
-        StringBuilder buf = new StringBuilder();
-
-        Long start_time = react.getTrace().getOriginalPrompt().attrAs("start_time");
-
-
-        buf.append(" (");
-
-        buf.append(react.getTrace().getOptions().getChatModel().getNameOrModel());
-
-        if (react.getTrace().getMetrics() != null) {
-            if (buf.length() > 2) {
-                buf.append(", ");
-            }
-
-            buf.append(react.getTrace().getMetrics().getTotalTokens()).append(" tokens");
-        }
-
-        if (start_time != null) {
-            if (buf.length() > 2) {
-                buf.append(", ");
-            }
-
-            long seconds = Duration.ofMillis(System.currentTimeMillis() - start_time).getSeconds();
-            buf.append(seconds).append(" seconds");
-        }
-
-        buf.append(")");
+        StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
         return new ONode().set("type", "text")
-                .set("text", buf.toString())
+                .set("text", traceInfo.toString())
                 .toJson();
     }
 }
