@@ -25,6 +25,7 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
@@ -164,7 +165,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 流式处理
             final String finalSessionId = sessionId;
-            Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+            Prompt prompt = Prompt.of(input).attrPut(HarnessFlags.ATTR_START_TIME, System.currentTimeMillis());
 
             // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();

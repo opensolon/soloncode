@@ -62,6 +62,8 @@ public class WebStreamBuilder {
             prompt = Prompt.of();
         }
 
+        prompt.attrPut(HarnessFlags.ATTR_START_TIME, System.currentTimeMillis());
+
         return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {

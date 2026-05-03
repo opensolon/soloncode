@@ -297,7 +297,9 @@ public class CliShell implements Runnable {
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
-            Disposable disposable = agent.prompt(currentInput)
+            Prompt originalPrompt = Prompt.of(currentInput).attrPut(HarnessFlags.ATTR_START_TIME, System.currentTimeMillis());
+
+            Disposable disposable = agent.prompt(originalPrompt)
                     .session(session)
                     .options(o -> {
                         o.chatModel(chatModel);
