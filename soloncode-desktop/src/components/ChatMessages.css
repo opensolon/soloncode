@@ -8,6 +8,9 @@
   flex-direction: column;
   gap: 5px;
   background-color: var(--cb-vscode-editor-background);
+  max-width: 90%;
+  margin: 0 auto;
+  width: 100%;
 }
 
 /* 对话消息滚动条 — 始终可见 */

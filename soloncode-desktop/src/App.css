@@ -357,8 +357,9 @@ select option {
   max-width: none;
 }
 
-/* 编辑器和对话并排时，输入框占分屏区域的 95% */
-.panels-container > .panel-wrapper:not(:only-child) .chat-input-wrapper {
+/* 编辑器和对话并排时，消息和输入框占分屏区域的 95% */
+.panels-container > .panel-wrapper:not(:only-child) .chat-input-wrapper,
+.panels-container > .panel-wrapper:not(:only-child) .chat-messages {
   max-width: 95%;
 }
 
