@@ -212,6 +212,7 @@
 
         /* Thinking */
         .inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); font-size: 13px; }
+        .thinking-timer { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
         .thinking-row { display: flex; gap: 14px; margin-bottom: 28px; animation: msg-in 0.25s ease-out; }
         .thinking-bubble { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 14px; padding: 10px 0; }
         .thinking-dots { display: flex; gap: 5px; }
@@ -495,6 +496,12 @@
             this.silenceTimer = null;
             this.contentRafId = null;
             this.reasonRafId = null;
+            this.thinkingTimerId = null;
+            this.thinkingStartTime = null;
+            this.inlineThinkingTimerId = null;
+            this.inlineThinkingStartTime = null;
+            this.thinkingBlockTimerId = null;
+            this.thinkingBlockStartTime = null;
         }
 
         var sessionMap = {};
@@ -1578,6 +1585,7 @@
                 block.className = 'thinking-block streaming expanded';
                 block.innerHTML = '<div class="thinking-block-header">'
                     + '<span class="thinking-block-label">思考中...</span>'
+                    + '<span class="thinking-timer" style="margin-left:4px">0s</span>'
                     + '<span class="thinking-block-dots"><span></span><span></span><span></span></span>'
                     + '<i class="layui-icon layui-icon-right thinking-block-toggle"></i>'
                     + '</div>'
@@ -1590,6 +1598,8 @@
                 sess.thinkingBodyMdEl = block.querySelector('.thinking-block-body .md-content');
                 sess.thinkingBodyWrapEl = block.querySelector('.thinking-block-body');
                 sess.thinkingBuffer = '';
+                var timerSpan = block.querySelector('.thinking-timer');
+                startThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', timerSpan);
             }
             return sess.thinkingBlockEl;
         }
@@ -1601,6 +1611,7 @@
 
         function finishThinkingBlock(sess) {
             if (sess.thinkingBlockEl) {
+                stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
                 if (sess.reasonRafId) {
                     cancelAnimationFrame(sess.reasonRafId);
                     sess.reasonRafId = null;
@@ -1609,10 +1620,16 @@
                     }
                 }
                 sess.thinkingBlockEl.classList.remove('streaming', 'expanded');
+                var elapsed = '';
+                if (sess.thinkingBlockStartTime) {
+                    elapsed = ' (' + Math.floor((Date.now() - sess.thinkingBlockStartTime) / 1000) + 's)';
+                }
                 var label = sess.thinkingBlockEl.querySelector('.thinking-block-label');
-                if (label) label.textContent = '思考结束';
+                if (label) label.textContent = '思考结束' + elapsed;
                 var dots = sess.thinkingBlockEl.querySelector('.thinking-block-dots');
                 if (dots) dots.remove();
+                var timerSpan = sess.thinkingBlockEl.querySelector('.thinking-timer');
+                if (timerSpan) timerSpan.remove();
                 sess.thinkingBlockEl = null;
                 sess.thinkingBodyMdEl = null;
                 sess.thinkingBodyWrapEl = null;
@@ -1746,17 +1763,35 @@
         }
 
         /* ===== Thinking Indicators ===== */
+        function startThinkingTimer(sess, timerKey, startTimeKey, labelEl) {
+            sess[startTimeKey] = Date.now();
+            if (sess[timerKey]) clearInterval(sess[timerKey]);
+            sess[timerKey] = setInterval(function() {
+                if (!labelEl || !labelEl.parentNode) { clearInterval(sess[timerKey]); sess[timerKey] = null; return; }
+                var elapsed = Math.floor((Date.now() - sess[startTimeKey]) / 1000);
+                labelEl.textContent = elapsed + 's';
+            }, 1000);
+        }
+
+        function stopThinkingTimer(sess, timerKey, startTimeKey) {
+            if (sess[timerKey]) { clearInterval(sess[timerKey]); sess[timerKey] = null; }
+            sess[startTimeKey] = null;
+        }
+
         function showThinking(sess) {
             removeThinking(sess);
             sess.thinkingEl = document.createElement('div');
             sess.thinkingEl.className = 'thinking-row';
             sess.thinkingEl.innerHTML = '<div class="msg-avatar" style="background:linear-gradient(135deg,var(--accent),#a78bfa);color:#fff">'
                 + '<i class="layui-icon layui-icon-bot" style="font-size:18px"></i></div>'
-                + '<div class="thinking-bubble">思考中' + DOTS_HTML + '</div>';
+                + '<div class="thinking-bubble">思考中' + DOTS_HTML + '<span class="thinking-timer">0s</span></div>';
             sess.container.appendChild(sess.thinkingEl);
+            var timerSpan = sess.thinkingEl.querySelector('.thinking-timer');
+            startThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime', timerSpan);
             if (sess.sessionId === activeSessionId) scrollToBottom(true);
         }
         function removeThinking(sess) {
+            stopThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime');
             if (sess.thinkingEl && sess.thinkingEl.parentNode) { sess.thinkingEl.parentNode.removeChild(sess.thinkingEl); sess.thinkingEl = null; }
         }
 
@@ -1764,11 +1799,14 @@
             if (sess.inlineThinkingEl || !sess.currentBubbleEl) return;
             sess.inlineThinkingEl = document.createElement('div');
             sess.inlineThinkingEl.className = 'inline-thinking';
-            sess.inlineThinkingEl.innerHTML = '思考中 ' + DOTS_HTML;
+            sess.inlineThinkingEl.innerHTML = '思考中 ' + DOTS_HTML + '<span class="thinking-timer">0s</span>';
             insertBeforeActions(sess, sess.inlineThinkingEl);
+            var timerSpan = sess.inlineThinkingEl.querySelector('.thinking-timer');
+            startThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', timerSpan);
             if (sess.sessionId === activeSessionId) scrollToBottom();
         }
         function removeInlineThinking(sess) {
+            stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
             if (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) { sess.inlineThinkingEl.parentNode.removeChild(sess.inlineThinkingEl); }
             sess.inlineThinkingEl = null;
         }
