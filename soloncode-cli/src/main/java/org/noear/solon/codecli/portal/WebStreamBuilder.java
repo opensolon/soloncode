@@ -29,6 +29,7 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.core.util.Assert;
@@ -60,8 +61,6 @@ public class WebStreamBuilder {
         if ("/resume".equals(prompt.getUserContent())) {
             prompt = Prompt.of();
         }
-
-        prompt.attrPut("start_time", System.currentTimeMillis());
 
         return agent.prompt(prompt)
                 .session(session)
@@ -127,7 +126,7 @@ public class WebStreamBuilder {
     }
 
     private StringBuilder getTraceInfo(ReActTrace trace) {
-        Long start_time = trace.getOriginalPrompt().attrAs("start_time");
+        Long start_time = trace.getOriginalPrompt().attrAs(HarnessFlags.ATTR_START_TIME);
 
         StringBuilder buf = new StringBuilder();
         buf.append(" `(");

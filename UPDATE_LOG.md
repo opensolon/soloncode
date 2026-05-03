@@ -1,5 +1,11 @@
 
 
+### v2026.5.4
+
+* 添加 soloncode onThoughtChunk 模型与计时打印
+* 优化 soloncode cli 思考转为灰色
+* 修复 soloncode mac 安装时，会不断添加新的环境配置记录
+
 ### v2026.5.3
 
 * 添加 soloncode `@agent` 功能

@@ -293,9 +293,7 @@ public class CliShell implements Runnable {
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
-            Prompt prompt = Prompt.of(currentInput).attrPut("start_time", System.currentTimeMillis());
-
-            Disposable disposable = agent.prompt(prompt)
+            Disposable disposable = agent.prompt(currentInput)
                     .session(session)
                     .options(o -> {
                         o.chatModel(chatModel);
@@ -426,7 +424,7 @@ public class CliShell implements Runnable {
     }
 
     private StringBuilder getTraceInfo(ReActTrace trace) {
-        Long start_time = trace.getOriginalPrompt().attrAs("start_time");
+        Long start_time = trace.getOriginalPrompt().attrAs(HarnessFlags.ATTR_START_TIME);
 
         StringBuilder buf = new StringBuilder();
         buf.append(" (");
@@ -506,18 +504,17 @@ public class CliShell implements Runnable {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
+
+                StringBuilder traceInfo = getTraceInfo(thought.getTrace());
+                if (traceInfo.length() > 4) {
+                    content = content + DIM + traceInfo + RESET;
+                }
+
                 // 保持间接缩进，去掉首尾多余换行
                 terminal.writer().println();
                 terminal.writer().print("  " + content.trim().replace("\n", "\n  "));
                 terminal.writer().println();
                 terminal.flush();
-
-                //---------
-
-                StringBuilder traceInfo = getTraceInfo(thought.getTrace());
-                if (traceInfo.length() > 4) {
-                    terminal.writer().println(DIM + traceInfo + RESET);
-                }
             }
         }
     }
