@@ -1,5 +1,6 @@
 .chat-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px;
@@ -7,6 +8,21 @@
   flex-direction: column;
   gap: 5px;
   background-color: var(--cb-vscode-editor-background);
+}
+
+/* 对话消息滚动条 — 始终可见 */
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .message {

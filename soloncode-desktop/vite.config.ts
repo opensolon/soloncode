@@ -8,11 +8,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,
     strictPort: true,
@@ -25,7 +21,6 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
     proxy: {
@@ -35,5 +30,30 @@ export default defineConfig(async () => ({
         secure: false
       }
     }
+  },
+
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'monaco-editor': ['@monaco-editor/react'],
+          'xterm': ['@xterm/xterm', '@xterm/addon-fit'],
+          'syntax-highlighter': ['react-syntax-highlighter', 'react-markdown', 'remark-breaks'],
+          'vendor-react': ['react', 'react-dom'],
+        },
+      },
+    },
+    // 启用 CSS 代码分割
+    cssCodeSplit: true,
+    // 压缩选项
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false,
+        drop_debugger: true,
+      },
+    },
+    // chunk 大小警告阈值
+    chunkSizeWarningLimit: 1000,
   },
 }));

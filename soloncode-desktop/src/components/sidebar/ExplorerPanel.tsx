@@ -608,15 +608,6 @@ export function ExplorerPanel({
         )}
       </div>
 
-      {hasProjects ? (
-        <div className="projects-list">
-          {projects.map(project => renderProject(project))}
-        </div>
-      ) : (
-        <div className="empty-conversations" style={{ flex: 1 }}>
-          <span>暂无项目</span>
-        </div>
-      )}
 
       {/* 文件右键菜单 */}
       {contextMenu && (

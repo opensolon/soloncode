@@ -187,6 +187,9 @@
 .chat-wrapper {
   min-width: 200px;
   flex: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 只有两个面板都可见时才显示分割线 */

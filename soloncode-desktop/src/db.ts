@@ -148,11 +148,31 @@ export async function reassignMessages(oldConvId: string | number, newConvId: st
     .modify({ conversationId: newConvId });
 }
 
-export async function getMessagesByConversation(conversationId: string | number): Promise<DbMessage[]> {
+export async function getMessagesByConversation(
+  conversationId: string | number,
+  limit?: number,
+  offset?: number,
+): Promise<DbMessage[]> {
+  let collection = db.messages
+    .where('conversationId')
+    .equals(conversationId);
+
+  if (offset) {
+    collection = collection.offset(offset);
+  }
+  if (limit) {
+    collection = collection.limit(limit);
+  }
+
+  return await collection.toArray();
+}
+
+/** 获取会话的消息总数 */
+export async function getMessageCount(conversationId: string | number): Promise<number> {
   return await db.messages
     .where('conversationId')
     .equals(conversationId)
-    .toArray();
+    .count();
 }
 
 export async function saveConversation(conversation: DbConversation): Promise<number> {
