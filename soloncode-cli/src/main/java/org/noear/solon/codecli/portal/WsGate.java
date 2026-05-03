@@ -17,6 +17,7 @@ package org.noear.solon.codecli.portal;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
@@ -25,10 +26,10 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.harness.command.CommandResult;
 import org.noear.solon.codecli.command.WebCommandDispatcher;
-import org.noear.solon.codecli.core.AgentProperties;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -167,22 +168,30 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
 
+            String agentName = null;
+            if(input.startsWith("@")) {
+                int agentNameIdx = input.indexOf(" ");
+                if (agentNameIdx > 0) {
+                    agentName = input.substring(1, agentNameIdx);
+                }
+            }
+
+            // 根据前端指定的 model 选择对应 ChatModel
+            String modelName = req.getModel();
+            ChatModel chatModel = kernel.getModelOrMain(modelName);
+
+            session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
+            final ReActAgent agent = kernel.getAgentOrMain(agentName);
+
             // 命令处理：以 / 开头的输入走命令分发
             if (input.startsWith("/")) {
-                String modelName = req.getModel();
-                ChatModel chatModel = kernel.getModelOrMain(modelName);
-                String finalCwd = cwd;
-                handleCommand(socket, session, chatModel, finalCwd, input, sessionId);
+                handleCommand(socket, session, agent, chatModel, cwd, input, sessionId);
                 return;
             }
 
             // 流式处理
             final String finalSessionId = sessionId;
             Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
-
-            // 根据前端指定的 model 选择对应 ChatModel
-            String modelName = req.getModel();
-            ChatModel chatModel = kernel.getModelOrMain(modelName);
 
             String finalCwd = cwd;
             Disposable disposable = kernel.prompt(prompt)
@@ -394,7 +403,7 @@ public class WsGate extends SimpleWebSocketListener {
     /**
      * 处理命令输入（/ 开头），通过 WebCommandDispatcher 分发执行
      */
-    private void handleCommand(WebSocket socket, AgentSession session, ChatModel chatModel,
+    private void handleCommand(WebSocket socket, AgentSession session, ReActAgent agent, ChatModel chatModel,
                                String sessionCwd, String input, String finalSessionId) {
         try {
             WebCommandDispatcher dispatcher = new WebCommandDispatcher(kernel.getCommandRegistry());
@@ -406,7 +415,7 @@ public class WsGate extends SimpleWebSocketListener {
                         } else {
                             chatModelSelected = chatModel;
                         }
-                        return streamBuilder.buildStreamFlux(session, chatModelSelected, sessionCwd, Prompt.of(prompt));
+                        return streamBuilder.buildStreamFlux(session, agent, chatModelSelected, sessionCwd, Prompt.of(prompt));
                     });
 
             if (result == null) {
