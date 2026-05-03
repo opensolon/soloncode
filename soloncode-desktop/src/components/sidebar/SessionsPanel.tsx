@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Icon } from '../common/Icon';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { UNLINKED_PROJECT } from '../../db';
 import './SessionsPanel.css';
 
@@ -23,11 +24,13 @@ interface SessionsPanelProps {
   sessions: Session[];
   currentSessionId: string | null;
   currentProjectId: string | null;
+  backendPort?: number | null;
   onSelectSession: (id: string) => void;
   onNewSession: (projectId?: string) => string | void;
   onDeleteSession: (id: string) => void;
   onAddProject: () => void;
   onRemoveProject: (id: string) => void;
+  onSyncSession?: (sessionId: string) => Promise<void>;
 }
 
 export function SessionsPanel({
@@ -35,12 +38,17 @@ export function SessionsPanel({
   sessions,
   currentSessionId,
   currentProjectId,
+  backendPort,
   onSelectSession,
   onNewSession,
   onDeleteSession,
   onAddProject,
   onRemoveProject,
+  onSyncSession,
 }: SessionsPanelProps) {
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+  const [confirmSync, setConfirmSync] = useState<{ sessionId: string; title: string } | null>(null);
+  const [confirmSyncAll, setConfirmSyncAll] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
     if (currentProjectId) return new Set([currentProjectId]);
     return new Set<string>();
@@ -97,6 +105,13 @@ export function SessionsPanel({
             <span>{session.timestamp}</span>
           </div>
         </div>
+        <button
+          className={`sync-btn${syncingIds.has(session.id) ? ' syncing' : ''}`}
+          onClick={e => { e.stopPropagation(); requestSync(session.id, session.title); }}
+          title="同步消息"
+        >
+          <Icon name={syncingIds.has(session.id) ? 'loading' : 'refresh'} size={14} />
+        </button>
         {!session.isPermanent && (
           <button
             className="delete-btn"
@@ -110,11 +125,62 @@ export function SessionsPanel({
     ));
   }
 
+  const handleSync = useCallback(async (sessionId: string) => {
+    if (syncingIds.has(sessionId)) return;
+    setSyncingIds(prev => new Set(prev).add(sessionId));
+    try {
+      await onSyncSession?.(sessionId);
+    } finally {
+      setSyncingIds(prev => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+  }, [syncingIds, onSyncSession]);
+
+  const requestSync = useCallback((sessionId: string, title: string) => {
+    setConfirmSync({ sessionId, title });
+  }, []);
+
+  const handleSyncAll = useCallback(async () => {
+    for (const s of sessions) {
+      if (!s.id.startsWith('temp-') && !s.id.startsWith('pending-')) {
+        await handleSync(s.id);
+      }
+    }
+  }, [sessions, handleSync]);
+
   return (
     <div className="sessions-panel">
+      {confirmSync && (
+        <ConfirmDialog
+          title="同步确认"
+          message={`将从后端重新拉取「${confirmSync.title}」的消息并覆盖本地记录。同步后可能出现消息格式不兼容、内容丢失等异常情况，是否确认？`}
+          confirmLabel="确认同步"
+          cancelLabel="取消"
+          danger
+          onConfirm={() => { handleSync(confirmSync.sessionId); setConfirmSync(null); }}
+          onCancel={() => setConfirmSync(null)}
+        />
+      )}
+      {confirmSyncAll && (
+        <ConfirmDialog
+          title="同步全部确认"
+          message="将重新拉取所有会话的消息并覆盖本地记录。同步后可能出现消息格式不兼容、内容丢失等异常情况，是否确认？"
+          confirmLabel="确认同步全部"
+          cancelLabel="取消"
+          danger
+          onConfirm={() => { handleSyncAll(); setConfirmSyncAll(false); }}
+          onCancel={() => setConfirmSyncAll(false)}
+        />
+      )}
       <div className="panel-header">
         <span className="panel-title">项目</span>
         <div className="panel-header-actions">
+          <button className="new-session-btn" onClick={() => setConfirmSyncAll(true)} title="同步全部">
+            <Icon name="refresh" size={14} />
+          </button>
           <button className="new-session-btn" onClick={() => onNewSession(currentProjectId || undefined)} title="新建会话">
             <Icon name="add" size={16} />
           </button>

@@ -87,9 +87,9 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const [showModelPicker, setShowModelPicker] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);
 
-  // 同步 activeProviderId 到 selectedModel
+  // 同步 activeProviderId 到 selectedModel（优先恢复上次使用的模型）
   useEffect(() => {
-    if (activeProviderId) {
+    if (activeProviderId && allModels.some(m => m.id === activeProviderId)) {
       setSelectedModel(activeProviderId);
     } else if (allModels.length > 0) {
       setSelectedModel(allModels[0].id);

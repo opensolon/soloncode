@@ -18,12 +18,10 @@ interface ActivityItem {
 }
 
 const activities: ActivityItem[] = [
-  { id: 'sessions', icon: 'sessions', title: '对话' },
-  { id: 'explorer', icon: 'explorer', title: '资源管理' },
-  { id: 'git', icon: 'git', title: '源代码管理' },
+  { id: 'sessions', icon: 'sessions', title: '对话管理' },
+  { id: 'explorer', icon: 'explorer', title: '项目管理' },
   { id: 'skills', icon: 'skills', title: 'Skills' },
   { id: 'agents', icon: 'agents', title: 'Agents' },
-  // { id: 'extensions', icon: 'extensions', title: '扩展' }, // 后期开发
 ];
 
 export function ActivityBar({ activeActivity, theme, onActivityChange, onToggleTheme }: ActivityBarProps) {
@@ -42,6 +40,13 @@ export function ActivityBar({ activeActivity, theme, onActivityChange, onToggleT
         ))}
       </div>
       <div className="activity-bar-bottom">
+        <button
+          className={`activity-item${activeActivity === 'git' ? ' active' : ''}`}
+          title="源代码管理"
+          onClick={() => onActivityChange(activeActivity === 'git' ? 'explorer' : 'git')}
+        >
+          <Icon name="git" size={24} />
+        </button>
         <button
           className="activity-item"
           title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}

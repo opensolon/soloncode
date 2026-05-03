@@ -5,3 +5,97 @@
   overflow: hidden;
   min-height: 0;
 }
+
+/* 空白对话居中布局 */
+.main-content.empty-state {
+  justify-content: center;
+  align-items: center;
+}
+
+.main-content.empty-state > .chat-header {
+  align-self: stretch;
+}
+
+.main-content.empty-state .chat-messages {
+  display: none;
+}
+
+.empty-center-container {
+  width: 100%;
+  max-width: 60%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 24px;
+  gap: 0;
+}
+
+.empty-center-container > .chat-input-wrapper {
+  max-width: 100%;
+  width: 100%;
+}
+
+.empty-state-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.empty-state-hero .hero-logo {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--cb-text-primary);
+  letter-spacing: 1px;
+  opacity: 0.9;
+}
+
+.empty-state-hero .hero-slogan {
+  font-size: 14px;
+  color: var(--cb-text-secondary);
+  margin-top: 8px;
+  opacity: 0.6;
+}
+
+/* 开始工作项目底框 */
+.start-work-panel {
+  width: 100%;
+  background-color: var(--cb-vscode-sideBar-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.start-work-panel .panel-title {
+  font-size: 13px;
+  color: var(--cb-text-secondary);
+  text-align: center;
+}
+
+.start-work-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.start-work-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 8px;
+  color: var(--cb-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.start-work-btn:hover {
+  border-color: var(--cb-accent);
+  background-color: var(--cb-vscode-list-hoverBackground);
+}

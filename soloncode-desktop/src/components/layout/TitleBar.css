@@ -49,11 +49,13 @@
   color: var(--cb-text-secondary, #858585);
   height: 100%;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .app-title {
   font-weight: 500;
   white-space: nowrap;
+  line-height: 36px;
 }
 
 .workspace-name {

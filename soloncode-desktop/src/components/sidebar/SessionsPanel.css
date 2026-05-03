@@ -183,7 +183,8 @@
   margin-top: 2px;
 }
 
-.delete-btn {
+.delete-btn,
+.sync-btn {
   width: 24px;
   height: 24px;
   background: transparent;
@@ -197,12 +198,29 @@
   justify-content: center;
 }
 
-.session-item:hover .delete-btn {
+.session-item:hover .delete-btn,
+.session-item:hover .sync-btn {
   opacity: 0.5;
 }
 
-.delete-btn:hover {
+.delete-btn:hover,
+.sync-btn:hover {
   opacity: 1 !important;
+}
+
+.delete-btn:hover {
+  color: #ef5350;
+}
+
+.sync-btn.syncing {
+  opacity: 1 !important;
+  animation: spin 1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .empty-state {

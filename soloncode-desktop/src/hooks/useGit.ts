@@ -8,7 +8,7 @@ const emptyGitStatus: GitStatus = {
   files: [],
 };
 
-export function useGit(activeProjectPath: string | null, activeFilePath: string | null) {
+export function useGit(activeProjectPath: string | null, activeFilePath: string | null, gitPanelVisible: boolean) {
   const [gitStatus, setGitStatus] = useState<GitStatus>(emptyGitStatus);
   const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
 
@@ -21,12 +21,13 @@ export function useGit(activeProjectPath: string | null, activeFilePath: string 
     }
   }, [activeProjectPath]);
 
-  // 工作区变化时加载 Git 状态 + 定时刷新
+  // 只在 Git 面板可见时轮询
   useEffect(() => {
+    if (!gitPanelVisible) return;
     refreshGitStatus();
     const timer = setInterval(refreshGitStatus, 5000);
     return () => clearInterval(timer);
-  }, [refreshGitStatus]);
+  }, [refreshGitStatus, gitPanelVisible]);
 
   // 获取当前活跃文件的 git diff
   useEffect(() => {

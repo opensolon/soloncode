@@ -23,6 +23,7 @@ import { useBackend } from './hooks/useBackend';
 import { useGit } from './hooks/useGit';
 import { useFileManager } from './hooks/useFileManager';
 import { useSessions } from './hooks/useSessions';
+import { UNLINKED_PROJECT, saveMessage, db } from './db';
 import { useWorkspace } from './hooks/useWorkspace';
 import type { Conversation, Plugin, Theme } from './types';
 import './App.css';
@@ -60,6 +61,7 @@ interface PanelState {
 function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityType>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [gitPanelVisible, setGitPanelVisible] = useState(false);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string>('default');
@@ -143,7 +145,7 @@ function App() {
     restoreLastSession,
   });
 
-  const { gitStatus, diffLines, refreshGitStatus, setGitStatus } = useGit(activeProjectPath, activeFilePath);
+  const { gitStatus, diffLines, refreshGitStatus, setGitStatus } = useGit(activeProjectPath, activeFilePath, gitPanelVisible);
 
   // 面板状态
   const [panelState, setPanelState] = useState<PanelState>({
@@ -174,11 +176,11 @@ function App() {
     return () => { cancelAnimationFrame(rafId); window.removeEventListener('resize', updatePanelWidths); };
   }, [sidebarCollapsed]);
 
-  // 文件监听
+  // 文件监听（仅在项目管理面板可见时启用）
   useFileWatcher({
     workspacePath: activeProjectPath,
     onChange: async () => { refreshFileTree(); },
-    enabled: !!activeProjectPath,
+    enabled: !!activeProjectPath && activeActivity === 'explorer',
   });
 
   // 配置文件监听
@@ -309,6 +311,41 @@ function App() {
     if (selectedPath) await openFolderByPath(selectedPath);
   }, [openFolderByPath]);
 
+  const handleSelectSession = useCallback((id: string) => {
+    setCurrentSessionId(id);
+    const session = sessions.find(s => s.id === id);
+    if (session?.workspacePath && session.workspacePath !== UNLINKED_PROJECT && session.workspacePath !== activeProjectPath) {
+      setActiveProjectPath(session.workspacePath);
+    }
+  }, [sessions, activeProjectPath, setCurrentSessionId, setActiveProjectPath]);
+
+  const handleSyncSession = useCallback(async (sessionId: string) => {
+    const port = backendPort || 4808;
+    try {
+      const resp = await fetch(`http://localhost:${port}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`);
+      if (!resp.ok) return;
+      const json = await resp.json();
+      const messages: Array<{ role: string; content: string }> = json.data || json;
+      if (!Array.isArray(messages) || messages.length === 0) return;
+
+      // 先清除该会话的旧消息
+      await db.messages.where('conversationId').equals(sessionId).delete();
+
+      // 写入新消息
+      for (const msg of messages) {
+        const contents = JSON.stringify([{ type: 'TEXT', text: msg.content }]);
+        await saveMessage({
+          conversationId: sessionId,
+          role: (msg.role || 'USER').toUpperCase() as any,
+          timestamp: new Date().toLocaleTimeString(),
+          contents,
+        });
+      }
+    } catch (err) {
+      console.error('[SyncSession] Failed:', sessionId, err);
+    }
+  }, [backendPort]);
+
   const togglePanel = useCallback((panel: 'editor' | 'chat') => {
     setPanelState(prev => {
       const newVisible = !prev[`${panel}Visible`];
@@ -335,27 +372,16 @@ function App() {
             onRename={handleRename} onDelete={handleDelete} onCopy={handleCopy} onMove={handleMove}
           />
         );
-      case 'git':
-        return (
-          <GitPanel
-            status={gitStatus} cwd={activeProjectPath || undefined}
-            onCommit={async (msg) => { if (activeProjectPath) { await gitService.commit(activeProjectPath, msg); refreshGitStatus(); } }}
-            onStage={async (path) => { if (activeProjectPath) { await gitService.add(activeProjectPath, [path]); refreshGitStatus(); } }}
-            onUnstage={async (path) => { if (activeProjectPath) { await gitService.reset(activeProjectPath, [path]); refreshGitStatus(); } }}
-            onPush={async () => { if (activeProjectPath) { await gitService.push(activeProjectPath); refreshGitStatus(); } }}
-            onPull={async () => { if (activeProjectPath) { await gitService.pull(activeProjectPath); refreshGitStatus(); } }}
-            onDiscard={async (path) => { if (activeProjectPath) { await gitService.discard(activeProjectPath, [path]); refreshGitStatus(); } }}
-            onFileClick={(relPath) => { if (activeProjectPath) handleFileSelect(activeProjectPath.replace(/\\/g, '/') + '/' + relPath); }}
-          />
-        );
       case 'extensions':
         return <ExtensionsPanel extensions={mockExtensions} onInstall={async (id) => console.log('安装:', id)} onUninstall={async (id) => console.log('卸载:', id)} onToggle={(id) => console.log('切换:', id)} />;
       case 'sessions':
         return (
           <SessionsPanel
             projects={projects} sessions={sessions} currentSessionId={currentSessionId} currentProjectId={activeProjectPath}
-            onSelectSession={setCurrentSessionId} onNewSession={handleNewSession} onDeleteSession={handleDeleteSession}
+            backendPort={backendPort}
+            onSelectSession={handleSelectSession} onNewSession={handleNewSession} onDeleteSession={handleDeleteSession}
             onAddProject={handleAddProject} onRemoveProject={handleRemoveProject}
+            onSyncSession={handleSyncSession}
           />
         );
       case 'skills':
@@ -369,25 +395,27 @@ function App() {
 
   // 渲染面板
   const renderPanel = (panel: PanelPosition) => {
+    const bothVisible = panelState.editorVisible && panelState.chatVisible;
+
     if (panel === 'editor') {
       if (!panelState.editorVisible) return null;
       return (
-        <div key="editor" className={`panel-wrapper editor-wrapper${panelState.chatVisible ? '' : ' expand'}`} style={{ width: panelState.chatVisible ? panelState.editorWidth : undefined }}>
+        <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
           <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={handleFileClose} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} diffLines={diffLines} />
-          {panelState.chatVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
+          {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
       );
     }
     if (panel === 'chat') {
       if (!panelState.chatVisible) return null;
-      const onlyChat = !panelState.editorVisible;
       return (
-        <div key="chat" className="panel-wrapper chat-wrapper" style={{ width: onlyChat ? '70%' : panelState.chatWidth, flex: onlyChat ? 'none' : '1 1 auto', margin: onlyChat ? '0 15%' : undefined }}>
+        <div key="chat" className="panel-wrapper chat-wrapper" style={bothVisible ? { flex: '1 1 auto' } : undefined}>
           <ChatView
             currentConversation={currentConversation} plugins={plugins} workspacePath={activeProjectPath || undefined} projectName={workspaceName || undefined}
             theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => handleNewSession(undefined, title)}
             providers={settings.providers} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
             activeFileName={activeFile?.name} activeFilePath={activeFilePath || undefined}
+            onNewProject={handleCreateProject} onOpenFolder={handleOpenFolder}
           />
         </div>
       );
@@ -413,12 +441,14 @@ function App() {
         editorVisible={panelState.editorVisible} chatVisible={panelState.chatVisible}
         onToggleEditor={() => togglePanel('editor')} onToggleChat={() => togglePanel('chat')}
         onToggleTerminal={() => setTerminalVisible(v => !v)} onSwapPanels={swapPanels}
+        onToggleGitPanel={() => setGitPanelVisible(v => !v)}
       />
       <div className="main-area">
         <ActivityBar
           activeActivity={activeActivity} theme={currentTheme} onToggleTheme={toggleTheme}
           onActivityChange={(activity) => {
             if (activity === 'settings') { setSettingsVisible(true); return; }
+            if (activity === 'git') { setGitPanelVisible(v => !v); return; }
             if (activeActivity === activity) setSidebarCollapsed(!sidebarCollapsed);
             else { setSidebarCollapsed(false); setActiveActivity(activity); }
           }}
@@ -427,7 +457,23 @@ function App() {
           {!sidebarCollapsed && <SidePanel title="" width={sidebarWidth} minWidth={200} maxWidth={600}>{renderSidebarContent()}</SidePanel>}
         </div>
         <div className="right-area">
-          <div className="panels-container">{panelState.panelOrder.map(panel => renderPanel(panel))}</div>
+          <div className="right-area-top">
+            <div className="panels-container">{panelState.panelOrder.map(panel => renderPanel(panel))}</div>
+            {gitPanelVisible && (
+              <div className="git-right-panel">
+                <GitPanel
+                  status={gitStatus} cwd={activeProjectPath || undefined}
+                  onCommit={async (msg) => { if (activeProjectPath) { await gitService.commit(activeProjectPath, msg); refreshGitStatus(); } }}
+                  onStage={async (path) => { if (activeProjectPath) { await gitService.add(activeProjectPath, [path]); refreshGitStatus(); } }}
+                  onUnstage={async (path) => { if (activeProjectPath) { await gitService.reset(activeProjectPath, [path]); refreshGitStatus(); } }}
+                  onPush={async () => { if (activeProjectPath) { await gitService.push(activeProjectPath); refreshGitStatus(); } }}
+                  onPull={async () => { if (activeProjectPath) { await gitService.pull(activeProjectPath); refreshGitStatus(); } }}
+                  onDiscard={async (path) => { if (activeProjectPath) { await gitService.discard(activeProjectPath, [path]); refreshGitStatus(); } }}
+                  onFileClick={(relPath) => { if (activeProjectPath) handleFileSelect(activeProjectPath.replace(/\\/g, '/') + '/' + relPath); }}
+                />
+              </div>
+            )}
+          </div>
           <TerminalPanel visible={terminalVisible} cwd={activeProjectPath || undefined} />
         </div>
       </div>

@@ -66,6 +66,8 @@ export function useSessions(activeProjectPath: string | null) {
     }
 
     const tempId = `temp-${Date.now()}`;
+    // 立即加入 sessions 数组，确保 handleUpdateSessionTitle 能找到它
+    setSessions(prev => [{ id: tempId, title: '新会话', timestamp: '刚刚', messageCount: 0, workspacePath: projectId && projectId !== UNLINKED_PROJECT ? projectId : undefined }, ...prev]);
     setCurrentSessionId(tempId);
     return tempId;
   }, [currentSessionId, sessions]);
@@ -86,12 +88,6 @@ export function useSessions(activeProjectPath: string | null) {
       const exists = prev.find(s => s.id === sessionId);
 
       if (!exists) {
-        saveConversation({ title, timestamp: '刚刚', status: 'active', workspacePath: wsPath }).then(dbId => {
-          const realId = dbId.toString();
-          reassignMessages(sessionId, dbId);
-          setSessions(p => [{ id: realId, title, timestamp: '刚刚', messageCount: 0, workspacePath: wsPath }, ...p]);
-          setCurrentSessionId(realId);
-        });
         return prev;
       }
 
@@ -104,10 +100,11 @@ export function useSessions(activeProjectPath: string | null) {
         );
       }
 
-      saveConversation({ title, timestamp: exists.timestamp, status: 'active', workspacePath: exists.workspacePath || wsPath }).then(dbId => {
+      // temp 会话：先更新标题，异步持久化后替换为真实 ID
+      saveConversation({ title, timestamp: exists.timestamp, status: 'active', workspacePath: exists.workspacePath || wsPath }).then(async (dbId) => {
         const realId = dbId.toString();
-        reassignMessages(sessionId, dbId);
-        setSessions(p => p.map(s => s.id === sessionId ? { ...s, id: realId, title } : s));
+        await reassignMessages(sessionId, dbId);
+        setSessions(p => p.map(s => s.id === sessionId ? { ...s, id: realId, title, workspacePath: wsPath } : s));
         setCurrentSessionId(realId);
       });
       return prev.map(s =>
@@ -117,12 +114,16 @@ export function useSessions(activeProjectPath: string | null) {
     setPendingSessionProject(null);
   }, [activeProjectPath, pendingSessionProject]);
 
-  const currentConversation: Conversation = useMemo(() => ({
-    id: currentSessionId,
-    title: sessions.find(s => s.id === currentSessionId)?.title || '新会话',
-    timestamp: new Date().toLocaleString(),
-    status: 'active',
-  }), [currentSessionId, sessions]);
+  const currentConversation: Conversation = useMemo(() => {
+    const session = sessions.find(s => s.id === currentSessionId);
+    return {
+      id: currentSessionId,
+      title: session?.title || '新会话',
+      timestamp: new Date().toLocaleString(),
+      status: 'active',
+      workspacePath: session?.workspacePath,
+    };
+  }, [currentSessionId, sessions]);
 
   return {
     sessions,

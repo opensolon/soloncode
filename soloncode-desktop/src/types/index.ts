@@ -1,5 +1,5 @@
-export type MessageType = 'user' | 'assistant' | 'reason' | 'action' | 'error';
-export type ContentType = 'reason' | 'action' | 'text' | 'error' | 'think';
+export type MessageType = 'USER' | 'ASSISTANT' | 'REASON' | 'ACTION' | 'ERROR';
+export type ContentType = 'REASON' | 'ACTION' | 'TEXT' | 'ERROR' | 'THINK';
 
 export interface ContentItem {
   type: ContentType;

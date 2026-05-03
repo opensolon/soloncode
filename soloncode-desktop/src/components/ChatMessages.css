@@ -27,6 +27,7 @@
 
 .message {
   display: flex;
+  flex-direction: column;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -41,32 +42,24 @@
   }
 }
 
-.message.user {
-  justify-content: flex-end;
-}
-
-.message.assistant,
-.message.reason,
-.message.action,
-.message.error {
-  justify-content: flex-start;
-}
-.message-bubble {
-  
-  padding: 4px 0;
-  position: relative;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-}
-
-/* 用户消息 - 右对齐 */
 .message.user .message-bubble {
+  align-self: flex-end;
   max-width: 85%;
   background-color: var(--cb-accent);
   color: white;
   border-radius: 12px;
   border-bottom-right-radius: 4px;
   padding: 8px 12px;
+}
+
+.message.user .message-footer {
+  align-self: flex-end;
+}
+.message-bubble {
+  padding: 4px 0;
+  position: relative;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* 助手消息 */
@@ -259,6 +252,24 @@
   line-height: 1.5;
 }
 
+.reason-item table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.reason-item th,
+.reason-item td {
+  border: 1px solid var(--cb-vscode-panel-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.reason-item th {
+  background-color: rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+}
+
 .reason-item pre {
   background-color: rgba(0, 0, 0, 0.15);
   border-radius: 4px;
@@ -375,6 +386,44 @@
   margin-top: 4px;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* 消息操作按钮 */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.message-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cb-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.message-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--cb-text-primary);
+}
+
+.message.user .message-action-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 
 /* 消息元数据 */

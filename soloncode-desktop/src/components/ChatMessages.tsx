@@ -1,6 +1,7 @@
 import { memo, useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Icon } from './common/Icon';
@@ -13,6 +14,7 @@ interface ChatMessagesProps {
   messages: Message[];
   isLoading: boolean;
   theme?: Theme;
+  onDeleteMessage?: (id: number) => void;
 }
 
 export interface ChatMessagesRef {
@@ -38,21 +40,21 @@ const markdownComponents = (theme?: Theme) => ({
   }
 });
 
-const remarkPlugins = [remarkBreaks];
+const remarkPlugins = [remarkGfm, remarkBreaks];
 
 // 内容项渲染组件 — memo 化，避免消息不变时重渲染
 const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme }) {
-  if (item.type === 'think') {
+  if (item.type === 'THINK') {
     return <ThinkBlock content={item.text} theme={theme} />;
   }
 
-  if (item.type === 'action') {
+  if (item.type === 'ACTION') {
     return (
       <ActionBlock text={item.text || ''} toolName={item.toolName} args={item.args} theme={theme} />
     );
   }
 
-  if (item.type === 'reason') {
+  if (item.type === 'REASON') {
     return (
       <div className="content-item reason-item">
         <div className="reason-header">
@@ -68,7 +70,7 @@ const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme }: {
     );
   }
 
-  if (item.type === 'error') {
+  if (item.type === 'ERROR') {
     return (
       <div className="content-item error-item">
         <span className="error-icon">❌</span>
@@ -114,17 +116,38 @@ const MessageMetadata = memo(function MessageMetadata({ metadata }: { metadata: 
 });
 
 // 单条消息组件 — memo 化
-const MessageRow = memo(function MessageRow({ message, theme }: { message: Message; theme?: Theme }) {
+const MessageRow = memo(function MessageRow({ message, theme, onDelete }: { message: Message; theme?: Theme; onDelete?: (id: number) => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    const text = message.contents
+      .map(item => item.text)
+      .filter(Boolean)
+      .join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [message.contents]);
+
   return (
-    <div className={`message ${message.role}`}>
+    <div className={`message ${message.role.toLowerCase()}`}>
       <div className="message-bubble">
         <div className="message-text">
           {message.contents.map((item, index) => (
             <ContentItemRenderer key={index} item={item} theme={theme} />
           ))}
         </div>
-        <div className="message-footer">
-          <div className="message-time">{message.timestamp}</div>
+      </div>
+      <div className="message-footer">
+        <div className="message-time">{message.timestamp}</div>
+        <div className="message-actions">
+          <button className="message-action-btn" onClick={handleCopy} title="复制">
+            <Icon name={copied ? 'check' : 'copy'} size={12} />
+          </button>
+          <button className="message-action-btn" onClick={() => onDelete?.(message.id)} title="删除">
+            <Icon name="delete" size={12} />
+          </button>
           <MessageMetadata metadata={message.metadata} />
         </div>
       </div>
@@ -133,7 +156,7 @@ const MessageRow = memo(function MessageRow({ message, theme }: { message: Messa
 });
 
 export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
-  ({ messages, isLoading, theme }, ref) => {
+  ({ messages, isLoading, theme, onDeleteMessage }, ref) => {
     const chatContainer = useRef<HTMLDivElement>(null);
 
     useImperativeHandle(ref, () => ({
@@ -160,7 +183,7 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
         )}
 
         {messages.map((message) => (
-          <MessageRow key={message.id} message={message} theme={theme} />
+          <MessageRow key={message.id} message={message} theme={theme} onDelete={onDeleteMessage} />
         ))}
 
         {isLoading && (

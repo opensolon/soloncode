@@ -10,10 +10,8 @@ import logo from '../../assets/logo.png';
 import './TitleBar.css';
 
 interface TitleBarProps {
-  // 工作区
   workspacePath?: string;
   workspaceName?: string;
-  // 文件操作回调
   onNewFile?: () => void;
   onNewFolder?: () => void;
   onOpenFile?: () => void;
@@ -22,13 +20,13 @@ interface TitleBarProps {
   onSave?: () => void;
   onSaveAs?: () => void;
   onSaveAll?: () => void;
-  // 视图控制
   editorVisible?: boolean;
   chatVisible?: boolean;
   onToggleEditor?: () => void;
   onToggleChat?: () => void;
   onToggleTerminal?: () => void;
   onSwapPanels?: () => void;
+  onToggleGitPanel?: () => void;
 }
 
 export function TitleBar({
@@ -48,6 +46,7 @@ export function TitleBar({
   onToggleChat,
   onToggleTerminal,
   onSwapPanels,
+  onToggleGitPanel,
 }: TitleBarProps) {
   // 文件菜单项
   const fileMenuItems: MenuItem[] = [
@@ -236,6 +235,14 @@ export function TitleBar({
         >
           <Icon name="terminal" size={14} />
           <span>终端</span>
+        </button>
+        <button
+          className="titlebar-btn"
+          onClick={onToggleGitPanel}
+          title="源代码管理"
+        >
+          <Icon name="git" size={14} />
+          <span>源代码</span>
         </button>
         <button
           className="titlebar-btn"

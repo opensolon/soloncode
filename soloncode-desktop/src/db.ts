@@ -8,6 +8,7 @@ export interface DbMessage {
   role: string;
   timestamp: string;
   contents: string;
+  workspacePath?: string;
 }
 
 export interface DbConversation {
@@ -118,6 +119,10 @@ class SolonCodeDatabase extends Dexie {
     this.version(6).stores({
       projects: 'id, name, sortOrder',
       conversations: '++id, title, timestamp, status, workspacePath',
+    });
+    // v7: messages 加 workspacePath 索引
+    this.version(7).stores({
+      messages: '++id, conversationId, timestamp, workspacePath',
     });
   }
 }

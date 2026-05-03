@@ -592,20 +592,19 @@ export function ExplorerPanel({
     <div className="explorer-panel">
       <div className="panel-header">
         <span className="panel-title">项目管理</span>
+        <div className="panel-actions">
+          <button className="panel-action" title="打开文件夹" onClick={onOpenFolder}>
+            <Icon name="folder-add" size={16} />
+          </button>
+          <button className="panel-action" title="新建项目" onClick={onCreateProject}>
+            <Icon name="add" size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="projects-list">
         {hasProjects ? (
-          <div className="projects-list">
-            {projects.map(project => renderProject(project))}
-          </div>
-        ) : (
-          <div className="panel-actions">
-            <button className="panel-action" title="打开文件夹" onClick={onOpenFolder}>
-              <Icon name="folder-add" size={16} />
-            </button>
-            <button className="panel-action" title="新建项目" onClick={onCreateProject}>
-              <Icon name="add" size={16} />
-            </button>
-          </div>
-        )}
+          projects.map(project => renderProject(project))
+        ) : null}
       </div>
 
 
