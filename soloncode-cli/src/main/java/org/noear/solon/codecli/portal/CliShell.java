@@ -513,10 +513,7 @@ public class CliShell implements Runnable {
             String content = thought.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
 
-                StringBuilder traceInfo = getTraceInfo(thought.getTrace());
-                if (traceInfo.length() > 4) {
-                    content = content + DIM + traceInfo + RESET;
-                }
+                content = content + DIM + "(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")" + RESET;
 
                 // 保持间接缩进，去掉首尾多余换行
                 terminal.writer().println();
