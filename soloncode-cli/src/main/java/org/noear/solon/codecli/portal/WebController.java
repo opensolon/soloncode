@@ -654,11 +654,14 @@ public class WebController {
 
         String agentName = null;
         String currentInput = input;
-        if(input.startsWith("@")) {
-            int agentNameIdx = input.indexOf(" ");
-            if (agentNameIdx > 0) {
-                agentName = input.substring(1, agentNameIdx);
-                currentInput = currentInput.substring(agentNameIdx + 1);
+
+        if(input != null) {
+            if (input.startsWith("@")) {
+                int agentNameIdx = input.indexOf(" ");
+                if (agentNameIdx > 0) {
+                    agentName = input.substring(1, agentNameIdx);
+                    currentInput = currentInput.substring(agentNameIdx + 1);
+                }
             }
         }
 

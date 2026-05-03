@@ -5,6 +5,7 @@
 * 添加 soloncode onThoughtChunk 模型与计时打印
 * 优化 soloncode cli 思考转为灰色
 * 修复 soloncode mac 安装时，会不断添加新的环境配置记录
+* 修复 soloncode 执行恢复命令会出错的问题（v2026.5.3 时出错）
 
 ### v2026.5.3
 
