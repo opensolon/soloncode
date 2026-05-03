@@ -142,6 +142,10 @@ public class CliShell implements Runnable {
      * 单次调用
      */
     public void call(String input) {
+        if (Assert.isEmpty(input)) {
+            return;
+        }
+
         AgentSession session = prepare(agentProps.getSessionId());
 
         try {

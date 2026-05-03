@@ -41,6 +41,10 @@ public class CliCompleter implements Completer {
 
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
+        if (line.word() == null) {
+            return;
+        }
+
         if (line.word().startsWith("/")) {
             String prefix = line.word().substring(1).toLowerCase();
             for (String name : engine.getCommandRegistry().names()) {
@@ -50,7 +54,7 @@ public class CliCompleter implements Completer {
                     candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(), null, null, null, null, true));
                 }
             }
-        } else if(line.word().startsWith("@")){
+        } else if (line.word().startsWith("@")) {
             String prefix = line.word().substring(1).toLowerCase();
             for (AgentDefinition definition : engine.getAgentManager().getAgents()) {
                 if (definition.getName().startsWith(prefix)) {
