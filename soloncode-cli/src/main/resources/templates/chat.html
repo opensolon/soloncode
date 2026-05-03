@@ -1340,7 +1340,7 @@
 
         // Hide on outside click
         document.addEventListener('click', function(e) {
-            if (!e.target.closest('.cmd-complete') && !e.target.closest('textarea')) {
+            if (!e.target.closest('.cmd-complete') && !e.target.closest('textarea') && !e.target.closest('#welcomeCmdBtn') && !e.target.closest('#welcomeAgentBtn') && !e.target.closest('#chatCmdBtn') && !e.target.closest('#chatAgentBtn')) {
                 hideCmdComplete();
             }
         });
