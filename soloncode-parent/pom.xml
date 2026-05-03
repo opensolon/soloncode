@@ -13,7 +13,7 @@
 
     <artifactId>soloncode-parent</artifactId>
     <name>${project.artifactId}</name>
-    <version>2026.5.3</version>
+    <version>2026.5.4</version>
     <packaging>pom</packaging>
 
     <properties>

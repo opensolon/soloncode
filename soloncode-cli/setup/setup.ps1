@@ -5,7 +5,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$VERSION = "v2026.5.3"
+$VERSION = "v2026.5.4"
 $PACKAGE_URL = "https://gitee.com/opensolon/soloncode/releases/download/$VERSION/soloncode-cli-bin-$VERSION.tar.gz"
 $TEMP_DIR = Join-Path $env:TEMP "soloncode-install"
 
