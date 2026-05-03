@@ -7,6 +7,7 @@ import './GitPanel.css';
 interface GitPanelProps {
   status: GitStatus;
   cwd?: string;
+  projectName?: string;
   onCommit: (message: string) => Promise<void>;
   onStage: (path: string) => Promise<void>;
   onUnstage: (path: string) => Promise<void>;
@@ -21,6 +22,7 @@ type FeedbackType = 'success' | 'error' | 'info';
 export function GitPanel({
   status,
   cwd,
+  projectName,
   onCommit,
   onStage,
   onUnstage,
@@ -157,7 +159,10 @@ export function GitPanel({
     <div className="git-panel">
       {/* 头部 */}
       <div className="panel-header">
-        <span className="panel-title">源代码管理</span>
+        <div className="panel-title-row">
+          <span className="panel-title">源代码管理</span>
+          {projectName && <span className="panel-project-tag">{projectName}</span>}
+        </div>
         <div className="panel-actions">
           <button className="panel-action" title="推送" onClick={handlePush} disabled={isPushing}>
             <Icon name="push" size={16} />

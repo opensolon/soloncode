@@ -41,13 +41,6 @@ export function ActivityBar({ activeActivity, theme, onActivityChange, onToggleT
       </div>
       <div className="activity-bar-bottom">
         <button
-          className={`activity-item${activeActivity === 'git' ? ' active' : ''}`}
-          title="源代码管理"
-          onClick={() => onActivityChange(activeActivity === 'git' ? 'explorer' : 'git')}
-        >
-          <Icon name="git" size={24} />
-        </button>
-        <button
           className="activity-item"
           title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
           onClick={onToggleTheme}

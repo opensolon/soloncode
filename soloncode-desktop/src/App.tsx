@@ -462,7 +462,7 @@ function App() {
             {gitPanelVisible && (
               <div className="git-right-panel">
                 <GitPanel
-                  status={gitStatus} cwd={activeProjectPath || undefined}
+                  status={gitStatus} cwd={activeProjectPath || undefined} projectName={workspaceName || undefined}
                   onCommit={async (msg) => { if (activeProjectPath) { await gitService.commit(activeProjectPath, msg); refreshGitStatus(); } }}
                   onStage={async (path) => { if (activeProjectPath) { await gitService.add(activeProjectPath, [path]); refreshGitStatus(); } }}
                   onUnstage={async (path) => { if (activeProjectPath) { await gitService.reset(activeProjectPath, [path]); refreshGitStatus(); } }}
