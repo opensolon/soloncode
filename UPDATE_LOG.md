@@ -1,5 +1,9 @@
 
 
+### v2026.5.3
+
+* 添加 soloncode `@agent` 功能
+
 ### v2026.5.2
 
 * 优化 soloncode 内置 skill.sh 的 find-skills 专家技能（可以自然语言查找 skill 和安装 skill。先查找再安装）
