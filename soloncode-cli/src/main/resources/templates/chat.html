@@ -362,7 +362,7 @@
                 <div class="attachments-wrap" id="welcomeAttachmentsWrap"></div>
                 <div style="position:relative">
                     <div class="cmd-complete" id="welcomeCmdComplete"></div>
-                    <textarea id="welcomeInput" placeholder="输入消息，/ 命令，@ 子代理..." rows="1" autofocus style="width: 100%;"></textarea>
+                    <textarea id="welcomeInput" placeholder="随便问..." rows="1" autofocus style="width: 100%;"></textarea>
                 </div>
                 <div class="welcome-toolbar">
                     <div class="toolbar-left">
@@ -404,7 +404,7 @@
                     <div class="attachments-wrap" id="chatAttachmentsWrap"></div>
                     <div style="position:relative;">
                         <div class="cmd-complete" id="chatCmdComplete"></div>
-                        <textarea id="chatInput" placeholder="输入消息，/ 命令，@ 子代理..." rows="1" style="width:100%"></textarea>
+                        <textarea id="chatInput" placeholder="随便问..." rows="1" style="width:100%"></textarea>
                     </div>
                     <div class="input-toolbar">
                         <div class="toolbar-left">
@@ -1204,7 +1204,7 @@
                 var parts = inputEl.value.trim().split(/\s+/);
                 // Keep existing args after command name
                 var argsStr = parts.length > 1 ? parts.slice(1).join(' ') : '';
-                inputEl.value = trigger + cmd.name + (argsStr ? ' ' + argsStr : '');
+                inputEl.value = trigger + cmd.name + (argsStr ? ' ' + argsStr : ' ');
                 autoResize(inputEl);
             }
             hideCmdComplete();
