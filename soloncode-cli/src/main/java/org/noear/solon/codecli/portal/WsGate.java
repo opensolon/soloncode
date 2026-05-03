@@ -284,6 +284,8 @@ public class WsGate extends SimpleWebSocketListener {
                 return new ONode().set("type", chunkTypeToSend)
                         .set("sessionId", finalSessionId)
                         .set("text", chunk.getContent())
+                        .set("modelName", chunk.getTrace().getOptions().getChatModel().getNameOrModel())
+                        .set("totalTokens", chunk.getTrace().getMetrics().getTotalTokens())
                         .toJson();
             }
         }

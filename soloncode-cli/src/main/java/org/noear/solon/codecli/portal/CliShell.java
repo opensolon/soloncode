@@ -500,6 +500,27 @@ public class CliShell implements Runnable {
                 terminal.writer().print("  " + content.trim().replace("\n", "\n  "));
                 terminal.writer().println();
                 terminal.flush();
+
+                //---------
+
+                StringBuilder buf = new StringBuilder();
+                buf.append(" (");
+
+                buf.append(thought.getTrace().getOptions().getChatModel().getNameOrModel());
+
+                if (thought.getTrace().getMetrics() != null) {
+                    if (buf.length() > 2) {
+                        buf.append(", ");
+                    }
+
+                    buf.append(thought.getTrace().getMetrics().getTotalTokens()).append(" tokens");
+                }
+
+                buf.append(")");
+
+                if (buf.length() > 4) {
+                    terminal.writer().println(DIM + buf + RESET);
+                }
             }
         }
     }

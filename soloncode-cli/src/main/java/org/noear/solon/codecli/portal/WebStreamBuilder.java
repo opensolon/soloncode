@@ -146,8 +146,24 @@ public class WebStreamBuilder {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
+                StringBuilder buf = new StringBuilder();
+                buf.append("` (");
+
+                buf.append(thought.getTrace().getOptions().getChatModel().getNameOrModel());
+
+                if (thought.getTrace().getMetrics() != null) {
+                    if (buf.length() > 2) {
+                        buf.append(", ");
+                    }
+
+                    buf.append(thought.getTrace().getMetrics().getTotalTokens()).append(" tokens");
+                }
+
+                buf.append(")`\n");
+
+
                 return new ONode().set("type", "text")
-                        .set("text", content)
+                        .set("text", content + buf)
                         .toJson();
             }
         }
