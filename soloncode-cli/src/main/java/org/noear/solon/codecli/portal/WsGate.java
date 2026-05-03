@@ -74,7 +74,6 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
         }
-
         if (Assert.isNotEmpty(sessionCwd)) {
             if (sessionCwd.contains("..")) {
                 socket.send("{\"type\":\"error\",\"text\":\"Invalid Session Cwd\"}");
@@ -101,7 +100,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 解析请求
             WsMessage req = root.toBean(WsMessage.class);
-            String sessionId = req.getSessionId();
+            String sessionId = socket.paramOrDefault("sessionId", "");
             String input = req.getInput();
             String cwd = req.getCwd();
 
@@ -109,7 +108,7 @@ public class WsGate extends SimpleWebSocketListener {
                 sessionId = "ws_" + System.currentTimeMillis();
                 // 及时通知客户端自动生成的 sessionId
                 socket.send(new ONode().set("type", "session")
-                        .set("sessionId", req.getSessionId())
+                        .set("sessionId", sessionId)
                         .toJson());
             }
 

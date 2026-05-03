@@ -360,7 +360,7 @@ public class WebController {
      */
     @Post
     @Mapping("/chat/models/add")
-    public Result models_add(Context ctx) throws Exception {
+    public Result modelsAdd(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
 
         String apiUrl = root.get("apiUrl").getString();
@@ -410,7 +410,7 @@ public class WebController {
      */
     @Post
     @Mapping("/chat/models/remove")
-    public Result models_remove(@Param("modelName") String modelName) throws Exception {
+    public Result modelsRemove(@Param("modelName") String modelName) throws Exception {
         if (Assert.isEmpty(modelName)) {
             return Result.failure("modelName is required");
         }
