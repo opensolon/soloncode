@@ -152,7 +152,7 @@ public class WebStreamBuilder {
             buf.append(seconds).append("s");
         }
 
-        buf.append(")`\n");
+        buf.append(")`");
 
         return buf;
     }
@@ -181,7 +181,7 @@ public class WebStreamBuilder {
                 StringBuilder traceInfo = getTraceInfo(thought.getTrace());
 
                 return new ONode().set("type", "text")
-                        .set("text", content + traceInfo)
+                        .set("text", "\n" + content + traceInfo)
                         .toJson();
             }
         }
