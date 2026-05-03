@@ -291,9 +291,9 @@ for CONFIG_FILE in "${CONFIG_FILES[@]}"; do
         PATH_LINE='export PATH="$PATH:$HOME/.soloncode/bin"'
     fi
     
-    # 检查文件是否已包含配置
+    # 检查文件是否已包含配置（使用 .soloncode/bin 作为匹配关键词，避免 $HOME 展开导致匹配失败）
     if [ -f "$CONFIG_FILE" ]; then
-        if grep -qF "$HOME/.soloncode/bin" "$CONFIG_FILE" 2>/dev/null; then
+        if grep -qF '.soloncode/bin' "$CONFIG_FILE" 2>/dev/null; then
             echo "      PATH already configured in $(basename "$CONFIG_FILE")"
             CONFIG_UPDATED=true
             continue
