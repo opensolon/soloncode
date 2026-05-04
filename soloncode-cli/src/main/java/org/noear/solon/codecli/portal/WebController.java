@@ -43,7 +43,6 @@ import org.noear.solon.codecli.provider.ModelProvider;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.core.handle.Context;
-import org.noear.solon.core.handle.ModelAndView;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
@@ -186,21 +185,26 @@ public class WebController {
     }
 
     /**
-     * 对话主界面
-     *
-     * @return
-     * @author oisin
-     * @date 2026年3月14日
+     * 入口：重定向到静态首页 index.html。
      */
     @Get
     @Mapping("/")
-    public ModelAndView chat() {
-        ModelAndView mv = new ModelAndView("chat.html");
-        mv.put("appTitle", Solon.cfg().appTitle());
-        mv.put("appVersion", AgentFlags.getVersion());
-        mv.put("workspace", engine.getProps().getWorkspace());
-        mv.put("workname", getLastSegment(engine.getProps().getWorkspace()));
-        return mv;
+    public void index(Context ctx) throws Throwable {
+        ctx.redirect("/index.html");
+    }
+
+    /**
+     * 页面元信息：由静态首页（/index.html）启动时 fetch 一次，用于回填标题与侧栏。
+     */
+    @Get
+    @Mapping("/chat/meta")
+    public Result<Map> meta() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("appTitle", Solon.cfg().appTitle());
+        data.put("appVersion", AgentFlags.getVersion());
+        data.put("workspace", engine.getProps().getWorkspace());
+        data.put("workname", getLastSegment(engine.getProps().getWorkspace()));
+        return Result.succeed(data);
     }
 
     private static String getLastSegment(String pathStr) {
