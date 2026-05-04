@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" lang="zh-CN">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title th:text="${workname} + ' - ' + ${workspace}">Solon Code Web</title>
+    <title>Solon Code Web</title>
     <link rel="stylesheet" href="/layui/css/layui.css"/>
     <link rel="stylesheet" href="/css/theme.css"/>
     <style>
@@ -338,7 +338,7 @@
         <div class="sidebar-list" id="historyList"></div>
         <div class="sidebar-footer">
             <i class="layui-icon layui-icon-about" style="font-size:15px;color:var(--text-secondary)"></i>
-            <span style="font-size:12px;color:var(--text-secondary)" th:text="${appVersion}">AI</span>
+            <span id="appVersionLabel" style="font-size:12px;color:var(--text-secondary)">AI</span>
         </div>
     </div>
     <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="收起侧边栏">‹</button>
@@ -357,7 +357,7 @@
                 <div class="blob blob-outer"></div>
                 <div class="blob-core"></div>
             </div>
-            <div class="welcome-title" th:text="'你好，我是 ' + ${appTitle} + ' Web ！'">你好，我是 SolonCode Web ！</div>
+            <div class="welcome-title" id="welcomeTitle">你好，我是 SolonCode Web ！</div>
             <div class="welcome-sub">有什么我可以帮你的吗?</div>
             <div class="welcome-input-box">
                 <div class="attachments-wrap" id="welcomeAttachmentsWrap"></div>
@@ -454,8 +454,20 @@
     <script src="/layui/layui.js"></script>
     <script src="/js/marked.min.js"></script>
 
-    <script th:inline="javascript">
+    <script>
         var SSE_ENDPOINT = "/chat/input";
+        // 启动时拉取页面元信息（appTitle / appVersion / workspace / workname），回填标题/侧栏
+        fetch('/chat/meta').then(function (r) { return r.json(); }).then(function (res) {
+            var meta = (res && res.data) ? res.data : res;
+            if (!meta) return;
+            if (meta.workname || meta.workspace) {
+                document.title = (meta.workname || '') + ' - ' + (meta.workspace || '');
+            }
+            var verEl = document.getElementById('appVersionLabel');
+            if (verEl && meta.appVersion) verEl.textContent = meta.appVersion;
+            var titleEl = document.getElementById('welcomeTitle');
+            if (titleEl && meta.appTitle) titleEl.textContent = '你好，我是 ' + meta.appTitle + ' Web ！';
+        }).catch(function () { /* ignore */ });
     </script>
 
     <script>
