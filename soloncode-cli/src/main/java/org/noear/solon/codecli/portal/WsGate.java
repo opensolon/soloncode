@@ -165,7 +165,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 流式处理
             final String finalSessionId = sessionId;
-            Prompt prompt = Prompt.of(input).attrPut(HarnessFlags.ATTR_START_TIME, System.currentTimeMillis());
+            Prompt prompt = Prompt.of(input);
 
             // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();

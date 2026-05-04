@@ -62,8 +62,6 @@ public class WebStreamBuilder {
             prompt = Prompt.of();
         }
 
-        prompt.attrPut(HarnessFlags.ATTR_START_TIME, System.currentTimeMillis());
-
         return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
@@ -128,7 +126,7 @@ public class WebStreamBuilder {
     }
 
     private StringBuilder getTraceInfo(ReActTrace trace) {
-        Long start_time = trace.getOriginalPrompt().attrAs(HarnessFlags.ATTR_START_TIME);
+        long start_time = trace.getBeginTimeMs();
 
         StringBuilder buf = new StringBuilder();
         buf.append(" `(");
@@ -143,7 +141,7 @@ public class WebStreamBuilder {
             buf.append(trace.getMetrics().getTotalTokens()).append("tk");
         }
 
-        if (start_time != null) {
+        if (start_time > 0) {
             if (buf.length() > 2) {
                 buf.append(", ");
             }

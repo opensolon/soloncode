@@ -299,7 +299,7 @@ public class CliShell implements Runnable {
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
 
-            Prompt originalPrompt = Prompt.of(currentInput).attrPut(HarnessFlags.ATTR_START_TIME, System.currentTimeMillis());
+            Prompt originalPrompt = Prompt.of(currentInput);
 
             Disposable disposable = agent.prompt(originalPrompt)
                     .session(session)
@@ -432,7 +432,7 @@ public class CliShell implements Runnable {
     }
 
     private StringBuilder getTraceInfo(ReActTrace trace) {
-        Long start_time = trace.getOriginalPrompt().attrAs(HarnessFlags.ATTR_START_TIME);
+        long start_time = trace.getBeginTimeMs();
 
         StringBuilder buf = new StringBuilder();
         buf.append(" (");
@@ -447,7 +447,7 @@ public class CliShell implements Runnable {
             buf.append(trace.getMetrics().getTotalTokens()).append("tk");
         }
 
-        if (start_time != null) {
+        if (start_time > 0) {
             if (buf.length() > 2) {
                 buf.append(", ");
             }
