@@ -63,11 +63,6 @@ public class AgentProperties extends HarnessProperties {
 
     private String wsEndpoint = "/ws";
 
-    private String startupSessionMode = "resume";
-    private String uiType = "old";
-    private String uiTheme = "solon";
-    private Map<String, Map<String, String>> uiThemes;
-
     public AgentProperties() {
         super(".soloncode/");
     }

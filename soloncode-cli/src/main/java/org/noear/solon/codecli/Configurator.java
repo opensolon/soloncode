@@ -74,7 +74,6 @@ public class Configurator {
         props.getAgentPools().add(Paths.get(props.getWorkspace(), props.getHarnessAgents()).toString()); //local
 
 
-
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         // 会话数据存到全局目录 ~/.soloncode/sessions/<sessionId>/
@@ -89,7 +88,7 @@ public class Configurator {
         //添加记忆能力
         MemorySkill memorySkill = new MemorySkill(new MemoryManger(agentProps)).sessionIsolation(false);
         props.addExtension((agentName, agentBuilder) -> {
-            if("main".equals(agentName)){
+            if ("main".equals(agentName)) {
                 agentBuilder.defaultSkillAdd(memorySkill);
             }
         });
@@ -115,26 +114,15 @@ public class Configurator {
 
     @Init
     public void init() {
-
         CliShell cliShell = new CliShell(agentRuntime, agentProps, loopScheduler);
-
-        if (AgentFlags.checkUpdate()) {
-            // 使用颜色代码让提示更醒目
-            System.out.println("\033[33mDiscover the new version: " + AgentFlags.getLastVersion() + "\033[0m");
-
-            if (JavaUtil.IS_WINDOWS) {
-                System.out.println("Update: \033[36mirm https://solon.noear.org/soloncode/setup.ps1 | iex\033[0m");
-            } else {
-                System.out.println("Update: \033[36mcurl -fsSL https://solon.noear.org/soloncode/setup.sh | bash\033[0m");
-            }
-            System.out.println();
-        }
 
         //flag
         if (Solon.cfg().argx().flags().size() > 0) {
             String flag = Solon.cfg().argx().flagAt(0);
 
             if (AgentFlags.FLAG_RUN.equals(flag)) { // java -jar soloncode.jar run '你好' // soloncode run '你好'
+                checkUpdate();
+
                 //单次任务态
                 String prompt = Solon.cfg().argx().flagAt(1);
                 new CliShell(agentRuntime, agentProps, null).call(prompt);
@@ -143,14 +131,16 @@ public class Configurator {
             }
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
-                runWeb(agentRuntime, agentProps, null);
-                runAcp(agentRuntime, agentProps, null);
+                checkUpdate();
 
+                runWeb(agentRuntime, agentProps, null);
                 cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
                 return;
             }
 
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
+                checkUpdate();
+
                 runWeb(agentRuntime, agentProps, cliShell);
                 return;
             }
@@ -163,9 +153,24 @@ public class Configurator {
             //未来可以支持更多控制标记
         }
 
+        checkUpdate();
 
         //cli - default
         new Thread(cliShell, "CLI-Interactive-Thread").start();
+    }
+
+    private void checkUpdate() {
+        if (AgentFlags.checkUpdate()) {
+            // 使用颜色代码让提示更醒目
+            System.out.println("\033[33mDiscover the new version: " + AgentFlags.getLastVersion() + "\033[0m");
+
+            if (JavaUtil.IS_WINDOWS) {
+                System.out.println("Update: \033[36mirm https://solon.noear.org/soloncode/setup.ps1 | iex\033[0m");
+            } else {
+                System.out.println("Update: \033[36mcurl -fsSL https://solon.noear.org/soloncode/setup.sh | bash\033[0m");
+            }
+            System.out.println();
+        }
     }
 
 
@@ -215,7 +220,14 @@ public class Configurator {
 
         new AcpLink(agentRuntime, agentTransport, agentProps).run();
 
-        if (cliShell != null) {
+        if (cliShell == null) {
+            return;
+        }
+
+        if ("stdio".equals(agentProps.getAcpTransport())) {
+            //不能有打印
+            //cliShell.printWelcome("Acp interface: stdio");
+        } else {
             String url = "ws://localhost:" + Solon.cfg().serverPort() + "/acp";
             cliShell.printWelcome("Acp interface: " + url);
         }

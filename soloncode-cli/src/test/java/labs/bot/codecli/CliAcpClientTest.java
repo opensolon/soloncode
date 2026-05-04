@@ -2,6 +2,8 @@ package labs.bot.codecli;
 
 import com.agentclientprotocol.sdk.client.AcpClient;
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
+import com.agentclientprotocol.sdk.client.transport.AgentParameters;
+import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
 import com.agentclientprotocol.sdk.client.transport.WebSocketSolonAcpClientTransport;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -18,8 +20,8 @@ import java.util.Collections;
  */
 public class CliAcpClientTest {
     public static void main(String[] args) {
-        WebSocketSolonAcpClientTransport transport = new WebSocketSolonAcpClientTransport(
-                URI.create("ws://localhost:8080/acp"),
+        StdioAcpClientTransport transport = new StdioAcpClientTransport(
+                AgentParameters.builder("soloncode").arg("acp").build(),
                 McpJsonMapper.getDefault());
 
         AcpSyncClient client = AcpClient.sync(transport)
