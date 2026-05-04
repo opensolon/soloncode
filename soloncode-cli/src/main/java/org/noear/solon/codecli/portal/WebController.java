@@ -190,7 +190,7 @@ public class WebController {
     @Get
     @Mapping("/")
     public void index(Context ctx) throws Throwable {
-        ctx.redirect("/index.html");
+        ctx.forward("/index.html");
     }
 
     /**
