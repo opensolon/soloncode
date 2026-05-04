@@ -286,6 +286,15 @@ public class WebController {
      * @date 2026年3月15日
      */
     @Get
+    @Mapping("/version")
+    public Result<Map> version() {
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("version", AgentFlags.getVersion());
+        data.put("workspace", engine.getProps().getWorkspace());
+        return Result.succeed(data);
+    }
+
+    @Get
     @Mapping("/chat/models")
     public Result<Map> models(@Param(value = "sessionId", required = false) String sessionId) throws Exception {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -364,7 +373,7 @@ public class WebController {
      */
     @Post
     @Mapping("/chat/models/add")
-    public Result models_add(Context ctx) throws Exception {
+    public Result modelsAdd(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
 
         String apiUrl = root.get("apiUrl").getString();
@@ -414,7 +423,7 @@ public class WebController {
      */
     @Post
     @Mapping("/chat/models/remove")
-    public Result models_remove(@Param("modelName") String modelName) throws Exception {
+    public Result modelsRemove(@Param("modelName") String modelName) throws Exception {
         if (Assert.isEmpty(modelName)) {
             return Result.failure("modelName is required");
         }

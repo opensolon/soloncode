@@ -3,7 +3,6 @@
   border-bottom: 1px solid var(--cb-vscode-panel-border);
   background-color: var(--cb-vscode-editor-background);
   display: flex;
-  justify-content: space-between;
   align-items: center;
   transition: background-color 0.3s, border-color 0.3s;
 }
@@ -23,31 +22,17 @@
   border-radius: 4px;
 }
 
-.theme-toggle-btn {
-  width: 36px;
-  height: 36px;
-  background-color: var(--cb-vscode-input-background);
-  color: var(--cb-text-primary);
-  border: 1px solid var(--cb-vscode-widget-border);
-  border-radius: 6px;
+.chat-title-meta {
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.theme-toggle-btn:hover {
-  background-color: var(--cb-vscode-list-hoverBackground);
-  border-color: var(--cb-accent);
-}
-
-.theme-toggle-btn svg {
-  color: var(--cb-text-primary);
-  transition: transform 0.3s;
-}
-
-.theme-toggle-btn:hover svg {
-  transform: rotate(180deg);
+.chat-project-name {
+  font-size: 12px;
+  color: var(--cb-accent);
+  background-color: rgba(14, 99, 156, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
 }

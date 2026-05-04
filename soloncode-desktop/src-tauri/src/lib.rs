@@ -7,7 +7,7 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::net::TcpStream;
 use std::time::SystemTime;
-use tauri::{Manager, Emitter};
+use tauri::Emitter;
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
 
 /// 应用日志文件
@@ -791,240 +791,71 @@ fn terminal_kill() -> Result<(), String> {
 /// 全局后端进程句柄
 static BACKEND_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
 
-/// 检查 soloncode 命令是否可用
-fn find_soloncode_command() -> Option<String> {
-    // Windows: 检查 ~/.soloncode/bin/soloncode.ps1 或 .bat
-    if cfg!(windows) {
-        if let Ok(home) = std::env::var("USERPROFILE") {
-            let bin_dir = Path::new(&home).join(".soloncode").join("bin");
-            // 优先使用 .ps1（功能更完整）
-            let ps1 = bin_dir.join("soloncode.ps1");
-            if ps1.exists() {
-                return Some(ps1.to_string_lossy().to_string());
-            }
-            let bat = bin_dir.join("soloncode.bat");
-            if bat.exists() {
-                return Some(bat.to_string_lossy().to_string());
-            }
-        }
-    }
+/// 启动方式：soloncode 命令 或 java -jar
+enum BackendLaunchMethod {
+    /// soloncode 命令（PATH 或 ~/.soloncode/bin/ 中的脚本）
+    Command { cmd: String },
+    /// java -jar 方式（回退到 ~/.soloncode/bin/soloncode-cli.jar）
+    Jar { path: std::path::PathBuf },
+}
 
-    // 通用: 尝试 which/where 查找
+/// 检测启动方式：优先 soloncode 命令，回退到 JAR
+fn detect_launch_method() -> BackendLaunchMethod {
+    // 1. 优先检查 soloncode 命令是否在 PATH 中
     let check = Command::new(if cfg!(windows) { "where" } else { "which" })
         .arg("soloncode")
         .output();
-
     if let Ok(output) = check {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() {
-                return Some(path.lines().next().unwrap_or(&path).to_string());
+                let cmd = path.lines().next().unwrap_or(&path).to_string();
+                app_log(&format!("[soloncode] Found soloncode command: {}", cmd));
+                return BackendLaunchMethod::Command { cmd };
             }
         }
     }
 
-    None
-}
-
-/// 查找 install-cli 安装脚本路径
-fn find_install_script(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    // 1. Tauri 资源目录（生产模式：build/install-cli.*）
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let script_name = if cfg!(windows) { "install-cli.bat" } else { "install-cli.sh" };
-        let script = resource_dir.join("build").join(script_name);
-        if script.exists() { return Some(script); }
-    }
-
-    // 2. 开发模式：从可执行文件向上查找
-    if let Ok(exe_dir) = std::env::current_exe() {
-        let mut dir = exe_dir.parent();
-        let script_name = if cfg!(windows) { "install-cli.bat" } else { "install-cli.sh" };
-        for _ in 0..10 {
-            if let Some(d) = dir {
-                let script = d.join("soloncode-desktop").join("build").join(script_name);
-                if script.exists() { return Some(script); }
-                dir = d.parent();
-            } else {
-                break;
-            }
-        }
-    }
-
-    None
-}
-
-/// 查找 release 目录路径
-fn find_release_resource_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    // 1. Tauri 资源目录（生产模式：release/）
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let release = resource_dir.join("release");
-        if release.join("bin").exists() { return Some(release); }
-    }
-
-    // 2. 开发模式：从可执行文件向上查找
-    if let Ok(exe_dir) = std::env::current_exe() {
-        let mut dir = exe_dir.parent();
-        for _ in 0..10 {
-            if let Some(d) = dir {
-                let release = d.join("soloncode-cli").join("release");
-                if release.join("bin").exists() { return Some(release); }
-                dir = d.parent();
-            } else {
-                break;
-            }
-        }
-    }
-
-    None
-}
-
-/// 自动安装 CLI：将打包资源中的 JAR 复制到 ~/.soloncode/bin/
-fn auto_install_cli(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    let home = std::env::var(home_var).unwrap_or_default();
-    let target_bin = Path::new(&home).join(".soloncode").join("bin");
-
-    // 查找打包资源中的 JAR
-    let source_jar = if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let jar = resource_dir.join("target").join("soloncode-cli.jar");
-        if jar.exists() { Some(jar) } else { None }
-    } else { None };
-
-    let source_jar = source_jar.or_else(|| {
-        // 开发模式回退
-        if let Ok(exe_dir) = std::env::current_exe() {
-            let mut dir = exe_dir.parent();
-            for _ in 0..10 {
-                if let Some(d) = dir {
-                    let jar = d.join("soloncode-cli").join("target").join("soloncode-cli.jar");
-                    if jar.exists() { return Some(jar); }
-                    dir = d.parent();
-                } else { break; }
-            }
-        }
-        None
-    });
-
-    // 创建目标目录
-    fs::create_dir_all(&target_bin)
-        .map_err(|e| format!("创建目录失败: {}", e))?;
-
-    if let Some(jar) = source_jar {
-        let dest = target_bin.join("soloncode-cli.jar");
-        app_log(&format!("[soloncode] Copying JAR: {:?} -> {:?}", jar, dest));
-        fs::copy(&jar, &dest)
-            .map_err(|e| format!("复制 JAR 失败: {}", e))?;
-        app_log("[soloncode] JAR copied successfully");
-    } else {
-        return Err("未找到 soloncode-cli.jar 资源".to_string());
-    }
-
-    // 运行安装脚本（复制 release/、创建启动脚本、注册 PATH）
-    if let Some(install_script) = find_install_script(app_handle) {
-        if let Some(release_dir) = find_release_resource_dir(app_handle) {
-            app_log(&format!("[soloncode] Running install script: {:?}", install_script));
-            let release_dir_str = release_dir.to_string_lossy().to_string();
-            let status = if cfg!(windows) {
-                let mut install_cmd = Command::new("cmd");
-                install_cmd.args(["/C", &install_script.to_string_lossy(), &release_dir_str]);
-                #[cfg(target_os = "windows")]
-                {
-                    use std::os::windows::process::CommandExt;
-                    install_cmd.creation_flags(0x08000000);
-                }
-                install_cmd.output()
-                    .map_err(|e| format!("执行安装脚本失败: {}", e))?
-            } else {
-                Command::new("bash")
-                    .arg(&install_script)
-                    .arg(&release_dir_str)
-                    .output()
-                    .map_err(|e| format!("执行安装脚本失败: {}", e))?
-            };
-
-            if !status.status.success() {
-                let stderr = String::from_utf8_lossy(&status.stderr);
-                let stdout = String::from_utf8_lossy(&status.stdout);
-                app_log(&format!("[soloncode] Install script failed: {}\n{}", stdout, stderr));
-            } else {
-                let stdout = String::from_utf8_lossy(&status.stdout);
-                for line in stdout.lines() {
-                    app_log(line);
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// 查找打包资源中的 JAR（生产模式：resource_dir/target/，开发模式：向上查找）
-fn find_bundled_jar(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    // 1. Tauri 资源目录（生产模式）
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let jar = resource_dir.join("target").join("soloncode-cli.jar");
-        if jar.exists() {
-            app_log(&format!("[soloncode] Found bundled JAR: {:?}", jar));
-            return Some(jar);
-        }
-    }
-
-    // 2. 开发模式：从可执行文件向上查找 soloncode-cli/target/soloncode-cli.jar
-    if let Ok(exe_dir) = std::env::current_exe() {
-        let mut dir = exe_dir.parent();
-        for _ in 0..10 {
-            if let Some(d) = dir {
-                let jar = d.join("soloncode-cli").join("target").join("soloncode-cli.jar");
-                if jar.exists() {
-                    app_log(&format!("[soloncode] Found JAR in dev mode: {:?}", jar));
-                    return Some(jar);
-                }
-                dir = d.parent();
-            } else {
-                break;
-            }
-        }
-    }
-
-    None
-}
-
-/// 查找 soloncode-cli.jar 文件路径
-/// 优先使用打包资源中的 JAR（确保版本最新），回退到 ~/.soloncode/bin/
-fn find_cli_jar(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    // 1. 打包资源中的 JAR（生产模式或开发模式）
-    if let Some(bundled) = find_bundled_jar(app_handle) {
-        // 将打包 JAR 同步到 ~/.soloncode/bin/（确保安装目录版本最新）
-        let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-        if let Ok(home) = std::env::var(home_var) {
-            let target_bin = Path::new(&home).join(".soloncode").join("bin");
-            let _ = fs::create_dir_all(&target_bin);
-            let dest = target_bin.join("soloncode-cli.jar");
-            match fs::copy(&bundled, &dest) {
-                Ok(_) => app_log(&format!("[soloncode] Synced bundled JAR to {:?}", dest)),
-                Err(e) => app_log(&format!("[soloncode] Failed to sync JAR: {}, using bundled directly", e)),
-            }
-        }
-        return Some(bundled);
-    }
-
-    // 2. 回退：~/.soloncode/bin/soloncode-cli.jar（无打包资源时）
+    // 2. 检查 ~/.soloncode/bin/ 中的脚本
     let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     if let Ok(home) = std::env::var(home_var) {
-        let jar = Path::new(&home).join(".soloncode").join("bin").join("soloncode-cli.jar");
+        let bin_dir = Path::new(&home).join(".soloncode").join("bin");
+        if cfg!(windows) {
+            let bat = bin_dir.join("soloncode.bat");
+            if bat.exists() {
+                app_log(&format!("[soloncode] Found soloncode.bat: {:?}", bat));
+                return BackendLaunchMethod::Command { cmd: bat.to_string_lossy().to_string() };
+            }
+            let ps1 = bin_dir.join("soloncode.ps1");
+            if ps1.exists() {
+                app_log(&format!("[soloncode] Found soloncode.ps1: {:?}", ps1));
+                return BackendLaunchMethod::Command { cmd: ps1.to_string_lossy().to_string() };
+            }
+        } else {
+            let sh = bin_dir.join("soloncode");
+            if sh.exists() {
+                app_log(&format!("[soloncode] Found soloncode script: {:?}", sh));
+                return BackendLaunchMethod::Command { cmd: sh.to_string_lossy().to_string() };
+            }
+        }
+
+        // 3. 回退到 JAR
+        let jar = bin_dir.join("soloncode-cli.jar");
         if jar.exists() {
-            app_log(&format!("[soloncode] Using fallback JAR: {:?}", jar));
-            return Some(jar);
+            app_log(&format!("[soloncode] Found JAR: {:?}", jar));
+            return BackendLaunchMethod::Jar { path: jar };
         }
     }
 
-    app_log("[soloncode] JAR not found, will trigger auto-install");
-    None
+    app_log("[soloncode] No soloncode command or JAR found");
+    BackendLaunchMethod::Jar {
+        path: std::path::PathBuf::from("soloncode-cli.jar"),
+    }
 }
 
 /// 启动后端 CLI 进程（如果已在运行则复用）
 #[tauri::command]
-fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) -> Result<u32, String> {
+fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检查已有进程是否仍在运行
     {
         let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
@@ -1048,33 +879,36 @@ fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) 
         }
     }
 
-    // 检查端口是否被占用
+    // 检查端口是否已被后端占用（可能是之前启动的 soloncode 服务）
     if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
-        let msg = format!("端口 {} 已被占用，请先关闭占用该端口的程序", port);
+        // 尝试 HTTP 请求 /version 确认是 soloncode 后端
+        let is_backend = std::net::TcpStream::connect(format!("127.0.0.1:{}", port))
+            .ok()
+            .and_then(|mut stream| {
+                use std::io::{Read as IoRead, Write as IoWrite};
+                let req = format!("GET /version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n", port);
+                stream.write_all(req.as_bytes()).ok()?;
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).ok()?;
+                let mut buf = [0u8; 256];
+                let n = stream.read(&mut buf).ok()?;
+                let resp = String::from_utf8_lossy(&buf[..n]);
+                // 检查 HTTP 响应中包含 200 和 version
+                Some(resp.contains("200") && resp.contains("version"))
+            })
+            .unwrap_or(false);
+
+        if is_backend {
+            app_log(&format!("[soloncode] Port {} already occupied by soloncode backend, reusing", port));
+            return Ok(0);
+        }
+        let msg = format!("端口 {} 已被其他程序占用，请先关闭占用该端口的程序", port);
         app_log(&format!("[soloncode] ERROR: {}", msg));
         return Err(msg);
     }
 
-    // 查找 JAR 文件，未找到则自动安装
-    let jar_path = match find_cli_jar(&app_handle) {
-        Some(p) => p,
-        None => {
-            app_log("[soloncode] CLI JAR not found, auto-installing...");
-            auto_install_cli(&app_handle)?;
-            // 安装后从 ~/.soloncode/bin/ 查找
-            let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-            let home = std::env::var(home_var).unwrap_or_default();
-            let installed_jar = Path::new(&home).join(".soloncode").join("bin").join("soloncode-cli.jar");
-            if installed_jar.exists() {
-                app_log(&format!("[soloncode] Found installed JAR: {:?}", installed_jar));
-                installed_jar
-            } else {
-                return Err("CLI 安装后仍未找到 soloncode-cli.jar".to_string());
-            }
-        }
-    };
-
-    app_log(&format!("[soloncode] Using JAR: {:?}", jar_path));
+    // 检测启动方式
+    let launch = detect_launch_method();
+    let port_str = port.to_string();
 
     // 确定工作目录（空路径时使用用户主目录）
     let work_dir = if workspace_path.is_empty() {
@@ -1084,44 +918,57 @@ fn start_backend(app_handle: tauri::AppHandle, workspace_path: &str, port: u16) 
         workspace_path.to_string()
     };
 
-    // 确保工作区 .soloncode 目录存在
-    let soloncode_dir = Path::new(&work_dir).join(".soloncode");
-    if !soloncode_dir.exists() {
-        fs::create_dir_all(&soloncode_dir)
-            .map_err(|e| format!("创建 .soloncode 目录失败: {}", e))?;
-    }
-
     // 日志文件（保存在应用根目录）
     let log_path = if let Ok(exe) = std::env::current_exe() {
         exe.parent()
             .map(|d| d.join("server.log"))
             .ok_or("无法获取应用目录")?
     } else {
-        soloncode_dir.join("server.log")
+        Path::new(&work_dir).join(".soloncode").join("server.log")
     };
     let log_file = fs::File::create(&log_path)
         .map_err(|e| format!("创建日志文件失败: {}", e))?;
     let log_file_clone = log_file.try_clone()
         .map_err(|e| format!("复制文件句柄失败: {}", e))?;
 
-    let jar_str = jar_path.to_string_lossy().to_string();
-    let port_str = port.to_string();
+    let mut cmd = match &launch {
+        BackendLaunchMethod::Command { cmd: cmd_path } => {
+            app_log(&format!("[soloncode] Starting: {} serve {}", cmd_path, port_str));
+            if cfg!(windows) {
+                let mut c = Command::new("powershell");
+                c.args(["-ExecutionPolicy", "Bypass", "-File", cmd_path, "serve", &port_str]);
+                c
+            } else {
+                let mut c = Command::new(cmd_path);
+                c.args(["serve", &port_str]);
+                c
+            }
+        }
+        BackendLaunchMethod::Jar { path: jar_path } => {
+            if !jar_path.exists() {
+                let msg = "未找到 soloncode 命令或 soloncode-cli.jar，请先安装 CLI".to_string();
+                app_log(&format!("[soloncode] ERROR: {}", msg));
+                return Err(msg);
+            }
+            let jar_str = jar_path.to_string_lossy().to_string();
+            app_log(&format!("[soloncode] Starting: java -jar {} serve {}", jar_str, port_str));
+            let mut c = Command::new("java");
+            c.args([
+                "-Dfile.encoding=UTF-8",
+                "-Dstdout.encoding=UTF-8",
+                "-Dstderr.encoding=UTF-8",
+                "-Dstdin.encoding=UTF-8",
+                "-jar", &jar_str,
+                "serve",
+                &port_str,
+            ]);
+            c
+        }
+    };
 
-    app_log(&format!("[soloncode] Starting: java -jar {} serve {}", jar_str, port_str));
-
-    let mut cmd = Command::new("java");
-    cmd.args([
-        "-Dfile.encoding=UTF-8",
-        "-Dstdout.encoding=UTF-8",
-        "-Dstderr.encoding=UTF-8",
-        "-Dstdin.encoding=UTF-8",
-        "-jar", &jar_str,
-        "serve",
-        &port_str,
-    ])
-    .current_dir(&work_dir)
-    .stdout(log_file)
-    .stderr(log_file_clone);
+    cmd.current_dir(&work_dir)
+        .stdout(log_file)
+        .stderr(log_file_clone);
 
     // Windows 下隐藏控制台窗口
     #[cfg(target_os = "windows")]

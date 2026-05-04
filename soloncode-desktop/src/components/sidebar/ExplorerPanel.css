@@ -1,9 +1,105 @@
-/* 资源管理器面板 - 组件特有样式 */
+/* 资源管理器面板 - 多项目样式 */
 
 .explorer-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* 项目列表容器 */
+.projects-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 项目根节点 */
+.project-root {
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+}
+
+/* 项目头部 */
+.project-root-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s;
+  border-left: 2px solid transparent;
+}
+
+.project-root-header:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.project-root-header.active {
+  border-left-color: var(--cb-accent);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.project-root-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 项目头部操作按钮（hover 显示） */
+.project-root-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.project-root-header:hover .project-root-actions {
+  opacity: 1;
+}
+
+.project-root-action {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--cb-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.project-root-action:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+  color: var(--cb-text-primary);
+}
+
+/* 项目树内容区 */
+.project-tree-content {
+  min-height: 0;
+}
+
+/* 项目加载中 */
+.project-loading {
+  padding: 8px 28px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 空项目提示 */
+.project-empty-tree {
+  padding: 8px 28px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  opacity: 0.6;
 }
 
 /* 文件节点 */
@@ -78,21 +174,21 @@
   justify-content: center;
   padding: 40px 20px;
   text-align: center;
+  gap: 12px;
 }
 
 .empty-workspace .empty-icon {
   color: var(--cb-text-secondary);
-  margin-bottom: 16px;
   opacity: 0.5;
 }
 
 .empty-workspace .empty-text {
   font-size: 13px;
   color: var(--cb-text-secondary);
-  margin-bottom: 16px;
 }
 
-.open-folder-btn {
+.open-folder-btn,
+.create-project-btn {
   padding: 8px 16px;
   font-size: 13px;
   color: var(--cb-text-primary);
@@ -103,7 +199,8 @@
   transition: background-color 0.15s;
 }
 
-.open-folder-btn:hover {
+.open-folder-btn:hover,
+.create-project-btn:hover {
   background: var(--cb-vscode-button-hoverBackground, #1177bb);
 }
 

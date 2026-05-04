@@ -1,10 +1,71 @@
+.window-frame {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .app-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
   background-color: var(--cb-vscode-editor-background);
+}
+
+/* 窗口边缘调整大小区域 */
+.resize-edge {
+  position: absolute;
+  z-index: 9999;
+}
+
+.resize-top {
+  top: 0; left: 8px; right: 8px;
+  height: 4px;
+  cursor: ns-resize;
+}
+
+.resize-bottom {
+  bottom: 0; left: 8px; right: 8px;
+  height: 4px;
+  cursor: ns-resize;
+}
+
+.resize-left {
+  top: 8px; bottom: 8px; left: 0;
+  width: 4px;
+  cursor: ew-resize;
+}
+
+.resize-right {
+  top: 8px; bottom: 8px; right: 0;
+  width: 4px;
+  cursor: ew-resize;
+}
+
+.resize-top-left {
+  top: 0; left: 0;
+  width: 8px; height: 8px;
+  cursor: nwse-resize;
+}
+
+.resize-top-right {
+  top: 0; right: 0;
+  width: 8px; height: 8px;
+  cursor: nesw-resize;
+}
+
+.resize-bottom-left {
+  bottom: 0; left: 0;
+  width: 8px; height: 8px;
+  cursor: nesw-resize;
+}
+
+.resize-bottom-right {
+  bottom: 0; right: 0;
+  width: 8px; height: 8px;
+  cursor: nwse-resize;
 }
 
 /* 菜单栏 */
@@ -95,6 +156,14 @@
   overflow: hidden;
 }
 
+/* 右侧顶部区域：面板 + Git右侧面板 */
+.right-area-top {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
 /* 面板容器 */
 .panels-container {
   display: flex;
@@ -113,19 +182,15 @@
   background-color: var(--cb-vscode-editor-background);
 }
 
-/* 当编辑器需要铺满时（chat隐藏） */
-.panel-wrapper.editor-wrapper.expand {
-  flex: 1 1 0;
-  max-width: none;
-}
-
 .editor-wrapper {
   min-width: 300px;
 }
 
 .chat-wrapper {
   min-width: 200px;
-  flex: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 只有两个面板都可见时才显示分割线 */
@@ -292,6 +357,12 @@ select option {
   max-width: none;
 }
 
+/* 编辑器和对话并排时，消息和输入框占分屏区域的 95% */
+.panels-container > .panel-wrapper:not(:only-child) .chat-input-wrapper,
+.panels-container > .panel-wrapper:not(:only-child) .chat-messages {
+  max-width: 95%;
+}
+
 /* 确保所有区域都有背景色 */
 .activity-bar {
   border-right: 1px solid var(--cb-vscode-panel-border);
@@ -376,4 +447,16 @@ select option {
   pointer-events: none;
   animation: fadeInOut 5s ease-in-out forwards;
   border: 1px solid var(--cb-vscode-panel-border);
+}
+
+/* Git 右侧面板 */
+.git-right-panel {
+  width: 320px;
+  min-width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--cb-vscode-sideBar-background);
+  border-left: 1px solid var(--cb-vscode-panel-border);
+  overflow: hidden;
 }

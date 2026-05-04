@@ -3,6 +3,9 @@
   flex-direction: column;
   background-color: var(--cb-vscode-editor-background);
   padding: 8px 12px 12px;
+  max-width: 90%;
+  margin: 0 auto;
+  width: 100%;
 }
 
 /* 上下文标签 */

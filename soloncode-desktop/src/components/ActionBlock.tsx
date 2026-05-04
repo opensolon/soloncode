@@ -21,7 +21,7 @@ function buildTitle(toolName: string, args?: Record<string, unknown>): string {
       .join(', ');
     title += `(${params})`;
   }
-  return title.length > 20 ? title.slice(0, 20) + '...' : title;
+  return title.length > 20 ? title.slice(0, 100) + '...' : title;
 }
 
 export function ActionBlock({ text, toolName, args, theme }: ActionBlockProps) {
