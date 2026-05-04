@@ -67,11 +67,12 @@ Ako ste zainteresirani za doprinos kodom, molimo pročitajte [Dokumentaciju za d
 
 Ako koristite "soloncode" u nazivu svog projekta (npr. "soloncode-dashboard" ili "soloncode-app"), molimo naznačite u README-u da projekt nije službeno razvijen od strane OpenSolon tima i nema službenu povezanost.
 
-## Često postavljana pitanja: Koja je razlika od Claude Code i OpenCode?
+## Često postavljana pitanja: Koja je razlika od Claude Code?
 
 Oni su funkcionalno slični, sa ključnim razlikama:
 
 * Izgrađen s Javom, 100% open-source.
-* Nezavisan od pružatelja usluga. Zahtijeva konfiguraciju modela. Iteracija modela će smanjiti razlike i troškove, čineći pristup nezavisnim od pružatelja usluga važnim.
-* Fokusiran na terminalski komandni interfejs (CLI), pokretanje putem sistemskih komandi.
+* Potpuno vođen i izgrađen kineskim promptovima
+* Nezavisan od pružatelja usluga. Konfigurišite modele prema potrebi. Iteracija modela će smanjiti razlike i troškove, čineći fleksibilnu konfiguraciju važnom.
+* Istovremeno podržava terminalski komandni interfejs (CLI), interfejs pretraživača (WEB) i desktop IDE interfejs (Desktop).
 * Podržava Web, ACP protokol za udaljenu komunikaciju.

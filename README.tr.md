@@ -67,12 +67,12 @@ Katkıda bulunmak istiyorsanız, PR göndermeden önce lütfen [Katkı Dokümant
 
 Proje adınızda "soloncode" kullanıyorsanız (örneğin "soloncode-dashboard" veya "soloncode-app"), README'de projenin OpenSolon ekibi tarafından resmi olarak geliştirilmediğini ve herhangi bir bağlantısı olmadığını belirtmeniz gerekir.
 
-## Sıkça Sorulan Sorular: Claude Code ve OpenCode'dan farkları nelerdir?
+## Sıkça Sorulan Sorular: Claude Code'dan farkları nelerdir?
 
 İşlevsel olarak benzerdirler, temel farklar şunlardır:
 
 * Java ile oluşturulmuş, %100 açık kaynaklıdır.
 * Tamamen Çince promptlarla yönetilir ve oluşturulur
-* Sağlayıcıdan bağımsızdır. Model yapılandırması gerektirir. Model yinelemeleri boşlukları daraltacak ve maliyetleri azaltacaktır, bu da sağlayıcıdan bağımsız yaklaşımı önemli kılar.
-* Terminal komut satırı arayüzüne (CLI) odaklanmıştır, sistem komutları üzerinden çalışır.
+* Sağlayıcıdan bağımsızdır. Modelleri ihtiyaca göre yapılandırın. Model yinelemeleri boşlukları daraltacak ve maliyetleri azaltacaktır, bu da esnek yapılandırmayı önemli kılar.
+* Aynı anda terminal komut satırı arayüzünü (CLI), tarayıcı arayüzünü (WEB) ve masaüstü IDE arayüzünü (Desktop) destekler.
 * Web, uzaktan iletişim için ACP protokolünü destekler.

@@ -67,12 +67,12 @@ User
 
 如果你在项目名中使用了 "soloncode"（如 "soloncode-dashboard" 或 "soloncode-app"），请在 README 里注明该项目不是 OpenSolon 团队官方开发，且不存在隶属关系。
 
-## 常见问题：和 Claude Code、OpenCode 有什么不同？
+## 常见问题：和 Claude Code 有什么不同？
 
 功能上很相似，关键差异：
 
 * 采用 Java 实现，100% 开源。
 * 纯中文提示词驱动与构建。
-* 不绑定特定提供商。需要配置模型。模型迭代会缩小差异、降低成本，因此保持 provider-agnostic 很重要。
-* 聚焦终端命令行界面 (CLI)，通过系统命令运行。
+* 不绑定特定提供商。按需配置模型。模型迭代会缩小差异、降低成本，因此自由配置很重要。
+* 同时支持终端命令行界面 (CLI)、浏览器界面（WEB）、桌面IDE界面（Desktop）。
 * 支持 Web，ACP 协议进行远程通讯。

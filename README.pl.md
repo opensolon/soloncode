@@ -67,12 +67,12 @@ Jeśli jesteś zainteresowany wniesieniem wkładu w kod, przeczytaj [Dokumentacj
 
 Jeśli używasz "soloncode" w nazwie swojego projektu (np. "soloncode-dashboard" lub "soloncode-app"), wskaż w pliku README, że projekt nie jest oficjalnie rozwijany przez zespół OpenSolon i nie jest z nim powiązany.
 
-## Często zadawane pytania: Czym różni się od Claude Code i OpenCode?
+## Często zadawane pytania: Czym różni się od Claude Code?
 
 Pod względem funkcjonalności są podobne, z kluczowymi różnicami:
 
 * Zbudowany w Javie, w 100% otwarty kod źródłowy.
 * W pełni sterowany i budowany przy użyciu promptów w języku chińskim
-* Niezależny od dostawcy. Wymaga konfiguracji modelu. Iteracja modeli będzie zmniejszać luki i obniżać koszty, co sprawia, że podejście niezależne od dostawcy jest ważne.
-* Skupia się na interfejsie wiersza poleceń terminala (CLI), uruchamianym przez polecenia systemowe.
+* Niezależny od dostawcy. Konfiguruj modele według potrzeb. Iteracja modeli będzie zmniejszać luki i obniżać koszty, co sprawia, że elastyczna konfiguracja jest ważna.
+* Jednocześnie obsługuje interfejs wiersza poleceń terminala (CLI), interfejs przeglądarki (WEB) i interfejs IDE na pulpicie (Desktop).
 * Obsługuje Web, protokół ACP do komunikacji zdalnej.

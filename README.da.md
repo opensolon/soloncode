@@ -67,11 +67,12 @@ Hvis du er interesseret i at bidrage med kode, bedes du læse [Bidragsdokumentat
 
 Hvis du bruger "soloncode" i dit projektnavn (f.eks. "soloncode-dashboard" eller "soloncode-app"), bedes du angive i README, at projektet ikke er officielt udviklet af OpenSolon-teamet og ikke har nogen tilknytning hertil.
 
-## Ofte stillede spørgsmål: Hvad er forskellen fra Claude Code og OpenCode?
+## Ofte stillede spørgsmål: Hvad er forskellen fra Claude Code?
 
 De er funktionelt lignende, med følgende nøgleforskelle:
 
 * Bygget med Java, 100% open-source.
-* Udbyderuafhængig. Kræver modelkonfiguration. Modeliteration vil mindske forskelle og reducere omkostninger, hvilket gør en udbyderuafhængig tilgang vigtig.
-* Fokuseret på terminal kommandolinje-interface (CLI), kører via systemkommandoer.
+* Helt drevet og bygget med kinesiske prompter
+* Udbyderuafhængig. Konfigurer modeller efter behov. Modeliteration vil mindske forskelle og reducere omkostninger, hvilket gør fleksibel konfiguration vigtig.
+* Understøtter samtidig terminal kommandolinje-interface (CLI), browser-interface (WEB) og desktop IDE-interface (Desktop).
 * Understøtter Web, ACP-protokol til fjernkommunikation.

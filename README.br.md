@@ -69,10 +69,12 @@ Se você usar "soloncode" no nome do seu projeto (por exemplo, "soloncode-dashbo
 
 ## Perguntas Frequentes
 
+Qual é a diferença em relação ao Claude Code?
+
 Eles são funcionalmente semelhantes, com diferenças principais:
 
 * Construído com Java, 100% código aberto.
 * Totalmente orientado e construído com prompts em chinês
-* Independente de provedor. Requer configuração de modelo. A iteração de modelos reduzirá lacunas e custos, tornando a abordagem independente de provedor importante.
-* Focado na interface de linha de comando (CLI) de terminal, executando via comandos do sistema.
+* Independente de provedor. Configure modelos conforme necessário. A iteração de modelos reduzirá lacunas e custos, tornando a configuração flexível importante.
+* Suporta simultaneamente a interface de linha de comando (CLI), a interface do navegador (WEB) e a interface IDE de desktop (Desktop).
 * Suporta Web, protocolo ACP para comunicação remota.
