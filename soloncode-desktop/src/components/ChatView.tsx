@@ -5,12 +5,16 @@ import { saveMessage, getMessagesByConversation } from '../db';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
 import { ChatInput, type SendOptions } from './ChatInput';
+import { Icon } from './common/Icon';
 import '../views/ChatPage.css';
 
 interface ChatViewProps {
   currentConversation: Conversation;
   plugins?: Plugin[];
   workspacePath?: string;
+  projectName?: string;
+  theme?: Theme;
+  backendPort?: number | null;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
   providers?: ModelProvider[];
@@ -18,14 +22,15 @@ interface ChatViewProps {
   onActiveProviderChange?: (providerId: string) => void;
   activeFileName?: string;
   activeFilePath?: string;
+  onNewProject?: () => void;
+  onOpenFolder?: () => void;
 }
 
-// 全局 WebSocket 连接管理器（单例模式）
+// 全局 WebSocket 连接管理器（每次请求独立连接）
 class WebSocketManager {
   private static instance: WebSocketManager | null = null;
-  private ws: WebSocket | null = null;
-  private messageCallbacks: Map<string, (data: any) => void> = new Map();
-  private connectingSessionId: string | null = null;
+  private activeWs: WebSocket | null = null;
+  private messageCallback: ((data: any) => void) | null = null;
   private backendPort: number | null = null;
   private workspacePath: string | null = null;
 
@@ -51,12 +56,15 @@ class WebSocketManager {
     this.workspacePath = path;
   }
 
-  private getWebSocketUrl(): string {
+  private getWebSocketUrl(sessionId?: string): string {
     const host = this.backendPort
       ? `localhost:${this.backendPort}`
       : (import.meta.env.VITE_WS_HOST || 'localhost:4808');
     const protocol = import.meta.env.VITE_WS_PROTOCOL || 'ws';
     const params = new URLSearchParams();
+    if (sessionId) {
+      params.set('sessionId', sessionId);
+    }
     if (this.workspacePath) {
       params.set('X-Session-Cwd', this.workspacePath);
     }
@@ -64,129 +72,105 @@ class WebSocketManager {
     return `${protocol}://${host}/ws${query ? '?' + query : ''}`;
   }
 
-  connect(): Promise<WebSocket> {
+  /** 每次请求创建独立 WebSocket 连接 */
+  private createConnection(sessionId?: string): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        resolve(this.ws);
-        return;
-      }
-
-      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-        const onOpen = () => {
-          cleanup();
-          resolve(this.ws!);
-        };
-        const onError = (e: Event) => {
-          this.ws?.removeEventListener('open', onOpen);
-          this.ws?.removeEventListener('error', onError);
-          reject(new Error('WebSocket connection failed'));
-        };
-         // 定义清理函数，用于移除监听器
-        const cleanup = () => {
-        this.ws?.removeEventListener('open', onOpen);
-        this.ws?.removeEventListener('error', onError);
-        // 注意：如果是复用实例，这里通常不移除 message/close，
-        // 但为了 Promise 的纯净性，这里假设我们只关心连接建立阶段
-      };
-        this.ws.addEventListener('open', onOpen);
-        this.ws.addEventListener('error', onError);
-        return;
-      }
-
-      const wsUrl = this.getWebSocketUrl();
+      const wsUrl = this.getWebSocketUrl(sessionId);
       console.log('[WS] Connecting to:', wsUrl);
-      this.ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl);
 
-      this.ws.onopen = () => {
+      const onOpen = () => {
+        cleanup();
         console.log('[WS] Connected');
-        resolve(this.ws!);
+        resolve(ws);
       };
-
-      this.ws.onerror = (error) => {
-        console.error('[WS] Error:', error);
+      const onError = () => {
+        cleanup();
+        console.error('[WS] Connection error');
         reject(new Error('WebSocket connection failed'));
       };
-
-      this.ws.onclose = (event) => {
-        console.log('[WS] Disconnected, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean);
-        this.ws = null;
+      const onClose = () => {
+        cleanup();
+        reject(new Error('WebSocket closed before connected'));
       };
-
-      this.ws.onmessage = (event) => {
-        this.handleMessage(event.data);
+      const cleanup = () => {
+        ws.removeEventListener('open', onOpen);
+        ws.removeEventListener('error', onError);
+        ws.removeEventListener('close', onClose);
       };
+      ws.addEventListener('open', onOpen);
+      ws.addEventListener('error', onError);
+      ws.addEventListener('close', onClose);
     });
   }
 
-  private handleMessage(data: string) {
-    try {
-      if (data.trim() === '[DONE]') {
-        return;
+  registerCallback(callback: (data: any) => void) {
+    this.messageCallback = callback;
+  }
+
+  unregisterCallback() {
+    this.messageCallback = null;
+  }
+
+  async sendMessage(request: any): Promise<void> {
+    // 先关闭上一次的连接
+    this.closeActive();
+
+    const sessionId = request.sessionId;
+    const ws = await this.createConnection(sessionId);
+    this.activeWs = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = event.data;
+        if (data.trim() === '[DONE]') {
+          ws.close();
+          return;
+        }
+        const msg = JSON.parse(data);
+        this.messageCallback?.(msg);
+      } catch (e) {
+        console.warn('[WS] Failed to parse message:', event.data, e);
       }
+    };
 
-      const msg = JSON.parse(data);
-      const sessionId = msg.sessionId;
-
-      // 按优先级查找回调：精确匹配 → connectingSessionId → 任意一个
-      let callback = (sessionId && this.messageCallbacks.get(sessionId))
-        || (this.connectingSessionId && this.messageCallbacks.get(this.connectingSessionId))
-        || this.messageCallbacks.values().next().value
-        || null;
-
-      if (callback) {
-        callback(msg);
+    ws.onclose = () => {
+      if (this.activeWs === ws) {
+        this.activeWs = null;
       }
-    } catch (e) {
-      console.warn('[WS] Failed to parse message:', data, e);
-    }
-  }
+    };
 
-  registerCallback(sessionId: string, callback: (data: any) => void) {
-    this.messageCallbacks.set(sessionId, callback);
-  }
-
-  unregisterCallback(sessionId: string) {
-    this.messageCallbacks.delete(sessionId);
-    if (this.connectingSessionId === sessionId) {
-      this.connectingSessionId = null;
-    }
-  }
-
-  async sendMessage(sessionId: string, request: any): Promise<void> {
-    this.connectingSessionId = sessionId;
-    const ws = await this.connect();
+    // sessionId 已通过 URL 参数传递，从 body 中移除
+    delete request.sessionId;
     ws.send(JSON.stringify(request));
   }
 
-  /** 取消当前请求：关闭连接，保留回调注册以便重新连接 */
+  /** 取消当前请求：关闭连接 */
   cancel() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-    this.connectingSessionId = null;
+    this.closeActive();
   }
 
   disconnect() {
-    this.closeConnection();
-    this.messageCallbacks.clear();
+    this.closeActive();
+    this.messageCallback = null;
   }
 
-  /** 推送配置变更到后端 */
+  /** 推送配置变更到后端（短连接） */
   async sendConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }): Promise<void> {
-    const ws = await this.connect();
-    ws.send(JSON.stringify({
-      type: 'config',
-      chatModel,
-    }));
+    const ws = await this.createConnection();
+    ws.send(JSON.stringify({ type: 'config', chatModel }));
+    ws.close();
   }
 
-  /** 只关闭连接，保留回调注册（端口/路径变化时使用） */
-  closeConnection() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+  private closeActive() {
+    if (this.activeWs) {
+      this.activeWs.close();
+      this.activeWs = null;
     }
+  }
+
+  closeConnection() {
+    this.closeActive();
   }
 }
 
@@ -197,7 +181,7 @@ function filterEmptyTags(text: string): string {
   result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)><\/\1>/g, '');
   result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)\/>/g, '');
   // 过滤只有空白内容（包括空格、换行、回车）的标签
-  result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>[\s\n\r]*<\/\1>/g, '');
+  // result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>[\s\n\r]*<\/\1>/g, '');
   // 过滤连续的空行（超过2个换行符）
   result = result.replace(/\n{3,}/g, '\n\n');
   return result;
@@ -253,13 +237,13 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
   await registerModelToBackend(provider, true);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath }: ChatViewProps) {
-  const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
   const sessionIdRef = useRef<string>('');
   const conversationIdRef = useRef<string | number>('');
+  const isStreamingRef = useRef(false);
 
   // 累积的消息内容 - 只有 think 标签内的才是思考块
   const accumulatedContentRef = useRef<{
@@ -287,6 +271,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     loadingTimerRef.current = setTimeout(() => {
       console.log('[ChatView] Loading timeout (120s), auto-stopping');
       setIsLoading(false);
+      isStreamingRef.current = false;
     }, 120000);
   }, []);
 
@@ -297,31 +282,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     }
   }, []);
 
-  // 更新 ref
+  // 更新 ref（流式输出期间不更新，避免 temp→real ID 切换导致 WS 回调丢消息）
   useEffect(() => {
     if (!currentConversation.id) return;
+    if (isStreamingRef.current) return;
     sessionIdRef.current = currentConversation.id.toString();
     conversationIdRef.current = currentConversation.id;
   }, [currentConversation.id]);
-
-  function toggleTheme() {
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    setCurrentTheme(newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('soloncode-theme', newTheme);
-  }
-
-  function loadTheme() {
-    const savedTheme = localStorage.getItem('soloncode-theme') as Theme | null;
-    if (savedTheme) {
-      setCurrentTheme(savedTheme);
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setCurrentTheme(prefersDark ? 'dark' : 'light');
-    }
-    const themeToSet = savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', themeToSet);
-  }
 
   // 构建当前累积内容的 ContentItem 数组
   function buildContentItems(): ContentItem[] {
@@ -330,14 +297,14 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
 
     // 只有 think 标签内的内容才是思考块（可折叠）
     if (acc.think.trim()) {
-      items.push({ type: 'think', text: acc.think.trim() });
+      items.push({ type: 'THINK', text: acc.think.trim() });
     }
 
     // 每个工具调用独立显示
     for (const act of acc.actions) {
       if (act.text.trim()) {
         items.push({
-          type: 'action',
+          type: 'ACTION',
           text: act.text.trim(),
           toolName: act.toolName,
           args: act.args
@@ -347,20 +314,18 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
 
     // 正文内容（包括 reason 和 text 类型）
     if (acc.text.trim()) {
-      items.push({ type: 'text', text: acc.text.trim() });
+      items.push({ type: 'TEXT', text: acc.text.trim() });
     }
 
     return items;
   }
 
-  // 注册消息回调
+  // 注册消息回调（只注册一次，通过 ref 获取当前 sessionId）
   useEffect(() => {
-    if (!currentConversation.id) return;
-    const sessionId = currentConversation.id.toString();
     const wsManager = WebSocketManager.getInstance();
 
     const handleMessage = (data: any) => {
-      const msgSessionId = data.sessionId || sessionId;
+      const msgSessionId = data.sessionId || conversationIdRef.current.toString();
 
       // done / error 类型必须处理，不受 session 校验限制（保证 loading 状态正确）
       if (data.type === 'done') {
@@ -370,7 +335,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         if (contentItems.length > 0) {
           const finalMsg: Message = {
             id: assistantMsgIdRef.current,
-            role: 'assistant',
+            role: 'ASSISTANT',
             timestamp: new Date().toLocaleTimeString(),
             contents: contentItems,
             metadata: {
@@ -389,9 +354,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
           // 保存到数据库（包含 metadata）
           saveMessage({
             conversationId: msgSessionId,
-            role: 'assistant',
+            role: 'ASSISTANT',
             timestamp: finalMsg.timestamp,
-            contents: JSON.stringify({ items: contentItems, metadata: finalMsg.metadata })
+            contents: JSON.stringify({ items: contentItems, metadata: finalMsg.metadata }),
+            workspacePath,
           }).catch(err => console.error('Failed to save message:', err));
         }
 
@@ -403,6 +369,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         };
 
         setIsLoading(false);
+        isStreamingRef.current = false;
         chatMessagesRef.current?.scrollToBottom();
         return;
       }
@@ -412,22 +379,22 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         const errorText = data.text || '未知错误';
         const errorMsg: Message = {
           id: Date.now(),
-          role: 'error',
+          role: 'ERROR',
           timestamp: new Date().toLocaleTimeString(),
-          contents: [{ type: 'error', text: errorText }]
+          contents: [{ type: 'ERROR', text: errorText }]
         };
         setMessages(prev => [...prev, errorMsg]);
         setIsLoading(false);
+        isStreamingRef.current = false;
         return;
       }
 
-      // 其他消息类型检查是否属于当前会话
-      if (msgSessionId !== conversationIdRef.current.toString()) {
-        console.log('[WS] Message for different session, ignoring:', msgSessionId);
+      // 其他消息类型检查是否属于当前会话（同时接受 temp ID 和重分配后的真实 ID）
+      if (msgSessionId !== conversationIdRef.current.toString() && msgSessionId !== sessionIdRef.current) {
         return;
       }
 
-      const type = data.type as ContentType;
+      const type = (data.type as string).toUpperCase() as ContentType;
       let text = filterEmptyTags(data.text || '');
 
       if (text === '') return;
@@ -440,14 +407,17 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
       // reason 类型也是正文内容
       const acc = accumulatedContentRef.current;
       switch (type) {
-        case 'think':
+        case 'THINK':
           acc.think += text;
           break;
-        case 'reason':
+        case 'COMMAND':
+          acc.text += text + '\n';
+          break;
+        case 'REASON':
           // reason 也是正文内容
           acc.text += text;
           break;
-        case 'action':
+        case 'ACTION':
           if (data.toolName) {
             // 新的工具调用开始，推入新条目
             acc.actions.push({
@@ -463,7 +433,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
             acc.actions.push({ text });
           }
           break;
-        case 'text':
+        case 'TEXT':
           acc.text += text;
           break;
       }
@@ -473,7 +443,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         const contentItems = buildContentItems();
         const tempMsg: Message = {
           id: assistantMsgIdRef.current,
-          role: 'assistant',
+          role: 'ASSISTANT',
           timestamp: new Date().toLocaleTimeString(),
           contents: contentItems
         };
@@ -491,12 +461,12 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
       chatMessagesRef.current?.scrollToBottom();
     };
 
-    wsManager.registerCallback(sessionId, handleMessage);
+    wsManager.registerCallback(handleMessage);
 
     return () => {
-      wsManager.unregisterCallback(sessionId);
+      wsManager.unregisterCallback();
     };
-  }, [currentConversation.id]);
+  }, []);
 
   const sendMessage = useCallback(async (messageText: string, options: SendOptions) => {
     let sessionId = currentConversation.id?.toString();
@@ -523,24 +493,30 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
 
     const userMessage: Message = {
       id: Date.now(),
-      role: 'user',
+      role: 'USER',
       timestamp: new Date().toLocaleTimeString(),
-      contents: [{ type: 'text', text: fullMessage }]
+      contents: [{ type: 'TEXT', text: fullMessage }]
     };
 
     setMessages(prev => [...prev, userMessage]);
 
-    // 将会话保存到列表（如果尚未保存）
-    if (onUpdateSessionTitle) {
+    // 标记流式状态，防止会话 ID 变化时重新加载消息
+    isStreamingRef.current = true;
+
+    // 首次发送时将会话保存到列表
+    if (onUpdateSessionTitle && !sessionId.startsWith('temp-')) {
+      // 已持久化的会话，仅首次更新标题
+    } else if (onUpdateSessionTitle) {
       const title = messageText.trim().slice(0, 20) + (messageText.trim().length > 20 ? '...' : '');
       onUpdateSessionTitle(sessionId, title);
     }
 
     await saveMessage({
       conversationId: sessionId,
-      role: 'user',
+      role: 'USER',
       timestamp: userMessage.timestamp,
-      contents: JSON.stringify(userMessage.contents)
+      contents: JSON.stringify(userMessage.contents),
+      workspacePath,
     });
 
     setIsLoading(true);
@@ -564,13 +540,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
       // options.model 格式: "providerId" 或 "providerId__modelId"
       const sepIdx = options.model.indexOf('__');
       const providerId = sepIdx >= 0 ? options.model.substring(0, sepIdx) : options.model;
+      const specificModelId = sepIdx >= 0 ? options.model.substring(sepIdx + 2) : null;
       const selectedProvider = providers.find(p => p.id === providerId);
+      // 优先使用 availableModels 展开后的具体模型 ID，否则用 provider 默认 model
+      const actualModelId = specificModelId || selectedProvider?.model || options.modelName;
       if (selectedProvider) {
-        await registerModelToBackend(selectedProvider);
+        await registerModelToBackend({ ...selectedProvider, model: actualModelId });
       }
 
       // 用实际模型名发送
-      const modelName = selectedProvider?.model || options.modelName;
+      const modelName = actualModelId;
 
       const request = {
         input: fullMessage,
@@ -580,25 +559,27 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         cwd: workspacePath || undefined,
       };
 
-      await wsManager.sendMessage(sessionId, request);
+      await wsManager.sendMessage(request);
 
     } catch (error) {
       console.error('Failed to send message:', error);
       const errorMessage: Message = {
         id: Date.now() + 1,
-        role: 'error',
+        role: 'ERROR',
         timestamp: new Date().toLocaleTimeString(),
-        contents: [{ type: 'error', text: `请求失败: ${error instanceof Error ? error.message : '未知错误'}` }]
+        contents: [{ type: 'ERROR', text: `请求失败: ${error instanceof Error ? error.message : '未知错误'}` }]
       };
       setMessages(prev => [...prev, errorMessage]);
 
       await saveMessage({
         conversationId: sessionId,
-        role: 'error',
+        role: 'ERROR',
         timestamp: errorMessage.timestamp,
-        contents: JSON.stringify(errorMessage.contents)
+        contents: JSON.stringify(errorMessage.contents),
+        workspacePath,
       });
       setIsLoading(false);
+      isStreamingRef.current = false;
     }
   }, [currentConversation, onNewSession, onUpdateSessionTitle, workspacePath, providers]);
 
@@ -613,9 +594,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
         let metadata = !Array.isArray(parsed) && parsed.metadata ? parsed.metadata : undefined;
         return {
           id: Date.now() + index,
-          role: msg.role as Message['role'],
+          role: (msg.role as string).toUpperCase() as Message['role'],
           timestamp: msg.timestamp || new Date().toLocaleTimeString(),
-          contents,
+          contents: contents.map((c: any) => ({ ...c, type: (c.type as string).toUpperCase() })),
           metadata,
         };
       }));
@@ -624,17 +605,31 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     }
   }
 
+  // 会话切换时加载/清空消息
+  // 依赖 currentConversation.id（string | number）而非整个对象，避免 sessions 变化导致误触发
+  const currentConversationId = currentConversation.id;
   useEffect(() => {
-    loadTheme();
-  }, []);
+    const id = currentConversationId?.toString();
 
-  useEffect(() => {
-    if (currentConversation.id) {
-      loadConversationMessages(currentConversation.id);
-    } else {
+    if (!id) {
       setMessages([]);
+      return;
     }
-  }, [currentConversation]);
+
+    // 临时会话：清空消息
+    if (id.startsWith('temp-') || id.startsWith('pending-')) {
+      setMessages([]);
+      return;
+    }
+
+    // 正在流式输出时（ID 从 temp 替换为 real），跳过加载
+    if (isStreamingRef.current) {
+      return;
+    }
+
+    // 正常会话：从数据库加载历史消息
+    loadConversationMessages(id);
+  }, [currentConversationId]);
 
   // 停止当前请求
   const handleStop = useCallback(() => {
@@ -647,7 +642,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
     if (contentItems.length > 0) {
       const finalMsg: Message = {
         id: assistantMsgIdRef.current,
-        role: 'assistant',
+        role: 'ASSISTANT',
         timestamp: new Date().toLocaleTimeString(),
         contents: contentItems,
       };
@@ -678,24 +673,43 @@ export function ChatView({ currentConversation, plugins, workspacePath, onUpdate
   }, [providers, onActiveProviderChange]);
 
   const isEmpty = messages.length === 0 && !isLoading;
+  const showHeader = !isEmpty;
+
+  const handleDeleteMessage = useCallback((id: number) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+  }, []);
 
   return (
-    <main className="main-content">
-      {!isEmpty && (
-      <ChatHeader
-        title={currentConversation.title}
-        status={currentConversation.status}
-        theme={currentTheme}
-        onToggleTheme={toggleTheme}
-      />
+    <main className={`main-content${isEmpty ? ' empty-state' : ''}`}>
+      {showHeader && (
+        <ChatHeader title={currentConversation.title} status={currentConversation.status} projectName={currentConversation.workspacePath && currentConversation.workspacePath === workspacePath ? projectName : undefined} />
       )}
-      <ChatMessages
-        ref={chatMessagesRef}
-        messages={messages}
-        isLoading={isLoading}
-        theme={currentTheme}
-      />
-      <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} />
+      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isLoading} theme={theme} onDeleteMessage={handleDeleteMessage} />
+
+      {isEmpty ? (
+        <div className="empty-center-container">
+          <div className="empty-state-hero">
+            <div className="hero-logo">SolonCode</div>
+            <div className="hero-slogan">做你想做的事</div>
+          </div>
+          <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} />
+          {!workspacePath && (
+            <div className="start-work-panel">
+              <div className="panel-title">开始工作</div>
+              <div className="start-work-buttons">
+                <button className="start-work-btn" onClick={onNewProject}>
+                  <Icon name="file" size={14} /> 新建项目
+                </button>
+                <button className="start-work-btn" onClick={onOpenFolder}>
+                  <Icon name="folder" size={14} /> 打开项目
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} />
+      )}
     </main>
   );
 }

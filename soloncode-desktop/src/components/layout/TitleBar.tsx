@@ -5,27 +5,28 @@
 import { DropdownMenu, type MenuItem } from '../common/DropdownMenu';
 import { Icon } from '../common/Icon';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { startWindowDrag } from '../../hooks/useWindowDrag';
+import logo from '../../assets/logo.png';
 import './TitleBar.css';
 
 interface TitleBarProps {
-  // 工作区
   workspacePath?: string;
   workspaceName?: string;
-  // 文件操作回调
   onNewFile?: () => void;
   onNewFolder?: () => void;
   onOpenFile?: () => void;
   onOpenFolder?: () => void;
+  onNewProject?: () => void;
   onSave?: () => void;
   onSaveAs?: () => void;
   onSaveAll?: () => void;
-  // 视图控制
   editorVisible?: boolean;
   chatVisible?: boolean;
   onToggleEditor?: () => void;
   onToggleChat?: () => void;
   onToggleTerminal?: () => void;
   onSwapPanels?: () => void;
+  onToggleGitPanel?: () => void;
 }
 
 export function TitleBar({
@@ -35,6 +36,7 @@ export function TitleBar({
   onNewFolder,
   onOpenFile,
   onOpenFolder,
+  onNewProject,
   onSave,
   onSaveAs,
   onSaveAll,
@@ -44,6 +46,7 @@ export function TitleBar({
   onToggleChat,
   onToggleTerminal,
   onSwapPanels,
+  onToggleGitPanel,
 }: TitleBarProps) {
   // 文件菜单项
   const fileMenuItems: MenuItem[] = [
@@ -66,6 +69,10 @@ export function TitleBar({
       id: 'open-folder',
       label: '打开文件夹...',
       shortcut: 'Ctrl+K Ctrl+O',
+    },
+    {
+      id: 'new-project',
+      label: '新建项目...',
     },
     { id: 'divider2', label: '', divider: true },
     {
@@ -130,6 +137,9 @@ export function TitleBar({
       case 'open-folder':
         onOpenFolder?.();
         break;
+      case 'new-project':
+        onNewProject?.();
+        break;
       case 'save':
         onSave?.();
         break;
@@ -168,9 +178,10 @@ export function TitleBar({
   };
 
   return (
-    <div className="title-bar">
+    <div className="title-bar" onMouseDown={startWindowDrag}>
       {/* 左侧菜单 */}
-      <div className="title-bar-left">
+      <div className="title-bar-left" data-no-drag>
+        <img className="app-logo" src={logo} alt="SolonCode" />
         <DropdownMenu
           trigger={<span className="menu-trigger">文件</span>}
           items={fileMenuItems}
@@ -200,7 +211,7 @@ export function TitleBar({
       </div>
 
       {/* 右侧工具栏 */}
-      <div className="title-bar-right">
+      <div className="title-bar-right" data-no-drag>
         <button
           className={`titlebar-btn${editorVisible ? ' active' : ''}`}
           onClick={onToggleEditor}
@@ -224,6 +235,14 @@ export function TitleBar({
         >
           <Icon name="terminal" size={14} />
           <span>终端</span>
+        </button>
+        <button
+          className="titlebar-btn"
+          onClick={onToggleGitPanel}
+          title="源代码管理"
+        >
+          <Icon name="git" size={14} />
+          <span>源代码</span>
         </button>
         <button
           className="titlebar-btn"

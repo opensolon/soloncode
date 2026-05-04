@@ -230,6 +230,27 @@
   letter-spacing: 0.5px;
 }
 
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-project-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--cb-text-primary);
+  background-color: var(--cb-vscode-input-background);
+  padding: 1px 8px;
+  border-radius: 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ==================== 操作反馈 ==================== */
 
 .git-feedback {

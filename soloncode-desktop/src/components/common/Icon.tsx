@@ -13,6 +13,7 @@ export type IconName =
   | 'push' | 'pull' | 'commit' | 'stage' | 'unstage'
   | 'close' | 'collapse' | 'expand' | 'swap'
   | 'send' | 'attach' | 'theme' | 'user' | 'assistant' | 'bot'
+  | 'copy' | 'check'
   // 状态图标
   | 'modified' | 'added' | 'deleted' | 'untracked' | 'warning' | 'error' | 'success' | 'loading'
   // 其他
@@ -73,6 +74,8 @@ const iconPaths: Record<IconName, string> = {
   'collapse': 'M4 14l6 0l0 6',
   'expand': 'M15 3l6 0l0 6',
   'swap': 'M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4',
+  'copy': 'M20 9h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
+  'check': 'M20 6L9 17l-5-5',
   'send': 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
   'attach': 'M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48',
   'theme': 'M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42',

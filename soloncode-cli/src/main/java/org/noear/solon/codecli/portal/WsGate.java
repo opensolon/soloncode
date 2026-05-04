@@ -17,6 +17,7 @@ package org.noear.solon.codecli.portal;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
@@ -27,6 +28,8 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.harness.command.CommandResult;
+import org.noear.solon.codecli.command.WebCommandDispatcher;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -53,10 +56,12 @@ public class WsGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WsGate.class);
     private final HarnessEngine kernel;
     private final AgentProperties agentPros;
+    private final WebStreamBuilder streamBuilder;
 
     public WsGate(HarnessEngine kernel, AgentProperties agentPros) {
         this.kernel = kernel;
         this.agentPros = agentPros;
+        this.streamBuilder = new WebStreamBuilder(kernel);
     }
 
     @Override
@@ -98,7 +103,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 解析请求
             WsMessage req = root.toBean(WsMessage.class);
-            String sessionId = req.getSessionId();
+            String sessionId = socket.paramOrDefault("sessionId", "");
             String input = req.getInput();
             String cwd = req.getCwd();
 
@@ -106,7 +111,7 @@ public class WsGate extends SimpleWebSocketListener {
                 sessionId = "ws_" + System.currentTimeMillis();
                 // 及时通知客户端自动生成的 sessionId
                 socket.send(new ONode().set("type", "session")
-                        .set("sessionId", req.getSessionId())
+                        .set("sessionId", sessionId)
                         .toJson());
             }
 
@@ -163,13 +168,30 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
 
-            // 流式处理
-            final String finalSessionId = sessionId;
-            Prompt prompt = Prompt.of(input);
+            String agentName = null;
+            if(input.startsWith("@")) {
+                int agentNameIdx = input.indexOf(" ");
+                if (agentNameIdx > 0) {
+                    agentName = input.substring(1, agentNameIdx);
+                }
+            }
 
             // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();
             ChatModel chatModel = kernel.getModelOrMain(modelName);
+
+            session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
+            final ReActAgent agent = kernel.getAgentOrMain(agentName);
+
+            // 命令处理：以 / 开头的输入走命令分发
+            if (input.startsWith("/")) {
+                handleCommand(socket, session, agent, chatModel, cwd, input, sessionId);
+                return;
+            }
+
+            // 流式处理
+            final String finalSessionId = sessionId;
+            Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
 
             String finalCwd = cwd;
             Disposable disposable = kernel.prompt(prompt)
@@ -285,8 +307,6 @@ public class WsGate extends SimpleWebSocketListener {
                 return new ONode().set("type", chunkTypeToSend)
                         .set("sessionId", finalSessionId)
                         .set("text", chunk.getContent())
-                        .set("modelName", chunk.getTrace().getOptions().getChatModel().getNameOrModel())
-                        .set("totalTokens", chunk.getTrace().getMetrics().getTotalTokens())
                         .toJson();
             }
         }
@@ -378,5 +398,101 @@ public class WsGate extends SimpleWebSocketListener {
     private String escapeYaml(String value) {
         if (value == null) return "";
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    /**
+     * 处理命令输入（/ 开头），通过 WebCommandDispatcher 分发执行
+     */
+    private void handleCommand(WebSocket socket, AgentSession session, ReActAgent agent, ChatModel chatModel,
+                               String sessionCwd, String input, String finalSessionId) {
+        try {
+            WebCommandDispatcher dispatcher = new WebCommandDispatcher(kernel.getCommandRegistry());
+            CommandResult result = dispatcher.dispatch(input, session, kernel,
+                    (String prompt, String model) -> {
+                        final ChatModel chatModelSelected;
+                        if (model != null) {
+                            chatModelSelected = kernel.getModelOrMain(model);
+                        } else {
+                            chatModelSelected = chatModel;
+                        }
+                        return streamBuilder.buildStreamFlux(session, agent, chatModelSelected, sessionCwd, Prompt.of(prompt));
+                    });
+
+            if (result == null) {
+                // 不是有效命令，当作普通输入流式处理
+                Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+                String finalCwd = sessionCwd;
+                Disposable disposable = kernel.prompt(prompt)
+                        .session(session)
+                        .options(o -> {
+                            o.chatModel(chatModel);
+                            o.toolContextPut(HarnessEngine.ATTR_CWD, finalCwd);
+                        })
+                        .stream()
+                        .doFinally(signal -> session.attrs().remove("disposable"))
+                        .doOnNext(chunk -> {
+                            String msg = null;
+                            if (chunk instanceof ReActChunk) {
+                                onReActChunk((ReActChunk) chunk, finalSessionId, socket);
+                                return;
+                            } else if (chunk instanceof ReasonChunk) {
+                                msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                            } else if (chunk instanceof ActionEndChunk) {
+                                msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
+                            } else if (chunk instanceof ThoughtChunk) {
+                                msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
+                            }
+                            if (Assert.isNotEmpty(msg)) {
+                                socket.send(msg);
+                            }
+                        })
+                        .doOnError(err -> socket.send(new ONode()
+                                .set("type", "error")
+                                .set("sessionId", finalSessionId)
+                                .set("text", err.getMessage()).toJson()))
+                        .subscribe();
+                Disposable old = (Disposable) session.attrs().put("disposable", disposable);
+                if (old != null && !old.isDisposed()) {
+                    old.dispose();
+                }
+                return;
+            }
+
+            if (result.isAgentTask()) {
+                // AGENT 类型命令：订阅 Flux 流发送到 WebSocket
+                if (result.getAgentFlux() != null) {
+                    result.getAgentFlux().subscribe(
+                            line -> socket.send(line),
+                            err -> socket.send(new ONode()
+                                    .set("type", "error")
+                                    .set("sessionId", finalSessionId)
+                                    .set("text", err.getMessage()).toJson()),
+                            () -> socket.send(new ONode()
+                                    .set("type", "done")
+                                    .set("sessionId", finalSessionId)
+                                    .set("totalTokens", 0)
+                                    .set("elapsedMs", 0).toJson())
+                    );
+                }
+            } else {
+                // SYSTEM/CONFIG 类型命令：将输出逐行发送到 WebSocket
+                for (String line : result.getOutput()) {
+                    socket.send(new ONode()
+                            .set("type", "command")
+                            .set("sessionId", finalSessionId)
+                            .set("text", line).toJson());
+                }
+                socket.send(new ONode()
+                        .set("type", "done")
+                        .set("sessionId", finalSessionId)
+                        .set("totalTokens", 0)
+                        .set("elapsedMs", 0).toJson());
+            }
+        } catch (Exception e) {
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            socket.send(new ONode().set("type", "error")
+                    .set("sessionId", finalSessionId)
+                    .set("text", errorMsg).toJson());
+        }
     }
 }

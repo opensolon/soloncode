@@ -9,7 +9,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--cb-vscode-panel-border);
   background-color: var(--cb-vscode-sideBar-background);
 }
 
@@ -19,6 +18,11 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--cb-text-secondary);
+}
+
+.panel-header-actions {
+  display: flex;
+  gap: 4px;
 }
 
 .new-session-btn {
@@ -47,34 +51,101 @@
   overflow-y: auto;
 }
 
-.session-group {
-  margin-bottom: 8px;
+/* 项目分组 */
+.project-group {
 }
 
-.group-header {
+.project-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+  user-select: none;
+}
+
+.project-header:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.project-header.active {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.project-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-count {
   font-size: 11px;
   color: var(--cb-text-secondary);
-  text-transform: uppercase;
-}
-
-.group-count {
   background-color: var(--cb-vscode-input-background);
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  min-width: 18px;
+  text-align: center;
 }
 
+.project-remove-btn,
+.project-add-session-btn {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--cb-text-secondary);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.project-header:hover .project-remove-btn,
+.project-header:hover .project-add-session-btn {
+  opacity: 0.5;
+}
+
+.project-remove-btn:hover,
+.project-add-session-btn:hover {
+  opacity: 1 !important;
+  color: var(--cb-text-primary);
+}
+
+.project-remove-btn:hover {
+  color: #ef5350;
+}
+
+/* 项目下的会话列表 */
+.project-sessions {
+  padding-left: 8px;
+}
+
+.project-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  opacity: 0.5;
+  text-align: center;
+}
+
+/* 会话条目 */
 .session-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 6px 12px;
   cursor: pointer;
   transition: background-color 0.1s;
-  position: relative;
+  border-radius: 4px;
+  margin: 0 4px;
 }
 
 .session-item:hover {
@@ -82,15 +153,6 @@
 }
 
 .session-item.active {
-  background-color: var(--cb-vscode-list-activeSelectionBackground);
-}
-
-.session-item.permanent {
-  background-color: var(--cb-vscode-input-background);
-  border-bottom: 1px solid var(--cb-vscode-panel-border);
-}
-
-.session-item.permanent.active {
   background-color: var(--cb-vscode-list-activeSelectionBackground);
 }
 
@@ -121,7 +183,8 @@
   margin-top: 2px;
 }
 
-.delete-btn {
+.delete-btn,
+.sync-btn {
   width: 24px;
   height: 24px;
   background: transparent;
@@ -135,12 +198,29 @@
   justify-content: center;
 }
 
-.session-item:hover .delete-btn {
+.session-item:hover .delete-btn,
+.session-item:hover .sync-btn {
   opacity: 0.5;
 }
 
-.delete-btn:hover {
+.delete-btn:hover,
+.sync-btn:hover {
   opacity: 1 !important;
+}
+
+.delete-btn:hover {
+  color: #ef5350;
+}
+
+.sync-btn.syncing {
+  opacity: 1 !important;
+  animation: spin 1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .empty-state {
@@ -152,27 +232,29 @@
   gap: 12px;
 }
 
-.empty-icon {
-  font-size: 40px;
-  opacity: 0.3;
-}
-
 .empty-text {
   font-size: 14px;
   color: var(--cb-text-secondary);
 }
 
-.start-btn {
-  padding: 8px 16px;
-  background-color: var(--cb-accent);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background-color 0.15s;
+/* 对话栏标题 */
+.chat-group-header {
+  justify-content: space-between;
 }
 
-.start-btn:hover {
-  background-color: var(--cb-accent-light);
+.chat-add-btn {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--cb-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chat-add-btn:hover {
+  color: var(--cb-text-primary);
 }

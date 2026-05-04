@@ -1,6 +1,7 @@
-import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { memo, useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Icon } from './common/Icon';
@@ -13,33 +14,47 @@ interface ChatMessagesProps {
   messages: Message[];
   isLoading: boolean;
   theme?: Theme;
+  onDeleteMessage?: (id: number) => void;
 }
 
 export interface ChatMessagesRef {
   scrollToBottom: () => void;
 }
 
-// 内容项渲染组件
-function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme }) {
-  // 思考内容
-  if (item.type === 'think') {
+// Markdown 代码渲染组件（稳定引用）
+const markdownComponents = (theme?: Theme) => ({
+  code({ node, inline, className, children, ...props }: any) {
+    const match = /language-(\w+)/.exec(className || '');
+    return !inline && match ? (
+      <SyntaxHighlighter
+        style={theme === 'dark' ? oneDark : oneLight}
+        language={match[1]}
+        PreTag="div"
+        {...props}
+      >
+        {String(children).replace(/\n$/, '')}
+      </SyntaxHighlighter>
+    ) : (
+      <code className={className} {...props}>{children}</code>
+    );
+  }
+});
+
+const remarkPlugins = [remarkGfm, remarkBreaks];
+
+// 内容项渲染组件 — memo 化，避免消息不变时重渲染
+const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme }) {
+  if (item.type === 'THINK') {
     return <ThinkBlock content={item.text} theme={theme} />;
   }
 
-  // 工具执行结果（折叠块）
-  if (item.type === 'action') {
+  if (item.type === 'ACTION') {
     return (
-      <ActionBlock
-        text={item.text || ''}
-        toolName={item.toolName}
-        args={item.args}
-        theme={theme}
-      />
+      <ActionBlock text={item.text || ''} toolName={item.toolName} args={item.args} theme={theme} />
     );
   }
 
-  // 推理内容
-  if (item.type === 'reason') {
+  if (item.type === 'REASON') {
     return (
       <div className="content-item reason-item">
         <div className="reason-header">
@@ -47,28 +62,7 @@ function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme
           <span className="reason-label">推理</span>
         </div>
         <div className="reason-content">
-          <ReactMarkdown
-            remarkPlugins={[remarkBreaks]}
-            components={{
-              code({ node, inline, className, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(className || '');
-                return !inline && match ? (
-                  <SyntaxHighlighter
-                    style={theme === 'dark' ? oneDark : oneLight}
-                    language={match[1]}
-                    PreTag="div"
-                    {...props}
-                  >
-                    {String(children).replace(/\n$/, '')}
-                  </SyntaxHighlighter>
-                ) : (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                );
-              }
-            }}
-          >
+          <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents(theme)}>
             {item.text}
           </ReactMarkdown>
         </div>
@@ -76,8 +70,7 @@ function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme
     );
   }
 
-  // 错误内容
-  if (item.type === 'error') {
+  if (item.type === 'ERROR') {
     return (
       <div className="content-item error-item">
         <span className="error-icon">❌</span>
@@ -86,39 +79,84 @@ function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme
     );
   }
 
-  // 普通文本内容
   return (
     <div className="content-item text-item">
-      <ReactMarkdown
-        remarkPlugins={[remarkBreaks]}
-        components={{
-          code({ node, inline, className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || '');
-            return !inline && match ? (
-              <SyntaxHighlighter
-                style={theme === 'dark' ? oneDark : oneLight}
-                language={match[1]}
-                PreTag="div"
-                {...props}
-              >
-                {String(children).replace(/\n$/, '')}
-              </SyntaxHighlighter>
-            ) : (
-              <code className={className} {...props}>
-                {children}
-              </code>
-            );
-          }
-        }}
-      >
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents(theme)}>
         {item.text}
       </ReactMarkdown>
     </div>
   );
-}
+});
+
+// 消息元数据组件
+const MessageMetadata = memo(function MessageMetadata({ metadata }: { metadata: Message['metadata'] }) {
+  if (!metadata) return null;
+  return (
+    <div className="message-metadata">
+      {metadata.modelName && (
+        <span className="metadata-item">
+          <span className="metadata-label">模型:</span>
+          <span className="metadata-value">{metadata.modelName}</span>
+        </span>
+      )}
+      {metadata.totalTokens !== undefined && (
+        <span className="metadata-item">
+          <span className="metadata-label">Token:</span>
+          <span className="metadata-value">{metadata.totalTokens}</span>
+        </span>
+      )}
+      {metadata.elapsedMs !== undefined && (
+        <span className="metadata-item">
+          <span className="metadata-label">耗时:</span>
+          <span className="metadata-value">{metadata.elapsedMs}ms</span>
+        </span>
+      )}
+    </div>
+  );
+});
+
+// 单条消息组件 — memo 化
+const MessageRow = memo(function MessageRow({ message, theme, onDelete }: { message: Message; theme?: Theme; onDelete?: (id: number) => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    const text = message.contents
+      .map(item => item.text)
+      .filter(Boolean)
+      .join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [message.contents]);
+
+  return (
+    <div className={`message ${message.role.toLowerCase()}`}>
+      <div className="message-bubble">
+        <div className="message-text">
+          {message.contents.map((item, index) => (
+            <ContentItemRenderer key={index} item={item} theme={theme} />
+          ))}
+        </div>
+      </div>
+      <div className="message-footer">
+        <div className="message-time">{message.timestamp}</div>
+        <div className="message-actions">
+          <button className="message-action-btn" onClick={handleCopy} title="复制">
+            <Icon name={copied ? 'check' : 'copy'} size={12} />
+          </button>
+          <button className="message-action-btn" onClick={() => onDelete?.(message.id)} title="删除">
+            <Icon name="delete" size={12} />
+          </button>
+          <MessageMetadata metadata={message.metadata} />
+        </div>
+      </div>
+    </div>
+  );
+});
 
 export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
-  ({ messages, isLoading, theme }, ref) => {
+  ({ messages, isLoading, theme, onDeleteMessage }, ref) => {
     const chatContainer = useRef<HTMLDivElement>(null);
 
     useImperativeHandle(ref, () => ({
@@ -133,29 +171,7 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
 
     useEffect(() => {
       scrollToBottom();
-    }, [messages]);
-
-    function getRoleLabel(role: string): string {
-      const labels: Record<string, string> = {
-        'user': '你',
-        'assistant': '助手',
-        'reason': '思考',
-        'action': '执行',
-        'error': '错误'
-      };
-      return labels[role] || role;
-    }
-
-    function getRoleIcon(role: string): 'user' | 'assistant' | 'bot' | 'warning' | 'error' {
-      const icons: Record<string, 'user' | 'assistant' | 'bot' | 'warning' | 'error'> = {
-        'user': 'user',
-        'assistant': 'bot',
-        'reason': 'assistant',
-        'action': 'assistant',
-        'error': 'error'
-      };
-      return icons[role] || 'bot';
-    }
+    }, [messages.length]);
 
     return (
       <div className="chat-messages" ref={chatContainer}>
@@ -167,43 +183,7 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
         )}
 
         {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`message ${message.role}`}
-          >
-            <div className="message-bubble">
-              <div className="message-text">
-                {message.contents.map((item, index) => (
-                  <ContentItemRenderer key={index} item={item} theme={theme} />
-                ))}
-              </div>
-              <div className="message-footer">
-                <div className="message-time">{message.timestamp}</div>
-                {message.metadata && (
-                  <div className="message-metadata">
-                    {message.metadata.modelName && (
-                      <span className="metadata-item">
-                        <span className="metadata-label">模型:</span>
-                        <span className="metadata-value">{message.metadata.modelName}</span>
-                      </span>
-                    )}
-                    {message.metadata.totalTokens !== undefined && (
-                      <span className="metadata-item">
-                        <span className="metadata-label">Token:</span>
-                        <span className="metadata-value">{message.metadata.totalTokens}</span>
-                      </span>
-                    )}
-                    {message.metadata.elapsedMs !== undefined && (
-                      <span className="metadata-item">
-                        <span className="metadata-label">耗时:</span>
-                        <span className="metadata-value">{message.metadata.elapsedMs}ms</span>
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <MessageRow key={message.id} message={message} theme={theme} onDelete={onDeleteMessage} />
         ))}
 
         {isLoading && (

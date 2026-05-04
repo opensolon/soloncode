@@ -19,12 +19,10 @@
 }
 
 .app-logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  color: var(--cb-accent, #0078d4);
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  flex-shrink: 0;
 }
 
 .menu-trigger {
@@ -51,11 +49,13 @@
   color: var(--cb-text-secondary, #858585);
   height: 100%;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .app-title {
   font-weight: 500;
   white-space: nowrap;
+  line-height: 36px;
 }
 
 .workspace-name {
