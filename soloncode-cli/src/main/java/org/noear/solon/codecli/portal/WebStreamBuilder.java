@@ -176,10 +176,10 @@ public class WebStreamBuilder {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
-                String traceInfo = "`(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")`";
+                //content = content + "`(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")`";
 
                 return new ONode().set("type", "text")
-                        .set("text", "\n" + content + traceInfo)
+                        .set("text", "\n" + content)
                         .toJson();
             }
         }
