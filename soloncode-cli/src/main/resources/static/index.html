@@ -2093,8 +2093,12 @@
     /* ===== Loop Event SSE Listener ===== */
     var loopEventSource = null;
 
-    function connectLoopEvents() {
-        if (loopEventSource) return; // 已连接
+    function reconnectLoopEvents() {
+        // 关闭旧连接
+        if (loopEventSource) {
+            loopEventSource.close();
+            loopEventSource = null;
+        }
         var sess = getOrCreateSession(SESSION_ID);
         var url = '/chat/events?sessionId=' + encodeURIComponent(sess.sessionId);
         loopEventSource = new EventSource(url);
@@ -2123,12 +2127,12 @@
                 loopEventSource = null;
             }
             // 5秒后自动重连
-            setTimeout(connectLoopEvents, 5000);
+            setTimeout(reconnectLoopEvents, 5000);
         };
     }
 
     // 页面加载后自动连接 Loop 事件流
-    connectLoopEvents();
+    reconnectLoopEvents();
 
     /* ===== Sidebar Collapse Toggle ===== */
     (function() {
@@ -2182,6 +2186,7 @@
     setActiveSession = function(sid) {
         origSetActiveSession(sid);
         updateWechatUI();
+        reconnectLoopEvents();
     };
 
     wechatHeaderBtn.addEventListener('click', function() {
@@ -2281,6 +2286,15 @@
                             setTimeout(function() {
                                 closeWechatModal();
                                 updateWechatUI();
+                                switchToChatMode();
+                                // 连接成功后，自动发一条初始消息创建服务端会话记录
+                                // 这样微信消息才能通过 session 互通到前端
+                                var initSess = getOrCreateSession(SESSION_ID);
+                                if (!initSess._wechatInited) {
+                                    initSess._wechatInited = true;
+                                    chatInput.value = '你好，微信已连接成功。';
+                                    welcomeSendBtn.click();
+                                }
                             }, 1200);
                         } else if (status === 'expired') {
                             statusEl.textContent = '二维码已过期，请重新获取';
