@@ -15,7 +15,9 @@
  */
 package org.noear.solon.codecli.portal.wechat;
 
+import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
+import org.noear.snack4.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,7 +114,7 @@ public class WeChatCredentialStore {
             // 确保目录存在
             Files.createDirectories(storePath.getParent());
 
-            ONode root = new ONode();
+            ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
             for (Map.Entry<String, WeChatLink.WeChatBinding> entry : bindings.entrySet()) {
                 String sessionId = entry.getKey();
                 WeChatLink.WeChatBinding binding = entry.getValue();
