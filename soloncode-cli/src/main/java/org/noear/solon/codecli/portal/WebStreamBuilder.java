@@ -83,7 +83,7 @@ public class WebStreamBuilder {
                     if (chunk instanceof ReasonChunk) {
                         return onReasonChunk((ReasonChunk) chunk);
                     } else if (chunk instanceof ThoughtChunk) {
-                        return onThoughtChunk((ThoughtChunk) chunk);
+                        return onThoughtChunk(session, (ThoughtChunk) chunk);
                     } else if (chunk instanceof ActionEndChunk) {
                         return onActionEndChunk((ActionEndChunk) chunk);
                     } else if (chunk instanceof ReActChunk) {
@@ -178,7 +178,15 @@ public class WebStreamBuilder {
         return "";
     }
 
-    private String onThoughtChunk(ThoughtChunk thought) {
+    private String onThoughtChunk(AgentSession session,ThoughtChunk thought) {
+        if (weChatLink != null) {
+            if (weChatLink.isBound(session.getSessionId())) {
+                //回复微信
+                weChatLink.sendReply(session.getSessionId(), thought.getContent());
+            }
+        }
+
+
         if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
@@ -231,7 +239,7 @@ public class WebStreamBuilder {
     private String onFinalChunk(AgentSession session, ReActChunk react) {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
-        if (weChatLink != null) {
+        if (react.isAbnormal() && weChatLink != null) {
             if (weChatLink.isBound(session.getSessionId())) {
                 //回复微信
                 weChatLink.sendReply(session.getSessionId(), react.getContent() + traceInfo);
