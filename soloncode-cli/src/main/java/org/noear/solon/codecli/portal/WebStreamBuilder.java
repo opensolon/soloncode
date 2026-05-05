@@ -32,6 +32,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.skills.memory.MemorySkill;
+import org.noear.solon.codecli.portal.wechat.WeChatLink;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,12 @@ public class WebStreamBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(WebStreamBuilder.class);
 
     private final HarnessEngine engine;
+    private WeChatLink weChatLink;
+
+    public WebStreamBuilder bind(WeChatLink weChatLink) {
+        this.weChatLink = weChatLink;
+        return this;
+    }
 
     public WebStreamBuilder(HarnessEngine engine) {
         this.engine = engine;
@@ -80,7 +87,7 @@ public class WebStreamBuilder {
                     } else if (chunk instanceof ActionEndChunk) {
                         return onActionEndChunk((ActionEndChunk) chunk);
                     } else if (chunk instanceof ReActChunk) {
-                        return onFinalChunk((ReActChunk) chunk);
+                        return onFinalChunk(session, (ReActChunk) chunk);
                     }
 
                     return "";
@@ -221,8 +228,15 @@ public class WebStreamBuilder {
         return "";
     }
 
-    private String onFinalChunk(ReActChunk react) {
+    private String onFinalChunk(AgentSession session, ReActChunk react) {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
+
+        if (weChatLink != null) {
+            if (weChatLink.hasBindings(session.getSessionId())) {
+                //回复微信
+                weChatLink.sendReply(session.getSessionId(), react.getContent() + traceInfo);
+            }
+        }
 
         return new ONode().set("type", "text")
                 .set("text", traceInfo.toString())

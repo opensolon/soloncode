@@ -22,6 +22,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.portal.WebSessionSink;
 import org.noear.solon.codecli.portal.WebStreamBuilder;
+import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,10 +46,14 @@ public class WeChatLink implements Runnable {
     private final WebSessionSink sessionSink;
     private final WeChatCredentialStore credentialStore;
 
-    /** sessionId -> WeChatBinding */
+    /**
+     * sessionId -> WeChatBinding
+     */
     private final Map<String, WeChatBinding> bindings = new ConcurrentHashMap<>();
 
-    /** sessionId -> PollWorker */
+    /**
+     * sessionId -> PollWorker
+     */
     private final Map<String, Future<?>> pollWorkers = new ConcurrentHashMap<>();
 
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4, r -> {
@@ -64,6 +69,8 @@ public class WeChatLink implements Runnable {
         this.streamBuilder = streamBuilder;
         this.sessionSink = sessionSink;
         this.credentialStore = new WeChatCredentialStore();
+
+        streamBuilder.bind(this);
     }
 
     /**
@@ -205,7 +212,9 @@ public class WeChatLink implements Runnable {
         // 处理消息
         @SuppressWarnings("unchecked")
         List<Map<String, String>> messages = (List<Map<String, String>>) result.get("messages");
-        if (messages == null || messages.isEmpty()) return;
+        if (Assert.isEmpty(messages)) {
+            return;
+        }
 
         for (Map<String, String> msg : messages) {
             String text = msg.get("text");
@@ -236,6 +245,9 @@ public class WeChatLink implements Runnable {
                 ILinkClient.sendTyping(binding.botToken, fromUserId, binding.typingTicket, 2);
             }
         }
+
+        //把最后一次的 lastContextToken，lastFromUserId 存起来
+        credentialStore.save(bindings);
     }
 
     /**
@@ -247,36 +259,14 @@ public class WeChatLink implements Runnable {
             ChatModel chatModel = engine.getMainModel();
             ReActAgent agent = engine.getMainAgent();
 
-            StringBuilder replyBuilder = new StringBuilder();
-
             streamBuilder.buildStreamFlux(session, agent, chatModel, null, Prompt.of(userInput))
                     .filter(line -> !"[DONE]".equals(line))
                     .doOnNext(line -> {
                         // 同时推送到 Web 前端（如果打开着的话）
                         sessionSink.emit(sessionId, line);
-
-                        // 收集文本内容用于微信回复
-                        try {
-                            org.noear.snack4.ONode node = org.noear.snack4.ONode.ofJson(line);
-                            String type = node.get("type").getString();
-                            if ("text".equals(type) || "agent".equals(type)) {
-                                String text = node.get("text").getString();
-                                if (text != null && !text.isEmpty()) {
-                                    replyBuilder.append(text);
-                                }
-                            }
-                        } catch (Exception ignored) {
-                        }
                     })
                     .doOnComplete(() -> {
                         sessionSink.emit(sessionId, "[DONE]");
-
-                        // 将完整回复发送回微信
-                        String reply = replyBuilder.toString().trim();
-                        if (!reply.isEmpty() && binding.lastContextToken != null) {
-                            // 微信消息长度限制，分段发送（每段最多 2000 字符）
-                            sendReplyInChunks(binding, reply);
-                        }
                     })
                     .doOnError(e -> {
                         sessionSink.emit(sessionId, "[DONE]");
@@ -288,7 +278,20 @@ public class WeChatLink implements Runnable {
         }
     }
 
-    private void sendReplyInChunks(WeChatBinding binding, String reply) {
+    public boolean hasBindings(String sessionId) {
+        return bindings.containsKey(sessionId);
+    }
+
+    public void sendReply(String sessionId, String reply) {
+        WeChatBinding binding = bindings.get(sessionId);
+        if (binding == null) {
+            return;
+        }
+
+        if (Assert.isEmpty(reply) || binding.lastContextToken == null) {
+            return;
+        }
+
         // 清理 markdown 标记，微信不渲染 markdown
         String cleanReply = reply
                 .replaceAll("`{3}[\\s\\S]*?`{3}", "") // 去掉代码块
@@ -301,6 +304,7 @@ public class WeChatLink implements Runnable {
             cleanReply = reply; // fallback 到原文
         }
 
+        // 微信消息长度限制，分段发送（每段最多 2000 字符）
         int maxLen = 2000;
         if (cleanReply.length() <= maxLen) {
             ILinkClient.sendMessage(binding.botToken, binding.lastFromUserId, binding.lastContextToken, cleanReply);
@@ -330,7 +334,9 @@ public class WeChatLink implements Runnable {
         public String cursor;
         public String lastContextToken;
         public String lastFromUserId;
-        /** typing_ticket 缓存，从 getconfig 获取，有效期约 24 小时 */
+        /**
+         * typing_ticket 缓存，从 getconfig 获取，有效期约 24 小时
+         */
         public String typingTicket;
     }
 }
