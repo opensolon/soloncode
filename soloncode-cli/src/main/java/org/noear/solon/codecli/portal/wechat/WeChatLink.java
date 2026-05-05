@@ -23,6 +23,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.portal.WebSessionSink;
 import org.noear.solon.codecli.portal.WebStreamBuilder;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,6 +83,19 @@ public class WeChatLink implements Runnable {
         binding.ilinkBotId = ilinkBotId;
         binding.ilinkUserId = ilinkUserId;
         binding.cursor = "";
+
+        //todo: 移掉 与 ilinkUserId 相同值的旧记录
+        Set<String> unbindSessionIds = new HashSet<>();
+        bindings.forEach((k, v) -> {
+            if (v.ilinkUserId.equals(ilinkUserId)) {
+                unbindSessionIds.add(k);
+            }
+        });
+        for (String unbindSessionId : unbindSessionIds) {
+            RunUtil.runAndTry(() -> {
+                unbindSession(unbindSessionId);
+            });
+        }
 
         bindings.put(sessionId, binding);
 
@@ -276,10 +290,6 @@ public class WeChatLink implements Runnable {
         } catch (Exception e) {
             LOG.error("[WeChat] handleWeChatMessage error: {}", e.getMessage());
         }
-    }
-
-    public boolean hasBindings(String sessionId) {
-        return bindings.containsKey(sessionId);
     }
 
     public void sendReply(String sessionId, String reply) {

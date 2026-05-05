@@ -232,7 +232,7 @@ public class WebStreamBuilder {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
         if (weChatLink != null) {
-            if (weChatLink.hasBindings(session.getSessionId())) {
+            if (weChatLink.isBound(session.getSessionId())) {
                 //回复微信
                 weChatLink.sendReply(session.getSessionId(), react.getContent() + traceInfo);
             }
