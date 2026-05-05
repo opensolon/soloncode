@@ -1,7 +1,7 @@
 
 ### v2026.5.5
 
-* 优化 soloncode acp 打印（非 cli 模式，改用 err 通道打印）
+* 优化 soloncode 启动打印（非 cli 模式，改用 err 通道打印）
 * acp-sdk 升为 0.11.0
 
 ### v2026.5.4
