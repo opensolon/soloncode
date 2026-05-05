@@ -19,10 +19,12 @@ import org.jline.reader.Candidate;
 import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
+import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandRegistry;
+import org.noear.solon.codecli.command.builtin.ModelCommand;
 
 import java.util.List;
 
@@ -54,7 +56,18 @@ public class CliCompleter implements Completer {
                     candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(), null, null, null, null, true));
                 }
             }
-        } else if (line.word().startsWith("@")) {
+        }
+
+        if (line.word().startsWith("/m")) {
+            String prefix = line.word().substring(1).toLowerCase();
+            for (ChatConfig c : engine.getProps().getModels()) {
+                if (("model " + c.getNameOrModel()).startsWith(prefix)) {
+                    candidates.add(new Candidate("/model " + c.getNameOrModel(), "/model " + c.getNameOrModel(), null, null, null, null, true));
+                }
+            }
+        }
+
+        if (line.word().startsWith("@")) {
             String prefix = line.word().substring(1).toLowerCase();
             for (AgentDefinition definition : engine.getAgentManager().getAgents()) {
                 if (definition.getName().startsWith(prefix)) {
