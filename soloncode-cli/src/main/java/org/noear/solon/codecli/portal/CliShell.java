@@ -658,14 +658,15 @@ public class CliShell implements Runnable {
         terminal.flush();
     }
 
+
     public void printWelcome(String text) {
         final ChatModel chatModel = engine.getMainModel();
 
         String path = new File(engine.getProps().getWorkspace()).getAbsolutePath();
-        // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + chatModel.getNameOrModel() + RESET);
-        terminal.writer().println(DIM + path + RESET);
-        terminal.writer().println(text);
-        terminal.flush();
+
+        System.err.println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + chatModel.getNameOrModel() + RESET);
+        System.err.println(DIM + path + RESET);
+        System.err.println(text);
+        System.err.flush();
     }
 }

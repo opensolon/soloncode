@@ -116,13 +116,14 @@ public class Configurator {
     public void init() {
         CliShell cliShell = new CliShell(agentRuntime, agentProps, loopScheduler);
 
+
+        checkUpdate();
+
         //flag
         if (Solon.cfg().argx().flags().size() > 0) {
             String flag = Solon.cfg().argx().flagAt(0);
 
             if (AgentFlags.FLAG_RUN.equals(flag)) { // java -jar soloncode.jar run '你好' // soloncode run '你好'
-                checkUpdate();
-
                 //单次任务态
                 String prompt = Solon.cfg().argx().flagAt(1);
                 new CliShell(agentRuntime, agentProps, null).call(prompt);
@@ -131,16 +132,12 @@ public class Configurator {
             }
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
-                checkUpdate();
-
                 runWeb(agentRuntime, agentProps, null);
                 cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
                 return;
             }
 
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
-                checkUpdate();
-
                 runWeb(agentRuntime, agentProps, cliShell);
                 return;
             }
@@ -153,8 +150,6 @@ public class Configurator {
             //未来可以支持更多控制标记
         }
 
-        checkUpdate();
-
         //cli - default
         new Thread(cliShell, "CLI-Interactive-Thread").start();
     }
@@ -162,14 +157,14 @@ public class Configurator {
     private void checkUpdate() {
         if (AgentFlags.checkUpdate()) {
             // 使用颜色代码让提示更醒目
-            System.out.println("\033[33mDiscover the new version: " + AgentFlags.getLastVersion() + "\033[0m");
+            System.err.println("\033[33mDiscover the new version: " + AgentFlags.getLastVersion() + "\033[0m");
 
             if (JavaUtil.IS_WINDOWS) {
-                System.out.println("Update: \033[36mirm https://solon.noear.org/soloncode/setup.ps1 | iex\033[0m");
+                System.err.println("Update: \033[36mirm https://solon.noear.org/soloncode/setup.ps1 | iex\033[0m");
             } else {
-                System.out.println("Update: \033[36mcurl -fsSL https://solon.noear.org/soloncode/setup.sh | bash\033[0m");
+                System.err.println("Update: \033[36mcurl -fsSL https://solon.noear.org/soloncode/setup.sh | bash\033[0m");
             }
-            System.out.println();
+            System.err.println();
         }
     }
 
@@ -226,7 +221,7 @@ public class Configurator {
 
         if ("stdio".equals(agentProps.getAcpTransport())) {
             //不能有打印
-            //cliShell.printWelcome("Acp interface: stdio");
+            cliShell.printWelcome("Acp interface: stdio");
         } else {
             String url = "ws://localhost:" + Solon.cfg().serverPort() + "/acp";
             cliShell.printWelcome("Acp interface: " + url);
