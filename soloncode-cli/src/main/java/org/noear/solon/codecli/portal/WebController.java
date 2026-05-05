@@ -42,6 +42,8 @@ import org.noear.solon.codecli.provider.ModelInfo;
 import org.noear.solon.codecli.provider.ModelProvider;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.portal.wechat.ILinkClient;
+import org.noear.solon.codecli.portal.wechat.WeChatLink;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
@@ -77,6 +79,7 @@ public class WebController {
     private final ModelProviderFactory modelProviderFactory;
     private final LoopScheduler loopScheduler;
     private final WebSessionSink sessionSink;
+    private final WeChatLink weChatLink;
 
     public WebController(HarnessEngine engine, LoopScheduler loopScheduler, ModelProviderFactory modelProviderFactory) {
         this.engine = engine;
@@ -84,6 +87,7 @@ public class WebController {
         this.modelProviderFactory = modelProviderFactory;
         this.loopScheduler = loopScheduler;
         this.sessionSink = new WebSessionSink();
+        this.weChatLink = new WeChatLink(engine, streamBuilder, sessionSink);
 
         // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，流式推送到前端
         if (loopScheduler != null) {
@@ -770,5 +774,100 @@ public class WebController {
             ctx.contentType(MimeType.TEXT_EVENT_STREAM_UTF8_VALUE);
             ctx.returnValue(streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt));
         }
+    }
+
+    // ==================== 微信 ClawBot 通道接口 ====================
+
+    /**
+     * 获取微信扫码登录二维码
+     */
+    @Get
+    @Mapping("/chat/wechat/qrcode")
+    public Result<Map> wechatQrcode(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        Map<String, String> qrResult = ILinkClient.fetchQRCode();
+        if (qrResult == null) {
+            return Result.failure("获取微信二维码失败，请确认网络可访问 ilinkai.weixin.qq.com");
+        }
+
+        // 临时缓存 qrcode token 用于轮询
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("qrcode", qrResult.get("qrcode"));
+        data.put("qrcode_img_content", qrResult.get("qrcode_img_content"));
+        data.put("sessionId", sessionId);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 轮询微信扫码状态
+     */
+    @Get
+    @Mapping("/chat/wechat/qrcode/status")
+    public Result<Map> wechatQrcodeStatus(@Param("qrcode") String qrcode,
+                                          @Param("sessionId") String sessionId) {
+        if (qrcode == null || qrcode.isEmpty()) {
+            return Result.failure("qrcode is required");
+        }
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        Map<String, String> statusResult = ILinkClient.pollQRStatus(qrcode);
+        if (statusResult == null) {
+            Map<String, Object> errData = new LinkedHashMap<>();
+            errData.put("status", "error");
+            return Result.succeed(errData);
+        }
+
+        // 扫码确认后自动绑定
+        if ("confirmed".equals(statusResult.get("status"))) {
+            String botToken = statusResult.get("bot_token");
+            String ilinkBotId = statusResult.get("ilink_bot_id");
+            String ilinkUserId = statusResult.get("ilink_user_id");
+
+            weChatLink.bindSession(sessionId, botToken, ilinkBotId, ilinkUserId);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>(statusResult);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 解绑微信通道
+     */
+    @Post
+    @Mapping("/chat/wechat/unbind")
+    public Result wechatUnbind(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        weChatLink.unbindSession(sessionId);
+        return Result.succeed();
+    }
+
+    /**
+     * 查询会话微信绑定状态
+     */
+    @Get
+    @Mapping("/chat/wechat/status")
+    public Result<Map> wechatStatus(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("bound", weChatLink.isBound(sessionId));
+        return Result.succeed(data);
+    }
+
+    /**
+     * 获取 WeChatLink 实例（供 Configurator 注册启动）
+     */
+    public WeChatLink getWeChatLink() {
+        return weChatLink;
     }
 }

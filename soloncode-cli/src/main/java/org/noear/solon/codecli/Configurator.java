@@ -176,6 +176,9 @@ public class Configurator {
         BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler, modelProviderFactory));
         Solon.app().router().add(webBean);
 
+        // 启动微信通道
+        RunUtil.async(((WebController) webBean.raw()).getWeChatLink());
+
         if (cliShell == null) {
             return;
         }

@@ -73,9 +73,25 @@
         .main-area { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; background: var(--bg-main); transition: background 0.3s; }
 
         /* Header */
-        .main-header { padding: 14px 28px; display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
-        .theme-toggle { background: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 6px 10px; cursor: pointer; color: var(--text-secondary); font-size: 16px; transition: all 0.2s; display: flex; align-items: center; }
-        .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .main-header { padding: 14px 28px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+        .theme-toggle, .wechat-btn-header { background: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 6px 10px; cursor: pointer; color: var(--text-secondary); font-size: 16px; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+        .theme-toggle:hover, .wechat-btn-header:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .wechat-btn-header.bound { color: #07c160; border-color: #07c160; }
+        .wechat-btn-header .wechat-label { font-size: 12px; }
+
+        /* WeChat QR Modal */
+        .wechat-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; animation: modal-fade-in 0.2s ease-out; }
+        @keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .wechat-modal { background: var(--bg-input-box); border-radius: 16px; padding: 28px 32px; min-width: 320px; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }
+        .wechat-modal-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+        .wechat-modal-subtitle { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+        .wechat-qr-wrap { width: 220px; height: 220px; margin: 0 auto 20px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .wechat-qr-wrap img { max-width: 200px; max-height: 200px; }
+        .wechat-status { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; }
+        .wechat-status.scanned { color: #07c160; }
+        .wechat-status.error { color: #ef4444; }
+        .wechat-modal-close { margin-top: 8px; padding: 8px 24px; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; transition: all 0.15s; }
+        .wechat-modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
 
         /* ===== Welcome ===== */
         .welcome-view { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px 80px; }
@@ -346,6 +362,10 @@
     <!-- Main -->
     <div class="main-area">
         <div class="main-header">
+            <button class="wechat-btn-header" id="wechatHeaderBtn" title="微信接管">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-7.062-6.122zM14.033 13.3c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z"/></svg>
+                <span class="wechat-label" id="wechatHeaderLabel"></span>
+            </button>
             <button class="theme-toggle" id="themeBtn" title="切换主题">
                 <i class="layui-icon" id="themeIcon">&#xe748;</i>
             </button>
@@ -453,6 +473,7 @@
 
     <script src="/layui/layui.js"></script>
     <script src="/js/marked.min.js"></script>
+    <script src="/js/qrcode.min.js"></script>
 
     <script>
         var SSE_ENDPOINT = "/chat/input";
@@ -2130,6 +2151,163 @@
                 btn.title = '展开侧边栏';
             }
         })();
+
+        /* ===== WeChat ClawBot Channel ===== */
+        var wechatHeaderBtn = document.getElementById('wechatHeaderBtn');
+        var wechatHeaderLabel = document.getElementById('wechatHeaderLabel');
+        var wechatModalOverlay = null;
+        var wechatPollTimer = null;
+
+        function updateWechatUI() {
+            if (!activeSessionId) return;
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/chat/wechat/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        var bound = resp.data && resp.data.bound;
+                        wechatHeaderBtn.classList.toggle('bound', !!bound);
+                        wechatHeaderLabel.textContent = bound ? '已连接' : '';
+                        wechatHeaderBtn.title = bound ? '微信已接管（点击解绑）' : '微信接管';
+                    } catch(e) {}
+                }
+            };
+            xhr.send();
+        }
+
+        // Page load & session switch: refresh status
+        updateWechatUI();
+        var origSetActiveSession = setActiveSession;
+        setActiveSession = function(sid) {
+            origSetActiveSession(sid);
+            updateWechatUI();
+        };
+
+        wechatHeaderBtn.addEventListener('click', function() {
+            if (!activeSessionId) return;
+            // If already bound, unbind
+            if (wechatHeaderBtn.classList.contains('bound')) {
+                if (!confirm('确定要断开微信连接吗？')) return;
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '/chat/wechat/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) updateWechatUI();
+                };
+                xhr.send();
+                return;
+            }
+            // Not bound: show QR modal
+            showWechatModal();
+        });
+
+        function showWechatModal() {
+            if (wechatModalOverlay) return;
+
+            wechatModalOverlay = document.createElement('div');
+            wechatModalOverlay.className = 'wechat-modal-overlay';
+            wechatModalOverlay.innerHTML = '<div class="wechat-modal">'
+                + '<div class="wechat-modal-title">微信扫码接管</div>'
+                + '<div class="wechat-modal-subtitle">用微信扫描二维码，当前会话将同步到微信</div>'
+                + '<div class="wechat-qr-wrap" id="wechatQrWrap"><span style="color:#999;font-size:13px">加载中...</span></div>'
+                + '<div class="wechat-status" id="wechatQrStatus">等待扫码...</div>'
+                + '<button class="wechat-modal-close" id="wechatModalClose">取消</button>'
+                + '</div>';
+            document.body.appendChild(wechatModalOverlay);
+
+            document.getElementById('wechatModalClose').addEventListener('click', closeWechatModal);
+            wechatModalOverlay.addEventListener('click', function(e) {
+                if (e.target === wechatModalOverlay) closeWechatModal();
+            });
+
+            // Fetch QR code
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/chat/wechat/qrcode?sessionId=' + encodeURIComponent(activeSessionId), true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (resp.code !== 200 || !resp.data) {
+                            document.getElementById('wechatQrStatus').textContent = resp.message || '获取二维码失败';
+                            document.getElementById('wechatQrStatus').className = 'wechat-status error';
+                            return;
+                        }
+                        var qrWrap = document.getElementById('wechatQrWrap');
+                        qrWrap.innerHTML = '';
+                        var qrContent = resp.data.qrcode_img_content || resp.data.qrcode;
+                        if (qrContent) {
+                            try {
+                                new QRCode(qrWrap, { text: qrContent, width: 180, height: 180 });
+                            } catch(e) {
+                                qrWrap.innerHTML = '<span style="font-size:12px;color:#666;padding:10px">' + escapeHtml(qrContent) + '</span>';
+                            }
+                        }
+                        // Start polling
+                        startWechatPoll(resp.data.qrcode, activeSessionId);
+                    } catch(e) {
+                        document.getElementById('wechatQrStatus').textContent = '解析失败';
+                        document.getElementById('wechatQrStatus').className = 'wechat-status error';
+                    }
+                }
+            };
+            xhr.send();
+        }
+
+        function startWechatPoll(qrcode, sessionId) {
+            if (wechatPollTimer) clearInterval(wechatPollTimer);
+            wechatPollTimer = setInterval(function() {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '/chat/wechat/qrcode/status?qrcode=' + encodeURIComponent(qrcode) + '&sessionId=' + encodeURIComponent(sessionId), true);
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        try {
+                            var resp = JSON.parse(xhr.responseText);
+                            var data = resp.data || {};
+                            var statusEl = document.getElementById('wechatQrStatus');
+                            if (!statusEl) return;
+
+                            var status = data.status;
+                            if (status === 'wait') {
+                                statusEl.textContent = '等待扫码...';
+                                statusEl.className = 'wechat-status';
+                            } else if (status === 'scaned') {
+                                statusEl.textContent = '已扫码，请在微信中确认...';
+                                statusEl.className = 'wechat-status scanned';
+                            } else if (status === 'confirmed') {
+                                statusEl.textContent = '连接成功！';
+                                statusEl.className = 'wechat-status scanned';
+                                clearInterval(wechatPollTimer);
+                                wechatPollTimer = null;
+                                setTimeout(function() {
+                                    closeWechatModal();
+                                    updateWechatUI();
+                                }, 1200);
+                            } else if (status === 'expired') {
+                                statusEl.textContent = '二维码已过期，请重新获取';
+                                statusEl.className = 'wechat-status error';
+                                clearInterval(wechatPollTimer);
+                                wechatPollTimer = null;
+                            } else {
+                                // 临时错误或未知状态：继续轮询，扫码过程中的API短暂波动不应打断流程
+                                if (wechatPollTimer) {
+                                    statusEl.textContent = '扫码处理中...';
+                                    statusEl.className = 'wechat-status';
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                };
+                xhr.send();
+            }, 2000);
+        }
+
+        function closeWechatModal() {
+            if (wechatPollTimer) { clearInterval(wechatPollTimer); wechatPollTimer = null; }
+            if (wechatModalOverlay) {
+                wechatModalOverlay.remove();
+                wechatModalOverlay = null;
+            }
+        }
     </script>
 </body>
 </html>
