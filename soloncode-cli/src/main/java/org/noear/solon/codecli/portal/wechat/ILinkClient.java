@@ -231,7 +231,7 @@ public class ILinkClient {
                 LOG.warn("sendMessage failed: ret={}, msg={}", ret, root.get("msg").getString());
             }
             return ret == 0;
-        } catch (Exception e) {
+        } catch (Throwable e) {
             LOG.error("sendMessage error: {}", e.getMessage());
             return false;
         }
