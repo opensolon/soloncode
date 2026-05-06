@@ -16,6 +16,7 @@ import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import reactor.core.publisher.Mono;
@@ -59,7 +60,7 @@ public class AcpLink implements Runnable {
                     ));
                 })
                 .newSessionHandler(req -> {
-                    String sessionId = UUID.randomUUID().toString();
+                    String sessionId = "acp-" + UUID.randomUUID().toString().substring(0,8);
                     String cwd = req.cwd();
 
                     sessionStates.put(sessionId, new AcpSessionContext(cwd, req.mcpServers()));
@@ -91,8 +92,7 @@ public class AcpLink implements Runnable {
 
                     final long startTime = System.currentTimeMillis();
 
-                    return agentRuntime.getMainAgent()
-                            .prompt(userInput)
+                    return agentRuntime.prompt(userInput)
                             .session(session)
                             .options(o -> {
                                 if (Assert.isNotEmpty(context.getCwd())) {
@@ -123,7 +123,7 @@ public class AcpLink implements Runnable {
                                 // --- ThoughtChunk (多任务并行) ---
                                 else if (chunk instanceof ThoughtChunk) {
                                     ThoughtChunk thoughtChunk = (ThoughtChunk) chunk;
-                                    if (thoughtChunk.hasMeta("multitask")) {
+                                    if (thoughtChunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
                                         String content = thoughtChunk.getAssistantMessage().getResultContent();
                                         if (Assert.isNotEmpty(content)) {
                                             return acpContext.sendUpdate(sessionId, new AcpSchema.AgentThoughtChunk(
@@ -139,7 +139,7 @@ public class AcpLink implements Runnable {
                                     String toolName = actionChunk.getToolName();
 
                                     // 跳过内部工具
-                                    if ("multitask".equals(toolName) || "task".equals(toolName)) {
+                                    if (TaskSkill.TOOL_MULTITASK.equals(toolName) || TaskSkill.TOOL_TASK.equals(toolName)) {
                                         return Mono.just(chunk);
                                     }
 
