@@ -217,10 +217,12 @@ public class WebStreamBuilder {
     private String onThoughtChunk(AgentSession session, ThoughtChunk thought) {
         if (weChatLink != null) {
             if (weChatLink.isBound(session.getSessionId())) {
+                String resultContent = thought.getAssistantMessage().getResultContent();
+
                 //回复微信
                 if (thought.isToolCalls()) {
                     //说明是过程
-                    weChatLink.sendReply(session.getSessionId(), thought.getContent());
+                    weChatLink.sendReply(session.getSessionId(), resultContent);
                 } else {
                     //说明是结果
                     String modelSelectedTmp = (String) session.attrs().get("_model_selected_tmp");
@@ -228,9 +230,9 @@ public class WebStreamBuilder {
                     if (thought.getTrace().getOptions().getChatModel().getNameOrModel().equals(modelSelectedTmp)) {
                         //说明是发起代理
                         StringBuilder traceInfo = getTraceInfo(thought.getTrace());
-                        weChatLink.sendReply(session.getSessionId(), thought.getContent() + traceInfo);
+                        weChatLink.sendReply(session.getSessionId(), resultContent + traceInfo);
                     } else {
-                        weChatLink.sendReply(session.getSessionId(), thought.getContent());
+                        weChatLink.sendReply(session.getSessionId(), resultContent);
                     }
                 }
             }
