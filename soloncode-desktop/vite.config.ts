@@ -45,14 +45,8 @@ export default defineConfig(async () => ({
     },
     // 启用 CSS 代码分割
     cssCodeSplit: true,
-    // 压缩选项
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: false,
-        drop_debugger: true,
-      },
-    },
+    // 压缩选项（esbuild 内置，无需额外安装 terser）
+    minify: 'esbuild',
     // chunk 大小警告阈值
     chunkSizeWarningLimit: 1000,
   },
