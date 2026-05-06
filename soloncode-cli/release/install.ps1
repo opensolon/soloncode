@@ -235,10 +235,6 @@ if not exist "%JAR_FILE%" (
     exit /b 1
 )
 
-rem 设置控制台编码为 UTF-8
-chcp 65001 >nul 2>&1
-@echo off
-
 rem 设置 Java 编码参数
 set "JAVA_OPTS=-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dstdin.encoding=UTF-8"
 
@@ -254,7 +250,7 @@ for /f "tokens=3" %%v in ('java -version 2^>^&1 ^| findstr /i version') do (
 rem 运行 Java 程序
 java %JAVA_OPTS% -jar "%JAR_FILE%" %*
 '@
-Set-Content -Path $LAUNCHER_BAT -Value $LAUNCHER_BAT_CONTENT -Encoding UTF8 -NoNewline
+New-Item -Path $LAUNCHER_BAT -Value $LAUNCHER_BAT_CONTENT -Force | Out-Null
 Write-Host "      Created: soloncode.bat" -ForegroundColor Gray
 # 创建 Git Bash 启动脚本 (soloncode)
 $LAUNCHER_SH = Join-Path $TARGET_BIN_DIR "soloncode"
