@@ -79,6 +79,8 @@ interface ChatInputProps {
   onNewProject?: () => void;
   onOpenFolder?: () => void;
   workspacePath?: string;
+  mode?: ChatMode;
+  onModeChange?: (mode: ChatMode) => void;
 }
 
 export interface SendOptions {
@@ -104,7 +106,9 @@ function getModelDisplayName(p: ModelProvider): string {
   return modelLabel || p.model;
 }
 
-export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath }: ChatInputProps) {
+export type ChatMode = 'default' | 'agent' | 'plan' | 'auto';
+
+export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, mode = 'default', onModeChange }: ChatInputProps & { mode?: ChatMode; onModeChange?: (mode: ChatMode) => void }) {
   // 从每个 provider 的 availableModels 展开为独立的可选模型
   const allModels = useMemo(() => {
     const result: ModelProvider[] = [];
@@ -140,6 +144,11 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   // 模型选择器弹出状态
   const [showModelPicker, setShowModelPicker] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+
+  // 模式选择器弹出状态
+  const [showModePicker, setShowModePicker] = useState(false);
+  const modePickerRef = useRef<HTMLDivElement>(null);
+  const [modePickerPos, setModePickerPos] = useState<{ left: number; bottom: number }>({ left: 0, bottom: 0 });
 
   // 语音输入状态
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -177,6 +186,24 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       setPickerPos({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
     }
   }, [showModelPicker]);
+
+  // 模式选择器下拉定位
+  useEffect(() => {
+    if (showModePicker && modePickerRef.current) {
+      const rect = modePickerRef.current.getBoundingClientRect();
+      setModePickerPos({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
+    }
+  }, [showModePicker]);
+
+  // 点击外部关闭模式选择器
+  useEffect(() => {
+    if (!showModePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (modePickerRef.current && !modePickerRef.current.contains(e.target as Node)) setShowModePicker(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showModePicker]);
 
   // 语音输入初始化
   useEffect(() => {
@@ -672,6 +699,45 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
           {/* 底部操作栏 */}
           <div className="input-bottom-bar">
+            {/* 模式切换 */}
+            <div className="model-picker-wrapper" ref={modePickerRef}>
+              <button
+                type="button"
+                className={`model-picker-btn${showModePicker ? ' active' : ''}`}
+                onClick={() => setShowModePicker(!showModePicker)}
+              >
+                <Icon name={
+                  mode === 'agent' ? 'bot' : mode === 'plan' ? 'explorer' : mode === 'auto' ? 'terminal' : 'chat'
+                } size={12} />
+                <span className="model-picker-name">
+                  {mode === 'default' ? '默认' : mode === 'agent' ? '代理' : mode === 'plan' ? '规划' : '自动'}
+                </span>
+                <span className={`model-picker-arrow${showModePicker ? ' open' : ''}`}>▾</span>
+              </button>
+              {showModePicker && (
+                <div className="model-picker-dropdown" style={{ left: modePickerPos.left, bottom: modePickerPos.bottom }}>
+                  {([
+                    { key: 'default' as ChatMode, label: '默认', desc: '普通对话', icon: 'chat' as const },
+                    { key: 'agent' as ChatMode, label: '代理', desc: '智能体模式', icon: 'bot' as const },
+                    { key: 'plan' as ChatMode, label: '规划', desc: '规划模式', icon: 'explorer' as const },
+                    { key: 'auto' as ChatMode, label: '自动', desc: '自动执行', icon: 'terminal' as const },
+                  ]).map(m => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      className={`model-picker-item${mode === m.key ? ' active' : ''}`}
+                      onClick={() => { onModeChange?.(m.key); setShowModePicker(false); }}
+                    >
+                      <Icon name={m.icon} size={14} />
+                      <span className="model-picker-item-name">{m.label}</span>
+                      <span className="model-picker-item-source">{m.desc}</span>
+                      {mode === m.key && <span className="model-picker-check">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* 模型选择器 */}
             <div className="model-picker-wrapper" ref={modelPickerRef}>
               <button

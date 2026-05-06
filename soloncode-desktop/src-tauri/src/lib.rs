@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::net::TcpStream;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
 
@@ -15,17 +15,42 @@ static APP_LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
 
 /// 写入应用日志
 fn app_log(msg: &str) {
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_millis())
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
         .unwrap_or(0);
-    let line = format!("[{}] {}\n", timestamp, msg);
+    // UTC+8
+    let utc_plus_8 = ((secs / 3600 + 8) % 24, (secs / 60) % 60, secs % 60);
+    let days = secs / 86400;
+    // 计算日期（从 1970-01-01 起）
+    let (y, m, d) = days_to_date(days);
+    let line = format!("[{:04}-{:02}-{:02} {:02}:{:02}:{:02}] {}\n", y, m, d, utc_plus_8.0, utc_plus_8.1, utc_plus_8.2, msg);
     println!("{}", line.trim());
     if let Ok(mut log_file) = APP_LOG.lock() {
         if let Some(f) = log_file.as_mut() {
             let _ = f.write_all(line.as_bytes());
         }
     }
+}
+
+fn days_to_date(days: u64) -> (u64, u64, u64) {
+    let mut y = 1970;
+    let mut remaining = days;
+    loop {
+        let dy = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 { 366 } else { 365 };
+        if remaining < dy { break; }
+        remaining -= dy;
+        y += 1;
+    }
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let md: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut m = 0;
+    for (i, &days_in) in md.iter().enumerate() {
+        if remaining < days_in { m = i; break; }
+        remaining -= days_in;
+        m = i;
+    }
+    (y, m as u64 + 1, remaining + 1)
 }
 
 /// 初始化日志文件（保存在应用目录下，每次启动重置）

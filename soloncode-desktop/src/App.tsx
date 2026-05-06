@@ -197,7 +197,8 @@ function App() {
 
   // 启动后端
   useEffect(() => {
-    startBackend((updater) => setSettings(updater));
+    const port = settings.cliPort || 4808;
+    startBackend(port, (updater) => setSettings(updater));
   }, []);
 
   // 拖拽调整大小

@@ -27,6 +27,9 @@ export interface Settings {
   activeProviderId: string;
   maxSteps: number;
 
+  // CLI
+  cliPort: number;
+
   // MCP 服务器
   mcpServers: McpServerConfig[];
 
@@ -279,6 +282,13 @@ function GeneralSettings({ settings, updateSetting }: {
         <input type="number" className="setting-input number" value={settings.terminalFontSize}
           onChange={e => updateSetting('terminalFontSize', parseInt(e.target.value) || 14)}
           min={10} max={24} />
+      </SettingRow>
+
+      <div className="settings-section-title">后端服务</div>
+      <SettingRow label="CLI 端口">
+        <input type="number" className="setting-input number" value={settings.cliPort}
+          onChange={e => updateSetting('cliPort', parseInt(e.target.value) || 4808)}
+          min={1024} max={65535} />
       </SettingRow>
     </div>
   );

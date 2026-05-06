@@ -4,7 +4,7 @@ import type { ModelProvider } from '../services/settingsService';
 import { saveMessage, getMessagesByConversation } from '../db';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
-import { ChatInput, type SendOptions } from './ChatInput';
+import { ChatInput, type SendOptions, type ChatMode } from './ChatInput';
 import { Icon } from './common/Icon';
 import '../views/ChatPage.css';
 
@@ -240,6 +240,7 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
 export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>('default');
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
   const sessionIdRef = useRef<string>('');
   const conversationIdRef = useRef<string | number>('');
@@ -724,10 +725,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             <div className="hero-logo">SolonCode</div>
             <div className="hero-slogan">做你想做的事</div>
           </div>
-          <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} />
+          <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} />
         </div>
       ) : (
-        <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} workspacePath={workspacePath} />
+        <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} />
       )}
       {/* 底部提示 */}
         <div className="input-footer">
