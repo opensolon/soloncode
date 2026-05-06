@@ -176,7 +176,7 @@ public class WebStreamBuilder {
         return "";
     }
 
-    private String onThoughtChunk(AgentSession session,ThoughtChunk thought) {
+    private String onThoughtChunk(AgentSession session, ThoughtChunk thought) {
         if (weChatLink != null) {
             if (weChatLink.isBound(session.getSessionId())) {
                 //回复微信
@@ -237,10 +237,10 @@ public class WebStreamBuilder {
     private String onFinalChunk(AgentSession session, ReActChunk react) {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
-        if (react.isAbnormal() && weChatLink != null) {
+        if (weChatLink != null) {
             if (weChatLink.isBound(session.getSessionId())) {
                 //回复微信
-                weChatLink.sendReplyAsync(session.getSessionId(), react.getContent() + traceInfo);
+                weChatLink.sendReplyAsync(session.getSessionId(), traceInfo.toString());
             }
         }
 

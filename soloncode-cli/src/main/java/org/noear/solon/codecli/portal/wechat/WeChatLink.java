@@ -26,6 +26,7 @@ import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.Disposable;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -275,6 +276,13 @@ public class WeChatLink implements Runnable {
 
             streamBuilder.buildStreamFlux(session, agent, chatModel, null, Prompt.of(userInput))
                     .filter(line -> !"[DONE]".equals(line))
+                    .doOnSubscribe(subscription -> {
+                        // 将 Subscription 包装为 Disposable
+                        Disposable disposable = subscription::cancel;
+
+                        // 在订阅开始时，将 disposable 存入 session
+                        session.attrs().put("disposable", disposable);
+                    })
                     .doOnNext(line -> {
                         // 同时推送到 Web 前端（如果打开着的话）
                         sessionSink.emit(sessionId, line);
