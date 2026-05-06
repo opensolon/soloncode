@@ -2,7 +2,45 @@ import { useState, FormEvent, KeyboardEvent, useRef, useEffect, useCallback, use
 import { Icon } from './common/Icon';
 import type { ModelProvider } from '../services/settingsService';
 import { PROVIDER_PRESETS } from '../services/settingsService';
+import { fileService, isImageFile } from '../services/fileService';
 import './ChatInput.css';
+
+/** 开始工作下拉面板 */
+function StartWorkPanel({ onNewProject, onOpenFolder }: { onNewProject?: () => void; onOpenFolder?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className="start-work-panel" ref={ref}>
+      <button className="start-work-trigger" onClick={() => setOpen(prev => !prev)}>
+        <span className="start-work-trigger-left">
+          <Icon name="folder" size={14} />
+          <span>进入项目工作</span>
+        </span>
+        <Icon name="chevron-down" size={12} />
+      </button>
+      {open && (
+        <div className="start-work-dropdown">
+          <div className="start-work-dropdown-item" onClick={() => { setOpen(false); onNewProject?.(); }}>
+            <Icon name="file" size={14} /> 新建项目
+          </div>
+          <div className="start-work-dropdown-item" onClick={() => { setOpen(false); onOpenFolder?.(); }}>
+            <Icon name="folder" size={14} /> 打开项目
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // 命令类型（从后端 /chat/commands 加载）
 interface CommandItem {
@@ -37,6 +75,12 @@ interface ChatInputProps {
   onModelChange?: (providerId: string) => void;
   activeFileName?: string;
   backendPort?: number | null;
+  showStartWork?: boolean;
+  onNewProject?: () => void;
+  onOpenFolder?: () => void;
+  workspacePath?: string;
+  mode?: ChatMode;
+  onModeChange?: (mode: ChatMode) => void;
 }
 
 export interface SendOptions {
@@ -44,6 +88,15 @@ export interface SendOptions {
   modelName: string;   // 实际模型名，用于CLI后端识别
   agent: string;
   contexts: ContextRef[];
+  attachments: Attachment[];
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  type: 'image' | 'text';
+  content: string; // image: base64 data url; text: file content
+  path?: string;
 }
 
 /** 获取模型显示名称 */
@@ -53,7 +106,9 @@ function getModelDisplayName(p: ModelProvider): string {
   return modelLabel || p.model;
 }
 
-export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort }: ChatInputProps) {
+export type ChatMode = 'default' | 'agent' | 'plan' | 'auto';
+
+export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, mode = 'default', onModeChange }: ChatInputProps & { mode?: ChatMode; onModeChange?: (mode: ChatMode) => void }) {
   // 从每个 provider 的 availableModels 展开为独立的可选模型
   const allModels = useMemo(() => {
     const result: ModelProvider[] = [];
@@ -82,10 +137,26 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('default');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [workspaceFiles, setWorkspaceFiles] = useState<ContextRef[]>([]);
+  const workspaceFilesLoadedRef = useRef(false);
 
   // 模型选择器弹出状态
   const [showModelPicker, setShowModelPicker] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+
+  // 模式选择器弹出状态
+  const [showModePicker, setShowModePicker] = useState(false);
+  const modePickerRef = useRef<HTMLDivElement>(null);
+  const [modePickerPos, setModePickerPos] = useState<{ left: number; bottom: number }>({ left: 0, bottom: 0 });
+
+  // 语音输入状态
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const voiceRecordingRef = useRef(false);
+  const voiceBaseTextRef = useRef('');
+  const voiceFinalRef = useRef('');
+  const voiceRafRef = useRef(false);
 
   // 同步 activeProviderId 到 selectedModel（优先恢复上次使用的模型）
   useEffect(() => {
@@ -116,6 +187,95 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     }
   }, [showModelPicker]);
 
+  // 模式选择器下拉定位
+  useEffect(() => {
+    if (showModePicker && modePickerRef.current) {
+      const rect = modePickerRef.current.getBoundingClientRect();
+      setModePickerPos({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
+    }
+  }, [showModePicker]);
+
+  // 点击外部关闭模式选择器
+  useEffect(() => {
+    if (!showModePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (modePickerRef.current && !modePickerRef.current.contains(e.target as Node)) setShowModePicker(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showModePicker]);
+
+  // 语音输入初始化
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      if (finalTranscript) {
+        voiceFinalRef.current += finalTranscript;
+      }
+      if (!voiceRafRef.current) {
+        voiceRafRef.current = true;
+        requestAnimationFrame(() => {
+          voiceRafRef.current = false;
+          setUserInput(voiceBaseTextRef.current + voiceFinalRef.current + interimTranscript);
+        });
+      }
+    };
+
+    recognition.onerror = () => {
+      voiceRecordingRef.current = false;
+      setVoiceRecording(false);
+    };
+
+    recognition.onend = () => {
+      if (voiceRecordingRef.current) {
+        try { recognition.start(); } catch {}
+      } else {
+        voiceRecordingRef.current = false;
+        setVoiceRecording(false);
+      }
+    };
+
+    recognitionRef.current = recognition;
+  }, []);
+
+  // 语音按钮事件
+  const voiceBtnHandlers = useMemo(() => ({
+    onStart: () => {
+      if (!recognitionRef.current) return;
+      voiceBaseTextRef.current = userInput;
+      voiceFinalRef.current = '';
+      voiceRecordingRef.current = true;
+      setVoiceRecording(true);
+      try { recognitionRef.current.start(); } catch {}
+    },
+    onStop: () => {
+      voiceRecordingRef.current = false;
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+      }
+      setVoiceRecording(false);
+      voiceBaseTextRef.current = userInput;
+      voiceFinalRef.current = '';
+    },
+  }), [userInput]);
+
   // 自动完成状态
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteType, setAutocompleteType] = useState<'context' | 'agent' | 'command' | null>(null);
@@ -130,9 +290,66 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autocompleteRef = useRef<HTMLDivElement>(null);
 
+  // 粘贴处理：支持图片和文件
+  function processClipboardItems(items: DataTransferItemList | FileList | null) {
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      const file = item instanceof File ? item : (item as DataTransferItem).getAsFile?.();
+      const fileType = file?.type || '';
+      if (fileType.startsWith('image/') && file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setAttachments(prev => [...prev, {
+            id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: file.name || 'pasted-image.png',
+            type: 'image' as const,
+            content: reader.result as string,
+          }]);
+        };
+        reader.readAsDataURL(file);
+        return true;
+      }
+      if (file && !fileType.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setAttachments(prev => [...prev, {
+            id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: file.name,
+            type: 'text' as const,
+            content: reader.result as string,
+          }]);
+        };
+        reader.readAsText(file);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        processClipboardItems(items);
+        return;
+      }
+    }
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+      e.preventDefault();
+      processClipboardItems(files);
+    }
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  }
+
   // 从后端加载命令列表
   const loadCommands = useCallback(async () => {
-    if (commandsLoadedRef.current) return commands;
+    if (commandsLoadedRef.current) return;
     const port = backendPort || 4808;
     try {
       const resp = await fetch(`http://localhost:${port}/chat/commands`);
@@ -141,11 +358,43 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
         const list: CommandItem[] = json.data || json;
         setCommands(list);
         commandsLoadedRef.current = true;
-        return list;
       }
     } catch { /* ignore */ }
-    return commands;
-  }, [backendPort, commands]);
+  }, [backendPort]);
+
+  // 加载工作区文件列表（懒加载，首次输入 # 时触发）
+  const loadWorkspaceFiles = useCallback(async () => {
+    if (workspaceFilesLoadedRef.current || !workspacePath) return;
+    try {
+      const tree = await fileService.listDirectoryTree(workspacePath, 4);
+      const flatten = (items: typeof tree, basePath = ''): ContextRef[] => {
+        const result: ContextRef[] = [];
+        for (const item of items) {
+          if (!item.isDir) {
+            result.push({
+              id: item.path,
+              type: 'file',
+              name: item.name,
+              path: item.path,
+            });
+          }
+          if (item.children) {
+            result.push(...flatten(item.children, item.path));
+          }
+        }
+        return result;
+      };
+      const files = flatten(tree);
+      setWorkspaceFiles(files);
+      workspaceFilesLoadedRef.current = true;
+    } catch { /* ignore */ }
+  }, [workspacePath]);
+
+  // 工作区变化时重置缓存
+  useEffect(() => {
+    workspaceFilesLoadedRef.current = false;
+    setWorkspaceFiles([]);
+  }, [workspacePath]);
 
   // 获取过滤后的自动完成选项
   const getFilteredOptions = useCallback(() => {
@@ -161,18 +410,14 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       );
     }
     if (autocompleteType === 'context') {
-      const defaultContexts: ContextRef[] = [
-        { id: 'current-file', type: 'file', name: '当前文件' },
-        { id: 'selection', type: 'code', name: '选中代码' },
-        { id: 'project', type: 'folder', name: '整个项目' },
-      ];
-      const allContexts = [...defaultContexts, ...availableFiles];
-      return allContexts.filter(c =>
-        c.name.toLowerCase().includes(autocompleteQuery.toLowerCase())
-      );
+      // 首次触发时加载文件列表
+      loadWorkspaceFiles();
+      const query = autocompleteQuery.toLowerCase();
+      if (!query) return workspaceFiles.slice(0, 50);
+      return workspaceFiles.filter(f => f.name.toLowerCase().includes(query)).slice(0, 50);
     }
     return [];
-  }, [autocompleteType, autocompleteQuery, availableFiles, commands]);
+  }, [autocompleteType, autocompleteQuery, availableFiles, commands, workspaceFiles]);
 
   // 处理输入变化
   function handleInput(event: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -253,15 +498,27 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     setAutocompleteType(null);
 
     if (autocompleteType === 'context') {
-      const contextRef: ContextRef = {
-        id: item.id,
-        type: 'file',
-        name: item.name,
-      };
-      setContexts(prev => {
-        if (prev.find(c => c.id === item.id)) return prev;
-        return [...prev, contextRef];
-      });
+      // 读取文件内容作为附件
+      if (item.path) {
+        fileService.readFile(item.path).then(content => {
+          setAttachments(prev => {
+            if (prev.find(a => a.path === item.path)) return prev;
+            return [...prev, {
+              id: item.id,
+              name: item.name,
+              type: 'text' as const,
+              content,
+              path: item.path,
+            }];
+          });
+        }).catch(() => {
+          // 读取失败则降级为上下文引用
+          setContexts(prev => {
+            if (prev.find(c => c.id === item.id)) return prev;
+            return [...prev, { id: item.id, type: 'file' as const, name: item.name, path: item.path }];
+          });
+        });
+      }
     }
 
     if (autocompleteType === 'agent') {
@@ -324,9 +581,11 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       modelName: provider?.model || selectedModel,
       agent: selectedAgent,
       contexts: [...contexts],
+      attachments: [...attachments],
     });
     setUserInput('');
     setContexts([]);
+    setAttachments([]);
     setShowAutocomplete(false);
   }
 
@@ -362,6 +621,26 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   return (
     <div className="chat-input-wrapper">
+      {/* 附件预览 */}
+      {attachments.length > 0 && (
+        <div className="attachment-preview">
+          {attachments.map(att => (
+            <div key={att.id} className="attachment-item">
+              {att.type === 'image' ? (
+                <img src={att.content} alt={att.name} className="attachment-thumbnail" />
+              ) : (
+                <div className="attachment-file-icon">
+                  <Icon name="file" size={16} />
+                </div>
+              )}
+              <button className="attachment-remove" onClick={() => removeAttachment(att.id)}>
+                <Icon name="close" size={10} />
+              </button>
+              <span className="attachment-name">{att.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {/* 上下文标签 */}
       {contexts.length > 0 && (
         <div className="context-tags">
@@ -393,6 +672,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
               ref={textareaRef}
               value={userInput}
               onChange={handleInput}
+              onPaste={handlePaste}
               className="message-input"
               placeholder={currentProvider ? `${getModelDisplayName(currentProvider)}` : '输入消息...'}
               rows={1}
@@ -419,6 +699,45 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
           {/* 底部操作栏 */}
           <div className="input-bottom-bar">
+            {/* 模式切换 */}
+            <div className="model-picker-wrapper" ref={modePickerRef}>
+              <button
+                type="button"
+                className={`model-picker-btn${showModePicker ? ' active' : ''}`}
+                onClick={() => setShowModePicker(!showModePicker)}
+              >
+                <Icon name={
+                  mode === 'agent' ? 'bot' : mode === 'plan' ? 'explorer' : mode === 'auto' ? 'terminal' : 'chat'
+                } size={12} />
+                <span className="model-picker-name">
+                  {mode === 'default' ? '默认' : mode === 'agent' ? '代理' : mode === 'plan' ? '规划' : '自动'}
+                </span>
+                <span className={`model-picker-arrow${showModePicker ? ' open' : ''}`}>▾</span>
+              </button>
+              {showModePicker && (
+                <div className="model-picker-dropdown" style={{ left: modePickerPos.left, bottom: modePickerPos.bottom }}>
+                  {([
+                    { key: 'default' as ChatMode, label: '默认', desc: '普通对话', icon: 'chat' as const },
+                    { key: 'agent' as ChatMode, label: '代理', desc: '智能体模式', icon: 'bot' as const },
+                    { key: 'plan' as ChatMode, label: '规划', desc: '规划模式', icon: 'explorer' as const },
+                    { key: 'auto' as ChatMode, label: '自动', desc: '自动执行', icon: 'terminal' as const },
+                  ]).map(m => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      className={`model-picker-item${mode === m.key ? ' active' : ''}`}
+                      onClick={() => { onModeChange?.(m.key); setShowModePicker(false); }}
+                    >
+                      <Icon name={m.icon} size={14} />
+                      <span className="model-picker-item-name">{m.label}</span>
+                      <span className="model-picker-item-source">{m.desc}</span>
+                      {mode === m.key && <span className="model-picker-check">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* 模型选择器 */}
             <div className="model-picker-wrapper" ref={modelPickerRef}>
               <button
@@ -463,23 +782,52 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
             <button
               type="button"
               className="toolbar-btn"
-              title="引用上下文 (#)"
-              onClick={() => {
-                if (textareaRef.current) {
-                  const pos = textareaRef.current.selectionStart;
-                  setUserInput(prev => prev.slice(0, pos) + '#' + prev.slice(pos));
-                  textareaRef.current.focus();
-                  setTimeout(() => {
-                    setAutocompleteType('context');
-                    setAutocompleteQuery('');
-                    setAutocompletePosition({ start: pos, end: pos + 1 });
-                    setShowAutocomplete(true);
-                  }, 0);
+              title="添加附件"
+              onClick={async () => {
+                const result = await fileService.openFileDialog({ multiple: true });
+                if (!result) return;
+                const paths = Array.isArray(result) ? result : [result];
+                for (const filePath of paths) {
+                  const name = filePath.split(/[/\\]/).pop() || filePath;
+                  const isImage = isImageFile(filePath);
+                  try {
+                    if (isImage) {
+                      const { invoke } = await import('@tauri-apps/api/core');
+                      const base64 = await invoke<string>('read_file_binary', { path: filePath });
+                      const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+                      const mime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+                      setAttachments(prev => {
+                        if (prev.find(a => a.path === filePath)) return prev;
+                        return [...prev, { id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, type: 'image' as const, content: `data:${mime};base64,${base64}`, path: filePath }];
+                      });
+                    } else {
+                      const content = await fileService.readFile(filePath);
+                      setAttachments(prev => {
+                        if (prev.find(a => a.path === filePath)) return prev;
+                        return [...prev, { id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, type: 'text' as const, content, path: filePath }];
+                      });
+                    }
+                  } catch { /* ignore */ }
                 }
               }}
             >
-              #
+              <Icon name="attach" size={14} />
             </button>
+            {(typeof window !== 'undefined' && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) && (
+              <button
+                type="button"
+                className={`toolbar-btn${voiceRecording ? ' recording' : ''}`}
+                title={voiceRecording ? '松开结束' : '按住说话'}
+                onMouseDown={(e) => { e.preventDefault(); voiceBtnHandlers.onStart(); }}
+                onMouseUp={(e) => { e.preventDefault(); voiceBtnHandlers.onStop(); }}
+                onMouseLeave={() => { if (voiceRecording) voiceBtnHandlers.onStop(); }}
+                onTouchStart={(e) => { e.preventDefault(); voiceBtnHandlers.onStart(); }}
+                onTouchEnd={(e) => { e.preventDefault(); voiceBtnHandlers.onStop(); }}
+                onTouchCancel={() => { if (voiceRecording) voiceBtnHandlers.onStop(); }}
+              >
+                <Icon name="mic" size={14} />
+              </button>
+            )}
             {activeFileName && (
               <span className="input-active-file">
                 <Icon name="file" size={10} />
@@ -493,7 +841,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
         {showAutocomplete && filteredOptions.length > 0 && (
           <div className="autocomplete-dropdown" ref={autocompleteRef}>
             <div className="autocomplete-header">
-              {autocompleteType === 'command' ? '命令' : autocompleteType === 'agent' ? '选择智能体' : '引用上下文'}
+              {autocompleteType === 'command' ? '命令' : autocompleteType === 'agent' ? '选择智能体' : '引用文件'}
             </div>
             <div className="autocomplete-list">
               {filteredOptions.map((option, index) => (
@@ -530,14 +878,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
             </div>
           </div>
         )}
-
-        {/* 底部提示 */}
-        <div className="input-footer">
-          <span className="input-hint">
-            Enter 发送，Shift + Enter 换行，/ 命令，# 引用上下文，@ 选择智能体
-          </span>
-        </div>
       </div>
+      {showStartWork && (
+        <StartWorkPanel onNewProject={onNewProject} onOpenFolder={onOpenFolder} />
+      )}
     </div>
   );
 }

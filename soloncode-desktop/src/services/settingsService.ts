@@ -105,6 +105,7 @@ export interface GeneralSettings {
   terminalFontSize: number;
   activeProviderId: string;
   maxSteps: number;
+  cliPort: number;
 }
 
 /** 合并后的完整设置（UI 使用） */
@@ -143,6 +144,7 @@ const defaultGeneral: GeneralSettings = {
   terminalFontSize: 14,
   activeProviderId: '',
   maxSteps: 30,
+  cliPort: 4808,
 };
 
 // ==================== 服务层 ====================

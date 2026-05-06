@@ -57,12 +57,15 @@
 .input-container {
   display: flex;
   flex-direction: column;
-  background-color: var(--cb-vscode-input-background);
+  position: relative;
+  z-index: 1;
+  background-color: #ffffff;
   border: 1px solid var(--cb-vscode-panel-border);
   border-radius: 20px;
   padding: 0;
   transition: border-color 0.15s, box-shadow 0.15s;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .input-container:focus-within {
@@ -238,6 +241,16 @@
   background-color: var(--cb-vscode-list-hoverBackground);
 }
 
+.toolbar-btn.recording {
+  color: #ef4444;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
 /* 分隔线 */
 .toolbar-divider {
   width: 1px;
@@ -326,6 +339,7 @@
   display: flex;
   align-items: center;
   padding: 0 8px 8px 12px;
+  gap: 4px;
 }
 
 /* 底部提示 */
@@ -356,12 +370,13 @@
   position: absolute;
   bottom: calc(100% + 4px);
   left: 0;
-  right: 0;
+  min-width: 200px;
+  max-width: 360px;
   background-color: var(--cb-vscode-input-background);
   border: 1px solid var(--cb-vscode-panel-border);
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  max-height: 260px;
+  max-height: min(260px, 40vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -445,4 +460,71 @@
   padding: 2px 6px;
   background-color: var(--cb-vscode-input-background);
   border-radius: 4px;
+}
+
+/* 附件预览 */
+.attachment-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attachment-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.attachment-thumbnail {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--cb-vscode-panel-border);
+}
+
+.attachment-file-icon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 8px;
+  color: var(--cb-text-secondary);
+}
+
+.attachment-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--cb-vscode-panel-border);
+  border: none;
+  border-radius: 50%;
+  color: var(--cb-text-primary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.attachment-remove:hover {
+  background-color: var(--cb-accent);
+  color: #fff;
+}
+
+.attachment-name {
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

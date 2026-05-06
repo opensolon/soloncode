@@ -31,7 +31,6 @@ export function useBackend() {
       }
     };
 
-    // 尝试通过 WebSocket 轻量检测
     const checkViaWs = (): boolean => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         setBackendStatus('connected');
@@ -46,10 +45,8 @@ export function useBackend() {
       }
     };
 
-    // 初始检查
     heartbeat();
 
-    // 维持一个轻量 WS 连接用于心跳
     const connectWs = () => {
       try {
         ws = new WebSocket(`ws://localhost:${port}/ws`);
@@ -71,12 +68,12 @@ export function useBackend() {
   }, []);
 
   // 启动后端
-  const startBackend = useCallback(async (onSettingsUpdate?: (updater: (prev: any) => any) => void) => {
+  const startBackend = useCallback(async (cliPort: number, onSettingsUpdate?: (updater: (prev: any) => any) => void) => {
     setBackendStatus('connecting');
-    fileService.writeLog('Starting backend (no workspace dependency)');
+    fileService.writeLog(`Starting backend on port ${cliPort}`);
 
     try {
-      const port = await backendService.start('');
+      const port = await backendService.start('', cliPort);
       if (port) {
         backendPortRef.current = port;
         setBackendPortState(port);

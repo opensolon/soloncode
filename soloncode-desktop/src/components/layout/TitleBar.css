@@ -1,6 +1,7 @@
 .title-bar {
   display: flex;
   align-items: center;
+  position: relative;
   height: 36px;
   min-height: 36px;
   max-height: 36px;
@@ -41,7 +42,9 @@
 }
 
 .title-bar-center {
-  flex: 1;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -71,9 +74,9 @@
   flex-direction: row !important;
   align-items: center;
   justify-content: flex-end;
+  margin-left: auto;
   gap: 8px;
   height: 100%;
-  padding-left: 16px;
 }
 
 .titlebar-btn {

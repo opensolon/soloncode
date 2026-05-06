@@ -178,9 +178,9 @@ export function SessionsPanel({
       <div className="panel-header">
         <span className="panel-title">项目</span>
         <div className="panel-header-actions">
-          <button className="new-session-btn" onClick={() => setConfirmSyncAll(true)} title="同步全部">
+          {/* <button className="new-session-btn" onClick={() => setConfirmSyncAll(true)} title="同步全部">
             <Icon name="refresh" size={14} />
-          </button>
+          </button> */}
           <button className="new-session-btn" onClick={() => onNewSession(currentProjectId || undefined)} title="新建会话">
             <Icon name="add" size={16} />
           </button>

@@ -7,8 +7,7 @@
  */
 import { fileService } from './fileService';
 
-const SERVER_PORT = 4808;  // HTTP 端口（传给 --server.port）
-const WS_PORT = 4808;      // WebSocket 端口（与 HTTP 共用）
+const DEFAULT_PORT = 4808;
 
 // 检测 Tauri 环境
 function isTauriEnv(): boolean {
@@ -67,30 +66,32 @@ function waitForReady(port: number, maxRetries: number = 60): Promise<boolean> {
 export const backendService = {
   /**
    * 启动后端服务
-   * @returns 成功返回 WS 端口号，失败返回 null
+   * @param workspacePath 工作区路径
+   * @param port CLI 服务端口（默认 4808）
+   * @returns 成功返回端口号，失败返回 null
    */
-  async start(workspacePath: string): Promise<number | null> {
+  async start(workspacePath: string, port: number = DEFAULT_PORT): Promise<number | null> {
     if (!isTauriEnv()) {
       console.warn('[backendService] 非 Tauri 环境，跳过后端启动');
       return null;
     }
 
     try {
-      await fileService.writeLog(`backendService.start called, workspacePath=${workspacePath}`);
-      console.log('[backendService] 启动后端...', { workspacePath, serverPort: SERVER_PORT, wsPort: WS_PORT });
-      const pid = await fileService.startBackend(workspacePath, SERVER_PORT);
+      await fileService.writeLog(`backendService.start called, workspacePath=${workspacePath}, port=${port}`);
+      console.log('[backendService] 启动后端...', { workspacePath, port });
+      const pid = await fileService.startBackend(workspacePath, port);
       await fileService.writeLog(`startBackend returned PID=${pid}`);
       console.log('[backendService] 后端进程 PID:', pid);
 
-      const ready = await waitForReady(WS_PORT);
+      const ready = await waitForReady(port);
       if (!ready) {
         await fileService.writeLog('waitForReady timeout');
         console.error('[backendService] 后端启动超时');
         return null;
       }
 
-      await fileService.writeLog(`backend ready on port ${WS_PORT}`);
-      return WS_PORT;
+      await fileService.writeLog(`backend ready on port ${port}`);
+      return port;
     } catch (err: any) {
       const errMsg = String(err || '');
       await fileService.writeLog(`start failed: ${errMsg}`);

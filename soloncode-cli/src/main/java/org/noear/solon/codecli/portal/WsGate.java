@@ -24,6 +24,10 @@ import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.ai.chat.message.UserMessage;
+import org.noear.solon.ai.chat.content.Contents;
+import org.noear.solon.ai.chat.content.ImageBlock;
+import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
@@ -39,6 +43,8 @@ import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -191,7 +197,48 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 流式处理
             final String finalSessionId = sessionId;
-            Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+
+            // 处理附件：图片构建 ImageBlock，文件拼入文本前缀
+            List<WsMessage.WsAttachment> attachments = req.getAttachments();
+            List<ImageBlock> imageBlocks = new ArrayList<>();
+            List<String> fileNames = new ArrayList<>();
+
+            if (attachments != null && !attachments.isEmpty()) {
+                for (WsMessage.WsAttachment att : attachments) {
+                    if ("image".equals(att.getType()) && att.getData() != null) {
+                        String base64 = att.getData();
+                        // 如果包含 data URL 前缀，去掉它
+                        int commaIdx = base64.indexOf(',');
+                        if (commaIdx > 0) {
+                            base64 = base64.substring(commaIdx + 1);
+                        }
+                        imageBlocks.add(ImageBlock.ofBase64(base64, att.getMimeType() != null ? att.getMimeType() : "image/png"));
+                    } else if (att.getName() != null) {
+                        fileNames.add(att.getName());
+                    }
+                }
+            }
+
+            // 文件附件拼入输入文本前缀
+            if (!fileNames.isEmpty()) {
+                String filePrefix = fileNames.stream()
+                        .map(f -> "[附件: " + f + "]")
+                        .collect(java.util.stream.Collectors.joining("\n"));
+                input = filePrefix + "\n" + input;
+            }
+
+            // 构建 Prompt（含图片时用 Contents）
+            Prompt prompt;
+            if (!imageBlocks.isEmpty()) {
+                Contents contents = new Contents();
+                contents.addBlock(TextBlock.of(input));
+                for (ImageBlock block : imageBlocks) {
+                    contents.addBlock(block);
+                }
+                prompt = Prompt.of(new UserMessage(contents)).attrPut("start_time", System.currentTimeMillis());
+            } else {
+                prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+            }
 
             String finalCwd = cwd;
             Disposable disposable = kernel.prompt(prompt)

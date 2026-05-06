@@ -4,7 +4,7 @@ import type { ModelProvider } from '../services/settingsService';
 import { saveMessage, getMessagesByConversation } from '../db';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
-import { ChatInput, type SendOptions } from './ChatInput';
+import { ChatInput, type SendOptions, type ChatMode } from './ChatInput';
 import { Icon } from './common/Icon';
 import '../views/ChatPage.css';
 
@@ -240,6 +240,7 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
 export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>('default');
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
   const sessionIdRef = useRef<string>('');
   const conversationIdRef = useRef<string | number>('');
@@ -491,6 +492,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       fullMessage = `${contextStr}\n\n${messageText}`;
     }
 
+    // 拼接文本附件内容（图片通过 attachments 字段单独发送）
+    if (options.attachments && options.attachments.length > 0) {
+      const textParts = options.attachments
+        .filter(att => att.type !== 'image')
+        .map(att => `--- 文件: ${att.name} ---\n${att.content}\n---`);
+      if (textParts.length > 0) {
+        fullMessage = `${textParts.join('\n\n')}\n\n${fullMessage}`;
+      }
+    }
+
     const userMessage: Message = {
       id: Date.now(),
       role: 'USER',
@@ -551,13 +562,35 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       // 用实际模型名发送
       const modelName = actualModelId;
 
-      const request = {
+      const request: Record<string, unknown> = {
         input: fullMessage,
         sessionId: sessionId,
         model: modelName,
         agent: options.agent,
         cwd: workspacePath || undefined,
       };
+
+      // 附件数据（图片 base64，文本内容）
+      if (options.attachments && options.attachments.length > 0) {
+        request.attachments = options.attachments.map(att => {
+          if (att.type === 'image') {
+            // content 是 data URL: "data:image/png;base64,..."
+            const match = att.content.match(/^data:([^;]+);base64,(.+)$/);
+            return {
+              type: 'image',
+              name: att.name,
+              data: match ? match[2] : att.content,
+              mimeType: match ? match[1] : 'image/png',
+            };
+          }
+          return {
+            type: 'file',
+            name: att.name,
+            data: att.content,
+            mimeType: 'text/plain',
+          };
+        });
+      }
 
       await wsManager.sendMessage(request);
 
@@ -692,24 +725,17 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             <div className="hero-logo">SolonCode</div>
             <div className="hero-slogan">做你想做的事</div>
           </div>
-          <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} />
-          {!workspacePath && (
-            <div className="start-work-panel">
-              <div className="panel-title">开始工作</div>
-              <div className="start-work-buttons">
-                <button className="start-work-btn" onClick={onNewProject}>
-                  <Icon name="file" size={14} /> 新建项目
-                </button>
-                <button className="start-work-btn" onClick={onOpenFolder}>
-                  <Icon name="folder" size={14} /> 打开项目
-                </button>
-              </div>
-            </div>
-          )}
+          <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} />
         </div>
       ) : (
-        <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} />
+        <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} />
       )}
+      {/* 底部提示 */}
+        <div className="input-footer">
+          <span className="input-hint">
+            Enter 发送，Shift + Enter 换行，/ 命令，# 引用上下文，@ 选择智能体
+          </span>
+        </div>
     </main>
   );
 }

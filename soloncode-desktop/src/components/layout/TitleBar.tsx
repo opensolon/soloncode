@@ -70,10 +70,6 @@ export function TitleBar({
       label: '打开文件夹...',
       shortcut: 'Ctrl+K Ctrl+O',
     },
-    {
-      id: 'new-project',
-      label: '新建项目...',
-    },
     { id: 'divider2', label: '', divider: true },
     {
       id: 'save',
