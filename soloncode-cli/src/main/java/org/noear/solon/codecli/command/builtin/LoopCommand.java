@@ -31,6 +31,7 @@ import java.util.List;
  * /loop 5m check if deployment finished    → fixed interval (5m)
  * /loop 30s check ci status               → fixed interval (30s)
  * /loop check ci status                   → auto interval (5m default)
+ * /loop cron:'0 *&#47;5 * * * ?' check status  → cron expression
  * /loop ls                                → list active tasks
  * /loop stop <id>                         → stop a task
  * /loop stop-all                          → stop all tasks
@@ -62,7 +63,7 @@ public class LoopCommand implements Command {
 
     @Override
     public String description() {
-        return "循环任务管理 (ls, stop, stop-all, <interval> <prompt>)";
+        return "循环任务管理 (ls, stop, stop-all, <interval> <prompt>, cron:<expr> <prompt>)";
     }
 
     @Override
@@ -98,14 +99,31 @@ public class LoopCommand implements Command {
             scheduler.stopAll(sessionId, workspace, harnessSessions);
             ctx.println(ctx.color(GREEN + "All loop tasks stopped." + RESET));
         } else {
-            // Schedule a new task: /loop [interval] <prompt>
+            // Schedule a new task: /loop [interval|cron:<expr>] <prompt>
             int intervalMinutes = 5; // default
             int promptStartIndex = 0;
+            String cronExpr = null;
 
-            Integer parsed = parseInterval(sub);
-            if (parsed != null) {
-                intervalMinutes = parsed;
+            // 检查是否为 cron 模式
+            if (sub.startsWith("cron:")) {
+                cronExpr = sub.substring(5).trim();
+                // 去除可能被引号包裹的 cron 表达式
+                if ((cronExpr.startsWith("\"") && cronExpr.endsWith("\"")) ||
+                        (cronExpr.startsWith("'") && cronExpr.endsWith("'"))) {
+                    cronExpr = cronExpr.substring(1, cronExpr.length() - 1);
+                }
+                if (cronExpr.isEmpty()) {
+                    ctx.println(ctx.color(RED + "Usage: /loop cron:<expr> <prompt>" + RESET));
+                    ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
+                    return true;
+                }
                 promptStartIndex = 1;
+            } else {
+                Integer parsed = parseInterval(sub);
+                if (parsed != null) {
+                    intervalMinutes = parsed;
+                    promptStartIndex = 1;
+                }
             }
 
             // Build prompt from remaining args
@@ -119,20 +137,27 @@ public class LoopCommand implements Command {
 
             String prompt = promptBuilder.toString().trim();
             if (prompt.isEmpty()) {
-                ctx.println(ctx.color(RED + "Usage: /loop [interval] <prompt>" + RESET));
+                ctx.println(ctx.color(RED + "Usage: /loop [interval|cron:<expr>] <prompt>" + RESET));
                 ctx.println(ctx.color(DIM + "  /loop 5m check deployment" + RESET));
                 ctx.println(ctx.color(DIM + "  /loop 30s check CI status" + RESET));
                 ctx.println(ctx.color(DIM + "  /loop check CI status   (auto 5m)" + RESET));
+                ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
                 return true;
             }
 
             // Create and schedule
-            LoopTask task = new LoopTask(prompt, intervalMinutes);
+            LoopTask task = cronExpr != null
+                    ? new LoopTask(prompt, cronExpr)
+                    : new LoopTask(prompt, intervalMinutes);
             scheduler.schedule(sessionId, workspace, harnessSessions, task);
 
             ctx.println(ctx.color(GREEN + "Loop task registered:" + RESET));
             ctx.println(ctx.color("  " + BOLD + "ID:" + RESET + " " + task.getId()));
-            ctx.println(ctx.color("  " + BOLD + "Interval:" + RESET + " " + formatInterval(intervalMinutes)));
+            if (task.isCronMode()) {
+                ctx.println(ctx.color("  " + BOLD + "Cron:" + RESET + " " + task.getCron()));
+            } else {
+                ctx.println(ctx.color("  " + BOLD + "Interval:" + RESET + " " + formatInterval(intervalMinutes)));
+            }
             ctx.println(ctx.color("  " + BOLD + "Prompt:" + RESET + " " + prompt));
             ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
         }
@@ -150,10 +175,13 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(BOLD + "Active Loop Tasks:" + RESET));
         for (LoopTask t : tasks) {
             String status = t.isRunning() ? YELLOW + "running" + RESET : GREEN + "idle" + RESET;
+            String scheduleInfo = t.isCronMode()
+                    ? CYAN + "cron:" + t.getCron() + RESET
+                    : formatInterval(t.getIntervalMinutes());
             String lastInfo = t.getLastExecutedAt() != null
                     ? DIM + " (last: " + formatAgo(t.getLastExecutedAt()) + ": " + (t.getLastResult() != null ? t.getLastResult() : "-") + ")" + RESET
                     : "";
-            ctx.println(ctx.color("  " + CYAN + t.getId() + RESET + " " + formatInterval(t.getIntervalMinutes()) + " " + status + " " + DIM + t.getPrompt() + RESET + lastInfo));
+            ctx.println(ctx.color("  " + CYAN + t.getId() + RESET + " " + scheduleInfo + " " + status + " " + DIM + t.getPrompt() + RESET + lastInfo));
         }
         ctx.println(ctx.color(DIM + "\nUsage: /loop stop <id> | /loop stop-all" + RESET));
     }

@@ -38,6 +38,7 @@ public class LoopTask {
     private final String id;
     private final String prompt;
     private final int intervalMinutes;
+    private final String cron;
     private final Instant createdAt;
     private final Instant expireAt;
     private final boolean autoInterval;
@@ -54,6 +55,20 @@ public class LoopTask {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
         this.intervalMinutes = Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, intervalMinutes));
+        this.cron = null;
+        this.createdAt = Instant.now();
+        this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
+        this.autoInterval = false;
+    }
+
+    /**
+     * cron 表达式构造
+     */
+    public LoopTask(String prompt, String cron) {
+        this.id = UUID.randomUUID().toString().substring(0, 8);
+        this.prompt = prompt;
+        this.intervalMinutes = 0;
+        this.cron = cron;
         this.createdAt = Instant.now();
         this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
         this.autoInterval = false;
@@ -66,6 +81,7 @@ public class LoopTask {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
         this.intervalMinutes = DEFAULT_AUTO_INTERVAL;
+        this.cron = null;
         this.createdAt = Instant.now();
         this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
         this.autoInterval = autoInterval;
@@ -74,12 +90,13 @@ public class LoopTask {
     /**
      * 内部构造，用于反序列化
      */
-    private LoopTask(String id, String prompt, int intervalMinutes, Instant createdAt,
-                     Instant expireAt, boolean autoInterval, boolean cancelled,
-                     String lastResult, Instant lastExecutedAt) {
+    private LoopTask(String id, String prompt, int intervalMinutes, String cron,
+                     Instant createdAt, Instant expireAt, boolean autoInterval,
+                     boolean cancelled, String lastResult, Instant lastExecutedAt) {
         this.id = id;
         this.prompt = prompt;
         this.intervalMinutes = intervalMinutes;
+        this.cron = cron;
         this.createdAt = createdAt;
         this.expireAt = expireAt;
         this.autoInterval = autoInterval;
@@ -93,6 +110,13 @@ public class LoopTask {
      */
     public boolean isExpired() {
         return Instant.now().isAfter(expireAt);
+    }
+
+    /**
+     * 是否为 cron 模式
+     */
+    public boolean isCronMode() {
+        return cron != null && !cron.isEmpty();
     }
 
     /**
@@ -152,6 +176,9 @@ public class LoopTask {
         node.set("id", id);
         node.set("prompt", prompt);
         node.set("intervalMinutes", intervalMinutes);
+        if (cron != null) {
+            node.set("cron", cron);
+        }
         node.set("createdAt", createdAt.toString());
         node.set("expireAt", expireAt.toString());
         node.set("autoInterval", autoInterval);
@@ -178,11 +205,15 @@ public class LoopTask {
         Instant lastExecutedAtVal = node.getOrNull("lastExecutedAt") != null
                 ? Instant.parse(node.get("lastExecutedAt").getString())
                 : null;
+        String cronVal = node.getOrNull("cron") != null
+                ? node.get("cron").getString()
+                : null;
 
         return new LoopTask(
                 node.get("id").getString(),
                 node.get("prompt").getString(),
                 node.get("intervalMinutes").getInt(),
+                cronVal,
                 Instant.parse(node.get("createdAt").getString()),
                 Instant.parse(node.get("expireAt").getString()),
                 node.get("autoInterval").getBoolean(),

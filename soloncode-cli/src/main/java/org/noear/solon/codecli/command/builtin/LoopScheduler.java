@@ -232,15 +232,20 @@ public class LoopScheduler {
     // ==================== IJobManager 注册 ====================
 
     /**
-     * 注册任务到 IJobManager（使用 fixedDelay 串行策略）
+     * 注册任务到 IJobManager（cron 模式使用 cron 表达式，否则使用 fixedDelay 串行策略）
      */
     private void registerJob(String sessionId, LoopTask task) {
         String jobName = task.getJobName();
-        long intervalMs = (long) task.getIntervalMinutes() * 60_000L;
 
-        ScheduledAnno scheduled = new ScheduledAnno()
-                .fixedDelay(intervalMs)
-                .initialDelay(intervalMs);
+        ScheduledAnno scheduled;
+        if (task.isCronMode()) {
+            scheduled = new ScheduledAnno().cron(task.getCron());
+        } else {
+            long intervalMs = (long) task.getIntervalMinutes() * 60_000L;
+            scheduled = new ScheduledAnno()
+                    .fixedDelay(intervalMs)
+                    .initialDelay(intervalMs);
+        }
 
         jobManager.jobAdd(jobName, scheduled, ctx -> {
             onTrigger(sessionId, task);
