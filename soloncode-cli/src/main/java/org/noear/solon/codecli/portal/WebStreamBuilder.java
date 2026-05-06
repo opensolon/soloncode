@@ -67,6 +67,9 @@ public class WebStreamBuilder {
             prompt = Prompt.of();
         }
 
+        //记录最新的选择
+        session.attrs().put("_model_selected_tmp", chatModel.getNameOrModel());
+
         return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
@@ -176,29 +179,6 @@ public class WebStreamBuilder {
         return "";
     }
 
-    private String onThoughtChunk(AgentSession session, ThoughtChunk thought) {
-        if (weChatLink != null) {
-            if (weChatLink.isBound(session.getSessionId())) {
-                //回复微信
-                weChatLink.sendReply(session.getSessionId(), thought.getContent());
-            }
-        }
-
-
-        if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
-            // 仅在多任务并行且有内容时输出
-            String content = thought.getAssistantMessage().getResultContent();
-            if (Assert.isNotEmpty(content)) {
-                //content = content + "`(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")`";
-
-                return new ONode().set("type", "text")
-                        .set("text", "\n" + content)
-                        .toJson();
-            }
-        }
-
-        return "";
-    }
 
     private String onActionEndChunk(ActionEndChunk action) {
         if (Assert.isNotEmpty(action.getToolName())) {
@@ -234,13 +214,51 @@ public class WebStreamBuilder {
         return "";
     }
 
-    private String onFinalChunk(AgentSession session, ReActChunk react) {
-        StringBuilder traceInfo = getTraceInfo(react.getTrace());
-
+    private String onThoughtChunk(AgentSession session, ThoughtChunk thought) {
         if (weChatLink != null) {
             if (weChatLink.isBound(session.getSessionId())) {
                 //回复微信
-                weChatLink.sendReply(session.getSessionId(), traceInfo.toString());
+                if (thought.isToolCalls()) {
+                    //说明是过程
+                    weChatLink.sendReply(session.getSessionId(), thought.getContent());
+                } else {
+                    //说明是结果
+                    String modelSelectedTmp = (String) session.attrs().get("_model_selected_tmp");
+
+                    if (thought.getTrace().getOptions().getChatModel().getNameOrModel().equals(modelSelectedTmp)) {
+                        //说明是发起代理
+                        StringBuilder traceInfo = getTraceInfo(thought.getTrace());
+                        weChatLink.sendReply(session.getSessionId(), thought.getContent() + traceInfo);
+                    } else {
+                        weChatLink.sendReply(session.getSessionId(), thought.getContent());
+                    }
+                }
+            }
+        }
+
+
+        if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+            // 仅在多任务并行且有内容时输出
+            String content = thought.getAssistantMessage().getResultContent();
+            if (Assert.isNotEmpty(content)) {
+                //content = content + "`(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")`";
+
+                return new ONode().set("type", "text")
+                        .set("text", "\n" + content)
+                        .toJson();
+            }
+        }
+
+        return "";
+    }
+
+    private String onFinalChunk(AgentSession session, ReActChunk react) {
+        StringBuilder traceInfo = getTraceInfo(react.getTrace());
+
+        if (react.isAbnormal() && weChatLink != null) {
+            if (weChatLink.isBound(session.getSessionId())) {
+                //回复微信
+                weChatLink.sendReply(session.getSessionId(), react.getContent() + traceInfo);
             }
         }
 
