@@ -217,6 +217,45 @@ try {
 '@
 Set-Content -Path $LAUNCHER_PS1 -Value $LAUNCHER_CONTENT -Encoding UTF8
 Write-Host "      Created: soloncode.ps1" -ForegroundColor Gray
+# 创建 CMD/.bat 启动脚本 (soloncode.bat)
+$LAUNCHER_BAT = Join-Path $TARGET_BIN_DIR "soloncode.bat"
+$LAUNCHER_BAT_CONTENT = @'
+@echo off
+rem Solon Code CLI Launcher for CMD
+setlocal enabledelayedexpansion
+
+rem 获取脚本所在目录
+set "SCRIPT_DIR=%~dp0"
+set "JAR_FILE=%SCRIPT_DIR%soloncode-cli.jar"
+
+rem 检查 jar 文件是否存在
+if not exist "%JAR_FILE%" (
+    echo [Error] soloncode-cli.jar not found
+    echo Expected path: %JAR_FILE%
+    exit /b 1
+)
+
+rem 设置控制台编码为 UTF-8
+chcp 65001 >nul 2>&1
+@echo off
+
+rem 设置 Java 编码参数
+set "JAVA_OPTS=-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dstdin.encoding=UTF-8"
+
+rem 检测 Java 版本，如果是 21+ 则添加 --enable-native-access 参数
+for /f "tokens=3" %%v in ('java -version 2^>^&1 ^| findstr /i version') do (
+    set "VER=%%v"
+    set "VER=!VER:~1!"
+    for /f "tokens=1 delims=." %%j in ("!VER!") do (
+        if %%j GEQ 21 set "JAVA_OPTS=!JAVA_OPTS! --enable-native-access=ALL-UNNAMED"
+    )
+)
+
+rem 运行 Java 程序
+java %JAVA_OPTS% -jar "%JAR_FILE%" %*
+'@
+Set-Content -Path $LAUNCHER_BAT -Value $LAUNCHER_BAT_CONTENT -Encoding UTF8 -NoNewline
+Write-Host "      Created: soloncode.bat" -ForegroundColor Gray
 # 创建 Git Bash 启动脚本 (soloncode)
 $LAUNCHER_SH = Join-Path $TARGET_BIN_DIR "soloncode"
 $LAUNCHER_SH_CONTENT = @'
@@ -274,6 +313,7 @@ Write-Host "    +-- AGENTS.md       (agents config, preserved)"
 Write-Host "    +-- bin/            (executables)"
 Write-Host "    |   +-- soloncode-cli.jar"
 Write-Host "    |   +-- soloncode.ps1   (PowerShell launcher)"
+Write-Host "    |   +-- soloncode.bat   (CMD launcher)"
 Write-Host "    |   +-- soloncode       (Git Bash launcher)"
 Write-Host "    |   +-- uninstall.ps1   (uninstall script)"
 Write-Host "    +-- skills/        (skill modules)"
