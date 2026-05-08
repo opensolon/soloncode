@@ -30,7 +30,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.harness.command.CommandUtil;
+import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.handle.UploadedFile;
@@ -273,7 +273,7 @@ public class WebGate extends SimpleWebSocketListener {
         }
 
         // 解析命令名和参数
-        List<String> parts = CommandUtil.parseArguments(input.trim().substring(1));
+        List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
         String cmdName = parts.get(0).toLowerCase();
         List<String> args = parts.size() > 1
                 ? parts.subList(1, parts.size())

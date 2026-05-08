@@ -40,9 +40,9 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.harness.command.CommandUtil;
 import org.noear.solon.ai.skills.cli.TodoSkill;
 import org.noear.solon.ai.skills.memory.MemorySkill;
+import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
@@ -229,7 +229,7 @@ public class CliShell implements Runnable {
         }
 
         // 解析命令名和参数
-        List<String> parts = CommandUtil.parseArguments(input.trim().substring(1));
+        List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
         String cmdName = parts.get(0).toLowerCase();
         List<String> args = parts.size() > 1
                 ? parts.subList(1, parts.size())
