@@ -2,6 +2,7 @@
 
 ### v2026.5.6
 
+* 添加 soloncode `/rewind` 命令
 * 修复 soloncode web loop 任务没有用会话选中的模型
 
 ### v2026.5.6
