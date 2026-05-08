@@ -15,48 +15,51 @@
  */
 package org.noear.solon.codecli.command;
 
+import org.jline.reader.LineReader;
+import org.jline.terminal.Terminal;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.CommandContext;
-import reactor.core.publisher.Flux;
+import org.noear.solon.codecli.portal.WebGate;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
- * Web 端命令上下文实现
- * <p>
- * println() 收集到缓冲区，runAgentTask() 记录 prompt 供外部回调处理。
+ * CLI 命令执行上下文（实现通用 CommandContext 接口，持有 JLine Terminal/Reader）
  *
  * @author noear
  * @since 2026.4.28
  */
 public class WebCommandContext implements CommandContext {
-
-    @FunctionalInterface
-    public interface AgentTaskHandler {
-        Flux<String> run(String prompt, String model);
-    }
-
-
     private final AgentSession session;
     private final HarnessEngine agentRuntime;
     private final String rawInput;
     private final String commandName;
     private final List<String> args;
+    private final AgentTaskRunner agentTaskRunner;
 
     private final List<String> outputBuffer = new ArrayList<>();
-    private boolean agentTaskRequested = false;
-    private String agentTaskPrompt;
-    private String agentTaskModel;
+    private boolean isAgentTask = false;
 
-    public WebCommandContext(AgentSession session, HarnessEngine agentRuntime, String rawInput, String commandName, List<String> args) {
+    /**
+     * Agent 任务回调接口
+     */
+    @FunctionalInterface
+    public interface AgentTaskRunner {
+        void run(String prompt, String model);
+    }
+
+    public WebCommandContext(AgentSession session,
+                             HarnessEngine agentRuntime,
+                             String rawInput, String commandName, List<String> args,
+                             AgentTaskRunner agentTaskRunner) {
         this.session = session;
         this.agentRuntime = agentRuntime;
         this.rawInput = rawInput;
         this.commandName = commandName;
-        this.args = args != null ? args : Collections.emptyList();
+        this.args = args;
+        this.agentTaskRunner = agentTaskRunner;
     }
 
     @Override
@@ -95,30 +98,17 @@ public class WebCommandContext implements CommandContext {
     }
 
     @Override
-    public void runAgentTask(String prompt, String model) {
-        this.agentTaskRequested = true;
-        this.agentTaskPrompt = prompt;
-        this.agentTaskModel = model;
+    public void runAgentTask(String input, String model) {
+        if (agentTaskRunner != null) {
+            isAgentTask = true;
+            agentTaskRunner.run(input, model);
+        }
     }
 
-    public String getAgentTaskPrompt() {
-        return agentTaskPrompt;
+    public boolean isAgentTask() {
+        return isAgentTask;
     }
 
-    public String getAgentTaskModel() {
-        return agentTaskModel;
-    }
-
-    /**
-     * 是否请求了 Agent 任务
-     */
-    public boolean isAgentTaskRequested() {
-        return agentTaskRequested;
-    }
-
-    /**
-     * 获取 println 收集的输出缓冲区
-     */
     public List<String> getOutputBuffer() {
         return outputBuffer;
     }

@@ -15,21 +15,13 @@
  */
 package org.noear.solon.codecli.portal.wechat;
 
-import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
-import org.noear.solon.ai.harness.command.CommandResult;
-import org.noear.solon.codecli.command.WebCommandDispatcher;
-import org.noear.solon.codecli.portal.WebSessionSink;
-import org.noear.solon.codecli.portal.WebStreamBuilder;
+import org.noear.solon.codecli.portal.WebChunk;
+import org.noear.solon.codecli.portal.WebGate;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.Disposable;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -47,8 +39,7 @@ public class WeChatLink implements Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(WeChatLink.class);
 
     private final HarnessEngine engine;
-    private final WebStreamBuilder streamBuilder;
-    private final WebSessionSink sessionSink;
+    private final WebGate webGate;
     private final WeChatCredentialStore credentialStore;
 
     /**
@@ -69,13 +60,12 @@ public class WeChatLink implements Runnable {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public WeChatLink(HarnessEngine engine, WebStreamBuilder streamBuilder, WebSessionSink sessionSink) {
+    public WeChatLink(HarnessEngine engine, WebGate webGate) {
         this.engine = engine;
-        this.streamBuilder = streamBuilder;
-        this.sessionSink = sessionSink;
+        this.webGate = webGate;
         this.credentialStore = new WeChatCredentialStore();
 
-        streamBuilder.bind(this);
+        webGate.getStreamBuilder().bind(this);
     }
 
     /**
@@ -88,7 +78,7 @@ public class WeChatLink implements Runnable {
         binding.ilinkUserId = ilinkUserId;
         binding.cursor = "";
 
-        //todo: 移掉 与 ilinkUserId 相同值的旧记录
+        //一个 ilinkUserId 只能补一个 session 绑定
         Set<String> unbindSessionIds = new HashSet<>();
         bindings.forEach((k, v) -> {
             if (v.ilinkUserId.equals(ilinkUserId)) {
@@ -217,7 +207,7 @@ public class WeChatLink implements Runnable {
             LOG.warn("[WeChat] Token expired for session {}, auto-unbinding", sessionId);
             unbindSession(sessionId);
             // 通知前端
-            sessionSink.emit(sessionId, "{\"type\":\"error\",\"text\":\"微信连接已过期，请重新扫码绑定\"}");
+            webGate.emitToClient(sessionId, WebChunk.ofError("微信连接已过期，请重新扫码绑定"));
             return;
         }
 
@@ -256,7 +246,7 @@ public class WeChatLink implements Runnable {
             }
 
             // 调用 AI 并回复
-            handleWeChatMessage(sessionId, text);
+            webGate.onWeChatMessage(sessionId, text);
 
             // 停止输入状态
             if (binding.typingTicket != null) {
@@ -266,118 +256,6 @@ public class WeChatLink implements Runnable {
 
         //把最后一次的 lastContextToken，lastFromUserId 存起来
         credentialStore.save(bindings);
-    }
-
-    /**
-     * 处理微信消息：解析 @ 子代理和 / 命令前缀，调用 AI agent，收集回复，发回微信
-     */
-    private void handleWeChatMessage(String sessionId, String userInput) {
-        try {
-            final AgentSession session = engine.getSession(sessionId);
-            final String selectedModel = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
-            final ChatModel chatModel = engine.getModelOrMain(selectedModel);
-
-            // 解析 @ 子代理前缀
-            String agentName = null;
-            String currentInput = userInput;
-
-            if (userInput.startsWith("@")) {
-                int agentNameIdx = userInput.indexOf(" ");
-                if (agentNameIdx > 0) {
-                    agentName = userInput.substring(1, agentNameIdx);
-                    currentInput = userInput.substring(agentNameIdx + 1);
-                }
-            }
-
-            final ReActAgent agent = engine.getAgentOrMain(agentName);
-
-            // / 命令分发
-            if (currentInput.startsWith("/")) {
-                handleWeChatCommand(sessionId, session, agent, chatModel, currentInput);
-                return;
-            }
-
-            // 普通文本 -> AI 流式对话
-            streamBuilder.buildStreamFlux(session, agent, chatModel, null, Prompt.of(currentInput))
-                    .filter(line -> !"[DONE]".equals(line))
-                    .doOnSubscribe(subscription -> {
-                        Disposable disposable = subscription::cancel;
-                        session.attrs().put("disposable", disposable);
-                    })
-                    .doOnNext(line -> {
-                        sessionSink.emit(sessionId, line);
-                    })
-                    .doOnComplete(() -> {
-                        sessionSink.emit(sessionId, "[DONE]");
-                    })
-                    .doOnError(e -> {
-                        sessionSink.emit(sessionId, "[DONE]");
-                        LOG.error("[WeChat] AI processing error for session {}: {}", sessionId, e.getMessage());
-                    })
-                    .subscribe();
-        } catch (Exception e) {
-            LOG.error("[WeChat] handleWeChatMessage error: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * 处理微信端的 / 命令，通过 WebCommandDispatcher 分发执行
-     */
-    private void handleWeChatCommand(String sessionId, AgentSession session, ReActAgent agent,
-                                     ChatModel chatModel, String input) {
-        try {
-            WebCommandDispatcher dispatcher = new WebCommandDispatcher(engine.getCommandRegistry());
-            CommandResult result = dispatcher.dispatch(input, session, engine,
-                    (String prompt, String model) -> {
-                        final ChatModel chatModelSelected;
-                        if (model != null) {
-                            chatModelSelected = engine.getModelOrMain(model);
-                        } else {
-                            chatModelSelected = chatModel;
-                        }
-                        return streamBuilder.buildStreamFlux(session, agent, chatModelSelected, null, Prompt.of(prompt));
-                    });
-
-            if (result == null) {
-                // 不是有效命令，当作普通输入流式处理
-                streamBuilder.buildStreamFlux(session, agent, chatModel, null, Prompt.of(input))
-                        .filter(line -> !"[DONE]".equals(line))
-                        .doOnSubscribe(subscription -> {
-                            Disposable disposable = subscription::cancel;
-                            session.attrs().put("disposable", disposable);
-                        })
-                        .doOnNext(line -> sessionSink.emit(sessionId, line))
-                        .doOnComplete(() -> sessionSink.emit(sessionId, "[DONE]"))
-                        .doOnError(e -> {
-                            sessionSink.emit(sessionId, "[DONE]");
-                            LOG.error("[WeChat] Command fallback error for session {}: {}", sessionId, e.getMessage());
-                        })
-                        .subscribe();
-                return;
-            }
-
-            if (result.isAgentTask()) {
-                // AGENT 类型命令：走 SSE 流（WebStreamBuilder 内部已绑定 weChatLink，会自动回传微信）
-                result.getAgentFlux()
-                        .filter(line -> !"[DONE]".equals(line))
-                        .doOnNext(line -> sessionSink.emit(sessionId, line))
-                        .doOnComplete(() -> sessionSink.emit(sessionId, "[DONE]"))
-                        .doOnError(e -> {
-                            sessionSink.emit(sessionId, "[DONE]");
-                            LOG.error("[WeChat] Agent command error for session {}: {}", sessionId, e.getMessage());
-                        })
-                        .subscribe();
-            } else {
-                // SYSTEM/CONFIG 类型命令：将输出文本直接发回微信
-                for (String line : result.getOutput()) {
-                    sendReply(sessionId, line);
-                }
-                sessionSink.emit(sessionId, "[DONE]");
-            }
-        } catch (Exception e) {
-            LOG.error("[WeChat] handleWeChatCommand error: {}", e.getMessage());
-            sendReply(sessionId, "命令执行失败: " + e.getMessage());
-        }
     }
 
     public void sendReply(String sessionId, String reply) {

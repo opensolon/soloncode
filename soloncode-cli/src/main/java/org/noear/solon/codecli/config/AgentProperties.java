@@ -55,6 +55,7 @@ public class AgentProperties extends HarnessProperties {
     private boolean cliPrintSimplified = true;
 
     private boolean memoryIsolation = true;
+    private boolean memoryEnabled = true;
 
     private String webEndpoint = "/cli";
 

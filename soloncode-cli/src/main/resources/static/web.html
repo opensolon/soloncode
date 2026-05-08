@@ -479,6 +479,7 @@
 
 <script>
     var SSE_ENDPOINT = "/chat/input";
+    var WEBSOCKET_ENDPOINT = "wss://" + window.location.host + "/web/gate";
     // 启动时拉取页面元信息（appTitle / appVersion / workspace / workname），回填标题/侧栏
     fetch('/chat/meta').then(function (r) { return r.json(); }).then(function (res) {
         var meta = (res && res.data) ? res.data : res;
@@ -1905,21 +1906,22 @@
             isStreaming = true;
             setBtnStopMode();
         }
+        showThinking(sess);
 
-        var url = SSE_ENDPOINT + '?hitlAction=' + encodeURIComponent(action)
-            + '&sessionId=' + encodeURIComponent(sess.sessionId);
+        // 通过 HTTP POST 发送 HITL 决策，结果通过 WebSocket 推送
+        var formData = new FormData();
+        formData.append('hitlAction', action);
+        formData.append('sessionId', sess.sessionId);
 
-        sess.eventSource = new EventSource(url);
-        sess.eventSource.onmessage = function(event) { handleSSEData(sess, event.data); };
-        sess.eventSource.onerror = function(err) {
-            console.error("SSE Error:", err);
-            // 显式关闭，防止浏览器自动重连
-            if (sess.eventSource) {
-                sess.eventSource.close();
-                sess.eventSource = null;
-            }
+        fetch(SSE_ENDPOINT, {
+            method: 'POST',
+            body: formData
+        }).then(function(resp) {
+            // HTTP 响应只有 {"status":"ok"}，实际数据通过 WebSocket 推送
+        }).catch(function(err) {
+            console.error('HITL error:', err);
             finishStream(sess);
-        };
+        });
     }
 
     /* ===== Send ===== */
@@ -1987,37 +1989,24 @@
             formData.append('attachmentTypes', filesToSend[i].attachmentsType || 'file');
         }
 
-        var abortCtrl = new AbortController();
-        sess.eventSource = { close: function() { abortCtrl.abort(); } };
+        // 标记流式状态，WebSocket onmessage 会处理数据
+        sess.isStreaming = true;
+        if (sess.sessionId === activeSessionId) {
+            isStreaming = true;
+            setBtnStopMode();
+        }
+        resetStreamState(sess);
+        showThinking(sess);
 
         fetch(SSE_ENDPOINT, {
             method: 'POST',
-            signal: abortCtrl.signal,
             body: formData
         }).then(function(resp) {
-            var reader = resp.body.getReader();
-            var decoder = new TextDecoder();
-            var buffer = '';
-
-            function pump() {
-                reader.read().then(function(result) {
-                    if (result.done) { finishStream(sess); return; }
-                    buffer += decoder.decode(result.value, { stream: true });
-                    var lines = buffer.split('\n');
-                    buffer = lines.pop();
-                    for (var i = 0; i < lines.length; i++) {
-                        var line = lines[i].trim();
-                        if (line.length === 0) continue;
-                        if (line.startsWith('data:')) {
-                            var raw = line.substring(5).trim();
-                            handleSSEData(sess, raw);
-                        }
-                    }
-                    pump();
-                }).catch(function() { finishStream(sess); });
-            }
-            pump();
-        }).catch(function() { finishStream(sess); });
+            // HTTP 响应只有 {"status":"ok"}，实际数据通过 WebSocket 推送
+        }).catch(function(err) {
+            console.error('Send error:', err);
+            finishStream(sess);
+        });
     }
 
     /* ===== SSE Data Handling (Session-Aware) ===== */
@@ -2092,49 +2081,117 @@
         loadSessionHistory();
     }
 
-    /* ===== Loop Event SSE Listener ===== */
-    var loopEventSource = null;
+    /* ===== WebSocket 单连接 ===== */
+    var webGateSocket = null;
+    var webGateReconnectAttempts = 0;
+    var webGateHeartbeatTimer = null;
+    var WEBGATE_MAX_RECONNECT = 10;
 
-    function reconnectLoopEvents() {
-        // 关闭旧连接
-        if (loopEventSource) {
-            loopEventSource.close();
-            loopEventSource = null;
+    function connectWebGate() {
+        if (webGateSocket && webGateSocket.readyState === WebSocket.OPEN) return;
+        try {
+            var protocol = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
+            var wsUrl = protocol + '//' + window.location.host + '/web/gate';
+            webGateSocket = new WebSocket(wsUrl);
+        } catch(e) {
+            console.error('[WebGate] create failed:', e);
+            scheduleWebGateReconnect();
+            return;
         }
-        var sess = getOrCreateSession(SESSION_ID);
-        var url = '/chat/events?sessionId=' + encodeURIComponent(sess.sessionId);
-        loopEventSource = new EventSource(url);
-        loopEventSource.onmessage = function(event) {
-            var raw = event.data;
-            if (raw === '[DONE]') {
-                finishStream(sess);
-                return;
-            }
-            // Loop 触发时，先进入流式状态（如果尚未处于）
-            if (!sess.isStreaming) {
-                sess.isStreaming = true;
-                if (sess.sessionId === activeSessionId) {
-                    isStreaming = true;
-                    setBtnStopMode();
-                }
-                resetStreamState(sess);
-                showThinking(sess);
-            }
-            handleSSEData(sess, raw);
+
+        webGateSocket.onopen = function() {
+            console.log('[WebGate] connected');
+            webGateReconnectAttempts = 0;
+            startWebGateHeartbeat();
         };
-        loopEventSource.onerror = function() {
-            // 断开后自动清理，下次有 loop 任务时会自动重连
-            if (loopEventSource) {
-                loopEventSource.close();
-                loopEventSource = null;
+
+        webGateSocket.onmessage = function(event) {
+            var raw = event.data;
+            if (raw === 'pong') return; // 心跳回复
+            try {
+                var chunk = JSON.parse(raw);
+                var sid = chunk.sessionId;
+
+                // 处理 [DONE] 的 JSON 包装（type=done）
+                if (chunk.type === 'done') {
+                    if (!sid) return;
+                    var sess = sessionMap[sid];
+                    if (!sess) return;
+                    finishStream(sess);
+                    return;
+                }
+
+                if (!sid) return; // 无 sessionId 的消息丢弃
+                var sess2 = sessionMap[sid];
+                if (!sess2) return; // 未知 session
+
+                // Loop/微信 等后端推送触发流式状态
+                if (!sess2.isStreaming) {
+                    sess2.isStreaming = true;
+                    if (sess2.sessionId === activeSessionId) {
+                        isStreaming = true;
+                        setBtnStopMode();
+                    }
+                    resetStreamState(sess2);
+                    showThinking(sess2);
+                }
+                handleSSEData(sess2, raw);
+            } catch(e) {
+                // 非 JSON 消息忽略
             }
-            // 5秒后自动重连
-            setTimeout(reconnectLoopEvents, 5000);
+        };
+
+        webGateSocket.onclose = function() {
+            console.log('[WebGate] closed');
+            stopWebGateHeartbeat();
+            scheduleWebGateReconnect();
+        };
+
+        webGateSocket.onerror = function(err) {
+            console.error('[WebGate] error:', err);
         };
     }
 
-    // 页面加载后自动连接 Loop 事件流
-    reconnectLoopEvents();
+    function startWebGateHeartbeat() {
+        stopWebGateHeartbeat();
+        webGateHeartbeatTimer = setInterval(function() {
+            if (webGateSocket && webGateSocket.readyState === WebSocket.OPEN) {
+                webGateSocket.send('ping');
+            }
+        }, 15000);
+    }
+
+    function stopWebGateHeartbeat() {
+        if (webGateHeartbeatTimer) {
+            clearInterval(webGateHeartbeatTimer);
+            webGateHeartbeatTimer = null;
+        }
+    }
+
+    function scheduleWebGateReconnect() {
+        if (webGateReconnectAttempts >= WEBGATE_MAX_RECONNECT) {
+            console.warn('[WebGate] max reconnect attempts reached');
+            return;
+        }
+        var delay = Math.min(1000 * Math.pow(2, webGateReconnectAttempts), 30000);
+        webGateReconnectAttempts++;
+        console.log('[WebGate] reconnecting in ' + delay + 'ms (attempt ' + webGateReconnectAttempts + ')');
+        setTimeout(function() {
+            connectWebGate();
+        }, delay);
+    }
+
+    // 页面可见性控制心跳
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            stopWebGateHeartbeat();
+        } else {
+            startWebGateHeartbeat();
+        }
+    });
+
+    // 页面加载后自动建立 WebSocket 连接
+    connectWebGate();
 
     /* ===== Sidebar Collapse Toggle ===== */
     (function() {
@@ -2188,7 +2245,6 @@
     setActiveSession = function(sid) {
         origSetActiveSession(sid);
         updateWechatUI();
-        reconnectLoopEvents();
     };
 
     wechatHeaderBtn.addEventListener('click', function() {

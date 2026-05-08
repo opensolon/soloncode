@@ -75,7 +75,7 @@ public class LoopScheduler {
      */
     @FunctionalInterface
     public interface ReactiveTaskExecutor {
-        CompletableFuture<String> execute(String sessionId, String prompt);
+        void execute(String sessionId, String prompt);
     }
 
     public LoopScheduler() {
@@ -275,22 +275,8 @@ public class LoopScheduler {
         try {
             if (reactiveTaskExecutor != null) {
                 // Web 端：异步 Reactive 执行，返回结果摘要
-                CompletableFuture<String> future = reactiveTaskExecutor.execute(sessionId, task.getPrompt());
-
-                if(future != null) {
-                    future.whenComplete((result, err) -> {
-                        try {
-                            if (err != null) {
-                                LOG.error("Loop task '{}' async failed: {}", task.getId(), err.getMessage());
-                                task.updateLastExecution("error: " + err.getMessage());
-                            } else {
-                                task.updateLastExecution(result != null ? result : "ok");
-                            }
-                        } finally {
-                            task.finish();
-                        }
-                    });
-                }
+                reactiveTaskExecutor.execute(sessionId, task.getPrompt());
+                task.updateLastExecution("ok");
             } else if (taskExecutor != null) {
                 // CLI 端：同步执行
                 taskExecutor.execute(sessionId, task.getPrompt());

@@ -17,10 +17,7 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.memory.MemoryManger;
-import org.noear.solon.codecli.portal.AcpLink;
-import org.noear.solon.codecli.portal.CliShell;
-import org.noear.solon.codecli.portal.WebController;
-import org.noear.solon.codecli.portal.WsGate;
+import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
@@ -86,12 +83,14 @@ public class Configurator {
         });
 
         //添加记忆能力
-        MemorySkill memorySkill = new MemorySkill(new MemoryManger(agentProps)).sessionIsolation(false);
-        props.addExtension((agentName, agentBuilder) -> {
-            if ("main".equals(agentName)) {
-                agentBuilder.defaultSkillAdd(memorySkill);
-            }
-        });
+        if(agentProps.isMemoryEnabled()) {
+            MemorySkill memorySkill = new MemorySkill(new MemoryManger(agentProps)).sessionIsolation(false);
+            props.addExtension((agentName, agentBuilder) -> {
+                if ("main".equals(agentName)) {
+                    agentBuilder.defaultSkillAdd(memorySkill);
+                }
+            });
+        }
 
         HarnessEngine engine = HarnessEngine.of(props)
                 .sessionProvider(sessionProvider)
@@ -132,8 +131,7 @@ public class Configurator {
             }
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
-                runWeb(agentRuntime, agentProps, null);
-                cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
+                runServe(agentRuntime, agentProps, cliShell);
                 return;
             }
 
@@ -168,12 +166,29 @@ public class Configurator {
         }
     }
 
+    private void runServe(HarnessEngine agentRuntime, AgentProperties agentProps, CliShell cliShell) {
+        //serve ws gate
+        WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
+
+        //serve web
+        BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, modelProviderFactory));
+        Solon.app().router().add(webBean);
+
+        // 启动微信通道
+        RunUtil.async(((WebController) webBean.raw()).getWeChatLink());
+
+
+        cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
+    }
+
 
     private void runWeb(HarnessEngine agentRuntime, AgentProperties agentProps, CliShell cliShell) {
-        //ws
-        WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
+        //web ws gate
+        WebGate webGate = new WebGate(agentRuntime, agentProps);
+        WebSocketRouter.getInstance().of("/web/gate", webGate);
+
         //web
-        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler, modelProviderFactory));
+        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler, webGate));
         Solon.app().router().add(webBean);
 
         // 启动微信通道

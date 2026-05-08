@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 
@@ -58,7 +59,7 @@ public class WebStreamBuilder {
         this.engine = engine;
     }
 
-    public Flux<String> buildStreamFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt) {
+    public Flux<WebChunk> buildStreamFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt) {
         if (prompt == null) {
             prompt = Prompt.of();
         }
@@ -91,9 +92,9 @@ public class WebStreamBuilder {
                         return onFinalChunk(session, (ReActChunk) chunk);
                     }
 
-                    return "";
+                    return WebChunk.EMPTY;
                 })
-                .filter(Assert::isNotEmpty)
+                .filter(WebChunk::isNotEmpty)
                 .doOnSubscribe(subscription -> {
                     // 将 Subscription 包装为 Disposable
                     Disposable disposable = subscription::cancel;
@@ -104,11 +105,7 @@ public class WebStreamBuilder {
                 .onErrorResume(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
-                    String message = new ONode().set("type", "error")
-                            .set("text", e.getMessage())
-                            .toJson();
-
-                    return Flux.just(message);
+                    return Mono.just(WebChunk.ofError(e.getMessage()));
                 })
                 .concatWith(Flux.defer(() -> {
                     // Check HITL state after stream completes
@@ -118,14 +115,13 @@ public class WebStreamBuilder {
                             String command = "bash".equals(task.getToolName())
                                     ? String.valueOf(task.getArgs().get("command"))
                                     : null;
-                            String hitlMsg = new ONode().set("type", "hitl")
-                                    .set("toolName", task.getToolName())
-                                    .set("command", command)
-                                    .toJson();
-                            return Flux.just(hitlMsg, "[DONE]");
+
+                            WebChunk hitlChuck = WebChunk.ofHitl(task.getToolName(), command);
+
+                            return Flux.just(hitlChuck, WebChunk.ofDone());
                         }
                     }
-                    return Flux.just("[DONE]");
+                    return Flux.just(WebChunk.ofDone());
                 }))
                 .doFinally(signal -> {
                     // 流结束或被取消后，清理掉引用，避免内存泄漏
@@ -163,58 +159,53 @@ public class WebStreamBuilder {
         return buf;
     }
 
-    private String onReasonChunk(ReasonChunk reason) {
+    private WebChunk onReasonChunk(ReasonChunk reason) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             if (reason.getMessage().isThinking()) {
-                return new ONode().set("type", "reason")
-                        .set("text", reason.getContent())
-                        .toJson();
+                return WebChunk.ofReason(reason.getContent());
             } else {
-                return new ONode().set("type", "text")
-                        .set("text", reason.getContent())
-                        .toJson();
+                return WebChunk.ofText(reason.getContent());
             }
         }
 
-        return "";
+        return WebChunk.EMPTY;
     }
 
 
-    private String onActionEndChunk(ActionEndChunk action) {
+    private WebChunk onActionEndChunk(ActionEndChunk action) {
         if (Assert.isNotEmpty(action.getToolName())) {
             if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
                     TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
                     MemorySkill.isMemoryTool(action.getToolName())) {
-                return "";
+                return WebChunk.EMPTY;
             }
 
-            ONode oNode = new ONode().set("type", "action")
-                    .set("text", action.getContent());
+            WebChunk webChunk = WebChunk.ofAction(action.getContent());
 
             if (Assert.isNotEmpty(action.getToolName())) {
                 if (engine.getName().equals(action.getAgentName())) {
-                    oNode.set("toolName", action.getToolName());
+                    webChunk.setToolName(action.getToolName());
                 } else {
-                    oNode.set("toolName", action.getAgentName() + "/" + action.getToolName());
+                    webChunk.setToolName(action.getAgentName() + "/" + action.getToolName());
                 }
-                oNode.set("args", action.getArgs());
+                webChunk.setArgs(action.getArgs());
 
                 if ("todowrite".equals(action.getToolName())) {
                     String todos = (String) action.getArgs().get("todos");
 
                     if (Assert.isNotEmpty(todos)) {
-                        oNode.set("text", todos);
+                        webChunk.setText(todos);
                     }
                 }
             }
 
-            return oNode.toJson();
+            return webChunk;
         }
 
-        return "";
+        return WebChunk.EMPTY;
     }
 
-    private String onThoughtChunk(AgentSession session, ThoughtChunk thought) {
+    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk thought) {
         if (weChatLink != null) {
             if (weChatLink.isBound(session.getSessionId())) {
                 String resultContent = thought.getAssistantMessage().getResultContent();
@@ -245,16 +236,15 @@ public class WebStreamBuilder {
             if (Assert.isNotEmpty(content)) {
                 //content = content + "`(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")`";
 
-                return new ONode().set("type", "text")
-                        .set("text", "\n" + content)
-                        .toJson();
+
+                return WebChunk.ofText("\n" + content);
             }
         }
 
-        return "";
+        return WebChunk.EMPTY;
     }
 
-    private String onFinalChunk(AgentSession session, ReActChunk react) {
+    private WebChunk onFinalChunk(AgentSession session, ReActChunk react) {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
         if (react.isAbnormal() && weChatLink != null) {
@@ -264,8 +254,6 @@ public class WebStreamBuilder {
             }
         }
 
-        return new ONode().set("type", "text")
-                .set("text", traceInfo.toString())
-                .toJson();
+        return WebChunk.ofText(traceInfo.toString());
     }
 }
