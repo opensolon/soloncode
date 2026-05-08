@@ -16,6 +16,8 @@ import java.util.Date;
 public class AgentFlags {
     private final static Logger LOG = LoggerFactory.getLogger(AgentFlags.class);
 
+    public final static String FLAG_VERSION = "version";
+
     public final static String FLAG_RUN = "run";
     public final static String FLAG_SERVE = "serve";
     public final static String FLAG_ACP = "acp";

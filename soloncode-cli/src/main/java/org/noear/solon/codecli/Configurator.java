@@ -83,7 +83,7 @@ public class Configurator {
         });
 
         //添加记忆能力
-        if(agentProps.isMemoryEnabled()) {
+        if (agentProps.isMemoryEnabled()) {
             MemorySkill memorySkill = new MemorySkill(new MemoryManger(agentProps)).sessionIsolation(false);
             props.addExtension((agentName, agentBuilder) -> {
                 if ("main".equals(agentName)) {
@@ -114,14 +114,17 @@ public class Configurator {
     @Init
     public void init() {
         CliShell cliShell = new CliShell(agentRuntime, agentProps, loopScheduler);
+        String flag = Solon.cfg().argx().flagAt(0);
 
+        if (AgentFlags.FLAG_VERSION.equals(flag)) {
+            System.err.println(Solon.cfg().appTitle() + " " + AgentFlags.getVersion());
+            return;
+        }
 
         checkUpdate();
 
         //flag
         if (Solon.cfg().argx().flags().size() > 0) {
-            String flag = Solon.cfg().argx().flagAt(0);
-
             if (AgentFlags.FLAG_RUN.equals(flag)) { // java -jar soloncode.jar run '你好' // soloncode run '你好'
                 //单次任务态
                 String prompt = Solon.cfg().argx().flagAt(1);
