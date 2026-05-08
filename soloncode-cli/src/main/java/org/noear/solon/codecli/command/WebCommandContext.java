@@ -39,7 +39,7 @@ public class WebCommandContext implements CommandContext {
     private final List<String> args;
     private final AgentTaskRunner agentTaskRunner;
 
-    private final List<String> outputBuffer = new ArrayList<>();
+    private final StringBuilder outputBuffer = new StringBuilder();
     private boolean isAgentTask = false;
 
     /**
@@ -89,7 +89,7 @@ public class WebCommandContext implements CommandContext {
 
     @Override
     public void println(String text) {
-        outputBuffer.add(text);
+        outputBuffer.append(text).append("\n");
     }
 
     @Override
@@ -109,7 +109,7 @@ public class WebCommandContext implements CommandContext {
         return isAgentTask;
     }
 
-    public List<String> getOutputBuffer() {
+    public StringBuilder getOutputBuffer() {
         return outputBuffer;
     }
 }

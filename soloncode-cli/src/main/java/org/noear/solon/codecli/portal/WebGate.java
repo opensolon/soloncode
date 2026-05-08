@@ -304,14 +304,14 @@ public class WebGate extends SimpleWebSocketListener {
 
 
         if (ctx.isAgentTask() == false) {
-            if (Assert.isNotEmpty(ctx.getOutputBuffer())) {
-                for (String line : ctx.getOutputBuffer()) {
-                    emitToClient(session.getSessionId(), WebChunk.ofCommand(line));
-                }
+            final String text;
+            if (ctx.getOutputBuffer().length() > 0) {
+                text = ctx.getOutputBuffer().toString();
             } else {
-                emitToClient(session.getSessionId(), WebChunk.ofCommand("命令执行完成"));
+                text = "命令执行完成";
             }
 
+            emitToClient(session.getSessionId(), WebChunk.ofCommand(text));
             emitToClient(session.getSessionId(), WebChunk.ofDone());
         }
 
