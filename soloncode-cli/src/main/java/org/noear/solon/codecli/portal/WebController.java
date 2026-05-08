@@ -171,6 +171,15 @@ public class WebController {
     }
 
     /**
+     * 入口：重定向到静态首页 index.html。
+     */
+    @Get
+    @Mapping("/")
+    public void index(Context ctx) throws Throwable {
+        ctx.forward("/web.html");
+    }
+
+    /**
      * SSE 端点：前端通过此长连接订阅 Loop 定时任务及其他后台推送事件
      *
      * <p>前端使用 EventSource 建立连接后，所有 emit 到 sessionSink 的数据行
@@ -187,15 +196,6 @@ public class WebController {
         }
 
         return sessionSink.createEmitter(sessionId);
-    }
-
-    /**
-     * 入口：重定向到静态首页 index.html。
-     */
-    @Get
-    @Mapping("/")
-    public void index(Context ctx) throws Throwable {
-        ctx.forward("/index.html");
     }
 
     /**
