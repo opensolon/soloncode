@@ -85,6 +85,14 @@ public class WebChunk {
         return tmp;
     }
 
+    public static WebChunk ofRewind(int count) {
+        WebChunk tmp = new WebChunk();
+        tmp.type = "rewind";
+        tmp.text = String.valueOf(count);
+
+        return tmp;
+    }
+
     public static WebChunk ofHitl(String toolName, String command) {
         WebChunk tmp = new WebChunk();
         tmp.type = "hitl";

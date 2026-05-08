@@ -304,14 +304,24 @@ public class WebGate extends SimpleWebSocketListener {
 
 
         if (ctx.isAgentTask() == false) {
-            final String text;
-            if (ctx.getOutputBuffer().length() > 0) {
-                text = ctx.getOutputBuffer().toString();
+            // rewind 命令走特殊通道：发送 rewind 事件让前端同步删除 DOM
+            if ("rewind".equals(cmdName)) {
+                int rewindCount = 1;
+                if (!args.isEmpty()) {
+                    try { rewindCount = Integer.parseInt(args.get(0)); } catch (NumberFormatException ignored) {}
+                }
+                emitToClient(session.getSessionId(), WebChunk.ofRewind(rewindCount));
             } else {
-                text = "命令执行完成";
+                final String text;
+                if (ctx.getOutputBuffer().length() > 0) {
+                    text = ctx.getOutputBuffer().toString();
+                } else {
+                    text = "命令执行完成";
+                }
+
+                emitToClient(session.getSessionId(), WebChunk.ofCommand(text));
             }
 
-            emitToClient(session.getSessionId(), WebChunk.ofCommand(text));
             emitToClient(session.getSessionId(), WebChunk.ofDone());
         }
 

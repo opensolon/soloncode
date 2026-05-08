@@ -1512,8 +1512,24 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
     });
 }
 
-/* ===== SSE Data Handling (Session-Aware) ===== */
-function handleSSEData(sess, raw) {
+/* ===== Rewind Handling ===== */
+function handleRewind(sess, count) {
+    if (count <= 0) return;
+    // 每轮对话 = 1个user + 1个assistant，从末尾倒序删除
+    var toRemove = count * 2;
+    var rows = sess.container.querySelectorAll('.msg-row');
+    var actual = Math.min(toRemove, rows.length);
+    for (var i = 0; i < actual; i++) {
+        var last = rows[rows.length - 1];
+        if (last) last.remove();
+        rows = sess.container.querySelectorAll('.msg-row');
+    }
+    resetStreamState(sess);
+    if (sess.sessionId === activeSessionId) scrollToBottom(true);
+}
+
+/* ===== WebChunk Handling (Session-Aware) ===== */
+function onWebChunk(sess, raw) {
     if (raw === '[DONE]') {
         console.log("Stream finished");
         finishStream(sess);
@@ -1530,6 +1546,7 @@ function handleSSEData(sess, raw) {
 
         switch (chunk.type) {
             case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
+            case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
             case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
             case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
             case 'action': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); break;
@@ -1638,7 +1655,7 @@ function connectWebGate() {
                 resetStreamState(sess2);
                 showThinking(sess2);
             }
-            handleSSEData(sess2, raw);
+            onWebChunk(sess2, raw);
         } catch(e) {
             // 非 JSON 消息忽略
         }
