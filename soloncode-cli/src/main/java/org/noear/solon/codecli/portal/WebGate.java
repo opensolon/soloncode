@@ -317,7 +317,9 @@ public class WebGate extends SimpleWebSocketListener {
                 if (!args.isEmpty()) {
                     try { rewindCount = Integer.parseInt(args.get(0)); } catch (NumberFormatException ignored) {}
                 }
-                emitToClient(session.getSessionId(), WebChunk.ofRewind(rewindCount));
+
+                //加一条删掉自己发出的一条
+                emitToClient(session.getSessionId(), WebChunk.ofRewind(rewindCount + 1));
             } else {
                 final String text;
                 if (ctx.getOutputBuffer().length() > 0) {

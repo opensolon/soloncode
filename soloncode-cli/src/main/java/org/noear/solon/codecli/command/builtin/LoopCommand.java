@@ -17,7 +17,6 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.command.CommandType;
 import org.noear.solon.codecli.config.AgentProperties;
 
 import java.time.Duration;
@@ -64,11 +63,6 @@ public class LoopCommand implements Command {
     @Override
     public String description() {
         return "循环任务管理 (ls, stop, stop-all, <interval> <prompt>, cron:<expr> <prompt>)";
-    }
-
-    @Override
-    public CommandType type() {
-        return CommandType.SYSTEM;
     }
 
     @Override

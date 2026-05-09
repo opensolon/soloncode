@@ -17,7 +17,6 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.command.CommandType;
 import org.noear.solon.core.util.Assert;
 
 /**
@@ -38,11 +37,6 @@ public class RewindCommand implements Command {
     @Override
     public String description() {
         return "回退对话记录 (<n>, 默认1)";
-    }
-
-    @Override
-    public CommandType type() {
-        return CommandType.AGENT;
     }
 
     @Override

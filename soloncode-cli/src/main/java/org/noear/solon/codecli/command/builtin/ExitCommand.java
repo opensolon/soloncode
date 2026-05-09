@@ -17,7 +17,6 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.command.CommandType;
 
 
 
@@ -39,11 +38,6 @@ public class ExitCommand implements Command {
     @Override
     public String description() {
         return "退出进程";
-    }
-
-    @Override
-    public CommandType type() {
-        return CommandType.SYSTEM;
     }
 
     @Override

@@ -17,7 +17,6 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.command.CommandType;
 
 /**
  * /resume 命令
@@ -34,11 +33,6 @@ public class ResumeCommand implements Command {
     @Override
     public String description() {
         return "恢复最后一个未完成的任务";
-    }
-
-    @Override
-    public CommandType type() {
-        return CommandType.AGENT;
     }
 
     @Override

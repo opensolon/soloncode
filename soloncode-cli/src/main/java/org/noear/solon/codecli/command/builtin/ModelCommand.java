@@ -19,7 +19,6 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.command.CommandType;
 
 /**
  * /model 命令（多子命令）
@@ -42,11 +41,6 @@ public class ModelCommand implements Command {
     @Override
     public String description() {
         return "模型管理 (ls, help, <name>)";
-    }
-
-    @Override
-    public CommandType type() {
-        return CommandType.CONFIG;
     }
 
     @Override

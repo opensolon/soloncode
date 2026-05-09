@@ -18,7 +18,6 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.command.CommandType;
 
 /**
  * /clear 命令
@@ -35,11 +34,6 @@ public class ClearCommand implements Command {
     @Override
     public String description() {
         return "清空会话记录";
-    }
-
-    @Override
-    public CommandType type() {
-        return CommandType.SYSTEM;
     }
 
     @Override
