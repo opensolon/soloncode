@@ -173,7 +173,7 @@ public class CliShell implements Runnable {
             loopScheduler.restore(session.getSessionId(), agentProps.getWorkspace(), agentProps.getHarnessSessions());
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
-            loopScheduler.setTaskExecutor((sessionId, prompt) -> {
+            loopScheduler.addTaskExecutor((sessionId, prompt) -> {
                 if (agentProps.getSessionId().equals(sessionId) == false) {
                     return;
                 }

@@ -1,5 +1,10 @@
 
 
+### v2026.5.10
+
+* 添加 soloncode 时间显示
+* 修复 soloncode web loop 任务失效的问题（只运行了一次）
+
 ### v2026.5.9
 
 * 添加 soloncode `/rewind` 命令（对话回退）

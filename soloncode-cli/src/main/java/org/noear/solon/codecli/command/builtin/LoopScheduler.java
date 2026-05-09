@@ -57,10 +57,7 @@ public class LoopScheduler {
     private final ConcurrentHashMap<String, List<LoopTask>> sessionTasks = new ConcurrentHashMap<>();
 
     // CLI 端任务执行回调：sessionId, prompt -> void（同步阻塞）
-    private volatile TaskExecutor taskExecutor;
-
-    // Web 端任务执行回调：sessionId, prompt -> CompletableFuture<String>（异步，返回执行结果摘要）
-    private volatile ReactiveTaskExecutor reactiveTaskExecutor;
+    private volatile List<TaskExecutor> taskExecutors = new ArrayList<>();
 
     /**
      * CLI 端任务执行器（同步阻塞）
@@ -70,31 +67,12 @@ public class LoopScheduler {
         void execute(String sessionId, String prompt);
     }
 
-    /**
-     * Web 端任务执行器（异步 Reactive，返回执行结果摘要）
-     */
-    @FunctionalInterface
-    public interface ReactiveTaskExecutor {
-        void execute(String sessionId, String prompt);
-    }
-
     public LoopScheduler() {
         this.jobManager = JobManager.getInstance();
     }
 
-    public void setTaskExecutor(TaskExecutor executor) {
-        this.taskExecutor = executor;
-    }
-
-    public void setReactiveTaskExecutor(ReactiveTaskExecutor executor) {
-        this.reactiveTaskExecutor = executor;
-    }
-
-    /**
-     * 是否已注入 Web 端回调
-     */
-    public boolean hasReactiveExecutor() {
-        return reactiveTaskExecutor != null;
+    public void addTaskExecutor(TaskExecutor executor) {
+        this.taskExecutors.add(executor);
     }
 
     // ==================== 任务注册 ====================
@@ -273,12 +251,7 @@ public class LoopScheduler {
         }
 
         try {
-            if (reactiveTaskExecutor != null) {
-                // Web 端：异步 Reactive 执行，返回结果摘要
-                reactiveTaskExecutor.execute(sessionId, task.getPrompt());
-                task.updateLastExecution("ok");
-            } else if (taskExecutor != null) {
-                // CLI 端：同步执行
+           for(TaskExecutor taskExecutor : taskExecutors){
                 taskExecutor.execute(sessionId, task.getPrompt());
                 task.updateLastExecution("ok");
             }
@@ -286,10 +259,7 @@ public class LoopScheduler {
             LOG.error("Loop task '{}' failed: {}", task.getId(), e.getMessage());
             task.updateLastExecution("error: " + e.getMessage());
         } finally {
-            // CLI 端同步执行时立即 finish；Web 端异步执行时由 whenComplete 回调 finish
-            if (reactiveTaskExecutor == null) {
-                task.finish();
-            }
+            task.finish();
         }
     }
 
