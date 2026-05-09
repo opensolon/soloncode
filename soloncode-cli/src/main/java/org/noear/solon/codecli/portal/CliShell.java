@@ -57,6 +57,8 @@ import reactor.core.scheduler.Schedulers;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -263,8 +265,12 @@ public class CliShell implements Runnable {
         return handled;
     }
 
+    private String getTimeNow(){
+        return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+    }
+
     private void performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
-        terminal.writer().println("\n" + BOLD + "Assistant" + RESET);
+        terminal.writer().println("\n" + BOLD + "Assistant" + RESET + DIM + " " + getTimeNow() + RESET);
 
         String agentName = null;
         String currentInput = input;
