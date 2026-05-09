@@ -248,9 +248,9 @@ public class WebGate extends SimpleWebSocketListener {
                 // 流式处理：输出通过 WebSocket 推送
                 performAgentTask(session, sessionCwd, prompt, selectedModel, agentName);
             }
-        } catch (Exception err) {
-            LOG.error("[WebGate] onChatInput error:", err);
-            emitToClient(sessionId, WebChunk.ofError(err));
+        } catch (Exception e) {
+            LOG.error("Task fail: {}", e.getMessage(), e);
+            emitToClient(sessionId, WebChunk.ofError(e));
             emitToClient(sessionId, WebChunk.ofDone());
         }
     }
@@ -264,9 +264,9 @@ public class WebGate extends SimpleWebSocketListener {
         streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribe(
                         line -> emitToClient(sessionId, line),
-                        err -> {
-                            LOG.error("[WebGate] performAgentTask error:", err);
-                            emitToClient(sessionId, WebChunk.ofError(err));
+                        e -> {
+                            LOG.error("Task fail: {}", e.getMessage(), e);
+                            emitToClient(sessionId, WebChunk.ofError(e));
                             emitToClient(sessionId, WebChunk.ofDone());
                         }
                 );
