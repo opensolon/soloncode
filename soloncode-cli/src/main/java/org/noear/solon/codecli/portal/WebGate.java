@@ -128,7 +128,7 @@ public class WebGate extends SimpleWebSocketListener {
             if (socket != null) {
                 try {
                     socket.send(enriched);
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     LOG.warn("[WebGate] Failed to send to socket {}: {}", socket.id(), e.getMessage());
                 }
             }
@@ -392,6 +392,7 @@ public class WebGate extends SimpleWebSocketListener {
                 disposable.dispose();
             }
             session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
+            emitToClient(sessionId, WebChunk.ofDone());
             LOG.info("[WebGate] Session {} interrupted", sessionId);
         } catch (Exception e) {
             LOG.error("[WebGate] Interrupt failed for session {}: {}", sessionId, e.getMessage());
