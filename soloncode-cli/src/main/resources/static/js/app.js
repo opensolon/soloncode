@@ -1096,6 +1096,7 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments) {
 
 function ensureAssistantBubble(sess) {
     if (!sess.currentBubbleEl) {
+        console.log('[ensureAssistantBubble] 新建 AI bubble, isStreaming=%s', sess.isStreaming, new Error().stack.split('\n').slice(1,4).join('\n'));
         removeThinking(sess);
         var row = document.createElement('div');
         row.className = 'msg-row assistant';
@@ -1318,6 +1319,7 @@ function stopThinkingTimer(sess, timerKey, startTimeKey) {
 }
 
 function showThinking(sess) {
+    console.log('[showThinking] isStreaming=%s', sess.isStreaming, new Error().stack.split('\n').slice(1,4).join('\n'));
     removeThinking(sess);
     sess.thinkingEl = document.createElement('div');
     sess.thinkingEl.className = 'thinking-row';
