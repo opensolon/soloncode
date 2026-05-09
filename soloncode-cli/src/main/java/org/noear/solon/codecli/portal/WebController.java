@@ -227,14 +227,10 @@ public class WebController {
                     String content = node.get("content").getString();
 
                     if (role != null && content != null) {
-                        Map<String, String> item = new LinkedHashMap<>();
+                        Map<String, Object> item = new LinkedHashMap<>();
                         item.put("role", role);
                         item.put("content", content);
-                        // 提取消息创建时间（来自 ChatMessage.getCreateAt() 序列化）
-                        String createdAt = node.get("createdAt").getString();
-                        if (createdAt != null) {
-                            item.put("createdAt", createdAt);
-                        }
+                        item.put("createdAt", node.get("createdAt").getString());
                         data.add(item);
                     }
                 }
