@@ -844,6 +844,9 @@ function handleInputForCommands(e) {
         }
     } else {
         hideCmdComplete();
+        if (chatHistoryPanel.classList.contains('show')) {
+            hideHistoryPanel();
+        }
     }
 }
 
@@ -861,8 +864,18 @@ welcomeInput.addEventListener('keydown', function(e) {
 chatInput.addEventListener('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
     if (e.isComposing) return;
+    // 优先级1：命令补全导航
     var handled = navigateCmdComplete(e, chatInput, chatCmdComplete);
     if (handled) return;
+    // 优先级2：历史面板导航（面板已打开时）
+    handled = navigateHistory(e);
+    if (handled) return;
+    // 触发条件：输入框为空 + 上/下键 → 打开历史面板
+    if (!chatInput.value.trim() && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        showHistoryPanel();
+        return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
@@ -886,8 +899,122 @@ chatCmdComplete.addEventListener('click', function(e) {
 
 // Hide on outside click
 document.addEventListener('click', function(e) {
-    if (!e.target.closest('.cmd-complete') && !e.target.closest('textarea') && !e.target.closest('#welcomeCmdBtn') && !e.target.closest('#welcomeAgentBtn') && !e.target.closest('#chatCmdBtn') && !e.target.closest('#chatAgentBtn')) {
+    if (!e.target.closest('.cmd-complete') && !e.target.closest('.history-panel') && !e.target.closest('textarea') && !e.target.closest('#welcomeCmdBtn') && !e.target.closest('#welcomeAgentBtn') && !e.target.closest('#chatCmdBtn') && !e.target.closest('#chatAgentBtn')) {
         hideCmdComplete();
+        hideHistoryPanel();
+    }
+});
+
+/* ===== Input History Panel (chatInput only) ===== */
+var chatHistoryPanel = document.getElementById('chatHistoryPanel');
+var historyActiveIndex = -1;
+
+/**
+ * 从当前会话 DOM 中提取用户发送过的文本，倒序返回（最新在前）
+ */
+function extractUserMessages() {
+    var sess = activeSessionId ? sessionMap[activeSessionId] : null;
+    if (!sess) return [];
+    var rows = sess.container.querySelectorAll('.msg-row.user');
+    var texts = [];
+    for (var i = rows.length - 1; i >= 0; i--) {
+        var bubble = rows[i].querySelector('.msg-bubble');
+        if (!bubble) continue;
+        // 用户文本在 .msg-bubble 内的最后一个 <span> 中
+        var lastSpan = bubble.querySelector('span:last-child');
+        var text = lastSpan ? lastSpan.textContent.trim() : '';
+        if (text && texts.indexOf(text) === -1) {
+            texts.push(text);
+        }
+    }
+    return texts;
+}
+
+function showHistoryPanel() {
+    var messages = extractUserMessages();
+    if (messages.length === 0) {
+        chatHistoryPanel.innerHTML = '<div class="history-panel-empty">暂无输入历史</div>';
+    } else {
+        var html = '';
+        for (var i = 0; i < messages.length; i++) {
+            var display = messages[i].length > 80
+                ? messages[i].substring(0, 80) + '...'
+                : messages[i];
+            html += '<div class="history-panel-item" data-index="' + i + '">'
+                + escapeHtml(display)
+                + '</div>';
+        }
+        chatHistoryPanel.innerHTML = html;
+    }
+    // 确保互斥：关闭命令补全
+    hideCmdComplete();
+    historyActiveIndex = -1;
+    chatHistoryPanel.classList.add('show');
+}
+
+function hideHistoryPanel() {
+    chatHistoryPanel.classList.remove('show');
+    historyActiveIndex = -1;
+}
+
+function applyHistorySelection() {
+    var messages = extractUserMessages();
+    if (historyActiveIndex >= 0 && historyActiveIndex < messages.length) {
+        chatInput.value = messages[historyActiveIndex];
+        autoResize(chatInput);
+    }
+    hideHistoryPanel();
+}
+
+/**
+ * 处理历史面板内的键盘导航，返回 true 表示已消费事件
+ */
+function navigateHistory(e) {
+    if (!chatHistoryPanel.classList.contains('show')) return false;
+    if (e.isComposing) return false;
+
+    var items = chatHistoryPanel.querySelectorAll('.history-panel-item');
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (items.length === 0) return true;
+        if (historyActiveIndex >= 0 && items[historyActiveIndex]) {
+            items[historyActiveIndex].classList.remove('active');
+        }
+        if (e.key === 'ArrowDown') {
+            historyActiveIndex = (historyActiveIndex + 1) % items.length;
+        } else {
+            historyActiveIndex = historyActiveIndex <= 0
+                ? items.length - 1
+                : historyActiveIndex - 1;
+        }
+        items[historyActiveIndex].classList.add('active');
+        items[historyActiveIndex].scrollIntoView({ block: 'nearest' });
+        return true;
+    }
+
+    if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applyHistorySelection();
+        chatInput.focus();
+        return true;
+    }
+
+    if (e.key === 'Escape') {
+        hideHistoryPanel();
+        return true;
+    }
+
+    return false;
+}
+
+// Click on history item
+chatHistoryPanel.addEventListener('click', function(e) {
+    var item = e.target.closest('.history-panel-item');
+    if (item) {
+        historyActiveIndex = parseInt(item.getAttribute('data-index'));
+        applyHistorySelection();
+        chatInput.focus();
     }
 });
 

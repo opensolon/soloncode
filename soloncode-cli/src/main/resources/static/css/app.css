@@ -331,4 +331,13 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .cmd-complete::-webkit-scrollbar { width: 4px; }
 .cmd-complete::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
 
+/* Input History Panel */
+.history-panel { position: absolute; bottom: 100%; left: 0; right: 0; margin-bottom: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); max-height: 260px; overflow-y: auto; display: none; z-index: 100; }
+.history-panel.show { display: block; animation: drop-up 0.15s ease-out; }
+.history-panel-item { padding: 10px 14px; cursor: pointer; font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.12s; }
+.history-panel-item:hover, .history-panel-item.active { background: var(--bg-hover); }
+.history-panel-empty { padding: 18px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+.history-panel::-webkit-scrollbar { width: 4px; }
+.history-panel::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
 @media (max-width: 768px) { .sidebar { display: none; } }
