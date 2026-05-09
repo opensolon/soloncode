@@ -1,8 +1,11 @@
 
 
-### v2026.5.6
+### v2026.5.9
 
-* 添加 soloncode `/rewind` 命令
+* 添加 soloncode `/rewind` 命令（对话回退）
+* 添加 soloncode （输入框空时）上下键选历史任务功能
+* 调整 soloncode 心智记忆改为 md 文件保存（之前的会失效）
+* 调整 soloncode web 改用 websocket 统一输出
 * 修复 soloncode web loop 任务没有用会话选中的模型
 
 ### v2026.5.6

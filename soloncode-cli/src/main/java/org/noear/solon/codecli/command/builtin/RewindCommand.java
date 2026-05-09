@@ -59,7 +59,7 @@ public class RewindCommand implements Command {
         }
 
         ctx.getSession().removeLatestMessage(count);
-        ctx.println(ctx.color(DIM + "已回退 " + count + " 轮对话" + RESET));
+        ctx.println(ctx.color(DIM + "已回退 " + count + " 条记录" + RESET));
 
         return true;
     }
