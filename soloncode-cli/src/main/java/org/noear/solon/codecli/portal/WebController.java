@@ -230,6 +230,11 @@ public class WebController {
                         Map<String, String> item = new LinkedHashMap<>();
                         item.put("role", role);
                         item.put("content", content);
+                        // 提取消息创建时间（来自 ChatMessage.getCreateAt() 序列化）
+                        String createdAt = node.get("createdAt").getString();
+                        if (createdAt != null) {
+                            item.put("createdAt", createdAt);
+                        }
                         data.add(item);
                     }
                 }

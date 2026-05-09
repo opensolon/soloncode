@@ -151,13 +151,15 @@ function loadMessages(sess) {
                     var m = msgs[i];
                     if (m.role === 'USER') {
                         resetStreamState(sess);
-                        appendUserMessage(sess, m.content);
+                        appendUserMessage(sess, m.content, null, null, m.createdAt);
                     } else if (m.role === 'ASSISTANT') {
                         var isConsecutive = (i > 0 && msgs[i - 1].role === 'ASSISTANT');
                         if (!isConsecutive) resetStreamState(sess);
                         var el = ensureAssistantBubble(sess);
                         sess.reasonBuffer = isConsecutive ? sess.reasonBuffer + '\n\n' + m.content : m.content;
                         el.innerHTML = renderMd(sess.reasonBuffer);
+                        // 显示时间戳（连续助手消息取最后一条的时间）
+                        setAssistantTime(sess, m.createdAt);
                     }
                 }
                 resetStreamState(sess);

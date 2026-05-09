@@ -173,6 +173,10 @@ function finishStream(sess) {
 
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
 
+    // 显示助手消息时间戳
+    setAssistantTime(sess, sess._lastCreatedAt || Date.now());
+    sess._lastCreatedAt = null;
+
     // resetStreamState 会清空 buffer，所以必须在上面强刷完后再调
     resetStreamState(sess);
 
@@ -222,6 +226,8 @@ function connectWebGate() {
                 if (!sid) return;
                 var sess = sessionMap[sid];
                 if (!sess) return;
+                // 保存 done 消息的时间戳，用于 finishStream 显示
+                if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
                 finishStream(sess);
                 return;
             }

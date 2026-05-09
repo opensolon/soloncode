@@ -153,6 +153,15 @@ function formatFileSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+function formatMsgTime(ts) {
+    if (!ts) return '';
+    var d = new Date(typeof ts === 'number' ? ts : parseInt(ts));
+    if (isNaN(d.getTime())) return '';
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    return hh + ':' + mm;
+}
+
 function getInputText() {
     if (inChatMode) return chatInput.value.trim();
     return welcomeInput.value.trim();

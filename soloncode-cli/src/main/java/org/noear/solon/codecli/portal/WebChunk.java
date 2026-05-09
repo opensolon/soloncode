@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.Map;
 
 /**
@@ -27,11 +28,12 @@ public class WebChunk {
     private String toolName;
     private Map<String, Object> args;
     private String command;
-
+    private Long createdAt;
 
     public static WebChunk ofDone() {
         WebChunk tmp = new WebChunk();
         tmp.type = "done";
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -40,6 +42,7 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "error";
         tmp.text = text;
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -48,6 +51,7 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "error";
         tmp.text = (err.getMessage() == null ? "Unknown error" : err.getMessage());
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -56,6 +60,7 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "text";
         tmp.text = text;
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -64,6 +69,7 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "reason";
         tmp.text = text;
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -73,6 +79,7 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "action";
         tmp.text = text;
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -81,6 +88,7 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "command";
         tmp.text = text;
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -89,6 +97,7 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "rewind";
         tmp.text = String.valueOf(count);
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }
@@ -98,6 +107,7 @@ public class WebChunk {
         tmp.type = "hitl";
         tmp.toolName = toolName;
         tmp.command = command;
+        tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
     }

@@ -206,6 +206,11 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .hitl-btn-reject:hover { background: #dc2626; }
 .hitl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Msg Time */
+.msg-time { font-size: 11px; color: var(--text-secondary); opacity: 0.55; margin-top: 4px; line-height: 1; }
+.msg-row.user .msg-time { text-align: right; }
+.msg-row.assistant .msg-time { }
+
 /* Msg Actions */
 .msg-actions { display: flex; gap: 6px; margin-top: 10px; opacity: 0; transition: opacity 0.2s; }
 .msg-row.assistant:hover .msg-actions { opacity: 1; }

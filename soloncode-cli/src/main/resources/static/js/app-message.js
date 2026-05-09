@@ -3,7 +3,7 @@
 /* 依赖：app-base.js */
 
 /* ===== Message Rendering (Session-Aware) ===== */
-function appendUserMessage(sess, text, imageDataUrls, fileAttachments) {
+function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt) {
     var row = document.createElement('div');
     row.className = 'msg-row user';
     row.innerHTML = '<button class="user-copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i></button><div class="msg-bubble"></div><div class="msg-avatar">我</div>';
@@ -38,6 +38,13 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments) {
     span.textContent = text;
     bubble.appendChild(span);
 
+    // 时间戳
+    var ts = createdAt || Date.now();
+    var timeEl = document.createElement('div');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = formatMsgTime(ts);
+    bubble.appendChild(timeEl);
+
     var copyBtn = row.querySelector('.user-copy-btn');
     copyBtn.addEventListener('click', function() {
         var txt = bubble.innerText || '';
@@ -65,6 +72,7 @@ function ensureAssistantBubble(sess) {
         row.className = 'msg-row assistant';
         row.innerHTML = '<div class="msg-avatar"><i class="layui-icon layui-icon-bot" style="font-size:18px"></i></div>'
             + '<div class="msg-bubble"><div class="md-content"></div>'
+            + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
             + '<button class="msg-action-btn copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i> 复制</button>'
             + '</div></div>';
@@ -105,6 +113,15 @@ function ensureThinkingBlock(sess) {
         startThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', timerSpan);
     }
     return sess.thinkingBlockEl;
+}
+
+function setAssistantTime(sess, ts) {
+    var row = sess.currentBubbleEl ? sess.currentBubbleEl.closest('.msg-row') : null;
+    if (!row) return;
+    var timeEl = row.querySelector('.msg-time');
+    if (!timeEl) return;
+    timeEl.textContent = formatMsgTime(ts || Date.now());
+    timeEl.style.display = '';
 }
 
 function insertBeforeActions(sess, el) {
