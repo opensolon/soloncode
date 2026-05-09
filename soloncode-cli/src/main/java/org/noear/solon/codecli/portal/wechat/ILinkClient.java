@@ -228,7 +228,7 @@ public class ILinkClient {
             ONode root = ONode.ofJson(resp);
             int ret = root.get("ret").getInt();
             if (ret != 0) {
-                LOG.warn("sendMessage failed: ret={}, msg={}", ret, root.get("msg").getString());
+                LOG.warn("sendMessage failed: {}", resp);
             }
             return ret == 0;
         } catch (Throwable e) {
