@@ -315,7 +315,10 @@ public class WebGate extends SimpleWebSocketListener {
             if ("rewind".equals(cmdName)) {
                 int rewindCount = 1;
                 if (!args.isEmpty()) {
-                    try { rewindCount = Integer.parseInt(args.get(0)); } catch (NumberFormatException ignored) {}
+                    try {
+                        rewindCount = Integer.parseInt(args.get(0));
+                    } catch (NumberFormatException ignored) {
+                    }
                 }
 
                 //加一条删掉自己发出的一条
@@ -326,6 +329,13 @@ public class WebGate extends SimpleWebSocketListener {
                     text = ctx.getOutputBuffer().toString();
                 } else {
                     text = "命令执行完成";
+                }
+
+                if (streamBuilder.getWeChatLink() != null) {
+                    //命令执行后也通知给微信
+                    if (streamBuilder.getWeChatLink().isBound(session.getSessionId())) {
+                        streamBuilder.getWeChatLink().sendReply(session.getSessionId(), text);
+                    }
                 }
 
                 emitToClient(session.getSessionId(), WebChunk.ofCommand(text));

@@ -53,6 +53,10 @@ public class WebStreamBuilder {
         return this;
     }
 
+    public WeChatLink getWeChatLink() {
+        return weChatLink;
+    }
+
     public WebStreamBuilder(HarnessEngine engine) {
         this.engine = engine;
     }
