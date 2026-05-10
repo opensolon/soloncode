@@ -97,21 +97,20 @@ public class FeishuPbCodec {
 
     /**
      * 将 Frame 编码为 Protobuf 字节
+     *
+     * <p>注意：SeqID 和 LogID 在 proto 中声明为 required，即使为 0 也必须写出（SDK 的
+     * newPingFrame 调用了 setSeqID(0)/setLogID(0)，protoc 生成的编码器会写出 0）。</p>
      */
     public static byte[] encode(Frame frame) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
-        // field 1: seqId (varint)
-        if (frame.seqId != 0) {
-            writeTag(baos, 1, WIRE_TYPE_VARINT);
-            writeVarint(baos, frame.seqId);
-        }
+        // field 1: seqId (varint) — 始终写出，proto 中为 required
+        writeTag(baos, 1, WIRE_TYPE_VARINT);
+        writeVarint(baos, frame.seqId);
 
-        // field 2: logId (varint)
-        if (frame.logId != 0) {
-            writeTag(baos, 2, WIRE_TYPE_VARINT);
-            writeVarint(baos, frame.logId);
-        }
+        // field 2: logId (varint) — 始终写出，proto 中为 required
+        writeTag(baos, 2, WIRE_TYPE_VARINT);
+        writeVarint(baos, frame.logId);
 
         // field 3: service (varint)
         if (frame.service != 0) {
@@ -368,28 +367,43 @@ public class FeishuPbCodec {
     // ==================== 便捷方法 ====================
 
     /**
-     * 构建 ACK 帧
+     * 构建 DATA 响应帧（与 SDK 一致：method=1 DATA，payload={"code":200,...}）
+     *
+     * <p>SDK 源码：FrameType 只有 CONTROL(0) 和 DATA(1)，没有 ACK(2)。
+     * SDK 用 frame.toBuilder().setPayload(resp).addHeader("biz_rt",...).build() 发回 DATA 帧。</p>
+     *
+     * <p>关键：SDK 的 toBuilder() 会保留原始帧的 payloadEncoding、payloadType 等所有字段。
+     * 我们的 buildDataResponse 也需要将原始帧的 payloadEncoding/payloadType 保留下来，
+     * 不要强行覆盖为 "json"（服务器可能不识别）。</p>
      */
-    public static byte[] buildAck(Frame originalFrame) {
-        Frame ack = new Frame();
-        ack.seqId = originalFrame.seqId;
-        ack.logId = originalFrame.logId;
-        ack.service = originalFrame.service;
-        ack.method = 2; // ACK
-        ack.headers = originalFrame.headers;
-        ack.payloadEncoding = "json";
-        ack.payload = "{}".getBytes(StandardCharsets.UTF_8);
-        return encode(ack);
+    public static byte[] buildDataResponse(Frame originalFrame, byte[] respPayload, long elapsedMs) {
+        Frame resp = new Frame();
+        resp.seqId = originalFrame.seqId;
+        resp.logId = originalFrame.logId;
+        resp.service = originalFrame.service;
+        resp.method = 1; // DATA（与 SDK 一致）
+        resp.headers = new ArrayList<>(originalFrame.headers);
+        resp.headers.add(new Header("biz_rt", String.valueOf(elapsedMs)));
+
+        // 保留原始字段（SDK 的 toBuilder() 行为）：不 overwrite
+        resp.payloadEncoding = originalFrame.payloadEncoding;
+        resp.payloadType = originalFrame.payloadType;
+        resp.payload = respPayload;
+        return encode(resp);
     }
 
     /**
-     * 构建 Ping 帧
+     * 构建 Ping 帧（与 SDK 一致）
+     *
+     * <p>SDK 源码：newPingFrame(serviceId) → service=serviceId, method=0, headers=[type=ping], seqId=0, logId=0</p>
      */
-    public static byte[] buildPing(long seqId) {
+    public static byte[] buildPing(int serviceId) {
         Frame ping = new Frame();
-        ping.seqId = seqId;
-        ping.service = 1;
+        ping.seqId = 0;
+        ping.logId = 0;
+        ping.service = serviceId;
         ping.method = 0; // CONTROL
+        ping.headers.add(new Header("type", "ping"));
         return encode(ping);
     }
 }
