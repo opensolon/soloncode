@@ -1,6 +1,6 @@
 
 
-### v2026.5.10
+### v2026.5.11
 
 * 新增 soloncode web 飞书链接
 * 新增 soloncode web 钉钉链接
