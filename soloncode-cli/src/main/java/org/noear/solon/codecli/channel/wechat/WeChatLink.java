@@ -17,7 +17,7 @@ package org.noear.solon.codecli.channel.wechat;
 
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.config.AgentProperties;
-import org.noear.solon.codecli.channel.IMLink;
+import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.portal.WebChunk;
 import org.noear.solon.codecli.portal.WebGate;
 import org.noear.solon.core.util.Assert;
@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @author noear 2026/5/5 created
  */
-public class WeChatLink implements IMLink, Runnable {
+public class WeChatLink implements Channel, Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(WeChatLink.class);
 
     private final HarnessEngine engine;

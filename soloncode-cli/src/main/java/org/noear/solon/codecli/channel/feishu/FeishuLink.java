@@ -25,7 +25,7 @@ import org.noear.java_websocket.client.SimpleWebSocketClient;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.config.AgentProperties;
-import org.noear.solon.codecli.channel.IMLink;
+import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.portal.WebGate;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author noear 2026/5/9 created
  */
-public class FeishuLink implements IMLink, Runnable {
+public class FeishuLink implements Channel, Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(FeishuLink.class);
 
     private final HarnessEngine engine;

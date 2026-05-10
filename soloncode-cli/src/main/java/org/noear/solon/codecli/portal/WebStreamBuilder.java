@@ -29,7 +29,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskSkill;
 import org.noear.solon.ai.skills.memory.MemorySkill;
-import org.noear.solon.codecli.channel.IMLink;
+import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
@@ -53,7 +53,7 @@ public class WebStreamBuilder {
     /**
      * IM 通道路由表：所有注册的 IM 通道（微信、飞书、钉钉等）
      */
-    private final List<IMLink> imLinks = new ArrayList<>();
+    private final List<Channel> imLinks = new ArrayList<>();
 
     /**
      * 注册 IM 通道（向后兼容：支持 WeChatLink 直接注册）
@@ -66,7 +66,7 @@ public class WebStreamBuilder {
     /**
      * 注册 IM 通道（通用接口）
      */
-    public WebStreamBuilder bind(IMLink link) {
+    public WebStreamBuilder bind(Channel link) {
         this.imLinks.add(link);
         return this;
     }
@@ -75,7 +75,7 @@ public class WebStreamBuilder {
      * 获取微信通道（向后兼容）
      */
     public WeChatLink getWeChatLink() {
-        for (IMLink link : imLinks) {
+        for (Channel link : imLinks) {
             if (link instanceof WeChatLink) {
                 return (WeChatLink) link;
             }
@@ -272,7 +272,7 @@ public class WebStreamBuilder {
      * 向所有已绑定的 IM 通道发送回复
      */
     private void replyToBoundChannel(String sessionId, String text, boolean isFinal) {
-        for (IMLink link : imLinks) {
+        for (Channel link : imLinks) {
             if (link.isBound(sessionId)) {
                 link.sendReply(sessionId, text, isFinal);
             }

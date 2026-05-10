@@ -23,7 +23,7 @@ package org.noear.solon.codecli.channel;
  *
  * @author noear 2026/5/9 created
  */
-public interface IMLink {
+public interface Channel {
     /**
      * 通道名称标识
      */
