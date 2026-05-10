@@ -98,7 +98,7 @@ public class WebStreamBuilder {
         }
 
         //记录最新的选择
-        session.attrs().put("_model_selected_tmp", chatModel.getNameOrModel());
+        session.attrs().put("_agent_selected_tmp", agent.name());
 
         return agent.prompt(prompt)
                 .session(session)
@@ -230,24 +230,20 @@ public class WebStreamBuilder {
 
         if (Assert.isNotEmpty(resultContent)) {
             // 向所有已绑定的 IM 通道回复
-            for (IMLink link : imLinks) {
-                if (link.isBound(sessionId)) {
-                    if (thought.isToolCalls()) {
-                        // 说明是过程
-                        link.sendReply(sessionId, resultContent, false);
-                    } else {
-                        // 说明是结果
-                        String modelSelectedTmp = (String) session.attrs().get("_model_selected_tmp");
+            if (thought.isToolCalls()) {
+                // 说明是过程
+                replyToBoundChannel(sessionId, resultContent, false);
+            } else {
+                // 说明是结果
+                String agentSelectedTmp = (String) session.attrs().get("_agent_selected_tmp");
 
-                        if (thought.getTrace().getOptions().getChatModel().getNameOrModel().equals(modelSelectedTmp)) {
-                            // 说明是源代理（说明是最终结果）
-                            StringBuilder traceInfo = getTraceInfo(thought.getTrace());
-                            link.sendReply(sessionId, resultContent + traceInfo, true);
-                        } else {
-                            // 说明是次代理
-                            link.sendReply(sessionId, resultContent, false);
-                        }
-                    }
+                if (thought.getTrace().getAgentName().equals(agentSelectedTmp)) {
+                    // 说明是源代理（说明是最终结果）
+                    StringBuilder traceInfo = getTraceInfo(thought.getTrace());
+                    replyToBoundChannel(sessionId, resultContent + traceInfo, true);
+                } else {
+                    // 说明是次代理
+                    replyToBoundChannel(sessionId, resultContent, false);
                 }
             }
 
