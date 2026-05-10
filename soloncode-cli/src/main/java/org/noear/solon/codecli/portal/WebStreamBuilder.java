@@ -226,40 +226,35 @@ public class WebStreamBuilder {
 
     private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk thought) {
         String sessionId = session.getSessionId();
+        String resultContent = thought.getAssistantMessage().getResultContent();
 
-        // 向所有已绑定的 IM 通道回复
-        for (IMLink link : imLinks) {
-            if (link.isBound(sessionId)) {
-                String resultContent = thought.getAssistantMessage().getResultContent();
-
-                if (thought.isToolCalls()) {
-                    // 说明是过程
-                    link.sendReply(sessionId, resultContent, false);
-                } else {
-                    // 说明是结果
-                    String modelSelectedTmp = (String) session.attrs().get("_model_selected_tmp");
-
-                    if (thought.getTrace().getOptions().getChatModel().getNameOrModel().equals(modelSelectedTmp)) {
-                        // 说明是源代理（说明是最终结果）
-                        StringBuilder traceInfo = getTraceInfo(thought.getTrace());
-                        link.sendReply(sessionId, resultContent + traceInfo, true);
-                    } else {
-                        // 说明是次代理
+        if (Assert.isNotEmpty(resultContent)) {
+            // 向所有已绑定的 IM 通道回复
+            for (IMLink link : imLinks) {
+                if (link.isBound(sessionId)) {
+                    if (thought.isToolCalls()) {
+                        // 说明是过程
                         link.sendReply(sessionId, resultContent, false);
+                    } else {
+                        // 说明是结果
+                        String modelSelectedTmp = (String) session.attrs().get("_model_selected_tmp");
+
+                        if (thought.getTrace().getOptions().getChatModel().getNameOrModel().equals(modelSelectedTmp)) {
+                            // 说明是源代理（说明是最终结果）
+                            StringBuilder traceInfo = getTraceInfo(thought.getTrace());
+                            link.sendReply(sessionId, resultContent + traceInfo, true);
+                        } else {
+                            // 说明是次代理
+                            link.sendReply(sessionId, resultContent, false);
+                        }
                     }
                 }
             }
-        }
 
 
-        if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
-            // 仅在多任务并行且有内容时输出
-            String content = thought.getAssistantMessage().getResultContent();
-            if (Assert.isNotEmpty(content)) {
-                //content = content + "`(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")`";
-
-
-                return WebChunk.ofText("\n" + content);
+            if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+                // 仅在多任务并行且有内容时输出
+                return WebChunk.ofText("\n" + resultContent);
             }
         }
 
