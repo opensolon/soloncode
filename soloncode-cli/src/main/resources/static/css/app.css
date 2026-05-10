@@ -67,8 +67,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .main-header { padding: 14px 28px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
 .theme-toggle { background: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 6px 10px; cursor: pointer; color: var(--text-secondary); font-size: 16px; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
 .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
-.wechat-btn-header { border: 1px solid var(--accent); border-radius: 10px; padding: 6px 10px; cursor: pointer; color: #fff; font-size: 16px; transition: all 0.2s; display: flex; align-items: center; gap: 4px; background: var(--accent); }
-.wechat-btn-header:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.wechat-btn-header { background: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 6px 10px; cursor: pointer; color: var(--text-secondary); font-size: 16px; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+.wechat-btn-header:hover { background: var(--bg-hover); color: var(--text-primary); }
 .wechat-btn-header.bound { background: none; border: 1px solid #07c160; color: #07c160; }
 .wechat-btn-header .wechat-label { font-size: 12px; }
 
@@ -78,13 +78,13 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .im-btn-header .im-label { font-size: 12px; }
 
 /* Feishu */
-.feishu-btn-header { background: var(--accent); border-color: var(--accent); color: #fff; }
-.feishu-btn-header:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.feishu-btn-header { background: none; border-color: var(--border-color); color: var(--text-secondary); }
+.feishu-btn-header:hover { background: var(--bg-hover); color: var(--text-primary); }
 .feishu-btn-header.bound { background: none; border: 1px solid #07c160; color: #07c160; }
 
 /* DingTalk */
-.dingtalk-btn-header { background: var(--accent); border-color: var(--accent); color: #fff; }
-.dingtalk-btn-header:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.dingtalk-btn-header { background: none; border-color: var(--border-color); color: var(--text-secondary); }
+.dingtalk-btn-header:hover { background: var(--bg-hover); color: var(--text-primary); }
 .dingtalk-btn-header.bound { background: none; border: 1px solid #07c160; color: #07c160; }
 
 /* WeChat QR Modal */
