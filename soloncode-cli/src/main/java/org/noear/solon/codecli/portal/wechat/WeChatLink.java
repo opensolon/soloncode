@@ -264,7 +264,12 @@ public class WeChatLink implements IMLink, Runnable {
         }
     }
 
-    public void sendReply(String sessionId, String reply) {
+    @Override
+    public void sendReply(String sessionId, String reply, boolean isFinal) {
+        if(isFinal == false){
+            return;
+        }
+
         WeChatBinding binding = bindings.get(sessionId);
         if (binding == null) {
             return;

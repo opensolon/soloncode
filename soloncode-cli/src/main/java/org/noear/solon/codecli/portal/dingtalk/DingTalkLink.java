@@ -136,7 +136,7 @@ public class DingTalkLink implements IMLink, Runnable {
     }
 
     @Override
-    public void sendReply(String sessionId, String reply) {
+    public void sendReply(String sessionId, String reply, boolean isFinal) {
         DingTalkBinding binding = bindings.get(sessionId);
         if (binding == null) {
             return;

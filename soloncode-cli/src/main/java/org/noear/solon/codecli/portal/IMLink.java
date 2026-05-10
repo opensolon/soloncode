@@ -37,5 +37,5 @@ public interface IMLink {
     /**
      * 向指定会话绑定的 IM 用户发送回复
      */
-    void sendReply(String sessionId, String text);
+    void sendReply(String sessionId, String text, boolean isFinal);
 }
