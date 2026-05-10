@@ -1,5 +1,5 @@
 /* ===== app-streaming.js ===== */
-/* 通信与核心流程：发送 + WebChunk + WebSocket + 微信接管 */
+/* 通信与核心流程：发送 + WebChunk + WebSocket */
 /* 依赖：app-base.js, app-ui.js, app-history.js, app-message.js */
 
 /* ===== Send from both inputs ===== */
@@ -321,7 +321,7 @@ function updateWechatUI() {
                 var bound = resp.data && resp.data.bound;
                 wechatHeaderBtn.classList.toggle('bound', !!bound);
                 wechatHeaderLabel.textContent = bound ? '已连接' : '';
-                wechatHeaderBtn.title = bound ? '微信已接管（点击解绑）' : '微信接管';
+                wechatHeaderBtn.title = bound ? '微信已绑定（点击解绑）' : '微信绑定';
             } catch(e) {}
         }
     };
@@ -363,7 +363,7 @@ function showWechatModal() {
     wechatModalOverlay = document.createElement('div');
     wechatModalOverlay.className = 'wechat-modal-overlay';
     wechatModalOverlay.innerHTML = '<div class="wechat-modal">'
-        + '<div class="wechat-modal-title">微信扫码接管</div>'
+        + '<div class="wechat-modal-title">微信扫码绑定</div>'
         + '<div class="wechat-modal-subtitle">用微信扫描二维码，当前会话将同步到微信</div>'
         + '<div class="wechat-qr-wrap" id="wechatQrWrap"><span style="color:#999;font-size:13px">加载中...</span></div>'
         + '<div class="wechat-status" id="wechatQrStatus">等待扫码...</div>'
@@ -489,7 +489,7 @@ function updateFeishuUI() {
                 var bound = !!data.bound;
                 feishuHeaderBtn.classList.toggle('bound', bound);
                 feishuHeaderLabel.textContent = bound ? '已连接' : '';
-                feishuHeaderBtn.title = bound ? '飞书已接管（点击解绑）' : '飞书接管';
+                feishuHeaderBtn.title = bound ? '飞书已绑定（点击解绑）' : '飞书绑定';
             } catch(e) {}
         }
     };
@@ -688,7 +688,7 @@ function updateDingTalkUI() {
                 var bound = !!data.bound;
                 dingtalkHeaderBtn.classList.toggle('bound', bound);
                 dingtalkHeaderLabel.textContent = bound ? '已连接' : '';
-                dingtalkHeaderBtn.title = bound ? '钉钉已接管（点击解绑）' : '钉钉接管';
+                dingtalkHeaderBtn.title = bound ? '钉钉已绑定（点击解绑）' : '钉钉绑定';
             } catch(e) {}
         }
     };
