@@ -362,6 +362,20 @@ public class WebGate extends SimpleWebSocketListener {
         onChatInput(sessionId, null, input, null, null, null, null);
     }
 
+    /**
+     * ⑤ 飞书消息输入（由 FeishuLink 调用）
+     */
+    public void onFeishuMessage(String sessionId, String input) {
+        onChatInput(sessionId, null, input, null, null, null, null);
+    }
+
+    /**
+     * ⑥ 钉钉消息输入（由 DingTalkLink 调用）
+     */
+    public void onDingTalkMessage(String sessionId, String input) {
+        onChatInput(sessionId, null, input, null, null, null, null);
+    }
+
 
     // ==================== 工具方法 ====================
 

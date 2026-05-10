@@ -13,6 +13,8 @@ var themeBtn = document.getElementById('themeBtn');
 var themeIcon = document.getElementById('themeIcon');
 var newChatBtn = document.getElementById('newChatBtn');
 var historyList = document.getElementById('historyList');
+var feishuHeaderBtn = document.getElementById('feishuHeaderBtn');
+var dingtalkHeaderBtn = document.getElementById('dingtalkHeaderBtn');
 
 /* ===== Constants ===== */
 var DOTS_HTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';

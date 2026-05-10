@@ -328,12 +328,16 @@ function updateWechatUI() {
     xhr.send();
 }
 
-// Page load & session switch: refresh status
+// Page load & session switch: refresh all IM status
 updateWechatUI();
+updateFeishuUI();
+updateDingTalkUI();
 var origSetActiveSession = setActiveSession;
 setActiveSession = function(sid) {
     origSetActiveSession(sid);
     updateWechatUI();
+    updateFeishuUI();
+    updateDingTalkUI();
 };
 
 wechatHeaderBtn.addEventListener('click', function() {
@@ -467,6 +471,339 @@ function closeWechatModal() {
     if (wechatModalOverlay) {
         wechatModalOverlay.remove();
         wechatModalOverlay = null;
+    }
+}
+
+/* ===== Feishu Channel ===== */
+var feishuHeaderBtn = document.getElementById('feishuHeaderBtn');
+var feishuHeaderLabel = document.getElementById('feishuHeaderLabel');
+var feishuModalOverlay = null;
+
+function updateFeishuUI() {
+    if (!activeSessionId) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+                var resp = JSON.parse(xhr.responseText);
+                var bound = resp.data && resp.data.bound;
+                feishuHeaderBtn.classList.toggle('bound', !!bound);
+                feishuHeaderLabel.textContent = bound ? '已连接' : '';
+                feishuHeaderBtn.title = bound ? '飞书已接管（点击解绑）' : '飞书接管';
+            } catch(e) {}
+        }
+    };
+    xhr.send();
+}
+
+// Feishu status is refreshed in the unified setActiveSession hijack above
+
+feishuHeaderBtn.addEventListener('click', function() {
+    if (!activeSessionId) return;
+    // If already bound, unbind
+    if (feishuHeaderBtn.classList.contains('bound')) {
+        if (!confirm('确定要断开飞书连接吗？')) return;
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/chat/feishu/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) updateFeishuUI();
+        };
+        xhr.send();
+        return;
+    }
+    // Not bound: show bind modal
+    showFeishuModal();
+});
+
+function showFeishuModal() {
+    if (feishuModalOverlay) return;
+
+    feishuModalOverlay = document.createElement('div');
+    feishuModalOverlay.className = 'im-bind-modal-overlay';
+    feishuModalOverlay.innerHTML = '<div class="im-bind-modal">'
+        + '<div class="im-bind-modal-title" style="color:#3370ff">飞书绑定</div>'
+        + '<div class="im-bind-modal-subtitle">输入飞书用户的 openId，将当前会话与飞书用户绑定</div>'
+        + '<div class="im-bind-input-group">'
+        + '  <label class="im-bind-input-label">Open ID</label>'
+        + '  <input class="im-bind-input" id="feishuOpenIdInput" placeholder="例如：ou_xxxxxxxxxxxxxxxx" />'
+        + '</div>'
+        + '<div class="im-bind-status" id="feishuBindStatus">&nbsp;</div>'
+        + '<button class="im-bind-confirm-btn feishu" id="feishuBindConfirmBtn">绑定</button>'
+        + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
+        + '<div class="im-bind-hint">提示：openId 可在飞书开放平台的管理后台中查看用户信息获取，或通过飞书 API 接口获取。</div>'
+        + '</div>';
+    document.body.appendChild(feishuModalOverlay);
+
+    document.getElementById('feishuModalClose').addEventListener('click', closeFeishuModal);
+    feishuModalOverlay.addEventListener('click', function(e) {
+        if (e.target === feishuModalOverlay) closeFeishuModal();
+    });
+
+    var inputEl = document.getElementById('feishuOpenIdInput');
+    var statusEl = document.getElementById('feishuBindStatus');
+    var confirmBtn = document.getElementById('feishuBindConfirmBtn');
+
+    inputEl.focus();
+
+    confirmBtn.addEventListener('click', function() {
+        var openId = inputEl.value.trim();
+        if (!openId) {
+            statusEl.textContent = '请输入 openId';
+            statusEl.className = 'im-bind-status error';
+            return;
+        }
+        statusEl.textContent = '绑定中...';
+        statusEl.className = 'im-bind-status';
+        confirmBtn.disabled = true;
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/chat/feishu/bind?sessionId=' + encodeURIComponent(activeSessionId)
+            + '&openId=' + encodeURIComponent(openId), true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) {
+                confirmBtn.disabled = false;
+                if (xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (resp.code === 200) {
+                            statusEl.textContent = '绑定成功！';
+                            statusEl.className = 'im-bind-status scanned';
+                            setTimeout(function() {
+                                closeFeishuModal();
+                                updateFeishuUI();
+                                switchToChatMode();
+                            }, 1000);
+                        } else {
+                            statusEl.textContent = resp.message || '绑定失败';
+                            statusEl.className = 'im-bind-status error';
+                        }
+                    } catch(e) {
+                        statusEl.textContent = '绑定失败';
+                        statusEl.className = 'im-bind-status error';
+                    }
+                } else {
+                    statusEl.textContent = '请求失败 (' + xhr.status + ')';
+                    statusEl.className = 'im-bind-status error';
+                }
+            }
+        };
+        xhr.send();
+    });
+
+    // Enter key to confirm
+    inputEl.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            confirmBtn.click();
+        }
+    });
+}
+
+function closeFeishuModal() {
+    if (feishuModalOverlay) {
+        feishuModalOverlay.remove();
+        feishuModalOverlay = null;
+    }
+}
+
+/* ===== DingTalk Channel ===== */
+var dingtalkHeaderBtn = document.getElementById('dingtalkHeaderBtn');
+var dingtalkHeaderLabel = document.getElementById('dingtalkHeaderLabel');
+var dingtalkModalOverlay = null;
+var dingtalkPollTimer = null;
+
+function updateDingTalkUI() {
+    if (!activeSessionId) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+                var resp = JSON.parse(xhr.responseText);
+                var data = resp.data || {};
+                var bound = !!data.bound;
+                dingtalkHeaderBtn.classList.toggle('bound', bound);
+                dingtalkHeaderLabel.textContent = bound ? '已连接' : '';
+                dingtalkHeaderBtn.title = bound ? '钉钉已接管（点击解绑）' : '钉钉接管';
+            } catch(e) {}
+        }
+    };
+    xhr.send();
+}
+
+// Page load: refresh status
+updateDingTalkUI();
+
+dingtalkHeaderBtn.addEventListener('click', function() {
+    if (!activeSessionId) return;
+    // If already bound, unbind
+    if (dingtalkHeaderBtn.classList.contains('bound')) {
+        if (!confirm('确定要断开钉钉连接吗？')) return;
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/chat/dingtalk/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) updateDingTalkUI();
+        };
+        xhr.send();
+        return;
+    }
+    // Not bound: show bind modal
+    showDingTalkModal();
+});
+
+function showDingTalkModal() {
+    if (dingtalkModalOverlay) return;
+
+    dingtalkModalOverlay = document.createElement('div');
+    dingtalkModalOverlay.className = 'im-bind-modal-overlay';
+    dingtalkModalOverlay.innerHTML = '<div class="im-bind-modal">'
+        + '<div class="im-bind-modal-title" style="color:#0089FF">钉钉绑定</div>'
+        + '<div class="im-bind-modal-subtitle">输入钉钉机器人应用的 AppKey 和 AppSecret，连接后请在钉钉上发消息给机器人完成自动绑定</div>'
+        + '<div class="im-bind-input-group">'
+        + '  <label class="im-bind-input-label">AppKey（Client ID）</label>'
+        + '  <input class="im-bind-input" id="dingtalkAppKeyInput" placeholder="钉钉开放平台 → 应用 → 凭据 → AppKey" />'
+        + '</div>'
+        + '<div class="im-bind-input-group">'
+        + '  <label class="im-bind-input-label">AppSecret（Client Secret）</label>'
+        + '  <input class="im-bind-input" id="dingtalkAppSecretInput" type="password" placeholder="钉钉开放平台 → 应用 → 凭据 → AppSecret" />'
+        + '</div>'
+        + '<div class="im-bind-status" id="dingtalkBindStatus">&nbsp;</div>'
+        + '<button class="im-bind-confirm-btn dingtalk" id="dingtalkBindConfirmBtn">连接</button>'
+        + '<button class="im-bind-modal-close" id="dingtalkModalClose">取消</button>'
+        + '<div class="im-bind-hint">提示：请在钉钉开放平台（open.dingtalk.com）创建企业内部应用，开启机器人能力，消息接收模式选择 Stream，然后复制 AppKey 和 AppSecret 到这里。</div>'
+        + '</div>';
+    document.body.appendChild(dingtalkModalOverlay);
+
+    document.getElementById('dingtalkModalClose').addEventListener('click', closeDingTalkModal);
+    dingtalkModalOverlay.addEventListener('click', function(e) {
+        if (e.target === dingtalkModalOverlay) closeDingTalkModal();
+    });
+
+    var appKeyInput = document.getElementById('dingtalkAppKeyInput');
+    var appSecretInput = document.getElementById('dingtalkAppSecretInput');
+    var statusEl = document.getElementById('dingtalkBindStatus');
+    var confirmBtn = document.getElementById('dingtalkBindConfirmBtn');
+    var modalContent = dingtalkModalOverlay.querySelector('.im-bind-modal');
+
+    appKeyInput.focus();
+
+    confirmBtn.addEventListener('click', function() {
+        var appKey = appKeyInput.value.trim();
+        var appSecret = appSecretInput.value.trim();
+        if (!appKey) {
+            statusEl.textContent = '请输入 AppKey';
+            statusEl.className = 'im-bind-status error';
+            return;
+        }
+        if (!appSecret) {
+            statusEl.textContent = '请输入 AppSecret';
+            statusEl.className = 'im-bind-status error';
+            return;
+        }
+        statusEl.textContent = '正在启动 Stream 连接...';
+        statusEl.className = 'im-bind-status';
+        confirmBtn.disabled = true;
+        appKeyInput.disabled = true;
+        appSecretInput.disabled = true;
+
+        var params = 'sessionId=' + encodeURIComponent(activeSessionId)
+            + '&appKey=' + encodeURIComponent(appKey)
+            + '&appSecret=' + encodeURIComponent(appSecret);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/chat/dingtalk/bind?' + params, true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (resp.code === 200) {
+                            // Stream 启动成功，进入等待钉钉消息状态
+                            statusEl.textContent = '连接成功！请在钉钉上发送消息给机器人...';
+                            statusEl.className = 'im-bind-status';
+                            confirmBtn.style.display = 'none';
+                            // 开始轮询绑定状态
+                            startDingTalkPoll();
+                        } else {
+                            statusEl.textContent = resp.message || '连接失败';
+                            statusEl.className = 'im-bind-status error';
+                            confirmBtn.disabled = false;
+                            appKeyInput.disabled = false;
+                            appSecretInput.disabled = false;
+                        }
+                    } catch(e) {
+                        statusEl.textContent = '连接失败';
+                        statusEl.className = 'im-bind-status error';
+                        confirmBtn.disabled = false;
+                        appKeyInput.disabled = false;
+                        appSecretInput.disabled = false;
+                    }
+                } else {
+                    statusEl.textContent = '请求失败 (' + xhr.status + ')';
+                    statusEl.className = 'im-bind-status error';
+                    confirmBtn.disabled = false;
+                    appKeyInput.disabled = false;
+                    appSecretInput.disabled = false;
+                }
+            }
+        };
+        xhr.send();
+    });
+
+    function startDingTalkPoll() {
+        if (dingtalkPollTimer) clearInterval(dingtalkPollTimer);
+        var dotCount = 0;
+        dingtalkPollTimer = setInterval(function() {
+            dotCount = (dotCount + 1) % 4;
+            var dots = '.'.repeat(dotCount);
+            statusEl.textContent = '等待钉钉消息' + dots;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        var data = resp.data || {};
+                        if (data.bound) {
+                            // 绑定成功！
+                            clearInterval(dingtalkPollTimer);
+                            dingtalkPollTimer = null;
+                            statusEl.textContent = '绑定成功！';
+                            statusEl.className = 'im-bind-status scanned';
+                            setTimeout(function() {
+                                closeDingTalkModal();
+                                updateDingTalkUI();
+                                switchToChatMode();
+                            }, 1000);
+                        }
+                    } catch(e) {}
+                }
+            };
+            xhr.send();
+        }, 2000);
+    }
+
+    // Enter key to confirm
+    [appKeyInput, appSecretInput].forEach(function(el) {
+        el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                confirmBtn.click();
+            }
+        });
+    });
+}
+
+function closeDingTalkModal() {
+    if (dingtalkPollTimer) {
+        clearInterval(dingtalkPollTimer);
+        dingtalkPollTimer = null;
+    }
+    if (dingtalkModalOverlay) {
+        dingtalkModalOverlay.remove();
+        dingtalkModalOverlay = null;
     }
 }
 

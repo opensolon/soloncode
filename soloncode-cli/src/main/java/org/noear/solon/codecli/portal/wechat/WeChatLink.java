@@ -17,6 +17,7 @@ package org.noear.solon.codecli.portal.wechat;
 
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.config.AgentProperties;
+import org.noear.solon.codecli.portal.IMLink;
 import org.noear.solon.codecli.portal.WebChunk;
 import org.noear.solon.codecli.portal.WebGate;
 import org.noear.solon.core.util.Assert;
@@ -36,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @author noear 2026/5/5 created
  */
-public class WeChatLink implements Runnable {
+public class WeChatLink implements IMLink, Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(WeChatLink.class);
 
     private final HarnessEngine engine;
@@ -114,9 +115,15 @@ public class WeChatLink implements Runnable {
         LOG.info("[WeChat] Session {} unbound", sessionId);
     }
 
+    @Override
+    public String getChannelName() {
+        return "wechat";
+    }
+
     /**
      * 查询会话是否已绑定微信
      */
+    @Override
     public boolean isBound(String sessionId) {
         return bindings.containsKey(sessionId);
     }
@@ -255,9 +262,6 @@ public class WeChatLink implements Runnable {
                 ILinkClient.sendTyping(binding.botToken, fromUserId, binding.typingTicket, 2);
             }
         }
-
-        //把最后一次的 lastContextToken，lastFromUserId 存起来
-        credentialStore.save(bindings);
     }
 
     public void sendReply(String sessionId, String reply) {

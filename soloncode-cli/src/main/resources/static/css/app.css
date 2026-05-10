@@ -72,6 +72,21 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .wechat-btn-header.bound { background: none; border: 1px solid #07c160; color: #07c160; }
 .wechat-btn-header .wechat-label { font-size: 12px; }
 
+/* ===== IM Buttons (Feishu / DingTalk) ===== */
+.im-btn-header { border: 1px solid var(--border-color); border-radius: 10px; padding: 6px 10px; background: transparent; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 16px; transition: all 0.2s; }
+.im-btn-header:hover { background: var(--bg-hover); color: var(--text-primary); }
+.im-btn-header .im-label { font-size: 12px; }
+
+/* Feishu */
+.feishu-btn-header { border-color: #3370ff; color: #3370ff; }
+.feishu-btn-header:hover { background: #3370ff; color: #fff; }
+.feishu-btn-header.bound { background: none; border: 1px solid #3370ff; color: #3370ff; }
+
+/* DingTalk */
+.dingtalk-btn-header { border-color: #0089FF; color: #0089FF; }
+.dingtalk-btn-header:hover { background: #0089FF; color: #fff; }
+.dingtalk-btn-header.bound { background: none; border: 1px solid #0089FF; color: #0089FF; }
+
 /* WeChat QR Modal */
 .wechat-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; animation: modal-fade-in 0.2s ease-out; }
 @keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -85,6 +100,30 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .wechat-status.error { color: #ef4444; }
 .wechat-modal-close { margin-top: 8px; padding: 8px 24px; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; transition: all 0.15s; }
 .wechat-modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ===== IM Bind Modal (Feishu / DingTalk) ===== */
+.im-bind-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; animation: modal-fade-in 0.2s ease-out; }
+.im-bind-modal { background: var(--bg-input-box); border-radius: 16px; padding: 28px 32px; min-width: 320px; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }
+.im-bind-modal-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+.im-bind-modal-subtitle { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+.im-bind-status { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; }
+.im-bind-status.scanned { color: #07c160; }
+.im-bind-status.error { color: #ef4444; }
+.im-bind-modal-close { margin-top: 8px; padding: 8px 24px; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; transition: all 0.15s; }
+.im-bind-modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* IM Bind Input & Confirm */
+.im-bind-input-group { margin-bottom: 12px; }
+.im-bind-input-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; display: block; }
+.im-bind-input { width: 100%; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-primary); font-size: 14px; outline: none; margin: 8px 0 16px; box-sizing: border-box; }
+.im-bind-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,110,247,0.08); }
+.im-bind-input::placeholder { color: var(--text-secondary); }
+.im-bind-confirm-btn { padding: 10px 0; width: 100%; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-top: 4px; }
+.im-bind-confirm-btn.feishu { background: #3370ff; color: #fff; }
+.im-bind-confirm-btn.feishu:hover { background: #2960e6; }
+.im-bind-confirm-btn.dingtalk { background: #0089FF; color: #fff; }
+.im-bind-confirm-btn.dingtalk:hover { background: #0070dd; }
+.im-bind-hint { font-size: 12px; color: var(--text-secondary); margin-top: 12px; line-height: 1.6; text-align: left; }
 
 /* ===== Welcome ===== */
 .welcome-view { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px 80px; }

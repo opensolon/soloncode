@@ -37,6 +37,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Web Stream Builder
@@ -46,15 +48,49 @@ public class WebStreamBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(WebStreamBuilder.class);
 
     private final HarnessEngine engine;
-    private WeChatLink weChatLink;
 
+    /**
+     * IM 通道路由表：所有注册的 IM 通道（微信、飞书、钉钉等）
+     */
+    private final List<IMLink> imLinks = new ArrayList<>();
+
+    /**
+     * 注册 IM 通道（向后兼容：支持 WeChatLink 直接注册）
+     */
     public WebStreamBuilder bind(WeChatLink weChatLink) {
-        this.weChatLink = weChatLink;
+        this.imLinks.add(weChatLink);
         return this;
     }
 
+    /**
+     * 注册 IM 通道（通用接口）
+     */
+    public WebStreamBuilder bind(IMLink link) {
+        this.imLinks.add(link);
+        return this;
+    }
+
+    /**
+     * 获取微信通道（向后兼容）
+     */
     public WeChatLink getWeChatLink() {
-        return weChatLink;
+        for (IMLink link : imLinks) {
+            if (link instanceof WeChatLink) {
+                return (WeChatLink) link;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 向所有已绑定的 IM 通道发送回复
+     */
+    private void replyToBoundChannel(String sessionId, String text) {
+        for (IMLink link : imLinks) {
+            if (link.isBound(sessionId)) {
+                link.sendReply(sessionId, text);
+            }
+        }
     }
 
     public WebStreamBuilder(HarnessEngine engine) {
@@ -198,24 +234,26 @@ public class WebStreamBuilder {
     }
 
     private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk thought) {
-        if (weChatLink != null) {
-            if (weChatLink.isBound(session.getSessionId())) {
+        String sessionId = session.getSessionId();
+
+        // 向所有已绑定的 IM 通道回复
+        for (IMLink link : imLinks) {
+            if (link.isBound(sessionId)) {
                 String resultContent = thought.getAssistantMessage().getResultContent();
 
-                //回复微信
                 if (thought.isToolCalls()) {
-                    //说明是过程
-                    weChatLink.sendReply(session.getSessionId(), resultContent);
+                    // 说明是过程
+                    link.sendReply(sessionId, resultContent);
                 } else {
-                    //说明是结果
+                    // 说明是结果
                     String modelSelectedTmp = (String) session.attrs().get("_model_selected_tmp");
 
                     if (thought.getTrace().getOptions().getChatModel().getNameOrModel().equals(modelSelectedTmp)) {
-                        //说明是发起代理
+                        // 说明是发起代理
                         StringBuilder traceInfo = getTraceInfo(thought.getTrace());
-                        weChatLink.sendReply(session.getSessionId(), resultContent + traceInfo);
+                        link.sendReply(sessionId, resultContent + traceInfo);
                     } else {
-                        weChatLink.sendReply(session.getSessionId(), resultContent);
+                        link.sendReply(sessionId, resultContent);
                     }
                 }
             }
@@ -239,11 +277,9 @@ public class WebStreamBuilder {
     private WebChunk onFinalChunk(AgentSession session, ReActChunk react) {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
-        if (react.isAbnormal() && weChatLink != null) {
-            if (weChatLink.isBound(session.getSessionId())) {
-                //回复微信
-                weChatLink.sendReply(session.getSessionId(), react.getContent() + traceInfo);
-            }
+        if (react.isAbnormal()) {
+            // 向所有已绑定的 IM 通道回复异常
+            replyToBoundChannel(session.getSessionId(), react.getContent() + traceInfo);
         }
 
         return WebChunk.ofText(traceInfo.toString());

@@ -17,6 +17,8 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.memory.MemoryManger;
+import org.noear.solon.codecli.portal.dingtalk.DingTalkLink;
+import org.noear.solon.codecli.portal.feishu.FeishuLink;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
@@ -178,10 +180,6 @@ public class Configurator {
         BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, modelProviderFactory));
         Solon.app().router().add(webBean);
 
-        // 启动微信通道
-        RunUtil.async(((WebController) webBean.raw()).getWeChatLink());
-
-
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
     }
 
@@ -197,6 +195,16 @@ public class Configurator {
 
         // 启动微信通道
         RunUtil.async(((WebController) webBean.raw()).getWeChatLink());
+
+        // 启动飞书通道
+        FeishuLink feishuLinkWeb = new FeishuLink(agentRuntime, webGate);
+        ((WebController) webBean.raw()).setFeishuLink(feishuLinkWeb);
+        RunUtil.async(feishuLinkWeb);
+
+        // 启动钉钉通道
+        DingTalkLink dingTalkLinkWeb = new DingTalkLink(agentRuntime, webGate);
+        ((WebController) webBean.raw()).setDingTalkLink(dingTalkLinkWeb);
+        RunUtil.async(dingTalkLinkWeb);
 
         if (cliShell == null) {
             return;

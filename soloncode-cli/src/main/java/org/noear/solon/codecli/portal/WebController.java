@@ -26,6 +26,8 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.portal.dingtalk.DingTalkLink;
+import org.noear.solon.codecli.portal.feishu.FeishuLink;
 import org.noear.solon.codecli.portal.wechat.WeChatLink;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -57,6 +59,8 @@ public class WebController {
     private final LoopScheduler loopScheduler;
     private final WebGate webGate;
     private final WeChatLink weChatLink;
+    private FeishuLink feishuLink;
+    private DingTalkLink dingTalkLink;
 
     public WebController(HarnessEngine engine, LoopScheduler loopScheduler, WebGate webGate) {
         this.engine = engine;
@@ -407,10 +411,153 @@ public class WebController {
     }
 
     /**
+     * 注入飞书通道（由 Configurator 调用）
+     */
+    public void setFeishuLink(FeishuLink feishuLink) {
+        this.feishuLink = feishuLink;
+    }
+
+    /**
+     * 注入钉钉通道（由 Configurator 调用）
+     */
+    public void setDingTalkLink(DingTalkLink dingTalkLink) {
+        this.dingTalkLink = dingTalkLink;
+    }
+
+    /**
      * 获取 WeChatLink 实例（供 Configurator 注册启动）
      */
     public WeChatLink getWeChatLink() {
         return weChatLink;
+    }
+
+    /**
+     * 获取 FeishuLink 实例
+     */
+    public FeishuLink getFeishuLink() {
+        return feishuLink;
+    }
+
+    /**
+     * 获取 DingTalkLink 实例
+     */
+    public DingTalkLink getDingTalkLink() {
+        return dingTalkLink;
+    }
+
+    // ==================== 飞书通道接口 ====================
+
+    /**
+     * 绑定飞书到指定会话
+     */
+    @Post
+    @Mapping("/chat/feishu/bind")
+    public Result feishuBind(@Param("sessionId") String sessionId, @Param("openId") String openId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+        if (openId == null || openId.isEmpty()) {
+            return Result.failure("openId is required");
+        }
+        if (feishuLink == null) {
+            return Result.failure("飞书通道未启用");
+        }
+
+        feishuLink.bindSession(sessionId, openId);
+        return Result.succeed();
+    }
+
+    /**
+     * 解绑飞书通道
+     */
+    @Post
+    @Mapping("/chat/feishu/unbind")
+    public Result feishuUnbind(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+        if (feishuLink != null) {
+            feishuLink.unbindSession(sessionId);
+        }
+        return Result.succeed();
+    }
+
+    /**
+     * 查询会话飞书绑定状态
+     */
+    @Get
+    @Mapping("/chat/feishu/status")
+    public Result<Map> feishuStatus(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("bound", feishuLink != null && feishuLink.isBound(sessionId));
+        return Result.succeed(data);
+    }
+
+    // ==================== 钉钉通道接口 ====================
+
+    /**
+     * 绑定钉钉到指定会话（提交 AppKey + AppSecret，启动 Stream 并等待自动绑定）
+     */
+    @Post
+    @Mapping("/chat/dingtalk/bind")
+    public Result dingtalkBind(@Param("sessionId") String sessionId,
+                              @Param("appKey") String appKey,
+                              @Param("appSecret") String appSecret) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+        if (appKey == null || appKey.isEmpty()) {
+            return Result.failure("appKey 不能为空");
+        }
+        if (appSecret == null || appSecret.isEmpty()) {
+            return Result.failure("appSecret 不能为空");
+        }
+        if (dingTalkLink == null) {
+            return Result.failure("钉钉通道未启用");
+        }
+
+        boolean ok = dingTalkLink.startStream(appKey, appSecret, sessionId);
+        if (!ok) {
+            return Result.failure("启动 Stream 连接失败，请检查 AppKey 和 AppSecret");
+        }
+        return Result.succeed("已启动连接，请在钉钉上发消息给机器人完成绑定");
+    }
+
+    /**
+     * 解绑钉钉通道
+     */
+    @Post
+    @Mapping("/chat/dingtalk/unbind")
+    public Result dingtalkUnbind(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+        if (dingTalkLink != null) {
+            dingTalkLink.unbindSession(sessionId);
+        }
+        return Result.succeed();
+    }
+
+    /**
+     * 查询会话钉钉绑定状态（前端轮询用，返回 streamStarted/pending/bound）
+     */
+    @Get
+    @Mapping("/chat/dingtalk/status")
+    public Result<Map> dingtalkStatus(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+        if (dingTalkLink == null) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("bound", false);
+            data.put("streamStarted", false);
+            data.put("pending", false);
+            return Result.succeed(data);
+        }
+        return Result.succeed(dingTalkLink.getStreamStatus(sessionId));
     }
 
     // ==================== 工具方法 ====================
