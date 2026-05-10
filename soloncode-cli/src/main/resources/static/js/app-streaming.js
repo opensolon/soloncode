@@ -478,6 +478,7 @@ function closeWechatModal() {
 var feishuHeaderBtn = document.getElementById('feishuHeaderBtn');
 var feishuHeaderLabel = document.getElementById('feishuHeaderLabel');
 var feishuModalOverlay = null;
+var feishuPollTimer = null;
 
 function updateFeishuUI() {
     if (!activeSessionId) return;
@@ -487,8 +488,9 @@ function updateFeishuUI() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
                 var resp = JSON.parse(xhr.responseText);
-                var bound = resp.data && resp.data.bound;
-                feishuHeaderBtn.classList.toggle('bound', !!bound);
+                var data = resp.data || {};
+                var bound = !!data.bound;
+                feishuHeaderBtn.classList.toggle('bound', bound);
                 feishuHeaderLabel.textContent = bound ? '已连接' : '';
                 feishuHeaderBtn.title = bound ? '飞书已接管（点击解绑）' : '飞书接管';
             } catch(e) {}
@@ -497,7 +499,8 @@ function updateFeishuUI() {
     xhr.send();
 }
 
-// Feishu status is refreshed in the unified setActiveSession hijack above
+// Page load: refresh status
+updateFeishuUI();
 
 feishuHeaderBtn.addEventListener('click', function() {
     if (!activeSessionId) return;
@@ -523,15 +526,19 @@ function showFeishuModal() {
     feishuModalOverlay.className = 'im-bind-modal-overlay';
     feishuModalOverlay.innerHTML = '<div class="im-bind-modal">'
         + '<div class="im-bind-modal-title" style="color:#3370ff">飞书绑定</div>'
-        + '<div class="im-bind-modal-subtitle">输入飞书用户的 openId，将当前会话与飞书用户绑定</div>'
+        + '<div class="im-bind-modal-subtitle">输入飞书应用的 App ID 和 App Secret，连接后请在飞书上发消息给机器人完成自动绑定</div>'
         + '<div class="im-bind-input-group">'
-        + '  <label class="im-bind-input-label">Open ID</label>'
-        + '  <input class="im-bind-input" id="feishuOpenIdInput" placeholder="例如：ou_xxxxxxxxxxxxxxxx" />'
+        + '  <label class="im-bind-input-label">App ID</label>'
+        + '  <input class="im-bind-input" id="feishuAppIdInput" placeholder="飞书开放平台 → 应用 → 凭据 → App ID" />'
+        + '</div>'
+        + '<div class="im-bind-input-group">'
+        + '  <label class="im-bind-input-label">App Secret</label>'
+        + '  <input class="im-bind-input" id="feishuAppSecretInput" type="password" placeholder="飞书开放平台 → 应用 → 凭据 → App Secret" />'
         + '</div>'
         + '<div class="im-bind-status" id="feishuBindStatus">&nbsp;</div>'
-        + '<button class="im-bind-confirm-btn feishu" id="feishuBindConfirmBtn">绑定</button>'
+        + '<button class="im-bind-confirm-btn feishu" id="feishuBindConfirmBtn">连接</button>'
         + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
-        + '<div class="im-bind-hint">提示：openId 可在飞书开放平台的管理后台中查看用户信息获取，或通过飞书 API 接口获取。</div>'
+        + '<div class="im-bind-hint">提示：请在飞书开放平台（open.feishu.cn）创建企业自建应用，开启机器人能力，事件订阅选择 WebSocket 长连接模式，然后复制 App ID 和 App Secret 到这里。</div>'
         + '</div>';
     document.body.appendChild(feishuModalOverlay);
 
@@ -540,33 +547,95 @@ function showFeishuModal() {
         if (e.target === feishuModalOverlay) closeFeishuModal();
     });
 
-    var inputEl = document.getElementById('feishuOpenIdInput');
+    var appIdInput = document.getElementById('feishuAppIdInput');
+    var appSecretInput = document.getElementById('feishuAppSecretInput');
     var statusEl = document.getElementById('feishuBindStatus');
     var confirmBtn = document.getElementById('feishuBindConfirmBtn');
 
-    inputEl.focus();
+    appIdInput.focus();
 
     confirmBtn.addEventListener('click', function() {
-        var openId = inputEl.value.trim();
-        if (!openId) {
-            statusEl.textContent = '请输入 openId';
+        var appId = appIdInput.value.trim();
+        var appSecret = appSecretInput.value.trim();
+        if (!appId) {
+            statusEl.textContent = '请输入 App ID';
             statusEl.className = 'im-bind-status error';
             return;
         }
-        statusEl.textContent = '绑定中...';
+        if (!appSecret) {
+            statusEl.textContent = '请输入 App Secret';
+            statusEl.className = 'im-bind-status error';
+            return;
+        }
+        statusEl.textContent = '正在启动 WebSocket 连接...';
         statusEl.className = 'im-bind-status';
         confirmBtn.disabled = true;
+        appIdInput.disabled = true;
+        appSecretInput.disabled = true;
+
+        var params = 'sessionId=' + encodeURIComponent(activeSessionId)
+            + '&appId=' + encodeURIComponent(appId)
+            + '&appSecret=' + encodeURIComponent(appSecret);
 
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/chat/feishu/bind?sessionId=' + encodeURIComponent(activeSessionId)
-            + '&openId=' + encodeURIComponent(openId), true);
+        xhr.open('POST', '/chat/feishu/bind?' + params, true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) {
-                confirmBtn.disabled = false;
                 if (xhr.status === 200) {
                     try {
                         var resp = JSON.parse(xhr.responseText);
                         if (resp.code === 200) {
+                            // WebSocket 启动成功，进入等待飞书消息状态
+                            statusEl.textContent = '连接成功！请在飞书上发送消息给机器人...';
+                            statusEl.className = 'im-bind-status';
+                            confirmBtn.style.display = 'none';
+                            // 开始轮询绑定状态
+                            startFeishuPoll();
+                        } else {
+                            statusEl.textContent = resp.message || '连接失败';
+                            statusEl.className = 'im-bind-status error';
+                            confirmBtn.disabled = false;
+                            appIdInput.disabled = false;
+                            appSecretInput.disabled = false;
+                        }
+                    } catch(e) {
+                        statusEl.textContent = '连接失败';
+                        statusEl.className = 'im-bind-status error';
+                        confirmBtn.disabled = false;
+                        appIdInput.disabled = false;
+                        appSecretInput.disabled = false;
+                    }
+                } else {
+                    statusEl.textContent = '请求失败 (' + xhr.status + ')';
+                    statusEl.className = 'im-bind-status error';
+                    confirmBtn.disabled = false;
+                    appIdInput.disabled = false;
+                    appSecretInput.disabled = false;
+                }
+            }
+        };
+        xhr.send();
+    });
+
+    function startFeishuPoll() {
+        if (feishuPollTimer) clearInterval(feishuPollTimer);
+        var dotCount = 0;
+        feishuPollTimer = setInterval(function() {
+            dotCount = (dotCount + 1) % 4;
+            var dots = '.'.repeat(dotCount);
+            statusEl.textContent = '等待飞书消息' + dots;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        var data = resp.data || {};
+                        if (data.bound) {
+                            // 绑定成功！
+                            clearInterval(feishuPollTimer);
+                            feishuPollTimer = null;
                             statusEl.textContent = '绑定成功！';
                             statusEl.className = 'im-bind-status scanned';
                             setTimeout(function() {
@@ -574,33 +643,30 @@ function showFeishuModal() {
                                 updateFeishuUI();
                                 switchToChatMode();
                             }, 1000);
-                        } else {
-                            statusEl.textContent = resp.message || '绑定失败';
-                            statusEl.className = 'im-bind-status error';
                         }
-                    } catch(e) {
-                        statusEl.textContent = '绑定失败';
-                        statusEl.className = 'im-bind-status error';
-                    }
-                } else {
-                    statusEl.textContent = '请求失败 (' + xhr.status + ')';
-                    statusEl.className = 'im-bind-status error';
+                    } catch(e) {}
                 }
-            }
-        };
-        xhr.send();
-    });
+            };
+            xhr.send();
+        }, 2000);
+    }
 
     // Enter key to confirm
-    inputEl.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            confirmBtn.click();
-        }
+    [appIdInput, appSecretInput].forEach(function(el) {
+        el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                confirmBtn.click();
+            }
+        });
     });
 }
 
 function closeFeishuModal() {
+    if (feishuPollTimer) {
+        clearInterval(feishuPollTimer);
+        feishuPollTimer = null;
+    }
     if (feishuModalOverlay) {
         feishuModalOverlay.remove();
         feishuModalOverlay = null;

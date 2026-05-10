@@ -113,9 +113,9 @@ public class DingTalkLink implements IMLink, Runnable {
         AgentProperties agentProps = (AgentProperties) engine.getProps();
         this.credentialStore = new DingTalkCredentialStore(agentProps);
 
-        // 尝试从配置文件预加载 appKey/appSecret
-        this.appKey = agentProps.getDingtalkAppKey();
-        this.appSecret = agentProps.getDingtalkAppSecret();
+        // appKey/appSecret 全部由前端弹窗输入，保存到 JSON 文件（DingTalkCredentialStore）
+        this.appKey = null;
+        this.appSecret = null;
 
         webGate.getStreamBuilder().bind(this);
 

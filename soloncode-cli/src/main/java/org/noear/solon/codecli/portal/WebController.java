@@ -450,20 +450,31 @@ public class WebController {
     /**
      * 绑定飞书到指定会话
      */
+    /**
+     * 绑定飞书到指定会话（提交 App ID + App Secret，启动 WebSocket 并等待自动绑定）
+     */
     @Post
     @Mapping("/chat/feishu/bind")
-    public Result feishuBind(@Param("sessionId") String sessionId, @Param("openId") String openId) {
+    public Result feishuBind(@Param("sessionId") String sessionId,
+                            @Param("appId") String appId,
+                            @Param("appSecret") String appSecret) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
         }
-        if (openId == null || openId.isEmpty()) {
-            return Result.failure("openId is required");
+        if (appId == null || appId.isEmpty()) {
+            return Result.failure("App ID 是必填项");
+        }
+        if (appSecret == null || appSecret.isEmpty()) {
+            return Result.failure("App Secret 是必填项");
         }
         if (feishuLink == null) {
             return Result.failure("飞书通道未启用");
         }
 
-        feishuLink.bindSession(sessionId, openId);
+        boolean ok = feishuLink.startStream(appId, appSecret, sessionId);
+        if (!ok) {
+            return Result.failure("飞书连接启动失败，请检查 App ID 和 App Secret");
+        }
         return Result.succeed();
     }
 
@@ -485,15 +496,23 @@ public class WebController {
     /**
      * 查询会话飞书绑定状态
      */
+    /**
+     * 查询会话飞书绑定状态（含 Stream 连接状态）
+     */
     @Get
     @Mapping("/chat/feishu/status")
     public Result<Map> feishuStatus(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
         }
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("bound", feishuLink != null && feishuLink.isBound(sessionId));
-        return Result.succeed(data);
+        if (feishuLink == null) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("bound", false);
+            data.put("streamStarted", false);
+            data.put("pending", false);
+            return Result.succeed(data);
+        }
+        return Result.succeed(feishuLink.getStreamStatus(sessionId));
     }
 
     // ==================== 钉钉通道接口 ====================
