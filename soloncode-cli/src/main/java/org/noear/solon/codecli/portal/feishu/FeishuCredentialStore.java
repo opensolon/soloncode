@@ -32,8 +32,11 @@ import java.util.*;
 /**
  * 飞书凭据持久化存储
  *
- * <p>将 sessionId -> FeishuBinding 的映射及 appId/appSecret 凭据保存到本地文件，
+ * <p>将 sessionId -> FeishuBinding 的映射保存到本地文件，
  * 确保重启后已绑定的飞书通道自动恢复。</p>
+ *
+ * <p>FeishuBinding 中包含 appId/appSecret，
+ * 重启后可据此自动恢复 WebSocket 连接。</p>
  *
  * @author noear 2026/5/9 created
  */
@@ -51,104 +54,77 @@ public class FeishuCredentialStore {
     }
 
     /**
-     * 恢复数据（包含凭据和绑定）
+     * 加载所有已保存的绑定凭据
      */
-    public static class RestoreData {
-        public String appId;
-        public String appSecret;
-        public Map<String, FeishuLink.FeishuBinding> bindings = new LinkedHashMap<>();
-    }
-
-    /**
-     * 加载所有已保存的数据（含 appId/appSecret）
-     */
-    public RestoreData loadWithCredentials() {
-        RestoreData result = new RestoreData();
+    public Map<String, FeishuLink.FeishuBinding> load() {
         File file = storePath.toFile();
         if (!file.exists()) {
             LOG.debug("[FeishuStore] No credential file found at {}", storePath);
-            return result;
+            return Collections.emptyMap();
         }
 
         try {
             String content = new String(Files.readAllBytes(storePath));
             ONode root = ONode.ofJson(content);
 
-            // 读取凭据
-            if (root.hasKey("_credentials")) {
-                ONode cred = root.get("_credentials");
-                result.appId = cred.get("appId").getString();
-                result.appSecret = cred.get("appSecret").getString();
-            }
+            Map<String, FeishuLink.FeishuBinding> result = new LinkedHashMap<>();
 
-            // 读取绑定
             if (root.isObject()) {
                 for (Map.Entry<String, ONode> entry : root.getObject().entrySet()) {
                     String sessionId = entry.getKey();
-                    if (sessionId.startsWith("_")) continue; // 跳过元数据
-
                     ONode node = entry.getValue();
+
                     FeishuLink.FeishuBinding binding = new FeishuLink.FeishuBinding();
                     binding.openId = node.get("openId").getString();
                     binding.lastMessageId = node.get("lastMessageId").getString();
+                    binding.appId = node.get("appId").getString();
+                    binding.appSecret = node.get("appSecret").getString();
 
                     if (binding.openId != null && !binding.openId.isEmpty()) {
-                        result.bindings.put(sessionId, binding);
+                        result.put(sessionId, binding);
                     }
                 }
             }
 
-            LOG.info("[FeishuStore] Loaded {} bindings from {}", result.bindings.size(), storePath);
+            LOG.info("[FeishuStore] Loaded {} bindings from {}", result.size(), storePath);
             return result;
         } catch (Exception e) {
             LOG.warn("[FeishuStore] Failed to load credentials from {}: {}", storePath, e.toString());
-            return result;
+            return Collections.emptyMap();
         }
     }
 
     /**
-     * 保存所有绑定凭据和 appId/appSecret 到文件
+     * 保存所有绑定凭据到文件
      */
-    public void saveWithCredentials(Map<String, FeishuLink.FeishuBinding> bindings, String appId, String appSecret) {
+    public void save(Map<String, FeishuLink.FeishuBinding> bindings) {
+        if (bindings == null || bindings.isEmpty()) {
+            File file = storePath.toFile();
+            if (file.exists()) {
+                file.delete();
+            }
+            return;
+        }
+
         try {
             Files.createDirectories(storePath.getParent());
 
             ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
+            for (Map.Entry<String, FeishuLink.FeishuBinding> entry : bindings.entrySet()) {
+                String sessionId = entry.getKey();
+                FeishuLink.FeishuBinding binding = entry.getValue();
 
-            // 保存凭据
-            if (appId != null && !appId.isEmpty()) {
-                ONode cred = new ONode();
-                cred.set("appId", appId);
-                cred.set("appSecret", appSecret != null ? appSecret : "");
-                root.set("_credentials", cred);
+                ONode node = new ONode();
+                node.set("openId", binding.openId);
+                node.set("lastMessageId", binding.lastMessageId != null ? binding.lastMessageId : "");
+                node.set("appId", binding.appId);
+                node.set("appSecret", binding.appSecret);
+
+                root.set(sessionId, node);
             }
 
-            // 保存绑定
-            if (bindings != null && !bindings.isEmpty()) {
-                for (Map.Entry<String, FeishuLink.FeishuBinding> entry : bindings.entrySet()) {
-                    String sessionId = entry.getKey();
-                    FeishuLink.FeishuBinding binding = entry.getValue();
-
-                    ONode node = new ONode();
-                    node.set("openId", binding.openId);
-                    node.set("lastMessageId", binding.lastMessageId != null ? binding.lastMessageId : "");
-
-                    root.set(sessionId, node);
-                }
-            }
-
-            // 如果没有任何数据，删除文件
-            String json = root.toJson();
-            if (json.equals("{}") || json.trim().isEmpty()) {
-                File file = storePath.toFile();
-                if (file.exists()) {
-                    file.delete();
-                }
-                return;
-            }
-
-            Files.write(storePath, json.getBytes());
-            LOG.debug("[FeishuStore] Saved {} bindings to {}", bindings != null ? bindings.size() : 0, storePath);
+            Files.write(storePath, root.toJson().getBytes());
+            LOG.debug("[FeishuStore] Saved {} bindings to {}", bindings.size(), storePath);
         } catch (IOException e) {
             LOG.error("[FeishuStore] Failed to save credentials to {}: {}", storePath, e.toString());
         }

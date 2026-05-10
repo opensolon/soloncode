@@ -316,6 +316,8 @@ public class FeishuLink implements IMLink, Runnable {
         FeishuBinding binding = new FeishuBinding();
         binding.openId = openId;
         binding.lastMessageId = "";
+        binding.appId = this.appId;
+        binding.appSecret = this.appSecret;
 
         // 一个 openId 只能绑定一个 session（与微信行为一致）
         Set<String> unbindSessionIds = new HashSet<>();
@@ -336,8 +338,7 @@ public class FeishuLink implements IMLink, Runnable {
             pendingSessionId = null;
         }
 
-        // 保存 appId/appSecret 到持久化
-        credentialStore.saveWithCredentials(bindings, appId, appSecret);
+        credentialStore.save(bindings);
         LOG.info("[Feishu] Session {} bound to Feishu user {}", sessionId, openId);
     }
 
@@ -349,7 +350,7 @@ public class FeishuLink implements IMLink, Runnable {
         if (binding != null) {
             openIdToSession.remove(binding.openId);
         }
-        credentialStore.saveWithCredentials(bindings, appId, appSecret);
+        credentialStore.save(bindings);
         LOG.info("[Feishu] Session {} unbound", sessionId);
     }
 
@@ -357,24 +358,24 @@ public class FeishuLink implements IMLink, Runnable {
      * 从持久化存储恢复所有已绑定的会话
      */
     public void loadBindings() {
-        FeishuCredentialStore.RestoreData restored = credentialStore.loadWithCredentials();
-        if (restored.bindings.isEmpty() && restored.appId == null) return;
+        Map<String, FeishuBinding> restored = credentialStore.load();
+        if (restored.isEmpty()) return;
 
-        // 恢复 appId/appSecret（如果有保存）
-        if (restored.appId != null && !restored.appId.isEmpty()) {
-            this.appId = restored.appId;
-            this.appSecret = restored.appSecret;
-            this.apiClient = Client.newBuilder(appId, appSecret).build();
-            LOG.info("[Feishu] Restored credentials, appId={}", appId.substring(0, Math.min(8, appId.length())) + "...");
-        }
-
-        LOG.info("[Feishu] Restoring {} saved binding(s)", restored.bindings.size());
-        for (Map.Entry<String, FeishuBinding> entry : restored.bindings.entrySet()) {
+        LOG.info("[Feishu] Restoring {} saved binding(s)", restored.size());
+        for (Map.Entry<String, FeishuBinding> entry : restored.entrySet()) {
             String sessionId = entry.getKey();
             FeishuBinding binding = entry.getValue();
             bindings.put(sessionId, binding);
             openIdToSession.put(binding.openId, sessionId);
             LOG.info("[Feishu] Restored session {} -> openId {}", sessionId, binding.openId);
+
+            // 从第一个绑定记录中恢复凭据
+            if (this.appId == null && binding.appId != null && !binding.appId.isEmpty()) {
+                this.appId = binding.appId;
+                this.appSecret = binding.appSecret;
+                this.apiClient = Client.newBuilder(appId, appSecret).build();
+                LOG.info("[Feishu] Restored credentials, appId={}", appId.substring(0, Math.min(8, appId.length())) + "...");
+            }
         }
     }
 
@@ -550,5 +551,7 @@ public class FeishuLink implements IMLink, Runnable {
     public static class FeishuBinding {
         public String openId;         // 飞书用户 open_id（唯一标识）
         public String lastMessageId;  // 最后处理的消息 ID（防重复）
+        public String appId;          // 飞书应用 App ID（凭据，随绑定一起持久化）
+        public String appSecret;      // 飞书应用 App Secret（凭据，随绑定一起持久化）
     }
 }
