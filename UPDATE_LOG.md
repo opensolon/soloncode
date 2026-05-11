@@ -5,7 +5,9 @@
 * 新增 soloncode web 飞书链接
 * 新增 soloncode web 钉钉链接
 * 添加 soloncode 时间显示
+* 优化 soloncode web 微信链接体验
 * 修复 soloncode web loop 任务失效的问题（只运行了一次）
+* 细节优化
 
 ### v2026.5.9
 
