@@ -535,7 +535,7 @@ function showFeishuModal() {
         + '<div class="im-bind-status" id="feishuBindStatus">&nbsp;</div>'
         + '<button class="im-bind-confirm-btn feishu" id="feishuBindConfirmBtn">连接</button>'
         + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
-        + '<div class="im-bind-hint">提示：请在飞书开放平台（open.feishu.cn）创建企业自建应用，开启机器人能力，事件订阅选择 WebSocket 长连接模式，然后复制 App ID 和 App Secret 到这里。</div>'
+        + '<div class="im-bind-hint">提示：请在飞书开放平台（<a href="https://open.feishu.cn/" target="_blank">open.feishu.cn</a>）创建企业自建应用，开启机器人能力，事件订阅选择 WebSocket 长连接模式，然后复制 App ID 和 App Secret 到这里。</div>'
         + '</div>';
     document.body.appendChild(feishuModalOverlay);
 
@@ -734,7 +734,7 @@ function showDingTalkModal() {
         + '<div class="im-bind-status" id="dingtalkBindStatus">&nbsp;</div>'
         + '<button class="im-bind-confirm-btn dingtalk" id="dingtalkBindConfirmBtn">连接</button>'
         + '<button class="im-bind-modal-close" id="dingtalkModalClose">取消</button>'
-        + '<div class="im-bind-hint">提示：请在钉钉开放平台（open.dingtalk.com）创建企业内部应用，开启机器人能力，消息接收模式选择 Stream，然后复制 AppKey 和 AppSecret 到这里。</div>'
+        + '<div class="im-bind-hint">提示：请在钉钉开放平台（<a href="https://open.dingtalk.com/" target="_blank">open.dingtalk.com</a>）创建企业内部应用，开启机器人能力，消息接收模式选择 Stream，然后复制 AppKey 和 AppSecret 到这里。</div>'
         + '</div>';
     document.body.appendChild(dingtalkModalOverlay);
 
