@@ -36,7 +36,7 @@ soloncode:
       apiKey: "******"
       model: "deepseek-v4-flash"
       timeout: "300s"
-      contextLength: 2_000_000 # 模型的上下文长度
+      contextLength: 1_000_000 # 模型的上下文长度
 #      defaultOptions:
 #        enable_thinking: false #不同模型可能不同
 #        temperature: 0.2
