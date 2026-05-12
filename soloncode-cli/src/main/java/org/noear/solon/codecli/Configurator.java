@@ -190,21 +190,13 @@ public class Configurator {
         WebSocketRouter.getInstance().of("/web/gate", webGate);
 
         //web
-        BeanWrap webBean = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, loopScheduler, webGate));
-        Solon.app().router().add(webBean);
+        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
+        Solon.app().router().add(webController);
+        BeanWrap webChannel = Solon.context().wrapAndPut(WebChannel.class, new WebChannel(agentRuntime, webGate));
+        Solon.app().router().add(webChannel);
 
         // 启动微信通道
-        RunUtil.async(((WebController) webBean.raw()).getWeChatLink());
-
-        // 启动飞书通道
-        FeishuLink feishuLinkWeb = new FeishuLink(agentRuntime, webGate);
-        ((WebController) webBean.raw()).setFeishuLink(feishuLinkWeb);
-        RunUtil.async(feishuLinkWeb);
-
-        // 启动钉钉通道
-        DingTalkLink dingTalkLinkWeb = new DingTalkLink(agentRuntime, webGate);
-        ((WebController) webBean.raw()).setDingTalkLink(dingTalkLinkWeb);
-        RunUtil.async(dingTalkLinkWeb);
+        RunUtil.async((Runnable) webChannel.get());
 
         if (cliShell == null) {
             return;
