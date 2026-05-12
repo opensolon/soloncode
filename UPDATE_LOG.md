@@ -3,6 +3,7 @@
 
 * 优化 soloncode web 飞书绑定
 * 优化 soloncode web 钉钉绑定
+* 优化 soloncode ReActAgent 架构（由计算图改为更简单的 while）
 * 细节优化
 
 ### v2026.5.11
