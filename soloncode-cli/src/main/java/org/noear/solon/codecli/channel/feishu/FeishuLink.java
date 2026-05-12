@@ -34,6 +34,9 @@ import org.slf4j.LoggerFactory;
 /**
  * 飞书 Bot 通道（基于飞书 WebSocket 长连接 + Protobuf 协议）
  *
+ * <p>支持多 appId 多连接：每个 appId 独立一条 WebSocket 连接，
+ * 不同 session 可以绑定不同的飞书机器人（不同 appId/appSecret）。</p>
+ *
  * <p>飞书 WebSocket 使用 Pbbp2 Protobuf 二进制协议：</p>
  * <ul>
  *   <li>method=0 → CONTROL（ping/pong、disconnect）</li>
@@ -60,25 +63,9 @@ public class FeishuLink implements Channel, Runnable {
     private final FeishuCredentialStore credentialStore;
 
     /**
-     * 当前已配置的 appId / appSecret（可能从配置文件预加载，也可能由前端动态提交）
+     * appId -> StreamConnection（每个 appId 独立一条 WebSocket 连接）
      */
-    private volatile String appId;
-    private volatile String appSecret;
-
-    /**
-     * WebSocket 客户端实例（基于 java-websocket-ns，与钉钉通道统一技术栈）
-     */
-    private volatile SimpleWebSocketClient wsClient;
-
-    /**
-     * WebSocket 连接是否已启动
-     */
-    private volatile boolean streamStarted = false;
-
-    /**
-     * 待绑定的会话 ID（用户在前端点击绑定后设置，等待飞书端发消息来自动完成绑定）
-     */
-    private volatile String pendingSessionId;
+    private final Map<String, StreamConnection> connections = new ConcurrentHashMap<>();
 
     /**
      * sessionId -> FeishuBinding
@@ -99,43 +86,7 @@ public class FeishuLink implements Channel, Runnable {
         return t;
     });
 
-    /**
-     * WebSocket 连接线程
-     */
-    private volatile Thread streamThread;
-
     private final AtomicBoolean running = new AtomicBoolean(false);
-
-    /**
-     * 重连锁（防止并发重连）
-     */
-    private final Object reconnectLock = new Object();
-
-    /**
-     * 重连线程引用（便于 stopStream 时中断）
-     */
-    private volatile Thread reconnectThread;
-
-    /**
-     * 飞书返回的心跳间隔（毫秒）
-     */
-    private volatile long pingIntervalMs = 20_000;
-
-    /**
-     * 从 WS URL 提取的 service_id（SDK 用这个值构建 ping 帧）
-     */
-    private volatile int serviceId = 1;
-
-    /**
-     * 从 WS URL 提取的 device_id（连接标识）
-     */
-    private volatile String connId;
-
-    /**
-     * 心跳调度器（飞书协议需要发送 Protobuf 二进制 ping 帧，不能用框架内置心跳）
-     */
-    private volatile ScheduledFuture<?> heartbeatFuture;
-    private volatile ScheduledExecutorService heartbeatScheduler;
 
     public FeishuLink(HarnessEngine engine, WebGate webGate) {
         this.engine = engine;
@@ -143,17 +94,13 @@ public class FeishuLink implements Channel, Runnable {
         AgentProperties agentProps = (AgentProperties) engine.getProps();
         this.credentialStore = new FeishuCredentialStore(agentProps);
 
-        // 目前没有预配置项，全部由前端动态提交
-        this.appId = null;
-        this.appSecret = null;
-
         webGate.getStreamBuilder().bind(this);
 
         // 尝试恢复已保存的绑定（含 appId/appSecret）
         loadBindings();
     }
 
-    // ==================== IMLink 接口实现 ====================
+    // ==================== Channel 接口实现 ====================
 
     @Override
     public String getChannelName() {
@@ -176,8 +123,8 @@ public class FeishuLink implements Channel, Runnable {
             return;
         }
 
-        if (appId == null || appSecret == null) {
-            LOG.warn("[Feishu] Cannot send reply: credentials not initialized");
+        if (binding.appId == null || binding.appSecret == null) {
+            LOG.warn("[Feishu] Cannot send reply: binding credentials not initialized");
             return;
         }
 
@@ -198,227 +145,201 @@ public class FeishuLink implements Channel, Runnable {
             return;
         }
 
-        if (Assert.isEmpty(appId) || Assert.isEmpty(appSecret)) {
-            LOG.info("[Feishu] No appId/appSecret configured, waiting for web bind...");
-            // 空跑保持线程存活（startStream 会另起新线程）
-            while (!Thread.currentThread().isInterrupted() && running.get()) {
-                try {
-                    Thread.sleep(60000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        } else {
-            // 预配置了凭据，直接启动 Stream
-            doStartStream();
+        if (bindings.isEmpty()) {
+            LOG.info("[Feishu] No bindings, waiting for web bind...");
+            return;
         }
+
+        // 按 appId 分组，为每个 appId 启动独立的 WebSocket 连接
+        Map<String, FeishuBinding> byAppId = new LinkedHashMap<>();
+        for (FeishuBinding b : bindings.values()) {
+            if (b.appId != null && b.appSecret != null) {
+                byAppId.putIfAbsent(b.appId, b);
+            }
+        }
+
+        for (Map.Entry<String, FeishuBinding> entry : byAppId.entrySet()) {
+            getOrCreateConnection(entry.getValue().appId, entry.getValue().appSecret);
+        }
+    }
+
+    /**
+     * 获取或创建指定 appId 的 Stream 连接（已存在则复用）
+     */
+    private StreamConnection getOrCreateConnection(String appId, String appSecret) {
+        StreamConnection conn = connections.get(appId);
+        if (conn != null) {
+            return conn;
+        }
+
+        conn = new StreamConnection(appId, appSecret);
+        StreamConnection existing = connections.putIfAbsent(appId, conn);
+        if (existing != null) {
+            return existing;
+        }
+
+        // 新连接，启动
+        conn.start();
+        return conn;
     }
 
     /**
      * 动态启动 Stream 连接（由前端绑定操作触发）
      */
-    public synchronized boolean startStream(String appId, String appSecret, String sessionId) {
+    public boolean startStream(String appId, String appSecret, String sessionId) {
         if (appId == null || appId.isEmpty() || appSecret == null || appSecret.isEmpty()) {
             LOG.warn("[Feishu] startStream: appId or appSecret is empty");
             return false;
         }
 
-        // 如果已用相同凭据启动，只需设置 pending
-        if (streamStarted && appId.equals(this.appId) && appSecret.equals(this.appSecret)) {
-            LOG.info("[Feishu] Stream already started with same credentials, setting pending session: {}", sessionId);
-            this.pendingSessionId = sessionId;
-            return true;
-        }
-
-        // 如果已有连接但凭据不同，先关闭旧连接
-        if (streamStarted) {
-            stopStream();
-        }
-
-        this.appId = appId;
-        this.appSecret = appSecret;
-        this.pendingSessionId = sessionId;
-
-        // 在新线程中启动 WebSocket
-        streamThread = new Thread(() -> doStartStream(), "feishu-stream");
-        streamThread.setDaemon(true);
-        streamThread.start();
+        StreamConnection conn = getOrCreateConnection(appId, appSecret);
+        conn.pendingSessionId = sessionId;
+        LOG.info("[Feishu] startStream: appId={}, pendingSession={}",
+                appId.substring(0, Math.min(8, appId.length())) + "...", sessionId);
 
         return true;
     }
 
     /**
-     * 内部方法：建立飞书 WebSocket 长连接
-     *
-     * <p>第一步：HTTP POST 获取 WebSocket 端点 URL</p>
-     * <p>第二步：建立 WebSocket 连接，接收二进制 Protobuf 消息</p>
+     * 停止所有资源
      */
-    private void doStartStream() {
-        LOG.info("[Feishu] Starting WebSocket connection, appId={}",
-                appId != null ? appId.substring(0, Math.min(8, appId.length())) + "..." : "null");
-
-        try {
-            // 第一步：获取 WebSocket 端点
-            ONode endpointData = FeishuClient.getWsEndpoint(appId, appSecret);
-            if (endpointData == null) {
-                throw new RuntimeException("Failed to get WS endpoint");
-            }
-
-            // 注意：飞书返回的字段名是大写的（URL / ClientConfig / PingInterval）
-            String wssUrl = endpointData.get("URL").getString();
-            if (wssUrl == null || wssUrl.isEmpty()) {
-                throw new RuntimeException("WS endpoint URL is empty");
-            }
-
-            long pingInterval = 20_000; // 默认20秒
-            ONode clientConfig = endpointData.get("ClientConfig");
-            if (clientConfig != null && !clientConfig.isNull()) {
-                try {
-                    // PingInterval 以秒为单位
-                    Long interval = clientConfig.get("PingInterval").getLong();
-                    if (interval != null && interval > 0) {
-                        pingInterval = interval * 1000L;
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-
-            pingIntervalMs = pingInterval;
-            LOG.info("[Feishu] Got WS endpoint, pingInterval={}ms", pingInterval);
-
-            // 第二步：从 URL 提取 service_id 和 device_id（SDK 源码关键步骤）
-            URI wsUri = URI.create(wssUrl);
-            String query = wsUri.getQuery();
-            if (query != null) {
-                for (String param : query.split("&")) {
-                    String[] kv = param.split("=", 2);
-                    if (kv.length == 2) {
-                        if ("service_id".equals(kv[0])) {
-                            serviceId = Integer.parseInt(kv[1]);
-                        } else if ("device_id".equals(kv[0])) {
-                            connId = kv[1];
-                        }
-                    }
-                }
-            }
-            LOG.info("[Feishu] WS params: serviceId={}, connId={}", serviceId,
-                    connId != null ? connId.substring(0, Math.min(8, connId.length())) + "..." : "null");
-
-            // 第三步：建立 WebSocket 连接（使用 java-websocket-ns，与钉钉通道统一技术栈）
-            final int sid = serviceId;
-            wsClient = new SimpleWebSocketClient(wssUrl) {
-                @Override
-                public void onMessage(ByteBuffer bytes) {
-                    try {
-                        FeishuPbCodec.Frame frame = FeishuPbCodec.decode(bytes);
-                        handlePbFrame(frame);
-                    } catch (Exception e) {
-                        LOG.error("[Feishu] Failed to parse binary frame: {}", e.getMessage(), e);
-                    }
-                }
-
-                @Override
-                public void onClose(int code, String reason, boolean remote) {
-                    LOG.info("[Feishu] WS closed: code={}, reason={}, remote={}", code, reason, remote);
-                    stopHeartbeat();
-                    if (running.get() && streamStarted) {
-                        streamStarted = false;
-                        scheduleReconnect();
-                    }
-                }
-
-                @Override
-                public void onError(Exception ex) {
-                    LOG.error("[Feishu] WS error: {}", ex.getMessage(), ex);
-                }
-            };
-
-            wsClient.connectBlocking(30, TimeUnit.SECONDS);
-            streamStarted = true;
-
-            // 启动自定义心跳（飞书协议要求发送 Protobuf 二进制 ping 帧）
-            startHeartbeat();
-
-            LOG.info("[Feishu] WebSocket connected successfully");
-
-            // 保持线程存活
-            while (!Thread.currentThread().isInterrupted() && running.get()) {
-                try {
-                    Thread.sleep(60000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        } catch (Exception e) {
-            LOG.error("[Feishu] WebSocket connection error: {}", e.getMessage(), e);
-            streamStarted = false;
-            // 自动重连
-            scheduleReconnect();
+    public void stop() {
+        running.set(false);
+        for (StreamConnection conn : connections.values()) {
+            conn.stop();
         }
+        connections.clear();
+        messageExecutor.shutdownNow();
+        LOG.info("[Feishu] Link stopped");
     }
 
-    // ==================== 心跳管理 ====================
+    // ==================== Stream 状态查询 ====================
 
     /**
-     * 启动自定义心跳（飞书协议需要发送 Protobuf 二进制 ping 帧，不能用框架内置文本心跳）
+     * 获取当前 Stream 状态（供前端轮询）
      */
-    private void startHeartbeat() {
-        stopHeartbeat();
-        if (pingIntervalMs > 0) {
-            final int sid = serviceId;
-            heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "feishu-heartbeat");
-                t.setDaemon(true);
-                return t;
-            });
-            heartbeatFuture = heartbeatScheduler.scheduleAtFixedRate(() -> {
-                try {
-                    if (wsClient != null && wsClient.isOpen()) {
-                        byte[] pingBytes = FeishuPbCodec.buildPing(sid);
-                        wsClient.send(pingBytes);
-                        LOG.debug("[Feishu] Sent ping, serviceId={}", sid);
-                    }
-                } catch (Exception e) {
-                    LOG.warn("[Feishu] Heartbeat error: {}", e.getMessage());
+    public Map<String, Object> getStreamStatus(String sessionId) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        boolean anyStarted = connections.values().stream().anyMatch(c -> c.streamStarted);
+        status.put("streamStarted", anyStarted);
+        status.put("pending", connections.values().stream()
+                .anyMatch(c -> sessionId.equals(c.pendingSessionId)));
+        status.put("bound", bindings.containsKey(sessionId));
+        return status;
+    }
+
+    // ==================== 绑定管理 ====================
+
+    /**
+     * 绑定飞书用户到指定会话
+     */
+    public void bindSession(String sessionId, String openId, String appId, String appSecret) {
+        FeishuBinding binding = new FeishuBinding();
+        binding.openId = openId;
+        binding.lastMessageId = "";
+        binding.appId = appId;
+        binding.appSecret = appSecret;
+
+        // 一个 openId 只能绑定一个 session（与微信行为一致）
+        Set<String> unbindSessionIds = new HashSet<>();
+        bindings.forEach((k, v) -> {
+            if (v.openId.equals(openId)) {
+                unbindSessionIds.add(k);
+            }
+        });
+        for (String unbindSessionId : unbindSessionIds) {
+            unbindSession(unbindSessionId);
+        }
+
+        bindings.put(sessionId, binding);
+        openIdToSession.put(openId, sessionId);
+
+        // 清除连接的 pending 状态
+        StreamConnection conn = connections.get(appId);
+        if (conn != null && sessionId.equals(conn.pendingSessionId)) {
+            conn.pendingSessionId = null;
+        }
+
+        credentialStore.save(bindings);
+        LOG.info("[Feishu] Session {} bound to Feishu user {}", sessionId, openId);
+    }
+
+    /**
+     * 解绑飞书
+     */
+    public void unbindSession(String sessionId) {
+        FeishuBinding binding = bindings.remove(sessionId);
+        if (binding == null) return;
+
+        openIdToSession.remove(binding.openId);
+        credentialStore.save(bindings);
+
+        // 检查是否还有绑定使用此 appId，如果没有则关闭连接
+        if (binding.appId != null) {
+            boolean stillUsed = bindings.values().stream()
+                    .anyMatch(b -> binding.appId.equals(b.appId));
+            if (!stillUsed) {
+                StreamConnection conn = connections.remove(binding.appId);
+                if (conn != null) {
+                    conn.stop();
                 }
-            }, pingIntervalMs, pingIntervalMs, TimeUnit.MILLISECONDS);
+            }
+        }
+
+        LOG.info("[Feishu] Session {} unbound", sessionId);
+    }
+
+    /**
+     * 从持久化存储恢复所有已绑定的会话
+     */
+    public void loadBindings() {
+        Map<String, FeishuBinding> restored = credentialStore.load();
+        if (restored.isEmpty()) return;
+
+        LOG.info("[Feishu] Restoring {} saved binding(s)", restored.size());
+        for (Map.Entry<String, FeishuBinding> entry : restored.entrySet()) {
+            String sessionId = entry.getKey();
+            FeishuBinding binding = entry.getValue();
+            bindings.put(sessionId, binding);
+            openIdToSession.put(binding.openId, sessionId);
+            LOG.info("[Feishu] Restored session {} -> openId {}", sessionId, binding.openId);
         }
     }
 
-    private void stopHeartbeat() {
-        if (heartbeatFuture != null) {
-            heartbeatFuture.cancel(false);
-            heartbeatFuture = null;
-        }
-        if (heartbeatScheduler != null) {
-            heartbeatScheduler.shutdownNow();
-            heartbeatScheduler = null;
-        }
+    /**
+     * 获取所有已绑定会话 ID
+     */
+    public Set<String> getBoundSessionIds() {
+        return Collections.unmodifiableSet(bindings.keySet());
     }
 
-    // ==================== Protobuf 帧处理 ====================
+    // ==================== WS 消息处理（由 StreamConnection 回调） ====================
+
+    /**
+     * 处理 StreamConnection 收到的二进制消息
+     */
+    private void onWsBinaryMessage(ByteBuffer bytes, StreamConnection conn) {
+        try {
+            FeishuPbCodec.Frame frame = FeishuPbCodec.decode(bytes);
+            handlePbFrame(frame, conn);
+        } catch (Exception e) {
+            LOG.error("[Feishu] Failed to parse binary frame: {}", e.getMessage(), e);
+        }
+    }
 
     /**
      * 处理解析后的 Protobuf 帧
-     *
-     * <p>帧类型：</p>
-     * <ul>
-     *   <li>method=0 (CONTROL)：ping/pong、disconnect</li>
-     *   <li>method=1 (DATA)：业务事件推送（消息接收等）</li>
-     * </ul>
      */
-    private void handlePbFrame(FeishuPbCodec.Frame frame) {
+    private void handlePbFrame(FeishuPbCodec.Frame frame, StreamConnection conn) {
         LOG.debug("[Feishu] PB frame: method={}, service={}, seqId={}, headers={}",
                 frame.method, frame.service, frame.seqId, frame.headers.size());
 
         switch (frame.method) {
             case 0: // CONTROL
-                handleControl(frame);
+                handleControl(frame, conn);
                 break;
             case 1: // DATA
-                handleData(frame);
+                handleData(frame, conn);
                 break;
             case 2: // ACK
                 LOG.debug("[Feishu] Received ACK for seqId={}", frame.seqId);
@@ -430,15 +351,9 @@ public class FeishuLink implements Channel, Runnable {
     }
 
     /**
-     * 处理 CONTROL 帧（与 SDK handleControlFrame 一致）
-     *
-     * <p>SDK 行为：</p>
-     * <ul>
-     *   <li>ping: 直接 return（客户端无需回复服务端 ping，SDK 不回复）</li>
-     *   <li>pong: 如果有 payload 则解析 ClientConfig 更新配置</li>
-     * </ul>
+     * 处理 CONTROL 帧（ping/pong/disconnect）
      */
-    private void handleControl(FeishuPbCodec.Frame frame) {
+    private void handleControl(FeishuPbCodec.Frame frame, StreamConnection conn) {
         String type = frame.getHeader("type");
         if (type == null) {
             LOG.debug("[Feishu] CONTROL frame without type header");
@@ -447,20 +362,18 @@ public class FeishuLink implements Channel, Runnable {
 
         switch (type) {
             case "ping": {
-                // SDK 收到服务端 ping 时直接 return，不回复 pong
                 LOG.debug("[Feishu] Received server ping, seqId={}", frame.seqId);
                 return;
             }
             case "pong": {
                 LOG.debug("[Feishu] Received pong, seqId={}", frame.seqId);
-                // SDK：如果有 payload 则解析 ClientConfig 更新配置
                 String configJson = frame.getPayloadAsString();
                 if (configJson != null && !configJson.isEmpty()) {
                     try {
                         ONode conf = ONode.ofJson(configJson);
                         Integer interval = conf.get("PingInterval").getInt();
                         if (interval != null && interval > 0) {
-                            pingIntervalMs = interval * 1000L;
+                            conn.pingIntervalMs = interval * 1000L;
                             LOG.info("[Feishu] Updated pingInterval={}s from pong", interval);
                         }
                     } catch (Exception e) {
@@ -473,8 +386,8 @@ public class FeishuLink implements Channel, Runnable {
                 LOG.warn("[Feishu] Server sent disconnect");
                 String reason = frame.getHeader("reason");
                 LOG.warn("[Feishu] Disconnect reason: {}", reason);
-                streamStarted = false;
-                scheduleReconnect();
+                conn.streamStarted = false;
+                conn.scheduleReconnect();
                 break;
             }
             default: {
@@ -485,37 +398,25 @@ public class FeishuLink implements Channel, Runnable {
     }
 
     /**
-     * 处理 DATA 帧（与 SDK handleDataFrame 一致）
-     *
-     * <p>SDK 行为（关键！）：</p>
-     * <ol>
-     *   <li>从 headers 提取 message_id, trace_id, sum, seq, type</li>
-     *   <li>处理合包（sum > 1 时合并分片）</li>
-     *   <li>根据 type（event/card）处理业务</li>
-     *   <li>回复一个 **DATA 帧**（method=1），payload 为 {"code":200,...}，附加 biz_rt header</li>
-     * </ol>
-     * <p>注意：SDK 的 FrameType 只有 CONTROL(0) 和 DATA(1)，没有 ACK(2)。</p>
+     * 处理 DATA 帧（业务事件推送）
      */
-    private void handleData(FeishuPbCodec.Frame frame) {
+    private void handleData(FeishuPbCodec.Frame frame, StreamConnection conn) {
         long startMs = System.currentTimeMillis();
 
-        // 从 headers 提取元数据
         String msgId = frame.getHeader("message_id");
         String traceId = frame.getHeader("trace_id");
         String type = frame.getHeader("type");
 
         LOG.debug("[Feishu] DATA frame: type={}, msgId={}, traceId={}", type, msgId, traceId);
 
-        // 回复 DATA 响应帧（与 SDK 一致：不是 ACK，是 DATA 帧带 {"code":200}）
         int code = 200;
         byte[] respPayload;
         try {
-            // 处理业务
             String payloadJson = frame.getPayloadAsString();
             if (payloadJson != null && !payloadJson.isEmpty()) {
                 LOG.debug("[Feishu] DATA payload: {}", payloadJson.substring(0, Math.min(payloadJson.length(), 300)));
                 ONode eventNode = ONode.ofJson(payloadJson);
-                onWsEvent(eventNode);
+                onWsEvent(eventNode, conn);
             }
             respPayload = "{\"code\":200}".getBytes(StandardCharsets.UTF_8);
         } catch (Exception e) {
@@ -526,27 +427,17 @@ public class FeishuLink implements Channel, Runnable {
 
         long elapsedMs = System.currentTimeMillis() - startMs;
 
-        // 发送 DATA 响应帧（与 SDK 一致：preserve payloadEncoding/payloadType, 添加 biz_rt header）
         byte[] respBytes = FeishuPbCodec.buildDataResponse(frame, respPayload, elapsedMs);
-        if (wsClient != null && wsClient.isOpen()) {
-            wsClient.send(respBytes);
+        if (conn.wsClient != null && conn.wsClient.isOpen()) {
+            conn.wsClient.send(respBytes);
             LOG.debug("[Feishu] Sent DATA response code={}, elapsed={}ms", code, elapsedMs);
         }
     }
 
     /**
      * 处理解析后的事件 JSON
-     *
-     * <p>飞书事件格式：</p>
-     * <pre>
-     * {
-     *   "schema": "2.0",
-     *   "header": { "event_type": "im.message.receive_v1", ... },
-     *   "event": { "sender": {...}, "message": {...} }
-     * }
-     * </pre>
      */
-    private void onWsEvent(ONode eventNode) {
+    private void onWsEvent(ONode eventNode, StreamConnection conn) {
         ONode header = eventNode.get("header");
         if (header == null || header.isNull()) {
             LOG.debug("[Feishu] Ignored event without header");
@@ -559,15 +450,14 @@ public class FeishuLink implements Channel, Runnable {
         }
 
         if ("im.message.receive_v1".equals(eventType)) {
-            onImMessageReceive(eventNode);
+            onImMessageReceive(eventNode, conn);
         }
-        // 其他事件类型忽略
     }
 
     /**
      * 处理飞书 im.message.receive_v1 事件
      */
-    private void onImMessageReceive(ONode msg) {
+    private void onImMessageReceive(ONode msg, StreamConnection conn) {
         ONode event = msg.get("event");
         if (event == null || event.isNull()) return;
 
@@ -592,11 +482,9 @@ public class FeishuLink implements Channel, Runnable {
             String contentJson = messageNode.get("content").getString();
             if (contentJson != null && !contentJson.isEmpty()) {
                 try {
-                    // content 格式: {"text":"xxx"}
                     ONode contentNode = ONode.ofJson(contentJson);
                     text = contentNode.get("text").getString();
                 } catch (Exception e) {
-                    // 降级：直接用 content
                     text = contentJson;
                 }
             }
@@ -610,8 +498,8 @@ public class FeishuLink implements Channel, Runnable {
         LOG.info("[Feishu] Received from {}: {}", openId, text.substring(0, Math.min(text.length(), 50)));
 
         // 如果有 pending 会话，自动绑定
-        if (pendingSessionId != null) {
-            bindSession(pendingSessionId, openId);
+        if (conn.pendingSessionId != null) {
+            bindSession(conn.pendingSessionId, openId, conn.appId, conn.appSecret);
         }
 
         // 路由到已绑定的会话
@@ -641,180 +529,12 @@ public class FeishuLink implements Channel, Runnable {
         });
     }
 
-    // ==================== 重连机制 ====================
-
-    /**
-     * 延迟重连（避免频繁重连）
-     */
-    private void scheduleReconnect() {
-        synchronized (reconnectLock) {
-            stopHeartbeat();
-            if (wsClient != null) {
-                try {
-                    wsClient.release();
-                } catch (Exception ignored) {
-                }
-                wsClient = null;
-            }
-
-            // 中断旧的重连线程（防止并发重连）
-            if (reconnectThread != null) {
-                reconnectThread.interrupt();
-                reconnectThread = null;
-            }
-
-            LOG.info("[Feishu] Reconnecting in 5 seconds...");
-            reconnectThread = new Thread(() -> {
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    return;
-                }
-                if (!streamStarted && appId != null && appSecret != null && running.get()) {
-                    doStartStream();
-                }
-            }, "feishu-reconnect");
-            reconnectThread.setDaemon(true);
-            reconnectThread.start();
-        }
-    }
-
-    private void stopStream() {
-        streamStarted = false;
-        stopHeartbeat();
-        if (wsClient != null) {
-            try {
-                wsClient.release();
-            } catch (Exception ignored) {
-            }
-            wsClient = null;
-        }
-        if (reconnectThread != null) {
-            reconnectThread.interrupt();
-            reconnectThread = null;
-        }
-        if (streamThread != null) {
-            streamThread.interrupt();
-            streamThread = null;
-        }
-        LOG.info("[Feishu] Stream stopped");
-    }
-
-    /**
-     * 停止所有资源
-     */
-    public void stop() {
-        running.set(false);
-        stopStream();
-        messageExecutor.shutdownNow();
-        LOG.info("[Feishu] Link stopped");
-    }
-
-    // ==================== Stream 状态查询 ====================
-
-    /**
-     * 获取当前 Stream 状态（供前端轮询）
-     */
-    public Map<String, Object> getStreamStatus(String sessionId) {
-        Map<String, Object> status = new LinkedHashMap<>();
-        status.put("streamStarted", streamStarted);
-        status.put("pending", pendingSessionId != null && pendingSessionId.equals(sessionId));
-        status.put("bound", bindings.containsKey(sessionId));
-        return status;
-    }
-
-    // ==================== 绑定管理 ====================
-
-    /**
-     * 绑定飞书用户到指定会话
-     */
-    public void bindSession(String sessionId, String openId) {
-        FeishuBinding binding = new FeishuBinding();
-        binding.openId = openId;
-        binding.lastMessageId = "";
-        binding.appId = this.appId;
-        binding.appSecret = this.appSecret;
-
-        // 一个 openId 只能绑定一个 session（与微信行为一致）
-        Set<String> unbindSessionIds = new HashSet<>();
-        bindings.forEach((k, v) -> {
-            if (v.openId.equals(openId)) {
-                unbindSessionIds.add(k);
-            }
-        });
-        for (String unbindSessionId : unbindSessionIds) {
-            unbindSession(unbindSessionId);
-        }
-
-        bindings.put(sessionId, binding);
-        openIdToSession.put(openId, sessionId);
-
-        // 清除 pending
-        if (sessionId.equals(pendingSessionId)) {
-            pendingSessionId = null;
-        }
-
-        credentialStore.save(bindings);
-        LOG.info("[Feishu] Session {} bound to Feishu user {}", sessionId, openId);
-    }
-
-    /**
-     * 解绑飞书
-     */
-    public void unbindSession(String sessionId) {
-        FeishuBinding binding = bindings.remove(sessionId);
-        if (binding != null) {
-            openIdToSession.remove(binding.openId);
-        }
-        credentialStore.save(bindings);
-
-        // 没有剩余绑定时，彻底清理连接层状态
-        if (bindings.isEmpty()) {
-            stopStream();
-            this.appId = null;
-            this.appSecret = null;
-        }
-
-        LOG.info("[Feishu] Session {} unbound", sessionId);
-    }
-
-    /**
-     * 从持久化存储恢复所有已绑定的会话
-     */
-    public void loadBindings() {
-        Map<String, FeishuBinding> restored = credentialStore.load();
-        if (restored.isEmpty()) return;
-
-        LOG.info("[Feishu] Restoring {} saved binding(s)", restored.size());
-        for (Map.Entry<String, FeishuBinding> entry : restored.entrySet()) {
-            String sessionId = entry.getKey();
-            FeishuBinding binding = entry.getValue();
-            bindings.put(sessionId, binding);
-            openIdToSession.put(binding.openId, sessionId);
-            LOG.info("[Feishu] Restored session {} -> openId {}", sessionId, binding.openId);
-
-            // 从第一个绑定记录中恢复凭据
-            if (this.appId == null && binding.appId != null && !binding.appId.isEmpty()) {
-                this.appId = binding.appId;
-                this.appSecret = binding.appSecret;
-                LOG.info("[Feishu] Restored credentials, appId={}", appId.substring(0, Math.min(8, appId.length())) + "...");
-            }
-        }
-    }
-
-    /**
-     * 获取所有已绑定会话 ID
-     */
-    public Set<String> getBoundSessionIds() {
-        return Collections.unmodifiableSet(bindings.keySet());
-    }
-
     // ==================== 消息发送 ====================
 
     private void sendReplyDo(FeishuBinding binding, String reply) {
         try {
-            // 获取 tenant_access_token
-            String token = FeishuClient.getTenantAccessToken(appId, appSecret);
+            // 获取 tenant_access_token（使用绑定自己的凭据）
+            String token = FeishuClient.getTenantAccessToken(binding.appId, binding.appSecret);
             if (token == null) {
                 LOG.error("[Feishu] Cannot send reply: failed to get access token");
                 return;
@@ -859,6 +579,256 @@ public class FeishuLink implements Channel, Runnable {
                 .replaceAll("\\*\\*([^*]+)\\*\\*", "$1")      // 去掉加粗
                 .replaceAll("\\*([^*]+)\\*", "$1")             // 去掉斜体
                 .trim();
+    }
+
+    // ==================== 内部连接类（每个 appId 独立一条连接） ====================
+
+    /**
+     * 单个 appId 的 WebSocket 长连接。
+     * 封装了连接生命周期、心跳、重连等所有连接级状态。
+     */
+    private class StreamConnection {
+        final String appId;
+        final String appSecret;
+
+        volatile SimpleWebSocketClient wsClient;
+        volatile boolean streamStarted = false;
+        volatile Thread streamThread;
+        volatile Thread reconnectThread;
+        final Object reconnectLock = new Object();
+
+        /**
+         * 待绑定的会话 ID（此连接上等待飞书用户发消息来自动完成绑定）
+         */
+        volatile String pendingSessionId;
+
+        /**
+         * 飞书返回的心跳间隔（毫秒）
+         */
+        volatile long pingIntervalMs = 20_000;
+
+        /**
+         * 从 WS URL 提取的 service_id
+         */
+        volatile int serviceId = 1;
+
+        /**
+         * 从 WS URL 提取的 device_id
+         */
+        volatile String connId;
+
+        volatile ScheduledFuture<?> heartbeatFuture;
+        volatile ScheduledExecutorService heartbeatScheduler;
+
+        StreamConnection(String appId, String appSecret) {
+            this.appId = appId;
+            this.appSecret = appSecret;
+        }
+
+        /**
+         * 启动连接（在新线程中执行）
+         */
+        void start() {
+            String threadName = "feishu-stream-" + appId.substring(0, Math.min(6, appId.length()));
+            streamThread = new Thread(this::doStart, threadName);
+            streamThread.setDaemon(true);
+            streamThread.start();
+        }
+
+        /**
+         * 停止连接（释放所有资源）
+         */
+        void stop() {
+            streamStarted = false;
+            stopHeartbeat();
+            if (wsClient != null) {
+                try {
+                    wsClient.release();
+                } catch (Exception ignored) {
+                }
+                wsClient = null;
+            }
+            if (reconnectThread != null) {
+                reconnectThread.interrupt();
+                reconnectThread = null;
+            }
+            if (streamThread != null) {
+                streamThread.interrupt();
+                streamThread = null;
+            }
+        }
+
+        /**
+         * 建立飞书 WebSocket 长连接
+         */
+        private void doStart() {
+            LOG.info("[Feishu] Starting WebSocket connection, appId={}",
+                    appId.substring(0, Math.min(8, appId.length())) + "...");
+
+            try {
+                // 第一步：获取 WebSocket 端点
+                ONode endpointData = FeishuClient.getWsEndpoint(appId, appSecret);
+                if (endpointData == null) {
+                    throw new RuntimeException("Failed to get WS endpoint");
+                }
+
+                String wssUrl = endpointData.get("URL").getString();
+                if (wssUrl == null || wssUrl.isEmpty()) {
+                    throw new RuntimeException("WS endpoint URL is empty");
+                }
+
+                long pingInterval = 20_000;
+                ONode clientConfig = endpointData.get("ClientConfig");
+                if (clientConfig != null && !clientConfig.isNull()) {
+                    try {
+                        Long interval = clientConfig.get("PingInterval").getLong();
+                        if (interval != null && interval > 0) {
+                            pingInterval = interval * 1000L;
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                pingIntervalMs = pingInterval;
+                LOG.info("[Feishu] Got WS endpoint, pingInterval={}ms", pingInterval);
+
+                // 第二步：从 URL 提取 service_id 和 device_id
+                URI wsUri = URI.create(wssUrl);
+                String query = wsUri.getQuery();
+                if (query != null) {
+                    for (String param : query.split("&")) {
+                        String[] kv = param.split("=", 2);
+                        if (kv.length == 2) {
+                            if ("service_id".equals(kv[0])) {
+                                serviceId = Integer.parseInt(kv[1]);
+                            } else if ("device_id".equals(kv[0])) {
+                                connId = kv[1];
+                            }
+                        }
+                    }
+                }
+                LOG.info("[Feishu] WS params: serviceId={}, connId={}", serviceId,
+                        connId != null ? connId.substring(0, Math.min(8, connId.length())) + "..." : "null");
+
+                // 第三步：建立 WebSocket 连接
+                final int sid = serviceId;
+                wsClient = new SimpleWebSocketClient(wssUrl) {
+                    @Override
+                    public void onMessage(ByteBuffer bytes) {
+                        FeishuLink.this.onWsBinaryMessage(bytes, StreamConnection.this);
+                    }
+
+                    @Override
+                    public void onClose(int code, String reason, boolean remote) {
+                        LOG.info("[Feishu] WS closed: code={}, reason={}, remote={}", code, reason, remote);
+                        stopHeartbeat();
+                        if (running.get() && streamStarted) {
+                            streamStarted = false;
+                            scheduleReconnect();
+                        }
+                    }
+
+                    @Override
+                    public void onError(Exception ex) {
+                        LOG.error("[Feishu] WS error: {}", ex.getMessage(), ex);
+                    }
+                };
+
+                wsClient.connectBlocking(30, TimeUnit.SECONDS);
+                streamStarted = true;
+
+                // 启动自定义心跳（飞书协议要求发送 Protobuf 二进制 ping 帧）
+                startHeartbeat();
+
+                LOG.info("[Feishu] WebSocket connected successfully, appId={}",
+                        appId.substring(0, Math.min(8, appId.length())) + "...");
+
+                // 保持线程存活（便于 stop() 通过 interrupt 终止）
+                while (!Thread.currentThread().isInterrupted() && running.get()) {
+                    try {
+                        Thread.sleep(60000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                LOG.error("[Feishu] WebSocket connection error: {}", e.getMessage(), e);
+                streamStarted = false;
+                scheduleReconnect();
+            }
+        }
+
+        // ==================== 心跳管理 ====================
+
+        private void startHeartbeat() {
+            stopHeartbeat();
+            if (pingIntervalMs > 0) {
+                final int sid = serviceId;
+                heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "feishu-heartbeat");
+                    t.setDaemon(true);
+                    return t;
+                });
+                heartbeatFuture = heartbeatScheduler.scheduleAtFixedRate(() -> {
+                    try {
+                        if (wsClient != null && wsClient.isOpen()) {
+                            byte[] pingBytes = FeishuPbCodec.buildPing(sid);
+                            wsClient.send(pingBytes);
+                            LOG.debug("[Feishu] Sent ping, serviceId={}", sid);
+                        }
+                    } catch (Exception e) {
+                        LOG.warn("[Feishu] Heartbeat error: {}", e.getMessage());
+                    }
+                }, pingIntervalMs, pingIntervalMs, TimeUnit.MILLISECONDS);
+            }
+        }
+
+        private void stopHeartbeat() {
+            if (heartbeatFuture != null) {
+                heartbeatFuture.cancel(false);
+                heartbeatFuture = null;
+            }
+            if (heartbeatScheduler != null) {
+                heartbeatScheduler.shutdownNow();
+                heartbeatScheduler = null;
+            }
+        }
+
+        // ==================== 重连机制 ====================
+
+        void scheduleReconnect() {
+            synchronized (reconnectLock) {
+                stopHeartbeat();
+                if (wsClient != null) {
+                    try {
+                        wsClient.release();
+                    } catch (Exception ignored) {
+                    }
+                    wsClient = null;
+                }
+
+                if (reconnectThread != null) {
+                    reconnectThread.interrupt();
+                    reconnectThread = null;
+                }
+
+                LOG.info("[Feishu] Reconnecting in 5 seconds, appId={}",
+                        appId.substring(0, Math.min(8, appId.length())) + "...");
+                reconnectThread = new Thread(() -> {
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    if (!streamStarted && running.get()) {
+                        doStart();
+                    }
+                }, "feishu-reconnect");
+                reconnectThread.setDaemon(true);
+                reconnectThread.start();
+            }
+        }
     }
 
     // ==================== 内部数据类 ====================

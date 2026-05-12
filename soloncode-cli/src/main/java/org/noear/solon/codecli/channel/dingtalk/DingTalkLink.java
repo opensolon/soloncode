@@ -31,6 +31,9 @@ import java.util.concurrent.*;
 /**
  * 钉钉 Bot 通道（基于钉钉 Stream 协议 + WebSocket 长连接）
  *
+ * <p>支持多 appKey 多连接：每个 appKey 独立一条 WebSocket 连接，
+ * 不同 session 可以绑定不同的钉钉机器人（不同 appKey/appSecret）。</p>
+ *
  * <p>使用 java-websocket-ns 建立 WebSocket 长连接，通过钉钉 Stream 协议接收消息，
  * 实现消息的实时接收与回复。</p>
  *
@@ -53,25 +56,9 @@ public class DingTalkLink implements Channel, Runnable {
     private final DingTalkCredentialStore credentialStore;
 
     /**
-     * 当前已配置的 appKey（可能从 config.yml 预加载，也可能由前端动态提交）
+     * appKey -> StreamConnection（每个 appKey 独立一条 WebSocket 连接）
      */
-    private volatile String appKey;
-    private volatile String appSecret;
-
-    /**
-     * WebSocket 客户端实例
-     */
-    private volatile SimpleWebSocketClient wsClient;
-
-    /**
-     * Stream 是否已启动（连接成功）
-     */
-    private volatile boolean streamStarted = false;
-
-    /**
-     * 待绑定的会话 ID（用户在前端点击绑定后设置，等待钉钉端发消息来自动完成绑定）
-     */
-    private volatile String pendingSessionId;
+    private final Map<String, StreamConnection> connections = new ConcurrentHashMap<>();
 
     /**
      * sessionId -> DingTalkBinding
@@ -97,25 +84,11 @@ public class DingTalkLink implements Channel, Runnable {
         return t;
     });
 
-    /**
-     * Stream 连接线程
-     */
-    private volatile Thread streamThread;
-
-    /**
-     * 重连锁（防止并发重连）
-     */
-    private final Object reconnectLock = new Object();
-
     public DingTalkLink(HarnessEngine engine, WebGate webGate) {
         this.engine = engine;
         this.webGate = webGate;
         AgentProperties agentProps = (AgentProperties) engine.getProps();
         this.credentialStore = new DingTalkCredentialStore(agentProps);
-
-        // appKey/appSecret 全部由前端弹窗输入，保存到 JSON 文件（DingTalkCredentialStore）
-        this.appKey = null;
-        this.appSecret = null;
 
         webGate.getStreamBuilder().bind(this);
 
@@ -123,7 +96,7 @@ public class DingTalkLink implements Channel, Runnable {
         loadBindings();
     }
 
-    // ==================== IMLink 接口实现 ====================
+    // ==================== Channel 接口实现 ====================
 
     @Override
     public String getChannelName() {
@@ -150,7 +123,6 @@ public class DingTalkLink implements Channel, Runnable {
         String webhook = webhookCache.get(binding.userId);
         if (webhook != null && !webhook.isEmpty()) {
             try {
-                // 钉钉单条消息长度限制
                 int maxLen = 5000;
                 if (reply.length() <= maxLen) {
                     DingTalkClient.replyViaWebhook(webhook, reply);
@@ -171,7 +143,6 @@ public class DingTalkLink implements Channel, Runnable {
                 return;
             } catch (Exception e) {
                 LOG.warn("[DingTalk] Webhook reply failed, falling back to API: {}", e.getMessage());
-                // webhook 可能已过期，清除缓存，降级到 API 发送
                 webhookCache.remove(binding.userId);
             }
         }
@@ -182,152 +153,210 @@ public class DingTalkLink implements Channel, Runnable {
 
     // ==================== 生命周期 ====================
 
-    /**
-     * Runnable 入口：如果预配置了 appKey/appSecret 则直接启动 Stream，
-     * 否则空跑等待前端动态调用 startStream()。
-     */
     @Override
     public void run() {
-        if (Assert.isEmpty(appKey) || Assert.isEmpty(appSecret)) {
-            LOG.info("[DingTalk] No appKey/appSecret configured, waiting for web bind...");
-            // 空跑保持线程存活（startStream 会另起新线程）
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    Thread.sleep(60000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+        if (bindings.isEmpty()) {
+            LOG.info("[DingTalk] No bindings, waiting for web bind...");
+            return;
+        }
+
+        // 按 appKey 分组，为每个 appKey 启动独立的 WebSocket 连接
+        Map<String, DingTalkBinding> byAppKey = new LinkedHashMap<>();
+        for (DingTalkBinding b : bindings.values()) {
+            if (b.appKey != null && b.appSecret != null) {
+                byAppKey.putIfAbsent(b.appKey, b);
             }
-        } else {
-            // 预配置了凭据，直接启动 Stream
-            doStartStream();
+        }
+
+        for (Map.Entry<String, DingTalkBinding> entry : byAppKey.entrySet()) {
+            getOrCreateConnection(entry.getValue().appKey, entry.getValue().appSecret);
         }
     }
 
     /**
-     * 动态启动 Stream 连接（由前端绑定操作触发）
-     *
-     * @param appKey    钉钉机器人应用 AppKey（Client ID）
-     * @param appSecret 钉钉机器人应用 AppSecret（Client Secret）
-     * @param sessionId 等待绑定的 Web 会话 ID
-     * @return true=启动成功并进入 pending 等待状态
+     * 获取或创建指定 appKey 的 Stream 连接（已存在则复用）
      */
-    public synchronized boolean startStream(String appKey, String appSecret, String sessionId) {
+    private StreamConnection getOrCreateConnection(String appKey, String appSecret) {
+        StreamConnection conn = connections.get(appKey);
+        if (conn != null) {
+            return conn;
+        }
+
+        conn = new StreamConnection(appKey, appSecret);
+        StreamConnection existing = connections.putIfAbsent(appKey, conn);
+        if (existing != null) {
+            return existing;
+        }
+
+        conn.start();
+        return conn;
+    }
+
+    /**
+     * 动态启动 Stream 连接（由前端绑定操作触发）
+     */
+    public boolean startStream(String appKey, String appSecret, String sessionId) {
         if (appKey == null || appKey.isEmpty() || appSecret == null || appSecret.isEmpty()) {
             LOG.warn("[DingTalk] startStream: appKey or appSecret is empty");
             return false;
         }
 
-        // 如果已用相同凭据启动，只需设置 pending
-        if (streamStarted && appKey.equals(this.appKey) && appSecret.equals(this.appSecret)) {
-            LOG.info("[DingTalk] Stream already started with same credentials, setting pending session: {}", sessionId);
-            this.pendingSessionId = sessionId;
-            return true;
-        }
-
-        // 如果已有连接但凭据不同，先关闭旧连接
-        if (wsClient != null) {
-            stopStream();
-        }
-
-        this.appKey = appKey;
-        this.appSecret = appSecret;
-        this.pendingSessionId = sessionId;
-
-        // 在新线程中启动 Stream
-        streamThread = new Thread(() -> doStartStream(), "dingtalk-stream");
-        streamThread.setDaemon(true);
-        streamThread.start();
+        StreamConnection conn = getOrCreateConnection(appKey, appSecret);
+        conn.pendingSessionId = sessionId;
+        LOG.info("[DingTalk] startStream: appKey={}, pendingSession={}",
+                appKey.substring(0, Math.min(8, appKey.length())) + "...", sessionId);
 
         return true;
     }
 
     /**
-     * 内部方法：建立 Stream 长连接（两步协议）
-     *
-     * <p>第一步：HTTP POST 获取 WebSocket 端点 + ticket</p>
-     * <p>第二步：建立 WebSocket 连接，接收消息</p>
+     * 停止所有资源
      */
-    private void doStartStream() {
-        LOG.info("[DingTalk] Starting stream connection, appKey={}",
-                appKey != null ? appKey.substring(0, Math.min(8, appKey.length())) + "..." : "null");
+    public void stop() {
+        for (StreamConnection conn : connections.values()) {
+            conn.stop();
+        }
+        connections.clear();
+        messageExecutor.shutdownNow();
+        LOG.info("[DingTalk] Link stopped");
+    }
 
-        try {
-            // 第一步：HTTP POST 获取 endpoint + ticket
-            ONode reqBody = new ONode();
-            reqBody.set("clientId", appKey);
-            reqBody.set("clientSecret", appSecret);
+    // ==================== Stream 状态查询 ====================
 
-            ONode subs = reqBody.getOrNew("subscriptions").asArray();
-            ONode sub = new ONode();
-            sub.set("topic", "/v1.0/im/bot/messages/get");
-            sub.set("type", "CALLBACK");
-            subs.add(sub);
-            reqBody.set("ua", "soloncode/1.0");
+    /**
+     * 获取当前 Stream 状态（供前端轮询）
+     */
+    public Map<String, Object> getStreamStatus(String sessionId) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        boolean anyStarted = connections.values().stream().anyMatch(c -> c.streamStarted);
+        status.put("streamStarted", anyStarted);
+        status.put("pending", connections.values().stream()
+                .anyMatch(c -> sessionId.equals(c.pendingSessionId)));
+        status.put("bound", sessionId != null && bindings.containsKey(sessionId));
+        return status;
+    }
 
-            String resp = DingTalkClient.httpPost(
-                    "https://api.dingtalk.com/v1.0/gateway/connections/open",
-                    reqBody.toJson(), null);
+    // ==================== 绑定管理 ====================
 
-            if (resp == null || resp.isEmpty()) {
-                throw new RuntimeException("Failed to get stream endpoint: empty response");
+    /**
+     * 手动绑定钉钉用户到指定会话（兼容旧接口）
+     */
+    public void bindSession(String sessionId, String userId, String robotCode) {
+        doBindSession(sessionId, userId, robotCode);
+    }
+
+    /**
+     * 内部绑定实现
+     */
+    private void doBindSession(String sessionId, String userId, String robotCode, String appKey, String appSecret) {
+        DingTalkBinding binding = new DingTalkBinding();
+        binding.userId = userId;
+        binding.robotCode = robotCode != null ? robotCode : appKey;
+        binding.appKey = appKey;
+        binding.appSecret = appSecret;
+
+        // 一个 userId 只能绑定一个 session（清理旧绑定）
+        Set<String> unbindSessionIds = new HashSet<>();
+        bindings.forEach((k, v) -> {
+            if (v.userId.equals(userId)) {
+                unbindSessionIds.add(k);
             }
+        });
+        for (String unbindSessionId : unbindSessionIds) {
+            doUnbindSession(unbindSessionId);
+        }
 
-            ONode respNode = ONode.ofJson(resp);
-            String endpoint = respNode.get("endpoint").getString();
-            String ticket = respNode.get("ticket").getString();
+        bindings.put(sessionId, binding);
+        userIdToSession.put(userId, sessionId);
 
-            if (endpoint == null || ticket == null) {
-                throw new RuntimeException("Failed to get stream endpoint: " + resp);
+        // 清除连接的 pending 状态
+        StreamConnection conn = connections.get(appKey);
+        if (conn != null && sessionId.equals(conn.pendingSessionId)) {
+            conn.pendingSessionId = null;
+        }
+
+        credentialStore.save(bindings);
+        LOG.info("[DingTalk] Session {} bound to DingTalk user {}", sessionId, userId);
+    }
+
+    /**
+     * 兼容旧接口的绑定（不传 appKey/appSecret，从连接中取）
+     */
+    private void doBindSession(String sessionId, String userId, String robotCode) {
+        // 旧接口兼容：找第一个有 pending 的连接
+        for (StreamConnection conn : connections.values()) {
+            if (conn.pendingSessionId != null && conn.pendingSessionId.equals(sessionId)) {
+                doBindSession(sessionId, userId, robotCode, conn.appKey, conn.appSecret);
+                return;
             }
-
-            LOG.info("[DingTalk] Got stream endpoint: {}", endpoint);
-
-            // 第二步：建立 WebSocket 连接
-            String wsUrl = endpoint + "?ticket=" + ticket;
-            wsClient = new SimpleWebSocketClient(wsUrl) {
-                @Override
-                public void onMessage(String message) {
-                    onWsMessage(message);
-                }
-            };
-
-            wsClient.connectBlocking(30, TimeUnit.SECONDS);
-            // 开启心跳（钉钉协议层需要 JSON ping/pong，不使用 autoReconnect，手动处理重连）
-            wsClient.heartbeat(25_000, false);
-            streamStarted = true;
-
-            LOG.info("[DingTalk] Stream WebSocket connected successfully");
-
-            // 主线程保持存活
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    Thread.sleep(60000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        } catch (Exception e) {
-            LOG.error("[DingTalk] Stream connection error: {}", e.getMessage(), e);
-            streamStarted = false;
-            // 自动重连
-            scheduleReconnect();
+        }
+        // fallback：用第一个连接的凭据
+        if (!connections.isEmpty()) {
+            StreamConnection conn = connections.values().iterator().next();
+            doBindSession(sessionId, userId, robotCode, conn.appKey, conn.appSecret);
         }
     }
 
     /**
-     * 处理 WebSocket 收到的消息
-     *
-     * <p>钉钉 Stream 协议消息格式：</p>
-     * <ul>
-     *   <li>SYSTEM + topic=ping → 回复 pong</li>
-     *   <li>SYSTEM + topic=disconnect → 触发重连</li>
-     *   <li>CALLBACK → 业务消息（机器人消息），需回复 ACK</li>
-     * </ul>
+     * 解绑钉钉
      */
-    private void onWsMessage(String message) {
+    public void unbindSession(String sessionId) {
+        doUnbindSession(sessionId);
+    }
+
+    private void doUnbindSession(String sessionId) {
+        DingTalkBinding binding = bindings.remove(sessionId);
+        if (binding == null) return;
+
+        userIdToSession.remove(binding.userId);
+        webhookCache.remove(binding.userId);
+        credentialStore.save(bindings);
+
+        // 检查是否还有绑定使用此 appKey，如果没有则关闭连接
+        if (binding.appKey != null) {
+            boolean stillUsed = bindings.values().stream()
+                    .anyMatch(b -> binding.appKey.equals(b.appKey));
+            if (!stillUsed) {
+                StreamConnection conn = connections.remove(binding.appKey);
+                if (conn != null) {
+                    conn.stop();
+                }
+            }
+        }
+
+        LOG.info("[DingTalk] Session {} unbound", sessionId);
+    }
+
+    /**
+     * 从持久化存储恢复所有已绑定的会话
+     */
+    private void loadBindings() {
+        Map<String, DingTalkBinding> saved = credentialStore.load();
+        if (saved.isEmpty()) return;
+
+        LOG.info("[DingTalk] Restoring {} saved binding(s)", saved.size());
+        for (Map.Entry<String, DingTalkBinding> entry : saved.entrySet()) {
+            String sessionId = entry.getKey();
+            DingTalkBinding binding = entry.getValue();
+            bindings.put(sessionId, binding);
+            userIdToSession.put(binding.userId, sessionId);
+            LOG.info("[DingTalk] Restored session {} -> userId {}", sessionId, binding.userId);
+        }
+    }
+
+    /**
+     * 获取所有已绑定会话 ID
+     */
+    public Set<String> getBoundSessionIds() {
+        return Collections.unmodifiableSet(bindings.keySet());
+    }
+
+    // ==================== WS 消息处理（由 StreamConnection 回调） ====================
+
+    /**
+     * 处理 StreamConnection 收到的 WS 消息
+     */
+    private void onWsMessage(String message, StreamConnection conn) {
         try {
             ONode msg = ONode.ofJson(message);
             String type = msg.get("type").getString();
@@ -338,19 +367,20 @@ public class DingTalkLink implements Channel, Runnable {
                 String messageId = headers != null ? headers.get("messageId").getString() : null;
 
                 if ("ping".equals(topic)) {
-                    // 回复 pong
                     ONode pong = new ONode();
                     pong.set("code", 200);
                     ONode pongHeaders = pong.getOrNew("headers");
                     pongHeaders.set("messageId", messageId);
                     pongHeaders.set("contentType", "application/json");
                     pong.set("data", "{}");
-                    wsClient.send(pong.toJson());
+                    if (conn.wsClient != null) {
+                        conn.wsClient.send(pong.toJson());
+                    }
                     LOG.debug("[DingTalk] Replied pong");
                 } else if ("disconnect".equals(topic)) {
                     LOG.info("[DingTalk] Received disconnect command, will reconnect...");
-                    streamStarted = false;
-                    scheduleReconnect();
+                    conn.streamStarted = false;
+                    conn.scheduleReconnect();
                 }
                 return;
             }
@@ -366,13 +396,15 @@ public class DingTalkLink implements Channel, Runnable {
                 ackHeaders.set("messageId", messageId);
                 ackHeaders.set("contentType", "application/json");
                 ack.set("data", "{}");
-                wsClient.send(ack.toJson());
+                if (conn.wsClient != null) {
+                    conn.wsClient.send(ack.toJson());
+                }
 
-                // 解析业务数据（data 字段是 JSON 字符串）
+                // 解析业务数据
                 String data = msg.get("data").getString();
                 if (data != null && !data.isEmpty()) {
                     ONode botMsg = ONode.ofJson(data);
-                    onBotMessageParsed(botMsg);
+                    onBotMessageParsed(botMsg, conn);
                 }
             }
         } catch (Exception e) {
@@ -381,9 +413,9 @@ public class DingTalkLink implements Channel, Runnable {
     }
 
     /**
-     * 解析并处理钉钉机器人消息（从 JSON 解析后的数据）
+     * 解析并处理钉钉机器人消息
      */
-    private void onBotMessageParsed(ONode botMsg) {
+    private void onBotMessageParsed(ONode botMsg, StreamConnection conn) {
         String userId = botMsg.get("senderStaffId").getString();
         if (userId == null || userId.isEmpty()) {
             userId = botMsg.get("senderId").getString();
@@ -394,7 +426,6 @@ public class DingTalkLink implements Channel, Runnable {
         if (textNode != null && textNode.isNull() == false) {
             text = textNode.get("content").getString();
         }
-        // 兼容新版消息格式
         if ((text == null || text.isEmpty())) {
             ONode contentNode = botMsg.get("content");
             if (contentNode != null && contentNode.isNull() == false) {
@@ -420,12 +451,11 @@ public class DingTalkLink implements Channel, Runnable {
 
         if (sessionId == null) {
             // 未绑定的用户 → 检查是否有 pending 会话在等待
-            if (pendingSessionId != null) {
-                LOG.info("[DingTalk] Auto-binding user {} to pending session {}", userId, pendingSessionId);
-                // OpenClaw 应用的 robotCode 通常就是 appKey
-                String robotCode = appKey;
-                doBindSession(pendingSessionId, userId, robotCode);
-                sessionId = pendingSessionId;
+            if (conn.pendingSessionId != null) {
+                LOG.info("[DingTalk] Auto-binding user {} to pending session {}", userId, conn.pendingSessionId);
+                String robotCode = conn.appKey;
+                doBindSession(conn.pendingSessionId, userId, robotCode, conn.appKey, conn.appSecret);
+                sessionId = conn.pendingSessionId;
                 // 绑定成功后发一条欢迎提示
                 if (webhook != null && !webhook.isEmpty()) {
                     try {
@@ -453,11 +483,9 @@ public class DingTalkLink implements Channel, Runnable {
             return;
         }
 
-        // 用 final 变量捕获，供 lambda 使用
         final String finalSessionId = sessionId;
         final String finalText = text;
 
-        // 提交到消息处理线程
         messageExecutor.execute(() -> {
             try {
                 webGate.onDingTalkMessage(finalSessionId, finalText);
@@ -467,178 +495,20 @@ public class DingTalkLink implements Channel, Runnable {
         });
     }
 
-    /**
-     * 延迟重连（避免频繁重连）
-     */
-    private void scheduleReconnect() {
-        synchronized (reconnectLock) {
-            if (!streamStarted && wsClient != null) {
-                try {
-                    wsClient.release();
-                } catch (Exception ignored) {
-                }
-                wsClient = null;
-            }
-
-            LOG.info("[DingTalk] Reconnecting in 5 seconds...");
-            Thread reconnectThread = new Thread(() -> {
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    return;
-                }
-                if (!streamStarted && appKey != null && appSecret != null) {
-                    doStartStream();
-                }
-            }, "dingtalk-reconnect");
-            reconnectThread.setDaemon(true);
-            reconnectThread.start();
-        }
-    }
-
-    /**
-     * 停止 Stream 连接
-     */
-    private void stopStream() {
-        streamStarted = false;
-        if (wsClient != null) {
-            try {
-                wsClient.release();
-            } catch (Exception ignored) {
-            }
-            wsClient = null;
-        }
-        if (streamThread != null) {
-            streamThread.interrupt();
-            streamThread = null;
-        }
-        LOG.info("[DingTalk] Stream stopped");
-    }
-
-    /**
-     * 获取当前 Stream 绑定状态（供前端轮询）
-     *
-     * @param sessionId 会话 ID
-     * @return 状态信息：streamStarted、pending、bound
-     */
-    public Map<String, Object> getStreamStatus(String sessionId) {
-        Map<String, Object> status = new LinkedHashMap<>();
-        status.put("streamStarted", streamStarted);
-        status.put("pending", sessionId != null && sessionId.equals(pendingSessionId));
-        status.put("bound", sessionId != null && bindings.containsKey(sessionId));
-        return status;
-    }
-
-    /**
-     * 停止所有资源
-     */
-    public void stop() {
-        stopStream();
-        messageExecutor.shutdownNow();
-        LOG.info("[DingTalk] Link stopped");
-    }
-
-    // ==================== 绑定管理 ====================
-
-    /**
-     * 手动绑定钉钉用户到指定会话（兼容旧接口，一般不使用）
-     */
-    public void bindSession(String sessionId, String userId, String robotCode) {
-        doBindSession(sessionId, userId, robotCode);
-    }
-
-    /**
-     * 内部绑定实现
-     */
-    private void doBindSession(String sessionId, String userId, String robotCode) {
-        DingTalkBinding binding = new DingTalkBinding();
-        binding.userId = userId;
-        binding.robotCode = robotCode != null ? robotCode : appKey;
-        binding.appKey = this.appKey;
-        binding.appSecret = this.appSecret;
-
-        // 一个 userId 只能绑定一个 session（清理旧绑定）
-        Set<String> unbindSessionIds = new HashSet<>();
-        bindings.forEach((k, v) -> {
-            if (v.userId.equals(userId)) {
-                unbindSessionIds.add(k);
-            }
-        });
-        for (String unbindSessionId : unbindSessionIds) {
-            doUnbindSession(unbindSessionId);
-        }
-
-        bindings.put(sessionId, binding);
-        userIdToSession.put(userId, sessionId);
-
-        // 清除 pending
-        if (sessionId.equals(pendingSessionId)) {
-            pendingSessionId = null;
-        }
-
-        credentialStore.save(bindings);
-        LOG.info("[DingTalk] Session {} bound to DingTalk user {}", sessionId, userId);
-    }
-
-    /**
-     * 解绑钉钉
-     */
-    public void unbindSession(String sessionId) {
-        doUnbindSession(sessionId);
-    }
-
-    private void doUnbindSession(String sessionId) {
-        DingTalkBinding binding = bindings.remove(sessionId);
-        if (binding != null) {
-            userIdToSession.remove(binding.userId);
-            webhookCache.remove(binding.userId);
-        }
-        credentialStore.save(bindings);
-        LOG.info("[DingTalk] Session {} unbound", sessionId);
-    }
-
-    /**
-     * 从持久化存储恢复所有已绑定的会话
-     */
-    private void loadBindings() {
-        Map<String, DingTalkBinding> saved = credentialStore.load();
-        if (saved.isEmpty()) return;
-
-        LOG.info("[DingTalk] Restoring {} saved binding(s)", saved.size());
-        for (Map.Entry<String, DingTalkBinding> entry : saved.entrySet()) {
-            String sessionId = entry.getKey();
-            DingTalkBinding binding = entry.getValue();
-            bindings.put(sessionId, binding);
-            userIdToSession.put(binding.userId, sessionId);
-            LOG.info("[DingTalk] Restored session {} -> userId {}", sessionId, binding.userId);
-
-            // 如果绑定中有保存的 appKey/appSecret 且当前没有配置，则恢复
-            if ((appKey == null || appKey.isEmpty()) && binding.appKey != null) {
-                this.appKey = binding.appKey;
-                this.appSecret = binding.appSecret;
-            }
-        }
-    }
-
-    /**
-     * 获取所有已绑定会话 ID
-     */
-    public Set<String> getBoundSessionIds() {
-        return Collections.unmodifiableSet(bindings.keySet());
-    }
+    // ==================== 消息发送 ====================
 
     /**
      * 降级方案：通过 API 发送回复（当 sessionWebhook 不可用时）
      */
     private void sendReplyViaApi(DingTalkBinding binding, String reply) {
-        String token = DingTalkClient.getAccessToken(appKey, appSecret);
+        String token = DingTalkClient.getAccessToken(binding.appKey, binding.appSecret);
         if (token == null) {
             LOG.error("[DingTalk] Cannot send reply: no access token");
             return;
         }
 
         String robotCode = binding.robotCode != null && !binding.robotCode.isEmpty()
-                ? binding.robotCode : this.appKey; // OpenClaw 应用的 robotCode 通常就是 appKey
+                ? binding.robotCode : binding.appKey;
 
         int maxLen = 5000;
         if (reply.length() <= maxLen) {
@@ -655,6 +525,169 @@ public class DingTalkLink implements Channel, Runnable {
                 DingTalkClient.sendSingleMessage(token, robotCode, binding.userId, chunk);
                 pos = end;
                 part++;
+            }
+        }
+    }
+
+    // ==================== 内部连接类（每个 appKey 独立一条连接） ====================
+
+    /**
+     * 单个 appKey 的 WebSocket 长连接。
+     * 封装了连接生命周期、重连等所有连接级状态。
+     */
+    private class StreamConnection {
+        final String appKey;
+        final String appSecret;
+
+        volatile SimpleWebSocketClient wsClient;
+        volatile boolean streamStarted = false;
+        volatile Thread streamThread;
+        volatile Thread reconnectThread;
+        final Object reconnectLock = new Object();
+
+        /**
+         * 待绑定的会话 ID（此连接上等待钉钉用户发消息来自动完成绑定）
+         */
+        volatile String pendingSessionId;
+
+        StreamConnection(String appKey, String appSecret) {
+            this.appKey = appKey;
+            this.appSecret = appSecret;
+        }
+
+        /**
+         * 启动连接（在新线程中执行）
+         */
+        void start() {
+            String threadName = "dingtalk-stream-" + appKey.substring(0, Math.min(6, appKey.length()));
+            streamThread = new Thread(this::doStart, threadName);
+            streamThread.setDaemon(true);
+            streamThread.start();
+        }
+
+        /**
+         * 停止连接（释放所有资源）
+         */
+        void stop() {
+            streamStarted = false;
+            if (wsClient != null) {
+                try {
+                    wsClient.release();
+                } catch (Exception ignored) {
+                }
+                wsClient = null;
+            }
+            if (reconnectThread != null) {
+                reconnectThread.interrupt();
+                reconnectThread = null;
+            }
+            if (streamThread != null) {
+                streamThread.interrupt();
+                streamThread = null;
+            }
+        }
+
+        /**
+         * 建立 Stream 长连接
+         */
+        private void doStart() {
+            LOG.info("[DingTalk] Starting stream connection, appKey={}",
+                    appKey.substring(0, Math.min(8, appKey.length())) + "...");
+
+            try {
+                // 第一步：HTTP POST 获取 endpoint + ticket
+                ONode reqBody = new ONode();
+                reqBody.set("clientId", appKey);
+                reqBody.set("clientSecret", appSecret);
+
+                ONode subs = reqBody.getOrNew("subscriptions").asArray();
+                ONode sub = new ONode();
+                sub.set("topic", "/v1.0/im/bot/messages/get");
+                sub.set("type", "CALLBACK");
+                subs.add(sub);
+                reqBody.set("ua", "soloncode/1.0");
+
+                String resp = DingTalkClient.httpPost(
+                        "https://api.dingtalk.com/v1.0/gateway/connections/open",
+                        reqBody.toJson(), null);
+
+                if (resp == null || resp.isEmpty()) {
+                    throw new RuntimeException("Failed to get stream endpoint: empty response");
+                }
+
+                ONode respNode = ONode.ofJson(resp);
+                String endpoint = respNode.get("endpoint").getString();
+                String ticket = respNode.get("ticket").getString();
+
+                if (endpoint == null || ticket == null) {
+                    throw new RuntimeException("Failed to get stream endpoint: " + resp);
+                }
+
+                LOG.info("[DingTalk] Got stream endpoint: {}", endpoint);
+
+                // 第二步：建立 WebSocket 连接
+                String wsUrl = endpoint + "?ticket=" + ticket;
+                wsClient = new SimpleWebSocketClient(wsUrl) {
+                    @Override
+                    public void onMessage(String message) {
+                        DingTalkLink.this.onWsMessage(message, StreamConnection.this);
+                    }
+                };
+
+                wsClient.connectBlocking(30, TimeUnit.SECONDS);
+                wsClient.heartbeat(25_000, false);
+                streamStarted = true;
+
+                LOG.info("[DingTalk] Stream WebSocket connected successfully, appKey={}",
+                        appKey.substring(0, Math.min(8, appKey.length())) + "...");
+
+                // 保持线程存活（便于 stop() 通过 interrupt 终止）
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        Thread.sleep(60000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                LOG.error("[DingTalk] Stream connection error: {}", e.getMessage(), e);
+                streamStarted = false;
+                scheduleReconnect();
+            }
+        }
+
+        // ==================== 重连机制 ====================
+
+        void scheduleReconnect() {
+            synchronized (reconnectLock) {
+                if (wsClient != null) {
+                    try {
+                        wsClient.release();
+                    } catch (Exception ignored) {
+                    }
+                    wsClient = null;
+                }
+
+                if (reconnectThread != null) {
+                    reconnectThread.interrupt();
+                    reconnectThread = null;
+                }
+
+                LOG.info("[DingTalk] Reconnecting in 5 seconds, appKey={}",
+                        appKey.substring(0, Math.min(8, appKey.length())) + "...");
+                reconnectThread = new Thread(() -> {
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    if (!streamStarted) {
+                        doStart();
+                    }
+                }, "dingtalk-reconnect");
+                reconnectThread.setDaemon(true);
+                reconnectThread.start();
             }
         }
     }
