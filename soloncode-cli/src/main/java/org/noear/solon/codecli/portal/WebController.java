@@ -72,7 +72,7 @@ public class WebController {
                     return;
                 }
 
-                webGate.onLoopEvent(sessionId, prompt);
+                webGate.safeChatInput(sessionId, prompt, "Loop");
             });
         }
     }

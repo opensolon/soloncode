@@ -488,7 +488,7 @@ public class DingTalkLink implements Channel, Runnable {
 
         messageExecutor.execute(() -> {
             try {
-                webGate.onDingTalkMessage(finalSessionId, finalText);
+                webGate.safeChatInput(finalSessionId, finalText, "DingTalk");
             } catch (Exception e) {
                 LOG.error("[DingTalk] Message processing error: {}", e.getMessage(), e);
             }

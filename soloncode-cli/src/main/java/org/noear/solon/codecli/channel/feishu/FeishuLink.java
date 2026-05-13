@@ -522,7 +522,7 @@ public class FeishuLink implements Channel, Runnable {
         final String finalText = text;
         messageExecutor.execute(() -> {
             try {
-                webGate.onFeishuMessage(finalSessionId, finalText);
+                webGate.safeChatInput(finalSessionId, finalText, "Feishu");
             } catch (Exception e) {
                 LOG.error("[Feishu] Message processing error: {}", e.getMessage(), e);
             }

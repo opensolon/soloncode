@@ -119,9 +119,9 @@ public class WebGate extends SimpleWebSocketListener {
         // 确保消息中包含 sessionId
         String enriched = ONode.serialize(jsonChunk);
 
-//        if (LOG.isDebugEnabled()) {
-//            LOG.debug("emit: " + enriched);
-//        }
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("emit: " + enriched);
+        }
 
         // 广播给所有连接（每条消息都带 sessionId，前端自行路由）
         for (WebSocket socket : connections) {
@@ -266,8 +266,13 @@ public class WebGate extends SimpleWebSocketListener {
                         line -> emitToClient(sessionId, line),
                         e -> {
                             LOG.error("Task fail: {}", e.getMessage(), e);
+                            session.attrs().remove("disposable");
+
                             emitToClient(sessionId, WebChunk.ofError(e));
                             emitToClient(sessionId, WebChunk.ofDone());
+                        },
+                        () -> {
+                            session.attrs().remove("disposable");  // 正常完成时清理
                         }
                 );
 
@@ -349,30 +354,28 @@ public class WebGate extends SimpleWebSocketListener {
 
 
     /**
-     * ③ Loop 事件输入 - 异步版本（返回 CompletableFuture）
+     * 判断指定 session 是否有 AI 任务正在执行
      */
-    public void onLoopEvent(String sessionId, String input) {
-        onChatInput(sessionId, null, input, null, null, null, null);
+    private boolean isSessionBusy(AgentSession session) {
+        Disposable disposable = (Disposable) session.attrs().get("disposable");
+        return disposable != null && !disposable.isDisposed();
     }
 
     /**
-     * ④ 微信消息输入（由 WeChatLink 调用）
+     * 安全输入（如果任务正在常，会跳过）
      */
-    public void onWeChatMessage(String sessionId, String input) {
-        onChatInput(sessionId, null, input, null, null, null, null);
-    }
+    public void safeChatInput(String sessionId, String input, String source) {
+        try {
+            AgentSession session = engine.getSession(sessionId);
+            if (isSessionBusy(session)) {
+                LOG.warn("[WebGate] {} event skipped for session {}: task in progress", source, sessionId);
+                return;
+            }
+        } catch (Exception e) {
+            LOG.warn("[WebGate] {} event check failed for session {}: {}", source, sessionId, e.getMessage());
+            return;
+        }
 
-    /**
-     * ⑤ 飞书消息输入（由 FeishuLink 调用）
-     */
-    public void onFeishuMessage(String sessionId, String input) {
-        onChatInput(sessionId, null, input, null, null, null, null);
-    }
-
-    /**
-     * ⑥ 钉钉消息输入（由 DingTalkLink 调用）
-     */
-    public void onDingTalkMessage(String sessionId, String input) {
         onChatInput(sessionId, null, input, null, null, null, null);
     }
 

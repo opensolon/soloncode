@@ -255,7 +255,7 @@ public class WeChatLink implements Channel, Runnable {
             }
 
             // 调用 AI 并回复
-            webGate.onWeChatMessage(sessionId, text);
+            webGate.safeChatInput(sessionId, text, "WeChat");
 
             // 停止输入状态
             if (binding.typingTicket != null) {

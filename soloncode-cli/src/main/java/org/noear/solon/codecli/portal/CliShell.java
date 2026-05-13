@@ -176,7 +176,7 @@ public class CliShell implements Runnable {
                     return;
                 }
 
-                onLoopEvent(session, prompt);
+                safeChatInput(session, prompt);
             });
         }
 
@@ -214,7 +214,7 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void onLoopEvent(AgentSession session, String prompt){
+    private void safeChatInput(AgentSession session, String prompt){
         if (reader != null && reader.isReading()) {
             try {
                 performAgentTask(session, prompt, null);
