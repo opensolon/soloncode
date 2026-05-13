@@ -176,16 +176,7 @@ public class CliShell implements Runnable {
                     return;
                 }
 
-                if (reader != null && reader.isReading()) {
-                    try {
-                        performAgentTask(session, prompt, null);
-                    } catch (Exception e) {
-                        LOG.error("Loop task execution failed: {}", e.getMessage(), e);
-                    } finally {
-                        //打断主线程的 readLine 阻塞 // 触发 run() 循环中的 UserInterruptException
-                        terminal.raise(Terminal.Signal.INT);
-                    }
-                }
+                onLoopEvent(session, prompt);
             });
         }
 
@@ -219,6 +210,19 @@ public class CliShell implements Runnable {
             } catch (Throwable e) {
                 LOG.warn(e.getMessage(), e);
                 terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
+            }
+        }
+    }
+
+    private void onLoopEvent(AgentSession session, String prompt){
+        if (reader != null && reader.isReading()) {
+            try {
+                performAgentTask(session, prompt, null);
+            } catch (Exception e) {
+                LOG.error("Loop task execution failed: {}", e.getMessage(), e);
+            } finally {
+                //打断主线程的 readLine 阻塞 // 触发 run() 循环中的 UserInterruptException
+                terminal.raise(Terminal.Signal.INT);
             }
         }
     }
