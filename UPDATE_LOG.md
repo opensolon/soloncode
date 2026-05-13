@@ -1,4 +1,9 @@
 
+### v2026.5.13
+
+* 修复 soloncode WebfetchTool 超时失效造成卡死的问题
+* 细节优化
+
 ### v2026.5.12
 
 * 优化 soloncode web 飞书绑定
