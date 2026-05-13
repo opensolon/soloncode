@@ -10,3 +10,11 @@ solon.logging.appender:
   file:
     level: DEBUG
     name: ".soloncode/logs/${solon.app.name}"
+
+solon:
+  logging:
+    logger:
+      "org.eclipse.jetty":
+        level: WRAN
+      "io.modelcontextprotocol":
+        level: INFO
