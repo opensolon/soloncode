@@ -58,14 +58,14 @@ import java.nio.charset.StandardCharsets;
 
 public class WsGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WsGate.class);
-    private final HarnessEngine kernel;
+    private final HarnessEngine engine;
     private final AgentProperties agentPros;
     private final WebStreamBuilder streamBuilder;
 
-    public WsGate(HarnessEngine kernel, AgentProperties agentPros) {
-        this.kernel = kernel;
+    public WsGate(HarnessEngine engine, AgentProperties agentPros) {
+        this.engine = engine;
         this.agentPros = agentPros;
-        this.streamBuilder = new WebStreamBuilder(kernel);
+        this.streamBuilder = new WebStreamBuilder(engine);
     }
 
     @Override
@@ -88,7 +88,7 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
 
-            AgentSession session = kernel.getSession(sessionId);
+            AgentSession session = engine.getSession(sessionId);
             session.attrs().putIfAbsent(HarnessEngine.ATTR_CWD, sessionCwd);
         }
     }
@@ -119,7 +119,7 @@ public class WsGate extends SimpleWebSocketListener {
                         .toJson());
             }
 
-            AgentSession session = kernel.getSession(sessionId);
+            AgentSession session = engine.getSession(sessionId);
 
             if("[(sec)interrupt]".equals(req.getInput())) {
                 Disposable disposable = (Disposable)session.attrs().remove("disposable");
@@ -137,7 +137,7 @@ public class WsGate extends SimpleWebSocketListener {
 
                 String msg2 = new ONode().set("type", "done")
                         .set("sessionId", session.getSessionId())
-                        .set("modelName", kernel.getMainModel().getConfig().getNameOrModel())
+                        .set("modelName", engine.getMainModel().getConfig().getNameOrModel())
                         .set("totalTokens", 0)
                         .set("elapsedMs", 0).toJson();
 
@@ -173,23 +173,29 @@ public class WsGate extends SimpleWebSocketListener {
             }
 
             String agentName = null;
+            String currentInput = input;
+
             if(input.startsWith("@")) {
                 int agentNameIdx = input.indexOf(" ");
                 if (agentNameIdx > 0) {
                     agentName = input.substring(1, agentNameIdx);
+
+                    if (engine.getAgentManager().hasAgent(agentName)) {
+                        currentInput = currentInput.substring(agentNameIdx + 1);
+                    }
                 }
             }
 
             // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();
-            ChatModel chatModel = kernel.getModelOrMain(modelName);
+            ChatModel chatModel = engine.getModelOrMain(modelName);
 
             session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
-            final ReActAgent agent = kernel.getAgentOrMain(agentName);
+            final ReActAgent agent = engine.getAgentOrMain(agentName);
 
             // 命令处理：以 / 开头的输入走命令分发
-            if (input.startsWith("/")) {
-                handleCommand(socket, session, agent, chatModel, cwd, input, sessionId);
+            if (currentInput.startsWith("/")) {
+                handleCommand(socket, session, agent, chatModel, cwd, currentInput, sessionId);
                 return;
             }
 
@@ -222,24 +228,24 @@ public class WsGate extends SimpleWebSocketListener {
                 String filePrefix = fileNames.stream()
                         .map(f -> "[附件: " + f + "]")
                         .collect(java.util.stream.Collectors.joining("\n"));
-                input = filePrefix + "\n" + input;
+                currentInput = filePrefix + "\n" + currentInput;
             }
 
             // 构建 Prompt（含图片时用 Contents）
             Prompt prompt;
             if (!imageBlocks.isEmpty()) {
                 Contents contents = new Contents();
-                contents.addBlock(TextBlock.of(input));
+                contents.addBlock(TextBlock.of(currentInput));
                 for (ImageBlock block : imageBlocks) {
                     contents.addBlock(block);
                 }
                 prompt = Prompt.of(new UserMessage(contents)).attrPut("start_time", System.currentTimeMillis());
             } else {
-                prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+                prompt = Prompt.of(currentInput).attrPut("start_time", System.currentTimeMillis());
             }
 
             String finalCwd = cwd;
-            Disposable disposable = kernel.prompt(prompt)
+            Disposable disposable = engine.prompt(prompt)
                     .session(session)
                     .options(o -> {
                         o.chatModel(chatModel);
@@ -382,7 +388,7 @@ public class WsGate extends SimpleWebSocketListener {
                     // 重建 ChatModel 并注入 kernel
                     agentPros.removeModel(agentPros.getChatModel().getNameOrModel());
                     agentPros.addModel(agentPros.getChatModel());
-                    kernel.switchMainModel(agentPros.getChatModel().getNameOrModel());
+                    engine.switchMainModel(agentPros.getChatModel().getNameOrModel());
 
                     LOG.info("[WS] Config updated: model={}", model);
 
