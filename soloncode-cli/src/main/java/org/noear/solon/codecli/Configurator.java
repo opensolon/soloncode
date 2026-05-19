@@ -17,8 +17,6 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.memory.MemoryManger;
-import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
-import org.noear.solon.codecli.channel.feishu.FeishuLink;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
