@@ -65,7 +65,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 
 /* Header */
 .main-header { padding: 18px 28px 14px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; transition: padding-right 0.25s ease; }
-.main-header.filer-collapsed { padding-right: 12px; }
+.main-header.filer-collapsed { padding-right: 46px; }
 .theme-toggle { background: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 6px 10px; cursor: pointer; color: var(--text-secondary); font-size: 16px; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
 .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
 .wechat-btn-header { background: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 6px 10px; cursor: pointer; color: var(--text-secondary); font-size: 16px; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
