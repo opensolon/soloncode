@@ -92,39 +92,49 @@
                 nodeEl.appendChild(childrenEl);
             }
 
-            // 单击：目录展开/折叠
+            // 用定时器区分单击/双击，避免双击时触发展开/折叠
+            var clickTimer = null;
+
+            // 单击：目录展开/折叠（延迟执行，双击时取消）
             (function(n, ne) {
                 row.addEventListener('click', function(e) {
                     if (n.type !== 'directory') return;
                     e.stopPropagation();
-                    var cEl = ne.querySelector(':scope > .filer-node-children');
-                    var aEl = row.querySelector('.filer-arrow');
-                    if (!cEl) return;
+                    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+                    clickTimer = setTimeout(function() {
+                        clickTimer = null;
+                        var cEl = ne.querySelector(':scope > .filer-node-children');
+                        var aEl = row.querySelector('.filer-arrow');
+                        if (!cEl) return;
 
-                    var isOpen = cEl.classList.contains('open');
-                    if (isOpen) {
-                        cEl.classList.remove('open');
-                        if (aEl) aEl.classList.remove('open');
-                    } else {
-                        cEl.classList.add('open');
-                        if (aEl) aEl.classList.add('open');
-                        if (!cEl.hasChildNodes()) {
-                            fetch('/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1')
-                                .then(function(r) { return r.json(); })
-                                .then(function(res) {
-                                    var subData = (res && res.data) ? res.data : [];
-                                    renderTree(subData, cEl, indent + 1);
-                                });
+                        var isOpen = cEl.classList.contains('open');
+                        if (isOpen) {
+                            cEl.classList.remove('open');
+                            if (aEl) aEl.classList.remove('open');
+                        } else {
+                            cEl.classList.add('open');
+                            if (aEl) aEl.classList.add('open');
+                            if (!cEl.hasChildNodes()) {
+                                fetch('/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1')
+                                    .then(function(r) { return r.json(); })
+                                    .then(function(res) {
+                                        var subData = (res && res.data) ? res.data : [];
+                                        renderTree(subData, cEl, indent + 1);
+                                    });
+                            }
                         }
-                    }
+                    }, 250);
                 });
             })(node, nodeEl);
 
-            // 双击：插入 @path 到输入框
+            // 双击：插入 @path 到输入框（取消单击回调）
             (function(n) {
                 row.addEventListener('dblclick', function(e) {
                     e.stopPropagation();
                     e.preventDefault();
+                    // 取消挂起的单击事件
+                    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+
                     var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
                     if (!targetInput) return;
                     var currentVal = targetInput.value || '';
@@ -190,14 +200,6 @@
         }
         dot.classList.add('active');
         setTimeout(function() { dot.classList.remove('active'); }, 2000);
-    }
-
-    // ---- 填充工作区名称 ----
-    if (worknameEl) {
-        fetch('/chat/meta').then(function(r) { return r.json(); }).then(function(res) {
-            var meta = (res && res.data) ? res.data : res;
-            if (meta && meta.workname) worknameEl.textContent = meta.workname;
-        }).catch(function() {});
     }
 
     // ---- 暴露全局函数 ----
