@@ -260,6 +260,7 @@ function appendContentChunk(sess, text, append) {
             var el = ensureAssistantBubble(sess);
             el.innerHTML = renderMd(sess.reasonBuffer);
             addCodeBlockButtons(el);
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
 
             sess.contentRafId = null;
 

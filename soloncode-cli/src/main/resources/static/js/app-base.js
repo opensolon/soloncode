@@ -46,6 +46,7 @@ function SessionState(sessionId) {
     this.inlineThinkingStartTime = null;
     this.thinkingBlockTimerId = null;
     this.thinkingBlockStartTime = null;
+    this.messageStartTime = null;
 }
 
 var sessionMap = {};

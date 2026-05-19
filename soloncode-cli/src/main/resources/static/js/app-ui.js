@@ -102,6 +102,85 @@ function processSelectedFiles(fileList, attachmentsType) {
 welcomeInput.addEventListener('paste', handlePasteImage);
 chatInput.addEventListener('paste', handlePasteImage);
 
+/* ===== Drag & Drop File Upload ===== */
+(function() {
+    var welcomeDropZone = document.getElementById('welcomeDropZone');
+    var chatDropZone = document.getElementById('chatDropZone');
+    var welcomeDropOverlay = document.getElementById('welcomeDropOverlay');
+    var chatDropOverlay = document.getElementById('chatDropOverlay');
+
+    // Counter to track nested enter/leave events (child elements fire their own events)
+    var welcomeDragCounter = 0;
+    var chatDragCounter = 0;
+
+    function showOverlay(overlay) {
+        overlay.classList.add('active');
+    }
+
+    function hideOverlay(overlay) {
+        overlay.classList.remove('active');
+    }
+
+    function handleDrop(e, overlay, counterReset) {
+        e.preventDefault();
+        e.stopPropagation();
+        counterReset.val = 0;
+        hideOverlay(overlay);
+
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || files.length === 0) return;
+
+        if (pendingFiles.length >= MAX_ATTACHMENTS) {
+            showToast('附件数量已达上限（' + MAX_ATTACHMENTS + '个）', 'error');
+            return;
+        }
+
+        // Separate files into images and non-images for proper processing
+        for (var i = 0; i < files.length; i++) {
+            if (pendingFiles.length >= MAX_ATTACHMENTS) {
+                showToast('部分文件未添加，附件数量已达上限（' + MAX_ATTACHMENTS + '个）', 'error');
+                break;
+            }
+            var file = files[i];
+            var isImage = file.type.indexOf('image/') === 0;
+            processSelectedFile(file, isImage ? 'image' : 'file');
+        }
+    }
+
+    function bindDropZone(zone, overlay, counter) {
+        // Prevent default browser behavior (opening the file)
+        zone.addEventListener('dragenter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            counter.val++;
+            showOverlay(overlay);
+        });
+
+        zone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Keep overlay visible during drag over
+        });
+
+        zone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            counter.val--;
+            if (counter.val <= 0) {
+                counter.val = 0;
+                hideOverlay(overlay);
+            }
+        });
+
+        zone.addEventListener('drop', function(e) {
+            handleDrop(e, overlay, counter);
+        });
+    }
+
+    bindDropZone(welcomeDropZone, welcomeDropOverlay, { val: welcomeDragCounter });
+    bindDropZone(chatDropZone, chatDropOverlay, { val: chatDragCounter });
+})();
+
 // Attachment remove buttons - use event delegation on both wraps
 welcomeAttachmentsWrap.addEventListener('click', function(e) {
     var btn = e.target.closest('.attachment-item-remove');
@@ -155,15 +234,48 @@ function renderMd(text) {
     return text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 }
 
+/* ===== Highlight.js ===== */
+function highlightCodeBlocks(container) {
+    if (!container || typeof hljs === 'undefined') return;
+    var blocks = container.querySelectorAll('pre code');
+    for (var i = 0; i < blocks.length; i++) {
+        if (blocks[i].dataset.hljsHighlighted) continue;
+        blocks[i].dataset.hljsHighlighted = 'true';
+        try { hljs.highlightElement(blocks[i]); } catch(e) {}
+    }
+}
+
+function applyHljsTheme(theme) {
+    var lightLink = document.getElementById('hljs-light-theme');
+    var darkLink = document.getElementById('hljs-dark-theme');
+    if (!lightLink || !darkLink) return;
+    if (theme === 'dark') {
+        lightLink.disabled = true;
+        lightLink.media = 'not all';
+        darkLink.disabled = false;
+        darkLink.media = 'all';
+    } else {
+        darkLink.disabled = true;
+        darkLink.media = 'not all';
+        lightLink.disabled = false;
+        lightLink.media = 'all';
+    }
+}
+
 /* ===== Theme ===== */
 var currentTheme = localStorage.getItem('chat-theme') || 'light';
 document.body.setAttribute('data-theme', currentTheme);
+
+// Apply initial hljs theme (after currentTheme is defined)
+applyHljsTheme(currentTheme);
+
 updateThemeIcon();
 themeBtn.addEventListener('click', function() {
     currentTheme = currentTheme === 'light' ? 'dark' : 'light';
     document.body.setAttribute('data-theme', currentTheme);
     localStorage.setItem('chat-theme', currentTheme);
     updateThemeIcon();
+    applyHljsTheme(currentTheme);
 });
 function updateThemeIcon() {
     themeIcon.innerHTML = currentTheme === 'light' ? '&#xe6c2;' : '&#xe748;';
