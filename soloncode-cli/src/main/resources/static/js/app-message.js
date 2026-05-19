@@ -79,6 +79,7 @@ function ensureAssistantBubble(sess) {
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
             + '<button class="msg-action-btn copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i> 复制</button>'
+            + '<button class="msg-action-btn regenerate-btn" title="重新生成"><i class="layui-icon layui-icon-refresh"></i> 重新生成</button>'
             + '</div></div>';
         sess.container.appendChild(row);
         sess.currentBubbleEl = row.querySelector('.md-content');
@@ -88,6 +89,13 @@ function ensureAssistantBubble(sess) {
             var txt = mdRef.innerText || '';
             if (navigator.clipboard) { navigator.clipboard.writeText(txt); }
         });
+        var regenBtn = row.querySelector('.regenerate-btn');
+        var rowRef = row;
+        if (regenBtn) {
+            regenBtn.addEventListener('click', function() {
+                handleRegenerate(sess, rowRef);
+            });
+        }
     }
     return sess.currentBubbleEl;
 }
@@ -487,4 +495,46 @@ function openLightbox(src) {
         }
     });
     document.body.appendChild(overlay);
+}
+
+/* ===== Regenerate ===== */
+function handleRegenerate(sess, assistantRow) {
+    if (sess.isStreaming) return;
+
+    // 找到助手消息前面的用户消息
+    var prevRow = assistantRow.previousElementSibling;
+    var userText = '';
+    if (prevRow && prevRow.classList.contains('user')) {
+        var userSpan = prevRow.querySelector('.user-msg-text');
+        userText = userSpan ? userSpan.textContent : '';
+    }
+    if (!userText) return;
+
+    // 禁用按钮防止重复点击
+    var btn = assistantRow.querySelector('.regenerate-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '重新生成中...'; }
+
+    // 调用后端 rewind 接口
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/chat/rewind', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            // 从 DOM 移除用户消息和助手消息
+            if (prevRow.parentNode) prevRow.remove();
+            if (assistantRow.parentNode) assistantRow.remove();
+
+            // 重置流式状态
+            resetStreamState(sess);
+
+            // 重新发送用户消息：将文本写入输入框，再调用 sendMessage()
+            if (typeof chatInput !== 'undefined') {
+                chatInput.value = userText;
+            }
+            if (typeof sendMessage === 'function') {
+                sendMessage();
+            }
+        }
+    };
+    xhr.send('sessionId=' + encodeURIComponent(sess.sessionId) + '&count=2');
 }

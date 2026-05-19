@@ -18,6 +18,35 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .sidebar-item-del { display: none; flex-shrink: 0; width: 22px; height: 22px; border: none; background: none; border-radius: 6px; cursor: pointer; color: var(--text-secondary); font-size: 14px; align-items: center; justify-content: center; margin-left: 4px; transition: all 0.15s; }
 .sidebar-item:hover .sidebar-item-del { display: flex; }
 .sidebar-item-del:hover { background: var(--bg-danger-subtle); color: var(--color-danger); }
+.sidebar-item-rename {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 14px;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+.sidebar-item:hover .sidebar-item-rename {
+    display: inline-flex;
+}
+.sidebar-item-rename:hover {
+    color: var(--color-text-primary);
+    background: rgba(127,127,127,0.15);
+}
+.sidebar-rename-input {
+    flex: 1;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--accent);
+    color: var(--color-text-primary);
+    font-size: 13px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    outline: none;
+    min-width: 0;
+}
 .sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; }
 
 /* Sidebar collapse toggle */
@@ -257,6 +286,9 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .msg-row.assistant:hover .msg-actions { opacity: 1; }
 .msg-action-btn { background: none; border: 1px solid var(--border-color); border-radius: 8px; padding: 5px 10px; cursor: pointer; color: var(--text-secondary); font-size: 12px; transition: all 0.15s; display: flex; align-items: center; gap: 4px; }
 .msg-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent); }
+.regenerate-btn { color: var(--color-text-tertiary); }
+.regenerate-btn:hover { color: var(--accent); }
+.regenerate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* User Message Copy */
 .msg-row.user { gap: 8px; }

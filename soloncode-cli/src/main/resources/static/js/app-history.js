@@ -45,6 +45,13 @@ historyList.addEventListener('click', function(e) {
         if (!isNaN(idx)) deleteSession(idx);
         return;
     }
+    var renameBtn = e.target.closest('.sidebar-item-rename');
+    if (renameBtn) {
+        e.stopPropagation();
+        var idx = parseInt(renameBtn.closest('.sidebar-item').getAttribute('data-idx'));
+        if (!isNaN(idx)) startRename(idx);
+        return;
+    }
     var item = e.target.closest('.sidebar-item');
     if (item) {
         var idx = parseInt(item.getAttribute('data-idx'));
@@ -77,11 +84,60 @@ function updateHistoryUI() {
             spinner.title = '对话进行中...';
             item.appendChild(spinner);
         }
+        var renameBtn = document.createElement('button');
+        renameBtn.className = 'sidebar-item-rename';
+        renameBtn.title = '重命名';
+        renameBtn.innerHTML = '<i class="layui-icon layui-icon-edit"></i>';
+        item.appendChild(renameBtn);
         item.appendChild(delBtn);
         frag.appendChild(item);
     }
     historyList.innerHTML = '';
     historyList.appendChild(frag);
+}
+
+function startRename(idx) {
+    var item = historyList.querySelector('.sidebar-item[data-idx="' + idx + '"]');
+    if (!item) return;
+    var labelEl = item.querySelector('.sidebar-item-label');
+    if (!labelEl) return;
+
+    var currentLabel = chatHistory[idx].label.replace(/\.\.\.$/, '');
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'sidebar-rename-input';
+    input.value = currentLabel;
+    input.maxLength = 50;
+
+    labelEl.style.display = 'none';
+    item.querySelector('.sidebar-item-rename').style.display = 'none';
+    item.insertBefore(input, labelEl);
+    input.focus();
+    input.select();
+
+    function finishRename() {
+        var newLabel = input.value.trim();
+        if (newLabel && newLabel !== currentLabel) {
+            newLabel = newLabel.length > 30 ? newLabel.substring(0, 30) + '...' : newLabel;
+            chatHistory[idx].label = newLabel;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/chat/sessions/rename', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.send('sessionId=' + encodeURIComponent(chatHistory[idx].sessionId) + '&label=' + encodeURIComponent(newLabel));
+        }
+        input.remove();
+        labelEl.style.display = '';
+        var renameBtn = item.querySelector('.sidebar-item-rename');
+        if (renameBtn) renameBtn.style.display = '';
+        updateHistoryUI();
+    }
+
+    input.addEventListener('blur', finishRename);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentLabel; input.blur(); }
+    });
 }
 
 function deleteSession(idx) {

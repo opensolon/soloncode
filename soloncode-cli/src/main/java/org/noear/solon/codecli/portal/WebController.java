@@ -133,7 +133,18 @@ public class WebController {
                     File msgFile = new File(dir, sid + ".messages.ndjson");
                     if (!msgFile.exists()) continue;
 
-                    String label = extractFirstUserMessage(msgFile);
+                    // 优先使用自定义标签
+                    String label = null;
+                    File labelFile = new File(dir, "label.txt");
+                    if (labelFile.exists()) {
+                        try (BufferedReader lblReader = new BufferedReader(
+                                new InputStreamReader(new FileInputStream(labelFile), "UTF-8"))) {
+                            label = lblReader.readLine();
+                        } catch (Exception ignored) {}
+                    }
+                    if (label == null || label.isEmpty()) {
+                        label = extractFirstUserMessage(msgFile);
+                    }
                     if (label == null || label.isEmpty()) continue;
 
                     Map<String, Object> item = new LinkedHashMap<>();
@@ -167,6 +178,35 @@ public class WebController {
         if (sessionDir.exists() && sessionDir.isDirectory()) {
             deleteDirectory(sessionDir);
         }
+
+        return Result.succeed();
+    }
+
+    /**
+     * 重命名会话标签
+     */
+    @Post
+    @Mapping("/chat/sessions/rename")
+    public Result renameSession(@Param("sessionId") String sessionId, @Param("label") String label) throws Exception {
+        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure();
+        }
+        if (label == null || label.trim().isEmpty()) {
+            return Result.failure(400, "Label is required");
+        }
+        // 限制标签长度
+        if (label.length() > 50) {
+            label = label.substring(0, 50);
+        }
+
+        Path sessionPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        File labelFile = new File(sessionPath.toFile(), "label.txt");
+
+        if (!sessionPath.toFile().exists() || !sessionPath.toFile().isDirectory()) {
+            return Result.failure(404, "Session not found");
+        }
+
+        java.nio.file.Files.write(labelFile.toPath(), label.trim().getBytes("UTF-8"));
 
         return Result.succeed();
     }
@@ -256,6 +296,54 @@ public class WebController {
         webGate.interruptSession(sessionId);
 
         return Result.succeed();
+    }
+
+    /**
+     * 回退会话消息（删除最近 N 条消息）
+     */
+    @Post
+    @Mapping("/chat/rewind")
+    public Result rewindSession(@Param("sessionId") String sessionId, @Param(value = "count", required = false) Integer count) throws Exception {
+        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure();
+        }
+        if (count == null || count <= 0) {
+            count = 2; // 默认回退2条（用户+助手）
+        }
+
+        try {
+            // 只操作 ndjson 文件（内存中的 AgentSession 在重新生成时会通过新的 prompt 重建上下文）
+            Path sessionsPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+            File msgFile = new File(sessionsPath.toFile(), sessionId + ".messages.ndjson");
+            if (msgFile.exists()) {
+                // 读取现有消息
+                java.util.List<String> lines = new ArrayList<>();
+                try (BufferedReader br = new BufferedReader(
+                        new InputStreamReader(new FileInputStream(msgFile), "UTF-8"))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        line = line.trim();
+                        if (!line.isEmpty()) lines.add(line);
+                    }
+                }
+                // 移除最后 count 条
+                int removeCount = Math.min(count, lines.size());
+                for (int i = 0; i < removeCount; i++) {
+                    lines.remove(lines.size() - 1);
+                }
+                // 重写文件
+                StringBuilder sb = new StringBuilder();
+                for (String l : lines) {
+                    sb.append(l).append("\n");
+                }
+                java.nio.file.Files.write(msgFile.toPath(), sb.toString().getBytes("UTF-8"));
+            }
+
+            return Result.succeed();
+        } catch (Exception e) {
+            LOG.error("Rewind failed for session {}: {}", sessionId, e.getMessage());
+            return Result.failure(500, e.getMessage());
+        }
     }
 
     /**
