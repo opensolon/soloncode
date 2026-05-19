@@ -44,6 +44,7 @@ import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Web Chat Controller
@@ -325,6 +326,261 @@ public class WebController {
     }
 
 
+
+    // ==================== Git Diff API ====================
+
+    private static class ProcessResult {
+        int exitCode;
+        String stdout;
+        String stderr;
+    }
+
+    private ProcessResult runGitCommand(File workDir, String... command) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(workDir);
+        pb.redirectErrorStream(false);
+        pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+
+        Process proc = pb.start();
+        String stdout = readGitStream(proc.getInputStream());
+        String stderr = readGitStream(proc.getErrorStream());
+
+        boolean finished = proc.waitFor(10, TimeUnit.SECONDS);
+        if (!finished) {
+            proc.destroyForcibly();
+            ProcessResult result = new ProcessResult();
+            result.exitCode = -1;
+            result.stdout = "";
+            result.stderr = "Command timed out after 10 seconds";
+            return result;
+        }
+
+        ProcessResult result = new ProcessResult();
+        result.exitCode = proc.exitValue();
+        result.stdout = stdout;
+        result.stderr = stderr;
+        return result;
+    }
+
+    private String readGitStream(java.io.InputStream is) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Git 状态检测：检测 Git 可用性、仓库初始化状态、分支名、变更文件列表
+     */
+    @Get
+    @Mapping("/chat/git/status")
+    public Result<Map> gitStatus() throws Exception {
+        Map<String, Object> data = new LinkedHashMap<>();
+        File workspaceDir = new File(engine.getProps().getWorkspace());
+
+        // 1. 检测 git 是否可用
+        try {
+            ProcessResult checkGit = runGitCommand(workspaceDir, "git", "--version");
+            if (checkGit.exitCode != 0) {
+                data.put("gitAvailable", false);
+                data.put("initialized", false);
+                return Result.succeed(data);
+            }
+        } catch (Exception e) {
+            data.put("gitAvailable", false);
+            data.put("initialized", false);
+            return Result.succeed(data);
+        }
+        data.put("gitAvailable", true);
+
+        // 2. 检测是否是 git 仓库
+        ProcessResult checkRepo = runGitCommand(workspaceDir, "git", "rev-parse", "--is-inside-work-tree");
+        if (checkRepo.exitCode != 0) {
+            data.put("initialized", false);
+            data.put("workspacePath", workspaceDir.getAbsolutePath());
+            return Result.succeed(data);
+        }
+        data.put("initialized", true);
+
+        // 3. 获取分支名
+        ProcessResult branchResult = runGitCommand(workspaceDir, "git", "branch", "--show-current");
+        String branch = branchResult.stdout.trim();
+        data.put("branch", branch.isEmpty() ? "master" : branch);
+
+        // 4. 解析 git status --porcelain=v1
+        ProcessResult statusResult = runGitCommand(workspaceDir, "git", "status", "--porcelain=v1");
+        List<String> changed = new ArrayList<>();
+        List<String> staged = new ArrayList<>();
+        List<String> untracked = new ArrayList<>();
+
+        for (String line : statusResult.stdout.split("\n")) {
+            if (line.length() < 4) continue;
+            String x = line.substring(0, 1);
+            String y = line.substring(1, 2);
+            String filePath = line.substring(3);
+
+            if ("?".equals(x) && "?".equals(y)) {
+                untracked.add(filePath);
+            } else {
+                if (!" ".equals(x) && "?".equals(x) == false) staged.add(filePath);
+                if (!" ".equals(y) && "?".equals(y) == false) changed.add(filePath);
+            }
+        }
+        data.put("changed", changed);
+        data.put("staged", staged);
+        data.put("untracked", untracked);
+
+        return Result.succeed(data);
+    }
+
+    /**
+     * 初始化 Git 仓库
+     */
+    @Post
+    @Mapping("/chat/git/init")
+    public Result<Map> gitInit(@Param(value = "initialCommit", required = false) Boolean initialCommit) throws Exception {
+        File workspaceDir = new File(engine.getProps().getWorkspace());
+
+        // 安全校验：确认不是已有仓库
+        ProcessResult check = runGitCommand(workspaceDir, "git", "rev-parse", "--is-inside-work-tree");
+        if (check.exitCode == 0) {
+            return Result.failure(400, "Already a git repository");
+        }
+
+        // 执行 git init
+        ProcessResult initResult = runGitCommand(workspaceDir, "git", "init");
+        if (initResult.exitCode != 0) {
+            return Result.failure(500, "git init failed: " + initResult.stderr);
+        }
+
+        // 自动生成 .gitignore（仅当文件不存在时）
+        File gitignore = new File(workspaceDir, ".gitignore");
+        if (!gitignore.exists()) {
+            String content = String.join("\n",
+                    "# Auto-generated by SolonCode",
+                    ".git/",
+                    ".idea/",
+                    ".soloncode/",
+                    ".gradle/",
+                    ".mvn/",
+                    "node_modules/",
+                    "target/",
+                    "build/",
+                    "__pycache__/",
+                    "*.class",
+                    "*.jar",
+                    "*.log"
+            );
+            java.nio.file.Files.write(gitignore.toPath(), content.getBytes("UTF-8"));
+        }
+
+        // 可选：执行 initial commit
+        if (Boolean.TRUE.equals(initialCommit)) {
+            runGitCommand(workspaceDir, "git", "add", "-A");
+            runGitCommand(workspaceDir, "git", "-c", "user.name=SolonCode",
+                    "-c", "user.email=soloncode@local",
+                    "commit", "-m", "Initial commit");
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("initialized", true);
+
+        ProcessResult branchResult = runGitCommand(workspaceDir, "git", "branch", "--show-current");
+        String branch = branchResult.stdout.trim();
+        data.put("branch", branch.isEmpty() ? "master" : branch);
+
+        return Result.succeed(data);
+    }
+
+    /**
+     * 获取 Git diff 内容
+     */
+    @Get
+    @Mapping("/chat/git/diff")
+    public Result<Map> gitDiff(@Param(value = "path", required = false) String path) throws Exception {
+        File workspaceDir = new File(engine.getProps().getWorkspace());
+
+        // 安全校验：防止路径穿越
+        if (path != null && (path.contains("..") || path.startsWith("/"))) {
+            return Result.failure(400, "Invalid path");
+        }
+
+        boolean hasPath = path != null && !path.trim().isEmpty();
+
+        // 未暂存的变更
+        List<String> unstagedCmd = new ArrayList<>(Arrays.asList("git", "diff"));
+        if (hasPath) { unstagedCmd.add("--"); unstagedCmd.add(path); }
+        ProcessResult unstagedResult = runGitCommand(workspaceDir, unstagedCmd.toArray(new String[0]));
+
+        // 已暂存的变更
+        List<String> stagedCmd = new ArrayList<>(Arrays.asList("git", "diff", "--cached"));
+        if (hasPath) { stagedCmd.add("--"); stagedCmd.add(path); }
+        ProcessResult stagedResult = runGitCommand(workspaceDir, stagedCmd.toArray(new String[0]));
+
+        // 合并 diff 输出
+        String fullDiff = unstagedResult.stdout;
+        if (!stagedResult.stdout.isEmpty()) {
+            fullDiff += "\n" + stagedResult.stdout;
+        }
+
+        // 截断保护：单文件 diff 限制 2000 行
+        if (hasPath) {
+            String[] lines = fullDiff.split("\n");
+            if (lines.length > 2000) {
+                fullDiff = String.join("\n", Arrays.copyOf(lines, 2000))
+                        + "\n\n... (差异过大，仅显示前 2000 行，请在终端查看完整 diff)";
+            }
+        }
+
+        // stat 摘要
+        List<String> statCmd = new ArrayList<>(Arrays.asList("git", "diff", "--stat"));
+        if (hasPath) { statCmd.add("--"); statCmd.add(path); }
+        ProcessResult statResult = runGitCommand(workspaceDir, statCmd.toArray(new String[0]));
+
+        List<String> statCachedCmd = new ArrayList<>(Arrays.asList("git", "diff", "--cached", "--stat"));
+        if (hasPath) { statCachedCmd.add("--"); statCachedCmd.add(path); }
+        ProcessResult statCachedResult = runGitCommand(workspaceDir, statCachedCmd.toArray(new String[0]));
+
+        String stat = statResult.stdout;
+        if (!statCachedResult.stdout.isEmpty()) {
+            stat += (stat.isEmpty() ? "" : "\n") + statCachedResult.stdout;
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("diff", fullDiff);
+        data.put("stat", stat);
+
+        return Result.succeed(data);
+    }
+
+    /**
+     * 获取指定版本的文件内容
+     */
+    @Get
+    @Mapping("/chat/git/file-content")
+    public Result<Map> gitFileContent(@Param("path") String path,
+                                     @Param(value = "ref", required = false) String ref) throws Exception {
+        File workspaceDir = new File(engine.getProps().getWorkspace());
+
+        if (path == null || path.contains("..") || path.startsWith("/")) {
+            return Result.failure(400, "Invalid path");
+        }
+        if (ref == null || ref.isEmpty()) ref = "HEAD";
+
+        ProcessResult result = runGitCommand(workspaceDir, "git", "show", ref + ":" + path);
+
+        if (result.exitCode != 0) {
+            return Result.failure(404, "File not found: " + result.stderr);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("content", result.stdout);
+        return Result.succeed(data);
+    }
 
     // ==================== 工具方法 ====================
 

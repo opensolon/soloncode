@@ -157,10 +157,84 @@
     <!-- File Tree Panel (Right Side) -->
     <button class="filer-panel-toggle-btn" id="filerToggleBtn" title="收起文件树">‹</button>
     <div class="filer-panel" id="filerPanel">
-        <div class="filer-panel-header">
-            <span class="filer-panel-title" id="filerWorkname">工作区文件</span>
+        <div class="filer-tabs">
+            <button class="filer-tab active" data-tab="files">Files</button>
+            <button class="filer-tab" data-tab="gitdiff">
+                Git
+                <span class="git-badge" id="gitBadge" style="display:none">0</span>
+            </button>
         </div>
-        <div class="filer-panel-tree" id="filerTree"></div>
+
+        <!-- Tab Content: 文件树 -->
+        <div class="filer-tab-content active" id="tabContentFiles">
+            <div class="filer-panel-tree" id="filerTree"></div>
+        </div>
+
+        <!-- Tab Content: Git Diff -->
+        <div class="filer-tab-content" id="tabContentGitdiff">
+            <!-- 状态1：Git 不可用 -->
+            <div class="git-unavailable" id="gitUnavailable" style="display:none">
+                <div class="git-empty-icon">&#x26A0;</div>
+                <div class="git-empty-title">Git 不可用</div>
+                <div class="git-empty-desc">系统未安装 Git 或 Git 不在 PATH 中</div>
+            </div>
+
+            <!-- 状态2：未初始化仓库 -->
+            <div class="git-uninitialized" id="gitUninitialized" style="display:none">
+                <div class="git-empty-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <line x1="3" y1="12" x2="9" y2="12"/>
+                        <line x1="15" y1="12" x2="21" y2="12"/>
+                        <line x1="12" y1="3" x2="12" y2="9"/>
+                        <line x1="12" y1="15" x2="12" y2="21"/>
+                    </svg>
+                </div>
+                <div class="git-empty-title">当前工作区不是 Git 仓库</div>
+                <div class="git-init-benefits">
+                    <div>初始化后可以：</div>
+                    <ul>
+                        <li>跟踪文件变更历史</li>
+                        <li>查看 diff 代码对比</li>
+                        <li>配合 AI 进行代码审查</li>
+                    </ul>
+                </div>
+                <div class="git-init-options">
+                    <label class="git-init-checkbox">
+                        <input type="checkbox" id="gitInitCommit" checked/>
+                        <span>自动提交当前所有文件</span>
+                    </label>
+                </div>
+                <button class="git-init-btn" id="gitInitBtn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    初始化 Git 仓库
+                </button>
+                <div class="git-init-note">将在工作区执行 git init</div>
+            </div>
+
+            <!-- 状态3：正常仓库 -->
+            <div class="git-diff-panel" id="gitDiffPanel" style="display:none">
+                <div class="git-diff-header">
+                    <span class="git-branch" id="gitBranch">--</span>
+                    <button class="git-refresh-btn" id="gitRefreshBtn" title="刷新">⟳</button>
+                </div>
+                <div class="git-diff-file-list" id="gitDiffFileList"></div>
+                <div class="git-diff-viewer" id="gitDiffViewer" style="display:none">
+                    <div class="git-diff-viewer-header">
+                        <button class="git-diff-back" id="gitDiffBack">← 返回</button>
+                        <span class="git-diff-file-path" id="gitDiffFilePath"></span>
+                    </div>
+                    <pre class="git-diff-content" id="gitDiffContent"></pre>
+                </div>
+                <div class="git-diff-empty" id="gitDiffEmpty" style="display:none">
+                    <div class="git-empty-icon">&#x2714;</div>
+                    <div class="git-empty-title">工作区干净</div>
+                    <div class="git-empty-desc">没有未提交的变更</div>
+                </div>
+            </div>
+        </div>
     </div>
 
 <script src="/layui/layui.js"></script>
@@ -189,5 +263,6 @@
 <script src="js/app-message.js"></script>
 <script src="js/app-streaming.js"></script>
     <script src="js/app-filer.js"></script>
+    <script src="js/app-gitdiff.js"></script>
 </body>
 </html>

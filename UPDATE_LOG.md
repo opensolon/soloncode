@@ -2,6 +2,7 @@
 ### v2026.5.20
 
 * 添加 soloncode web 文件树功能（方便知道有哪些文件）
+* 添加 soloncode web git diff 功能
 
 ### v2026.5.19
 
