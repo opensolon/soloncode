@@ -630,6 +630,9 @@ public class WebController {
         // git add：有指定文件时精确暂存，否则 add -A
         ProcessResult addResult;
         if (files != null && !files.isEmpty()) {
+            // 先清空暂存区，避免之前已暂存的非选中文件被一起提交
+            runGitCommand(workspaceDir, "git", "reset", "HEAD", "--");
+
             List<String> addCmd = new ArrayList<>();
             addCmd.add("git");
             addCmd.add("add");
