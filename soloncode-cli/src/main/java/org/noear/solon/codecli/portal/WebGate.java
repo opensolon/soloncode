@@ -154,7 +154,10 @@ public class WebGate extends SimpleWebSocketListener {
                 int agentNameIdx = currentInput.indexOf(" ");
                 if (agentNameIdx > 0) {
                     agentName = currentInput.substring(1, agentNameIdx);
-                    currentInput = currentInput.substring(agentNameIdx + 1);
+
+                    if (engine.getAgentManager().hasAgent(agentName)) {
+                        currentInput = currentInput.substring(agentNameIdx + 1);
+                    }
                 }
             }
 

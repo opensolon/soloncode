@@ -289,7 +289,10 @@ public class CliShell implements Runnable {
                 int agentNameIdx = input.indexOf(" ");
                 if (agentNameIdx > 0) {
                     agentName = input.substring(1, agentNameIdx);
-                    currentInput = currentInput.substring(agentNameIdx + 1);
+
+                    if (engine.getAgentManager().hasAgent(agentName)) {
+                        currentInput = currentInput.substring(agentNameIdx + 1);
+                    }
                 }
             }
         }
