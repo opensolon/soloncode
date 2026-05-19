@@ -196,6 +196,15 @@ public class Configurator {
         // 启动微信通道
         RunUtil.async((Runnable) webChannel.get());
 
+        // 启动工作区文件变化监听
+        try {
+            java.nio.file.Path workspacePath = java.nio.file.Paths.get(agentProps.getWorkspace()).toAbsolutePath().normalize();
+            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath, webGate);
+            workspaceWatcher.start();
+        } catch (Exception e) {
+            // watcher 启动失败不影响主流程
+        }
+
         if (cliShell == null) {
             return;
         }

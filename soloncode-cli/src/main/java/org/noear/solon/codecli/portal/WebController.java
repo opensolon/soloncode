@@ -60,6 +60,10 @@ public class WebController {
     private final WebGate webGate;
     private final LoopScheduler loopScheduler;
 
+    private static final Set<String> EXCLUDED_DIRS = new HashSet<>(Arrays.asList(
+            ".git", ".idea", ".soloncode", "node_modules", "target", "__pycache__", ".gradle", ".mvn", "build"
+    ));
+
     public WebController(HarnessEngine engine, WebGate webGate, LoopScheduler loopScheduler) {
         this.engine = engine;
         this.webGate = webGate;
@@ -355,5 +359,63 @@ public class WebController {
             // ignore
         }
         return null;
+    }
+
+    /**
+     * 工作区文件树
+     */
+    @Get
+    @Mapping("/chat/filer/tree")
+    public Result<List<Map>> fileTree(@Param(value = "path", required = false) String path,
+                                      @Param(value = "depth", required = false) Integer depth) throws Exception {
+        if (depth == null || depth < 1) depth = 1;
+        if (path == null) path = "";
+        if (path.contains("..")) {
+            return Result.failure(400, "Invalid path");
+        }
+
+        java.nio.file.Path workspace = java.nio.file.Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize();
+        java.nio.file.Path target = workspace.resolve(path).toAbsolutePath().normalize();
+
+        if (!target.startsWith(workspace)) {
+            return Result.failure(403, "Access denied");
+        }
+        if (!target.toFile().exists() || !target.toFile().isDirectory()) {
+            return Result.failure(404, "Directory not found");
+        }
+
+        List<Map> tree = buildTree(target, workspace, depth, 1);
+        return Result.succeed(tree);
+    }
+
+    private List<Map> buildTree(java.nio.file.Path dir, java.nio.file.Path workspace, int maxDepth, int currentDepth) {
+        File[] files = dir.toFile().listFiles();
+        if (files == null) return Collections.emptyList();
+
+        Arrays.sort(files, (a, b) -> {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.getName().compareToIgnoreCase(b.getName());
+        });
+
+        List<Map> result = new ArrayList<>();
+        for (File f : files) {
+            if (f.getName().startsWith(".") || EXCLUDED_DIRS.contains(f.getName())) continue;
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", f.getName());
+            item.put("path", workspace.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/'));
+            item.put("type", f.isDirectory() ? "directory" : "file");
+
+            if (f.isDirectory() && currentDepth < maxDepth) {
+                item.put("expanded", true);
+                item.put("children", buildTree(f.toPath(), workspace, maxDepth, currentDepth + 1));
+            } else if (f.isDirectory()) {
+                item.put("expanded", false);
+                item.put("children", null);
+            }
+            result.add(item);
+        }
+        return result;
     }
 }

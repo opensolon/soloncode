@@ -212,6 +212,10 @@ function connectWebGate() {
         console.log('[WebGate] connected');
         webGateReconnectAttempts = 0;
         startWebGateHeartbeat();
+        // 重连后刷新文件树
+        if (typeof loadTree === 'function') {
+            loadTree();
+        }
     };
 
     webGateSocket.onmessage = function(event) {
@@ -229,6 +233,14 @@ function connectWebGate() {
                 // 保存 done 消息的时间戳，用于 finishStream 显示
                 if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
                 finishStream(sess);
+                return;
+            }
+
+            // 文件变更通知（无 sessionId，系统级广播）
+            if (chunk.type === 'filer_change') {
+                if (typeof onFilerChange === 'function') {
+                    onFilerChange(chunk);
+                }
                 return;
             }
 

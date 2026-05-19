@@ -135,6 +135,22 @@ public class WebGate extends SimpleWebSocketListener {
         }
     }
 
+    /**
+     * 广播原始 JSON 字符串到所有 WebSocket 连接（无 sessionId 绑定）
+     * 用于系统级事件（如文件变化通知）
+     */
+    public void broadcastRaw(String json) {
+        for (WebSocket socket : connections) {
+            if (socket != null) {
+                try {
+                    socket.send(json);
+                } catch (Throwable e) {
+                    LOG.warn("[WebGate] broadcastRaw failed for {}: {}", socket.id(), e.getMessage());
+                }
+            }
+        }
+    }
+
     // ==================== 输入端口 ====================
 
     /**
