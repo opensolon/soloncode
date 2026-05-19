@@ -563,7 +563,7 @@ public class WebController {
     @Get
     @Mapping("/chat/git/file-content")
     public Result<Map> gitFileContent(@Param("path") String path,
-                                     @Param(value = "ref", required = false) String ref) throws Exception {
+                                      @Param(value = "ref", required = false) String ref) throws Exception {
         File workspaceDir = new File(engine.getProps().getWorkspace());
 
         if (path == null || path.contains("..") || path.startsWith("/")) {
@@ -579,6 +579,48 @@ public class WebController {
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("content", result.stdout);
+        return Result.succeed(data);
+    }
+
+    /**
+     * Git 提交：先 add -A，再 commit
+     */
+    @Post
+    @Mapping("/chat/git/commit")
+    public Result<Map> gitCommit(@Param("message") String message) throws Exception {
+        File workspaceDir = new File(engine.getProps().getWorkspace());
+
+        // 安全校验：确认是 git 仓库
+        ProcessResult check = runGitCommand(workspaceDir, "git", "rev-parse", "--is-inside-work-tree");
+        if (check.exitCode != 0) {
+            return Result.failure(400, "Not a git repository");
+        }
+
+        // 校验提交信息
+        if (message == null || message.trim().isEmpty()) {
+            return Result.failure(400, "Commit message is required");
+        }
+
+        // git add -A
+        ProcessResult addResult = runGitCommand(workspaceDir, "git", "add", "-A");
+        if (addResult.exitCode != 0) {
+            return Result.failure(500, "git add failed: " + addResult.stderr);
+        }
+
+        // git commit
+        ProcessResult commitResult = runGitCommand(workspaceDir, "git",
+                "-c", "user.name=SolonCode",
+                "-c", "user.email=soloncode@local",
+                "commit", "-m", message.trim());
+        if (commitResult.exitCode != 0) {
+            // 可能是 nothing to commit
+            String err = commitResult.stderr.trim();
+            if (err.isEmpty()) err = commitResult.stdout.trim();
+            return Result.failure(500, "git commit failed: " + err);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("stdout", commitResult.stdout.trim());
         return Result.succeed(data);
     }
 
