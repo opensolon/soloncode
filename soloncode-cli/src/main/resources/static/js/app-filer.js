@@ -185,6 +185,11 @@
     }
 
     function refreshDirectory(dirPath) {
+        // 空路径表示根目录变化，根目录没有 .filer-node 容器，直接重新加载整棵树
+        if (!dirPath) {
+            loadTree();
+            return;
+        }
         var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
         var nodeEl = treeEl ? treeEl.querySelector(selector) : null;
         if (!nodeEl) return;
