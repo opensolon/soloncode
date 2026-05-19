@@ -777,6 +777,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .git-status-letter.M { background: #dbab09; }
 .git-status-letter.A { background: #28a745; }
 .git-status-letter.D { background: #cb2431; }
+.git-status-letter.\? { background: #6e7681; }
 
 .git-file-path {
     flex: 1;
@@ -840,6 +841,51 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .git-line-hunk { color: #032f62; font-weight: 500; }
 .git-line-head { color: var(--text-secondary); }
 .git-line-ctx { color: var(--text-primary); }
+
+/* Git 提交按钮 */
+.git-commit-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+}
+.git-commit-input {
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.git-commit-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
+.git-commit-input:focus { border-color: var(--accent); }
+.git-commit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 30px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+}
+.git-commit-btn:hover { opacity: 0.9; }
+.git-commit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* 工作区干净 */
 .git-diff-empty {

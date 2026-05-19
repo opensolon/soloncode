@@ -19,6 +19,9 @@
     var gitRefreshBtn = document.getElementById('gitRefreshBtn');
     var gitInitBtn = document.getElementById('gitInitBtn');
     var gitInitCommit = document.getElementById('gitInitCommit');
+    var gitCommitBtn = document.getElementById('gitCommitBtn');
+    var gitCommitMsg = document.getElementById('gitCommitMsg');
+    var gitCommitBar = document.getElementById('gitCommitBar');
 
     // ---- 状态 ----
     var gitStatus = null;
@@ -127,10 +130,12 @@
         if (files.length === 0) {
             if (gitDiffEmpty) gitDiffEmpty.style.display = '';
             gitDiffFileList.style.display = 'none';
+            if (gitCommitBar) gitCommitBar.style.display = 'none';
             return;
         }
         if (gitDiffEmpty) gitDiffEmpty.style.display = 'none';
         gitDiffFileList.style.display = '';
+        if (gitCommitBar) gitCommitBar.style.display = '';
 
         files.forEach(function(file) {
             var item = document.createElement('div');
@@ -190,6 +195,51 @@
             if (gitDiffFileList) gitDiffFileList.style.display = '';
             if (gitDiffEmpty) gitDiffEmpty.style.display = 'none';
         });
+    }
+
+    // ---- Git 提交 ----
+    var isCommitting = false;
+    if (gitCommitBtn) {
+        gitCommitBtn.addEventListener('click', function() {
+            if (isCommitting) return;
+            var msg = (gitCommitMsg && gitCommitMsg.value.trim()) || '';
+            if (!msg) {
+                gitCommitMsg && gitCommitMsg.focus();
+                return;
+            }
+            isCommitting = true;
+            gitCommitBtn.disabled = true;
+            gitCommitBtn.innerHTML = '<span style="opacity:0.7">提交中...</span>';
+
+            fetch('/chat/git/commit?message=' + encodeURIComponent(msg), { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res && res.code === 200) {
+                        if (gitCommitMsg) gitCommitMsg.value = '';
+                        loadGitStatus();
+                    } else {
+                        alert('提交失败：' + ((res && res.data && res.data.message) || '未知错误'));
+                    }
+                })
+                .catch(function(e) {
+                    alert('提交失败：' + e.message);
+                })
+                .finally(function() {
+                    isCommitting = false;
+                    gitCommitBtn.disabled = false;
+                    gitCommitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 提交';
+                });
+        });
+
+        // Enter 键提交
+        if (gitCommitMsg) {
+            gitCommitMsg.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.isComposing) {
+                    e.preventDefault();
+                    gitCommitBtn.click();
+                }
+            });
+        }
     }
 
     // ---- 刷新按钮 ----
