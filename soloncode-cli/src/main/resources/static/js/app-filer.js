@@ -8,6 +8,17 @@
     var worknameEl = document.getElementById('filerWorkname');
 
     // ---- Toggle 折叠 ----
+    var mainHeader = document.querySelector('.main-header');
+
+    function syncHeaderPadding(collapsed) {
+        if (!mainHeader) return;
+        if (collapsed) {
+            mainHeader.classList.add('filer-collapsed');
+        } else {
+            mainHeader.classList.remove('filer-collapsed');
+        }
+    }
+
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function() {
             panel.classList.toggle('collapsed');
@@ -16,6 +27,7 @@
             toggleBtn.innerHTML = collapsed ? '\u203A' : '\u2039';
             toggleBtn.title = collapsed ? '\u5C55\u5F00\u6587\u4EF6\u6811' : '\u6536\u7F29\u6587\u4EF6\u6811';
             localStorage.setItem('filer-collapsed', collapsed ? '1' : '0');
+            syncHeaderPadding(collapsed);
         });
     }
 
@@ -27,6 +39,7 @@
             toggleBtn.innerHTML = '\u203A';
             toggleBtn.title = '\u5C55\u5F00\u6587\u4EF6\u6811';
         }
+        syncHeaderPadding(true);
     }
 
     // ---- 加载文件树 ----
@@ -127,7 +140,7 @@
                 });
             })(node, nodeEl);
 
-            // 双击：插入 @path 到输入框（取消单击回调）
+            // 双击：插入 path 到输入框（取消单击回调）
             (function(n) {
                 row.addEventListener('dblclick', function(e) {
                     e.stopPropagation();
@@ -138,7 +151,7 @@
                     var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
                     if (!targetInput) return;
                     var currentVal = targetInput.value || '';
-                    var insertText = '@' + n.path;
+                    var insertText = '[' + n.path + ']';
                     var cursorPos = targetInput.selectionStart || currentVal.length;
                     var before = currentVal.substring(0, cursorPos);
                     var after = currentVal.substring(cursorPos);
