@@ -971,7 +971,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     flex: 1;
     overflow: auto;
     margin: 0;
-    padding: 12px 0;
+    padding: 12px 16px;
     font-family: var(--font-mono);
     font-size: 12.5px;
     line-height: 1.6;
