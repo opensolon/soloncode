@@ -36,16 +36,28 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ## Запуск
 
-Выполните команду `soloncode` из любой директории в консоли (то есть вашей рабочей области).
+Выполните команду `soloncode` (CLI-интерактивный) или `soloncode web 0` (Web-интерактивный) из любой директории в консоли (то есть вашей рабочей области).
+
+* `soloncode` (CLI-интерактивный)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web-интерактивный)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Тестирование функций (попробуйте следующие задачи, от простых к сложным):

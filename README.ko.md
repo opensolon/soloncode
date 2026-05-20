@@ -36,16 +36,28 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ## 실행
 
-콘솔의 임의 디렉토리(작업 공간)에서 `soloncode` 명령을 실행하세요.
+콘솔의 임의 디렉토리(작업 공간)에서 `soloncode`(CLI 대화형) 또는 `soloncode web 0`(Web 대화형) 명령을 실행하세요.
+
+* `soloncode`(CLI 대화형)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0`(Web 대화형)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 기능 테스트 (다음 작업을 시도해 보세요, 단순한 것부터 복잡한 것까지):

@@ -36,16 +36,28 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ## Εκτέλεση
 
-Εκτελέστε την εντολή `soloncode` από οποιονδήποτε κατάλογο στην κονσόλα (δηλαδή, τον χώρο εργασίας σας).
+Εκτελέστε την εντολή `soloncode` (CLI διαδραστικό) ή `soloncode web 0` (Web διαδραστικό) από οποιονδήποτε κατάλογο στην κονσόλα (δηλαδή, τον χώρο εργασίας σας).
+
+* `soloncode` (CLI διαδραστικό)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web διαδραστικό)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Δοκιμή Λειτουργιών (δοκιμάστε τις παρακάτω εργασίες, από απλές σε σύνθετες):

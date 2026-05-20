@@ -36,20 +36,31 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ## 執行
 
-在控制台「任意」目錄（即工作區）下，執行 `soloncode` 命令即可。
+在控制台「任意」目錄（即工作區）下，執行 `soloncode`（CLI 互動）或者 `soloncode web 0`（Web 互動）命令即可。
 
+* `soloncode`（CLI 互動）
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
 ```
 
-效果测试（分别尝试以下任务，从简单到复杂）：
+* `soloncode web 0`（Web 互動）
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
+```
+
+效果測試（分別嘗試以下任務，從簡單到複雜）：
 
 * `你好`
 * `用网络分析下 ai mcp 协议，然后生成个 ppt` //最好提前安装些 skill

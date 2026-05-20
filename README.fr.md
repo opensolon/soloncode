@@ -36,16 +36,28 @@ Configuration (doit être modifiée après l'installation) :
 
 ## Exécution
 
-Exécutez la commande `soloncode` depuis n'importe quel répertoire dans la console (c'est-à-dire votre espace de travail).
+Exécutez la commande `soloncode` (CLI interactif) ou `soloncode web 0` (Web interactif) depuis n'importe quel répertoire dans la console (c'est-à-dire votre espace de travail).
+
+* `soloncode` (CLI interactif)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web interactif)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Test des fonctionnalités (essayez les tâches suivantes, de la plus simple à la plus complexe) :

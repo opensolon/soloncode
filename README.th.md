@@ -36,16 +36,28 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ## การทำงาน
 
-รันคำสั่ง `soloncode` จากไดเรกทอรีใดก็ได้ในคอนโซล (กล่าวคือ พื้นที่ทำงานของคุณ)
+รันคำสั่ง `soloncode` (CLI แบบโต้ตอบ) หรือ `soloncode web 0` (Web แบบโต้ตอบ) จากไดเรกทอรีใดก็ได้ในคอนโซล (กล่าวคือ พื้นที่ทำงานของคุณ)
+
+* `soloncode` (CLI แบบโต้ตอบ)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web แบบโต้ตอบ)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 การทดสอบฟีเจอร์ (ลองใช้งานงานต่อไปนี้ จากง่ายไปยาก):

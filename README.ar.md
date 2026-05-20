@@ -38,16 +38,28 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ## التشغيل
 
-قم بتشغيل الأمر `soloncode` من أي دليل في وحدة التحكم (أي مساحة العمل الخاصة بك).
+قم بتشغيل الأمر `soloncode` (تفاعل CLI) أو `soloncode web 0` (تفاعل Web) من أي دليل في وحدة التحكم (أي مساحة العمل الخاصة بك).
+
+* `soloncode` (تفاعل CLI)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (تفاعل Web)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 اختبار الميزات (جرب المهام التالية، من البسيط إلى المعقد):

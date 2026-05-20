@@ -36,16 +36,28 @@ Cấu hình (bắt buộc phải sửa sau khi cài đặt):
 
 ## Chạy
 
-Chạy lệnh `soloncode` từ bất kỳ thư mục nào trong bảng điều khiển (tức là không gian làm việc của bạn).
+Chạy lệnh `soloncode` (CLI tương tác) hoặc `soloncode web 0` (Web tương tác) từ bất kỳ thư mục nào trong bảng điều khiển (tức là không gian làm việc của bạn).
+
+* `soloncode` (CLI tương tác)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web tương tác)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Kiểm tra Tính năng (thử các tác vụ sau, từ đơn giản đến phức tạp):

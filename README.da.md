@@ -36,16 +36,28 @@ Konfiguration (skal ændres efter installation):
 
 ## Kørsel
 
-Kør `soloncode`-kommandoen fra en hvilken som helst mappe i konsollen (dvs. dit arbejdsområde).
+Kør kommandoen `soloncode` (CLI-interaktiv) eller `soloncode web 0` (Web-interaktiv) fra en hvilken som helst mappe i konsollen (dvs. dit arbejdsområde).
+
+* `soloncode` (CLI-interaktiv)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.20
-/Users/noear
+SolonCode v2026.5.20 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web-interaktiv)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.20 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Funktionstest (prøv følgende opgaver, fra enkel til kompleks):
