@@ -481,6 +481,60 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     50% { opacity: 0.5; transform: scale(1.4); }
 }
 
+.filer-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.filer-search-icon {
+    color: var(--text-secondary);
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+.filer-search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--font-sans);
+    padding: 2px 0;
+}
+.filer-search-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+.filer-search-clear {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s, background 0.15s;
+}
+.filer-search-clear.visible {
+    opacity: 0.6;
+    pointer-events: auto;
+}
+.filer-search-clear:hover {
+    background: var(--bg-hover);
+    opacity: 1;
+}
+.filer-node.search-hidden {
+    display: none !important;
+}
 .filer-panel-tree {
     flex: 1;
     overflow-y: auto;

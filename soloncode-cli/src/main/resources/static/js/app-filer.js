@@ -150,15 +150,34 @@
                 });
             })(node, nodeEl);
         } else {
-            // 文件：单击打开文件查看器
-            (function(n) {
+            // 文件：单击打开文件查看器（用定时器与双击区分）
+            (function(n, ne) {
+                var clickTimer = null;
                 row.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    if (typeof window.openFileViewer === 'function') {
-                        window.openFileViewer(n.path, n.name);
+                    if (clickTimer) return; // 已经在等待中，忽略重复点击
+                    clickTimer = setTimeout(function() {
+                        clickTimer = null;
+                        if (typeof window.openFileViewer === 'function') {
+                            window.openFileViewer(n.path, n.name);
+                        }
+                    }, 250);
+                });
+                // 双击时取消单击定时器
+                row.addEventListener('dblclick', function(e) {
+                    if (clickTimer) {
+                        clearTimeout(clickTimer);
+                        clickTimer = null;
                     }
                 });
-            })(node);
+                // 暴露取消方法供全局双击使用
+                ne._cancelFileClick = function() {
+                    if (clickTimer) {
+                        clearTimeout(clickTimer);
+                        clickTimer = null;
+                    }
+                };
+            })(node, nodeEl);
         }
 
         // 双击：插入 path 到输入框
@@ -166,6 +185,10 @@
             row.addEventListener('dblclick', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
+                // 取消文件节点的挂起单击
+                if (node.type !== 'directory' && nodeEl._cancelFileClick) {
+                    nodeEl._cancelFileClick();
+                }
 
                 var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
                 if (!targetInput) return;
@@ -331,6 +354,75 @@
     // ---- 暴露全局函数 ----
     window.loadTree = loadTree;
     window.onFilerChange = onFilerChange;
+
+    // ---- 搜索过滤 ----
+    var searchInput = document.getElementById('filerSearchInput');
+    var searchClear = document.getElementById('filerSearchClear');
+
+    function filterTree(keyword) {
+        if (!treeEl) return;
+        var kw = (keyword || '').trim().toLowerCase();
+        if (!kw) {
+            // 清空搜索：移除所有 search-hidden
+            treeEl.querySelectorAll('.filer-node.search-hidden').forEach(function(el) {
+                el.classList.remove('search-hidden');
+            });
+            return;
+        }
+        // 遍历所有文件节点
+        var allNodes = treeEl.querySelectorAll('.filer-node');
+        allNodes.forEach(function(el) {
+            var path = el.getAttribute('data-path') || '';
+            var name = path.split('/').pop() || '';
+            // 匹配路径或文件名
+            if (path.toLowerCase().indexOf(kw) === -1) {
+                el.classList.add('search-hidden');
+            } else {
+                el.classList.remove('search-hidden');
+                // 确保所有父节点可见并展开
+                var parent = el.parentElement;
+                while (parent && parent !== treeEl) {
+                    if (parent.classList.contains('filer-node')) {
+                        parent.classList.remove('search-hidden');
+                    }
+                    if (parent.classList.contains('filer-node-children')) {
+                        parent.classList.add('open');
+                        // 同时展开对应的箭头
+                        var parentRow = parent.parentElement;
+                        if (parentRow) {
+                            var arrow = parentRow.querySelector(':scope > .filer-node-row .filer-arrow');
+                            if (arrow) arrow.classList.add('open');
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+            }
+        });
+    }
+
+    if (searchInput) {
+        var searchTimer = null;
+        searchInput.addEventListener('input', function() {
+            var val = searchInput.value;
+            if (searchClear) {
+                searchClear.classList.toggle('visible', val.length > 0);
+            }
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function() {
+                filterTree(val);
+            }, 200);
+        });
+    }
+    if (searchClear) {
+        searchClear.addEventListener('click', function() {
+            if (searchInput) {
+                searchInput.value = '';
+                searchInput.focus();
+            }
+            searchClear.classList.remove('visible');
+            filterTree('');
+        });
+    }
 
     // ---- 启动 ----
     loadTree();
