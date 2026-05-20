@@ -210,7 +210,8 @@ public class Configurator {
         // 启动工作区文件变化监听
         try {
             Path workspacePath = Paths.get(agentProps.getWorkspace()).toAbsolutePath().normalize();
-            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath, webGate);
+            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
+            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
             workspaceWatcher.start();
         } catch (Exception e) {
             // watcher 启动失败不影响主流程

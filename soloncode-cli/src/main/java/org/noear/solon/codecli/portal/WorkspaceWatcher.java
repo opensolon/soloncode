@@ -8,6 +8,8 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import static java.nio.file.StandardWatchEventKinds.*;
 
@@ -21,20 +23,29 @@ public class WorkspaceWatcher {
     private static final Logger LOG = LoggerFactory.getLogger(WorkspaceWatcher.class);
 
     private static final Set<String> EXCLUDED_DIRS = new HashSet<>(Arrays.asList(
-            ".git", ".idea", ".soloncode", "node_modules", "target",
-            "__pycache__", ".gradle", ".mvn", "build"
+            ".soloncode", ".claude", ".opencode",
+            ".idea", ".vscode", ".settings",
+            ".git", ".gradle", ".mvn",
+            ".pytest_cache", "__pycache__",
+            ".DS_Store",
+            "node_modules", "venv", "vendor",
+            "target", "build"
     ));
 
     private final Path workspace;
-    private final WebGate webGate;
+    private final List<Consumer<String>> broadcastHandlers = new ArrayList<>();
     private WatchService watchService;
     private ScheduledExecutorService scheduler;
 
     private final Set<String> changedPaths = ConcurrentHashMap.newKeySet();
 
-    public WorkspaceWatcher(Path workspace, WebGate webGate) {
+    public WorkspaceWatcher(Path workspace) {
         this.workspace = workspace;
-        this.webGate = webGate;
+    }
+
+    public WorkspaceWatcher addBroadcastHandler(Consumer<String> handler) {
+        this.broadcastHandlers.add(handler);
+        return this;
     }
 
     public void start() {
@@ -74,7 +85,8 @@ public class WorkspaceWatcher {
                 }
                 try {
                     d.register(watchService, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 return FileVisitResult.CONTINUE;
             }
         });
@@ -97,7 +109,8 @@ public class WorkspaceWatcher {
                     if (event.kind() == ENTRY_CREATE && fullPath.toFile().isDirectory()) {
                         try {
                             fullPath.register(watchService, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
                 }
 
@@ -137,7 +150,9 @@ public class WorkspaceWatcher {
         sb.append("],\"createdAt\":").append(System.currentTimeMillis()).append("}");
 
         String json = sb.toString();
-        webGate.broadcastRaw(json);
+        for (Consumer<String> handler : broadcastHandlers) {
+            handler.accept(json);
+        }
 
         if (LOG.isDebugEnabled()) {
             LOG.debug("[WorkspaceWatcher] pushed {} changes", batch.size());
