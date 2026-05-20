@@ -93,18 +93,9 @@ public class Configurator {
             props.addExtension(extension);
         });
 
-        //添加记忆能力
-        if (agentProps.isMemoryEnabled()) {
-            MemorySkill memorySkill = new MemorySkill(new MemoryManger(agentProps)).sessionIsolation(false);
-            props.addExtension((agentName, agentBuilder) -> {
-                if ("main".equals(agentName)) {
-                    agentBuilder.defaultSkillAdd(memorySkill);
-                }
-            });
-        }
-
         HarnessEngine engine = HarnessEngine.of(props)
                 .sessionProvider(sessionProvider)
+                .memorySolution(new MemoryManger(agentProps))
                 .build();
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
