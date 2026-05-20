@@ -355,23 +355,58 @@
         }
     }
 
-    // ---- Diff Viewer：渲染 diff 文本 ----
+    // ---- Diff Viewer：渲染 diff 文本（带行号）----
     function renderViewerDiff(raw) {
         if (!gitViewerContent) return;
         var lines = (raw || '').split('\n');
         var html = '';
+        var oldLineNo = 0, newLineNo = 0;
+        var hunkRe = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
+
         for (var i = 0; i < lines.length; i++) {
-            var line = escapeHtml(lines[i]);
-            if (lines[i].startsWith('+++') || lines[i].startsWith('---')) {
-                html += '<div class="git-line-head">' + line + '</div>';
-            } else if (lines[i].startsWith('@@')) {
-                html += '<div class="git-line-hunk">' + line + '</div>';
-            } else if (lines[i].startsWith('+')) {
-                html += '<div class="git-line-add">' + line + '</div>';
-            } else if (lines[i].startsWith('-')) {
-                html += '<div class="git-line-del">' + line + '</div>';
+            var rawLine = lines[i];
+            var line = escapeHtml(rawLine);
+
+            if (rawLine.startsWith('+++') || rawLine.startsWith('---')) {
+                // 元信息行：无行号
+                html += '<div class="git-diff-line git-line-head">'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-text">' + line + '</span>'
+                    + '</div>';
+            } else if (rawLine.startsWith('@@')) {
+                // Hunk header：解析行号并重置计数器
+                var m = rawLine.match(hunkRe);
+                if (m) {
+                    oldLineNo = parseInt(m[1], 10);
+                    newLineNo = parseInt(m[2], 10);
+                }
+                html += '<div class="git-diff-line git-line-hunk">'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-text">' + line + '</span>'
+                    + '</div>';
+            } else if (rawLine.startsWith('+')) {
+                // 新增行：new 行号递增，old 留空
+                html += '<div class="git-diff-line git-line-add">'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                    + '<span class="git-line-text">' + line + '</span>'
+                    + '</div>';
+            } else if (rawLine.startsWith('-')) {
+                // 删除行：old 行号递增，new 留空
+                html += '<div class="git-diff-line git-line-del">'
+                    + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-text">' + line + '</span>'
+                    + '</div>';
             } else {
-                html += '<div class="git-line-ctx">' + line + '</div>';
+                // 上下文行：两个行号同时递增
+                html += '<div class="git-diff-line git-line-ctx">'
+                    + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                    + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                    + '<span class="git-line-text">' + line + '</span>'
+                    + '</div>';
             }
         }
         gitViewerContent.innerHTML = html;

@@ -854,6 +854,27 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .git-line-head { color: var(--text-secondary); }
 .git-line-ctx { color: var(--text-primary); }
 
+/* Diff 行号 */
+.git-diff-line {
+    display: flex;
+    line-height: inherit;
+}
+.git-line-num {
+    width: 48px;
+    min-width: 48px;
+    text-align: right;
+    padding-right: 10px;
+    color: var(--text-secondary);
+    opacity: 0.4;
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+}
+.git-line-num:empty { visibility: hidden; }
+.git-line-text {
+    flex: 1;
+    min-width: 0;
+}
+
 /* Git 提交按钮 */
 .git-commit-bar {
     display: flex;
