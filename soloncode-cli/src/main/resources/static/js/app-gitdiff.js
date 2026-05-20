@@ -174,11 +174,13 @@
             item.appendChild(statusSpan);
             item.appendChild(pathSpan);
 
+            item.setAttribute('data-status', file.status);
+
             // 点击文件行打开 diff viewer
             item.addEventListener('click', function(e) {
                 // 避免点 checkbox 时也触发
                 if (e.target === cb) return;
-                openDiffViewer(file.path);
+                openDiffViewer(file.path, file.status);
             });
 
             gitDiffFileList.appendChild(item);
@@ -218,7 +220,7 @@
     // ---- Diff Viewer：打开内联 diff（在 main-area 内）----
     var diffViewerActive = false;
 
-    function openDiffViewer(path) {
+    function openDiffViewer(path, status) {
         if (!gitDiffViewer) return;
 
         // 隐藏欢迎页和聊天视图
@@ -230,17 +232,127 @@
         diffViewerActive = true;
 
         if (gitViewerFile) gitViewerFile.textContent = path;
+
+        // 判断是否是目录（以 / 结尾）
+        var isDir = path.endsWith('/');
+
+        if (isDir) {
+            // 目录：显示提示信息，不调用 diff 接口
+            if (gitViewerContent) {
+                gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
+                    + '<div style="margin-bottom:8px">&#x1F4C1; ' + escapeHtml(path) + '</div>'
+                    + '<div>这是一个目录，暂无可查看的文本差异。</div>'
+                    + '</div>';
+            }
+            renderViewerActions(path, status);
+            return;
+        }
+
         if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">加载中...</div>';
 
         fetch('/chat/git/diff?path=' + encodeURIComponent(path))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
-                renderViewerDiff(d.diff || '');
+                var diffText = d.diff || '';
+                if (!diffText.trim()) {
+                    gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
+                        + (status === '?' ? '新文件（未跟踪），暂无可比较的差异内容。' : '无变更内容。')
+                        + '</div>';
+                } else {
+                    renderViewerDiff(diffText);
+                }
             })
             .catch(function(e) {
                 if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:#cb2431">加载失败: ' + escapeHtml(e.message) + '</div>';
+            })
+            .finally(function() {
+                renderViewerActions(path, status);
             });
+    }
+
+    // ---- Diff Viewer：渲染操作按钮（添加到Git / 移出暂存）----
+    function renderViewerActions(path, status) {
+        // 移除旧的操作栏（如有）
+        var oldActions = gitDiffViewer.querySelector('.git-viewer-actions');
+        if (oldActions) oldActions.remove();
+
+        if (status !== '?' && status !== 'S') return; // 只有未跟踪和已暂存需要操作按钮
+
+        var actionBar = document.createElement('div');
+        actionBar.className = 'git-viewer-actions';
+
+        if (status === '?') {
+            // 未跟踪 -> 提供 "添加到 Git" 按钮
+            var addBtn = document.createElement('button');
+            addBtn.className = 'git-action-btn git-action-add';
+            addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加到 Git';
+            addBtn.addEventListener('click', function() {
+                addBtn.disabled = true;
+                addBtn.textContent = '添加中...';
+                fetch('/chat/git/stage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res && res.code === 200) {
+                        loadGitStatus();
+                        closeDiffViewer();
+                    } else {
+                        alert('操作失败：' + ((res && res.data && res.data.message) || '未知错误'));
+                        addBtn.disabled = false;
+                        addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加到 Git';
+                    }
+                })
+                .catch(function(e) {
+                    alert('操作失败：' + e.message);
+                    addBtn.disabled = false;
+                    addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加到 Git';
+                });
+            });
+            actionBar.appendChild(addBtn);
+        }
+
+        if (status === 'S') {
+            // 已暂存 -> 提供 "移出暂存" 按钮
+            var unstageBtn = document.createElement('button');
+            unstageBtn.className = 'git-action-btn git-action-unstage';
+            unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> 移出暂存';
+            unstageBtn.addEventListener('click', function() {
+                unstageBtn.disabled = true;
+                unstageBtn.textContent = '移出中...';
+                fetch('/chat/git/unstage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res && res.code === 200) {
+                        loadGitStatus();
+                        closeDiffViewer();
+                    } else {
+                        alert('操作失败：' + ((res && res.data && res.data.message) || '未知错误'));
+                        unstageBtn.disabled = false;
+                        unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> 移出暂存';
+                    }
+                })
+                .catch(function(e) {
+                    alert('操作失败：' + e.message);
+                    unstageBtn.disabled = false;
+                    unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> 移出暂存';
+                });
+            });
+            actionBar.appendChild(unstageBtn);
+        }
+
+        // 插入到 header 后面、content 前面
+        var content = gitDiffViewer.querySelector('.git-viewer-content');
+        if (content) {
+            gitDiffViewer.insertBefore(actionBar, content);
+        }
     }
 
     // ---- Diff Viewer：渲染 diff 文本 ----
@@ -271,6 +383,10 @@
         if (!gitDiffViewer) return;
         gitDiffViewer.style.display = 'none';
         diffViewerActive = false;
+
+        // 清理操作栏
+        var oldActions = gitDiffViewer.querySelector('.git-viewer-actions');
+        if (oldActions) oldActions.remove();
 
         // 关键：必须先清除两个视图的内联 display 样式
         // 因为 chatView 的可见性由 CSS .active 类控制（.chat-view.active { display: flex }）

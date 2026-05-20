@@ -657,6 +657,11 @@ public class WebController {
             String y = line.substring(1, 2);
             String filePath = line.substring(3);
 
+            // 规范化：去除尾部斜杠（git porcelain 对未跟踪目录可能输出 "?? dir/"）
+            if (filePath.endsWith("/")) {
+                filePath = filePath.substring(0, filePath.length() - 1);
+            }
+
             if ("?".equals(x) && "?".equals(y)) {
                 untracked.add(filePath);
             } else {
@@ -800,6 +805,100 @@ public class WebController {
         data.put("diff", fullDiff);
         data.put("stat", stat);
 
+        return Result.succeed(data);
+    }
+
+    /**
+     * 将指定文件添加到 Git 暂存区（git add）。
+     *
+     * @param body JSON: { "path": "src/App.java" }
+     * @return 包含 path 的结果对象
+     * @throws Exception Git 命令执行异常
+     */
+    @Post
+    @Mapping("/chat/git/stage")
+    public Result<Map> gitStage(@Body String body) throws Exception {
+        File workspaceDir = new File(engine.getProps().getWorkspace());
+        ProcessResult check = runGitCommand(workspaceDir, "git", "rev-parse", "--is-inside-work-tree");
+        if (check.exitCode != 0) {
+            return Result.failure(400, "Not a git repository");
+        }
+
+        String path = null;
+        if (body != null && !body.trim().isEmpty()) {
+            try {
+                ONode json = ONode.ofJson(body);
+                if (json != null && json.isObject()) {
+                    ONode pathNode = json.get("path");
+                    if (pathNode != null && pathNode.isString()) {
+                        path = pathNode.getString();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (path == null || path.trim().isEmpty()) {
+            return Result.failure(400, "Path is required");
+        }
+        if (path.contains("..") || path.startsWith("/")) {
+            return Result.failure(400, "Invalid path");
+        }
+
+        ProcessResult addResult = runGitCommand(workspaceDir, "git", "add", "--", path);
+        if (addResult.exitCode != 0) {
+            return Result.failure(500, "git add failed: " + addResult.stderr);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 将指定文件移出 Git 暂存区（git reset HEAD -- path）。
+     *
+     * @param body JSON: { "path": "src/App.java" }
+     * @return 包含 path 的结果对象
+     * @throws Exception Git 命令执行异常
+     */
+    @Post
+    @Mapping("/chat/git/unstage")
+    public Result<Map> gitUnstage(@Body String body) throws Exception {
+        File workspaceDir = new File(engine.getProps().getWorkspace());
+        ProcessResult check = runGitCommand(workspaceDir, "git", "rev-parse", "--is-inside-work-tree");
+        if (check.exitCode != 0) {
+            return Result.failure(400, "Not a git repository");
+        }
+
+        String path = null;
+        if (body != null && !body.trim().isEmpty()) {
+            try {
+                ONode json = ONode.ofJson(body);
+                if (json != null && json.isObject()) {
+                    ONode pathNode = json.get("path");
+                    if (pathNode != null && pathNode.isString()) {
+                        path = pathNode.getString();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (path == null || path.trim().isEmpty()) {
+            return Result.failure(400, "Path is required");
+        }
+        if (path.contains("..") || path.startsWith("/")) {
+            return Result.failure(400, "Invalid path");
+        }
+
+        ProcessResult resetResult = runGitCommand(workspaceDir, "git", "reset", "HEAD", "--", path);
+        if (resetResult.exitCode != 0) {
+            return Result.failure(500, "git reset failed: " + resetResult.stderr);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path);
         return Result.succeed(data);
     }
 

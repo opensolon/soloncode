@@ -984,6 +984,48 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     background: none;
 }
 
+/* Diff Viewer 操作栏 */
+.git-viewer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+}
+.git-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.git-action-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--text-secondary);
+}
+.git-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.git-action-add {
+    color: var(--git-status-staged);
+    border-color: var(--git-status-staged);
+}
+.git-action-add:hover {
+    background: color-mix(in srgb, var(--git-status-staged) 10%, var(--bg-primary));
+}
+.git-action-unstage {
+    color: var(--text-secondary);
+}
+
 /* 工作区干净 */
 .git-diff-empty {
     display: flex;
