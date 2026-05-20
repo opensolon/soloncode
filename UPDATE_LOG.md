@@ -1,4 +1,10 @@
 
+### v2026.5.21
+
+* 添加 soloncode web 文件查看与复制功能
+* 添加 soloncode web 文件搜索功能
+* 添加 soloncode web 右侧面板的拖动功能
+
 ### v2026.5.20
 
 * 添加 soloncode web 文件树功能（方便知道有哪些文件）
