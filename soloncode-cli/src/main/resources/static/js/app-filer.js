@@ -150,19 +150,27 @@
                 });
             })(node, nodeEl);
         } else {
-            // 文件：单击打开文件查看器（用 e.detail 区分单击/双击，零延迟）
+            // 文件：单击打开文件查看器（延迟 250ms，避免与双击冲突）
             (function(n) {
+                var clickTimer = null;
                 row.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    if (e.detail >= 2) return; // 双击时不触发
-                    if (typeof window.openFileViewer === 'function') {
-                        window.openFileViewer(n.path, n.name);
-                    }
+                    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+                    clickTimer = setTimeout(function() {
+                        if (typeof window.openFileViewer === 'function') {
+                            window.openFileViewer(n.path, n.name);
+                        }
+                    }, 250);
+                });
+                row.addEventListener('dblclick', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
                 });
             })(node);
         }
 
-        // 双击：插入 path 到输入框（所有节点通用，与单击通过 e.detail 互斥）
+        // 双击：插入 path 到输入框（所有节点通用）
         (function(n) {
             row.addEventListener('dblclick', function(e) {
                 e.stopPropagation();
@@ -404,15 +412,21 @@
                     }
                     row.appendChild(pathSpan);
 
-                    // 单击：打开文件查看器
+                    // 单击：打开文件查看器（延迟 250ms，避免与双击冲突）
                     if (item.type === 'file') {
                         (function(it, r) {
+                            var clickTimer = null;
                             r.addEventListener('click', function(e) {
                                 e.stopPropagation();
-                                if (e.detail >= 2) return;
-                                if (typeof window.openFileViewer === 'function') {
-                                    window.openFileViewer(it.path, it.name);
-                                }
+                                if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+                                clickTimer = setTimeout(function() {
+                                    if (typeof window.openFileViewer === 'function') {
+                                        window.openFileViewer(it.path, it.name);
+                                    }
+                                }, 250);
+                            });
+                            r.addEventListener('dblclick', function(e) {
+                                if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
                             });
                         })(item, row);
                     }
