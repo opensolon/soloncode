@@ -300,7 +300,7 @@ Write-Host "  Java version: $javaVersion" -ForegroundColor White
 Write-Host ""
 Write-Host "  Usage:" -ForegroundColor Cyan
 Write-Host "    1. Open a NEW terminal window (PowerShell or Git Bash)"
-Write-Host "    2. Run: soloncode"
+Write-Host "    2. Run: 'soloncode' or 'soloncode web 0'"
 Write-Host ""
 Write-Host "  Directory structure:" -ForegroundColor Cyan
 Write-Host "    $env:USERPROFILE\.soloncode\"
