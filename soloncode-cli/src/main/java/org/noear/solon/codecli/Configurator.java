@@ -11,13 +11,23 @@ import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.skills.memory.MemorySkill;
-import org.noear.solon.annotation.*;
+import org.noear.solon.annotation.Bean;
+import org.noear.solon.annotation.Configuration;
+import org.noear.solon.annotation.Init;
+import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.memory.MemoryManger;
 import org.noear.solon.codecli.portal.*;
+import org.noear.solon.codecli.portal.acp.AcpLink;
+import org.noear.solon.codecli.portal.cli.CliShell;
+import org.noear.solon.codecli.portal.desktop.WsController;
+import org.noear.solon.codecli.portal.desktop.WsGate;
+import org.noear.solon.codecli.portal.web.WebChannel;
+import org.noear.solon.codecli.portal.web.WebController;
+import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
@@ -27,6 +37,7 @@ import org.noear.solon.net.websocket.WebSocketRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -198,7 +209,7 @@ public class Configurator {
 
         // 启动工作区文件变化监听
         try {
-            java.nio.file.Path workspacePath = java.nio.file.Paths.get(agentProps.getWorkspace()).toAbsolutePath().normalize();
+            Path workspacePath = Paths.get(agentProps.getWorkspace()).toAbsolutePath().normalize();
             WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath, webGate);
             workspaceWatcher.start();
         } catch (Exception e) {

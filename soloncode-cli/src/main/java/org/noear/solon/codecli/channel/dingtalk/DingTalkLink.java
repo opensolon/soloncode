@@ -20,7 +20,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.channel.Channel;
-import org.noear.solon.codecli.portal.WebGate;
+import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

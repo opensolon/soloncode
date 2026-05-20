@@ -1,9 +1,9 @@
 package org.noear.solon.codecli.portal;
 
+import org.noear.solon.codecli.portal.web.WebGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
@@ -31,9 +31,6 @@ public class WorkspaceWatcher {
     private ScheduledExecutorService scheduler;
 
     private final Set<String> changedPaths = ConcurrentHashMap.newKeySet();
-    private ScheduledFuture<?> debounceTask;
-
-    private static final long DEBOUNCE_MS = 500;
 
     public WorkspaceWatcher(Path workspace, WebGate webGate) {
         this.workspace = workspace;
@@ -60,7 +57,6 @@ public class WorkspaceWatcher {
 
     public void stop() {
         try {
-            if (debounceTask != null) debounceTask.cancel(false);
             if (scheduler != null) scheduler.shutdownNow();
             if (watchService != null) watchService.close();
         } catch (Exception e) {
@@ -106,7 +102,7 @@ public class WorkspaceWatcher {
                 }
 
                 key.reset();
-                scheduleDebounce();
+                flushChanges();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -123,12 +119,6 @@ public class WorkspaceWatcher {
         return false;
     }
 
-    private synchronized void scheduleDebounce() {
-        if (debounceTask != null) {
-            debounceTask.cancel(false);
-        }
-        debounceTask = scheduler.schedule(this::flushChanges, DEBOUNCE_MS, TimeUnit.MILLISECONDS);
-    }
 
     private void flushChanges() {
         if (changedPaths.isEmpty()) return;
