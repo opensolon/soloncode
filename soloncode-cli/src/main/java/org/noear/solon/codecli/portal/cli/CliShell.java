@@ -79,13 +79,15 @@ public class CliShell implements Runnable {
 
     // ANSI 颜色常量
     private final static String
-            BOLD = "\033[1m",
-            DIM = "\033[2m",
-            GREEN = "\033[32m",
-            YELLOW = "\033[33m",
-            RED = "\033[31m",
-            CYAN = "\033[36m",
-            RESET = "\033[0m";
+            BOLD = "\033[1m",      // 粗体 / 高亮
+            DIM = "\033[2m",       // 暗淡 / 半透明（部分终端支持）
+            GREEN = "\033[32m",    // 前景色：绿色
+            YELLOW = "\033[33m",   // 前景色：黄色
+            RED = "\033[31m",      // 前景色：红色
+            CYAN = "\033[36m",     // 前景色：青色 / 蓝绿色
+            BLUE = "\033[34m",     // 前景色：蓝色
+            PURPLE = "\033[35m",   // 前景色：紫色 / 品红
+            RESET = "\033[0m";     // 重置所有样式和颜色（恢复终端默认）
 
 
     public CliShell(HarnessEngine engine, AgentProperties agentProps, LoopScheduler loopScheduler) {
@@ -191,7 +193,7 @@ public class CliShell implements Runnable {
                     terminal.writer().println();
                     terminal.flush();
 
-                    input = reader.readLine(BOLD + CYAN + "> " + RESET).trim();
+                    input = reader.readLine(CYAN + "❯ " + RESET).trim();
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
@@ -594,7 +596,7 @@ public class CliShell implements Runnable {
                 String shortArgs = argsStr.length() > 40 ? argsStr.substring(0, 37) + "..." : argsStr;
 
                 terminal.writer().println();
-                terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
+                terminal.writer().println(PURPLE + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + shortArgs + " (" + summary + ")" + RESET);
                 terminal.flush();
 
             } else {
@@ -604,15 +606,15 @@ public class CliShell implements Runnable {
                 if (TodoSkill.TOOL_TODOWRITE.equals(action.getToolName())) {
                     //优化 todowrite 打印
                     argsStr = "\n" + ((String) args.get("todos")).trim();
-                    terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
+                    terminal.writer().println(PURPLE + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
                 } else {
 
                     if (!hasBigArgs) {
                         // 短参数直接跟在后面
-                        terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
+                        terminal.writer().println(PURPLE + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
                     } else {
                         // 大参数块，指令名独占一行，参数作为缩进内容打印（类似 write_file 的 content 部分）
-                        terminal.writer().println(YELLOW + "❯ " + RESET + BOLD + fullToolName + RESET);
+                        terminal.writer().println(PURPLE + "❯ " + RESET + BOLD + fullToolName + RESET);
                         if (args != null) {
                             args.forEach((k, v) -> {
                                 String val = String.valueOf(v).trim();
