@@ -150,45 +150,23 @@
                 });
             })(node, nodeEl);
         } else {
-            // 文件：单击打开文件查看器（用定时器与双击区分）
-            (function(n, ne) {
-                var clickTimer = null;
+            // 文件：单击打开文件查看器（用 e.detail 区分单击/双击，零延迟）
+            (function(n) {
                 row.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    if (clickTimer) return; // 已经在等待中，忽略重复点击
-                    clickTimer = setTimeout(function() {
-                        clickTimer = null;
-                        if (typeof window.openFileViewer === 'function') {
-                            window.openFileViewer(n.path, n.name);
-                        }
-                    }, 250);
-                });
-                // 双击时取消单击定时器
-                row.addEventListener('dblclick', function(e) {
-                    if (clickTimer) {
-                        clearTimeout(clickTimer);
-                        clickTimer = null;
+                    if (e.detail >= 2) return; // 双击时不触发
+                    if (typeof window.openFileViewer === 'function') {
+                        window.openFileViewer(n.path, n.name);
                     }
                 });
-                // 暴露取消方法供全局双击使用
-                ne._cancelFileClick = function() {
-                    if (clickTimer) {
-                        clearTimeout(clickTimer);
-                        clickTimer = null;
-                    }
-                };
-            })(node, nodeEl);
+            })(node);
         }
 
-        // 双击：插入 path 到输入框
+        // 双击：插入 path 到输入框（所有节点通用，与单击通过 e.detail 互斥）
         (function(n) {
             row.addEventListener('dblclick', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                // 取消文件节点的挂起单击
-                if (node.type !== 'directory' && nodeEl._cancelFileClick) {
-                    nodeEl._cancelFileClick();
-                }
 
                 var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
                 if (!targetInput) return;
