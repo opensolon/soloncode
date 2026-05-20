@@ -42,7 +42,7 @@ function StartWorkPanel({ onNewProject, onOpenFolder }: { onNewProject?: () => v
   );
 }
 
-// 命令类型（从后端 /chat/commands 加载）
+// 命令类型（从后端 /chat/hints 加载）
 interface CommandItem {
   name: string;
   description: string;
@@ -352,7 +352,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     if (commandsLoadedRef.current) return;
     const port = backendPort || 4808;
     try {
-      const resp = await fetch(`http://localhost:${port}/chat/commands`);
+      const resp = await fetch(`http://localhost:${port}/chat/hints`);
       if (resp.ok) {
         const json = await resp.json();
         const list: CommandItem[] = json.data || json;

@@ -236,7 +236,7 @@ var cmdTrigger = null; // '/' for commands, '@' for subagents
 
 function loadCommands() {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/commands', true);
+    xhr.open('GET', '/chat/hints', true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {

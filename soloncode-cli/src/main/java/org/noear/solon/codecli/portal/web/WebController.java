@@ -452,8 +452,8 @@ public class WebController {
      * @return 命令/子代理列表，每项包含 name、description、type（command 或 subagent）
      */
     @Get
-    @Mapping("/chat/commands")
-    public Result<List<Map>> commands() {
+    @Mapping("/chat/hints")
+    public Result<List<Map>> hints() {
         List<Map> data = new ArrayList<>();
         for (Command cmd : engine.getCommandRegistry().all()) {
             if (cmd.cliOnly()) {
@@ -471,6 +471,14 @@ public class WebController {
             item.put("name", definition.getName());
             item.put("description", definition.getDescription());
             item.put("type", "subagent");
+            data.add(item);
+        }
+
+        for (AgentDefinition definition : engine.getAgentManager().getAgents()) {
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("name", definition.getName());
+            item.put("description", definition.getDescription());
+            item.put("type", "skill");
             data.add(item);
         }
 
