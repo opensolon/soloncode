@@ -73,7 +73,9 @@ try {
     Write-Info "Installation complete!"
     Write-Host ""
     Write-Host "You can now run: " -NoNewline
-    Write-Host "soloncode" -ForegroundColor Cyan
+    Write-Host "soloncode" -ForegroundColor Cyan -NoNewline
+    Write-Host " or " -NoNewline
+    Write-Host "soloncode web 0" -ForegroundColor Cyan
     Write-Host ""
 
 } catch {
