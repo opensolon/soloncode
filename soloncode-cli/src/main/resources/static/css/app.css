@@ -412,6 +412,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .cmd-complete-item:hover, .cmd-complete-item.active { background: var(--bg-hover); }
 .cmd-complete-item .cmd-name { font-weight: 600; color: var(--accent); white-space: nowrap; font-family: var(--font-mono); font-size: 13px; }
 .cmd-complete-item .cmd-name.subagent { color: #8b5cf6; }
+.cmd-complete-item .cmd-name.skill { color: #0891b2; }
 .cmd-complete-item .cmd-desc { color: var(--text-secondary); font-size: 12px; line-height: 1.4; }
 .cmd-complete-item .cmd-args { color: var(--text-secondary); font-size: 11px; font-family: var(--font-mono); white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
 .cmd-complete::-webkit-scrollbar { width: 4px; }

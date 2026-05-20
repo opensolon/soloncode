@@ -232,7 +232,7 @@ loadSessionHistory();
 /* ===== Command System ===== */
 var commandList = []; // [{name, description, type}, ...]
 var commandsLoaded = false;
-var cmdTrigger = null; // '/' for commands, '@' for subagents
+var cmdTrigger = null; // '/' for commands, '@' for subagents, '$' for skills
 
 function loadCommands() {
     var xhr = new XMLHttpRequest();
@@ -265,7 +265,7 @@ function showCmdComplete(inputEl, completeEl, prefix) {
 
     var trigger = prefix.charAt(0);
     var query = prefix.substring(1).toLowerCase();
-    var filterType = (trigger === '@') ? 'subagent' : 'command';
+    var filterType = (trigger === '@') ? 'subagent' : (trigger === '$') ? 'skill' : 'command';
     cmdVisibleItems = [];
     var html = '';
 
@@ -275,7 +275,7 @@ function showCmdComplete(inputEl, completeEl, prefix) {
         if (cmd.type !== filterType) continue;
         if (cmd.name.toLowerCase().indexOf(query) === 0 || query.length === 0) {
             cmdVisibleItems.push(cmd);
-            var nameClass = (trigger === '@') ? 'cmd-name subagent' : 'cmd-name';
+            var nameClass = (trigger === '@') ? 'cmd-name subagent' : (trigger === '$') ? 'cmd-name skill' : 'cmd-name';
             html += '<div class="cmd-complete-item" data-index="' + (cmdVisibleItems.length - 1) + '">'
                 + '<span class="' + nameClass + '">' + escapeHtml(trigger + cmd.name) + '</span>'
                 + '<span class="cmd-desc">' + escapeHtml(cmd.description || '') + '</span>'
@@ -360,8 +360,8 @@ function handleInputForCommands(e) {
     var completeEl = (inputEl === welcomeInput) ? welcomeCmdComplete : chatCmdComplete;
     var val = inputEl.value;
 
-    if (val.indexOf('/') === 0 || val.indexOf('@') === 0) {
-        // Only show completion when cursor is at the command/agent name part (no spaces yet)
+    if (val.indexOf('/') === 0 || val.indexOf('@') === 0 || val.indexOf('$') === 0) {
+        // Only show completion when cursor is at the command/agent/skill name part (no spaces yet)
         var cursorPos = inputEl.selectionStart;
         var textBeforeCursor = val.substring(0, cursorPos);
         var spaceIndex = textBeforeCursor.indexOf(' ');
@@ -395,6 +395,12 @@ document.getElementById('welcomeAgentBtn').addEventListener('click', function() 
 });
 document.getElementById('chatAgentBtn').addEventListener('click', function() {
     triggerCmdComplete(chatInput, chatCmdComplete, '@');
+});
+document.getElementById('welcomeSkillBtn').addEventListener('click', function() {
+    triggerCmdComplete(welcomeInput, welcomeCmdComplete, '$');
+});
+document.getElementById('chatSkillBtn').addEventListener('click', function() {
+    triggerCmdComplete(chatInput, chatCmdComplete, '$');
 });
 
 welcomeInput.addEventListener('input', handleInputForCommands);
@@ -446,7 +452,7 @@ chatCmdComplete.addEventListener('click', function(e) {
 
 // Hide on outside click
 document.addEventListener('click', function(e) {
-    if (!e.target.closest('.cmd-complete') && !e.target.closest('.history-panel') && !e.target.closest('textarea') && !e.target.closest('#welcomeCmdBtn') && !e.target.closest('#welcomeAgentBtn') && !e.target.closest('#chatCmdBtn') && !e.target.closest('#chatAgentBtn')) {
+    if (!e.target.closest('.cmd-complete') && !e.target.closest('.history-panel') && !e.target.closest('textarea') && !e.target.closest('#welcomeCmdBtn') && !e.target.closest('#welcomeAgentBtn') && !e.target.closest('#chatCmdBtn') && !e.target.closest('#chatAgentBtn') && !e.target.closest('#welcomeSkillBtn') && !e.target.closest('#chatSkillBtn')) {
         hideCmdComplete();
         hideHistoryPanel();
     }
