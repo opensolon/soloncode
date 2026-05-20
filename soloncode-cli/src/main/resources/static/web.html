@@ -248,13 +248,13 @@
             <!-- 状态3：正常仓库 -->
             <div class="git-diff-panel" id="gitDiffPanel" style="display:none">
                 <div class="git-diff-header">
+                    <label class="git-select-all-label" title="全选/取消全选">
+                        <input type="checkbox" id="gitSelectAll" checked/>
+                    </label>
                     <span class="git-branch" id="gitBranch">--</span>
                 </div>
                 <div class="git-diff-file-list" id="gitDiffFileList"></div>
                 <div class="git-commit-bar" id="gitCommitBar">
-                    <label class="git-select-all-label" title="全选/取消全选">
-                        <input type="checkbox" id="gitSelectAll" checked/>
-                    </label>
                     <input type="text" class="git-commit-input" id="gitCommitMsg" placeholder="提交信息..." />
                     <button class="git-commit-btn" id="gitCommitBtn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>

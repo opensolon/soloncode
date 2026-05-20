@@ -748,6 +748,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     display: flex;
     align-items: center;
     gap: 4px;
+    margin-left: auto;
 }
 .git-branch::before {
     content: '\21C2';
