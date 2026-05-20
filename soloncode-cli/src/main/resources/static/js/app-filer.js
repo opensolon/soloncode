@@ -24,7 +24,7 @@
             panel.classList.toggle('collapsed');
             var collapsed = panel.classList.contains('collapsed');
             toggleBtn.classList.toggle('collapsed', collapsed);
-            toggleBtn.innerHTML = collapsed ? '\u203A' : '\u2039';
+            toggleBtn.innerHTML = collapsed ? '\u2039' : '\u203A';
             toggleBtn.title = collapsed ? '\u5C55\u5F00\u6587\u4EF6\u6811' : '\u6536\u7F29\u6587\u4EF6\u6811';
             localStorage.setItem('filer-collapsed', collapsed ? '1' : '0');
             syncHeaderPadding(collapsed);
@@ -36,7 +36,7 @@
         if (panel) panel.classList.add('collapsed');
         if (toggleBtn) {
             toggleBtn.classList.add('collapsed');
-            toggleBtn.innerHTML = '\u203A';
+            toggleBtn.innerHTML = '\u2039';
             toggleBtn.title = '\u5C55\u5F00\u6587\u4EF6\u6811';
         }
         syncHeaderPadding(true);
