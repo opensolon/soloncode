@@ -187,6 +187,14 @@
     // ---- 文件变更实时同步 ----
     function onFilerChange(chunk) {
         if (!chunk || !chunk.changes || chunk.changes.length === 0) return;
+
+        // 文件树为空时，直接全量刷新根目录兜底
+        if (!treeEl || !treeEl.hasChildNodes()) {
+            smartRefreshRoot();
+            showFilerChangeIndicator();
+            return;
+        }
+
         var changes = chunk.changes;
 
         // 收集所有受影响的父目录
