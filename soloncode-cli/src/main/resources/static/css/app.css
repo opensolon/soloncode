@@ -432,7 +432,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .filer-resize-handle {
     width: 5px;
     cursor: col-resize;
-    background: transparent;
+    background: #fff;
     flex-shrink: 0;
     position: relative;
     z-index: 99;
