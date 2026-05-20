@@ -331,6 +331,7 @@
             + '<span class="file-view-info-sep">|</span>'
             + '<span>' + formatSize(fileSize || 0) + '</span>'
             + (lang ? '<span class="file-view-info-sep">|</span><span>' + escapeHtml(lang) + '</span>' : '')
+            + '<span class="file-view-copy-btn" title="复制文件内容">复制</span>'
             + '</div>';
 
         gitViewerContent.innerHTML = infoBar
@@ -360,7 +361,40 @@
             }
         }
 
+        // 复制按钮
+        var copyBtn = gitViewerContent.querySelector('.file-view-copy-btn');
+        if (copyBtn) {
+            (function(rawContent, btn) {
+                btn.addEventListener('click', function() {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(rawContent).then(function() {
+                            btn.textContent = '已复制';
+                            setTimeout(function() { btn.textContent = '复制'; }, 1500);
+                        }).catch(function() {
+                            fallbackCopy(rawContent, btn);
+                        });
+                    } else {
+                        fallbackCopy(rawContent, btn);
+                    }
+                });
+            })(content, copyBtn);
+        }
+
         gitViewerContent.scrollTop = 0;
+    }
+
+    // 复制兜底方法
+    function fallbackCopy(text, btn) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+        btn.textContent = '已复制';
+        setTimeout(function() { btn.textContent = '复制'; }, 1500);
     }
 
     // ---- Diff Viewer：打开内联 diff（在 main-area 内）----

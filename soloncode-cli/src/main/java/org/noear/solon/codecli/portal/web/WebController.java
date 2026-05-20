@@ -1101,6 +1101,38 @@ public class WebController {
     }
 
     /**
+     * 工作区文件搜索。
+     * <p>递归扫描整个工作区，返回路径中包含关键词的文件列表。
+     * 排除规则与文件树接口一致：隐藏文件和 EXCLUDED_DIRS 中的目录。</p>
+     *
+     * @param keyword 搜索关键词，匹配文件路径（大小写不敏感）
+     * @return 匹配的文件列表，每项包含 name、path、type
+     * @throws Exception 文件系统访问异常
+     */
+    @Get
+    @Mapping("/chat/filer/search")
+    public Result<List<Map>> fileSearch(@Param("keyword") String keyword) throws Exception {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return Result.failure(400, "Keyword is required");
+        }
+        if (keyword.contains("..")) {
+            return Result.failure(400, "Invalid keyword");
+        }
+
+        java.nio.file.Path workspace = java.nio.file.Paths.get(engine.getProps().getWorkspace()).toAbsolutePath().normalize();
+        String kw = keyword.trim().toLowerCase();
+
+        List<Map> results = new ArrayList<>();
+        searchFiles(workspace.toFile(), workspace, kw, results, 0);
+
+        if (results.size() > 200) {
+            results = results.subList(0, 200);
+        }
+
+        return Result.succeed(results);
+    }
+
+    /**
      * 读取工作区文件内容。
      * <p>以工作区根目录为基准，读取指定路径的文件文本内容。
      * 支持安全路径校验和文件大小限制。</p>
@@ -1204,5 +1236,38 @@ public class WebController {
             result.add(item);
         }
         return result;
+    }
+
+    /**
+     * 递归搜索匹配关键词的文件。
+     *
+     * @param dir       当前扫描的目录
+     * @param workspace 工作区根路径，用于计算相对路径
+     * @param keyword   小写化后的搜索关键词
+     * @param results   收集结果的列表
+     * @param depth     当前递归深度，超过 20 层停止
+     */
+    private void searchFiles(File dir, java.nio.file.Path workspace, String keyword, List<Map> results, int depth) {
+        if (depth > 20) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        for (File f : files) {
+            if (f.getName().startsWith(".") || (f.isDirectory() && EXCLUDED_DIRS.contains(f.getName()))) continue;
+
+            String relativePath = workspace.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/');
+
+            if (relativePath.toLowerCase().contains(keyword)) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", f.getName());
+                item.put("path", relativePath);
+                item.put("type", f.isDirectory() ? "directory" : "file");
+                results.add(item);
+            }
+
+            if (f.isDirectory()) {
+                searchFiles(f, workspace, keyword, results, depth + 1);
+            }
+        }
     }
 }

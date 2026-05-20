@@ -333,49 +333,123 @@
     window.loadTree = loadTree;
     window.onFilerChange = onFilerChange;
 
-    // ---- 搜索过滤 ----
+    // ---- 搜索（后端全量搜索） ----
     var searchInput = document.getElementById('filerSearchInput');
     var searchClear = document.getElementById('filerSearchClear');
+    var searchResultsEl = null;
 
-    function filterTree(keyword) {
-        if (!treeEl) return;
-        var kw = (keyword || '').trim().toLowerCase();
-        if (!kw) {
-            // 清空搜索：移除所有 search-hidden
-            treeEl.querySelectorAll('.filer-node.search-hidden').forEach(function(el) {
-                el.classList.remove('search-hidden');
-            });
-            return;
+    function ensureSearchResultsContainer() {
+        if (!searchResultsEl && treeEl && treeEl.parentElement) {
+            searchResultsEl = document.createElement('div');
+            searchResultsEl.className = 'filer-search-results';
+            treeEl.parentElement.insertBefore(searchResultsEl, treeEl.nextSibling);
         }
-        // 遍历所有文件节点
-        var allNodes = treeEl.querySelectorAll('.filer-node');
-        allNodes.forEach(function(el) {
-            var path = el.getAttribute('data-path') || '';
-            var name = path.split('/').pop() || '';
-            // 匹配路径或文件名
-            if (path.toLowerCase().indexOf(kw) === -1) {
-                el.classList.add('search-hidden');
-            } else {
-                el.classList.remove('search-hidden');
-                // 确保所有父节点可见并展开
-                var parent = el.parentElement;
-                while (parent && parent !== treeEl) {
-                    if (parent.classList.contains('filer-node')) {
-                        parent.classList.remove('search-hidden');
-                    }
-                    if (parent.classList.contains('filer-node-children')) {
-                        parent.classList.add('open');
-                        // 同时展开对应的箭头
-                        var parentRow = parent.parentElement;
-                        if (parentRow) {
-                            var arrow = parentRow.querySelector(':scope > .filer-node-row .filer-arrow');
-                            if (arrow) arrow.classList.add('open');
-                        }
-                    }
-                    parent = parent.parentElement;
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+
+    function showSearchResults(keyword) {
+        if (!treeEl || !keyword) return;
+        var kw = keyword.trim().toLowerCase();
+        if (!kw) { hideSearchResults(); return; }
+
+        treeEl.style.display = 'none';
+        ensureSearchResultsContainer();
+        searchResultsEl.style.display = 'block';
+        searchResultsEl.innerHTML = '<div class="filer-search-loading">搜索中...</div>';
+
+        fetch('/chat/filer/search?keyword=' + encodeURIComponent(kw))
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                var data = (res && res.data) ? res.data : [];
+                searchResultsEl.innerHTML = '';
+
+                if (data.length === 0) {
+                    searchResultsEl.innerHTML = '<div class="filer-search-empty">未找到匹配文件</div>';
+                    return;
                 }
-            }
-        });
+
+                data.forEach(function(item) {
+                    var row = document.createElement('div');
+                    row.className = 'filer-search-item';
+                    row.setAttribute('data-path', item.path);
+                    row.setAttribute('data-name', item.name);
+                    row.setAttribute('data-type', item.type);
+
+                    // 图标
+                    var icon = document.createElement('span');
+                    icon.className = 'filer-search-item-icon';
+                    if (item.type === 'directory') {
+                        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
+                    } else {
+                        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
+                    }
+                    row.appendChild(icon);
+
+                    // 路径显示（高亮匹配部分）
+                    var pathSpan = document.createElement('span');
+                    pathSpan.className = 'filer-search-item-path';
+                    var pathLower = item.path.toLowerCase();
+                    var idx = pathLower.indexOf(kw);
+                    if (idx >= 0) {
+                        pathSpan.innerHTML = escapeHtml(item.path.substring(0, idx))
+                            + '<mark>' + escapeHtml(item.path.substring(idx, idx + kw.length)) + '</mark>'
+                            + escapeHtml(item.path.substring(idx + kw.length));
+                    } else {
+                        pathSpan.textContent = item.path;
+                    }
+                    row.appendChild(pathSpan);
+
+                    // 单击：打开文件查看器
+                    if (item.type === 'file') {
+                        (function(it, r) {
+                            r.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                if (e.detail >= 2) return;
+                                if (typeof window.openFileViewer === 'function') {
+                                    window.openFileViewer(it.path, it.name);
+                                }
+                            });
+                        })(item, row);
+                    }
+
+                    // 双击：插入路径到输入框
+                    (function(it) {
+                        row.addEventListener('dblclick', function(e) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
+                            if (!targetInput) return;
+                            var currentVal = targetInput.value || '';
+                            var insertText = '[' + it.path + ']';
+                            var cursorPos = targetInput.selectionStart || currentVal.length;
+                            var before = currentVal.substring(0, cursorPos);
+                            var after = currentVal.substring(cursorPos);
+                            var prefix = (before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n')) ? ' ' : '';
+                            targetInput.value = before + prefix + insertText + ' ' + after;
+                            targetInput.focus();
+                            var newPos = cursorPos + prefix.length + insertText.length + 1;
+                            targetInput.setSelectionRange(newPos, newPos);
+                            if (typeof autoResize === 'function') autoResize(targetInput);
+                        });
+                    })(item);
+
+                    searchResultsEl.appendChild(row);
+                });
+            })
+            .catch(function(e) {
+                console.error('[filer] search error', e);
+                searchResultsEl.innerHTML = '<div class="filer-search-empty">搜索失败</div>';
+            });
+    }
+
+    function hideSearchResults() {
+        if (treeEl) treeEl.style.display = '';
+        if (searchResultsEl) searchResultsEl.style.display = 'none';
     }
 
     if (searchInput) {
@@ -387,8 +461,12 @@
             }
             clearTimeout(searchTimer);
             searchTimer = setTimeout(function() {
-                filterTree(val);
-            }, 200);
+                if (val.trim()) {
+                    showSearchResults(val);
+                } else {
+                    hideSearchResults();
+                }
+            }, 250);
         });
     }
     if (searchClear) {
@@ -398,7 +476,7 @@
                 searchInput.focus();
             }
             searchClear.classList.remove('visible');
-            filterTree('');
+            hideSearchResults();
         });
     }
 
