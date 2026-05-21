@@ -748,7 +748,7 @@ public class WebController {
         if (Boolean.TRUE.equals(initialCommit)) {
             runGitCommand(workspaceDir, "git", "add", "-A");
             runGitCommand(workspaceDir, "git", "-c", "user.name=SolonCode",
-                    "-c", "user.email=soloncode@local",
+                    "-c", "user.email=soloncode@noear.org",
                     "commit", "-m", "Initial commit");
         }
 
@@ -1026,7 +1026,7 @@ public class WebController {
         // git commit
         ProcessResult commitResult = runGitCommand(workspaceDir, "git",
                 "-c", "user.name=SolonCode",
-                "-c", "user.email=soloncode@local",
+                "-c", "user.email=soloncode@noear.org",
                 "commit", "-m", message.trim());
         if (commitResult.exitCode != 0) {
             // 可能是 nothing to commit
