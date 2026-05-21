@@ -216,7 +216,7 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void safeChatInput(AgentSession session, String prompt){
+    private void safeChatInput(AgentSession session, String prompt) {
         if (reader != null && reader.isReading()) {
             try {
                 performAgentTask(session, prompt, null);
@@ -269,7 +269,7 @@ public class CliShell implements Runnable {
         return handled;
     }
 
-    private String getTimeNow(){
+    private String getTimeNow() {
         return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
     }
 
@@ -286,7 +286,7 @@ public class CliShell implements Runnable {
         }
 
 
-        if(input != null) {
+        if (input != null) {
             if (input.startsWith("@")) {
                 int agentNameIdx = input.indexOf(" ");
                 if (agentNameIdx > 0) {
@@ -651,18 +651,22 @@ public class CliShell implements Runnable {
 
 
     protected void printWelcome(AgentSession session) {
-        final ChatModel chatModel;
+        final String modelName;
 
-        if (session == null) {
-            chatModel = engine.getMainModel();
+        if (engine.getProps().getModels().isEmpty()) {
+            modelName = "no model";
         } else {
-            String modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
-            chatModel = engine.getModelOrMain(modelSelected);
+            if (session == null) {
+                modelName = engine.getMainModel().getNameOrModel();
+            } else {
+                String modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+                modelName = engine.getModelOrMain(modelSelected).getNameOrModel();
+            }
         }
 
         String path = new File(engine.getProps().getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + chatModel.getNameOrModel() + RESET);
+        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
         terminal.writer().println(DIM + path + RESET);
         terminal.writer().println(DIM + "Tips: " +
                 RESET + "(esc)" + DIM + " interrupt | " +
@@ -675,11 +679,17 @@ public class CliShell implements Runnable {
 
 
     public void printWelcome(String text) {
-        final ChatModel chatModel = engine.getMainModel();
+        final String modelName;
+
+        if (engine.getProps().getModels().isEmpty()) {
+            modelName = "no model";
+        } else {
+            modelName = engine.getMainModel().getNameOrModel();
+        }
 
         String path = new File(engine.getProps().getWorkspace()).getAbsolutePath();
 
-        System.err.println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + chatModel.getNameOrModel() + RESET);
+        System.err.println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
         System.err.println(DIM + path + RESET);
         System.err.println(DIM + DateUtil.format(new Date(), "yyyy-MM-dd HH:mm") + RESET);
         System.err.println(text);

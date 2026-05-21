@@ -10,7 +10,6 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
-import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
@@ -19,7 +18,7 @@ import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
-import org.noear.solon.codecli.memory.MemoryManger;
+import org.noear.solon.codecli.memory.MemoryFactory;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.portal.acp.AcpLink;
 import org.noear.solon.codecli.portal.cli.CliShell;
@@ -52,6 +51,9 @@ public class Configurator {
     private static final Logger LOG = LoggerFactory.getLogger(Configurator.class);
 
     @Inject
+    AppContext appContext;
+
+    @Inject
     HarnessEngine agentRuntime;
 
     @Inject
@@ -63,7 +65,7 @@ public class Configurator {
     private LoopScheduler loopScheduler;
 
     @Bean
-    public HarnessEngine agentRuntime(AppContext context, AgentProperties props) {
+    public HarnessEngine agentRuntime(AgentProperties props) {
         props.getSkillPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
         props.getSkillPools().put("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()).toString());
 
@@ -88,14 +90,9 @@ public class Configurator {
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
                 new FileAgentSession(key, Paths.get(props.getWorkspace(), props.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
 
-        //订阅容器扩展
-        context.subBeansOfType(HarnessExtension.class, extension -> {
-            props.addExtension(extension);
-        });
-
         HarnessEngine engine = HarnessEngine.of(props)
                 .sessionProvider(sessionProvider)
-                .memorySolution(new MemoryManger(agentProps))
+                .memorySolution(new MemoryFactory(agentProps))
                 .build();
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
@@ -116,6 +113,12 @@ public class Configurator {
 
     @Init
     public void init() {
+        //订阅容器扩展
+        appContext.subBeansOfType(HarnessExtension.class, extension -> {
+            agentRuntime.extensionAdd(extension);
+        });
+
+
         CliShell cliShell = new CliShell(agentRuntime, agentProps, loopScheduler);
         String flag = Solon.cfg().argx().flagAt(0);
 
