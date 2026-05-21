@@ -645,6 +645,12 @@ fn git_diff_text(cwd: &str, file_path: &str) -> Result<String, String> {
     }
 }
 
+/// 获取所有已暂存文件的 diff 文本（用于 AI 生成 commit message）
+#[tauri::command]
+fn git_diff_staged(cwd: &str) -> Result<String, String> {
+    run_git(&["diff", "--cached"], cwd)
+}
+
 /// 递归复制目录
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| format!("创建目录失败: {}", e))?;
@@ -1400,6 +1406,7 @@ pub fn run() {
             git_diff_file,
             git_show_head,
             git_diff_text,
+            git_diff_staged,
             copy_item,
             move_item,
             start_backend,

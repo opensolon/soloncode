@@ -82,9 +82,36 @@
   color: var(--cb-text-secondary);
 }
 
-.commit-button {
-  width: 100%;
+.commit-actions {
+  display: flex;
+  gap: 8px;
   margin-top: 8px;
+}
+
+.ai-generate-btn {
+  padding: 8px 12px;
+  background-color: var(--cb-vscode-input-background);
+  color: var(--cb-text-primary);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+
+.ai-generate-btn:hover:not(:disabled) {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.ai-generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.commit-button {
+  flex: 1;
   padding: 8px 16px;
   background-color: var(--cb-accent);
   color: white;

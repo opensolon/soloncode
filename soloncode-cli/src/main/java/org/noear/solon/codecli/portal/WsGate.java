@@ -105,6 +105,11 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
 
+            if ("generate_commit_message".equals(msgType)) {
+                handleGenerateCommitMessage(socket, root);
+                return;
+            }
+
             // 解析请求
             WsMessage req = root.toBean(WsMessage.class);
             String sessionId = socket.paramOrDefault("sessionId", "");
@@ -400,6 +405,53 @@ public class WsGate extends SimpleWebSocketListener {
             LOG.error("[WS] Config update failed", e);
             socket.send(new ONode()
                     .set("type", "config")
+                    .set("status", "error")
+                    .set("text", e.getMessage())
+                    .toJson());
+        }
+    }
+
+    /**
+     * 处理 AI 生成 commit message 请求
+     * 消息格式: {"type":"generate_commit_message","diff":"..."}
+     */
+    private void handleGenerateCommitMessage(WebSocket socket, ONode root) {
+        try {
+            String diff = root.get("diff") != null ? root.get("diff").getString() : "";
+            if (diff.isEmpty()) {
+                socket.send(new ONode()
+                        .set("type", "commit_message")
+                        .set("status", "error")
+                        .set("text", "没有已暂存的更改")
+                        .toJson());
+                return;
+            }
+
+            // 截断过长的 diff，避免超出模型上下文
+            if (diff.length() > 8000) {
+                diff = diff.substring(0, 8000) + "\n... (diff 已截断)";
+            }
+
+            String prompt = "请根据以下 git diff 内容，生成一条简洁的 git commit message（提交注释）。\n" +
+                    "要求：\n" +
+                    "- 第一行为简短摘要（不超过50字）\n" +
+                    "- 如有必要，空一行后补充说明\n" +
+                    "- 使用中文\n" +
+                    "- 只返回注释内容，不要其他解释\n\n" +
+                    "diff 内容：\n" + diff;
+
+            ChatModel chatModel = kernel.getMainModel();
+            String result = chatModel.prompt(Prompt.of(prompt)).call().getMessage().getResultContent();
+
+            socket.send(new ONode()
+                    .set("type", "commit_message")
+                    .set("status", "ok")
+                    .set("text", result != null ? result.trim() : "")
+                    .toJson());
+        } catch (Exception e) {
+            LOG.error("[WS] Generate commit message failed", e);
+            socket.send(new ONode()
+                    .set("type", "commit_message")
                     .set("status", "error")
                     .set("text", e.getMessage())
                     .toJson());

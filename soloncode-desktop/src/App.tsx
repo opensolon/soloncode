@@ -16,7 +16,7 @@ import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { fileService } from './services/fileService';
 import { gitService } from './services/gitService';
 import { settingsService } from './services/settingsService';
-import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
+import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig, generateCommitMessage } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { startWindowDrag, startWindowResize } from './hooks/useWindowDrag';
 import { useBackend } from './hooks/useBackend';
@@ -397,6 +397,7 @@ function App() {
   // 渲染面板
   const renderPanel = (panel: PanelPosition) => {
     const bothVisible = panelState.editorVisible && panelState.chatVisible;
+    const visiblePanelCount = (panelState.editorVisible ? 1 : 0) + (panelState.chatVisible ? 1 : 0) + (gitPanelVisible ? 1 : 0);
 
     if (panel === 'editor') {
       if (!panelState.editorVisible) return null;
@@ -409,8 +410,9 @@ function App() {
     }
     if (panel === 'chat') {
       if (!panelState.chatVisible) return null;
+      const inputWidth = 50 + visiblePanelCount * 10;
       return (
-        <div key="chat" className="panel-wrapper chat-wrapper" style={bothVisible ? { flex: '1 1 auto' } : undefined}>
+        <div key="chat" className="panel-wrapper chat-wrapper" style={{ ...(bothVisible ? { flex: '1 1 auto' } : {}), '--input-max-width': `${inputWidth}%` } as React.CSSProperties}>
           <ChatView
             currentConversation={currentConversation} plugins={plugins} workspacePath={activeProjectPath || undefined} projectName={workspaceName || undefined}
             theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => handleNewSession(undefined, title)}
@@ -471,6 +473,12 @@ function App() {
                   onPull={async () => { if (activeProjectPath) { await gitService.pull(activeProjectPath); refreshGitStatus(); } }}
                   onDiscard={async (path) => { if (activeProjectPath) { await gitService.discard(activeProjectPath, [path]); refreshGitStatus(); } }}
                   onFileClick={(relPath) => { if (activeProjectPath) handleFileSelect(activeProjectPath.replace(/\\/g, '/') + '/' + relPath); }}
+                  onGenerateCommitMessage={async () => {
+                    if (!activeProjectPath) throw new Error('无活跃项目');
+                    const diff = await gitService.diffStaged(activeProjectPath);
+                    if (!diff) throw new Error('没有已暂存的更改');
+                    return await generateCommitMessage(diff);
+                  }}
                 />
               </div>
             )}

@@ -22,11 +22,10 @@
 
 .empty-center-container {
   width: 100%;
-  max-width: 60%;
+  max-width: var(--input-max-width, 90%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 24px;
   gap: 0;
 }
 

@@ -162,6 +162,38 @@ class WebSocketManager {
     ws.close();
   }
 
+  /** 请求 AI 生成 commit message（短连接，等待响应） */
+  async generateCommitMessage(diff: string): Promise<string> {
+    const ws = await this.createConnection();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error('生成超时'));
+      }, 30000);
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'commit_message') {
+            clearTimeout(timeout);
+            ws.close();
+            if (msg.status === 'ok') {
+              resolve(msg.text || '');
+            } else {
+              reject(new Error(msg.text || '生成失败'));
+            }
+          }
+        } catch (e) {
+          clearTimeout(timeout);
+          ws.close();
+          reject(e);
+        }
+      };
+
+      ws.send(JSON.stringify({ type: 'generate_commit_message', diff }));
+    });
+  }
+
   private closeActive() {
     if (this.activeWs) {
       this.activeWs.close();
@@ -235,6 +267,11 @@ async function registerModelToBackend(provider: { apiUrl: string; apiKey: string
 /** 推送模型配置到后端（供 App.tsx 保存设置时调用） */
 export async function sendModelConfig(provider: { apiUrl: string; apiKey: string; model: string; type?: string }) {
   await registerModelToBackend(provider, true);
+}
+
+/** AI 生成 commit message（供 App.tsx 调用） */
+export async function generateCommitMessage(diff: string): Promise<string> {
+  return WebSocketManager.getInstance().generateCommitMessage(diff);
 }
 
 export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder }: ChatViewProps) {

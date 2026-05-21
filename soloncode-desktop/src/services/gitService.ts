@@ -229,6 +229,19 @@ export const gitService = {
       return '';
     }
   },
+
+  /**
+   * 获取所有已暂存文件的 diff 文本（用于 AI 生成 commit message）
+   */
+  async diffStaged(cwd: string): Promise<string> {
+    if (!isTauriEnv()) return '';
+    try {
+      return await invoke<string>('git_diff_staged', { cwd });
+    } catch (err) {
+      console.warn('[gitService] git_diff_staged 失败:', err);
+      return '';
+    }
+  },
 };
 
 export default gitService;

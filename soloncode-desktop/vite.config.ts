@@ -9,6 +9,23 @@ export default defineConfig(async () => ({
   plugins: [react()],
 
   clearScreen: false,
+
+  // 预打包大依赖，避免 dev 模式每次冷启动重新编译
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-markdown',
+      'react-syntax-highlighter',
+      'react-syntax-highlighter/dist/esm/styles/prism',
+      'remark-breaks',
+      '@monaco-editor/react',
+      '@xterm/xterm',
+      '@xterm/addon-fit',
+      'dexie',
+    ],
+  },
+
   server: {
     port: 1420,
     strictPort: true,
@@ -43,11 +60,8 @@ export default defineConfig(async () => ({
         },
       },
     },
-    // 启用 CSS 代码分割
     cssCodeSplit: true,
-    // 压缩选项（esbuild 内置，无需额外安装 terser）
     minify: 'esbuild',
-    // chunk 大小警告阈值
     chunkSizeWarningLimit: 1000,
   },
 }));

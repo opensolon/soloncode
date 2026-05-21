@@ -15,6 +15,7 @@ interface GitPanelProps {
   onPull: () => Promise<void>;
   onDiscard: (path: string) => Promise<void>;
   onFileClick: (path: string) => void;
+  onGenerateCommitMessage?: () => Promise<string>;
 }
 
 type FeedbackType = 'success' | 'error' | 'info';
@@ -29,12 +30,14 @@ export function GitPanel({
   onPush,
   onPull,
   onDiscard,
-  onFileClick
+  onFileClick,
+  onGenerateCommitMessage
 }: GitPanelProps) {
   const [commitMessage, setCommitMessage] = useState('');
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -96,6 +99,19 @@ export function GitPanel({
       setFeedback({ type: 'error', message: `提交失败: ${err}` });
     } finally {
       setIsCommitting(false);
+    }
+  }
+
+  async function handleGenerateMessage() {
+    if (!onGenerateCommitMessage || stagedFiles.length === 0) return;
+    setIsGenerating(true);
+    try {
+      const msg = await onGenerateCommitMessage();
+      if (msg) setCommitMessage(msg);
+    } catch (err) {
+      setFeedback({ type: 'error', message: `生成失败: ${err}` });
+    } finally {
+      setIsGenerating(false);
     }
   }
 
@@ -229,13 +245,23 @@ export function GitPanel({
           onChange={(e) => setCommitMessage(e.target.value)}
           rows={3}
         />
-        <button
-          className="commit-button"
-          onClick={handleCommit}
-          disabled={isCommitting || !commitMessage.trim() || stagedFiles.length === 0}
-        >
-          {isCommitting ? '提交中...' : `提交 (${stagedFiles.length})`}
-        </button>
+        <div className="commit-actions">
+          <button
+            className="ai-generate-btn"
+            onClick={handleGenerateMessage}
+            disabled={isGenerating || stagedFiles.length === 0}
+            title="AI 生成提交注释"
+          >
+            {isGenerating ? '生成中...' : '✨ AI 生成'}
+          </button>
+          <button
+            className="commit-button"
+            onClick={handleCommit}
+            disabled={isCommitting || !commitMessage.trim() || stagedFiles.length === 0}
+          >
+            {isCommitting ? '提交中...' : `提交 (${stagedFiles.length})`}
+          </button>
+        </div>
       </div>
 
       {/* 文件列表 */}
