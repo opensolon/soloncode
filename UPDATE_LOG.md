@@ -1,4 +1,9 @@
 
+### v2026.5.22
+
+* 优化 soloncode mcp 兼容性（有些 mcp server 不完全按 mcp 规范来）
+* 升级 mcp sdk 到 v1.1.3
+
 ### v2026.5.21
 
 * 添加 soloncode web 文件查看与复制功能

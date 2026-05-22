@@ -3,6 +3,7 @@ package org.noear.solon.codecli;
 import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
 import com.agentclientprotocol.sdk.agent.transport.WebSocketSolonAcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
@@ -245,7 +246,7 @@ public class Configurator {
             agentTransport = new StdioAcpAgentTransport();
         } else {
             agentTransport = new WebSocketSolonAcpAgentTransport(
-                    agentProps.getAcpTransport(), McpJsonMapper.getDefault());
+                    agentProps.getAcpTransport(), McpJsonDefaults.getMapper());
         }
 
         new AcpLink(agentRuntime, agentTransport, agentProps).run();

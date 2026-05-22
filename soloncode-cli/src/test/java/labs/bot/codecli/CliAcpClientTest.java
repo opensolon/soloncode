@@ -5,6 +5,7 @@ import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.client.transport.AgentParameters;
 import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
 import java.net.URI;
@@ -21,7 +22,7 @@ public class CliAcpClientTest {
     public static void main(String[] args) {
         StdioAcpClientTransport transport = new StdioAcpClientTransport(
                 AgentParameters.builder("soloncode").arg("acp").build(),
-                McpJsonMapper.getDefault());
+                McpJsonDefaults.getMapper());
 
         AcpSyncClient client = AcpClient.sync(transport)
                 .requestTimeout(Duration.ofSeconds(60))
