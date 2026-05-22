@@ -9,6 +9,7 @@ import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
+import { ChannelPanel } from './components/sidebar/ChannelPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
 import { EditorPanel } from './components/editor/EditorPanel';
 import { ChatView } from './components/ChatView';
@@ -389,6 +390,8 @@ function App() {
         return <SkillsPanel skills={settings.skills} onSkillsChange={(skills) => setSettings(prev => ({ ...prev, skills }))} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} />;
       case 'agents':
         return <AgentsPanel agents={settings.agents} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} />;
+      case 'channels':
+        return <ChannelPanel backendPort={backendPort} sessionId={currentSessionId} />;
       default:
         return null;
     }

@@ -14,7 +14,9 @@ interface ChatMessagesProps {
   messages: Message[];
   isLoading: boolean;
   theme?: Theme;
+  projectName?: string;
   onDeleteMessage?: (id: number) => void;
+  onHitlAction?: (action: 'approve' | 'reject') => void;
 }
 
 export interface ChatMessagesRef {
@@ -43,7 +45,7 @@ const markdownComponents = (theme?: Theme) => ({
 const remarkPlugins = [remarkGfm, remarkBreaks];
 
 // 内容项渲染组件 — memo 化，避免消息不变时重渲染
-const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme }: { item: ContentItem; theme?: Theme }) {
+const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme, onHitlAction }: { item: ContentItem; theme?: Theme; onHitlAction?: (action: 'approve' | 'reject') => void }) {
   if (item.type === 'THINK') {
     return <ThinkBlock content={item.text} theme={theme} />;
   }
@@ -51,6 +53,25 @@ const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme }: {
   if (item.type === 'ACTION') {
     return (
       <ActionBlock text={item.text || ''} toolName={item.toolName} args={item.args} theme={theme} />
+    );
+  }
+
+  if (item.type === 'HITL') {
+    return (
+      <div className="content-item hitl-item">
+        <div className="hitl-header">
+          <span className="hitl-icon">&#9888;</span>
+          <span className="hitl-label">人工审批</span>
+        </div>
+        <div className="hitl-body">
+          {item.toolName && <div className="hitl-tool">工具: {item.toolName}</div>}
+          {item.command && <div className="hitl-command"><code>{item.command}</code></div>}
+        </div>
+        <div className="hitl-actions">
+          <button className="hitl-btn approve" onClick={() => onHitlAction?.('approve')}>允许</button>
+          <button className="hitl-btn reject" onClick={() => onHitlAction?.('reject')}>拒绝</button>
+        </div>
+      </div>
     );
   }
 
@@ -116,7 +137,7 @@ const MessageMetadata = memo(function MessageMetadata({ metadata }: { metadata: 
 });
 
 // 单条消息组件 — memo 化
-const MessageRow = memo(function MessageRow({ message, theme, onDelete }: { message: Message; theme?: Theme; onDelete?: (id: number) => void }) {
+const MessageRow = memo(function MessageRow({ message, theme, onDelete, onHitlAction }: { message: Message; theme?: Theme; onDelete?: (id: number) => void; onHitlAction?: (action: 'approve' | 'reject') => void }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -135,7 +156,7 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete }: { mess
       <div className="message-bubble">
         <div className="message-text">
           {message.contents.map((item, index) => (
-            <ContentItemRenderer key={index} item={item} theme={theme} />
+            <ContentItemRenderer key={index} item={item} theme={theme} onHitlAction={onHitlAction} />
           ))}
         </div>
       </div>
@@ -156,7 +177,7 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete }: { mess
 });
 
 export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
-  ({ messages, isLoading, theme, onDeleteMessage }, ref) => {
+  ({ messages, isLoading, theme, projectName, onDeleteMessage, onHitlAction }, ref) => {
     const chatContainer = useRef<HTMLDivElement>(null);
 
     useImperativeHandle(ref, () => ({
@@ -178,12 +199,12 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
         {messages.length === 0 && !isLoading && (
           <div className="empty-messages">
             <div className="empty-logo">SolonCode</div>
-            <div className="empty-slogan">做你想做的事</div>
+            <div className="empty-slogan">{projectName ? `在${projectName}` : ''}做你想做的事</div>
           </div>
         )}
 
         {messages.map((message) => (
-          <MessageRow key={message.id} message={message} theme={theme} onDelete={onDeleteMessage} />
+          <MessageRow key={message.id} message={message} theme={theme} onDelete={onDeleteMessage} onHitlAction={onHitlAction} />
         ))}
 
         {isLoading && (

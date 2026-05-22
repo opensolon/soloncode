@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Icon, type IconName } from '../common/Icon';
 import {
   type McpServerConfig,
@@ -59,7 +59,6 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
 export function SettingsPanel({ visible, settings, onSettingsChange, onClose, backendPort, workspacePath }: SettingsPanelProps) {
   const [activeMenu, setActiveMenu] = useState<SettingsMenuKey>('general');
   const [localSettings, setLocalSettings] = useState(settings);
-  const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (visible) {
@@ -153,10 +152,8 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
   }
 
   return (
-    <div className="settings-modal-overlay" ref={overlayRef} onClick={(e) => {
-      if (e.target === overlayRef.current) onClose();
-    }}>
-      <div className="settings-modal">
+    <div className="settings-modal-overlay" onClick={onClose}>
+      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-modal-header">
           <span className="settings-modal-title">设置</span>
           <button className="settings-modal-close" onClick={onClose}>

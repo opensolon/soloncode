@@ -370,6 +370,85 @@
   color: #fca5a5;
 }
 
+/* HITL 审批卡片 */
+.hitl-item {
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 4px 0;
+}
+
+.hitl-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.hitl-icon {
+  font-size: 16px;
+  color: #f59e0b;
+}
+
+.hitl-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cb-text-primary);
+}
+
+.hitl-body {
+  margin-bottom: 12px;
+}
+
+.hitl-tool {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  margin-bottom: 4px;
+}
+
+.hitl-command {
+  font-size: 12px;
+  background-color: var(--cb-vscode-sideBar-background);
+  border-radius: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+}
+
+.hitl-command code {
+  font-family: var(--cb-monospace-font, 'Consolas', 'Courier New', monospace);
+  color: var(--cb-text-primary);
+}
+
+.hitl-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.hitl-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.hitl-btn:hover {
+  opacity: 0.85;
+}
+
+.hitl-btn.approve {
+  background-color: #22c55e;
+  color: white;
+}
+
+.hitl-btn.reject {
+  background-color: #ef4444;
+  color: white;
+}
+
 /* 消息时间 */
 .message-time {
   font-size: 10px;

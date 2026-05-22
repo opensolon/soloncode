@@ -103,7 +103,7 @@ export function useSessions(activeProjectPath: string | null) {
       // temp 会话：先更新标题，异步持久化后替换为真实 ID
       saveConversation({ title, timestamp: exists.timestamp, status: 'active', workspacePath: exists.workspacePath || wsPath }).then(async (dbId) => {
         const realId = dbId.toString();
-        await reassignMessages(sessionId, dbId);
+        await reassignMessages(sessionId, realId);
         setSessions(p => p.map(s => s.id === sessionId ? { ...s, id: realId, title, workspacePath: wsPath } : s));
         setCurrentSessionId(realId);
       });

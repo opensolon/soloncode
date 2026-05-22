@@ -147,9 +147,11 @@ export async function saveMessage(message: Omit<DbMessage, 'id'>): Promise<numbe
 }
 
 export async function reassignMessages(oldConvId: string | number, newConvId: string | number): Promise<void> {
+  const numId = typeof oldConvId === 'string' ? parseInt(oldConvId, 10) : oldConvId;
+  const ids = isNaN(numId) ? [oldConvId] : [oldConvId, numId];
   await db.messages
     .where('conversationId')
-    .equals(oldConvId)
+    .anyOf(ids)
     .modify({ conversationId: newConvId });
 }
 
@@ -158,9 +160,12 @@ export async function getMessagesByConversation(
   limit?: number,
   offset?: number,
 ): Promise<DbMessage[]> {
+  // 同时匹配 string 和 number 类型的 conversationId
+  const numId = typeof conversationId === 'string' ? parseInt(conversationId, 10) : conversationId;
+  const ids = isNaN(numId) ? [conversationId] : [conversationId, numId];
   let collection = db.messages
     .where('conversationId')
-    .equals(conversationId);
+    .anyOf(ids);
 
   if (offset) {
     collection = collection.offset(offset);
@@ -174,9 +179,11 @@ export async function getMessagesByConversation(
 
 /** 获取会话的消息总数 */
 export async function getMessageCount(conversationId: string | number): Promise<number> {
+  const numId = typeof conversationId === 'string' ? parseInt(conversationId, 10) : conversationId;
+  const ids = isNaN(numId) ? [conversationId] : [conversationId, numId];
   return await db.messages
     .where('conversationId')
-    .equals(conversationId)
+    .anyOf(ids)
     .count();
 }
 
@@ -196,7 +203,7 @@ export async function getAllConversations(): Promise<DbConversation[]> {
 export async function deleteConversation(id: string | number): Promise<void> {
   const numId = typeof id === 'string' ? parseInt(id, 10) : id;
   if (isNaN(numId)) return;
-  await db.messages.where('conversationId').equals(numId).delete();
+  await db.messages.where('conversationId').anyOf([id, numId]).delete();
   await db.conversations.delete(numId);
 }
 

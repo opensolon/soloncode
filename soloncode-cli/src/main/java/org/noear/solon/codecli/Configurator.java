@@ -17,8 +17,10 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.memory.MemoryManger;
+import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
 import org.noear.solon.codecli.channel.feishu.FeishuLink;
+import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
@@ -173,12 +175,26 @@ public class Configurator {
     }
 
     private void runServe(HarnessEngine agentRuntime, AgentProperties agentProps, CliShell cliShell) {
-        //serve ws gate
-        WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps));
+        //serve ws gate（传入 streamBuilder 以支持 HITL 和渠道回复）
+        WebStreamBuilder streamBuilder = new WebStreamBuilder(agentRuntime);
+        WebSocketRouter.getInstance().of(agentProps.getWsEndpoint(), new WsGate(agentRuntime, agentProps, streamBuilder));
 
-        //serve web
+        //serve web controller
         BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, modelProviderFactory));
         Solon.app().router().add(webBean);
+
+        //注册第三方渠道（HTTP 端点 + 后台线程）
+        WebGate webGate = new WebGate(agentRuntime, agentProps);
+        WebChannel webChannel = new WebChannel(agentRuntime, webGate);
+        // 将渠道绑定到 WsGate 的 streamBuilder，使 IM 回复能同步到桌面端
+        for (Channel ch : webChannel.getWeChatLink() != null ? java.util.Collections.singletonList(webChannel.getWeChatLink()) : java.util.Collections.emptyList()) {
+            streamBuilder.bind(ch);
+        }
+        if (webChannel.getFeishuLink() != null) streamBuilder.bind(webChannel.getFeishuLink());
+        if (webChannel.getDingTalkLink() != null) streamBuilder.bind(webChannel.getDingTalkLink());
+        BeanWrap channelBean = Solon.context().wrapAndPut(WebChannel.class, webChannel);
+        Solon.app().router().add(channelBean);
+        RunUtil.async((Runnable) webChannel);
 
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
     }

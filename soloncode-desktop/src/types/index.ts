@@ -1,11 +1,12 @@
 export type MessageType = 'USER' | 'ASSISTANT' | 'REASON' | 'ACTION' | 'ERROR';
-export type ContentType = 'REASON' | 'ACTION' | 'TEXT' | 'ERROR' | 'THINK';
+export type ContentType = 'REASON' | 'ACTION' | 'TEXT' | 'ERROR' | 'THINK' | 'HITL';
 
 export interface ContentItem {
   type: ContentType;
   text: string;
   toolName?: string;
   args?: Record<string, unknown>;
+  command?: string;
 }
 
 export interface MessageMetadata {

@@ -1,0 +1,140 @@
+.channel-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.channel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+}
+
+.channel-tab {
+  flex: 1;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--cb-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.channel-tab:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.channel-tab.active {
+  background-color: var(--cb-vscode-list-activeSelectionBackground);
+  color: var(--cb-text-primary);
+  font-weight: 500;
+}
+
+.channel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.channel-bound {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background-color: var(--cb-vscode-input-background);
+  border-radius: 8px;
+  color: var(--cb-text-primary);
+  font-size: 13px;
+}
+
+.channel-bound .unbind-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 4px;
+  color: var(--cb-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.channel-bound .unbind-btn:hover {
+  border-color: var(--cb-error);
+  color: var(--cb-error);
+}
+
+.channel-bind {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.channel-desc {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.channel-input {
+  padding: 8px 10px;
+  background-color: var(--cb-vscode-input-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 4px;
+  color: var(--cb-text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.channel-input:focus {
+  border-color: var(--cb-accent);
+}
+
+.bind-btn {
+  padding: 8px 16px;
+  background-color: var(--cb-accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.bind-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.bind-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.qrcode-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.qrcode-img {
+  width: 180px;
+  height: 180px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--cb-vscode-panel-border);
+}
+
+.qrcode-hint {
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+}
+
+.channel-error {
+  font-size: 11px;
+  color: #ef4444;
+  margin: 0;
+}

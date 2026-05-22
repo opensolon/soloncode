@@ -285,9 +285,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
   // 累积的消息内容 - 只有 think 标签内的才是思考块
   const accumulatedContentRef = useRef<{
-    think: string;      // 思考内容（<think/`thinking`> 标签内，累积）
-    text: string;       // 正文内容（包括 reason 和 text 类型，累积）
-    actions: Array<{    // 每个工具调用独立一个块
+    think: string;
+    text: string;
+    actions: Array<{
       text: string;
       toolName?: string;
       args?: Record<string, unknown>;
@@ -297,6 +297,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     text: '',
     actions: [],
   });
+
+  // 待持久化的首条用户消息（新会话时暂存，done/error 时真正保存）
+  const pendingPersistRef = useRef<{
+    sessionId: string;
+    userMessage: { timestamp: string; contents: string };
+    messageText: string;
+  } | null>(null);
 
   // 当前 assistant 消息 ID
   const assistantMsgIdRef = useRef<number>(0);
@@ -362,12 +369,38 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   useEffect(() => {
     const wsManager = WebSocketManager.getInstance();
 
-    const handleMessage = (data: any) => {
+    // 持久化待保存的用户消息（仅保存消息，不触发会话持久化）
+    // 返回 pending 信息供 done/error 后触发会话持久化
+    async function flushPendingUserMessage(): Promise<{ sessionId: string; title: string; wasNew: boolean } | null> {
+      const pending = pendingPersistRef.current;
+      if (!pending) return null;
+      pendingPersistRef.current = null;
+
+      await saveMessage({
+        conversationId: pending.sessionId,
+        role: 'USER',
+        timestamp: pending.userMessage.timestamp,
+        contents: pending.userMessage.contents,
+        workspacePath,
+      });
+
+      return {
+        sessionId: pending.sessionId,
+        title: pending.messageText.trim().slice(0, 20) + (pending.messageText.trim().length > 20 ? '...' : ''),
+        wasNew: pending.sessionId.startsWith('temp-'),
+      };
+    }
+
+    const handleMessage = async (data: any) => {
       const msgSessionId = data.sessionId || conversationIdRef.current.toString();
 
       // done / error 类型必须处理，不受 session 校验限制（保证 loading 状态正确）
       if (data.type === 'done') {
         clearLoadingTimer();
+
+        // 持久化用户消息（如果是新会话）
+        const pending = await flushPendingUserMessage();
+
         // 构建最终消息
         const contentItems = buildContentItems();
         if (contentItems.length > 0) {
@@ -384,19 +417,23 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           };
 
           setMessages(prev => {
-            // 移除之前的临时消息，添加最终消息
             const filtered = prev.filter(m => m.id !== assistantMsgIdRef.current);
             return [...filtered, finalMsg];
           });
 
-          // 保存到数据库（包含 metadata）
-          saveMessage({
-            conversationId: msgSessionId,
+          // 保存助手消息（用 temp ID，后续 reassignMessages 会统一转换）
+          await saveMessage({
+            conversationId: pending?.sessionId || msgSessionId,
             role: 'ASSISTANT',
             timestamp: finalMsg.timestamp,
             contents: JSON.stringify({ items: contentItems, metadata: finalMsg.metadata }),
             workspacePath,
-          }).catch(err => console.error('Failed to save message:', err));
+          });
+        }
+
+        // 所有消息保存后，触发会话持久化（reassignMessages 会把 temp ID 转为 real ID）
+        if (pending?.wasNew && onUpdateSessionTitle) {
+          onUpdateSessionTitle(pending.sessionId, pending.title);
         }
 
         // 重置累积器
@@ -414,6 +451,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
       if (data.type === 'error') {
         clearLoadingTimer();
+
+        // 即使出错也要持久化用户消息
+        const pending = await flushPendingUserMessage();
+
         const errorText = data.text || '未知错误';
         const errorMsg: Message = {
           id: Date.now(),
@@ -422,6 +463,20 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           contents: [{ type: 'ERROR', text: errorText }]
         };
         setMessages(prev => [...prev, errorMsg]);
+
+        await saveMessage({
+          conversationId: pending?.sessionId || msgSessionId,
+          role: 'ERROR',
+          timestamp: errorMsg.timestamp,
+          contents: JSON.stringify(errorMsg.contents),
+          workspacePath,
+        });
+
+        // 所有消息保存后，触发会话持久化
+        if (pending?.wasNew && onUpdateSessionTitle) {
+          onUpdateSessionTitle(pending.sessionId, pending.title);
+        }
+
         setIsLoading(false);
         isStreamingRef.current = false;
         return;
@@ -432,8 +487,39 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         return;
       }
 
-      const type = (data.type as string).toUpperCase() as ContentType;
+      // HITL 审批请求 — 直接追加到当前消息
+      if (data.type === 'hitl') {
+        const hitlItem: ContentItem = {
+          type: 'HITL',
+          text: '',
+          toolName: data.toolName,
+          command: data.command,
+        };
+        setMessages(prev => {
+          const contentItems = buildContentItems();
+          contentItems.push(hitlItem);
+          const tempMsg: Message = {
+            id: assistantMsgIdRef.current,
+            role: 'ASSISTANT',
+            timestamp: new Date().toLocaleTimeString(),
+            contents: contentItems
+          };
+          const existingIndex = prev.findIndex(m => m.id === assistantMsgIdRef.current);
+          if (existingIndex >= 0) {
+            const updated = [...prev];
+            updated[existingIndex] = tempMsg;
+            return updated;
+          }
+          return [...prev, tempMsg];
+        });
+        chatMessagesRef.current?.scrollToBottom();
+        return;
+      }
+
+      const rawType = (data.type as string).toUpperCase();
+      const type = (rawType === 'COMMAND' ? 'TEXT' : rawType) as ContentType;
       let text = filterEmptyTags(data.text || '');
+      if (rawType === 'COMMAND') text += '\n';
 
       if (text === '') return;
 
@@ -448,11 +534,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         case 'THINK':
           acc.think += text;
           break;
-        case 'COMMAND':
-          acc.text += text + '\n';
+        case 'TEXT':
+          acc.text += text;
           break;
         case 'REASON':
-          // reason 也是正文内容
           acc.text += text;
           break;
         case 'ACTION':
@@ -551,22 +636,6 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     // 标记流式状态，防止会话 ID 变化时重新加载消息
     isStreamingRef.current = true;
 
-    // 首次发送时将会话保存到列表
-    if (onUpdateSessionTitle && !sessionId.startsWith('temp-')) {
-      // 已持久化的会话，仅首次更新标题
-    } else if (onUpdateSessionTitle) {
-      const title = messageText.trim().slice(0, 20) + (messageText.trim().length > 20 ? '...' : '');
-      onUpdateSessionTitle(sessionId, title);
-    }
-
-    await saveMessage({
-      conversationId: sessionId,
-      role: 'USER',
-      timestamp: userMessage.timestamp,
-      contents: JSON.stringify(userMessage.contents),
-      workspacePath,
-    });
-
     setIsLoading(true);
     startLoadingTimer(); // 开始超时计时
 
@@ -580,6 +649,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     assistantMsgIdRef.current = Date.now() + Math.floor(Math.random() * 1000);
 
     chatMessagesRef.current?.scrollToBottom();
+
+    // 暂存用户消息信息，等 done/error 时再真正持久化
+    pendingPersistRef.current = {
+      sessionId: sessionId!,
+      userMessage: {
+        timestamp: userMessage.timestamp,
+        contents: JSON.stringify(userMessage.contents),
+      },
+      messageText,
+    };
 
     try {
       const wsManager = WebSocketManager.getInstance();
@@ -633,21 +712,41 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
     } catch (error) {
       console.error('Failed to send message:', error);
-      const errorMessage: Message = {
-        id: Date.now() + 1,
-        role: 'ERROR',
-        timestamp: new Date().toLocaleTimeString(),
-        contents: [{ type: 'ERROR', text: `请求失败: ${error instanceof Error ? error.message : '未知错误'}` }]
-      };
-      setMessages(prev => [...prev, errorMessage]);
 
-      await saveMessage({
-        conversationId: sessionId,
-        role: 'ERROR',
-        timestamp: errorMessage.timestamp,
-        contents: JSON.stringify(errorMessage.contents),
-        workspacePath,
-      });
+      // WS 连接失败时不会有 done/error 回调，直接在此持久化
+      const pending = pendingPersistRef.current;
+      if (pending) {
+        pendingPersistRef.current = null;
+        await saveMessage({
+          conversationId: pending.sessionId,
+          role: 'USER',
+          timestamp: pending.userMessage.timestamp,
+          contents: pending.userMessage.contents,
+          workspacePath,
+        });
+
+        const errorMessage: Message = {
+          id: Date.now() + 1,
+          role: 'ERROR',
+          timestamp: new Date().toLocaleTimeString(),
+          contents: [{ type: 'ERROR', text: `请求失败: ${error instanceof Error ? error.message : '未知错误'}` }]
+        };
+        setMessages(prev => [...prev, errorMessage]);
+
+        await saveMessage({
+          conversationId: pending.sessionId,
+          role: 'ERROR',
+          timestamp: errorMessage.timestamp,
+          contents: JSON.stringify(errorMessage.contents),
+          workspacePath,
+        });
+
+        // 触发会话持久化（reassignMessages 会处理 temp→real）
+        if (pending.sessionId.startsWith('temp-') && onUpdateSessionTitle) {
+          onUpdateSessionTitle(pending.sessionId, pending.messageText.trim().slice(0, 20) + (pending.messageText.trim().length > 20 ? '...' : ''));
+        }
+      }
+
       setIsLoading(false);
       isStreamingRef.current = false;
     }
@@ -702,6 +801,27 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   }, [currentConversationId]);
 
   // 停止当前请求
+  const handleHitlAction = useCallback(async (action: 'approve' | 'reject') => {
+    const ws = WebSocketManager.getInstance() as any;
+    if (ws.activeWs && ws.activeWs.readyState === WebSocket.OPEN) {
+      ws.activeWs.send(JSON.stringify({
+        type: 'hitl_action',
+        action,
+        sessionId: sessionIdRef.current,
+      }));
+    } else {
+      // 短连接发送
+      const mgr = WebSocketManager.getInstance();
+      const conn = await (mgr as any).createConnection(sessionIdRef.current);
+      conn.send(JSON.stringify({
+        type: 'hitl_action',
+        action,
+        sessionId: sessionIdRef.current,
+      }));
+      conn.close();
+    }
+  }, []);
+
   const handleStop = useCallback(() => {
     WebSocketManager.getInstance().cancel();
     clearLoadingTimer();
@@ -754,7 +874,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       {showHeader && (
         <ChatHeader title={currentConversation.title} status={currentConversation.status} projectName={currentConversation.workspacePath && currentConversation.workspacePath === workspacePath ? projectName : undefined} />
       )}
-      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isLoading} theme={theme} onDeleteMessage={handleDeleteMessage} />
+      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isLoading} theme={theme} projectName={projectName} onDeleteMessage={handleDeleteMessage} onHitlAction={handleHitlAction} />
 
       {isEmpty ? (
         <div className="empty-center-container">
