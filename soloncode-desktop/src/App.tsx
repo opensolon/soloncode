@@ -552,7 +552,7 @@ function App() {
                           if (msg.type === 'done') {
                             clearTimeout(timeout);
                             ws.close();
-                            resolve(text.trim());
+                            resolve(text.replace(/\s*`?\(?[\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*`?$/gm, '').trim());
                           }
                           if (msg.type === 'error') {
                             clearTimeout(timeout);

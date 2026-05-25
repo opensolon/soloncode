@@ -18,6 +18,11 @@ package org.noear.solon.codecli.portal;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.agent.react.ReActChunk;
+import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.task.ActionEndChunk;
+import org.noear.solon.ai.agent.react.task.ReasonChunk;
+import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.ChatModel;
@@ -29,6 +34,8 @@ import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
+import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -36,6 +43,8 @@ import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -230,27 +239,15 @@ public class WsGate extends SimpleWebSocketListener {
 
             String finalCwd = cwd;
 
-            // 使用 WebStreamBuilder 构建流（支持 HITL + IM 渠道回复）
+            // 直接构建 Agent 流
             final String finalModelName = chatModel.getConfig().getNameOrModel();
-            Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, finalCwd, prompt)
+            final String[] traceMeta = {finalModelName, "0"};
+
+            Disposable disposable = buildDirectStreamFlux(session, agent, chatModel, finalCwd, prompt, traceMeta)
                     .doFinally(signal -> session.attrs().remove("disposable"))
                     .subscribe(
                             chunk -> {
-                                // 缓存 meta 数据，用于填充 done 的真实值
-                                if ("meta".equals(chunk.getType())) {
-                                    if (chunk.getModelName() != null) {
-                                        session.attrs().put("_lastMetaModel", chunk.getModelName());
-                                    }
-                                    if (chunk.getTotalTokens() != null) {
-                                        session.attrs().put("_lastMetaTokens", chunk.getTotalTokens());
-                                    }
-                                    if (chunk.getElapsedMs() != null) {
-                                        session.attrs().put("_lastMetaElapsed", chunk.getElapsedMs());
-                                    }
-                                    return; // meta 不发送到前端
-                                }
-
-                                String msg = webChunkToJson(chunk, finalSessionId, finalModelName, session);
+                                String msg = webChunkToJson(chunk, finalSessionId);
                                 if (msg != null) {
                                     socket.send(msg);
                                 }
@@ -276,7 +273,7 @@ public class WsGate extends SimpleWebSocketListener {
     /**
      * 将 WebChunk 转换为桌面端 WebSocket JSON 格式
      */
-    private String webChunkToJson(WebChunk chunk, String sessionId, String modelName, AgentSession session) {
+    private String webChunkToJson(WebChunk chunk, String sessionId) {
         if (chunk == null || chunk.getType() == null) return null;
 
         ONode node = new ONode().set("sessionId", sessionId);
@@ -304,19 +301,9 @@ public class WsGate extends SimpleWebSocketListener {
                 break;
             case "done":
                 node.set("type", "done");
-                String doneModel = (String) session.attrs().getOrDefault("_lastMetaModel",
-                        modelName != null ? modelName : kernel.getMainModel().getConfig().getNameOrModel());
-                long doneTokens = session.attrs().get("_lastMetaTokens") != null
-                        ? (Long) session.attrs().get("_lastMetaTokens") : 0;
-                long doneElapsed = session.attrs().get("_lastMetaElapsed") != null
-                        ? (Long) session.attrs().get("_lastMetaElapsed") : 0;
-                node.set("modelName", doneModel);
-                node.set("totalTokens", doneTokens);
-                node.set("elapsedMs", doneElapsed);
-                // 清理缓存
-                session.attrs().remove("_lastMetaModel");
-                session.attrs().remove("_lastMetaTokens");
-                session.attrs().remove("_lastMetaElapsed");
+                node.set("modelName", chunk.getModelName() != null ? chunk.getModelName() : "");
+                node.set("totalTokens", chunk.getTotalTokens() != null ? chunk.getTotalTokens() : 0);
+                node.set("elapsedMs", chunk.getElapsedMs() != null ? chunk.getElapsedMs() : 0);
                 break;
             case "error":
                 node.set("type", "error");
@@ -370,11 +357,13 @@ public class WsGate extends SimpleWebSocketListener {
             ReActAgent agent = kernel.getAgentOrMain(null);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
 
-            Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, cwd, null)
+            final String[] traceMeta = {chatModel.getConfig().getNameOrModel(), "0"};
+
+            Disposable disposable = buildDirectStreamFlux(session, agent, chatModel, cwd, null, traceMeta)
                     .doFinally(signal -> session.attrs().remove("disposable"))
                     .subscribe(
                             chunk -> {
-                                String msg = webChunkToJson(chunk, sessionId, modelName, session);
+                                String msg = webChunkToJson(chunk, sessionId);
                                 if (msg != null) socket.send(msg);
                             },
                             err -> socket.send(new ONode().set("type", "error")
@@ -454,6 +443,114 @@ public class WsGate extends SimpleWebSocketListener {
     private String escapeYaml(String value) {
         if (value == null) return "";
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private Flux<WebChunk> buildDirectStreamFlux(AgentSession session, ReActAgent agent, ChatModel chatModel,
+                                                  String sessionCwd, Prompt prompt, String[] traceMeta) {
+        Prompt effectivePrompt = prompt;
+        if (effectivePrompt == null || "/resume".equals(effectivePrompt.getUserContent())) {
+            effectivePrompt = Prompt.of();
+        }
+
+        session.attrs().put("_agent_selected_tmp", agent.name());
+        final long streamStart = System.currentTimeMillis();
+
+        return agent.prompt(effectivePrompt)
+                .session(session)
+                .options(o -> {
+                    o.chatModel(chatModel);
+                    if (Assert.isNotEmpty(sessionCwd)) {
+                        o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
+                    }
+                })
+                .stream()
+                .map(chunk -> {
+                    if (chunk instanceof ReasonChunk) {
+                        ReasonChunk reason = (ReasonChunk) chunk;
+                        if (!reason.isToolCalls() && reason.hasContent()) {
+                            return reason.getMessage().isThinking()
+                                    ? WebChunk.ofReason(reason.getContent())
+                                    : WebChunk.ofText(reason.getContent());
+                        }
+                        return WebChunk.EMPTY;
+                    } else if (chunk instanceof ThoughtChunk) {
+                        ThoughtChunk thought = (ThoughtChunk) chunk;
+                        if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+                            String content = thought.getAssistantMessage().getResultContent();
+                            if (Assert.isNotEmpty(content)) {
+                                return WebChunk.ofText("\n" + content);
+                            }
+                        }
+                        return WebChunk.EMPTY;
+                    } else if (chunk instanceof ActionEndChunk) {
+                        return onActionEnd((ActionEndChunk) chunk);
+                    } else if (chunk instanceof ReActChunk) {
+                        return onReactEnd((ReActChunk) chunk, traceMeta);
+                    }
+                    return WebChunk.EMPTY;
+                })
+                .filter(WebChunk::isNotEmpty)
+                .onErrorResume(e -> {
+                    LOG.error("Task fail: {}", e.getMessage(), e);
+                    return Mono.just(WebChunk.ofError(e));
+                })
+                .concatWith(Flux.defer(() -> {
+                    WebChunk doneChunk = WebChunk.ofDone();
+                    doneChunk.setModelName(traceMeta[0]);
+                    doneChunk.setTotalTokens(Long.parseLong(traceMeta[1]));
+                    doneChunk.setElapsedMs(System.currentTimeMillis() - streamStart);
+
+                    if (HITL.isHitl(session)) {
+                        HITLTask task = HITL.getPendingTask(session);
+                        if (task != null) {
+                            String command = "bash".equals(task.getToolName())
+                                    ? String.valueOf(task.getArgs().get("command"))
+                                    : null;
+                            return Flux.just(WebChunk.ofHitl(task.getToolName(), command), doneChunk);
+                        }
+                    }
+                    return Flux.just(doneChunk);
+                }));
+    }
+
+    private WebChunk onActionEnd(ActionEndChunk action) {
+        if (Assert.isEmpty(action.getToolName())) {
+            return WebChunk.EMPTY;
+        }
+
+        if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
+                TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
+                MemorySkill.isMemoryTool(action.getToolName())) {
+            return WebChunk.EMPTY;
+        }
+
+        WebChunk webChunk = WebChunk.ofAction(action.getContent());
+        if (kernel.getName().equals(action.getAgentName())) {
+            webChunk.setToolName(action.getToolName());
+        } else {
+            webChunk.setToolName(action.getAgentName() + "/" + action.getToolName());
+        }
+        webChunk.setArgs(action.getArgs());
+
+        if ("todowrite".equals(action.getToolName())) {
+            String todos = (String) action.getArgs().get("todos");
+            if (Assert.isNotEmpty(todos)) {
+                webChunk.setText(todos);
+            }
+        }
+
+        return webChunk;
+    }
+
+    private WebChunk onReactEnd(ReActChunk react, String[] traceMeta) {
+        ReActTrace trace = react.getTrace();
+        if (trace != null) {
+            traceMeta[0] = trace.getOptions().getChatModel().getNameOrModel();
+            if (trace.getMetrics() != null) {
+                traceMeta[1] = String.valueOf(trace.getMetrics().getTotalTokens());
+            }
+        }
+        return WebChunk.EMPTY;
     }
 
     private void handleCommand(WebSocket socket, AgentSession session, ReActAgent agent, ChatModel chatModel,
