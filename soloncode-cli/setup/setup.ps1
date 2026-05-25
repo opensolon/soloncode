@@ -5,7 +5,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$VERSION = "v2026.5.19"
+$VERSION = "v2026.5.22"
 $PACKAGE_URL = "https://gitee.com/opensolon/soloncode/releases/download/$VERSION/soloncode-cli-bin-$VERSION.tar.gz"
 $TEMP_DIR = Join-Path $env:TEMP "soloncode-install"
 
@@ -73,7 +73,9 @@ try {
     Write-Info "Installation complete!"
     Write-Host ""
     Write-Host "You can now run: " -NoNewline
-    Write-Host "soloncode" -ForegroundColor Cyan
+    Write-Host "soloncode" -ForegroundColor Cyan -NoNewline
+    Write-Host " or " -NoNewline
+    Write-Host "soloncode web 0" -ForegroundColor Cyan
     Write-Host ""
 
 } catch {

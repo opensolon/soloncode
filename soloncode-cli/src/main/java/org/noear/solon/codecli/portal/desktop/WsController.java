@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.portal;
+package org.noear.solon.codecli.portal.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.chat.ChatConfig;

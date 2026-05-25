@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Un agent de codage open-source construit avec <a href="https://github.com/opensolon/solon-ai">Solon AI</a> et Java (prend en charge les environnements d'exécution Java8 à Java26)</p>
-<p>Dernière version : v2026.5.19</p>
+<p>Dernière version : v2026.5.22</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -36,16 +36,28 @@ Configuration (doit être modifiée après l'installation) :
 
 ## Exécution
 
-Exécutez la commande `soloncode` depuis n'importe quel répertoire dans la console (c'est-à-dire votre espace de travail).
+Exécutez la commande `soloncode` (CLI interactif) ou `soloncode web 0` (Web interactif) depuis n'importe quel répertoire dans la console (c'est-à-dire votre espace de travail).
+
+* `soloncode` (CLI interactif)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.19
-/Users/noear
+SolonCode v2026.5.22 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web interactif)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.22 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Test des fonctionnalités (essayez les tâches suivantes, de la plus simple à la plus complexe) :

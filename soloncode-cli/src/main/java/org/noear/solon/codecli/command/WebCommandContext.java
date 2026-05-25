@@ -15,14 +15,10 @@
  */
 package org.noear.solon.codecli.command;
 
-import org.jline.reader.LineReader;
-import org.jline.terminal.Terminal;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.codecli.portal.WebGate;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**

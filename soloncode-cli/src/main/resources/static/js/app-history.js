@@ -45,6 +45,13 @@ historyList.addEventListener('click', function(e) {
         if (!isNaN(idx)) deleteSession(idx);
         return;
     }
+    var renameBtn = e.target.closest('.sidebar-item-rename');
+    if (renameBtn) {
+        e.stopPropagation();
+        var idx = parseInt(renameBtn.closest('.sidebar-item').getAttribute('data-idx'));
+        if (!isNaN(idx)) startRename(idx);
+        return;
+    }
     var item = e.target.closest('.sidebar-item');
     if (item) {
         var idx = parseInt(item.getAttribute('data-idx'));
@@ -77,11 +84,60 @@ function updateHistoryUI() {
             spinner.title = '对话进行中...';
             item.appendChild(spinner);
         }
+        var renameBtn = document.createElement('button');
+        renameBtn.className = 'sidebar-item-rename';
+        renameBtn.title = '重命名';
+        renameBtn.innerHTML = '<i class="layui-icon layui-icon-edit"></i>';
+        item.appendChild(renameBtn);
         item.appendChild(delBtn);
         frag.appendChild(item);
     }
     historyList.innerHTML = '';
     historyList.appendChild(frag);
+}
+
+function startRename(idx) {
+    var item = historyList.querySelector('.sidebar-item[data-idx="' + idx + '"]');
+    if (!item) return;
+    var labelEl = item.querySelector('.sidebar-item-label');
+    if (!labelEl) return;
+
+    var currentLabel = chatHistory[idx].label.replace(/\.\.\.$/, '');
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'sidebar-rename-input';
+    input.value = currentLabel;
+    input.maxLength = 50;
+
+    labelEl.style.display = 'none';
+    item.querySelector('.sidebar-item-rename').style.display = 'none';
+    item.insertBefore(input, labelEl);
+    input.focus();
+    input.select();
+
+    function finishRename() {
+        var newLabel = input.value.trim();
+        if (newLabel && newLabel !== currentLabel) {
+            newLabel = newLabel.length > 30 ? newLabel.substring(0, 30) + '...' : newLabel;
+            chatHistory[idx].label = newLabel;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/chat/sessions/rename', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.send('sessionId=' + encodeURIComponent(chatHistory[idx].sessionId) + '&label=' + encodeURIComponent(newLabel));
+        }
+        input.remove();
+        labelEl.style.display = '';
+        var renameBtn = item.querySelector('.sidebar-item-rename');
+        if (renameBtn) renameBtn.style.display = '';
+        updateHistoryUI();
+    }
+
+    input.addEventListener('blur', finishRename);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentLabel; input.blur(); }
+    });
 }
 
 function deleteSession(idx) {
@@ -176,11 +232,11 @@ loadSessionHistory();
 /* ===== Command System ===== */
 var commandList = []; // [{name, description, type}, ...]
 var commandsLoaded = false;
-var cmdTrigger = null; // '/' for commands, '@' for subagents
+var cmdTrigger = null; // '/' for commands, '@' for subagents, '$' for skills
 
 function loadCommands() {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/commands', true);
+    xhr.open('GET', '/chat/hints', true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -209,7 +265,7 @@ function showCmdComplete(inputEl, completeEl, prefix) {
 
     var trigger = prefix.charAt(0);
     var query = prefix.substring(1).toLowerCase();
-    var filterType = (trigger === '@') ? 'subagent' : 'command';
+    var filterType = (trigger === '@') ? 'subagent' : (trigger === '$') ? 'skill' : 'command';
     cmdVisibleItems = [];
     var html = '';
 
@@ -219,7 +275,7 @@ function showCmdComplete(inputEl, completeEl, prefix) {
         if (cmd.type !== filterType) continue;
         if (cmd.name.toLowerCase().indexOf(query) === 0 || query.length === 0) {
             cmdVisibleItems.push(cmd);
-            var nameClass = (trigger === '@') ? 'cmd-name subagent' : 'cmd-name';
+            var nameClass = (trigger === '@') ? 'cmd-name subagent' : (trigger === '$') ? 'cmd-name skill' : 'cmd-name';
             html += '<div class="cmd-complete-item" data-index="' + (cmdVisibleItems.length - 1) + '">'
                 + '<span class="' + nameClass + '">' + escapeHtml(trigger + cmd.name) + '</span>'
                 + '<span class="cmd-desc">' + escapeHtml(cmd.description || '') + '</span>'
@@ -304,8 +360,8 @@ function handleInputForCommands(e) {
     var completeEl = (inputEl === welcomeInput) ? welcomeCmdComplete : chatCmdComplete;
     var val = inputEl.value;
 
-    if (val.indexOf('/') === 0 || val.indexOf('@') === 0) {
-        // Only show completion when cursor is at the command/agent name part (no spaces yet)
+    if (val.indexOf('/') === 0 || val.indexOf('@') === 0 || val.indexOf('$') === 0) {
+        // Only show completion when cursor is at the command/agent/skill name part (no spaces yet)
         var cursorPos = inputEl.selectionStart;
         var textBeforeCursor = val.substring(0, cursorPos);
         var spaceIndex = textBeforeCursor.indexOf(' ');
@@ -339,6 +395,12 @@ document.getElementById('welcomeAgentBtn').addEventListener('click', function() 
 });
 document.getElementById('chatAgentBtn').addEventListener('click', function() {
     triggerCmdComplete(chatInput, chatCmdComplete, '@');
+});
+document.getElementById('welcomeSkillBtn').addEventListener('click', function() {
+    triggerCmdComplete(welcomeInput, welcomeCmdComplete, '$');
+});
+document.getElementById('chatSkillBtn').addEventListener('click', function() {
+    triggerCmdComplete(chatInput, chatCmdComplete, '$');
 });
 
 welcomeInput.addEventListener('input', handleInputForCommands);
@@ -390,7 +452,7 @@ chatCmdComplete.addEventListener('click', function(e) {
 
 // Hide on outside click
 document.addEventListener('click', function(e) {
-    if (!e.target.closest('.cmd-complete') && !e.target.closest('.history-panel') && !e.target.closest('textarea') && !e.target.closest('#welcomeCmdBtn') && !e.target.closest('#welcomeAgentBtn') && !e.target.closest('#chatCmdBtn') && !e.target.closest('#chatAgentBtn')) {
+    if (!e.target.closest('.cmd-complete') && !e.target.closest('.history-panel') && !e.target.closest('textarea') && !e.target.closest('#welcomeCmdBtn') && !e.target.closest('#welcomeAgentBtn') && !e.target.closest('#chatCmdBtn') && !e.target.closest('#chatAgentBtn') && !e.target.closest('#welcomeSkillBtn') && !e.target.closest('#chatSkillBtn')) {
         hideCmdComplete();
         hideHistoryPanel();
     }

@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a> ve Java ile oluşturulmuş açık kaynaklı bir kodlama ajanıdır (Java8'den Java26'ya kadar olan çalışma ortamlarını destekler)</p>
-<p>En Son Sürüm: v2026.5.19</p>
+<p>En Son Sürüm: v2026.5.22</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -36,16 +36,28 @@ Yapılandırma (kurulumdan sonra mutlaka düzenlenmelidir):
 
 ## Çalıştırma
 
-Konsolda herhangi bir dizinden `soloncode` komutunu çalıştırın (yani çalışma alanınızdan).
+Konsolda herhangi bir dizinden `soloncode` (CLI etkileşimli) veya `soloncode web 0` (Web etkileşimli) komutunu çalıştırın (yani çalışma alanınızdan).
+
+* `soloncode` (CLI etkileşimli)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.19
-/Users/noear
+SolonCode v2026.5.22 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web etkileşimli)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.22 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Özellik Testi (basitten karmaşığa aşağıdaki görevleri deneyin):

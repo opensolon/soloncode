@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.portal;
+package org.noear.solon.codecli.portal.web;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
@@ -58,16 +58,33 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class WebGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WebGate.class);
 
+    /** AI 引擎实例，提供会话管理、模型获取、命令注册等核心能力 */
     private final HarnessEngine engine;
+
+    /** Agent 配置属性（模型参数、工作空间路径等） */
     private final AgentProperties agentProps;
+
+    /** 流式响应构建器，负责组装 ReAct Agent 的流式输出并通过本网关推送 */
     private final WebStreamBuilder streamBuilder;
 
     /**
-     * WebSocket 连接池：每个浏览器 Tab 一个连接
+     * WebSocket 连接池。
+     *
+     * <p>每个浏览器 Tab 建立一个独立的 WebSocket 连接并注册到此列表中。
+     * 所有出站消息（AI 响应、命令输出、系统事件）均通过遍历此列表广播，
+     * 每条消息携带 sessionId 由前端自行路由到对应会话面板。</p>
+     *
+     * <p>使用 {@link CopyOnWriteArrayList} 保证并发读写安全。</p>
      */
     private final List<WebSocket> connections = new CopyOnWriteArrayList<>();
 
 
+    /**
+     * 构造网关实例。
+     *
+     * @param engine     AI 引擎，提供会话、模型、Agent、命令等核心服务
+     * @param agentProps Agent 配置属性
+     */
     public WebGate(HarnessEngine engine, AgentProperties agentProps) {
         this.engine = engine;
         this.agentProps = agentProps;
@@ -75,26 +92,54 @@ public class WebGate extends SimpleWebSocketListener {
     }
 
     /**
-     * 获取 WebStreamBuilder 实例（供 WeChatLink 等组件使用）
+     * 获取流式响应构建器。
+     *
+     * <p>供 WeChatLink 等外部组件引用，用于构建与 WebSocket 网关共享的流式输出管道。</p>
+     *
+     * @return 当前网关关联的 {@link WebStreamBuilder} 实例
      */
     public WebStreamBuilder getStreamBuilder() {
         return streamBuilder;
     }
 
-    // ==================== WebSocket 生命周期 ====================
+    // ═══════════════════════════════════════════════════════════════
+    //  WebSocket 生命周期管理
+    // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * WebSocket 连接建立时回调。
+     *
+     * <p>将新连接加入 {@link #connections} 连接池，后续出站消息将自动广播至此连接。</p>
+     *
+     * @param socket 新建立的 WebSocket 连接
+     */
     @Override
     public void onOpen(WebSocket socket) {
         connections.add(socket);
         LOG.info("[WebGate] WebSocket opened: {}", socket.id());
     }
 
+    /**
+     * WebSocket 连接关闭时回调。
+     *
+     * <p>从 {@link #connections} 连接池中移除已断开的连接，停止向其推送消息。</p>
+     *
+     * @param socket 已关闭的 WebSocket 连接
+     */
     @Override
     public void onClose(WebSocket socket) {
         connections.remove(socket);
         LOG.info("[WebGate] WebSocket closed: {}", socket.id());
     }
 
+    /**
+     * WebSocket 文本消息接收回调。
+     *
+     * <p>当前仅处理心跳检测（ping/pong），业务消息通过 HTTP 接口入口进入。</p>
+     *
+     * @param socket 来源 WebSocket 连接
+     * @param text   接收到的文本消息
+     */
     @Override
     public void onMessage(WebSocket socket, String text) throws IOException {
         // 心跳处理
@@ -104,10 +149,18 @@ public class WebGate extends SimpleWebSocketListener {
     }
 
 
-    // ==================== 输出端口 ====================
+    // ═══════════════════════════════════════════════════════════════
+    //  输出端口 —— 向前端推送消息
+    // ═══════════════════════════════════════════════════════════════
 
     /**
-     * 统一输出：通过 WebSocket 推送 JSON 到前端（消息携带 sessionId）
+     * 统一输出：将消息块通过 WebSocket 推送至前端。
+     *
+     * <p>将 sessionId 注入到消息块中，然后序列化为 JSON 广播给所有已连接的前端。
+     * 前端根据消息中的 sessionId 字段路由到对应的会话面板进行渲染。</p>
+     *
+     * @param sessionId 会话标识，用于前端路由消息到正确的会话面板
+     * @param jsonChunk 待推送的消息块（可为文本流、错误、完成信号等多种类型）
      */
     public void emitToClient(String sessionId, WebChunk jsonChunk) {
         if (jsonChunk == null) {
@@ -135,10 +188,49 @@ public class WebGate extends SimpleWebSocketListener {
         }
     }
 
-    // ==================== 输入端口 ====================
+    /**
+     * 广播原始 JSON 字符串到所有 WebSocket 连接。
+     *
+     * <p>与 {@link #emitToClient} 不同，此方法不注入 sessionId，
+     * 适用于系统级事件（如文件变化通知）等需要全局广播的场景。</p>
+     *
+     * @param json 待广播的原始 JSON 字符串
+     */
+    public void broadcastRaw(String json) {
+        for (WebSocket socket : connections) {
+            if (socket != null) {
+                try {
+                    socket.send(json);
+                } catch (Throwable e) {
+                    LOG.warn("[WebGate] broadcastRaw failed for {}: {}", socket.id(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  输入端口 —— 接收并处理用户请求
+    // ═══════════════════════════════════════════════════════════════
 
     /**
-     * ① 用户聊天输入（由 WebController 调用）
+     * 用户聊天输入入口（由 WebController HTTP 接口调用）。
+     *
+     * <p>核心处理流程：</p>
+     * <ol>
+     *   <li>解析 Agent 指定前缀（如 "@agentName 消息内容"）</li>
+     *   <li>处理 HITL（Human-in-the-Loop）审批/拒绝操作</li>
+     *   <li>处理文件附件上传（图片走 Base64 编码，其他走文件路径引用）</li>
+     *   <li>判断是否为斜杠命令（/command），若是则走命令分发</li>
+     *   <li>构建 Prompt 并启动 Agent 流式任务</li>
+     * </ol>
+     *
+     * @param sessionId       会话标识
+     * @param sessionCwd      会话当前工作目录，用于 Agent 执行文件操作的基准路径
+     * @param input           用户输入的文本内容
+     * @param selectedModel   用户选择的 AI 模型标识（可为 null，表示使用默认模型）
+     * @param attachments     上传的文件附件数组（可为 null）
+     * @param attachmentTypes 附件类型数组，与 attachments 一一对应（如 "image"）
+     * @param hitlAction      HITL 操作类型，取值 "approve" 或 "reject"（可为 null）
      */
     public void onChatInput(String sessionId,
                             String sessionCwd,
@@ -154,7 +246,10 @@ public class WebGate extends SimpleWebSocketListener {
                 int agentNameIdx = currentInput.indexOf(" ");
                 if (agentNameIdx > 0) {
                     agentName = currentInput.substring(1, agentNameIdx);
-                    currentInput = currentInput.substring(agentNameIdx + 1);
+
+                    if (engine.getAgentManager().hasAgent(agentName)) {
+                        currentInput = currentInput.substring(agentNameIdx + 1);
+                    }
                 }
             }
 
@@ -254,6 +349,19 @@ public class WebGate extends SimpleWebSocketListener {
         }
     }
 
+    /**
+     * 执行 Agent 流式任务。
+     *
+     * <p>通过 {@link WebStreamBuilder} 构建 ReAct Agent 的响应流，
+     * 订阅流数据并通过 {@link #emitToClient} 逐条推送至前端。
+     * 同时将 RxJava {@link Disposable} 保存到会话属性中，以支持 {@link #interruptSession} 中断。</p>
+     *
+     * @param session      Agent 会话实例
+     * @param sessionCwd   会话当前工作目录
+     * @param prompt       用户输入的 Prompt（为 null 时表示 HITL 恢复等无需新 Prompt 的场景）
+     * @param selectedModel 用户选择的 AI 模型标识
+     * @param agentName    指定 Agent 名称（可为 null，表示使用默认 Agent）
+     */
     private void performAgentTask(AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName) {
         String sessionId = session.getSessionId();
 
@@ -279,6 +387,21 @@ public class WebGate extends SimpleWebSocketListener {
         session.attrs().put("disposable", disposable);
     }
 
+    /**
+     * 尝试将用户输入解析为斜杠命令并执行。
+     *
+     * <p>解析输入字符串中的命令名和参数，查找已注册的 {@link Command} 并执行。
+     * 若命令执行后产生非 Agent 任务结果，会通过 WebSocket 推送命令输出；
+     * 若为 rewind 命令，会发送特殊的回退事件通知前端删除历史 DOM。</p>
+     *
+     * @param session      Agent 会话实例
+     * @param sessionCwd   会话当前工作目录
+     * @param input        用户输入的完整文本（以 "/" 开头）
+     * @param selectedModel 用户选择的 AI 模型标识
+     * @param agentName    指定 Agent 名称
+     * @return true 表示输入已被识别为命令并执行，false 表示非命令输入
+     * @throws Exception 命令执行过程中可能抛出的异常
+     */
     private boolean isCommand(AgentSession session, String sessionCwd, String input, String selectedModel, String agentName) throws Exception {
         if (!input.startsWith("/")) {
             return false;
@@ -354,7 +477,12 @@ public class WebGate extends SimpleWebSocketListener {
 
 
     /**
-     * 判断指定 session 是否有 AI 任务正在执行
+     * 判断指定会话是否有 AI 任务正在执行。
+     *
+     * <p>通过检查会话属性中保存的 {@link Disposable} 对象是否仍处于活跃状态来判断。</p>
+     *
+     * @param session Agent 会话实例
+     * @return true 表示会话有正在执行的 AI 任务
      */
     private boolean isSessionBusy(AgentSession session) {
         Disposable disposable = (Disposable) session.attrs().get("disposable");
@@ -362,7 +490,14 @@ public class WebGate extends SimpleWebSocketListener {
     }
 
     /**
-     * 安全输入（如果任务正在常，会跳过）
+     * 安全聊天输入入口。
+     *
+     * <p>在调用 {@link #onChatInput} 之前先检查会话是否繁忙（有 AI 任务正在执行），
+     * 若繁忙则跳过本次输入并记录警告日志。用于微信回调等需要避免并发冲突的场景。</p>
+     *
+     * @param sessionId 会话标识
+     * @param input     用户输入文本
+     * @param source    调用来源标识（用于日志记录，如 "WeChat"）
      */
     public void safeChatInput(String sessionId, String input, String source) {
         try {
@@ -380,14 +515,30 @@ public class WebGate extends SimpleWebSocketListener {
     }
 
 
-    // ==================== 工具方法 ====================
+    // ═══════════════════════════════════════════════════════════════
+    //  工具方法 —— 附件类型判断与 MIME 映射
+    // ═══════════════════════════════════════════════════════════════
 
+    /** 支持的图片扩展名集合 */
     private static final Set<String> IMAGE_EXTENSIONS = org.noear.solon.Utils.asSet(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg");
 
+    /**
+     * 判断附件是否为图片类型。
+     *
+     * @param ext             文件扩展名（含点号，如 ".png"）
+     * @param attachmentsType 前端传递的附件类型标识（如 "image"）
+     * @return true 表示该附件应作为图片处理
+     */
     private static boolean isImageAttachment(String ext, String attachmentsType) {
         return "image".equals(attachmentsType) && IMAGE_EXTENSIONS.contains(ext);
     }
 
+    /**
+     * 将文件扩展名映射为 MIME 类型。
+     *
+     * @param ext 文件扩展名（含点号，如 ".jpg"）
+     * @return 对应的 MIME 类型字符串，未匹配时默认返回 "image/png"
+     */
     private static String extensionToMime(String ext) {
         switch (ext) {
             case ".jpg":
@@ -408,10 +559,17 @@ public class WebGate extends SimpleWebSocketListener {
         }
     }
 
-    // ==================== 中断支持 ====================
+    // ═══════════════════════════════════════════════════════════════
+    //  会话中断支持
+    // ═══════════════════════════════════════════════════════════════
 
     /**
-     * 中断指定会话的当前 AI 任务
+     * 中断指定会话的当前 AI 任务。
+     *
+     * <p>从会话属性中取出并销毁 RxJava {@link Disposable} 以终止流式订阅，
+     * 同时向会话历史追加一条取消记录，并向前端推送完成信号。</p>
+     *
+     * @param sessionId 待中断的会话标识
      */
     public void interruptSession(String sessionId) {
         try {

@@ -8,11 +8,11 @@ import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MemoryManger implements MemorySolution.Factory {
+public class MemoryFactory implements MemorySolution.Factory {
     private Map<String, MemorySolution> cached = new ConcurrentHashMap<>();
     private AgentProperties properties;
 
-    public MemoryManger(AgentProperties properties) {
+    public MemoryFactory(AgentProperties properties) {
         this.properties = properties;
     }
 

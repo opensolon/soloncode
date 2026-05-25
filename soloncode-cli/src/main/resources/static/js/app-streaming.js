@@ -77,6 +77,7 @@ function sendMessage() {
 
     sess.isStreaming = true;
     isStreaming = true;
+    sess.messageStartTime = Date.now();
     setBtnStopMode();
     resetStreamState(sess);
     showThinking(sess);
@@ -102,6 +103,7 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
 
     // 标记流式状态，WebSocket onmessage 会处理数据
     sess.isStreaming = true;
+    if (!sess.messageStartTime) sess.messageStartTime = Date.now();
     if (sess.sessionId === activeSessionId) {
         isStreaming = true;
         setBtnStopMode();
@@ -145,6 +147,14 @@ function onWebChunk(sess, chunk) {
     } catch (e) {}
 }
 
+function formatElapsed(ms) {
+    var sec = Math.floor(ms / 1000);
+    if (sec < 60) return sec + 's';
+    var min = Math.floor(sec / 60);
+    var remainSec = sec % 60;
+    return min + 'm ' + remainSec + 's';
+}
+
 function finishStream(sess) {
     var wasStreaming = sess.isStreaming;
     sess.isStreaming = false;
@@ -159,10 +169,16 @@ function finishStream(sess) {
     if (sess.reasonBuffer) {
         var el = ensureAssistantBubble(sess);
         el.innerHTML = renderMd(sess.reasonBuffer);
+        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+        if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
     }
     // 如果有思考中的内容，也刷一下
     if (sess.thinkingBlockEl && sess.thinkingBuffer) {
-        if (sess.thinkingBodyMdEl) sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+        if (sess.thinkingBodyMdEl) {
+            sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(sess.thinkingBodyMdEl);
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(sess.thinkingBodyMdEl);
+        }
     }
     // ---------------------------------------------------
 
@@ -176,6 +192,28 @@ function finishStream(sess) {
     // 显示助手消息时间戳
     setAssistantTime(sess, sess._lastCreatedAt || Date.now());
     sess._lastCreatedAt = null;
+
+    // 显示 AI 响应耗时
+    if (sess.messageStartTime) {
+        var elapsedMs = Date.now() - sess.messageStartTime;
+        var elapsedText = formatElapsed(elapsedMs);
+        var row = sess.currentBubbleEl ? sess.currentBubbleEl.closest('.msg-row') : null;
+        if (row) {
+            var bubble = row.querySelector('.msg-bubble');
+            if (bubble) {
+                var elapsedEl = document.createElement('div');
+                elapsedEl.className = 'msg-elapsed';
+                elapsedEl.textContent = '用时 ' + elapsedText;
+                var actionsEl = bubble.querySelector('.msg-actions');
+                if (actionsEl) {
+                    bubble.insertBefore(elapsedEl, actionsEl);
+                } else {
+                    bubble.appendChild(elapsedEl);
+                }
+            }
+        }
+        sess.messageStartTime = null;
+    }
 
     // resetStreamState 会清空 buffer，所以必须在上面强刷完后再调
     resetStreamState(sess);
@@ -212,6 +250,11 @@ function connectWebGate() {
         console.log('[WebGate] connected');
         webGateReconnectAttempts = 0;
         startWebGateHeartbeat();
+        hideNetworkBar();
+        // 重连后刷新文件树
+        if (typeof loadTree === 'function') {
+            loadTree();
+        }
     };
 
     webGateSocket.onmessage = function(event) {
@@ -232,6 +275,14 @@ function connectWebGate() {
                 return;
             }
 
+            // 文件变更通知（无 sessionId，系统级广播）
+            if (chunk.type === 'filer_change') {
+                if (typeof onFilerChange === 'function') {
+                    onFilerChange(chunk);
+                }
+                return;
+            }
+
             if (!sid) return; // 无 sessionId 的消息丢弃
             var sess2 = sessionMap[sid];
             if (!sess2) return; // 未知 session
@@ -239,6 +290,7 @@ function connectWebGate() {
             // Loop/微信 等后端推送触发流式状态
             if (!sess2.isStreaming) {
                 sess2.isStreaming = true;
+                if (!sess2.messageStartTime) sess2.messageStartTime = Date.now();
                 if (sess2.sessionId === activeSessionId) {
                     isStreaming = true;
                     setBtnStopMode();
@@ -255,6 +307,7 @@ function connectWebGate() {
     webGateSocket.onclose = function() {
         console.log('[WebGate] closed');
         stopWebGateHeartbeat();
+        showNetworkBar('disconnected', '连接已断开，正在尝试重连...');
         scheduleWebGateReconnect();
     };
 
@@ -287,6 +340,7 @@ function scheduleWebGateReconnect() {
     var delay = Math.min(1000 * Math.pow(2, webGateReconnectAttempts), 30000);
     webGateReconnectAttempts++;
     console.log('[WebGate] reconnecting in ' + delay + 'ms (attempt ' + webGateReconnectAttempts + ')');
+    showNetworkBar('reconnecting', '正在重连 (' + webGateReconnectAttempts + '/' + WEBGATE_MAX_RECONNECT + ')...');
     setTimeout(function() {
         connectWebGate();
     }, delay);

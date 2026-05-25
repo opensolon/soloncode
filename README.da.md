@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>En open-source kodningsagent bygget med <a href="https://github.com/opensolon/solon-ai">Solon AI</a> og Java (understøtter Java8 til Java26 runtime-miljøer)</p>
-<p>Nyeste version: v2026.5.19</p>
+<p>Nyeste version: v2026.5.22</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -36,16 +36,28 @@ Konfiguration (skal ændres efter installation):
 
 ## Kørsel
 
-Kør `soloncode`-kommandoen fra en hvilken som helst mappe i konsollen (dvs. dit arbejdsområde).
+Kør kommandoen `soloncode` (CLI-interaktiv) eller `soloncode web 0` (Web-interaktiv) fra en hvilken som helst mappe i konsollen (dvs. dit arbejdsområde).
+
+* `soloncode` (CLI-interaktiv)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.19
-/Users/noear
+SolonCode v2026.5.22 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web-interaktiv)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.22 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 Funktionstest (prøv følgende opgaver, fra enkel til kompleks):

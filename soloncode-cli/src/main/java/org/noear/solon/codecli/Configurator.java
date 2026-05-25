@@ -3,6 +3,7 @@ package org.noear.solon.codecli;
 import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
 import com.agentclientprotocol.sdk.agent.transport.WebSocketSolonAcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
@@ -10,8 +11,10 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
-import org.noear.solon.ai.skills.memory.MemorySkill;
-import org.noear.solon.annotation.*;
+import org.noear.solon.annotation.Bean;
+import org.noear.solon.annotation.Configuration;
+import org.noear.solon.annotation.Init;
+import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
@@ -21,7 +24,15 @@ import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
 import org.noear.solon.codecli.channel.feishu.FeishuLink;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
+import org.noear.solon.codecli.memory.MemoryFactory;
 import org.noear.solon.codecli.portal.*;
+import org.noear.solon.codecli.portal.acp.AcpLink;
+import org.noear.solon.codecli.portal.cli.CliShell;
+import org.noear.solon.codecli.portal.desktop.WsController;
+import org.noear.solon.codecli.portal.desktop.WsGate;
+import org.noear.solon.codecli.portal.web.WebChannel;
+import org.noear.solon.codecli.portal.web.WebController;
+import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
@@ -31,6 +42,7 @@ import org.noear.solon.net.websocket.WebSocketRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Map;
@@ -46,6 +58,9 @@ public class Configurator {
     private static final Logger LOG = LoggerFactory.getLogger(Configurator.class);
 
     @Inject
+    AppContext appContext;
+
+    @Inject
     HarnessEngine agentRuntime;
 
     @Inject
@@ -57,7 +72,7 @@ public class Configurator {
     private LoopScheduler loopScheduler;
 
     @Bean
-    public HarnessEngine agentRuntime(AppContext context, AgentProperties props) {
+    public HarnessEngine agentRuntime(AgentProperties props) {
         props.getSkillPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
         props.getSkillPools().put("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()).toString());
 
@@ -82,23 +97,9 @@ public class Configurator {
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
                 new FileAgentSession(key, Paths.get(props.getWorkspace(), props.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
 
-        //订阅容器扩展
-        context.subBeansOfType(HarnessExtension.class, extension -> {
-            props.addExtension(extension);
-        });
-
-        //添加记忆能力
-        if (agentProps.isMemoryEnabled()) {
-            MemorySkill memorySkill = new MemorySkill(new MemoryManger(agentProps)).sessionIsolation(false);
-            props.addExtension((agentName, agentBuilder) -> {
-                if ("main".equals(agentName)) {
-                    agentBuilder.defaultSkillAdd(memorySkill);
-                }
-            });
-        }
-
         HarnessEngine engine = HarnessEngine.of(props)
                 .sessionProvider(sessionProvider)
+                .memorySolution(new MemoryFactory(agentProps))
                 .build();
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
@@ -119,6 +120,12 @@ public class Configurator {
 
     @Init
     public void init() {
+        //订阅容器扩展
+        appContext.subBeansOfType(HarnessExtension.class, extension -> {
+            agentRuntime.extensionAdd(extension);
+        });
+
+
         CliShell cliShell = new CliShell(agentRuntime, agentProps, loopScheduler);
         String flag = Solon.cfg().argx().flagAt(0);
 
@@ -215,6 +222,16 @@ public class Configurator {
         // 启动微信通道
         RunUtil.async((Runnable) webChannel.get());
 
+        // 启动工作区文件变化监听
+        try {
+            Path workspacePath = Paths.get(agentProps.getWorkspace()).toAbsolutePath().normalize();
+            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
+            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
+            workspaceWatcher.start();
+        } catch (Exception e) {
+            // watcher 启动失败不影响主流程
+        }
+
         if (cliShell == null) {
             return;
         }
@@ -249,7 +266,7 @@ public class Configurator {
             agentTransport = new StdioAcpAgentTransport();
         } else {
             agentTransport = new WebSocketSolonAcpAgentTransport(
-                    agentProps.getAcpTransport(), McpJsonMapper.getDefault());
+                    agentProps.getAcpTransport(), McpJsonDefaults.getMapper());
         }
 
         new AcpLink(agentRuntime, agentTransport, agentProps).run();

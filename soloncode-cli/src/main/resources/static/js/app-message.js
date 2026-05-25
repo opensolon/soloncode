@@ -55,6 +55,7 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         }
     });
 
+    addImageLightbox(bubble);
     sess.container.appendChild(row);
     if (sess.sessionId === activeSessionId) scrollToBottom(true);
 }
@@ -258,6 +259,8 @@ function appendContentChunk(sess, text, append) {
         sess.contentRafId = requestAnimationFrame(function() {
             var el = ensureAssistantBubble(sess);
             el.innerHTML = renderMd(sess.reasonBuffer);
+            addCodeBlockButtons(el);
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
 
             sess.contentRafId = null;
 
@@ -363,7 +366,7 @@ function appendHitlCard(sess, toolName, command) {
         rejectBtn.disabled = true;
         approveBtn.textContent = '\u5df2\u6279\u51c6';
         rejectBtn.style.display = 'none';
-        card.style.borderColor = '#22c55e';
+        card.style.borderColor = 'var(--color-success)';
         handleHitlResponse(sess, 'approve');
     });
 
@@ -372,7 +375,7 @@ function appendHitlCard(sess, toolName, command) {
         rejectBtn.disabled = true;
         rejectBtn.textContent = '\u5df2\u62d2\u7edd';
         approveBtn.style.display = 'none';
-        card.style.borderColor = '#ef4444';
+        card.style.borderColor = 'var(--color-danger)';
         handleHitlResponse(sess, 'reject');
     });
 
@@ -422,3 +425,68 @@ function handleRewind(sess, count) {
     resetStreamState(sess);
     if (sess.sessionId === activeSessionId) scrollToBottom(true);
 }
+
+/* ===== Code Block Copy Buttons ===== */
+function addCodeBlockButtons(container) {
+    if (!container) return;
+    var pres = container.querySelectorAll('pre');
+    for (var i = 0; i < pres.length; i++) {
+        if (pres[i].querySelector('.code-copy-btn')) continue;
+        var btn = document.createElement('button');
+        btn.className = 'code-copy-btn';
+        btn.textContent = '复制';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var pre = this.closest('pre');
+            var code = pre ? pre.querySelector('code') : null;
+            var text = code ? code.textContent : (pre ? pre.textContent : '');
+            var self = this;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    self.textContent = '已复制';
+                    self.classList.add('copied');
+                    setTimeout(function() {
+                        self.textContent = '复制';
+                        self.classList.remove('copied');
+                    }, 1500);
+                });
+            }
+        });
+        pres[i].appendChild(btn);
+    }
+}
+
+/* ===== Image Lightbox ===== */
+function addImageLightbox(container) {
+    if (!container) return;
+    var imgs = container.querySelectorAll('.msg-bubble img, .md-content img');
+    for (var i = 0; i < imgs.length; i++) {
+        if (imgs[i].dataset.lightbox) continue;
+        imgs[i].dataset.lightbox = '1';
+        imgs[i].style.cursor = 'zoom-in';
+        imgs[i].addEventListener('click', function(e) {
+            e.stopPropagation();
+            openLightbox(this.src);
+        });
+    }
+}
+
+function openLightbox(src) {
+    var overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    var img = document.createElement('img');
+    img.src = src;
+    overlay.appendChild(img);
+    overlay.addEventListener('click', function() {
+        overlay.remove();
+    });
+    document.addEventListener('keydown', function handler(e) {
+        if (e.key === 'Escape') {
+            overlay.remove();
+            document.removeEventListener('keydown', handler);
+        }
+    });
+    document.body.appendChild(overlay);
+}
+
+

@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.portal;
+package org.noear.solon.codecli.portal.desktop;
 
 import lombok.Data;
 

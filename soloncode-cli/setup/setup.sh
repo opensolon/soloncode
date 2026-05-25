@@ -6,7 +6,7 @@
 
 set -e
 
-VERSION="v2026.5.19"
+VERSION="v2026.5.22"
 PACKAGE_URL="https://gitee.com/opensolon/soloncode/releases/download/${VERSION}/soloncode-cli-bin-${VERSION}.tar.gz"
 TEMP_DIR="/tmp/soloncode-install"
 
@@ -85,7 +85,7 @@ info "Installation complete!"
 echo ""
 
 if [ "$SYMLINK_EXISTS" = true ]; then
-    echo -e "You can now run: ${CYAN}soloncode${NC}"
+    echo -e "You can now run: ${CYAN}soloncode${NC} or ${CYAN}soloncode web 0${NC}"
 else
     echo -e "To use soloncode immediately, run:"
     echo -e "  ${CYAN}source ~/.${USER_SHELL}rc${NC}"

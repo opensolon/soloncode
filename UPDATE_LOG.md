@@ -1,4 +1,22 @@
 
+### v2026.5.22
+
+* 优化 soloncode mcp 兼容性（有些 mcp server 不完全按 mcp 规范来）
+* 升级 mcp sdk 到 v1.1.3
+
+### v2026.5.21
+
+* 添加 soloncode web 文件查看与复制功能
+* 添加 soloncode web 文件搜索功能
+* 添加 soloncode web 右侧面板的拖动功能
+* 添加 soloncode web 技能提示
+* 添加 soloncode cli 技能提示
+
+### v2026.5.20
+
+* 添加 soloncode web 文件树功能（方便知道有哪些文件）
+* 添加 soloncode web git diff 功能
+
 ### v2026.5.19
 
 * 优化 soloncode 压缩时机和压缩算法

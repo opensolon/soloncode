@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a> এবং জাভা দিয়ে তৈরি একটি ওপেন-সোর্স কোডিং এজেন্ট (Java8 থেকে Java26 রানটাইম পরিবেশ সমর্থিত)</p>
-<p>সর্বশেষ সংস্করণ: v2026.5.19</p>
+<p>সর্বশেষ সংস্করণ: v2026.5.22</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -36,16 +36,28 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ## চলমান
 
-কনসোলে যেকোনো ডিরেক্টরি থেকে `soloncode` কমান্ড চালান (অর্থাৎ, আপনার ওয়ার্কস্পেস)।
+কনসোলে যেকোনো ডিরেক্টরি থেকে `soloncode` (CLI ইন্টারেক্টিভ) অথবা `soloncode web 0` (Web ইন্টারেক্টিভ) কমান্ড চালান (অর্থাৎ, আপনার ওয়ার্কস্পেস)।
+
+* `soloncode` (CLI ইন্টারেক্টিভ)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.19
-/Users/noear
+SolonCode v2026.5.22 PID-74080 Model:deepseek-v4-flash
+/path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
 User
 > 
+```
+
+* `soloncode web 0` (Web ইন্টারেক্টিভ)
+
+```bash
+demo@MacBook-Pro ~ % soloncode web 0
+SolonCode v2026.5.22 PID-73617 Model:deepseek-v4-flash
+/path/demo
+2026-05-20 09:35
+Web interface: http://localhost:50488/
 ```
 
 বৈশিষ্ট্য পরীক্ষা (নিম্নলিখিত কাজগুলো চেষ্টা করুন, সহজ থেকে জটিল):

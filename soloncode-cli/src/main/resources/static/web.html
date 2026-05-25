@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="/layui/css/layui.css"/>
     <link rel="stylesheet" href="/css/theme.css"/>
     <link rel="stylesheet" href="/css/app.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" media="(prefers-color-scheme: light)" id="hljs-light-theme"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" media="(prefers-color-scheme: dark)" id="hljs-dark-theme" disabled/>
 </head>
 <body data-theme="light">
 
@@ -28,6 +30,8 @@
     </div>
 </div>
 <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="收起侧边栏">‹</button>
+<button class="mobile-menu-btn" id="mobileMenuBtn" title="菜单">☰</button>
+<div class="mobile-overlay" id="mobileOverlay"></div>
 
 <!-- Main -->
 <div class="main-area">
@@ -59,9 +63,15 @@
             <div class="blob blob-outer"></div>
             <div class="blob-core"></div>
         </div>
-        <div class="welcome-title" id="welcomeTitle">你好，我是 SolonCode Web ！</div>
-        <div class="welcome-sub">有什么我可以帮你的吗?</div>
-        <div class="welcome-input-box">
+        <div class="welcome-title" id="welcomeTitle">你好，我是 SolonCode ！</div>
+        <div class="welcome-sub">需要什么帮助吗?</div>
+        <div class="welcome-input-box" id="welcomeDropZone">
+            <div class="drop-overlay" id="welcomeDropOverlay">
+                <div class="drop-overlay-content">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span>松开以添加附件</span>
+                </div>
+            </div>
             <div class="attachments-wrap" id="welcomeAttachmentsWrap"></div>
             <div style="position:relative">
                 <div class="cmd-complete" id="welcomeCmdComplete"></div>
@@ -87,6 +97,9 @@
                     <button class="attach-btn" id="welcomeCmdBtn" title="斜杠命令">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L16 4"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/></svg>
                     </button>
+                    <button class="attach-btn" id="welcomeSkillBtn" title="技能">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><text x="4" y="18" font-size="18" font-weight="bold" font-family="monospace" fill="currentColor" stroke="none">$</text></svg>
+                    </button>
                     <button class="attach-btn" id="welcomeAgentBtn" title="子代理">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
                     </button>
@@ -109,7 +122,13 @@
             <!-- Per-session containers are added here dynamically -->
         </div>
         <div class="input-wrap">
-            <div class="input-box">
+            <div class="input-box" id="chatDropZone">
+                <div class="drop-overlay" id="chatDropOverlay">
+                    <div class="drop-overlay-content">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <span>松开以添加附件</span>
+                    </div>
+                </div>
                 <div class="attachments-wrap" id="chatAttachmentsWrap"></div>
                 <div style="position:relative;">
                     <div class="cmd-complete" id="chatCmdComplete"></div>
@@ -136,6 +155,9 @@
                         <button class="attach-btn" id="chatCmdBtn" title="斜杠命令">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L16 4"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/></svg>
                         </button>
+                        <button class="attach-btn" id="chatSkillBtn" title="技能">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><text x="4" y="18" font-size="18" font-weight="bold" font-family="monospace" fill="currentColor" stroke="none">$</text></svg>
+                        </button>
                         <button class="attach-btn" id="chatAgentBtn" title="子代理">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
                         </button>
@@ -152,10 +174,117 @@
             </div>
         </div>
     </div>
+
+    <!-- Git Diff / File Viewer (内联在主内容区，替换聊天视图) -->
+    <div class="git-diff-viewer" id="gitDiffViewer" style="display:none">
+        <div class="git-viewer-header">
+            <div class="git-viewer-breadcrumb">
+                <span class="git-viewer-label" id="gitViewerLabel">变更详情</span>
+                <span class="git-viewer-sep">/</span>
+                <span class="git-viewer-file" id="gitViewerFile"></span>
+            </div>
+            <button class="git-viewer-close" id="gitViewerClose" title="关闭 (Esc)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <pre class="git-viewer-content" id="gitViewerContent"></pre>
+    </div>
 </div>
+
+    <!-- File Tree Panel (Right Side) -->
+    <button class="filer-panel-toggle-btn" id="filerToggleBtn" title="收起文件树">›</button>
+    <div class="filer-resize-handle" id="filerResizeHandle"></div>
+    <div class="filer-panel" id="filerPanel">
+        <div class="filer-tabs">
+            <button class="filer-tab active" data-tab="files">文件</button>
+            <button class="filer-tab" data-tab="gitdiff">
+                审查
+                <span class="git-badge" id="gitBadge" style="display:none">0</span>
+            </button>
+        </div>
+
+        <!-- Tab Content: 文件树 -->
+        <div class="filer-tab-content active" id="tabContentFiles">
+            <div class="filer-search-bar">
+                <svg class="filer-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" class="filer-search-input" id="filerSearchInput" placeholder="搜索文件..." />
+                <button class="filer-search-clear" id="filerSearchClear" title="清除" style="display:none">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="filer-panel-tree" id="filerTree"></div>
+        </div>
+
+        <!-- Tab Content: Git Diff -->
+        <div class="filer-tab-content" id="tabContentGitdiff">
+            <!-- 状态1：Git 不可用 -->
+            <div class="git-unavailable" id="gitUnavailable" style="display:none">
+                <div class="git-empty-icon">&#x26A0;</div>
+                <div class="git-empty-title">Git 不可用</div>
+                <div class="git-empty-desc">系统未安装 Git 或 Git 不在 PATH 中</div>
+            </div>
+
+            <!-- 状态2：未初始化仓库 -->
+            <div class="git-uninitialized" id="gitUninitialized" style="display:none">
+                <div class="git-empty-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <line x1="3" y1="12" x2="9" y2="12"/>
+                        <line x1="15" y1="12" x2="21" y2="12"/>
+                        <line x1="12" y1="3" x2="12" y2="9"/>
+                        <line x1="12" y1="15" x2="12" y2="21"/>
+                    </svg>
+                </div>
+                <div class="git-empty-title">当前工作区不是 Git 仓库</div>
+                <div class="git-init-benefits">
+                    <div>初始化后可以：</div>
+                    <ul>
+                        <li>跟踪文件变更历史</li>
+                        <li>查看 diff 代码对比</li>
+                        <li>配合 AI 进行代码审查</li>
+                    </ul>
+                </div>
+                <div class="git-init-options">
+                    <label class="git-init-checkbox">
+                        <input type="checkbox" id="gitInitCommit" checked/>
+                        <span>自动提交当前所有文件</span>
+                    </label>
+                </div>
+                <button class="git-init-btn" id="gitInitBtn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    初始化 Git 仓库
+                </button>
+                <div class="git-init-note">将在工作区执行 git init</div>
+            </div>
+
+            <!-- 状态3：正常仓库 -->
+            <div class="git-diff-panel" id="gitDiffPanel" style="display:none">
+                <div class="git-diff-header">
+                    <label class="git-select-all-label" title="全选/取消全选">
+                        <input type="checkbox" id="gitSelectAll" checked/>
+                    </label>
+                    <span class="git-branch" id="gitBranch">--</span>
+                </div>
+                <div class="git-diff-file-list" id="gitDiffFileList"></div>
+                <div class="git-commit-bar" id="gitCommitBar">
+                    <input type="text" class="git-commit-input" id="gitCommitMsg" placeholder="提交信息..." />
+                    <button class="git-commit-btn" id="gitCommitBtn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        提交
+                    </button>
+                </div>
+                <div class="git-diff-empty" id="gitDiffEmpty" style="display:none">
+                    <div class="git-empty-desc">没有未提交的变更</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
 <script src="/layui/layui.js"></script>
 <script src="/js/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 <script src="/js/qrcode.min.js"></script>
 
 <script>
@@ -170,7 +299,7 @@
         var verEl = document.getElementById('appVersionLabel');
         if (verEl && meta.appVersion) verEl.textContent = meta.appVersion;
         var titleEl = document.getElementById('welcomeTitle');
-        if (titleEl && meta.appTitle) titleEl.textContent = '你好，我是 ' + meta.appTitle + ' Web ！';
+        if (titleEl && meta.appTitle) titleEl.textContent = '你好，我是 ' + meta.appTitle + ' ！';
     }).catch(function () { /* ignore */ });
 </script>
 
@@ -179,5 +308,9 @@
 <script src="js/app-history.js"></script>
 <script src="js/app-message.js"></script>
 <script src="js/app-streaming.js"></script>
+
+
+    <script src="js/app-filer.js"></script>
+    <script src="js/app-gitdiff.js"></script>
 </body>
 </html>

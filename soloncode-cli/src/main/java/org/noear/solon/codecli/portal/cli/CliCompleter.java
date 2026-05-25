@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.portal;
+package org.noear.solon.codecli.portal.cli;
 
 import org.jline.reader.Candidate;
 import org.jline.reader.Completer;
@@ -23,8 +23,7 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.harness.command.CommandRegistry;
-import org.noear.solon.codecli.command.builtin.ModelCommand;
+import org.noear.solon.ai.skills.cli.SkillDir;
 
 import java.util.List;
 
@@ -73,6 +72,28 @@ public class CliCompleter implements Completer {
                 if (definition.getName().startsWith(prefix)) {
                     // 构建补全提示：description + argument-hint
                     candidates.add(new Candidate("@" + definition.getName(), "@" + definition.getName() + "  " + definition.getDescription(), null, null, null, null, true));
+                }
+            }
+        }
+
+        if (line.word().startsWith("$")) {
+            String prefix = line.word().substring(1).toLowerCase();
+            for (SkillDir skill : engine.getPoolManager().getSkillMap().values()) {
+                if (skill.getName().startsWith(prefix)) {
+                    // 构建补全提示：description + argument-hint
+                    String desc = skill.getDescription();
+                    if (desc != null) {
+                        // 取第一行，并限制最大长度
+                        int newlineIdx = desc.indexOf('\n');
+                        if (newlineIdx > 0) {
+                            desc = desc.substring(0, newlineIdx);
+                        }
+                        if (desc.length() > 30) {
+                            desc = desc.substring(0, 30) + "...";
+                        }
+                    }
+
+                    candidates.add(new Candidate("$" + skill.getName(), "$" + skill.getName() + "  " + desc, null, null, null, null, true));
                 }
             }
         }

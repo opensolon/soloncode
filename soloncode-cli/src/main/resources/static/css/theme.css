@@ -23,6 +23,8 @@
     --bg-hover: #f0f1f5;
     --bg-code: #f6f8fa;
     --bg-code-block: #1e1e2e;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f6fa;
 
     /* Message */
     --bg-user-msg: #4f6ef7;
@@ -35,6 +37,7 @@
     --text-ai-msg: #1a1a2e;
     --text-sidebar: #374151;
     --text-code: #d4d4d4;
+    --text-tertiary: #999999;
 
     /* Border */
     --border-color: #e5e7eb;
@@ -50,6 +53,29 @@
     --error-bg: #fef2f2;
     --error-border: #fca5a5;
     --error-text: #dc2626;
+    --color-success: #22c55e;
+    --color-success-hover: #16a34a;
+    --color-danger: #ef4444;
+    --color-danger-hover: #dc2626;
+    --color-warning: #f59e0b;
+    --color-wechat: #07c160;
+    --color-feishu: #3370ff;
+    --color-feishu-hover: #2960e6;
+    --color-dingtalk: #0089FF;
+    --color-dingtalk-hover: #0070dd;
+    --bg-danger-subtle: rgba(239, 68, 68, 0.1);
+
+    /* Git */
+    --git-line-add-bg: rgba(46, 160, 67, 0.15);
+    --git-line-add-text: #22863a;
+    --git-line-del-bg: rgba(248, 81, 73, 0.15);
+    --git-line-del-text: #cb2431;
+    --git-line-hunk-text: #032f62;
+    --git-status-staged: #28a745;
+    --git-status-modified: #dbab09;
+    --git-status-added: #28a745;
+    --git-status-deleted: #cb2431;
+    --git-status-untracked: #6e7681;
 
     /* Effects */
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -71,6 +97,8 @@
     --bg-hover: #22223a;
     --bg-code: rgba(255, 255, 255, 0.06);
     --bg-code-block: #0d1117;
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16162a;
 
     /* Message */
     --bg-user-msg: #4f6ef7;
@@ -83,6 +111,7 @@
     --text-ai-msg: #e4e4ed;
     --text-sidebar: #c0c0d0;
     --text-code: #d4d4d4;
+    --text-tertiary: #666680;
 
     /* Border */
     --border-color: #2a2a44;
@@ -98,6 +127,29 @@
     --error-bg: #2a1a1a;
     --error-border: #5a3a3a;
     --error-text: #f87171;
+    --color-success: #4ade80;
+    --color-success-hover: #22c55e;
+    --color-danger: #f87171;
+    --color-danger-hover: #ef4444;
+    --color-warning: #fbbf24;
+    --color-wechat: #2dd469;
+    --color-feishu: #5b93ff;
+    --color-feishu-hover: #4a80f0;
+    --color-dingtalk: #3ea6ff;
+    --color-dingtalk-hover: #2b96f0;
+    --bg-danger-subtle: rgba(248, 113, 113, 0.12);
+
+    /* Git */
+    --git-line-add-bg: rgba(46, 160, 67, 0.2);
+    --git-line-add-text: #56d364;
+    --git-line-del-bg: rgba(248, 81, 73, 0.2);
+    --git-line-del-text: #f87171;
+    --git-line-hunk-text: #8b949e;
+    --git-status-staged: #3fb950;
+    --git-status-modified: #d29922;
+    --git-status-added: #3fb950;
+    --git-status-deleted: #f85149;
+    --git-status-untracked: #8b949e;
 
     /* Effects */
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -107,4 +159,75 @@
     --tag-border: #333355;
     --thinking-block-bg: #1a1a30;
     --thinking-block-border: #2a2a44;
+}
+
+/* ===== Accessibility ===== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+*:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* System dark preference fallback */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        /* Background */
+        --bg-body: #0f0f1a;
+        --bg-sidebar: #16162a;
+        --bg-main: #1a1a2e;
+        --bg-input-box: #1e1e36;
+        --bg-hover: #22223a;
+        --bg-code: rgba(255, 255, 255, 0.06);
+        --bg-code-block: #0d1117;
+        --bg-primary: #1a1a2e;
+        --bg-secondary: #16162a;
+
+        /* Message */
+        --bg-user-msg: #4f6ef7;
+        --bg-action: #1a2a1a;
+
+        /* Text */
+        --text-primary: #e4e4ed;
+        --text-secondary: #8b8ba0;
+        --text-user-msg: #ffffff;
+        --text-ai-msg: #e4e4ed;
+        --text-sidebar: #c0c0d0;
+        --text-code: #d4d4d4;
+        --text-tertiary: #666680;
+
+        /* Border */
+        --border-color: #2a2a44;
+        --border-input: #333355;
+
+        /* Accent */
+        --accent: #6b8aff;
+        --accent-hover: #5a75e6;
+        --accent-light: #1e2240;
+
+        /* Functional */
+        --action-border: #3a5a3a;
+        --error-bg: #2a1a1a;
+        --error-border: #5a3a3a;
+        --error-text: #f87171;
+        --color-success: #4ade80;
+        --color-danger: #f87171;
+        --color-warning: #fbbf24;
+        --bg-danger-subtle: rgba(248, 113, 113, 0.12);
+
+        /* Effects */
+        --shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.3);
+        --thinking-dot: #6b8aff;
+        --tag-bg: #22223a;
+        --tag-border: #333355;
+        --thinking-block-bg: #1a1a30;
+        --thinking-block-border: #2a2a44;
+    }
 }
