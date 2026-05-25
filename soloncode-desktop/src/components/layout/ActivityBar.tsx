@@ -2,7 +2,7 @@ import { Icon } from '../common/Icon';
 import type { Theme } from '../../types';
 import './ActivityBar.css';
 
-export type ActivityType = 'explorer' | 'git' | 'extensions' | 'sessions' | 'settings' | 'skills' | 'agents' | 'channels';
+export type ActivityType = 'explorer' | 'git' | 'extensions' | 'sessions' | 'settings' | 'skills' | 'agents';
 
 interface ActivityBarProps {
   activeActivity: ActivityType;
@@ -13,7 +13,7 @@ interface ActivityBarProps {
 
 interface ActivityItem {
   id: ActivityType;
-  icon: 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'settings' | 'skills' | 'agents' | 'channels';
+  icon: 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'settings' | 'skills' | 'agents';
   title: string;
 }
 
@@ -22,7 +22,6 @@ const activities: ActivityItem[] = [
   { id: 'explorer', icon: 'explorer', title: '项目管理' },
   { id: 'skills', icon: 'skills', title: 'Skills' },
   { id: 'agents', icon: 'agents', title: 'Agents' },
-  { id: 'channels', icon: 'channels', title: '渠道绑定' },
 ];
 
 export function ActivityBar({ activeActivity, theme, onActivityChange, onToggleTheme }: ActivityBarProps) {

@@ -11,11 +11,17 @@ interface AgentsPanelProps {
   activeAgent: string;
   onAgentChange: (name: string) => void;
   onFileSelect: (path: string) => void;
+  onCreateWithAI?: (name: string, description: string) => void;
 }
 
-export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange, onFileSelect }: AgentsPanelProps) {
+export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange, onFileSelect, onCreateWithAI }: AgentsPanelProps) {
   const [loading, setLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
   const onAgentsChangeRef = useRef(onAgentsChange);
   onAgentsChangeRef.current = onAgentsChange;
 
@@ -49,6 +55,23 @@ export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange
   useEffect(() => {
     loadFromBackend();
   }, [loadFromBackend]);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      await invoke('create_agent', { name: newName.trim(), description: newDesc.trim() });
+      setShowCreate(false);
+      setNewName('');
+      setNewDesc('');
+      await loadFromBackend();
+    } catch (err) {
+      setCreateError(String(err));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const handleToggle = async (agent: AgentConfig, index: number) => {
     try {
@@ -123,11 +146,27 @@ export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange
         <span className="panel-title">Agents</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span className="group-count">{enabledCount}/{agents.length}</span>
+          <button className="new-session-btn" onClick={() => setShowCreate(!showCreate)} title="新建 Agent">
+            <Icon name="add" size={14} />
+          </button>
           <button className="new-session-btn" onClick={loadFromBackend} title="刷新">
             <Icon name="refresh" size={14} />
           </button>
         </div>
       </div>
+
+      {showCreate && (
+        <div className="create-form">
+          <input className="create-form-input" placeholder="Agent 名称" value={newName} onChange={e => setNewName(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} />
+          <input className="create-form-input" placeholder="描述（可选）" value={newDesc} onChange={e => setNewDesc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} />
+          <div className="create-form-actions">
+            <button className="create-form-btn cancel" onClick={() => { setShowCreate(false); setNewName(''); setNewDesc(''); setCreateError(''); }}>取消</button>
+            {onCreateWithAI && <button className="create-form-btn ai-gen" onClick={() => { if (!newName.trim()) return; onCreateWithAI(newName.trim(), newDesc.trim()); setShowCreate(false); setNewName(''); setNewDesc(''); setCreateError(''); }} disabled={!newName.trim()} title="AI 生成"><Icon name="bot" size={12} /> AI 生成</button>}
+            <button className="create-form-btn confirm" onClick={handleCreate} disabled={creating || !newName.trim()}>{creating ? '创建中...' : '创建'}</button>
+          </div>
+          {createError && <p className="create-form-error">{createError}</p>}
+        </div>
+      )}
 
       <div className="panel-content agents-list">
         {loading && (

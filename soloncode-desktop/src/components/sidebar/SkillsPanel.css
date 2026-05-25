@@ -44,3 +44,91 @@
 .skill-group-label {
   flex: 1;
 }
+
+/* 创建表单 */
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+  background: var(--cb-vscode-input-background);
+}
+
+.create-form-input {
+  padding: 6px 8px;
+  background: var(--cb-vscode-sideBar-background);
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 4px;
+  color: var(--cb-text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.create-form-input:focus {
+  border-color: var(--cb-accent);
+}
+
+.create-form-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.create-form-btn {
+  padding: 4px 14px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--cb-vscode-widget-border);
+}
+
+.create-form-btn.cancel {
+  background: transparent;
+  color: var(--cb-text-secondary);
+}
+
+.create-form-btn.cancel:hover {
+  color: var(--cb-text-primary);
+  background: var(--cb-vscode-list-hoverBackground);
+}
+
+.create-form-btn.confirm {
+  background: var(--cb-accent);
+  color: #fff;
+  border-color: var(--cb-accent);
+}
+
+.create-form-btn.confirm:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.create-form-btn.confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.create-form-error {
+  font-size: 11px;
+  color: #ef4444;
+  margin: 0;
+}
+
+.create-form-btn.ai-gen {
+  background: transparent;
+  color: var(--cb-accent);
+  border-color: var(--cb-accent);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.create-form-btn.ai-gen:hover:not(:disabled) {
+  background: var(--cb-accent);
+  color: #fff;
+}
+
+.create-form-btn.ai-gen:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

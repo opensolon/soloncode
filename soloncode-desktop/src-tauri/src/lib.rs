@@ -1348,6 +1348,80 @@ fn toggle_agent(agent_path: &str, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// 创建新 Skill（在 ~/.soloncode/skills/{name}/SKILL.md 生成模板）
+#[tauri::command]
+fn create_skill(name: String, description: String, content: Option<String>) -> Result<String, String> {
+    let home = if cfg!(windows) {
+        std::env::var("USERPROFILE").unwrap_or_default()
+    } else {
+        std::env::var("HOME").unwrap_or_default()
+    };
+
+    let skill_name = name.trim().to_string();
+    if skill_name.is_empty() {
+        return Err("名称不能为空".to_string());
+    }
+
+    let skill_dir = Path::new(&home).join(".soloncode").join("skills").join(&skill_name);
+    if skill_dir.exists() {
+        return Err(format!("Skill '{}' 已存在", skill_name));
+    }
+
+    fs::create_dir_all(&skill_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+
+    let desc = if description.trim().is_empty() {
+        skill_name.clone()
+    } else {
+        description.trim().to_string()
+    };
+
+    let file_content = match content {
+        Some(c) if !c.trim().is_empty() => c,
+        _ => format!("---\nname: {}\ndescription: {}\n---\n\n# {}\n\n在此编写你的 Skill 指令...\n", skill_name, desc, skill_name),
+    };
+    let skill_md = skill_dir.join("SKILL.md");
+    fs::write(&skill_md, file_content).map_err(|e| format!("写入文件失败: {}", e))?;
+
+    Ok(skill_dir.to_string_lossy().to_string())
+}
+
+/// 创建新 Agent（在 ~/.soloncode/agents/{name}/AGENT.md 生成模板）
+#[tauri::command]
+fn create_agent(name: String, description: String, content: Option<String>) -> Result<String, String> {
+    let home = if cfg!(windows) {
+        std::env::var("USERPROFILE").unwrap_or_default()
+    } else {
+        std::env::var("HOME").unwrap_or_default()
+    };
+
+    let agent_name = name.trim().to_string();
+    if agent_name.is_empty() {
+        return Err("名称不能为空".to_string());
+    }
+
+    let agent_dir = Path::new(&home).join(".soloncode").join("agents").join(&agent_name);
+    if agent_dir.exists() {
+        return Err(format!("Agent '{}' 已存在", agent_name));
+    }
+
+    fs::create_dir_all(&agent_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+
+    let desc = if description.trim().is_empty() {
+        agent_name.clone()
+    } else {
+        description.trim().to_string()
+    };
+
+    let file_content = match content {
+        Some(c) if !c.trim().is_empty() => c,
+        _ => format!("---\nname: {}\ndescription: {}\n---\n\n# {}\n\n在此编写你的 Agent 指令...\n", agent_name, desc, agent_name),
+    };
+    let agent_md = agent_dir.join("AGENT.md");
+    fs::write(&agent_md, file_content).map_err(|e| format!("写入文件失败: {}", e))?;
+
+    Ok(agent_dir.to_string_lossy().to_string())
+}
+
 /// 检查后端进程是否运行中
 #[tauri::command]
 fn backend_status() -> Result<bool, String> {
@@ -1422,8 +1496,10 @@ pub fn run() {
             read_cli_log,
             list_skills,
             toggle_skill,
+            create_skill,
             list_agents,
-            toggle_agent
+            toggle_agent,
+            create_agent
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

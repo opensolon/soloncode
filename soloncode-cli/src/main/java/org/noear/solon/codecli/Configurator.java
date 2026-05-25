@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -187,11 +188,11 @@ public class Configurator {
         WebGate webGate = new WebGate(agentRuntime, agentProps);
         WebChannel webChannel = new WebChannel(agentRuntime, webGate);
         // 将渠道绑定到 WsGate 的 streamBuilder，使 IM 回复能同步到桌面端
-        for (Channel ch : webChannel.getWeChatLink() != null ? java.util.Collections.singletonList(webChannel.getWeChatLink()) : java.util.Collections.emptyList()) {
+        for (Channel ch : Collections.singletonList(webChannel.getWeChatLink())) {
             streamBuilder.bind(ch);
         }
-        if (webChannel.getFeishuLink() != null) streamBuilder.bind(webChannel.getFeishuLink());
-        if (webChannel.getDingTalkLink() != null) streamBuilder.bind(webChannel.getDingTalkLink());
+        streamBuilder.bind(webChannel.getFeishuLink());
+        streamBuilder.bind(webChannel.getDingTalkLink());
         BeanWrap channelBean = Solon.context().wrapAndPut(WebChannel.class, webChannel);
         Solon.app().router().add(channelBean);
         RunUtil.async((Runnable) webChannel);

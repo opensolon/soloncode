@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import type { Message, Conversation, Theme, Plugin, ContentType, ContentItem } from '../types';
 import type { ModelProvider } from '../services/settingsService';
 import { saveMessage, getMessagesByConversation } from '../db';
@@ -24,6 +25,12 @@ interface ChatViewProps {
   activeFilePath?: string;
   onNewProject?: () => void;
   onOpenFolder?: () => void;
+  initialPrompt?: {
+    prompt: string;
+    type: 'skill' | 'agent';
+    name: string;
+  } | null;
+  onAiCreateComplete?: (info: { type: 'skill' | 'agent'; name: string }) => void;
 }
 
 // 全局 WebSocket 连接管理器（每次请求独立连接）
@@ -274,7 +281,7 @@ export async function generateCommitMessage(diff: string): Promise<string> {
   return WebSocketManager.getInstance().generateCommitMessage(diff);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder }: ChatViewProps) {
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder, initialPrompt, onAiCreateComplete }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>('default');
@@ -282,6 +289,8 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   const sessionIdRef = useRef<string>('');
   const conversationIdRef = useRef<string | number>('');
   const isStreamingRef = useRef(false);
+  const aiCreateRef = useRef<{ type: 'skill' | 'agent'; name: string } | null>(null);
+  const initialPromptSentRef = useRef(false);
 
   // 累积的消息内容 - 只有 think 标签内的才是思考块
   const accumulatedContentRef = useRef<{
@@ -334,6 +343,14 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     sessionIdRef.current = currentConversation.id.toString();
     conversationIdRef.current = currentConversation.id;
   }, [currentConversation.id]);
+
+  // 重置 initialPrompt 状态
+  useEffect(() => {
+    if (!initialPrompt) {
+      initialPromptSentRef.current = false;
+      aiCreateRef.current = null;
+    }
+  }, [initialPrompt]);
 
   // 构建当前累积内容的 ContentItem 数组
   function buildContentItems(): ContentItem[] {
@@ -434,6 +451,25 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         // 所有消息保存后，触发会话持久化（reassignMessages 会把 temp ID 转为 real ID）
         if (pending?.wasNew && onUpdateSessionTitle) {
           onUpdateSessionTitle(pending.sessionId, pending.title);
+        }
+
+        // AI 创建自动保存
+        if (aiCreateRef.current) {
+          const { type, name } = aiCreateRef.current;
+          const aiContent = accumulatedContentRef.current.text.trim();
+          if (aiContent) {
+            try {
+              if (type === 'skill') {
+                await invoke('create_skill', { name, description: '', content: aiContent });
+              } else {
+                await invoke('create_agent', { name, description: '', content: aiContent });
+              }
+              onAiCreateComplete?.({ type, name });
+            } catch (err) {
+              console.error('[ChatView] AI 创建自动保存失败:', err);
+            }
+          }
+          aiCreateRef.current = null;
         }
 
         // 重置累积器
@@ -751,6 +787,24 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       isStreamingRef.current = false;
     }
   }, [currentConversation, onNewSession, onUpdateSessionTitle, workspacePath, providers]);
+
+  // AI 创建：自动发送初始 prompt
+  useEffect(() => {
+    if (!initialPrompt || initialPromptSentRef.current) return;
+    const convId = currentConversation.id?.toString();
+    if (!convId) return;
+
+    initialPromptSentRef.current = true;
+    aiCreateRef.current = { type: initialPrompt.type, name: initialPrompt.name };
+
+    sendMessage(initialPrompt.prompt, {
+      model: activeProviderId || '',
+      modelName: '',
+      agent: '',
+      contexts: [],
+      attachments: [],
+    });
+  }, [initialPrompt, currentConversation.id, sendMessage, activeProviderId]);
 
   async function loadConversationMessages(convId: string | number) {
     const storedMessages = await getMessagesByConversation(convId);

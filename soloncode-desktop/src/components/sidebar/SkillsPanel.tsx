@@ -9,6 +9,7 @@ interface SkillsPanelProps {
   skills: SkillConfig[];
   onSkillsChange: (skills: SkillConfig[]) => void;
   onFileSelect: (path: string) => void;
+  onCreateWithAI?: (name: string, description: string) => void;
 }
 
 const GROUP_META: Record<SkillGroup, { label: string; icon: string }> = {
@@ -20,10 +21,15 @@ const GROUP_META: Record<SkillGroup, { label: string; icon: string }> = {
 
 const GROUP_ORDER: SkillGroup[] = ['global', 'project', 'claude', 'codex'];
 
-export function SkillsPanel({ skills, onSkillsChange, onFileSelect }: SkillsPanelProps) {
+export function SkillsPanel({ skills, onSkillsChange, onFileSelect, onCreateWithAI }: SkillsPanelProps) {
   const [loading, setLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<SkillGroup>>(new Set());
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
   const onSkillsChangeRef = useRef(onSkillsChange);
   onSkillsChangeRef.current = onSkillsChange;
 
@@ -56,6 +62,23 @@ export function SkillsPanel({ skills, onSkillsChange, onFileSelect }: SkillsPane
   useEffect(() => {
     loadFromBackend();
   }, [loadFromBackend]);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      await invoke('create_skill', { name: newName.trim(), description: newDesc.trim() });
+      setShowCreate(false);
+      setNewName('');
+      setNewDesc('');
+      await loadFromBackend();
+    } catch (err) {
+      setCreateError(String(err));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const handleToggle = async (skill: SkillConfig, index: number) => {
     try {
@@ -156,11 +179,27 @@ export function SkillsPanel({ skills, onSkillsChange, onFileSelect }: SkillsPane
         <span className="panel-title">Skills</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span className="group-count">{enabledCount}/{skills.length}</span>
+          <button className="new-session-btn" onClick={() => setShowCreate(!showCreate)} title="新建 Skill">
+            <Icon name="add" size={14} />
+          </button>
           <button className="new-session-btn" onClick={loadFromBackend} title="刷新">
             <Icon name="refresh" size={14} />
           </button>
         </div>
       </div>
+
+      {showCreate && (
+        <div className="create-form">
+          <input className="create-form-input" placeholder="Skill 名称" value={newName} onChange={e => setNewName(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} />
+          <input className="create-form-input" placeholder="描述（可选）" value={newDesc} onChange={e => setNewDesc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} />
+          <div className="create-form-actions">
+            <button className="create-form-btn cancel" onClick={() => { setShowCreate(false); setNewName(''); setNewDesc(''); setCreateError(''); }}>取消</button>
+            {onCreateWithAI && <button className="create-form-btn ai-gen" onClick={() => { if (!newName.trim()) return; onCreateWithAI(newName.trim(), newDesc.trim()); setShowCreate(false); setNewName(''); setNewDesc(''); setCreateError(''); }} disabled={!newName.trim()} title="AI 生成"><Icon name="bot" size={12} /> AI 生成</button>}
+            <button className="create-form-btn confirm" onClick={handleCreate} disabled={creating || !newName.trim()}>{creating ? '创建中...' : '创建'}</button>
+          </div>
+          {createError && <p className="create-form-error">{createError}</p>}
+        </div>
+      )}
 
       <div className="panel-content skills-list">
         {loading && (

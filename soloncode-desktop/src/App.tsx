@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { ActivityBar, type ActivityType } from './components/layout/ActivityBar';
 import { TitleBar } from './components/layout/TitleBar';
 import { SidePanel } from './components/layout/SidePanel';
@@ -9,7 +10,6 @@ import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
-import { ChannelPanel } from './components/sidebar/ChannelPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
 import { EditorPanel } from './components/editor/EditorPanel';
 import { ChatView } from './components/ChatView';
@@ -66,6 +66,11 @@ function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string>('default');
+  const [aiCreatePrompt, setAiCreatePrompt] = useState<{
+    prompt: string;
+    type: 'skill' | 'agent';
+    name: string;
+  } | null>(null);
   const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('soloncode-theme') as Theme | null;
     const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -360,6 +365,34 @@ function App() {
     setPanelState(prev => ({ ...prev, panelOrder: [...prev.panelOrder].reverse() }));
   }, []);
 
+  const handleCreateWithAI = useCallback((type: 'skill' | 'agent', name: string, description: string) => {
+    setPanelState(prev => ({ ...prev, chatVisible: true }));
+
+    const title = `创建 ${type === 'skill' ? 'Skill' : 'Agent'}: ${name}`;
+    handleNewSession(undefined, title);
+
+    const prompt = type === 'skill'
+      ? `请帮我创建一个名为「${name}」的 Skill。${description ? `\n描述：${description}` : ''}\n\n请直接输出完整的 SKILL.md 文件内容（纯 Markdown 格式，不要用代码块包裹）。\n\n格式参考：\n\n---\nname: ${name}\ndescription: ${description || name}\n---\n\n# ${name}\n\n## 功能描述\n[详细描述这个 Skill 的功能和用途]\n\n## 使用场景\n[列出适用的使用场景]\n\n## 规则与约束\n[列出规则和约束条件]\n\n## 示例\n[提供使用示例]`
+      : `请帮我创建一个名为「${name}」的 Agent。${description ? `\n描述：${description}` : ''}\n\n请直接输出完整的 AGENT.md 文件内容（纯 Markdown 格式，不要用代码块包裹）。\n\n格式参考：\n\n---\nname: ${name}\ndescription: ${description || name}\n---\n\n# ${name} Agent\n\n## 角色定义\n[描述这个 Agent 的角色和能力]\n\n## 工具权限\n[列出需要的工具和权限]\n\n## 行为准则\n[列出行为准则和约束]\n\n## 工作流程\n[描述典型工作流程]`;
+
+    setAiCreatePrompt({ prompt, type, name });
+  }, [handleNewSession]);
+
+  const handleAiCreateComplete = useCallback(async (info: { type: 'skill' | 'agent'; name: string }) => {
+    try {
+      if (info.type === 'skill') {
+        const skills = await invoke<Array<{ name: string; description: string; path: string; enabled: boolean }>>('list_skills');
+        setSettings(prev => ({ ...prev, skills: skills.map(s => ({ ...s, source: 'discovered' as const, group: 'global' as const })) }));
+      } else {
+        const agents = await invoke<Array<{ name: string; description: string; path: string; enabled: boolean }>>('list_agents');
+        setSettings(prev => ({ ...prev, agents: agents.map(a => ({ ...a, source: 'discovered' as const })) }));
+      }
+      showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 已创建`);
+    } catch (err) {
+      console.error('[App] AI 创建完成刷新失败:', err);
+    }
+  }, []);
+
   // 渲染侧边栏内容
   const renderSidebarContent = () => {
     if (sidebarCollapsed) return null;
@@ -387,11 +420,9 @@ function App() {
           />
         );
       case 'skills':
-        return <SkillsPanel skills={settings.skills} onSkillsChange={(skills) => setSettings(prev => ({ ...prev, skills }))} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} />;
+        return <SkillsPanel skills={settings.skills} onSkillsChange={(skills) => setSettings(prev => ({ ...prev, skills }))} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('skill', name, desc)} />;
       case 'agents':
-        return <AgentsPanel agents={settings.agents} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} />;
-      case 'channels':
-        return <ChannelPanel backendPort={backendPort} sessionId={currentSessionId} />;
+        return <AgentsPanel agents={settings.agents} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('agent', name, desc)} />;
       default:
         return null;
     }
@@ -422,6 +453,7 @@ function App() {
             providers={settings.providers} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
             activeFileName={activeFile?.name} activeFilePath={activeFilePath || undefined}
             onNewProject={handleCreateProject} onOpenFolder={handleOpenFolder}
+            initialPrompt={aiCreatePrompt} onAiCreateComplete={handleAiCreateComplete}
           />
         </div>
       );
@@ -496,7 +528,7 @@ function App() {
         encoding="UTF-8" language={activeFile?.language} hasUnsavedChanges={openFiles.some(f => f.modified)}
       />
       {toast && <div className="toast-message">{toast}</div>}
-      <SettingsPanel visible={settingsVisible} settings={settings} onSettingsChange={handleSettingsChange} onClose={() => setSettingsVisible(false)} backendPort={backendPort} workspacePath={activeProjectPath} />
+      <SettingsPanel visible={settingsVisible} settings={settings} onSettingsChange={handleSettingsChange} onClose={() => setSettingsVisible(false)} backendPort={backendPort} workspacePath={activeProjectPath} sessionId={currentSessionId} />
     </div>
     </div>
   );
