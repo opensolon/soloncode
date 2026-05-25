@@ -1,6 +1,5 @@
 package org.noear.solon.codecli.portal;
 
-import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -29,6 +28,9 @@ public class WebChunk {
     private Map<String, Object> args;
     private String command;
     private Long createdAt;
+    private String modelName;
+    private Long totalTokens;
+    private Long elapsedMs;
 
     public static WebChunk ofDone() {
         WebChunk tmp = new WebChunk();
@@ -107,6 +109,17 @@ public class WebChunk {
         tmp.type = "hitl";
         tmp.toolName = toolName;
         tmp.command = command;
+        tmp.createdAt = Instant.now().toEpochMilli();
+
+        return tmp;
+    }
+
+    public static WebChunk ofMeta(String modelName, long totalTokens, long elapsedMs) {
+        WebChunk tmp = new WebChunk();
+        tmp.type = "meta";
+        tmp.modelName = modelName;
+        tmp.totalTokens = totalTokens;
+        tmp.elapsedMs = elapsedMs;
         tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;

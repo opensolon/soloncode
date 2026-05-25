@@ -136,18 +136,7 @@ export function createProvider(type: ProviderType): ModelProvider {
 
 // ==================== 默认值 ====================
 
-const defaultGeneral: GeneralSettings = {
-  theme: 'dark',
-  fontSize: 14,
-  language: 'zh-CN',
-  tabSize: 2,
-  autoSave: true,
-  formatOnSave: true,
-  shell: 'bash',
-  terminalFontSize: 14,
-  activeProviderId: '',
-  maxSteps: 30,
-  cliPort: 4808,
+export const DEFAULT_PROMPTS: Record<'skillPrompt' | 'agentPrompt' | 'gitPrompt', string> = {
   skillPrompt: `请帮我创建一个名为「{name}」的 Skill。
 {description}
 
@@ -198,15 +187,55 @@ description: {description}
 
 ## 工作流程
 [描述典型工作流程]`,
-  gitPrompt: `请根据以下 git diff 内容，生成一条简洁的 git commit message（提交注释）。
-要求：
-- 第一行为简短摘要（不超过50字）
-- 如有必要，空一行后补充说明
-- 使用中文
-- 只返回注释内容，不要其他解释
+  gitPrompt: [
+    '你是一个 Git 提交信息生成助手。请根据以下 diff 内容生成一条高质量的 commit message。',
+    '',
+    '## Commit 格式规范',
+    '',
+    '````',
+    '<type>(<scope>): <subject>',
+    '',
+    '<body>',
+    '',
+    '<footer>',
+    '````',
+    '',
+    '### 各部分说明',
+    '- **type（必填）**：提交类型，必须是以下之一：',
+    '  - feat: 新功能 | fix: Bug修复 | docs: 文档变更 | style: 代码格式（不影响逻辑）',
+    '  - refactor: 重构 | perf: 性能优化 | test: 测试相关 | chore: 构建/工具 | ci: CI/CD',
+    '- **scope（可选）**：影响范围，如 api、ui、db、config、auth 等模块名',
+    '- **subject（必填）**：简短描述，不超过 50 字，不加句号',
+    '- **body（可选）**：详细说明做了什么、为什么做',
+    '- **footer（可选）**：关联 issue 或标注破坏性变更（BREAKING CHANGE）',
+    '',
+    '## 输出要求',
+    '1. 语言：与 diff 注释语言保持一致（中文注释用中文，英文注释用英文）',
+    '2. 语气：祈使语气、现在时（"add" 而非 "added"）',
+    '3. 不要添加签名、emoji、Co-Authored-By 等额外信息',
+    '4. 主题行不超过 72 字符',
+    '5. 只输出 commit message，不要任何解释或分析',
+    '',
+    'diff 内容：',
+    '{diff}',
+  ].join('\n'),
+};
 
-diff 内容：
-{diff}`,
+const defaultGeneral: GeneralSettings = {
+  theme: 'dark',
+  fontSize: 14,
+  language: 'zh-CN',
+  tabSize: 2,
+  autoSave: true,
+  formatOnSave: true,
+  shell: 'bash',
+  terminalFontSize: 14,
+  activeProviderId: '',
+  maxSteps: 30,
+  cliPort: 4808,
+  skillPrompt: DEFAULT_PROMPTS.skillPrompt,
+  agentPrompt: DEFAULT_PROMPTS.agentPrompt,
+  gitPrompt: DEFAULT_PROMPTS.gitPrompt,
 };
 
 // ==================== 服务层 ====================

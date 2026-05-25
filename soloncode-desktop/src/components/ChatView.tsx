@@ -182,16 +182,16 @@ class WebSocketManager {
   }
 }
 
-// 过滤空标签的辅助函数
+// 过滤空标签和 trace 信息的辅助函数
 function filterEmptyTags(text: string): string {
   let result = text;
   // 过滤空的 HTML/XML 标签（包括带属性的）
   result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)><\/\1>/g, '');
   result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)\/>/g, '');
-  // 过滤只有空白内容（包括空格、换行、回车）的标签
-  // result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>[\s\n\r]*<\/\1>/g, '');
   // 过滤连续的空行（超过2个换行符）
   result = result.replace(/\n{3,}/g, '\n\n');
+  // 过滤末尾的模型 trace 信息，如 `(glm-4.7, 6985tk, 4s)` 或 `(gpt-4o, 1s)`
+  result = result.replace(/\s*`\?\(?[\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*`?$/gm, '');
   return result;
 }
 
@@ -340,7 +340,11 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
     // 正文内容（包括 reason 和 text 类型）
     if (acc.text.trim()) {
-      items.push({ type: 'TEXT', text: acc.text.trim() });
+      let text = acc.text.trim();
+      // 过滤末尾的模型 trace 信息，如 (glm-4.7, 6985tk, 4s) 或 `(...)` 包裹
+      text = text.replace(/`\s*\([\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*`\s*$/, '');
+      text = text.replace(/\([\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*$/, '');
+      items.push({ type: 'TEXT', text });
     }
 
     return items;
@@ -393,7 +397,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             metadata: {
               modelName: data.modelName,
               totalTokens: data.totalTokens,
-              elapsedMs: data.elapsedMs
+              elapsedMs: data.elapsedMs,
             }
           };
 

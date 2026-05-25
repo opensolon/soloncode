@@ -386,3 +386,19 @@
   flex: 1;
   width: auto;
 }
+
+.prompt-hint {
+  margin: 0 16px 4px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+}
+
+.prompt-textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 80px;
+}

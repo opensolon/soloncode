@@ -236,7 +236,21 @@ public class WsGate extends SimpleWebSocketListener {
                     .doFinally(signal -> session.attrs().remove("disposable"))
                     .subscribe(
                             chunk -> {
-                                String msg = webChunkToJson(chunk, finalSessionId, finalModelName);
+                                // 缓存 meta 数据，用于填充 done 的真实值
+                                if ("meta".equals(chunk.getType())) {
+                                    if (chunk.getModelName() != null) {
+                                        session.attrs().put("_lastMetaModel", chunk.getModelName());
+                                    }
+                                    if (chunk.getTotalTokens() != null) {
+                                        session.attrs().put("_lastMetaTokens", chunk.getTotalTokens());
+                                    }
+                                    if (chunk.getElapsedMs() != null) {
+                                        session.attrs().put("_lastMetaElapsed", chunk.getElapsedMs());
+                                    }
+                                    return; // meta 不发送到前端
+                                }
+
+                                String msg = webChunkToJson(chunk, finalSessionId, finalModelName, session);
                                 if (msg != null) {
                                     socket.send(msg);
                                 }
@@ -262,7 +276,7 @@ public class WsGate extends SimpleWebSocketListener {
     /**
      * 将 WebChunk 转换为桌面端 WebSocket JSON 格式
      */
-    private String webChunkToJson(WebChunk chunk, String sessionId, String modelName) {
+    private String webChunkToJson(WebChunk chunk, String sessionId, String modelName, AgentSession session) {
         if (chunk == null || chunk.getType() == null) return null;
 
         ONode node = new ONode().set("sessionId", sessionId);
@@ -290,9 +304,19 @@ public class WsGate extends SimpleWebSocketListener {
                 break;
             case "done":
                 node.set("type", "done");
-                node.set("modelName", modelName != null ? modelName : kernel.getMainModel().getConfig().getNameOrModel());
-                node.set("totalTokens", 0);
-                node.set("elapsedMs", 0);
+                String doneModel = (String) session.attrs().getOrDefault("_lastMetaModel",
+                        modelName != null ? modelName : kernel.getMainModel().getConfig().getNameOrModel());
+                long doneTokens = session.attrs().get("_lastMetaTokens") != null
+                        ? (Long) session.attrs().get("_lastMetaTokens") : 0;
+                long doneElapsed = session.attrs().get("_lastMetaElapsed") != null
+                        ? (Long) session.attrs().get("_lastMetaElapsed") : 0;
+                node.set("modelName", doneModel);
+                node.set("totalTokens", doneTokens);
+                node.set("elapsedMs", doneElapsed);
+                // 清理缓存
+                session.attrs().remove("_lastMetaModel");
+                session.attrs().remove("_lastMetaTokens");
+                session.attrs().remove("_lastMetaElapsed");
                 break;
             case "error":
                 node.set("type", "error");
@@ -350,7 +374,7 @@ public class WsGate extends SimpleWebSocketListener {
                     .doFinally(signal -> session.attrs().remove("disposable"))
                     .subscribe(
                             chunk -> {
-                                String msg = webChunkToJson(chunk, sessionId, modelName);
+                                String msg = webChunkToJson(chunk, sessionId, modelName, session);
                                 if (msg != null) socket.send(msg);
                             },
                             err -> socket.send(new ONode().set("type", "error")

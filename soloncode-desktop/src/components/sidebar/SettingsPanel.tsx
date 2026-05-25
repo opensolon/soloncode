@@ -6,46 +6,23 @@ import {
   type AgentConfig,
   type ModelProvider,
   type ProviderType,
+  type GeneralSettings,
   PROVIDER_PRESETS,
+  DEFAULT_PROMPTS,
   createProvider,
 } from '../../services/settingsService';
 import { fileService } from '../../services/fileService';
 import './SettingsPanel.css';
 import './ChannelPanel.css';
 
-export interface Settings {
-  // 常规
-  theme: 'dark' | 'light';
-  fontSize: number;
-  language: string;
-  tabSize: number;
-  autoSave: boolean;
-  formatOnSave: boolean;
-  shell: string;
-  terminalFontSize: number;
-
-  // 模型供应商
+export interface Settings extends GeneralSettings {
   providers: ModelProvider[];
-  activeProviderId: string;
-  maxSteps: number;
-
-  // CLI
-  cliPort: number;
-
-  // MCP 服务器
   mcpServers: McpServerConfig[];
-
-  // Skills & Agents
   skills: SkillConfig[];
   agents: AgentConfig[];
-
-  // AI 生成提示词
-  skillPrompt: string;
-  agentPrompt: string;
-  gitPrompt: string;
 }
 
-type SettingsMenuKey = 'general' | 'model' | 'channels' | 'mcp' | 'skills' | 'logs';
+type SettingsMenuKey = 'general' | 'model' | 'channels' | 'mcp' | 'skills' | 'prompts' | 'logs';
 
 interface SettingsPanelProps {
   visible: boolean;
@@ -63,6 +40,7 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'channels', icon: 'channels', label: '渠道绑定' },
   { key: 'mcp', icon: 'extensions', label: 'MCP 服务器' },
   { key: 'skills', icon: 'skills', label: 'Skills' },
+  { key: 'prompts', icon: 'edit', label: 'AI 提示词' },
   ...(import.meta.env.DEV ? [{ key: 'logs' as SettingsMenuKey, icon: 'terminal' as IconName, label: '日志' }] : []),
 ];
 
@@ -216,12 +194,16 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
             {activeMenu === 'skills' && (
               <SkillsSettings
                 skills={localSettings.skills}
-                skillPrompt={localSettings.skillPrompt}
-                agentPrompt={localSettings.agentPrompt}
-                gitPrompt={localSettings.gitPrompt}
                 onAdd={handleAddSkill}
                 onRemove={handleRemoveSkill}
                 onUpdate={handleUpdateSkill}
+              />
+            )}
+            {activeMenu === 'prompts' && (
+              <PromptsSettings
+                skillPrompt={localSettings.skillPrompt}
+                agentPrompt={localSettings.agentPrompt}
+                gitPrompt={localSettings.gitPrompt}
                 onPromptChange={(key, value) => setLocalSettings(prev => ({ ...prev, [key]: value }))}
               />
             )}
@@ -573,15 +555,11 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate }: {
 }
 
 /* ==================== Skills 设置 ==================== */
-function SkillsSettings({ skills, skillPrompt, agentPrompt, gitPrompt, onAdd, onRemove, onUpdate, onPromptChange }: {
+function SkillsSettings({ skills, onAdd, onRemove, onUpdate }: {
   skills: SkillConfig[];
-  skillPrompt: string;
-  agentPrompt: string;
-  gitPrompt: string;
   onAdd: () => void;
   onRemove: (index: number) => void;
   onUpdate: (index: number, updates: Partial<SkillConfig>) => void;
-  onPromptChange: (key: 'skillPrompt' | 'agentPrompt' | 'gitPrompt', value: string) => void;
 }) {
   return (
     <div className="settings-section-content">
@@ -630,31 +608,48 @@ function SkillsSettings({ skills, skillPrompt, agentPrompt, gitPrompt, onAdd, on
           </div>
         </div>
       ))}
+    </div>
+  );
+}
 
-      <div style={{ marginTop: 16, borderTop: '1px solid var(--cb-vscode-panel-border)', paddingTop: 12 }}>
-        <div className="settings-section-title" style={{ marginBottom: 8 }}>AI 生成提示词</div>
-        <div style={{ fontSize: 11, color: 'var(--cb-text-secondary)', marginBottom: 8 }}>
-          支持 {'{name}'}、{'{description}'}、{'{diff}'} 占位符，创建时自动替换
-        </div>
-        <div className="mcp-field">
-          <label>Skill 生成提示词</label>
-          <textarea className="setting-input" rows={6} value={skillPrompt}
-            onChange={e => onPromptChange('skillPrompt', e.target.value)}
-            placeholder="请帮我创建一个名为「{name}」的 Skill..." style={{ resize: 'vertical', fontFamily: 'inherit' }} />
-        </div>
-        <div className="mcp-field" style={{ marginTop: 8 }}>
-          <label>Agent 生成提示词</label>
-          <textarea className="setting-input" rows={6} value={agentPrompt}
-            onChange={e => onPromptChange('agentPrompt', e.target.value)}
-            placeholder="请帮我创建一个名为「{name}」的 Agent..." style={{ resize: 'vertical', fontFamily: 'inherit' }} />
-        </div>
-        <div className="mcp-field" style={{ marginTop: 8 }}>
-          <label>Git Commit 生成提示词</label>
-          <textarea className="setting-input" rows={6} value={gitPrompt}
-            onChange={e => onPromptChange('gitPrompt', e.target.value)}
-            placeholder="请根据以下 git diff 内容，生成一条简洁的 git commit message..." style={{ resize: 'vertical', fontFamily: 'inherit' }} />
-        </div>
+/* ==================== AI 提示词设置 ==================== */
+type PromptKey = 'skillPrompt' | 'agentPrompt' | 'gitPrompt';
+
+function PromptsSettings({ skillPrompt, agentPrompt, gitPrompt, onPromptChange }: {
+  skillPrompt: string;
+  agentPrompt: string;
+  gitPrompt: string;
+  onPromptChange: (key: PromptKey, value: string) => void;
+}) {
+  const values: Record<PromptKey, string> = { skillPrompt, agentPrompt, gitPrompt };
+  const items: { key: PromptKey; label: string; placeholder: string }[] = [
+    { key: 'skillPrompt', label: 'Skill 生成提示词', placeholder: '请帮我创建一个名为「{name}」的 Skill...' },
+    { key: 'agentPrompt', label: 'Agent 生成提示词', placeholder: '请帮我创建一个名为「{name}」的 Agent...' },
+    { key: 'gitPrompt', label: 'Git Commit 生成提示词', placeholder: '请根据以下 git diff 内容，生成一条简洁的 git commit message...' },
+  ];
+
+  return (
+    <div className="settings-section-content">
+      <div className="settings-section-title">AI 生成提示词</div>
+      <div className="prompt-hint">
+        支持 {'{name}'}、{'{description}'}、{'{diff}'} 占位符，创建时自动替换
       </div>
+      {items.map(item => (
+        <div key={item.key} className="mcp-server-card">
+          <div className="mcp-server-header">
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--cb-text-primary)' }}>{item.label}</span>
+            <button className="mcp-remove-btn" title="重置为默认" onClick={() => onPromptChange(item.key, DEFAULT_PROMPTS[item.key])}
+              style={{ color: 'var(--cb-text-secondary)', fontSize: 11 }}>
+              重置
+            </button>
+          </div>
+          <div className="mcp-server-fields">
+            <textarea className="setting-input prompt-textarea" value={values[item.key]}
+              onChange={e => onPromptChange(item.key, e.target.value)}
+              placeholder={item.placeholder} rows={5} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

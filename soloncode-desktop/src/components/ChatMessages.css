@@ -460,6 +460,16 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+/* 消息元数据内联标签 */
+.message-meta-inline {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--cb-text-secondary);
+  opacity: 0.7;
+  margin-left: 6px;
+  vertical-align: baseline;
+}
+
 /* 消息底部区域 */
 .message-footer {
   display: flex;
@@ -468,6 +478,14 @@
   margin-top: 4px;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* 消息元数据（模型/token/耗时） */
+.message-meta-info {
+  font-size: 10px;
+  color: var(--cb-text-secondary);
+  opacity: 0.7;
+  flex-shrink: 0;
 }
 
 /* 消息操作按钮 */

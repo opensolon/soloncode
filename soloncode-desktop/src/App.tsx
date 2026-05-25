@@ -524,6 +524,13 @@ function App() {
                     const template = settings.gitPrompt;
                     const prompt = template.replace(/\{diff\}/g, truncatedDiff);
 
+                    const compositeId = settings.activeProviderId || '';
+                    const sepIdx = compositeId.indexOf('__');
+                    const providerId = sepIdx >= 0 ? compositeId.substring(0, sepIdx) : compositeId;
+                    const specificModelId = sepIdx >= 0 ? compositeId.substring(sepIdx + 2) : null;
+                    const activeProvider = settings.providers.find(p => p.id === providerId);
+                    const modelName = specificModelId || activeProvider?.model || '';
+
                     return new Promise<string>((resolve, reject) => {
                       const wsUrl = `ws://localhost:${backendPort}/ws?X-Session-Cwd=${encodeURIComponent(activeProjectPath)}`;
                       const ws = new WebSocket(wsUrl);
@@ -531,7 +538,11 @@ function App() {
                       let text = '';
 
                       ws.onopen = () => {
-                        ws.send(JSON.stringify({ input: prompt, cwd: activeProjectPath }));
+                        // 先注册模型配置
+                        if (activeProvider) {
+                          ws.send(JSON.stringify({ type: 'config', chatModel: { apiUrl: activeProvider.apiUrl, apiKey: activeProvider.apiKey, model: modelName } }));
+                        }
+                        ws.send(JSON.stringify({ input: prompt, cwd: activeProjectPath, model: modelName }));
                       };
 
                       ws.onmessage = (event) => {
