@@ -9,8 +9,8 @@ import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
 import org.noear.solon.ai.agent.react.task.PlanChunk;
-import org.noear.solon.ai.agent.react.task.ReasonChunk;
-import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
+import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
 import org.noear.solon.ai.chat.content.Contents;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
@@ -118,8 +118,8 @@ public class AcpLink implements Runnable {
                                             .thenReturn(chunk);
                                 }
                                 // === 思考阶段 ===
-                                else if (chunk instanceof ReasonChunk) {
-                                    ReasonChunk reasonChunk = (ReasonChunk) chunk;
+                                else if (chunk instanceof ReasonDeltaChunk) {
+                                    ReasonDeltaChunk reasonChunk = (ReasonDeltaChunk) chunk;
                                     if (chunk.hasContent() && !reasonChunk.isToolCalls()) {
                                         if (agentProps.isThinkPrinted() || !reasonChunk.getMessage().isThinking()) {
                                             return acpContext.sendThought(chunk.getContent())
@@ -127,9 +127,9 @@ public class AcpLink implements Runnable {
                                         }
                                     }
                                 }
-                                // === ThoughtChunk（多任务并行） ===
-                                else if (chunk instanceof ThoughtChunk) {
-                                    ThoughtChunk thoughtChunk = (ThoughtChunk) chunk;
+                                // === ReasonCompleteChunk（多任务并行） ===
+                                else if (chunk instanceof ReasonCompleteChunk) {
+                                    ReasonCompleteChunk thoughtChunk = (ReasonCompleteChunk) chunk;
                                     if (thoughtChunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
                                         String content = thoughtChunk.getAssistantMessage().getResultContent();
                                         if (Assert.isNotEmpty(content)) {

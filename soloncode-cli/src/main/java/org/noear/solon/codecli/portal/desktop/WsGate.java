@@ -20,8 +20,8 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
-import org.noear.solon.ai.agent.react.task.ReasonChunk;
-import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
+import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
@@ -262,12 +262,12 @@ public class WsGate extends SimpleWebSocketListener {
                         if (chunk instanceof ReActChunk) {
                            onReActChunk((ReActChunk) chunk, finalSessionId, socket);
                            return;
-                        } else if (chunk instanceof ReasonChunk) {
-                            msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ReasonDeltaChunk) {
+                            msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ActionEndChunk) {
                             msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
-                        } else if (chunk instanceof ThoughtChunk) {
-                            msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ReasonCompleteChunk) {
+                            msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
                         }
 
                         if (Assert.isNotEmpty(msg)) {
@@ -305,7 +305,7 @@ public class WsGate extends SimpleWebSocketListener {
         socket.send(msg2);
     }
 
-    private String onReasonChunk(ReasonChunk chunk, String finalSessionId) {
+    private String onReasonDeltaChunk(ReasonDeltaChunk chunk, String finalSessionId) {
         if (chunk.hasContent()) {
             if (!chunk.isToolCalls() && chunk.hasContent()) {
                 // 检查是否是 thinking 内容
@@ -345,7 +345,7 @@ public class WsGate extends SimpleWebSocketListener {
         return "";
     }
 
-    private String onThoughtChunk(ThoughtChunk chunk, String finalSessionId) {
+    private String onReasonCompleteChunk(ReasonCompleteChunk chunk, String finalSessionId) {
         if (chunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
             String content = chunk.getAssistantMessage().getResultContent();
@@ -488,12 +488,12 @@ public class WsGate extends SimpleWebSocketListener {
 //                            if (chunk instanceof ReActChunk) {
 //                                onReActChunk((ReActChunk) chunk, finalSessionId, socket);
 //                                return;
-//                            } else if (chunk instanceof ReasonChunk) {
-//                                msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+//                            } else if (chunk instanceof ReasonDeltaChunk) {
+//                                msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
 //                            } else if (chunk instanceof ActionEndChunk) {
 //                                msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
-//                            } else if (chunk instanceof ThoughtChunk) {
-//                                msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
+//                            } else if (chunk instanceof ReasonCompleteChunk) {
+//                                msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
 //                            }
 //                            if (Assert.isNotEmpty(msg)) {
 //                                socket.send(msg);

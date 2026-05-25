@@ -28,7 +28,7 @@ public class Extension1 implements HarnessExtension {
             }
 
             @Override
-            public void onReason(ReActTrace trace, AssistantMessage message) {
+            public void onReasonEnd(ReActTrace trace, AssistantMessage message) {
                 System.out.println("又思考了...");
             }
 

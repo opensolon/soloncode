@@ -22,8 +22,8 @@ import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
-import org.noear.solon.ai.agent.react.task.ReasonChunk;
-import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
+import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -49,11 +49,11 @@ import java.util.List;
  *
  * <p><b>核心机制：</b>
  * <ul>
- *   <li>基于 ReAct 流式 chunk 类型分发：ReasonChunk → 思维链/文本输出；
- *       ThoughtChunk → 思考轮次输出 + IM 通道同步转发；
+ *   <li>基于 ReAct 流式 chunk 类型分发：ReasonDeltaChunk → 思维链/文本输出；
+ *       ReasonCompleteChunk → 思考轮次输出 + IM 通道同步转发；
  *       ActionEndChunk → 工具调用结果；
  *       ReActChunk → 最终汇总（含异常）。</li>
- *   <li>IM 通道同步转发：在处理 ThoughtChunk 和 FinalChunk 时，将内容同步推送到
+ *   <li>IM 通道同步转发：在处理 ReasonCompleteChunk 和 FinalChunk 时，将内容同步推送到
  *       所有已绑定的 IM 通道（微信、飞书、钉钉等），实现 Web 端与 IM 端双路输出。</li>
  *   <li>HITL（人机交互循环）支持：流结束后自动检测挂起的人工审批任务，
  *       如有则生成对应的 HITL WebChunk 以暂停流等待人工确认。</li>
@@ -123,7 +123,7 @@ public class WebStreamBuilder {
      * <ol>
      *   <li>处理 prompt（null兜底、/resume重置）并记录当前选择的 Agent</li>
      *   <li>调用 {@link ReActAgent#stream()} 获取 ReAct 流式输出</li>
-     *   <li>按 chunk 类型分发到对应的处理方法（onReasonChunk / onThoughtChunk / onActionEndChunk / onFinalChunk）</li>
+     *   <li>按 chunk 类型分发到对应的处理方法（onReasonDeltaChunk / onReasonCompleteChunk / onActionEndChunk / onFinalChunk）</li>
      *   <li>过滤空 chunk、捕获异常并生成错误 WebChunk</li>
      *   <li>流结束后检测 HITL 状态，如有挂起的人工审批任务则追加 HITL WebChunk</li>
      * </ol></p>
@@ -158,10 +158,10 @@ public class WebStreamBuilder {
                 })
                 .stream()
                 .map(chunk -> {
-                    if (chunk instanceof ReasonChunk) {
-                        return onReasonChunk((ReasonChunk) chunk);
-                    } else if (chunk instanceof ThoughtChunk) {
-                        return onThoughtChunk(session, (ThoughtChunk) chunk);
+                    if (chunk instanceof ReasonDeltaChunk) {
+                        return onReasonDeltaChunk((ReasonDeltaChunk) chunk);
+                    } else if (chunk instanceof ReasonCompleteChunk) {
+                        return onReasonCompleteChunk(session, (ReasonCompleteChunk) chunk);
                     } else if (chunk instanceof ActionEndChunk) {
                         return onActionEndChunk((ActionEndChunk) chunk);
                     } else if (chunk instanceof ReActChunk) {
@@ -247,7 +247,7 @@ public class WebStreamBuilder {
      * @param reason 推理阶段的 chunk 数据
      * @return 映射后的 WebChunk，或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onReasonChunk(ReasonChunk reason) {
+    private WebChunk onReasonDeltaChunk(ReasonDeltaChunk reason) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             if (reason.getMessage().isThinking()) {
                 return WebChunk.ofReason(reason.getContent());
@@ -314,14 +314,14 @@ public class WebStreamBuilder {
      *   <li><b>IM 通道转发</b>：根据本轮是否有工具调用、是否为源代理的最终结果，
      *       以不同的标记（isFinal）将内容推送到所有已绑定的 IM 通道。</li>
      *   <li><b>Web 输出</b>：仅在多任务并行（multitask）标记存在时，才向 Web 端输出文本 chunk；
-     *       普通单轮 Thought 不输出到 Web（避免与 ReasonChunk 重复）。</li>
+     *       普通单轮 Thought 不输出到 Web（避免与 ReasonDeltaChunk 重复）。</li>
      * </ol></p>
      *
      * @param session Agent 会话，用于获取会话ID和已选择的代理名称
      * @param thought 思考轮次的 chunk 数据，包含助手消息和追踪信息
      * @return 映射后的 WebChunk（多任务并行时有内容），或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk thought) {
+    private WebChunk onReasonCompleteChunk(AgentSession session, ReasonCompleteChunk thought) {
         String sessionId = session.getSessionId();
         String resultContent = thought.getAssistantMessage().getResultContent();
 
