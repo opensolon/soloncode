@@ -1,4 +1,9 @@
 
+### v2026.5.26
+
+* 优化 soloncode ActionTask 增加原子性
+* 细节优化
+
 ### v2026.5.22
 
 * 优化 soloncode mcp 兼容性（有些 mcp server 不完全按 mcp 规范来）
