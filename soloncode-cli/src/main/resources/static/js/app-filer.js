@@ -100,14 +100,15 @@
 
     // 恢复持久化状态
     restoreWidth();
-    if (localStorage.getItem('filer-collapsed') === '1') {
-        if (panel) panel.classList.add('collapsed');
+    var shouldExpand = localStorage.getItem('filer-collapsed') === '0';
+    if (shouldExpand) {
+        if (panel) panel.classList.remove('collapsed');
         if (toggleBtn) {
-            toggleBtn.classList.add('collapsed');
-            toggleBtn.innerHTML = '\u2039';
-            toggleBtn.title = '\u5C55\u5F00\u6587\u4EF6\u6811';
+            toggleBtn.classList.remove('collapsed');
+            toggleBtn.innerHTML = '\u203A';
+            toggleBtn.title = '\u6536\u7F29\u6587\u4EF6\u6811';
         }
-        syncHeaderPadding(true);
+        syncHeaderPadding(false);
     }
     syncToggleBtnPosition();
     initResize();
