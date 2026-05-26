@@ -31,8 +31,8 @@ import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
-import org.noear.solon.ai.agent.react.task.ReasonChunk;
-import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
+import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -311,7 +311,7 @@ public class CliShell implements Runnable {
 
             CountDownLatch latch = new CountDownLatch(1);
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
-            final AtomicBoolean isFirstReasonChunk = new AtomicBoolean(true);
+            final AtomicBoolean isFirstReasonDeltaChunk = new AtomicBoolean(true);
 
             Prompt originalPrompt = Prompt.of(currentInput);
 
@@ -323,15 +323,15 @@ public class CliShell implements Runnable {
                     .stream()
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
-                        if (chunk instanceof ReasonChunk) {
-                            // ReasonChunk 非工具调用时，为流式增量（工具调用时为全量，不需要打印）
-                            onReasonChunk((ReasonChunk) chunk, isFirstReasonChunk, isFirstConversation);
-                        } else if (chunk instanceof ThoughtChunk) {
-                            //ThoughtChunk 为全量（ReasonChunk 的汇总）
-                            onThoughtChunk((ThoughtChunk) chunk);
+                        if (chunk instanceof ReasonDeltaChunk) {
+                            // ReasonDeltaChunk 为增量块（工具调用时为全量，不需要打印）
+                            onReasonDeltaChunk((ReasonDeltaChunk) chunk, isFirstReasonDeltaChunk, isFirstConversation);
+                        } else if (chunk instanceof ReasonCompleteChunk) {
+                            //ReasonCompleteChunk 为完成块
+                            onReasonCompleteChunk((ReasonCompleteChunk) chunk);
                         } else if (chunk instanceof ActionEndChunk) {
                             //ActionEndChunk 为全量，一次工具调用一个 ActionEndChunk
-                            onActionEndChunk((ActionEndChunk) chunk, isFirstReasonChunk);
+                            onActionEndChunk((ActionEndChunk) chunk, isFirstReasonDeltaChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
                             onFinalChunk((ReActChunk) chunk);
@@ -483,23 +483,23 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
+    private void onReasonDeltaChunk(ReasonDeltaChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             String delta = clearThink(reason.getContent());
 
             if (reason.getMessage().isThinking()) {
                 if (agentProps.isThinkPrinted()) {
-                    onReasonChunkDo(DIM + delta + RESET, isFirstReasonChunk, isFirstConversation);
+                    onReasonDeltaChunkDo(DIM + delta + RESET, isFirstReasonDeltaChunk, isFirstConversation);
                 }
             } else {
-                onReasonChunkDo(delta, isFirstReasonChunk, isFirstConversation);
+                onReasonDeltaChunkDo(delta, isFirstReasonDeltaChunk, isFirstConversation);
             }
         }
     }
 
-    private void onReasonChunkDo(String delta, AtomicBoolean isFirstReasonChunk, AtomicBoolean isFirstConversation) {
+    private void onReasonDeltaChunkDo(String delta, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
         if (Assert.isNotEmpty(delta)) {
-            if (isFirstReasonChunk.get()) {
+            if (isFirstReasonDeltaChunk.get()) {
                 String trimmed = delta.replaceAll("^[\\s\\n]+", "");
                 if (Assert.isNotEmpty(trimmed)) {
                     if (isFirstConversation.get()) {
@@ -510,7 +510,7 @@ public class CliShell implements Runnable {
                     }
 
                     terminal.writer().print(trimmed.replace("\n", "\n  "));
-                    isFirstReasonChunk.set(false);
+                    isFirstReasonDeltaChunk.set(false);
                 }
             } else {
                 // 连续的思考内容，保持缩进替换即可
@@ -521,7 +521,7 @@ public class CliShell implements Runnable {
     }
 
 
-    private void onThoughtChunk(ThoughtChunk thought) {
+    private void onReasonCompleteChunk(ReasonCompleteChunk thought) {
         if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
@@ -538,7 +538,7 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void onActionEndChunk(ActionEndChunk action, AtomicBoolean isFirstReasonChunk) {
+    private void onActionEndChunk(ActionEndChunk action, AtomicBoolean isFirstReasonDeltaChunk) {
         if (Assert.isNotEmpty(action.getToolName())) {
             if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
                     TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
@@ -641,7 +641,7 @@ public class CliShell implements Runnable {
             }
 
             // 3. 接下来 AI 可能会针对这个结果进行分析 (Reasoning)，设置首行缩进标记
-            isFirstReasonChunk.set(true);
+            isFirstReasonDeltaChunk.set(true);
         }
     }
 

@@ -21,10 +21,8 @@ import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.task.ActionEndChunk;
-import org.noear.solon.ai.agent.react.task.ReasonChunk;
-import org.noear.solon.ai.agent.react.task.ThoughtChunk;
-import org.noear.solon.ai.agent.react.intercept.HITL;
-import org.noear.solon.ai.agent.react.intercept.HITLTask;
+import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
+import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
@@ -133,20 +131,15 @@ public class WsGate extends SimpleWebSocketListener {
 
             AgentSession session = engine.getSession(sessionId);
 
-            if ("[(sec)interrupt]".equals(req.getInput())) {
-                Disposable disposable = (Disposable) session.attrs().remove("disposable");
+            if("[(sec)interrupt]".equals(req.getInput())) {
+                Disposable disposable = (Disposable)session.attrs().remove("disposable");
                 if (disposable != null) {
                     disposable.dispose();
                 }
                 session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
                 LOG.info("用户已取消任务.");
 
-                String interruptModelName = req.getModel();
-                if (interruptModelName == null || interruptModelName.isEmpty()) {
-                    interruptModelName = kernel.getMainModel().getConfig().getNameOrModel();
-                }
-
-                socket.send(new ONode().set("type", "reason")
+                String msg = new ONode().set("type", "reason")
                         .set("sessionId", session.getSessionId())
                         .set("text", "[Task interrupted]")
                         .toJson());
@@ -159,18 +152,25 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
 
+
+
             if (Assert.isEmpty(req.getCwd())) {
                 cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
             }
 
+
+            // 验证 sessionId
             if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
-                socket.send(new ONode().set("type", "error").set("text", "Invalid Session ID").toJson());
+                socket.send(new ONode().set("type", "error")
+                        .set("text", "Invalid Session ID").toJson());
                 return;
             }
 
+            // 验证 cwd
             if (Assert.isNotEmpty(cwd)) {
                 if (cwd.contains("..")) {
-                    socket.send(new ONode().set("type", "error").set("text", "Invalid Session Cwd").toJson());
+                    socket.send(new ONode().set("type", "error")
+                            .set("text", "Invalid Session Cwd").toJson());
                     return;
                 }
             }
@@ -193,6 +193,7 @@ public class WsGate extends SimpleWebSocketListener {
                 }
             }
 
+            // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();
             ChatModel chatModel = engine.getModelOrMain(modelName);
 
@@ -267,12 +268,12 @@ public class WsGate extends SimpleWebSocketListener {
                         if (chunk instanceof ReActChunk) {
                            onReActChunk((ReActChunk) chunk, finalSessionId, socket);
                            return;
-                        } else if (chunk instanceof ReasonChunk) {
-                            msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ReasonDeltaChunk) {
+                            msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ActionEndChunk) {
                             msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
-                        } else if (chunk instanceof ThoughtChunk) {
-                            msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ReasonCompleteChunk) {
+                            msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
                         }
 
                         if (Assert.isNotEmpty(msg)) {
@@ -310,7 +311,7 @@ public class WsGate extends SimpleWebSocketListener {
         socket.send(msg2);
     }
 
-    private String onReasonChunk(ReasonChunk chunk, String finalSessionId) {
+    private String onReasonDeltaChunk(ReasonDeltaChunk chunk, String finalSessionId) {
         if (chunk.hasContent()) {
             if (!chunk.isToolCalls() && chunk.hasContent()) {
                 // 检查是否是 thinking 内容
@@ -361,6 +362,14 @@ public class WsGate extends SimpleWebSocketListener {
 
             final String[] traceMeta = {chatModel.getConfig().getNameOrModel(), "0"};
 
+    private String onReasonCompleteChunk(ReasonCompleteChunk chunk, String finalSessionId) {
+        if (chunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+            // 仅在多任务并行且有内容时输出
+            String content = chunk.getAssistantMessage().getResultContent();
+            if (Assert.isNotEmpty(content)) {
+                // 检查是否是 thinking 内容
+                boolean isThinking = chunk.getMessage() != null && chunk.getMessage().isThinking();
+                String chunkTypeToSend = isThinking ? "think" : "reason";
             Disposable disposable = buildDirectStreamFlux(session, agent, chatModel, cwd, null, traceMeta)
                     .doFinally(signal -> session.attrs().remove("disposable"))
                     .subscribe(
@@ -408,12 +417,20 @@ public class WsGate extends SimpleWebSocketListener {
                     // 持久化到 YAML 文件
                     saveConfigToFile(apiUrl, apiKey, model);
 
-                    socket.send(new ONode().set("type", "config").set("status", "ok").set("model", model).toJson());
+                    socket.send(new ONode()
+                            .set("type", "config")
+                            .set("status", "ok")
+                            .set("model", model)
+                            .toJson());
                 }
             }
         } catch (Exception e) {
             LOG.error("[WS] Config update failed", e);
-            socket.send(new ONode().set("type", "config").set("status", "error").set("text", e.getMessage()).toJson());
+            socket.send(new ONode()
+                    .set("type", "config")
+                    .set("status", "error")
+                    .set("text", e.getMessage())
+                    .toJson());
         }
     }
 
@@ -492,12 +509,12 @@ public class WsGate extends SimpleWebSocketListener {
 //                            if (chunk instanceof ReActChunk) {
 //                                onReActChunk((ReActChunk) chunk, finalSessionId, socket);
 //                                return;
-//                            } else if (chunk instanceof ReasonChunk) {
-//                                msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+//                            } else if (chunk instanceof ReasonDeltaChunk) {
+//                                msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
 //                            } else if (chunk instanceof ActionEndChunk) {
 //                                msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
-//                            } else if (chunk instanceof ThoughtChunk) {
-//                                msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
+//                            } else if (chunk instanceof ReasonCompleteChunk) {
+//                                msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
 //                            }
 //                            if (Assert.isNotEmpty(msg)) {
 //                                socket.send(msg);
