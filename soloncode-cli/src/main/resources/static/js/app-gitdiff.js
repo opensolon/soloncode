@@ -800,7 +800,7 @@
                     if (res && res.code === 200) {
                         if (gitCommitMsg) {
                             gitCommitMsg.value = '';
-                            gitCommitMsg.style.height = 'auto';
+                            gitCommitMsg.style.height = '30px';
                         }
                         loadGitStatus();
                         // 提交成功，不显示提示
@@ -826,10 +826,10 @@
                     gitCommitBtn.click();
                 }
             });
-            // textarea 自动增高
+            // textarea 自动增高（最多4行）
             gitCommitMsg.addEventListener('input', function() {
                 this.style.height = 'auto';
-                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+                this.style.height = Math.min(this.scrollHeight, 80) + 'px';
             });
         }
     }
