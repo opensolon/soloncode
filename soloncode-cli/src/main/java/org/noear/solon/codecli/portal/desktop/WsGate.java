@@ -33,17 +33,19 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.skills.memory.MemorySkill;
+import org.noear.solon.ai.util.CmdUtil;
+import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentProperties;
-import org.noear.solon.codecli.portal.web.WebStreamBuilder;
+import org.noear.solon.ai.agent.react.intercept.HITL;
+import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -65,12 +67,10 @@ public class WsGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WsGate.class);
     private final HarnessEngine engine;
     private final AgentProperties agentPros;
-    private final WebStreamBuilder streamBuilder;
 
     public WsGate(HarnessEngine engine, AgentProperties agentPros) {
         this.engine = engine;
         this.agentPros = agentPros;
-        this.streamBuilder = new WebStreamBuilder(engine);
     }
 
     @Override
@@ -139,14 +139,19 @@ public class WsGate extends SimpleWebSocketListener {
                 session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
                 LOG.info("用户已取消任务.");
 
-                String msg = new ONode().set("type", "reason")
+                String interruptModelName = req.getModel();
+                if (interruptModelName == null || interruptModelName.isEmpty()) {
+                    interruptModelName = engine.getMainModel().getConfig().getNameOrModel();
+                }
+
+                socket.send(new ONode().set("type", "reason")
                         .set("sessionId", session.getSessionId())
                         .set("text", "[Task interrupted]")
                         .toJson());
 
                 socket.send(new ONode().set("type", "done")
                         .set("sessionId", session.getSessionId())
-                        .set("modelName", engine.getMainModel().getConfig().getNameOrModel())
+                        .set("modelName", interruptModelName)
                         .set("totalTokens", 0)
                         .set("elapsedMs", 0).toJson());
                 return;
@@ -300,32 +305,72 @@ public class WsGate extends SimpleWebSocketListener {
     }
 
     private void onReActChunk(ReActChunk chunk, String finalSessionId, WebSocket socket) {
-        Long start_time = chunk.getTrace().getOriginalPrompt().attrAs("start_time");
+        ReActTrace trace = chunk.getTrace();
+        Long start_time = trace.getOriginalPrompt().attrAs("start_time");
+        long elapsed = start_time != null ? System.currentTimeMillis() - start_time : 0;
+        long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : 0;
 
         String msg2 = new ONode().set("type", "done")
                 .set("sessionId", finalSessionId)
-                .set("modelName", chunk.getTrace().getOptions().getChatModel().getNameOrModel())
-                .set("totalTokens", chunk.getTrace().getMetrics().getTotalTokens())
-                .set("elapsedMs", System.currentTimeMillis() - start_time).toJson();
+                .set("modelName", trace.getOptions().getChatModel().getNameOrModel())
+                .set("totalTokens", totalTokens)
+                .set("elapsedMs", elapsed).toJson();
 
         socket.send(msg2);
     }
 
     private String onReasonDeltaChunk(ReasonDeltaChunk chunk, String finalSessionId) {
-        if (chunk.hasContent()) {
-            if (!chunk.isToolCalls() && chunk.hasContent()) {
-                // 检查是否是 thinking 内容
-                boolean isThinking = chunk.getMessage() != null && chunk.getMessage().isThinking();
+        if (!chunk.isToolCalls() && chunk.getMessage() != null) {
+            String content = chunk.getMessage().getContent();
+            if (content != null && !content.isEmpty()) {
+                boolean isThinking = chunk.getMessage().isThinking();
                 String chunkTypeToSend = isThinking ? "think" : "reason";
 
                 LOG.debug("[WS] sending {}: {}", chunkTypeToSend,
-                        chunk.getContent().substring(0, Math.min(50, chunk.getContent().length())));
+                        content.substring(0, Math.min(50, content.length())));
                 return new ONode().set("type", chunkTypeToSend)
                         .set("sessionId", finalSessionId)
-                        .set("text", chunk.getContent())
+                        .set("text", content)
                         .toJson();
             }
         }
+        return null;
+    }
+
+    private String onActionEndChunk(ActionEndChunk chunk, String finalSessionId) {
+        if (Assert.isEmpty(chunk.getToolName())) {
+            return null;
+        }
+
+        if (TaskSkill.TOOL_MULTITASK.equals(chunk.getToolName()) ||
+                TaskSkill.TOOL_TASK.equals(chunk.getToolName()) ||
+                MemorySkill.isMemoryTool(chunk.getToolName())) {
+            return null;
+        }
+
+        ONode node = new ONode().set("type", "action")
+                .set("sessionId", finalSessionId);
+
+        if (engine.getName().equals(chunk.getAgentName())) {
+            node.set("toolName", chunk.getToolName());
+        } else {
+            node.set("toolName", chunk.getAgentName() + "/" + chunk.getToolName());
+        }
+
+        if (chunk.getResult() != null && chunk.getResult().getContent() != null) {
+            node.set("text", chunk.getResult().getContent());
+        }
+        if (chunk.getArgs() != null) node.set("args", chunk.getArgs());
+
+        if ("todowrite".equals(chunk.getToolName())) {
+            String todos = (String) chunk.getArgs().get("todos");
+            if (Assert.isNotEmpty(todos)) {
+                node.set("text", todos);
+            }
+        }
+
+        return node.toJson();
+    }
 
     /**
      * 处理 HITL 审批/拒绝操作
@@ -341,7 +386,7 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
 
-            AgentSession session = kernel.getSession(sessionId);
+            AgentSession session = engine.getSession(sessionId);
             HITLTask task = HITL.getPendingTask(session);
             if (task == null) {
                 socket.send(new ONode().set("type", "error").set("text", "No pending HITL task").toJson());
@@ -356,36 +401,60 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 审批后恢复流执行
             String modelName = (String) session.getContext().get(HarnessFlags.VAR_MODEL_SELECTED);
-            ChatModel chatModel = kernel.getModelOrMain(modelName);
-            ReActAgent agent = kernel.getAgentOrMain(null);
+            ChatModel chatModel = engine.getModelOrMain(modelName);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
 
-            final String[] traceMeta = {chatModel.getConfig().getNameOrModel(), "0"};
+            Prompt hitlPrompt = Prompt.of().attrPut("start_time", System.currentTimeMillis());
 
-    private String onReasonCompleteChunk(ReasonCompleteChunk chunk, String finalSessionId) {
-        if (chunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
-            // 仅在多任务并行且有内容时输出
-            String content = chunk.getAssistantMessage().getResultContent();
-            if (Assert.isNotEmpty(content)) {
-                // 检查是否是 thinking 内容
-                boolean isThinking = chunk.getMessage() != null && chunk.getMessage().isThinking();
-                String chunkTypeToSend = isThinking ? "think" : "reason";
-            Disposable disposable = buildDirectStreamFlux(session, agent, chatModel, cwd, null, traceMeta)
+            Disposable disposable = engine.prompt(hitlPrompt)
+                    .session(session)
+                    .options(o -> {
+                        o.chatModel(chatModel);
+                        if (Assert.isNotEmpty(cwd)) {
+                            o.toolContextPut(HarnessEngine.ATTR_CWD, cwd);
+                        }
+                    })
+                    .stream()
                     .doFinally(signal -> session.attrs().remove("disposable"))
-                    .subscribe(
-                            chunk -> {
-                                String msg = webChunkToJson(chunk, sessionId);
-                                if (msg != null) socket.send(msg);
-                            },
-                            err -> socket.send(new ONode().set("type", "error")
-                                    .set("sessionId", sessionId).set("text", err.getMessage()).toJson())
-                    );
+                    .doOnNext(chunk -> {
+                        if (chunk instanceof ReActChunk) {
+                            onReActChunk((ReActChunk) chunk, sessionId, socket);
+                            return;
+                        }
+                        String msg = null;
+                        if (chunk instanceof ReasonDeltaChunk) {
+                            msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, sessionId);
+                        } else if (chunk instanceof ActionEndChunk) {
+                            msg = onActionEndChunk((ActionEndChunk) chunk, sessionId);
+                        } else if (chunk instanceof ReasonCompleteChunk) {
+                            msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, sessionId);
+                        }
+                        if (Assert.isNotEmpty(msg)) {
+                            socket.send(msg);
+                        }
+                    })
+                    .doOnError(err -> socket.send(new ONode().set("type", "error")
+                            .set("sessionId", sessionId).set("text", err.getMessage()).toJson()))
+                    .subscribe();
 
             session.attrs().put("disposable", disposable);
         } catch (Exception e) {
             LOG.error("[WS] HITL action failed", e);
             socket.send(new ONode().set("type", "error").set("text", e.getMessage()).toJson());
         }
+    }
+
+    private String onReasonCompleteChunk(ReasonCompleteChunk chunk, String finalSessionId) {
+        if (chunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+            String content = chunk.getAssistantMessage().getResultContent();
+            if (Assert.isNotEmpty(content)) {
+                return new ONode().set("type", "reason")
+                        .set("sessionId", finalSessionId)
+                        .set("text", "\n" + content)
+                        .toJson();
+            }
+        }
+        return null;
     }
 
     /**
@@ -474,99 +543,117 @@ public class WsGate extends SimpleWebSocketListener {
     }
 
     /**
-     * 处理命令输入（/ 开头），通过 WebCommandDispatcher 分发执行
+     * 处理命令输入（/ 开头），通过 CommandRegistry 分发执行
      */
     private void handleCommand(WebSocket socket, AgentSession session, ReActAgent agent, ChatModel chatModel,
                                String sessionCwd, String input, String finalSessionId) {
-        //todo: 这个代码源自 web 太复杂了，也没有与 WsGate 整合好。重新参考下 WebGate
-//        try {
-//            WebCommandDispatcher dispatcher = new WebCommandDispatcher(kernel.getCommandRegistry());
-//            CommandResult result = dispatcher.dispatch(input, session, kernel,
-//                    (String prompt, String model) -> {
-//                        final ChatModel chatModelSelected;
-//                        if (model != null) {
-//                            chatModelSelected = kernel.getModelOrMain(model);
-//                        } else {
-//                            chatModelSelected = chatModel;
-//                        }
-//                        return streamBuilder.buildStreamFlux(session, agent, chatModelSelected, sessionCwd, Prompt.of(prompt));
-//                    });
-//
-//            if (result == null) {
-//                // 不是有效命令，当作普通输入流式处理
-//                Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
-//                String finalCwd = sessionCwd;
-//                Disposable disposable = kernel.prompt(prompt)
-//                        .session(session)
-//                        .options(o -> {
-//                            o.chatModel(chatModel);
-//                            o.toolContextPut(HarnessEngine.ATTR_CWD, finalCwd);
-//                        })
-//                        .stream()
-//                        .doFinally(signal -> session.attrs().remove("disposable"))
-//                        .doOnNext(chunk -> {
-//                            String msg = null;
-//                            if (chunk instanceof ReActChunk) {
-//                                onReActChunk((ReActChunk) chunk, finalSessionId, socket);
-//                                return;
-//                            } else if (chunk instanceof ReasonDeltaChunk) {
-//                                msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
-//                            } else if (chunk instanceof ActionEndChunk) {
-//                                msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
-//                            } else if (chunk instanceof ReasonCompleteChunk) {
-//                                msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
-//                            }
-//                            if (Assert.isNotEmpty(msg)) {
-//                                socket.send(msg);
-//                            }
-//                        })
-//                        .doOnError(err -> socket.send(new ONode()
-//                                .set("type", "error")
-//                                .set("sessionId", finalSessionId)
-//                                .set("text", err.getMessage()).toJson()))
-//                        .subscribe();
-//                Disposable old = (Disposable) session.attrs().put("disposable", disposable);
-//                if (old != null && !old.isDisposed()) {
-//                    old.dispose();
-//                }
-//                return;
-//            }
-//
-//            if (result.isAgentTask()) {
-//                // AGENT 类型命令：订阅 Flux 流发送到 WebSocket
-//                if (result.getAgentFlux() != null) {
-//                    result.getAgentFlux().subscribe(
-//                            line -> socket.send(line),
-//                            err -> socket.send(new ONode()
-//                                    .set("type", "error")
-//                                    .set("sessionId", finalSessionId)
-//                                    .set("text", err.getMessage()).toJson()),
-//                            () -> socket.send(new ONode()
-//                                    .set("type", "done")
-//                                    .set("sessionId", finalSessionId)
-//                                    .set("totalTokens", 0)
-//                                    .set("elapsedMs", 0).toJson())
-//                    );
-//                }
-//            } else {
-//                // SYSTEM/CONFIG 类型命令：将输出逐行发送到 WebSocket
-//                for (String line : result.getOutput()) {
-//                    socket.send(new ONode()
-//                            .set("type", "command")
-//                            .set("sessionId", finalSessionId)
-//                            .set("text", line).toJson());
-//                }
-//                socket.send(new ONode()
-//                        .set("type", "done")
-//                        .set("sessionId", finalSessionId)
-//                        .set("totalTokens", 0)
-//                        .set("elapsedMs", 0).toJson());
-//            }
-//        } catch (Exception e) {
-//            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-//            socket.send(new ONode().set("type", "error")
-//                    .set("sessionId", finalSessionId)
-//                    .set("text", errorMsg).toJson());
-//        }
+        try {
+            // 解析命令名和参数
+            List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
+            if (parts.isEmpty()) {
+                return;
+            }
+
+            String cmdName = parts.get(0).toLowerCase();
+            List<String> args = parts.size() > 1 ? parts.subList(1, parts.size()) : new ArrayList<>();
+
+            // 查找命令
+            Command command = engine.getCommandRegistry().find(cmdName);
+            if (command == null) {
+                // 不是有效命令，当作普通输入走流式处理
+                handleFallbackPrompt(socket, session, chatModel, sessionCwd, input, finalSessionId);
+                return;
+            }
+
+            // 构建 context（注入 agentTaskRunner 回调）
+            WebCommandContext ctx = new WebCommandContext(session, engine, input, cmdName, args,
+                    (prompt, model) -> {
+                        ChatModel selectedModel = model != null ? engine.getModelOrMain(model) : chatModel;
+                        handleFallbackPrompt(socket, session, selectedModel, sessionCwd, prompt, finalSessionId);
+                    });
+
+            // 执行命令
+            command.execute(ctx);
+
+            if (!ctx.isAgentTask()) {
+                // rewind 命令特殊处理：发送 rewind 事件让前端同步删除 DOM
+                if ("rewind".equals(cmdName)) {
+                    int rewindCount = 1;
+                    if (!args.isEmpty()) {
+                        try {
+                            rewindCount = Integer.parseInt(args.get(0));
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                    socket.send(new ONode().set("type", "rewind")
+                            .set("sessionId", finalSessionId)
+                            .set("count", rewindCount + 1)
+                            .toJson());
+                } else {
+                    String text = ctx.getOutputBuffer().length() > 0
+                            ? ctx.getOutputBuffer().toString()
+                            : "命令执行完成";
+                    socket.send(new ONode().set("type", "command")
+                            .set("sessionId", finalSessionId)
+                            .set("text", text)
+                            .toJson());
+                }
+
+                socket.send(new ONode().set("type", "done")
+                        .set("sessionId", finalSessionId)
+                        .set("modelName", chatModel.getConfig().getNameOrModel())
+                        .set("totalTokens", 0)
+                        .set("elapsedMs", 0).toJson());
+            }
+        } catch (Exception e) {
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            socket.send(new ONode().set("type", "error")
+                    .set("sessionId", finalSessionId)
+                    .set("text", errorMsg).toJson());
+        }
+    }
+
+    /**
+     * 将输入作为普通 prompt 走流式处理
+     */
+    private void handleFallbackPrompt(WebSocket socket, AgentSession session, ChatModel chatModel,
+                                      String sessionCwd, String input, String finalSessionId) {
+        Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+        Disposable disposable = engine.prompt(prompt)
+                .session(session)
+                .options(o -> {
+                    o.chatModel(chatModel);
+                    if (Assert.isNotEmpty(sessionCwd)) {
+                        o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
+                    }
+                })
+                .stream()
+                .doFinally(signal -> session.attrs().remove("disposable"))
+                .doOnNext(chunk -> {
+                    if (chunk instanceof ReActChunk) {
+                        onReActChunk((ReActChunk) chunk, finalSessionId, socket);
+                        return;
+                    }
+                    String msg = null;
+                    if (chunk instanceof ReasonDeltaChunk) {
+                        msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
+                    } else if (chunk instanceof ActionEndChunk) {
+                        msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
+                    } else if (chunk instanceof ReasonCompleteChunk) {
+                        msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
+                    }
+                    if (Assert.isNotEmpty(msg)) {
+                        socket.send(msg);
+                    }
+                })
+                .doOnError(err -> socket.send(new ONode().set("type", "error")
+                        .set("sessionId", finalSessionId)
+                        .set("text", err.getMessage()).toJson()))
+                .subscribe();
+
+        Disposable old = (Disposable) session.attrs().put("disposable", disposable);
+        if (old != null && !old.isDisposed()) {
+            old.dispose();
+        }
     }
 }
