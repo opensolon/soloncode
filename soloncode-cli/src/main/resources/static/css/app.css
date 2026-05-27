@@ -998,15 +998,20 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 }
 .git-commit-input {
     width: 100%;
-    height: 30px;
-    padding: 0 8px;
+    min-height: 48px;
+    max-height: 120px;
+    padding: 6px 8px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     background: var(--bg-primary);
     color: var(--text-primary);
     font-size: 12px;
+    line-height: 1.4;
     outline: none;
     transition: border-color 0.2s;
+    resize: none;
+    overflow-y: auto;
+    font-family: inherit;
 }
 .git-commit-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
 .git-commit-input:focus { border-color: var(--accent); }
