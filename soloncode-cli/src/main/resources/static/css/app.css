@@ -1015,6 +1015,17 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 }
 .git-commit-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
 .git-commit-input:focus { border-color: var(--accent); }
+.git-commit-input.shake {
+    border-color: #e74c3c;
+    animation: shake-input 0.4s ease;
+}
+@keyframes shake-input {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+}
 .git-commit-actions {
     display: flex;
     align-items: center;

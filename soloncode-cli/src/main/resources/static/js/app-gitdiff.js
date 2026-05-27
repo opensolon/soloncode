@@ -771,11 +771,18 @@
             var msg = (gitCommitMsg && gitCommitMsg.value.trim()) || '';
             if (!msg) {
                 gitCommitMsg && gitCommitMsg.focus();
+                gitCommitMsg && gitCommitMsg.classList.add('shake');
+                var origPH = gitCommitMsg.placeholder;
+                gitCommitMsg.placeholder = '请输入提交信息';
+                setTimeout(function() {
+                    gitCommitMsg && gitCommitMsg.classList.remove('shake');
+                    gitCommitMsg.placeholder = origPH;
+                }, 1200);
                 return;
             }
             var files = getSelectedFiles();
             if (files.length === 0) {
-                alert('请至少勾选一个文件');
+                if (typeof showToast === 'function') showToast('请至少勾选一个文件', 'error');
                 return;
             }
 
@@ -791,8 +798,12 @@
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
                     if (res && res.code === 200) {
-                        if (gitCommitMsg) gitCommitMsg.value = '';
+                        if (gitCommitMsg) {
+                            gitCommitMsg.value = '';
+                            gitCommitMsg.style.height = 'auto';
+                        }
                         loadGitStatus();
+                        if (typeof showToast === 'function') showToast('提交成功', 'success');
                     } else {
                         alert('提交失败：' + ((res && res.data && res.data.message) || '未知错误'));
                     }
@@ -814,6 +825,11 @@
                     e.preventDefault();
                     gitCommitBtn.click();
                 }
+            });
+            // textarea 自动增高
+            gitCommitMsg.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
             });
         }
     }
