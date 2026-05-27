@@ -77,7 +77,7 @@
 
     // ---- 加载 Git 状态 ----
     function loadGitStatus() {
-        fetch('/chat/git/status')
+        fetch('/web/chat/git/status')
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var data = (res && res.data) ? res.data : {};
@@ -286,7 +286,7 @@
 
         if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">加载中...</div>';
 
-        fetch('/chat/filer/read?path=' + encodeURIComponent(path))
+        fetch('/web/chat/filer/read?path=' + encodeURIComponent(path))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
@@ -432,7 +432,7 @@
 
         if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">加载中...</div>';
 
-        fetch('/chat/git/diff?path=' + encodeURIComponent(path))
+        fetch('/web/chat/git/diff?path=' + encodeURIComponent(path))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
@@ -472,7 +472,7 @@
             addBtn.addEventListener('click', function() {
                 addBtn.disabled = true;
                 addBtn.textContent = '添加中...';
-                fetch('/chat/git/stage', {
+                fetch('/web/chat/git/stage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -505,7 +505,7 @@
             unstageBtn.addEventListener('click', function() {
                 unstageBtn.disabled = true;
                 unstageBtn.textContent = '移出中...';
-                fetch('/chat/git/unstage', {
+                fetch('/web/chat/git/unstage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -698,7 +698,7 @@
                 formData.append('input', prompt);
                 formData.append('sessionId', summarySessionId);
 
-                fetch('/chat/input', {
+                fetch('/web/chat/input', {
                     method: 'POST',
                     body: formData
                 }).catch(function(e) {
@@ -722,7 +722,7 @@
         if (files.length === 0) { callback('', '0 个文件'); return; }
 
         targetFiles.forEach(function(filePath) {
-            fetch('/chat/git/diff?path=' + encodeURIComponent(filePath))
+            fetch('/web/chat/git/diff?path=' + encodeURIComponent(filePath))
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
                     var d = (res && res.data) ? res.data : {};
@@ -790,7 +790,7 @@
             gitCommitBtn.disabled = true;
             gitCommitBtn.innerHTML = '<span style="opacity:0.7">提交中...</span>';
 
-            fetch('/chat/git/commit', {
+            fetch('/web/chat/git/commit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: msg, files: files })
@@ -843,7 +843,7 @@
             gitInitBtn.textContent = '初始化中...';
 
             var doCommit = gitInitCommit && gitInitCommit.checked;
-            fetch('/chat/git/init?initialCommit=' + (doCommit ? 'true' : 'false'), { method: 'POST' })
+            fetch('/web/chat/git/init?initialCommit=' + (doCommit ? 'true' : 'false'), { method: 'POST' })
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
                     if (res && res.code === 200) {

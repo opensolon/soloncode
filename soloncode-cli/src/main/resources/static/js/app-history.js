@@ -5,7 +5,7 @@
 /* ===== History ===== */
 function loadSessionHistory() {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/sessions', true);
+    xhr.open('GET', '/web/chat/sessions', true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -122,7 +122,7 @@ function startRename(idx) {
             chatHistory[idx].label = newLabel;
 
             var xhr = new XMLHttpRequest();
-            xhr.open('POST', '/chat/sessions/rename', true);
+            xhr.open('POST', '/web/chat/sessions/rename', true);
             xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
             xhr.send('sessionId=' + encodeURIComponent(chatHistory[idx].sessionId) + '&label=' + encodeURIComponent(newLabel));
         }
@@ -145,7 +145,7 @@ function deleteSession(idx) {
     if (!entry) return;
 
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId), true);
+    xhr.open('POST', '/web/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId), true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4) {
             /* Clean up session state after server confirms */
@@ -196,7 +196,7 @@ function selectSession(idx) {
 
 function loadMessages(sess) {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/messages?sessionId=' + encodeURIComponent(sess.sessionId), true);
+    xhr.open('GET', '/web/chat/messages?sessionId=' + encodeURIComponent(sess.sessionId), true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -236,7 +236,7 @@ var cmdTrigger = null; // '/' for commands, '@' for subagents, '$' for skills
 
 function loadCommands() {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/hints', true);
+    xhr.open('GET', '/web/chat/hints', true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -586,7 +586,7 @@ function getSelectedModel() {
 
 // Load model list (once) + selected model for given session
 function loadModels(sessionId, callback) {
-    var url = '/chat/models';
+    var url = '/web/chat/models';
     if (sessionId) url += '?sessionId=' + encodeURIComponent(sessionId);
 
     var xhr = new XMLHttpRequest();
@@ -629,7 +629,7 @@ function refreshSessionModel(sessionId) {
     if (!sessionId) return;
     // If we haven't seen this session's model yet, fetch it from backend
     if (!sessionModelMap[sessionId]) {
-        var url = '/chat/models?sessionId=' + encodeURIComponent(sessionId);
+        var url = '/web/chat/models?sessionId=' + encodeURIComponent(sessionId);
         var xhr = new XMLHttpRequest();
         xhr.open('GET', url, true);
         xhr.onreadystatechange = function() {

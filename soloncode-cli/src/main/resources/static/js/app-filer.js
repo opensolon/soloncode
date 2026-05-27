@@ -130,7 +130,7 @@
 
     // ---- 加载文件树 ----
     function loadTree() {
-        fetch('/chat/filer/tree?depth=1')
+        fetch('/web/chat/filer/tree?depth=1')
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var data = (res && res.data) ? res.data : [];
@@ -212,7 +212,7 @@
                         var isDirty = ne.getAttribute('data-dirty') === '1';
                         if (isDirty || !cEl.hasChildNodes()) {
                             ne.removeAttribute('data-dirty');
-                            fetch('/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1')
+                            fetch('/web/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1')
                                 .then(function(r) { return r.json(); })
                                 .then(function(res) {
                                     var subData = (res && res.data) ? res.data : [];
@@ -320,7 +320,7 @@
         }
 
         var indent = parseInt(nodeEl.getAttribute('data-indent') || '0', 10);
-        fetch('/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1')
+        fetch('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1')
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var subData = (res && res.data) ? res.data : [];
@@ -344,7 +344,7 @@
                         if (expChildrenEl) {
                             expChildrenEl.classList.add('open');
                             if (expArrow) expArrow.classList.add('open');
-                            fetch('/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1')
+                            fetch('/web/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1')
                                 .then(function(r2) { return r2.json(); })
                                 .then(function(res2) {
                                     var subData2 = (res2 && res2.data) ? res2.data : [];
@@ -363,7 +363,7 @@
     function smartRefreshRoot() {
         var expandedPaths = collectExpandedPaths();
 
-        fetch('/chat/filer/tree?depth=1')
+        fetch('/web/chat/filer/tree?depth=1')
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var newData = (res && res.data) ? res.data : [];
@@ -386,7 +386,7 @@
                     if (!childrenEl) return;
                     var indent = parseInt(nodeEl.getAttribute('data-indent') || '0', 10);
 
-                    fetch('/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1')
+                    fetch('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1')
                         .then(function(r2) { return r2.json(); })
                         .then(function(res2) {
                             var subData = (res2 && res2.data) ? res2.data : [];
@@ -443,7 +443,7 @@
         searchResultsEl.style.display = 'block';
         searchResultsEl.innerHTML = '<div class="filer-search-loading">搜索中...</div>';
 
-        fetch('/chat/filer/search?keyword=' + encodeURIComponent(kw))
+        fetch('/web/chat/filer/search?keyword=' + encodeURIComponent(kw))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var data = (res && res.data) ? res.data : [];

@@ -9,7 +9,7 @@ chatSendBtn.addEventListener('click', function() {
         try {
             //提交 interrupt
             var xhr = new XMLHttpRequest();
-            xhr.open('POST', '/chat/interrupt?sessionId=' + encodeURIComponent(activeSessionId), true);
+            xhr.open('POST', '/web/chat/interrupt?sessionId=' + encodeURIComponent(activeSessionId), true);
             xhr.send();
         } finally {
             // 停止流
@@ -374,7 +374,7 @@ var wechatPollTimer = null;
 function updateWechatUI() {
     if (!activeSessionId) return;
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/wechat/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+    xhr.open('GET', '/web/chat/wechat/status?sessionId=' + encodeURIComponent(activeSessionId), true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -407,7 +407,7 @@ wechatHeaderBtn.addEventListener('click', function() {
     if (wechatHeaderBtn.classList.contains('bound')) {
         if (!confirm('确定要断开微信连接吗？')) return;
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/chat/wechat/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
+        xhr.open('POST', '/web/chat/wechat/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) updateWechatUI();
         };
@@ -439,7 +439,7 @@ function showWechatModal() {
 
     // Fetch QR code
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/wechat/qrcode?sessionId=' + encodeURIComponent(activeSessionId), true);
+    xhr.open('GET', '/web/chat/wechat/qrcode?sessionId=' + encodeURIComponent(activeSessionId), true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -474,7 +474,7 @@ function startWechatPoll(qrcode, sessionId) {
     if (wechatPollTimer) clearInterval(wechatPollTimer);
     wechatPollTimer = setInterval(function() {
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', '/chat/wechat/qrcode/status?qrcode=' + encodeURIComponent(qrcode) + '&sessionId=' + encodeURIComponent(sessionId), true);
+        xhr.open('GET', '/web/chat/wechat/qrcode/status?qrcode=' + encodeURIComponent(qrcode) + '&sessionId=' + encodeURIComponent(sessionId), true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4 && xhr.status === 200) {
                 try {
@@ -541,7 +541,7 @@ var feishuPollTimer = null;
 function updateFeishuUI() {
     if (!activeSessionId) return;
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+    xhr.open('GET', '/web/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -566,7 +566,7 @@ feishuHeaderBtn.addEventListener('click', function() {
     if (feishuHeaderBtn.classList.contains('bound')) {
         if (!confirm('确定要断开飞书连接吗？')) return;
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/chat/feishu/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
+        xhr.open('POST', '/web/chat/feishu/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) updateFeishuUI();
         };
@@ -636,7 +636,7 @@ function showFeishuModal() {
             + '&appSecret=' + encodeURIComponent(appSecret);
 
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/chat/feishu/bind?' + params, true);
+        xhr.open('POST', '/web/chat/feishu/bind?' + params, true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) {
                 if (xhr.status === 200) {
@@ -684,7 +684,7 @@ function showFeishuModal() {
             statusEl.textContent = '等待飞书消息' + dots;
 
             var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+            xhr.open('GET', '/web/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     try {
@@ -740,7 +740,7 @@ var dingtalkPollTimer = null;
 function updateDingTalkUI() {
     if (!activeSessionId) return;
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+    xhr.open('GET', '/web/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
@@ -765,7 +765,7 @@ dingtalkHeaderBtn.addEventListener('click', function() {
     if (dingtalkHeaderBtn.classList.contains('bound')) {
         if (!confirm('确定要断开钉钉连接吗？')) return;
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/chat/dingtalk/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
+        xhr.open('POST', '/web/chat/dingtalk/unbind?sessionId=' + encodeURIComponent(activeSessionId), true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) updateDingTalkUI();
         };
@@ -836,7 +836,7 @@ function showDingTalkModal() {
             + '&appSecret=' + encodeURIComponent(appSecret);
 
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/chat/dingtalk/bind?' + params, true);
+        xhr.open('POST', '/web/chat/dingtalk/bind?' + params, true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) {
                 if (xhr.status === 200) {
@@ -884,7 +884,7 @@ function showDingTalkModal() {
             statusEl.textContent = '等待钉钉消息' + dots;
 
             var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), true);
+            xhr.open('GET', '/web/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     try {

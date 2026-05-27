@@ -27,6 +27,7 @@ import org.noear.solon.codecli.portal.desktop.WsController;
 import org.noear.solon.codecli.portal.desktop.WsGate;
 import org.noear.solon.codecli.portal.web.WebChannel;
 import org.noear.solon.codecli.portal.web.WebController;
+import org.noear.solon.codecli.portal.web.WebSettingsController;
 import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
@@ -196,6 +197,8 @@ public class Configurator {
         //web
         BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
         Solon.app().router().add(webController);
+        BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, new WebSettingsController(agentRuntime, modelProviderFactory));
+        Solon.app().router().add(webSettingsController);
         BeanWrap webChannel = Solon.context().wrapAndPut(WebChannel.class, new WebChannel(agentRuntime, webGate));
         Solon.app().router().add(webChannel);
 

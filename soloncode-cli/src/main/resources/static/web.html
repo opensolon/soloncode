@@ -25,8 +25,13 @@
     <div class="sidebar-title">最近对话</div>
     <div class="sidebar-list" id="historyList"></div>
     <div class="sidebar-footer">
-        <i class="layui-icon layui-icon-about" style="font-size:15px;color:var(--text-secondary)"></i>
-        <span id="appVersionLabel" style="font-size:12px;color:var(--text-secondary)">AI</span>
+        <button class="settings-btn" id="settingsBtn" title="设置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span style="margin-left:6px;font-size:12px;">设置</span>
+        </button>
     </div>
 </div>
 <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="收起侧边栏">‹</button>
@@ -60,8 +65,7 @@
     <!-- Welcome View -->
     <div class="welcome-view" id="welcomeView">
         <div class="welcome-avatar">
-            <div class="blob blob-outer"></div>
-            <div class="blob-core"></div>
+            <img src="/img/favicon.png" alt="SolonCode" />
         </div>
         <div class="welcome-title" id="welcomeTitle">你好，我是 SolonCode ！</div>
         <div class="welcome-sub">需要什么帮助吗?</div>
@@ -189,9 +193,10 @@
         </div>
         <pre class="git-viewer-content" id="gitViewerContent"></pre>
     </div>
+
 </div>
 
-    <!-- File Tree Panel (Right Side) -->
+<!-- File Tree Panel (Right Side) -->
     <button class="filer-panel-toggle-btn collapsed" id="filerToggleBtn" title="展开文件树">‹</button>
     <div class="filer-resize-handle" id="filerResizeHandle"></div>
     <div class="filer-panel collapsed" id="filerPanel">
@@ -288,15 +293,277 @@
         </div>
     </div>
 
+<!-- Settings Overlay (放在 body 最外层，确保 position:fixed 覆盖全屏) -->
+<div class="settings-overlay" id="settingsOverlay" style="display:none">
+    <div class="settings-panel">
+        <div class="settings-header">
+            <h3 class="settings-title">设置</h3>
+            <button class="settings-close-btn" id="settingsCloseBtn" title="关闭">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-content">
+            <div class="settings-tabs">
+                <button class="settings-tab active" data-tab="general">常规设置</button>
+                <button class="settings-tab" data-tab="llm">大模型设置</button>
+                <button class="settings-tab" data-tab="mcp">MCP 管理</button>
+                <button class="settings-tab" data-tab="webapi">WebApi 管理</button>
+                <div class="settings-tabs-footer">
+                    <span id="appVersionLabel" class="settings-version"></span>
+                </div>
+            </div>
+            <div class="settings-body">
+                <!-- General Tab -->
+                <div class="settings-tab-content active" id="settingsTabGeneral">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <span class="settings-section-title">常规设置</span>
+                            <button class="settings-add-btn" id="generalSaveBtn">保存</button>
+                        </div>
+                        <div id="generalSettingsContainer" class="general-settings-form">
+                            <!-- populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LLM Tab -->
+                <div class="settings-tab-content" id="settingsTabLlm">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <span class="settings-section-title">已配置的模型</span>
+                            <div class="llm-header-actions">
+                                <button class="settings-add-btn" id="llmExportBtn">导出</button>
+                                <button class="settings-add-btn" id="llmImportBtn">导入</button>
+                                <button class="settings-add-btn" id="llmAddBtn">+ 添加模型</button>
+                            </div>
+                        </div>
+                        <div class="llm-add-form" id="llmAddForm" style="display:none">
+                            <div class="form-group">
+                                <label>Provider</label>
+                                <select id="llmProvider">
+                                    <option value="">自动检测</option>
+                                    <option value="openai">OpenAI / 兼容接口</option>
+                                    <option value="ollama">Ollama (本地)</option>
+                                    <option value="zhipu">智谱 (GLM)</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                    <option value="baidu-qianfan">百度千帆 (文心)</option>
+                                    <option value="ali-tongyi">阿里通义 (Qwen)</option>
+                                    <option value="moonshot">Moonshot (Kimi)</option>
+                                    <option value="minimax">MiniMax</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>API 地址 <span class="required">*</span></label>
+                                <input type="text" id="llmApiUrl" placeholder="https://api.openai.com/v1"/>
+                            </div>
+                            <div class="form-group">
+                                <label>API Key</label>
+                                <div class="password-input-group">
+                                    <input type="password" id="llmApiKey" placeholder="sk-..."/>
+                                    <button class="password-toggle" id="llmApiKeyToggle" title="显示/隐藏">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>模型名称 <span class="required">*</span></label>
+                                <div class="llm-model-input-row">
+                                    <input type="text" id="llmModelName" placeholder="gpt-4o"/>
+                                    <button class="settings-fetch-btn" id="llmFetchBtn" title="从 API 拉取可用模型">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                        拉取
+                                    </button>
+                                </div>
+                                <div class="llm-fetch-dropdown" id="llmFetchDropdown" style="display:none"></div>
+                            </div>
+                            <div class="form-group">
+                                <label>别名（可选）</label>
+                                <input type="text" id="llmAlias" placeholder="给模型起个好记的名字"/>
+                            </div>
+                            <div class="form-group">
+                                <label>超时时间（可选）</label>
+                                <input type="text" id="llmTimeout" placeholder="PT120s（默认 120 秒）"/>
+                            </div>
+                            <div class="form-actions" style="justify-content:space-between;">
+                                <button class="btn-secondary" id="llmTestBtn" style="display:flex;align-items:center;gap:4px;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                    测试连接
+                                </button>
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn-secondary" id="llmCancelBtn">取消</button>
+                                    <button class="btn-primary" id="llmSaveBtn">保存</button>
+                                </div>
+                            </div>
+                            <div class="llm-check-result" id="llmCheckResult" style="display:none;"></div>
+                        </div>
+                        <div class="llm-model-list" id="llmModelList"></div>
+                        <!-- LLM 导入弹窗 -->
+                        <div class="mcp-import-dialog" id="llmImportDialog" style="display:none">
+                            <div class="mcp-import-dialog-content">
+                                <div class="mcp-import-dialog-title">导入大模型配置</div>
+                                <div class="form-group">
+                                    <label>粘贴 JSON 配置（系统导出格式）</label>
+                                    <textarea id="llmImportText" rows="8" placeholder='[{
+  "apiUrl": "https://api.openai.com/v1",
+  "model": "gpt-4o",
+  "name": "my-gpt4"
+}]'></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn-secondary" id="llmImportCancelBtn">取消</button>
+                                    <button class="btn-primary" id="llmImportConfirmBtn">导入</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- MCP Tab -->
+                <div class="settings-tab-content" id="settingsTabMcp">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <span class="settings-section-title">MCP 服务器</span>
+                            <div class="mcp-header-actions">
+                                <button class="settings-add-btn" id="mcpExportBtn">导出</button>
+                                <button class="settings-add-btn" id="mcpImportBtn">导入</button>
+                                <button class="settings-add-btn" id="mcpAddBtn">+ 添加服务器</button>
+                            </div>
+                        </div>
+                        <div class="mcp-add-form" id="mcpAddForm" style="display:none">
+                            <div class="form-group">
+                                <label>名称 <span class="required">*</span></label>
+                                <input type="text" id="mcpName" placeholder="my-mcp-server"/>
+                            </div>
+                            <div class="form-group">
+                                <label>类型</label>
+                                <div class="mcp-type-toggle">
+                                    <button class="mcp-type-btn active" data-type="stdio">stdio</button>
+                                    <button class="mcp-type-btn" data-type="sse">sse</button>
+                                    <button class="mcp-type-btn" data-type="streamable-http">streamable-http</button>
+                                </div>
+                            </div>
+                            <div class="mcp-config-stdio" id="mcpConfigStdio">
+                                <div class="form-group">
+                                    <label>命令 <span class="required">*</span></label>
+                                    <input type="text" id="mcpCommand" placeholder="npx -y @modelcontextprotocol/server-filesystem /path"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>参数（每行一个）</label>
+                                    <textarea id="mcpArgs" rows="3" placeholder="/path/to/dir&#10;--option value"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>环境变量（KEY=VALUE，每行一个）</label>
+                                    <textarea id="mcpEnv" rows="3" placeholder="API_KEY=xxx"></textarea>
+                                </div>
+                            </div>
+                            <div class="mcp-config-remote" id="mcpConfigRemote" style="display:none">
+                                <div class="form-group">
+                                    <label>URL <span class="required">*</span></label>
+                                    <input type="text" id="mcpRemoteUrl" placeholder="http://localhost:3001/sse"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>请求头（KEY=VALUE，每行一个）</label>
+                                    <textarea id="mcpHeaders" rows="3" placeholder="Authorization=Bearer xxx&#10;X-Custom-Header=value"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>超时时间</label>
+                                    <input type="text" id="mcpTimeout" placeholder="30s" style="width:120px;"/>
+                                </div>
+                            </div>
+                            <div class="form-actions" style="justify-content:space-between;">
+                                <button class="btn-secondary" id="mcpCheckBtn" style="display:flex;align-items:center;gap:4px;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                    检测连接
+                                </button>
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn-secondary" id="mcpCancelBtn">取消</button>
+                                    <button class="btn-primary" id="mcpSaveBtn">保存</button>
+                                </div>
+                            </div>
+                            <div class="mcp-check-result" id="mcpCheckResult" style="display:none;"></div>
+                        </div>
+                        <div class="mcp-server-list" id="mcpServerList"></div>
+                        <!-- 导入弹窗 -->
+                        <div class="mcp-import-dialog" id="mcpImportDialog" style="display:none">
+                            <div class="mcp-import-dialog-content">
+                                <div class="mcp-import-dialog-title">导入 MCP 配置</div>
+                                <div class="form-group">
+                                    <label>粘贴标准格式 JSON（支持 Claude Desktop / Cursor / 本系统格式）</label>
+                                    <textarea id="mcpImportText" rows="8" placeholder='{"mcpServers":{...}}'></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn-secondary" id="mcpImportCancelBtn">取消</button>
+                                    <button class="btn-primary" id="mcpImportConfirmBtn">导入</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- WebApi Tab -->
+                <div class="settings-tab-content" id="settingsTabWebapi">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <span class="settings-section-title">WebApi 服务器</span>
+                            <div class="webapi-header-actions">
+                                <button class="settings-add-btn" id="webapiExportBtn">导出</button>
+                                <button class="settings-add-btn" id="webapiImportBtn">导入</button>
+                                <button class="settings-add-btn" id="webapiAddBtn">+ 添加服务器</button>
+                            </div>
+                        </div>
+                        <div class="webapi-add-form" id="webapiAddForm" style="display:none">
+                            <div class="form-group">
+                                <label>名称 <span class="required">*</span></label>
+                                <input type="text" id="webapiName" placeholder="my-api-server"/>
+                            </div>
+                            <div class="form-group">
+                                <label>API 基地址 <span class="required">*</span></label>
+                                <input type="text" id="webapiBaseUrl" placeholder="https://api.example.com/v1"/>
+                            </div>
+                            <div class="form-group">
+                                <label>文档地址（可选）</label>
+                                <input type="text" id="webapiDocUrl" placeholder="https://api.example.com/docs"/>
+                            </div>
+                            <div class="form-group">
+                                <label>请求头（KEY=VALUE，每行一个）</label>
+                                <textarea id="webapiHeaders" rows="3" placeholder="API_KEY=xxx&#10;Authorization=Bearer xxx"></textarea>
+                            </div>
+                            <div class="form-actions" style="justify-content:flex-end;">
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn-secondary" id="webapiCancelBtn">取消</button>
+                                    <button class="btn-primary" id="webapiSaveBtn">保存</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="webapi-server-list" id="webapiServerList"></div>
+                        <!-- 导入弹窗 -->
+                        <div class="mcp-import-dialog" id="webapiImportDialog" style="display:none">
+                            <div class="mcp-import-dialog-content">
+                                <div class="mcp-import-dialog-title">导入 WebApi 配置</div>
+                                <div class="form-group">
+                                    <label>粘贴 JSON 配置</label>
+                                    <textarea id="webapiImportText" rows="8" placeholder='{"apiServers":{"api1":{"apiBaseUrl":"https://...","headers":{}}}}'></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn-secondary" id="webapiImportCancelBtn">取消</button>
+                                    <button class="btn-primary" id="webapiImportConfirmBtn">导入</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div><!-- /.settings-body -->
+        </div><!-- /.settings-content -->
+    </div>
+</div>
+
 <script src="/layui/layui.js"></script>
 <script src="/js/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 <script src="/js/qrcode.min.js"></script>
 
 <script>
-    var SSE_ENDPOINT = "/chat/input";
+    var SSE_ENDPOINT = "/web/chat/input";
     // 启动时拉取页面元信息（appTitle / appVersion / workspace / workname），回填标题/侧栏
-    fetch('/chat/meta').then(function (r) { return r.json(); }).then(function (res) {
+    fetch('/web/chat/meta').then(function (r) { return r.json(); }).then(function (res) {
         var meta = (res && res.data) ? res.data : res;
         if (!meta) return;
         if (meta.workname || meta.workspace) {
@@ -318,5 +585,6 @@
 
     <script src="js/app-filer.js"></script>
     <script src="js/app-gitdiff.js"></script>
+    <script src="js/app-settings.js"></script>
 </body>
 </html>

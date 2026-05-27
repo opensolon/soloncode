@@ -134,7 +134,7 @@ public class WebController {
      * @throws Exception 读取配置异常
      */
     @Get
-    @Mapping("/chat/meta")
+    @Mapping("/web/chat/meta")
     public Result<Map> meta() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("appTitle", Solon.cfg().appTitle());
@@ -168,7 +168,7 @@ public class WebController {
      * @throws Exception 文件读取异常
      */
     @Get
-    @Mapping("/chat/sessions")
+    @Mapping("/web/chat/sessions")
     public Result<List<Map>> sessions() throws Exception {
         Path sessionsPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions").toAbsolutePath().normalize();
         File sessionsDir = sessionsPath.toFile();
@@ -222,7 +222,7 @@ public class WebController {
      * @throws Exception 文件删除异常
      */
     @Post
-    @Mapping("/chat/sessions/delete")
+    @Mapping("/web/chat/sessions/delete")
     public Result deleteSession(@Param("sessionId") String sessionId) throws Exception {
         if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure();
@@ -248,7 +248,7 @@ public class WebController {
      * @throws Exception 文件写入异常
      */
     @Post
-    @Mapping("/chat/sessions/rename")
+    @Mapping("/web/chat/sessions/rename")
     public Result renameSession(@Param("sessionId") String sessionId, @Param("label") String label) throws Exception {
         if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure();
@@ -283,7 +283,7 @@ public class WebController {
      * @throws Exception 会话查询异常
      */
     @Get
-    @Mapping("/chat/models")
+    @Mapping("/web/chat/models")
     public Result<Map> models(@Param(value = "sessionId", required = false) String sessionId) throws Exception {
         Map<String, Object> data = new LinkedHashMap<>();
         List<Map> list = new ArrayList<>();
@@ -292,6 +292,10 @@ public class WebController {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("model", config.getNameOrModel());
             item.put("description", config.getDescriptionOrModel());
+            item.put("name", config.getName());
+            item.put("provider", config.getProvider());
+            item.put("apiUrl", config.getApiUrl());
+            item.put("apiKey", config.getApiKey());
             list.add(item);
         }
         data.put("list", list);
@@ -319,7 +323,7 @@ public class WebController {
      * @throws Exception 会话操作异常
      */
     @Post
-    @Mapping("/chat/models/select")
+    @Mapping("/web/chat/models/select")
     public Result models_select(@Param("sessionId") String sessionId, @Param("modelName") String modelName) throws Exception {
         AgentSession session = engine.getSession(sessionId);
 
@@ -330,7 +334,6 @@ public class WebController {
         return Result.succeed();
     }
 
-
     /**
      * 获取指定会话的消息历史记录。
      * <p>从 ndjson 消息文件中逐行读取，解析每条消息的 role、content、createdAt 字段。</p>
@@ -340,7 +343,7 @@ public class WebController {
      * @throws Exception 文件读取异常
      */
     @Get
-    @Mapping("/chat/messages")
+    @Mapping("/web/chat/messages")
     public Result<List<Map>> messages(@Param("sessionId") String sessionId) throws Exception {
         List<Map> data = new ArrayList<>();
         Path sessionsPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
@@ -379,7 +382,7 @@ public class WebController {
      * @return 操作结果
      */
     @Post
-    @Mapping("/chat/interrupt")
+    @Mapping("/web/chat/interrupt")
     public Result interruptSession(@Param("sessionId") String sessionId) {
         if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure();
@@ -401,7 +404,7 @@ public class WebController {
      * @throws Exception 文件读写异常
      */
     @Post
-    @Mapping("/chat/rewind")
+    @Mapping("/web/chat/rewind")
     public Result rewindSession(@Param("sessionId") String sessionId, @Param(value = "count", required = false) Integer count) throws Exception {
         if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure();
@@ -453,7 +456,7 @@ public class WebController {
      * @return 命令/子代理列表，每项包含 name、description、type（command 或 subagent）
      */
     @Get
-    @Mapping("/chat/hints")
+    @Mapping("/web/chat/hints")
     public Result<List<Map>> hints() {
         List<Map> data = new ArrayList<>();
         for (Command cmd : engine.getCommandRegistry().all()) {
@@ -519,7 +522,7 @@ public class WebController {
      * @param sessionId       会话 ID，若为空则从请求头 X-Session-Id 获取
      * @return 操作结果（AI 结果通过 WebSocket 推送）
      */
-    @Mapping("/chat/input")
+    @Mapping("/web/chat/input")
     public Result chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentTypes[], String model, String sessionId) {
         try {
             if (sessionId == null || sessionId.isEmpty()) {
@@ -639,7 +642,7 @@ public class WebController {
      * @throws Exception Git 命令执行异常
      */
     @Get
-    @Mapping("/chat/git/status")
+    @Mapping("/web/chat/git/status")
     public Result<Map> gitStatus() throws Exception {
         Map<String, Object> data = new LinkedHashMap<>();
         File workspaceDir = new File(engine.getProps().getWorkspace());
@@ -714,7 +717,7 @@ public class WebController {
      * @throws Exception Git 命令执行异常
      */
     @Post
-    @Mapping("/chat/git/init")
+    @Mapping("/web/chat/git/init")
     public Result<Map> gitInit(@Param(value = "initialCommit", required = false) Boolean initialCommit) throws Exception {
         File workspaceDir = new File(engine.getProps().getWorkspace());
 
@@ -779,7 +782,7 @@ public class WebController {
      * @throws Exception Git 命令执行异常
      */
     @Get
-    @Mapping("/chat/git/diff")
+    @Mapping("/web/chat/git/diff")
     public Result<Map> gitDiff(@Param(value = "path", required = false) String path) throws Exception {
         File workspaceDir = new File(engine.getProps().getWorkspace());
 
@@ -844,7 +847,7 @@ public class WebController {
      * @throws Exception Git 命令执行异常
      */
     @Post
-    @Mapping("/chat/git/stage")
+    @Mapping("/web/chat/git/stage")
     public Result<Map> gitStage(@Body String body) throws Exception {
         File workspaceDir = new File(engine.getProps().getWorkspace());
         ProcessResult check = runGitCommand(workspaceDir, "git", "rev-parse", "--is-inside-work-tree");
@@ -891,7 +894,7 @@ public class WebController {
      * @throws Exception Git 命令执行异常
      */
     @Post
-    @Mapping("/chat/git/unstage")
+    @Mapping("/web/chat/git/unstage")
     public Result<Map> gitUnstage(@Body String body) throws Exception {
         File workspaceDir = new File(engine.getProps().getWorkspace());
         ProcessResult check = runGitCommand(workspaceDir, "git", "rev-parse", "--is-inside-work-tree");
@@ -940,7 +943,7 @@ public class WebController {
      * @throws Exception Git 命令执行异常
      */
     @Get
-    @Mapping("/chat/git/file-content")
+    @Mapping("/web/chat/git/file-content")
     public Result<Map> gitFileContent(@Param("path") String path,
                                       @Param(value = "ref", required = false) String ref) throws Exception {
         File workspaceDir = new File(engine.getProps().getWorkspace());
@@ -972,7 +975,7 @@ public class WebController {
      * @throws Exception Git 命令执行异常或 JSON 解析异常
      */
     @Post
-    @Mapping("/chat/git/commit")
+    @Mapping("/web/chat/git/commit")
     public Result<Map> gitCommit(@Body String body) throws Exception {
         File workspaceDir = new File(engine.getProps().getWorkspace());
 
@@ -1105,7 +1108,7 @@ public class WebController {
      * @throws Exception 文件系统访问异常
      */
     @Get
-    @Mapping("/chat/filer/tree")
+    @Mapping("/web/chat/filer/tree")
     public Result<List<Map>> fileTree(@Param(value = "path", required = false) String path,
                                       @Param(value = "depth", required = false) Integer depth) throws Exception {
         if (depth == null || depth < 1) depth = 1;
@@ -1138,7 +1141,7 @@ public class WebController {
      * @throws Exception 文件系统访问异常
      */
     @Get
-    @Mapping("/chat/filer/search")
+    @Mapping("/web/chat/filer/search")
     public Result<List<Map>> fileSearch(@Param("keyword") String keyword) throws Exception {
         if (keyword == null || keyword.trim().isEmpty()) {
             return Result.failure(400, "Keyword is required");
@@ -1170,7 +1173,7 @@ public class WebController {
      * @throws Exception 文件系统访问异常
      */
     @Get
-    @Mapping("/chat/filer/read")
+    @Mapping("/web/chat/filer/read")
     public Result<Map> fileRead(@Param("path") String path) throws Exception {
         if (path == null || path.trim().isEmpty()) {
             return Result.failure(400, "Path is required");

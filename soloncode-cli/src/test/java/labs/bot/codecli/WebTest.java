@@ -9,6 +9,6 @@ import org.noear.solon.codecli.App;
  */
 public class WebTest {
     public static void main(String[] args) {
-        App.main(new String[]{"web","debug"});
+        App.main(new String[]{"web","debug=1"});
     }
 }
