@@ -109,6 +109,8 @@
             toggleBtn.title = '\u6536\u7F29\u6587\u4EF6\u6811';
         }
         syncHeaderPadding(false);
+    } else {
+        syncHeaderPadding(true);
     }
     syncToggleBtnPosition();
     initResize();
