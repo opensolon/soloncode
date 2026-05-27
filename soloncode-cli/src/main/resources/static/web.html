@@ -296,41 +296,22 @@
 <!-- Settings Overlay (放在 body 最外层，确保 position:fixed 覆盖全屏) -->
 <div class="settings-overlay" id="settingsOverlay" style="display:none">
     <div class="settings-panel">
-        <div class="settings-header">
-            <h3 class="settings-title">设置</h3>
-            <button class="settings-close-btn" id="settingsCloseBtn" title="关闭">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-        </div>
         <div class="settings-content">
             <div class="settings-tabs">
-                <button class="settings-tab active" data-tab="general">常规设置</button>
-                <button class="settings-tab" data-tab="llm">大模型设置</button>
-                <button class="settings-tab" data-tab="mcp">MCP 管理</button>
-                <button class="settings-tab" data-tab="webapi">WebApi 管理</button>
+                <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">设置</div>
+                <button class="settings-tab active" data-tab="llm">大语言模型</button>
+                <button class="settings-tab" data-tab="mcp">MCP 服务器</button>
+                <button class="settings-tab" data-tab="webapi">OpenApi 服务器</button>
                 <div class="settings-tabs-footer">
                     <span id="appVersionLabel" class="settings-version"></span>
                 </div>
             </div>
             <div class="settings-body">
-                <!-- General Tab -->
-                <div class="settings-tab-content active" id="settingsTabGeneral">
-                    <div class="settings-section">
-                        <div class="settings-section-header">
-                            <span class="settings-section-title">常规设置</span>
-                            <button class="settings-add-btn" id="generalSaveBtn">保存</button>
-                        </div>
-                        <div id="generalSettingsContainer" class="general-settings-form">
-                            <!-- populated by JS -->
-                        </div>
-                    </div>
-                </div>
-
                 <!-- LLM Tab -->
-                <div class="settings-tab-content" id="settingsTabLlm">
+                <div class="settings-tab-content active" id="settingsTabLlm">
                     <div class="settings-section">
                         <div class="settings-section-header">
-                            <span class="settings-section-title">已配置的模型</span>
+                            <span class="settings-section-title">大语言模型</span>
                             <div class="llm-header-actions">
                                 <button class="settings-add-btn" id="llmExportBtn">导出</button>
                                 <button class="settings-add-btn" id="llmImportBtn">导入</button>
@@ -498,11 +479,11 @@
                         </div>
                     </div>
                 </div>
-                <!-- WebApi Tab -->
+                <!-- OpenApi Tab -->
                 <div class="settings-tab-content" id="settingsTabWebapi">
                     <div class="settings-section">
                         <div class="settings-section-header">
-                            <span class="settings-section-title">WebApi 服务器</span>
+                            <span class="settings-section-title">OpenApi 服务器</span>
                             <div class="webapi-header-actions">
                                 <button class="settings-add-btn" id="webapiExportBtn">导出</button>
                                 <button class="settings-add-btn" id="webapiImportBtn">导入</button>
@@ -526,18 +507,23 @@
                                 <label>请求头（KEY=VALUE，每行一个）</label>
                                 <textarea id="webapiHeaders" rows="3" placeholder="API_KEY=xxx&#10;Authorization=Bearer xxx"></textarea>
                             </div>
-                            <div class="form-actions" style="justify-content:flex-end;">
+                            <div class="form-actions" style="justify-content:space-between;">
+                                <button class="btn-secondary" id="webapiTestBtn" style="display:flex;align-items:center;gap:4px;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                    测试连接
+                                </button>
                                 <div style="display:flex;gap:8px;">
                                     <button class="btn-secondary" id="webapiCancelBtn">取消</button>
                                     <button class="btn-primary" id="webapiSaveBtn">保存</button>
                                 </div>
                             </div>
+                            <div class="llm-check-result" id="webapiCheckResult" style="display:none;"></div>
                         </div>
                         <div class="webapi-server-list" id="webapiServerList"></div>
                         <!-- 导入弹窗 -->
                         <div class="mcp-import-dialog" id="webapiImportDialog" style="display:none">
                             <div class="mcp-import-dialog-content">
-                                <div class="mcp-import-dialog-title">导入 WebApi 配置</div>
+                                <div class="mcp-import-dialog-title">导入 OpenApi 配置</div>
                                 <div class="form-group">
                                     <label>粘贴 JSON 配置</label>
                                     <textarea id="webapiImportText" rows="8" placeholder='{"apiServers":{"api1":{"apiBaseUrl":"https://...","headers":{}}}}'></textarea>

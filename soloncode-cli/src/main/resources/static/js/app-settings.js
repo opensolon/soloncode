@@ -11,7 +11,6 @@
     // ==================== DOM 引用 ====================
     var overlay = document.getElementById('settingsOverlay');
     var settingsBtn = document.getElementById('settingsBtn');
-    var closeBtn = document.getElementById('settingsCloseBtn');
 
     // Tab
     var tabs = document.querySelectorAll('.settings-tab');
@@ -65,7 +64,6 @@
     }
 
     settingsBtn.addEventListener('click', openSettings);
-    closeBtn.addEventListener('click', closeSettings);
 
     // 遮罩点击关闭
     overlay.addEventListener('click', function (e) {
@@ -104,9 +102,7 @@
         var activeTab = document.querySelector('.settings-tab.active');
         if (activeTab) {
             var targetTab = activeTab.getAttribute('data-tab');
-            if (targetTab === 'general') {
-                loadGeneralSettings();
-            } else if (targetTab === 'llm') {
+            if (targetTab === 'llm') {
                 loadLlmList();
             } else if (targetTab === 'mcp') {
                 loadMcpList();
@@ -733,11 +729,6 @@
             html += '  </div>';
             html += '  <div class="mcp-empty-title">暂无 MCP 服务器</div>';
             html += '  <div class="mcp-empty-desc">MCP 服务器可扩展 AI 的工具能力，如文件系统访问、数据库查询、API 调用等</div>';
-            html += '  <div class="mcp-empty-templates">';
-            html += '    <button class="mcp-template-btn" data-command="npx" data-args="-y @modelcontextprotocol/server-filesystem ." data-type="stdio">文件系统</button>';
-            html += '    <button class="mcp-template-btn" data-command="npx" data-args="-y @modelcontextprotocol/server-memory" data-type="stdio">记忆存储</button>';
-            html += '    <button class="mcp-template-btn" data-command="npx" data-args="-y @modelcontextprotocol/server-github" data-type="stdio">GitHub</button>';
-            html += '  </div>';
             html += '</div>';
         } else {
             list.forEach(function (item) {
@@ -1255,7 +1246,7 @@
         xhr.send(text);
     });
 
-    // ==================== WebApi 管理 ====================
+    // ==================== OpenApi 管理 ====================
 
     // DOM
     var webapiAddBtn = document.getElementById('webapiAddBtn');
@@ -1286,12 +1277,12 @@
                         renderWebapiList(resp.data);
                     }
                 } catch (e) {
-                    console.error('[Settings] Failed to parse WebApi servers response:', e);
+                    console.error('[Settings] Failed to parse OpenApi servers response:', e);
                 }
             }
         };
         xhr.onerror = function () {
-            console.error('[Settings] Failed to load WebApi servers');
+            console.error('[Settings] Failed to load OpenApi servers');
         };
         xhr.send();
     }
@@ -1303,8 +1294,8 @@
             html += '  <div class="mcp-empty-icon">';
             html += '    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
             html += '  </div>';
-            html += '  <div class="mcp-empty-title">暂无 WebApi 服务器</div>';
-            html += '  <div class="mcp-empty-desc">WebApi 服务器可扩展 AI 的 API 调用能力，对接外部 RESTful 接口</div>';
+            html += '  <div class="mcp-empty-title">暂无 OpenApi 服务器</div>';
+            html += '  <div class="mcp-empty-desc">OpenApi 服务器可扩展 AI 的 API 调用能力，对接外部 RESTful 接口</div>';
             html += '</div>';
         } else {
             list.forEach(function (item) {
@@ -1316,7 +1307,7 @@
                 html += '<div class="mcp-server-item">';
                 html += '  <div class="mcp-server-icon">A</div>';
                 html += '  <div class="mcp-server-info">';
-                html += '    <div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[webapi]</span></div>';
+                html += '    <div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[openapi]</span></div>';
                 if (baseUrl) {
                     html += '    <div class="mcp-server-detail">' + escapeHtml(baseUrl) + '</div>';
                 }
@@ -1367,14 +1358,14 @@
         deleteBtns.forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var name = btn.getAttribute('data-name');
-                if (confirm('确定删除 WebApi 服务器 "' + name + '"？')) {
+                if (confirm('确定删除 OpenApi 服务器 "' + name + '"？')) {
                     webapiRemoveServer(name);
                 }
             });
         });
     }
 
-    // ==================== WebApi 表单辅助函数 ====================
+    // ==================== OpenApi 表单辅助函数 ====================
 
     function resetWebapiForm() {
         webapiEditName = null;
@@ -1448,7 +1439,7 @@
         fillWebapiForm(server);
     }
 
-    // ==================== WebApi 按钮事件 ====================
+    // ==================== OpenApi 按钮事件 ====================
 
     webapiAddBtn.addEventListener('click', function () {
         webapiAddForm.style.display = webapiAddForm.style.display === 'none' ? 'block' : 'none';
@@ -1460,6 +1451,73 @@
     webapiCancelBtn.addEventListener('click', function () {
         webapiAddForm.style.display = 'none';
         resetWebapiForm();
+    });
+
+    // OpenApi 测试连接
+    var webapiTestBtn = document.getElementById('webapiTestBtn');
+    var webapiCheckResult = document.getElementById('webapiCheckResult');
+
+    webapiTestBtn.addEventListener('click', function () {
+        var baseUrl = document.getElementById('webapiBaseUrl').value.trim();
+        if (!baseUrl) { alert('请先填写 API 基地址'); return; }
+
+        var headersText = document.getElementById('webapiHeaders').value.trim();
+        var headers = {};
+        if (headersText) {
+            headersText.split('\n').forEach(function (line) {
+                var idx = line.indexOf('=');
+                if (idx > 0) headers[line.substring(0, idx).trim()] = line.substring(idx + 1).trim();
+            });
+        }
+
+        webapiTestBtn.disabled = true;
+        webapiTestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...';
+        webapiCheckResult.style.display = 'none';
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/web/settings/webapi/servers/check', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.timeout = 15000;
+        xhr.onload = function () {
+            webapiTestBtn.disabled = false;
+            webapiTestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 测试连接';
+            if (xhr.status === 200) {
+                try {
+                    var resp = JSON.parse(xhr.responseText);
+                    if (resp.code === 200) {
+                        webapiCheckResult.className = 'llm-check-result success';
+                        webapiCheckResult.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 连接成功';
+                    } else {
+                        webapiCheckResult.className = 'llm-check-result error';
+                        webapiCheckResult.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ' + (resp.message || '连接失败');
+                    }
+                    webapiCheckResult.style.display = 'flex';
+                } catch (e) {
+                    webapiCheckResult.className = 'llm-check-result error';
+                    webapiCheckResult.innerHTML = '解析响应失败';
+                    webapiCheckResult.style.display = 'flex';
+                }
+            } else {
+                webapiCheckResult.className = 'llm-check-result error';
+                webapiCheckResult.innerHTML = '连接失败: HTTP ' + xhr.status;
+                webapiCheckResult.style.display = 'flex';
+            }
+        };
+        xhr.ontimeout = function () {
+            webapiTestBtn.disabled = false;
+            webapiTestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 测试连接';
+            webapiCheckResult.className = 'llm-check-result error';
+            webapiCheckResult.innerHTML = '连接超时（15秒），请检查地址是否正确';
+            webapiCheckResult.style.display = 'flex';
+        };
+        xhr.onerror = function () {
+            webapiTestBtn.disabled = false;
+            webapiTestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 测试连接';
+            webapiCheckResult.className = 'llm-check-result error';
+            webapiCheckResult.innerHTML = '网络错误，请重试';
+            webapiCheckResult.style.display = 'flex';
+        };
+        xhr.send(JSON.stringify({ baseUrl: baseUrl, headers: headers }));
     });
 
     webapiSaveBtn.addEventListener('click', function () {
@@ -1542,7 +1600,7 @@
         xhr.send(JSON.stringify({ name: name, enabled: enabled }));
     }
 
-    // ==================== WebApi 导入/导出 ====================
+    // ==================== OpenApi 导入/导出 ====================
 
     webapiExportBtn.addEventListener('click', function () {
         var xhr = new XMLHttpRequest();
@@ -1564,7 +1622,7 @@
                 var url = URL.createObjectURL(blob);
                 var a = document.createElement('a');
                 a.href = url;
-                a.download = 'webapi-servers.json';
+                a.download = 'openapi-servers.json';
                 a.click();
                 URL.revokeObjectURL(url);
             }
@@ -1613,9 +1671,9 @@
         xhr.send(text);
     });
 
-    // ==================== Tab 切换（补充 webapi） ====================
+    // ==================== Tab 切换（补充 openapi） ====================
 
-    // 重新绑定 tab 切换以支持 webapi
+    // 重新绑定 tab 切换以支持 openapi
     tabs.forEach(function (tab) {
         tab.removeEventListener('click', function () {});
     });
@@ -1631,10 +1689,7 @@
         tab.classList.add('active');
 
         var targetTab = tab.getAttribute('data-tab');
-        if (targetTab === 'general') {
-            document.getElementById('settingsTabGeneral').classList.add('active');
-            loadGeneralSettings();
-        } else if (targetTab === 'llm') {
+        if (targetTab === 'llm') {
             document.getElementById('settingsTabLlm').classList.add('active');
             loadLlmList();
         } else if (targetTab === 'mcp') {
@@ -1646,15 +1701,13 @@
         }
     });
 
-    // 补充 loadActiveTabData 的 webapi 分支
+    // 补充 loadActiveTabData 的 openapi 分支
     var _origLoadActiveTabData = loadActiveTabData;
     loadActiveTabData = function () {
         var activeTab = document.querySelector('.settings-tab.active');
         if (activeTab) {
             var targetTab = activeTab.getAttribute('data-tab');
-            if (targetTab === 'general') {
-                loadGeneralSettings();
-            } else if (targetTab === 'llm') {
+            if (targetTab === 'llm') {
                 loadLlmList();
             } else if (targetTab === 'mcp') {
                 loadMcpList();
@@ -1663,93 +1716,6 @@
             }
         }
     };
-
-    // ==================== 常规设置 (General Settings) ====================
-
-    // 定义单值设置项的元数据：label, type, description
-    var generalFields = [
-        { key: 'maxSteps', label: '最大步骤数', type: 'number', desc: '单次任务的最大执行步数' },
-        { key: 'autoRethink', label: '自动重审', type: 'switch', desc: '超过步数上限时自动反思调整策略' },
-        { key: 'sessionWindowSize', label: '会话窗口大小', type: 'number', desc: '会话上下文保留的消息条数' },
-        { key: 'summaryWindowSize', label: '摘要窗口大小', type: 'number', desc: '滚动摘要的消息条数' },
-        { key: 'summaryWindowToken', label: '摘要窗口Token', type: 'number', desc: '滚动摘要的最大Token数' },
-        { key: 'sandboxMode', label: '沙盒模式', type: 'switch', desc: '启用命令沙盒隔离执行' },
-        { key: 'thinkPrinted', label: '思考过程打印', type: 'switch', desc: '在输出中显示模型的思考过程' },
-        { key: 'hitlEnabled', label: 'HITL 人机协同', type: 'switch', desc: '启用人类-in-the-loop确认机制' },
-        { key: 'subagentEnabled', label: '子代理', type: 'switch', desc: '允许启动子代理执行子任务' },
-        { key: 'bashAsyncEnabled', label: 'Bash异步', type: 'switch', desc: '允许Bash命令异步执行' },
-        { key: 'cliPrintSimplified', label: 'CLI简化输出', type: 'switch', desc: '命令行输出使用简化模式' },
-        { key: 'memoryEnabled', label: '记忆系统', type: 'switch', desc: '启用长期记忆存储' },
-        { key: 'memoryIsolation', label: '记忆隔离', type: 'switch', desc: '不同会话之间隔离记忆数据' },
-        { key: 'modelRetries', label: '模型重试次数', type: 'number', desc: '模型调用失败时的最大重试次数' }
-    ];
-
-    function renderGeneralForm(data) {
-        var container = document.getElementById('generalSettingsContainer');
-        if (!container) return;
-        var html = '';
-        generalFields.forEach(function (f) {
-            var val = data[f.key];
-            html += '<div class="general-field-row">';
-            html += '  <div class="general-field-info">';
-            html += '    <label class="general-field-label">' + escapeHtml(f.label) + '</label>';
-            if (f.desc) html += '    <span class="general-field-desc">' + escapeHtml(f.desc) + '</span>';
-            html += '  </div>';
-            if (f.type === 'switch') {
-                var checked = val ? ' checked' : '';
-                html += '  <label class="general-switch"><input type="checkbox" data-key="' + f.key + '"' + checked + '/><span class="general-switch-slider"></span></label>';
-            } else {
-                html += '  <input type="number" class="general-number-input" data-key="' + f.key + '" value="' + (val != null ? val : '') + '" />';
-            }
-            html += '</div>';
-        });
-        container.innerHTML = html;
-    }
-
-    function loadGeneralSettings() {
-        fetch('/web/settings/general')
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data && !data.error) {
-                    renderGeneralForm(data);
-                }
-            })
-            .catch(function (err) { console.error('loadGeneralSettings error:', err); });
-    }
-
-    document.addEventListener('click', function (e) {
-        if (e.target && e.target.id === 'generalSaveBtn') {
-            var container = document.getElementById('generalSettingsContainer');
-            if (!container) return;
-            var payload = {};
-            container.querySelectorAll('[data-key]').forEach(function (el) {
-                var key = el.getAttribute('data-key');
-                var f = generalFields.find(function (x) { return x.key === key; });
-                if (f && f.type === 'switch') {
-                    payload[key] = el.checked;
-                } else {
-                    payload[key] = Number(el.value);
-                }
-            });
-            fetch('/web/settings/general', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data && data.ok) {
-                    showToast('常规设置已保存');
-                } else {
-                    showToast(data && data.error ? data.error : '保存失败', 'error');
-                }
-            })
-            .catch(function (err) {
-                console.error('saveGeneralSettings error:', err);
-                showToast('保存失败', 'error');
-            });
-        }
-    });
 
     // ==================== 工具函数 ====================
 
