@@ -672,13 +672,19 @@
                             .replace(/\*/g, '')
                             .replace(/^#+\s/gm, '')
                             .replace(/`/g, '');
+                        gitCommitMsg.style.height = 'auto';
+                        gitCommitMsg.style.height = Math.min(gitCommitMsg.scrollHeight, 80) + 'px';
                     }
                 }
                 if (chunk.type === 'done') {
                     finishSummary();
                 }
                 if (chunk.type === 'error') {
-                    if (gitCommitMsg) gitCommitMsg.value = '';
+                    if (gitCommitMsg) {
+                        gitCommitMsg.value = '';
+                        gitCommitMsg.style.height = 'auto';
+                        gitCommitMsg.style.height = Math.min(gitCommitMsg.scrollHeight, 80) + 'px';
+                    }
                     var errMsg = (chunk.text || '未知错误');
                     if (typeof showToast === 'function') showToast('生成摘要失败: ' + errMsg, 'error');
                     else alert('生成摘要失败: ' + errMsg);
