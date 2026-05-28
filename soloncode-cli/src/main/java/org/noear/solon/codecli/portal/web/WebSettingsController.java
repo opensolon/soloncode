@@ -20,6 +20,8 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
+import org.noear.solon.ai.skills.restapi.RestApiSkill;
+import org.noear.solon.ai.skills.toolgateway.ToolGatewaySkill;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.portal.web.market.ClawhubMarket;
 import org.noear.solon.codecli.portal.web.market.Market;
@@ -843,6 +845,418 @@ public class WebSettingsController {
     private void saveMcpConfig(java.nio.file.Path file, ONode config) throws Exception {
         java.nio.file.Files.createDirectories(file.getParent());
         java.nio.file.Files.write(file, config.toJson().getBytes("UTF-8"));
+    }
+
+    // ==================== 设置：OpenApi 服务器管理 ====================
+
+    /**
+     * 获取已配置的 OpenApi 服务器列表
+     */
+    @Get
+    @Mapping("/web/settings/webapi/servers")
+    public Result<List<Map>> webapiServers() throws Exception {
+        java.nio.file.Path webapiFile = getWebapiServersFile();
+        List<Map> list = new ArrayList<>();
+        if (!java.nio.file.Files.exists(webapiFile)) {
+            return Result.succeed(list);
+        }
+
+        String content = new String(java.nio.file.Files.readAllBytes(webapiFile), "UTF-8");
+        ONode root = ONode.ofJson(content);
+        ONode servers = root.get("apiServers");
+        if (servers != null && servers.isArray()) {
+            for (ONode node : servers.getArray()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", node.get("name").getString());
+                item.put("apiBaseUrl", node.get("apiBaseUrl").getString());
+                item.put("docUrl", node.get("docUrl").getString());
+                item.put("enabled", node.get("enabled").getBoolean(true));
+                ONode headersNode = node.get("headers");
+                if (headersNode != null && headersNode.isObject()) {
+                    Map<String, String> headersMap = new LinkedHashMap<>();
+                    for (Map.Entry<String, ONode> entry : headersNode.getObject().entrySet()) {
+                        headersMap.put(entry.getKey(), entry.getValue().getString());
+                    }
+                    item.put("headers", headersMap);
+                }
+                list.add(item);
+            }
+        }
+        return Result.succeed(list);
+    }
+
+    /**
+     * 添加 OpenApi 服务器配置
+     */
+    @Post
+    @Mapping("/web/settings/webapi/servers/add")
+    public Result webapiServersAdd(Context ctx) throws Exception {
+        ONode root = ONode.ofJson(ctx.body());
+        String name = root.get("name").getString();
+        String apiBaseUrl = root.get("apiBaseUrl").getString();
+
+        if (Assert.isEmpty(name) || Assert.isEmpty(apiBaseUrl)) {
+            return Result.failure("name and apiBaseUrl are required");
+        }
+
+        java.nio.file.Path webapiFile = getWebapiServersFile();
+        ONode config = loadWebapiConfig(webapiFile);
+        ONode servers = config.getOrNew("apiServers").asArray();
+
+        // 检查重名
+        for (ONode s : servers.getArray()) {
+            if (name.equals(s.get("name").getString())) {
+                return Result.failure("Server name already exists: " + name);
+            }
+        }
+
+        ONode newServer = new ONode();
+        newServer.set("name", name);
+        newServer.set("apiBaseUrl", apiBaseUrl);
+        newServer.set("docUrl", root.get("docUrl").getString());
+        newServer.set("enabled", root.get("enabled").getBoolean(true));
+        if (root.hasKey("headers")) newServer.set("headers", root.get("headers"));
+
+        servers.add(newServer);
+        saveWebapiConfig(webapiFile, config);
+
+        LOG.info("[Settings] OpenApi server added: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 更新 OpenApi 服务器配置
+     */
+    @Post
+    @Mapping("/web/settings/webapi/servers/update")
+    public Result webapiServersUpdate(Context ctx) throws Exception {
+        ONode root = ONode.ofJson(ctx.body());
+        String name = root.get("name").getString();
+
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        java.nio.file.Path webapiFile = getWebapiServersFile();
+        ONode config = loadWebapiConfig(webapiFile);
+        ONode servers = config.get("apiServers");
+
+        if (servers != null && servers.isArray()) {
+            for (ONode s : servers.getArray()) {
+                if (name.equals(s.get("name").getString())) {
+                    if (root.hasKey("apiBaseUrl")) s.set("apiBaseUrl", root.get("apiBaseUrl").getString());
+                    if (root.hasKey("docUrl")) s.set("docUrl", root.get("docUrl").getString());
+                    if (root.hasKey("enabled")) s.set("enabled", root.get("enabled").getBoolean());
+                    if (root.hasKey("headers")) s.set("headers", root.get("headers"));
+                    saveWebapiConfig(webapiFile, config);
+                    LOG.info("[Settings] OpenApi server updated: {}", name);
+                    return Result.succeed();
+                }
+            }
+        }
+
+        return Result.failure("Server not found: " + name);
+    }
+
+    /**
+     * 移除 OpenApi 服务器配置
+     */
+    @Post
+    @Mapping("/web/settings/webapi/servers/remove")
+    public Result webapiServersRemove(Context ctx) throws Exception {
+        ONode root = ONode.ofJson(ctx.body());
+        String name = root.get("name").getString();
+
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        java.nio.file.Path webapiFile = getWebapiServersFile();
+        ONode config = loadWebapiConfig(webapiFile);
+        ONode servers = config.get("apiServers");
+
+        if (servers != null && servers.isArray()) {
+            servers.getArray().removeIf(s -> name.equals(s.get("name").getString()));
+        }
+
+        saveWebapiConfig(webapiFile, config);
+        LOG.info("[Settings] OpenApi server removed: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 切换 OpenApi 服务器启用/停用
+     */
+    @Post
+    @Mapping("/web/settings/webapi/servers/toggle")
+    public Result webapiServersToggle(Context ctx) throws Exception {
+        ONode root = ONode.ofJson(ctx.body());
+        String name = root.get("name").getString();
+        boolean enabled = root.get("enabled").getBoolean();
+
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        java.nio.file.Path webapiFile = getWebapiServersFile();
+        ONode config = loadWebapiConfig(webapiFile);
+        ONode servers = config.get("apiServers");
+
+        if (servers != null && servers.isArray()) {
+            for (ONode s : servers.getArray()) {
+                if (name.equals(s.get("name").getString())) {
+                    s.set("enabled", enabled);
+                    break;
+                }
+            }
+        }
+
+        saveWebapiConfig(webapiFile, config);
+        LOG.info("[Settings] OpenApi server toggled: {} -> {}", name, enabled);
+        return Result.succeed();
+    }
+
+    /**
+     * 检测 OpenApi 服务器连接（HTTP HEAD/GET 请求测试）
+     */
+    @Post
+    @Mapping("/web/settings/webapi/servers/check")
+    public Result webapiServersCheck(Context ctx) {
+        try {
+            ONode root = ONode.ofJson(ctx.body());
+            String baseUrl = root.get("baseUrl").getString();
+            if (Assert.isEmpty(baseUrl)) {
+                return Result.failure("API 基地址不能为空");
+            }
+
+            // 构建HTTP连接测试
+            java.net.URL url = new java.net.URL(baseUrl);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            conn.setInstanceFollowRedirects(true);
+
+            // 设置自定义 headers
+            ONode headersNode = root.get("headers");
+            if (headersNode != null && headersNode.isObject()) {
+                for (Map.Entry<String, ONode> entry : headersNode.getObject().entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue().getString());
+                }
+            }
+
+            int responseCode = conn.getResponseCode();
+            conn.disconnect();
+
+            if (responseCode >= 200 && responseCode < 500) {
+                return Result.succeed("连接成功：HTTP " + responseCode);
+            } else {
+                return Result.failure("连接失败：HTTP " + responseCode);
+            }
+        } catch (java.net.ConnectException e) {
+            return Result.failure("连接被拒绝，请检查地址和端口是否正确");
+        } catch (java.net.SocketTimeoutException e) {
+            return Result.failure("连接超时，请检查地址是否可达");
+        } catch (java.io.IOException e) {
+            return Result.failure("连接失败: " + e.getMessage());
+        } catch (Exception e) {
+            return Result.failure("检测失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 批量导入 OpenApi 服务器配置
+     * 支持 Map 格式: {"apiServers":{"name1":{...},"name2":{...}}}
+     * 支持数组格式: {"apiServers":[{...},{...}]}
+     */
+    @Post
+    @Mapping("/web/settings/webapi/servers/import")
+    public Result webapiServersImport(Context ctx) throws Exception {
+        ONode root = ONode.ofJson(ctx.body());
+        ONode serversNode = root.get("apiServers");
+        if (serversNode == null) {
+            return Result.failure("Invalid format: apiServers not found");
+        }
+
+        java.nio.file.Path webapiFile = getWebapiServersFile();
+        ONode config = loadWebapiConfig(webapiFile);
+        ONode servers = config.getOrNew("apiServers").asArray();
+        java.util.Set<String> existingNames = new java.util.HashSet<>();
+        for (ONode s : servers.getArray()) {
+            existingNames.add(s.get("name").getString());
+        }
+
+        int imported = 0;
+        if (serversNode.isObject()) {
+            // Map 格式: name -> config
+            for (Map.Entry<String, ONode> entry : serversNode.getObject().entrySet()) {
+                String name = entry.getKey();
+                if (existingNames.contains(name)) continue;
+                ONode src = entry.getValue();
+                ONode newServer = new ONode();
+                newServer.set("name", name);
+                newServer.set("apiBaseUrl", src.hasKey("apiBaseUrl") ? src.get("apiBaseUrl").getString() : "");
+                newServer.set("docUrl", src.hasKey("docUrl") ? src.get("docUrl").getString() : "");
+                newServer.set("enabled", true);
+                if (src.hasKey("headers")) newServer.set("headers", src.get("headers"));
+                servers.add(newServer);
+                imported++;
+            }
+        } else if (serversNode.isArray()) {
+            for (ONode src : serversNode.getArray()) {
+                String name = src.get("name").getString();
+                if (existingNames.contains(name) || Assert.isEmpty(name)) continue;
+                servers.add(src);
+                imported++;
+            }
+        }
+
+        saveWebapiConfig(webapiFile, config);
+        LOG.info("[Settings] OpenApi servers imported: {} items", imported);
+        return Result.succeed("Imported " + imported + " server(s)");
+    }
+
+    private java.nio.file.Path getWebapiServersFile() {
+        return java.nio.file.Paths.get(engine.getProps().getWorkspace(), ".soloncode", "webapi-servers.json");
+    }
+
+    private ONode loadWebapiConfig(java.nio.file.Path file) throws Exception {
+        if (!java.nio.file.Files.exists(file)) {
+            ONode root = new ONode();
+            root.getOrNew("apiServers").asArray();
+            return root;
+        }
+        String content = new String(java.nio.file.Files.readAllBytes(file), "UTF-8");
+        return ONode.ofJson(content);
+    }
+
+    private void saveWebapiConfig(java.nio.file.Path file, ONode config) throws Exception {
+        java.nio.file.Files.createDirectories(file.getParent());
+        java.nio.file.Files.write(file, config.toJson().getBytes("UTF-8"));
+    }
+
+    /**
+     * 从持久化文件加载 MCP 服务器到引擎（启动时调用）
+     */
+    public void loadPersistedMcpServers() {
+        try {
+            java.nio.file.Path mcpFile = getMcpServersFile();
+            if (!java.nio.file.Files.exists(mcpFile)) {
+                return;
+            }
+
+            ONode config = loadMcpConfig(mcpFile);
+            ONode servers = config.get("mcpServers");
+            if (servers == null || !servers.isArray()) {
+                return;
+            }
+
+            for (ONode node : servers.getArray()) {
+                boolean enabled = node.get("enabled").getBoolean(true);
+                if (!enabled) continue;
+
+                String name = node.get("name").getString();
+                String type = node.get("type").getString();
+                if (name == null || name.isEmpty()) continue;
+
+                try {
+                    McpClientProvider.Builder builder = McpClientProvider.builder();
+                    if ("stdio".equals(type)) {
+                        String command = node.get("command").getString();
+                        if (command == null || command.isEmpty()) continue;
+                        builder.channel(org.noear.solon.ai.mcp.McpChannel.STDIO).command(command);
+
+                        ONode argsNode = node.get("args");
+                        if (argsNode != null && argsNode.isArray()) {
+                            List<String> argsList = new ArrayList<>();
+                            for (ONode a : argsNode.getArray()) {
+                                String arg = a.getString();
+                                if (arg != null && !arg.isEmpty()) argsList.add(arg);
+                            }
+                            if (!argsList.isEmpty()) builder.args(argsList);
+                        }
+
+                        ONode envNode = node.get("env");
+                        if (envNode != null && envNode.isObject() && envNode.getObject().size() > 0) {
+                            Map<String, String> envMap = new LinkedHashMap<>();
+                            for (Map.Entry<String, ONode> entry : envNode.getObject().entrySet()) {
+                                envMap.put(entry.getKey(), entry.getValue().getString());
+                            }
+                            builder.env(envMap);
+                        }
+                    } else {
+                        String url = node.get("url").getString();
+                        if (url == null || url.isEmpty()) continue;
+                        String channel = "sse".equals(type)
+                                ? org.noear.solon.ai.mcp.McpChannel.SSE
+                                : org.noear.solon.ai.mcp.McpChannel.STREAMABLE;
+                        builder.channel(channel).url(url);
+
+                        ONode headersNode = node.get("headers");
+                        if (headersNode != null && headersNode.isObject()) {
+                            Map<String, String> headersMap = new LinkedHashMap<>();
+                            for (Map.Entry<String, ONode> entry : headersNode.getObject().entrySet()) {
+                                headersMap.put(entry.getKey(), entry.getValue().getString());
+                            }
+                            builder.headers(headersMap);
+                        }
+                    }
+
+                    McpClientProvider client = builder.build();
+                    ToolGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
+                    if (mcpGateway != null) {
+                        mcpGateway.addTool(name, client);
+                    }
+                    LOG.info("[Settings] Loaded persisted MCP server: {} ({})", name, type);
+                } catch (Exception e) {
+                    LOG.warn("[Settings] Failed to load MCP server '{}': {}", name, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to load persisted MCP servers: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 从持久化文件加载 WebApi 服务器到引擎（启动时调用）
+     */
+    public void loadPersistedWebapiServers() {
+        try {
+            java.nio.file.Path webapiFile = getWebapiServersFile();
+            if (!java.nio.file.Files.exists(webapiFile)) {
+                return;
+            }
+            ONode config = loadWebapiConfig(webapiFile);
+            ONode servers = config.get("apiServers");
+            if (servers == null || !servers.isArray()) {
+                return;
+            }
+            RestApiSkill restApi = engine.getRestApiSkill();
+            for (ONode node : servers.getArray()) {
+                boolean enabled = node.get("enabled").getBoolean(true);
+                if (!enabled) continue;
+                String name = node.get("name").getString();
+                String apiBaseUrl = node.get("apiBaseUrl").getString();
+                String docUrl = node.get("docUrl").getString();
+                if (apiBaseUrl == null || apiBaseUrl.isEmpty()) continue;
+
+                Map<String, String> headersMap = null;
+                ONode headersNode = node.get("headers");
+                if (headersNode != null && headersNode.isObject()) {
+                    headersMap = new LinkedHashMap<>();
+                    for (Map.Entry<String, ONode> entry : headersNode.getObject().entrySet()) {
+                        headersMap.put(entry.getKey(), entry.getValue().getString());
+                    }
+                }
+
+                if (restApi != null) {
+                    restApi.addApi(docUrl, apiBaseUrl, headersMap);
+                }
+                LOG.info("[Settings] Loaded persisted WebApi server: {} -> {}", name, apiBaseUrl);
+            }
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to load persisted WebApi servers: {}", e.getMessage());
+        }
     }
 
     // ==================== 设置：Skills 市场（委派给 Market 接口） ====================

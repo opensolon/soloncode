@@ -215,6 +215,8 @@ public class Configurator {
         Solon.app().router().add(webController);
         WebSettingsController settingsController = new WebSettingsController(agentRuntime);
         settingsController.loadPersistedModels();
+        settingsController.loadPersistedMcpServers();
+        settingsController.loadPersistedWebapiServers();
         BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
         Solon.app().router().add(webSettingsController);
         BeanWrap webChannel = Solon.context().wrapAndPut(WebChannel.class, new WebChannel(agentRuntime, webGate));
