@@ -15,7 +15,7 @@
 
     // ==================== 常量 ====================
 
-    var SKILLS_API_BASE = 'https://skills.sh/api/v1';
+    var SKILLS_API_BASE = '/web/settings/skills/proxy';
 
     // ==================== DOM 引用 ====================
 
@@ -83,11 +83,11 @@
 
         var url;
         if (query) {
-            // 搜索模式：/api/v1/skills/search?q=xxx&limit=50
-            url = SKILLS_API_BASE + '/skills/search?q=' + encodeURIComponent(query) + '&limit=50';
+            // 搜索模式：/web/settings/skills/proxy?action=search&q=xxx&limit=50
+            url = SKILLS_API_BASE + '?action=search&q=' + encodeURIComponent(query) + '&limit=50';
         } else {
-            // 默认模式：展示热门技能 /api/v1/skills?view=trending&per_page=50
-            url = SKILLS_API_BASE + '/skills?view=trending&per_page=50';
+            // 默认模式：展示热门技能
+            url = SKILLS_API_BASE + '?action=trending&per_page=50';
         }
 
         $.ajax({

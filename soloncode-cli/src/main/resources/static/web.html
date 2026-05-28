@@ -301,7 +301,7 @@
             <div class="settings-tabs">
                 <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">设置</div>
                 <button class="settings-tab active" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> 大语言模型</button>
-                <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 技能</button>
+                <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 技能市场</button>
                 <button class="settings-tab" data-tab="mcp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> MCP 服务器</button>
                 <button class="settings-tab" data-tab="webapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> OpenApi 服务器</button>
                 <div class="settings-tabs-footer">
@@ -318,7 +318,6 @@
                                 <span class="settings-section-title">大语言模型</span>
                                 <div class="llm-header-actions">
                                     <button class="settings-add-btn" id="llmExportBtn">导出</button>
-                                    <button class="settings-add-btn" id="llmImportBtn">导入</button>
                                     <button class="settings-add-btn" id="llmAddBtn">+ 添加模型</button>
                                 </div>
                             </div>
@@ -338,27 +337,22 @@
                             </div>
                             <div class="llm-add-form" id="llmAddForm">
                                 <div class="form-group">
-                                    <label>Provider</label>
+                                    <label>接口地址规范</label>
                                     <select id="llmProvider">
-                                        <option value="">自动检测</option>
-                                        <option value="openai">OpenAI / 兼容接口</option>
-                                        <option value="ollama">Ollama (本地)</option>
-                                        <option value="zhipu">智谱 (GLM)</option>
-                                        <option value="deepseek">DeepSeek</option>
-                                        <option value="baidu-qianfan">百度千帆 (文心)</option>
-                                        <option value="ali-tongyi">阿里通义 (Qwen)</option>
-                                        <option value="moonshot">Moonshot (Kimi)</option>
-                                        <option value="minimax">MiniMax</option>
+                                        <option value="">自动检测（须填写完整地址）</option>
+                                        <option value="openai">OpenAI BaseUrl / 兼容接口</option>
+                                        <option value="anthropic">Anthropic BaseUrl / 兼容接口</option>
+                                        <option value="ollama">Ollama BaseUrl / 兼容接口</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>API 地址 <span class="required">*</span></label>
+                                    <label>接口地址 <span class="required">*</span></label>
                                     <input type="text" id="llmApiUrl" placeholder="https://api.openai.com/v1"/>
                                 </div>
                                 <div class="form-group">
-                                    <label>API Key</label>
+                                    <label>访问密钥</label>
                                     <div class="password-input-group">
-                                        <input type="password" id="llmApiKey" placeholder="sk-..."/>
+                                        <input type="password" id="llmApiKey"/>
                                         <button class="password-toggle" id="llmApiKeyToggle" title="显示/隐藏">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                         </button>
@@ -366,23 +360,26 @@
                                 </div>
                                 <div class="form-group">
                                     <label>模型名称 <span class="required">*</span></label>
-                                    <input type="text" id="llmModelName" placeholder="gpt-4o"/>
+                                    <input type="text" id="llmModelName" />
                                 </div>
                                 <div class="form-group">
-                                    <label>别名（可选）</label>
+                                    <label>模型别名（可选）</label>
                                     <input type="text" id="llmAlias" placeholder="给模型起个好记的名字"/>
                                 </div>
                                 <div class="form-group">
-                                    <label>超时时间（可选）</label>
-                                    <input type="text" id="llmTimeout" placeholder="PT120s（默认 120 秒）"/>
+                                    <label>请求超时时间（可选）</label>
+                                    <input type="text" id="llmTimeout" placeholder="120s（默认 120 秒）"/>
                                 </div>
-                                <div class="form-actions" style="justify-content:space-between;">
-                                    <button class="btn-secondary" id="llmTestBtn" style="display:flex;align-items:center;gap:4px;">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                                        测试连接
-                                    </button>
+                                <div class="form-group">
+                                    <label>默认选项（可选，JSON 格式）</label>
+                                    <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"enable_thinking":false}'></textarea>
+                                </div>
+                                <div class="form-actions" style="justify-content:flex-end;">
                                     <div style="display:flex;gap:8px;">
-                                        <button class="btn-secondary" id="llmCancelBtn">取消</button>
+                                        <button class="btn-secondary" id="llmTestBtn">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                            测试连接
+                                        </button>
                                         <button class="btn-primary" id="llmSaveBtn">保存</button>
                                     </div>
                                 </div>
@@ -390,24 +387,7 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Import Dialog -->
-                    <div class="mcp-import-dialog" id="llmImportDialog" style="display:none">
-                        <div class="mcp-import-dialog-content">
-                            <div class="mcp-import-dialog-title">导入大模型配置</div>
-                            <div class="form-group">
-                                <label>粘贴 JSON 配置（系统导出格式）</label>
-                                <textarea id="llmImportText" rows="8" placeholder='[{
-  "apiUrl": "https://api.openai.com/v1",
-  "model": "gpt-4o",
-  "name": "my-gpt4"
-}]'></textarea>
-                            </div>
-                            <div class="form-actions">
-                                <button class="btn-secondary" id="llmImportCancelBtn">取消</button>
-                                <button class="btn-primary" id="llmImportConfirmBtn">导入</button>
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
                 <!-- Skills Tab -->
                 <div class="settings-tab-content" id="settingsTabSkills">
@@ -500,13 +480,12 @@
                                         <input type="text" id="mcpTimeout" placeholder="30s" style="width:120px;"/>
                                     </div>
                                 </div>
-                                <div class="form-actions" style="justify-content:space-between;">
-                                    <button class="btn-secondary" id="mcpCheckBtn" style="display:flex;align-items:center;gap:4px;">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                                        检测连接
-                                    </button>
+                                <div class="form-actions" style="justify-content:flex-end;">
                                     <div style="display:flex;gap:8px;">
-                                        <button class="btn-secondary" id="mcpCancelBtn">取消</button>
+                                        <button class="btn-secondary" id="mcpCheckBtn" style="display:flex;align-items:center;gap:4px;">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                            检测连接
+                                        </button>
                                         <button class="btn-primary" id="mcpSaveBtn">保存</button>
                                     </div>
                                 </div>
@@ -573,13 +552,12 @@
                                     <label>请求头（KEY=VALUE，每行一个）</label>
                                     <textarea id="webapiHeaders" rows="3" placeholder="API_KEY=xxx&#10;Authorization=Bearer xxx"></textarea>
                                 </div>
-                                <div class="form-actions" style="justify-content:space-between;">
-                                    <button class="btn-secondary" id="webapiTestBtn" style="display:flex;align-items:center;gap:4px;">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                                        测试连接
-                                    </button>
+                                <div class="form-actions" style="justify-content:flex-end;">
                                     <div style="display:flex;gap:8px;">
-                                        <button class="btn-secondary" id="webapiCancelBtn">取消</button>
+                                        <button class="btn-secondary" id="webapiTestBtn" style="display:flex;align-items:center;gap:4px;">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                            测试连接
+                                        </button>
                                         <button class="btn-primary" id="webapiSaveBtn">保存</button>
                                     </div>
                                 </div>

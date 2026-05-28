@@ -90,7 +90,6 @@
     var $llmFormTitle = $('#llmFormTitle');
     var $llmListView = $('#llmListView');
     var $llmFormView = $('#llmFormView');
-    var $llmImportDialog = $('#llmImportDialog');
 
     // MCP
     var $mcpServerList = $('#mcpServerList');
@@ -273,7 +272,7 @@
     function resetLlmForm() {
         llmEditModel = null;
         $llmSaveBtn.text('保存');
-        $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModelName, #llmAlias, #llmTimeout').val('');
+        $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModelName, #llmAlias, #llmTimeout, #llmDefaultOptions').val('');
         $('#llmApiKey').attr('placeholder', 'sk-...');
         $llmCheckResult.hide();
     }
@@ -284,6 +283,7 @@
         $('#llmApiKey').val('').attr('placeholder', item.apiKey ? '已配置（留空保持不变）' : 'sk-...');
         if (item.model) $('#llmModelName').val(item.model);
         if (item.name && item.name !== item.model) $('#llmAlias').val(item.name);
+        if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
     }
 
     function buildLlmBodyObj() {
@@ -297,6 +297,10 @@
         var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
+        var optionsText = $('#llmDefaultOptions').val().trim();
+        if (optionsText) {
+            try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { /* 忽略无效 JSON */ }
+        }
         return bodyObj;
     }
 
@@ -339,7 +343,6 @@
 
     // LLM 按钮事件
     $('#llmAddBtn').on('click', function () { llmEditModel = null; resetLlmForm(); showLlmFormView('添加模型'); });
-    $('#llmCancelBtn').on('click', function () { showLlmListView(); resetLlmForm(); });
     $('#llmBackBtn').on('click', function () { showLlmListView(); resetLlmForm(); });
 
     $llmSaveBtn.on('click', function () {
@@ -419,25 +422,6 @@
         });
     });
 
-    // LLM 导入
-    $('#llmImportBtn').on('click', function () { $llmImportDialog.css('display', 'flex'); $('#llmImportText').val(''); });
-    $('#llmImportCancelBtn').on('click', function () { $llmImportDialog.hide(); });
-    $('#llmImportConfirmBtn').on('click', function () {
-        var text = $('#llmImportText').val().trim();
-        if (!text) { alert('请粘贴 JSON 配置'); return; }
-        try { JSON.parse(text); } catch (e) { alert('JSON 格式无效'); return; }
-        var $btn = $(this).prop('disabled', true);
-        $.ajax({ url: '/web/settings/llm/models/import', method: 'POST', data: text, contentType: 'application/json', dataType: 'json' })
-            .done(function (resp) {
-                if (resp.code === 200) {
-                    if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
-                    loadLlmList();
-                    $llmImportDialog.hide();
-                } else { alert('导入失败: ' + (resp.message || '未知错误')); }
-            })
-            .fail(function () { alert('网络错误'); })
-            .always(function () { $btn.prop('disabled', false); });
-    });
 
     // LLM API Key 显示切换
     $('#llmApiKeyToggle').on('click', function () {
@@ -604,7 +588,6 @@
 
     // MCP 按钮事件
     $('#mcpAddBtn').on('click', function () { resetMcpForm(); showMcpFormView('添加服务器'); });
-    $('#mcpCancelBtn').on('click', function () { showMcpListView(); resetMcpForm(); });
     $('#mcpBackBtn').on('click', function () { showMcpListView(); resetMcpForm(); });
 
     $mcpTypeBtns.on('click', function () { setMcpType($(this).attr('data-type')); });
@@ -803,7 +786,6 @@
 
     // OpenApi 按钮事件
     $('#webapiAddBtn').on('click', function () { resetWebapiForm(); showWebapiFormView('添加服务器'); });
-    $('#webapiCancelBtn').on('click', function () { showWebapiListView(); resetWebapiForm(); });
     $('#webapiBackBtn').on('click', function () { showWebapiListView(); resetWebapiForm(); });
 
     // OpenApi 测试连接

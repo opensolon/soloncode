@@ -652,4 +652,37 @@ public class WebSettingsController {
         java.nio.file.Files.createDirectories(file.getParent());
         java.nio.file.Files.write(file, config.toJson().getBytes("UTF-8"));
     }
+
+    // ==================== 设置：Skills 市场代理 ====================
+
+    /**
+     * Skills 市场代理接口 — 避免 CORS 问题
+     */
+    @Get
+    @Mapping("/web/settings/skills/proxy")
+    public Object skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
+                              @Param(value = "q", defaultValue = "") String query,
+                              @Param(value = "limit", defaultValue = "50") int limit,
+                              @Param(value = "per_page", defaultValue = "50") int perPage) {
+        try {
+            String targetUrl;
+            if ("search".equals(action) && query != null && !query.isEmpty()) {
+                targetUrl = "https://skills.sh/api/v1/skills/search?q="
+                        + java.net.URLEncoder.encode(query, "UTF-8")
+                        + "&limit=" + limit;
+            } else {
+                targetUrl = "https://skills.sh/api/v1/skills?view=trending&per_page=" + perPage;
+            }
+
+            String body = HttpUtils.http(targetUrl)
+                    .header("User-Agent", "SolonCode/1.0")
+                    .timeout(15000)
+                    .get();
+
+            ctx.contentType("application/json");
+            return body;
+        } catch (Exception e) {
+            return Result.failure("代理请求失败: " + e.getMessage());
+        }
+    }
 }
