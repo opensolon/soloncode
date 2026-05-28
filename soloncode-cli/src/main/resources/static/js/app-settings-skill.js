@@ -1,12 +1,13 @@
 /**
- * app-settings-skill.js — 技能市场交互逻辑（通过后端代理调用 ClawHub API）
+ * app-settings-skill.js — 技能市场交互逻辑（所有 API 调用均走后端代理）
  *
  * 依赖：layui.js（jQuery）、app-base.js、app-settings.js（escapeHtml/escapeAttr 全局共享）
  * 协同：app-history.js（commandList / loadCommands）
  *
- * ClawHub API 参考：
- *   GET /api/v1/skills?limit=&sort=trending  — 热门技能列表
- *   GET /api/v1/search?q=xxx                  — 搜索技能
+ * 后端接口：
+ *   GET  /web/settings/skills/proxy?action=trending&limit=50  — 热门技能列表
+ *   GET  /web/settings/skills/proxy?action=search&q=xxx        — 搜索技能
+ *   POST /web/settings/skills/install  {slug: "xxx"}           — 安装技能
  */
 
 (function () {
@@ -82,11 +83,9 @@
 
         var url;
         if (query) {
-            // 搜索模式：/web/settings/skills/proxy?action=search&q=xxx&limit=50
             url = SKILLS_API_BASE + '?action=search&q=' + encodeURIComponent(query) + '&limit=50';
         } else {
-            // 默认模式：展示热门技能
-            url = SKILLS_API_BASE + '?action=trending&per_page=50';
+            url = SKILLS_API_BASE + '?action=trending&limit=50';
         }
 
         $.ajax({
@@ -96,20 +95,15 @@
             dataType: 'json'
         })
             .done(function (resp) {
-                // 后端代理用 Result.succeed() 包装，实际格式: {code:1, data:{items:[...]}}
-                // 需要先解包 Result，再从内部取 items / results
+                // 后端返回 Result 包装：{code:200, data:[...], description:""}
                 var payload = resp;
                 if (resp && resp.code !== undefined && resp.data !== undefined) {
-                    // Solon Result 包装体，取 data 字段
                     payload = resp.data;
                 }
 
+                // 后端 Market 适配器已统一返回 Map 列表，直接使用
                 var skills = [];
-                if (payload && payload.items && Array.isArray(payload.items)) {
-                    skills = payload.items;
-                } else if (payload && payload.results && Array.isArray(payload.results)) {
-                    skills = payload.results;
-                } else if (Array.isArray(payload)) {
+                if (Array.isArray(payload)) {
                     skills = payload;
                 }
 
@@ -124,13 +118,13 @@
                 if (textStatus === 'timeout') {
                     msg = '请求超时，请检查网络连接';
                 } else if (jqXHR.status === 0) {
-                    msg = '网络错误，无法连接技能市场（可能被 CORS 策略阻止或网络不可达）';
+                    msg = '网络错误，无法连接服务器';
                 } else if (jqXHR.status === 429) {
-                    msg = '技能市场请求过于频繁，请稍后再试';
+                    msg = '请求过于频繁，请稍后再试';
                 } else if (jqXHR.status >= 500) {
-                    msg = '技能市场服务暂时不可用（HTTP ' + jqXHR.status + '）';
+                    msg = '服务暂时不可用（HTTP ' + jqXHR.status + '）';
                 } else {
-                    msg = '网络错误，无法连接技能市场（HTTP ' + (jqXHR.status || '?') + '）';
+                    msg = '网络错误（HTTP ' + (jqXHR.status || '?') + '）';
                 }
                 $skillsError.text(msg).show();
             });
@@ -156,10 +150,9 @@
             var name = skill.slug || skill.name || '';
             var displayName = skill.displayName || name;
             var desc = skill.summary || skill.description || '';
-            // ClawHub API 的来源和安装信息
+            // 来源信息（Market 适配器已统一字段）
             var owner = skill.ownerHandle || (skill.owner && skill.owner.handle) || '';
             var source = owner ? owner + '/' + name : name;
-            // 安装命令：clawhub.ai/<owner>/<slug>
             var installUrl = owner ? owner + '/' + name : name;
             var installs = (skill.stats && skill.stats.installsCurrent) || 0;
             var stars = (skill.stats && skill.stats.stars) || 0;
@@ -192,17 +185,62 @@
     $skillsList.on('click', '.skill-install-btn:not(.installed)', function () {
         var $btn = $(this);
         var installUrl = $btn.attr('data-install-url');
+        // installUrl 格式："owner/slug" 或 "slug"，取最后一段作为 slug
+        var slug = installUrl;
+        if (slug.indexOf('/') > 0) {
+            slug = slug.split('/').pop();
+        }
         $btn.addClass('installing').text('安装中...').prop('disabled', true);
 
-        $.post('/web/chat/input', { text: '/skills add ' + installUrl })
-            .done(function () {
-                $btn.removeClass('installing').addClass('installed').text('已安装').prop('disabled', true);
-                _installedSkillsCache = null;
-                if (typeof loadCommands === 'function') loadCommands();
+        $.ajax({
+            url: '/web/settings/skills/install',
+            method: 'POST',
+            data: { slug: slug },
+            timeout: 60000,
+            dataType: 'json'
+        })
+            .done(function (resp) {
+                // 后端返回 Result 包装：{code:200, data:"displayName", description:""}
+                if (resp && resp.code === 200) {
+                    var skillName = (resp.data || slug) + '';
+                    // 立刻更新按钮状态
+                    $btn.removeClass('installing').addClass('installed').text('已安装').prop('disabled', true);
+                    // 立刻将新技能加入本地缓存
+                    if (!_installedSkillsCache) _installedSkillsCache = {};
+                    _installedSkillsCache[slug] = true;
+                    // 触发全局命令列表刷新
+                    if (typeof loadCommands === 'function') loadCommands();
+                    // 友好提示
+                    if (typeof layer !== 'undefined' && layer.msg) {
+                        layer.msg('技能「' + escapeHtml(skillName) + '」安装成功！', {icon: 1, time: 2500, offset: '120px'});
+                    } else {
+                        alert('技能「' + skillName + '」安装成功！');
+                    }
+                } else {
+                    var msg = (resp && resp.description) ? resp.description : '安装失败，请稍后重试';
+                    $btn.removeClass('installing').text('安装').prop('disabled', false);
+                    if (typeof layer !== 'undefined' && layer.msg) {
+                        layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
+                    } else {
+                        alert(msg);
+                    }
+                }
             })
-            .fail(function () {
+            .fail(function (jqXHR) {
                 $btn.removeClass('installing').text('安装').prop('disabled', false);
-                alert('安装失败');
+                var msg = '安装失败，请稍后重试';
+                try {
+                    var err = JSON.parse(jqXHR.responseText);
+                    if (err && err.description) msg = err.description;
+                    else if (err && err.data) msg = err.data;
+                } catch (e) {
+                    if (jqXHR.status) msg = '安装失败 (HTTP ' + jqXHR.status + ')';
+                }
+                if (typeof layer !== 'undefined' && layer.msg) {
+                    layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
+                } else {
+                    alert(msg);
+                }
             });
     });
 

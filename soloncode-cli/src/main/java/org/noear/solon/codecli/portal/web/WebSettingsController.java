@@ -20,16 +20,14 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.annotation.*;
+import org.noear.solon.codecli.market.ClawhubMarket;
+import org.noear.solon.codecli.market.Market;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
-import org.noear.solon.net.http.HttpException;
-import org.noear.solon.net.http.HttpResponseException;
-import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
 import java.util.*;
 
 /**
@@ -41,11 +39,13 @@ import java.util.*;
  * <ul>
  *   <li><b>LLM 模型管理</b>：从远程拉取模型列表、动态添加/移除/更新模型、设置默认模型、导入导出</li>
  *   <li><b>MCP 服务器管理</b>：服务器列表查询、添加/移除/更新、启用停用、连接检测、批量导入</li>
+ *   <li><b>技能市场</b>：通过 {@link Market} 接口代理技能浏览、搜索和安装（委派给具体适配器）</li>
  * </ul>
  *
  * @author oisin 2026-3-13
  * @author noear 2026-4-18
  * @see WebController Web 主控制器
+ * @see Market 技能市场接口
  */
 public class WebSettingsController {
     /**
@@ -59,12 +59,28 @@ public class WebSettingsController {
     private final HarnessEngine engine;
 
     /**
+     * 技能市场适配器（通过构造函数注入，方便切换不同市场）
+     */
+    private final Market market;
+
+    /**
      * 构造函数：初始化核心依赖。
      *
      * @param engine AI Agent 执行引擎
      */
     public WebSettingsController(HarnessEngine engine) {
+        this(engine, new ClawhubMarket());
+    }
+
+    /**
+     * 构造函数：支持自定义 Market 适配器（用于测试或切换市场）。
+     *
+     * @param engine AI Agent 执行引擎
+     * @param market 技能市场适配器
+     */
+    public WebSettingsController(HarnessEngine engine, Market market) {
         this.engine = engine;
+        this.market = market;
     }
 
     // ==================== 设置：LLM 模型管理 ====================
@@ -657,40 +673,53 @@ public class WebSettingsController {
         java.nio.file.Files.write(file, config.toJson().getBytes("UTF-8"));
     }
 
-    // ==================== 设置：Skills 市场代理 ====================
+    // ==================== 设置：Skills 市场（委派给 Market 接口） ====================
 
     /**
-     * Skills 市场代理接口 — 避免 CORS 问题
+     * 技能市场代理接口 — 获取热门技能或搜索技能。
+     * <p>所有外部 API 调用均由后端 Market 适配器完成，前端不直接访问外部服务。</p>
+     *
+     * @param action "trending" 获取热门 | "search" 搜索
+     * @param query  搜索关键词（action=search 时使用）
+     * @param limit  返回数量限制
      */
     @Get
     @Mapping("/web/settings/skills/proxy")
-    public Result<String> skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
-                                      @Param(value = "q", defaultValue = "") String query,
-                                      @Param(value = "limit", defaultValue = "50") int limit,
-                                      @Param(value = "per_page", defaultValue = "50") int perPage) {
-        try {
-            String targetUrl;
-            if ("search".equals(action) && query != null && !query.isEmpty()) {
-                targetUrl = "https://clawhub.ai/api/v1/search?q="
-                        + java.net.URLEncoder.encode(query, "UTF-8");
-            } else {
-                targetUrl = "https://clawhub.ai/api/v1/skills?limit=" + limit + "&sort=trending";
-            }
-
-            String body = HttpUtils.http(targetUrl)
-                    .header("User-Agent", "SolonCode/1.0")
-                    .timeout(15000)
-                    .get();
-
-            ONode oNode = ONode.ofJson(body);
-
-            if (oNode.hasKey("error")) {
-                return Result.failure(oNode.get("message").getString());
-            } else {
-                return Result.succeed(oNode.toBean());
-            }
-        } catch (Exception e) {
-            return Result.failure("代理请求失败: " + e.getMessage());
+    public Result skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
+                              @Param(value = "q", defaultValue = "") String query,
+                              @Param(value = "limit", defaultValue = "50") int limit,
+                              @Param(value = "per_page", defaultValue = "50") int perPage) {
+        if ("search".equals(action) && query != null && !query.isEmpty()) {
+            return market.search(query, limit);
+        } else {
+            return market.trending(limit);
         }
+    }
+
+    /**
+     * 安装技能 — 委派给 Market 适配器完成下载、解压，然后刷新技能池。
+     *
+     * @param slug 技能 slug（必填）
+     */
+    @Post
+    @Mapping("/web/settings/skills/install")
+    public Result skillsInstall(Context ctx, @Param("slug") String slug) {
+        if (Assert.isEmpty(slug)) {
+            return Result.failure("slug is required");
+        }
+
+        java.nio.file.Path skillsDir = java.nio.file.Paths.get(engine.getProps().getWorkspace(), "skills");
+        Result<String> result = market.install(slug, skillsDir);
+
+        // 安装成功后刷新技能池
+        if (result.getCode() == 200) {
+            try {
+                engine.getPoolManager().refresh();
+            } catch (Exception e) {
+                LOG.warn("[Settings] Skill pool refresh error after install: {}", e.getMessage());
+            }
+        }
+
+        return result;
     }
 }
