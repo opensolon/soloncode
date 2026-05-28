@@ -244,14 +244,16 @@
             });
     });
 
-    // 搜索输入（防抖 400ms）
+    // 搜索输入（按回车键搜索）
     $skillsSearchInput.on('input', function () {
         var val = $(this).val().trim();
         $skillsSearchClear.toggle(val.length > 0);
-        clearTimeout(_skillsSearchTimer);
-        _skillsSearchTimer = setTimeout(function () {
+    }).on('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            var val = $(this).val().trim();
             loadSkillsList(val || null);
-        }, 400);
+        }
     });
 
     // 清除搜索
