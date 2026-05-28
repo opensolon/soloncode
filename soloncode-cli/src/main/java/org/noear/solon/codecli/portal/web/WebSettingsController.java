@@ -48,10 +48,14 @@ import java.util.*;
  * @see WebController Web 主控制器
  */
 public class WebSettingsController {
-    /** 日志记录器 */
+    /**
+     * 日志记录器
+     */
     private static final Logger LOG = LoggerFactory.getLogger(WebSettingsController.class);
 
-    /** AI Agent 执行引擎，提供模型配置管理能力 */
+    /**
+     * AI Agent 执行引擎，提供模型配置管理能力
+     */
     private final HarnessEngine engine;
 
     /**
@@ -660,10 +664,10 @@ public class WebSettingsController {
      */
     @Get
     @Mapping("/web/settings/skills/proxy")
-    public Object skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
-                              @Param(value = "q", defaultValue = "") String query,
-                              @Param(value = "limit", defaultValue = "50") int limit,
-                              @Param(value = "per_page", defaultValue = "50") int perPage) {
+    public Result<String> skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
+                                      @Param(value = "q", defaultValue = "") String query,
+                                      @Param(value = "limit", defaultValue = "50") int limit,
+                                      @Param(value = "per_page", defaultValue = "50") int perPage) {
         try {
             String targetUrl;
             if ("search".equals(action) && query != null && !query.isEmpty()) {
@@ -679,8 +683,13 @@ public class WebSettingsController {
                     .timeout(15000)
                     .get();
 
-            ctx.contentType("application/json");
-            return body;
+            ONode oNode = ONode.ofJson(body);
+
+            if (oNode.hasKey("error")) {
+                return Result.failure(oNode.get("message").getString());
+            } else {
+                return Result.succeed(oNode.toBean());
+            }
         } catch (Exception e) {
             return Result.failure("代理请求失败: " + e.getMessage());
         }
