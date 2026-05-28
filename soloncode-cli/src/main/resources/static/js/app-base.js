@@ -22,10 +22,10 @@ var DOTS_HTML = '<span class="thinking-dots"><span></span><span></span><span></s
 /* ===== Per-Session State ===== */
 function SessionState(sessionId) {
     this.sessionId = sessionId;
-    this.container = document.createElement('div');
-    this.container.className = 'messages-inner';
-    this.container.style.display = 'none';
-    messagesWrap.appendChild(this.container);
+    this.container = $('<div>')[0];
+    $(this.container).addClass('messages-inner');
+    $(this.container).hide();
+    $(messagesWrap).append(this.container);
     this.eventSource = null;
     this.isStreaming = false;
     this.currentBubbleEl = null;
@@ -58,11 +58,10 @@ var isStreaming = false;
 var inChatMode = false;
 var chatHistory = [];
 var currentChatIndex = -1;
-var pendingFiles = []; // [{ type: 'image'|'file', name, size, file, dataUrl?, attachmentsType: 'image'|'file' }, ...]
+var pendingFiles = [];
 var MAX_ATTACHMENTS = 10;
 var userScrolledUp = false;
 
-// 回调占位：由 app-streaming.js 注册，供 app-message.js 中 HITL 调用
 var onFinishStream = null;
 
 /* ===== Session Helpers ===== */
@@ -75,23 +74,22 @@ function getOrCreateSession(sessionId) {
 
 function setActiveSession(sessionId) {
     if (activeSessionId && sessionMap[activeSessionId]) {
-        sessionMap[activeSessionId].container.style.display = 'none';
+        $(sessionMap[activeSessionId].container).hide();
     }
     var sess = getOrCreateSession(sessionId);
-    sess.container.style.display = '';
+    $(sess.container).show();
     activeSessionId = sessionId;
     SESSION_ID = sessionId;
     isStreaming = sess.isStreaming;
     userScrolledUp = false;
     if (isStreaming) setBtnStopMode();
     else setBtnSendMode();
-    // Refresh model selector for this session
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) refreshSessionModel(sessionId);
 }
 
 function deactivateSession() {
     if (activeSessionId && sessionMap[activeSessionId]) {
-        sessionMap[activeSessionId].container.style.display = 'none';
+        $(sessionMap[activeSessionId].container).hide();
     }
     activeSessionId = null;
     isStreaming = false;
@@ -99,7 +97,7 @@ function deactivateSession() {
 }
 
 /* ===== Helpers ===== */
-messagesWrap.addEventListener('scroll', function() {
+$(messagesWrap).on('scroll', function() {
     var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
     userScrolledUp = gap > 80;
 });
@@ -128,13 +126,13 @@ function resetStreamState(sess) {
 
 function setBtnStopMode() {
     chatSendBtn.disabled = false;
-    chatSendBtn.classList.add('stop-mode');
-    chatSendBtn.innerHTML = '<div class="stop-icon"></div>';
+    $(chatSendBtn).addClass('stop-mode');
+    $(chatSendBtn).html('<div class="stop-icon"></div>');
     chatSendBtn.title = '停止生成';
 }
 function setBtnSendMode() {
-    chatSendBtn.classList.remove('stop-mode');
-    chatSendBtn.innerHTML = '<i class="layui-icon layui-icon-release"></i>';
+    $(chatSendBtn).removeClass('stop-mode');
+    $(chatSendBtn).html('<i class="layui-icon layui-icon-release"></i>');
     chatSendBtn.title = '发送';
     chatSendBtn.disabled = false;
 }
@@ -145,8 +143,8 @@ function autoResize(el) {
 }
 
 function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.textContent = str;
+    var div = $('<div>')[0];
+    $(div).text(str);
     return div.innerHTML;
 }
 
@@ -174,26 +172,23 @@ function clearInput() {
     else { welcomeInput.value = ''; welcomeInput.style.height = 'auto'; }
 }
 
-// 初始化默认会话（延迟到最后一个文件加载完毕后由 app-streaming.js 调用）
-// setActiveSession(SESSION_ID);
-
 /* ===== Toast Notification ===== */
 var toastContainer = null;
 function showToast(message, type, duration) {
     if (!toastContainer) {
-        toastContainer = document.createElement('div');
-        toastContainer.className = 'toast-container';
-        document.body.appendChild(toastContainer);
+        toastContainer = $('<div>')[0];
+        $(toastContainer).addClass('toast-container');
+        $('body').append(toastContainer);
     }
-    var item = document.createElement('div');
-    item.className = 'toast-item ' + (type || 'info');
+    var item = $('<div>')[0];
+    $(item).addClass('toast-item ' + (type || 'info'));
     var icons = { success: '\u2714', error: '\u2716', info: '\u2139' };
-    item.innerHTML = '<span>' + (icons[type] || icons.info) + '</span><span>' + escapeHtml(message) + '</span>';
-    toastContainer.appendChild(item);
+    $(item).html('<span>' + (icons[type] || icons.info) + '</span><span>' + escapeHtml(message) + '</span>');
+    $(toastContainer).append(item);
     setTimeout(function() {
-        item.classList.add('leaving');
+        $(item).addClass('leaving');
         setTimeout(function() {
-            if (item.parentNode) item.remove();
+            if (item.parentNode) $(item).remove();
         }, 250);
     }, duration || 3000);
 }
@@ -202,15 +197,15 @@ function showToast(message, type, duration) {
 var networkBar = null;
 function showNetworkBar(type, message) {
     if (!networkBar) {
-        networkBar = document.createElement('div');
-        networkBar.className = 'network-bar';
-        document.body.appendChild(networkBar);
+        networkBar = $('<div>')[0];
+        $(networkBar).addClass('network-bar');
+        $('body').append(networkBar);
     }
-    networkBar.className = 'network-bar show ' + type;
-    networkBar.textContent = message;
+    $(networkBar).attr('class', 'network-bar show ' + type);
+    $(networkBar).text(message);
 }
 function hideNetworkBar() {
     if (networkBar) {
-        networkBar.className = 'network-bar';
+        $(networkBar).attr('class', 'network-bar');
     }
 }

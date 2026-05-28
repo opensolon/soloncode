@@ -2,11 +2,11 @@
 /* 工作区文件树面板（右侧） */
 
 (function() {
-    var panel = document.getElementById('filerPanel');
-    var toggleBtn = document.getElementById('filerToggleBtn');
-    var treeEl = document.getElementById('filerTree');
-    var worknameEl = document.getElementById('filerWorkname');
-    var resizeHandle = document.getElementById('filerResizeHandle');
+    var $panel = $('#filerPanel');
+    var $toggleBtn = $('#filerToggleBtn');
+    var $treeEl = $('#filerTree');
+    var $worknameEl = $('#filerWorkname');
+    var $resizeHandle = $('#filerResizeHandle');
 
     var FILER_MIN_WIDTH = 180;
     var FILER_MAX_WIDTH = 600;
@@ -14,84 +14,82 @@
 
     // ---- 同步 toggle 按钮位置 ----
     function syncToggleBtnPosition() {
-        if (!toggleBtn || !panel) return;
-        var collapsed = panel.classList.contains('collapsed');
+        if (!$toggleBtn.length || !$panel.length) return;
+        var collapsed = $panel.hasClass('collapsed');
         if (collapsed) {
-            toggleBtn.style.right = '4px';
+            $toggleBtn.css('right', '4px');
         } else {
-            var w = panel.offsetWidth;
-            toggleBtn.style.right = (w - 14) + 'px';
+            var w = $panel[0].offsetWidth;
+            $toggleBtn.css('right', (w - 14) + 'px');
         }
     }
 
     // ---- 拖拽调整大小 ----
     function initResize() {
-        if (!resizeHandle || !panel) return;
+        if (!$resizeHandle.length || !$panel.length) return;
 
         var isDragging = false;
         var startX = 0;
         var startWidth = 0;
 
-        resizeHandle.addEventListener('mousedown', function(e) {
-            if (panel.classList.contains('collapsed')) return;
+        $resizeHandle.on('mousedown', function(e) {
+            if ($panel.hasClass('collapsed')) return;
             isDragging = true;
             startX = e.clientX;
-            startWidth = panel.offsetWidth;
-            resizeHandle.classList.add('dragging');
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
+            startWidth = $panel[0].offsetWidth;
+            $resizeHandle.addClass('dragging');
+            $(document.body).css({ cursor: 'col-resize', userSelect: 'none' });
             e.preventDefault();
         });
 
-        document.addEventListener('mousemove', function(e) {
+        $(document).on('mousemove', function(e) {
             if (!isDragging) return;
             var dx = startX - e.clientX; // 拖向左边 dx > 0
             var newWidth = Math.max(FILER_MIN_WIDTH, Math.min(FILER_MAX_WIDTH, startWidth + dx));
-            panel.style.width = newWidth + 'px';
+            $panel.css('width', newWidth + 'px');
             localStorage.setItem('filer-width', newWidth);
             syncToggleBtnPosition();
         });
 
-        document.addEventListener('mouseup', function() {
+        $(document).on('mouseup', function() {
             if (!isDragging) return;
             isDragging = false;
-            resizeHandle.classList.remove('dragging');
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
+            $resizeHandle.removeClass('dragging');
+            $(document.body).css({ cursor: '', userSelect: '' });
         });
     }
 
     // ---- 恢复持久化宽度 ----
     function restoreWidth() {
-        if (!panel) return;
+        if (!$panel.length) return;
         var savedWidth = localStorage.getItem('filer-width');
         if (savedWidth) {
             var w = parseInt(savedWidth, 10);
             if (w >= FILER_MIN_WIDTH && w <= FILER_MAX_WIDTH) {
-                panel.style.width = w + 'px';
+                $panel.css('width', w + 'px');
             }
         }
     }
 
     // ---- Toggle 折叠 ----
-    var mainHeader = document.querySelector('.main-header');
+    var $mainHeader = $('.main-header');
 
     function syncHeaderPadding(collapsed) {
-        if (!mainHeader) return;
+        if (!$mainHeader.length) return;
         if (collapsed) {
-            mainHeader.classList.add('filer-collapsed');
+            $mainHeader.addClass('filer-collapsed');
         } else {
-            mainHeader.classList.remove('filer-collapsed');
+            $mainHeader.removeClass('filer-collapsed');
         }
     }
 
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', function() {
-            panel.classList.toggle('collapsed');
-            var collapsed = panel.classList.contains('collapsed');
-            toggleBtn.classList.toggle('collapsed', collapsed);
-            toggleBtn.innerHTML = collapsed ? '\u2039' : '\u203A';
-            toggleBtn.title = collapsed ? '\u5C55\u5F00\u6587\u4EF6\u6811' : '\u6536\u7F29\u6587\u4EF6\u6811';
+    if ($toggleBtn.length) {
+        $toggleBtn.on('click', function() {
+            $panel.toggleClass('collapsed');
+            var collapsed = $panel.hasClass('collapsed');
+            $toggleBtn.toggleClass('collapsed', collapsed);
+            $toggleBtn.html(collapsed ? '\u2039' : '\u203A');
+            $toggleBtn.attr('title', collapsed ? '\u5C55\u5F00\u6587\u4EF6\u6811' : '\u6536\u7F29\u6587\u4EF6\u6811');
             localStorage.setItem('filer-collapsed', collapsed ? '1' : '0');
             syncHeaderPadding(collapsed);
             syncToggleBtnPosition();
@@ -102,12 +100,10 @@
     restoreWidth();
     var shouldExpand = localStorage.getItem('filer-collapsed') === '0';
     if (shouldExpand) {
-        if (panel) panel.classList.remove('collapsed');
-        if (toggleBtn) {
-            toggleBtn.classList.remove('collapsed');
-            toggleBtn.innerHTML = '\u203A';
-            toggleBtn.title = '\u6536\u7F29\u6587\u4EF6\u6811';
-        }
+        $panel.removeClass('collapsed');
+        $toggleBtn.removeClass('collapsed');
+        $toggleBtn.html('\u203A');
+        $toggleBtn.attr('title', '\u6536\u7F29\u6587\u4EF6\u6811');
         syncHeaderPadding(false);
     } else {
         syncHeaderPadding(true);
@@ -118,11 +114,12 @@
     // ---- 收集当前已展开的目录路径集合 ----
     function collectExpandedPaths() {
         var paths = {};
-        if (!treeEl) return paths;
-        treeEl.querySelectorAll('.filer-node-children.open').forEach(function(cEl) {
-            var parent = cEl.parentElement;
-            if (parent && parent.getAttribute('data-path')) {
-                paths[parent.getAttribute('data-path')] = true;
+        if (!$treeEl.length) return paths;
+        $treeEl.find('.filer-node-children.open').each(function() {
+            var $parent = $(this).parent();
+            var dataPath = $parent.attr('data-path');
+            if (dataPath) {
+                paths[dataPath] = true;
             }
         });
         return paths;
@@ -130,103 +127,95 @@
 
     // ---- 加载文件树 ----
     function loadTree() {
-        fetch('/web/chat/filer/tree?depth=1')
-            .then(function(r) { return r.json(); })
-            .then(function(res) {
-                var data = (res && res.data) ? res.data : [];
-                if (treeEl) renderTree(data, treeEl, 0);
-            })
-            .catch(function(e) { console.error('[filer] load error', e); });
+        $.get('/web/chat/filer/tree?depth=1', function(res) {
+            var data = (res && res.data) ? res.data : [];
+            if ($treeEl.length) renderTree(data, $treeEl, 0);
+        }).fail(function(jqXHR, textStatus, error) {
+            console.error('[filer] load error', error);
+        });
     }
 
     // ---- 渲染树节点 ----
-    function renderTree(nodes, container, indent) {
-        container.innerHTML = '';
+    function renderTree(nodes, $container, indent) {
+        $container.html('');
         nodes.forEach(function(node) {
-            appendNode(node, container, indent);
+            appendNode(node, $container, indent);
         });
     }
 
     // ---- 渲染并追加单个节点 ----
-    function appendNode(node, container, indent) {
-        var nodeEl = document.createElement('div');
-        nodeEl.className = 'filer-node';
-        nodeEl.setAttribute('data-indent', indent);
-        nodeEl.setAttribute('data-path', node.path);
-        nodeEl.setAttribute('data-type', node.type);
+    function appendNode(node, $container, indent) {
+        var $nodeEl = $('<div>').addClass('filer-node')
+            .attr('data-indent', indent)
+            .attr('data-path', node.path)
+            .attr('data-type', node.type);
 
-        var row = document.createElement('div');
-        row.className = 'filer-node-row';
+        var $row = $('<div>').addClass('filer-node-row');
 
         if (node.type === 'directory') {
-            var arrow = document.createElement('span');
-            arrow.className = 'filer-arrow' + (node.expanded ? ' open' : '');
-            arrow.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-            row.appendChild(arrow);
+            var $arrow = $('<span>').addClass('filer-arrow')
+                .toggleClass('open', !!node.expanded)
+                .html('<svg width="12" height="12" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+            $row.append($arrow);
         } else {
-            var spacer = document.createElement('span');
-            spacer.className = 'filer-arrow filer-arrow-spacer';
-            spacer.innerHTML = '&nbsp;';
-            row.appendChild(spacer);
+            var $spacer = $('<span>').addClass('filer-arrow filer-arrow-spacer')
+                .html('&nbsp;');
+            $row.append($spacer);
 
-            var icon = document.createElement('span');
-            icon.className = 'filer-node-icon filer-icon-file';
-            icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
-            row.appendChild(icon);
+            var $icon = $('<span>').addClass('filer-node-icon filer-icon-file')
+                .html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
+            $row.append($icon);
         }
 
-        var name = document.createElement('span');
-        name.className = 'filer-node-name';
-        name.textContent = node.name;
-        name.title = node.path;
-        row.appendChild(name);
+        var $name = $('<span>').addClass('filer-node-name')
+            .text(node.name)
+            .attr('title', node.path);
+        $row.append($name);
 
-        nodeEl.appendChild(row);
+        $nodeEl.append($row);
 
         if (node.type === 'directory') {
-            var childrenEl = document.createElement('div');
-            childrenEl.className = 'filer-node-children' + (node.expanded ? ' open' : '');
+            var $childrenEl = $('<div>').addClass('filer-node-children')
+                .toggleClass('open', !!node.expanded);
             if (node.expanded && node.children) {
-                renderTree(node.children, childrenEl, indent + 1);
+                renderTree(node.children, $childrenEl, indent + 1);
             }
-            nodeEl.appendChild(childrenEl);
+            $nodeEl.append($childrenEl);
         }
 
         // 单击：目录展开/折叠；文件打开查看器
         if (node.type === 'directory') {
-            (function(n, ne) {
-                row.addEventListener('click', function(e) {
+            (function(n, $ne) {
+                $row.on('click', function(e) {
                     e.stopPropagation();
-                    var cEl = ne.querySelector(':scope > .filer-node-children');
-                    var aEl = row.querySelector('.filer-arrow');
-                    if (!cEl) return;
+                    var $cEl = $ne.children('.filer-node-children');
+                    var $aEl = $row.find('.filer-arrow');
+                    if (!$cEl.length) return;
 
-                    var isOpen = cEl.classList.contains('open');
+                    var isOpen = $cEl.hasClass('open');
                     if (isOpen) {
-                        cEl.classList.remove('open');
-                        if (aEl) aEl.classList.remove('open');
+                        $cEl.removeClass('open');
+                        $aEl.removeClass('open');
                     } else {
-                        cEl.classList.add('open');
-                        if (aEl) aEl.classList.add('open');
+                        $cEl.addClass('open');
+                        $aEl.addClass('open');
                         // dirty 标记或无子节点时，展开后重新拉取最新数据
-                        var isDirty = ne.getAttribute('data-dirty') === '1';
-                        if (isDirty || !cEl.hasChildNodes()) {
-                            ne.removeAttribute('data-dirty');
-                            fetch('/web/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1')
-                                .then(function(r) { return r.json(); })
-                                .then(function(res) {
-                                    var subData = (res && res.data) ? res.data : [];
-                                    renderTree(subData, cEl, indent + 1);
-                                });
+                        var isDirty = $ne.attr('data-dirty') === '1';
+                        if (isDirty || !$cEl.children().length) {
+                            $ne.removeAttr('data-dirty');
+                            $.get('/web/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1', function(res) {
+                                var subData = (res && res.data) ? res.data : [];
+                                renderTree(subData, $cEl, indent + 1);
+                            });
                         }
                     }
                 });
-            })(node, nodeEl);
+            })(node, $nodeEl);
         } else {
             // 文件：单击打开文件查看器（延迟 250ms，避免与双击冲突）
             (function(n) {
                 var clickTimer = null;
-                row.addEventListener('click', function(e) {
+                $row.on('click', function(e) {
                     e.stopPropagation();
                     if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
                     clickTimer = setTimeout(function() {
@@ -235,7 +224,7 @@
                         }
                     }, 250);
                 });
-                row.addEventListener('dblclick', function(e) {
+                $row.on('dblclick', function(e) {
                     e.stopPropagation();
                     e.preventDefault();
                     if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
@@ -245,7 +234,7 @@
 
         // 双击：插入 path 到输入框（所有节点通用）
         (function(n) {
-            row.addEventListener('dblclick', function(e) {
+            $row.on('dblclick', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
 
@@ -265,7 +254,7 @@
             });
         })(node);
 
-        container.appendChild(nodeEl);
+        $container.append($nodeEl);
     }
 
     // ---- 文件变更实时同步 ----
@@ -273,7 +262,7 @@
         if (!chunk || !chunk.changes || chunk.changes.length === 0) return;
 
         // 文件树为空时，直接全量刷新根目录兜底
-        if (!treeEl || !treeEl.hasChildNodes()) {
+        if (!$treeEl.length || !$treeEl.children().length) {
             smartRefreshRoot();
             showFilerChangeIndicator();
             return;
@@ -304,57 +293,55 @@
             return;
         }
 
-        if (!treeEl) return;
+        if (!$treeEl.length) return;
         var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
-        var nodeEl = treeEl.querySelector(selector);
-        if (!nodeEl) return;
+        var $nodeEl = $treeEl.find(selector);
+        if (!$nodeEl.length) return;
 
-        var childrenEl = nodeEl.querySelector(':scope > .filer-node-children');
-        if (!childrenEl) return;
+        var $childrenEl = $nodeEl.children('.filer-node-children');
+        if (!$childrenEl.length) return;
 
-        var isExpanded = childrenEl.classList.contains('open');
+        var isExpanded = $childrenEl.hasClass('open');
         if (!isExpanded) {
             // 折叠的目录标记为 dirty，下次展开时重新拉取最新数据
-            nodeEl.setAttribute('data-dirty', '1');
+            $nodeEl.attr('data-dirty', '1');
             return;
         }
 
-        var indent = parseInt(nodeEl.getAttribute('data-indent') || '0', 10);
-        fetch('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1')
-            .then(function(r) { return r.json(); })
-            .then(function(res) {
-                var subData = (res && res.data) ? res.data : [];
-                // 先收集已展开的子目录，刷新后恢复
-                var expandedPaths = {};
-                childrenEl.querySelectorAll('.filer-node-children.open').forEach(function(cEl) {
-                    var parent = cEl.parentElement;
-                    if (parent && parent.getAttribute('data-path')) {
-                        expandedPaths[parent.getAttribute('data-path')] = true;
+        var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
+        $.get('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1', function(res) {
+            var subData = (res && res.data) ? res.data : [];
+            // 先收集已展开的子目录，刷新后恢复
+            var expandedPaths = {};
+            $childrenEl.find('.filer-node-children.open').each(function() {
+                var $parent = $(this).parent();
+                var dataPath = $parent.attr('data-path');
+                if (dataPath) {
+                    expandedPaths[dataPath] = true;
+                }
+            });
+            renderTree(subData, $childrenEl, indent + 1);
+            // 恢复子目录展开状态（异步重新拉取数据）
+            Object.keys(expandedPaths).forEach(function(expandedPath) {
+                var expSelector = '.filer-node[data-path="' + CSS.escape(expandedPath) + '"]';
+                var $expNodeEl = $childrenEl.find(expSelector);
+                if ($expNodeEl.length) {
+                    var $expChildrenEl = $expNodeEl.children('.filer-node-children');
+                    var $expArrow = $expNodeEl.children('.filer-node-row').find('.filer-arrow');
+                    var expIndent = parseInt($expNodeEl.attr('data-indent') || '0', 10);
+                    if ($expChildrenEl.length) {
+                        $expChildrenEl.addClass('open');
+                        $expArrow.addClass('open');
+                        $.get('/web/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1', function(res2) {
+                            var subData2 = (res2 && res2.data) ? res2.data : [];
+                            renderTree(subData2, $expChildrenEl, expIndent + 1);
+                        });
                     }
-                });
-                renderTree(subData, childrenEl, indent + 1);
-                // 恢复子目录展开状态（异步重新拉取数据）
-                Object.keys(expandedPaths).forEach(function(expandedPath) {
-                    var expSelector = '.filer-node[data-path="' + CSS.escape(expandedPath) + '"]';
-                    var expNodeEl = childrenEl.querySelector(expSelector);
-                    if (expNodeEl) {
-                        var expChildrenEl = expNodeEl.querySelector(':scope > .filer-node-children');
-                        var expArrow = expNodeEl.querySelector(':scope > .filer-node-row .filer-arrow');
-                        var expIndent = parseInt(expNodeEl.getAttribute('data-indent') || '0', 10);
-                        if (expChildrenEl) {
-                            expChildrenEl.classList.add('open');
-                            if (expArrow) expArrow.classList.add('open');
-                            fetch('/web/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1')
-                                .then(function(r2) { return r2.json(); })
-                                .then(function(res2) {
-                                    var subData2 = (res2 && res2.data) ? res2.data : [];
-                                    renderTree(subData2, expChildrenEl, expIndent + 1);
-                                });
-                        }
-                    }
-                });
-            })
-            .catch(function(e) { console.error('[filer] refresh error', dirPath, e); });
+                }
+            });
+        }).fail(function(jqXHR, textStatus, error) {
+            console.error('[filer] refresh error', dirPath, error);
+        });
     }
 
     /**
@@ -363,51 +350,47 @@
     function smartRefreshRoot() {
         var expandedPaths = collectExpandedPaths();
 
-        fetch('/web/chat/filer/tree?depth=1')
-            .then(function(r) { return r.json(); })
-            .then(function(res) {
-                var newData = (res && res.data) ? res.data : [];
-                if (!treeEl) return;
+        $.get('/web/chat/filer/tree?depth=1', function(res) {
+            var newData = (res && res.data) ? res.data : [];
+            if (!$treeEl.length) return;
 
-                treeEl.innerHTML = '';
-                newData.forEach(function(node) {
-                    if (expandedPaths[node.path] && node.type === 'directory') {
-                        node.expanded = true;
-                    }
-                    appendNode(node, treeEl, 0);
+            $treeEl.html('');
+            newData.forEach(function(node) {
+                if (expandedPaths[node.path] && node.type === 'directory') {
+                    node.expanded = true;
+                }
+                appendNode(node, $treeEl, 0);
+            });
+
+            // 对之前已展开的目录，重新拉取子节点
+            Object.keys(expandedPaths).forEach(function(dirPath) {
+                var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
+                var $nodeEl = $treeEl.find(selector);
+                if (!$nodeEl.length) return;
+                var $childrenEl = $nodeEl.children('.filer-node-children');
+                if (!$childrenEl.length) return;
+                var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
+
+                $.get('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1', function(res2) {
+                    var subData = (res2 && res2.data) ? res2.data : [];
+                    renderTree(subData, $childrenEl, indent + 1);
                 });
-
-                // 对之前已展开的目录，重新拉取子节点
-                Object.keys(expandedPaths).forEach(function(dirPath) {
-                    var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
-                    var nodeEl = treeEl.querySelector(selector);
-                    if (!nodeEl) return;
-                    var childrenEl = nodeEl.querySelector(':scope > .filer-node-children');
-                    if (!childrenEl) return;
-                    var indent = parseInt(nodeEl.getAttribute('data-indent') || '0', 10);
-
-                    fetch('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1')
-                        .then(function(r2) { return r2.json(); })
-                        .then(function(res2) {
-                            var subData = (res2 && res2.data) ? res2.data : [];
-                            renderTree(subData, childrenEl, indent + 1);
-                        });
-                });
-            })
-            .catch(function(e) { console.error('[filer] smart refresh root error', e); });
+            });
+        }).fail(function(jqXHR, textStatus, error) {
+            console.error('[filer] smart refresh root error', error);
+        });
     }
 
     function showFilerChangeIndicator() {
-        var filesTab = panel ? panel.querySelector('.filer-tab[data-tab="files"]') : null;
-        if (!filesTab) return;
-        var dot = filesTab.querySelector('.filer-change-dot');
-        if (!dot) {
-            dot = document.createElement('span');
-            dot.className = 'filer-change-dot';
-            filesTab.appendChild(dot);
+        var $filesTab = $panel.length ? $panel.find('.filer-tab[data-tab="files"]') : $();
+        if (!$filesTab.length) return;
+        var $dot = $filesTab.find('.filer-change-dot');
+        if (!$dot.length) {
+            $dot = $('<span>').addClass('filer-change-dot');
+            $filesTab.append($dot);
         }
-        dot.classList.add('active');
-        setTimeout(function() { dot.classList.remove('active'); }, 2000);
+        $dot.addClass('active');
+        setTimeout(function() { $dot.removeClass('active'); }, 2000);
     }
 
     // ---- 暴露全局函数 ----
@@ -415,136 +398,127 @@
     window.onFilerChange = onFilerChange;
 
     // ---- 搜索（后端全量搜索） ----
-    var searchInput = document.getElementById('filerSearchInput');
-    var searchClear = document.getElementById('filerSearchClear');
+    var $searchInput = $('#filerSearchInput');
+    var $searchClear = $('#filerSearchClear');
     var searchResultsEl = null;
 
     function ensureSearchResultsContainer() {
-        if (!searchResultsEl && treeEl && treeEl.parentElement) {
-            searchResultsEl = document.createElement('div');
-            searchResultsEl.className = 'filer-search-results';
-            treeEl.parentElement.insertBefore(searchResultsEl, treeEl.nextSibling);
+        if (!searchResultsEl && $treeEl.length) {
+            searchResultsEl = $('<div>').addClass('filer-search-results');
+            $treeEl.after(searchResultsEl);
         }
     }
 
     function escapeHtml(text) {
-        var div = document.createElement('div');
-        div.textContent = text || '';
-        return div.innerHTML;
+        return $('<div>').text(text || '').html();
     }
 
     function showSearchResults(keyword) {
-        if (!treeEl || !keyword) return;
+        if (!$treeEl.length || !keyword) return;
         var kw = keyword.trim().toLowerCase();
         if (!kw) { hideSearchResults(); return; }
 
-        treeEl.style.display = 'none';
+        $treeEl.hide();
         ensureSearchResultsContainer();
-        searchResultsEl.style.display = 'block';
-        searchResultsEl.innerHTML = '<div class="filer-search-loading">搜索中...</div>';
+        searchResultsEl.show();
+        searchResultsEl.html('<div class="filer-search-loading">搜索中...</div>');
 
-        fetch('/web/chat/filer/search?keyword=' + encodeURIComponent(kw))
-            .then(function(r) { return r.json(); })
-            .then(function(res) {
-                var data = (res && res.data) ? res.data : [];
-                searchResultsEl.innerHTML = '';
+        $.get('/web/chat/filer/search?keyword=' + encodeURIComponent(kw), function(res) {
+            var data = (res && res.data) ? res.data : [];
+            searchResultsEl.html('');
 
-                if (data.length === 0) {
-                    searchResultsEl.innerHTML = '<div class="filer-search-empty">未找到匹配文件</div>';
-                    return;
+            if (data.length === 0) {
+                searchResultsEl.html('<div class="filer-search-empty">未找到匹配文件</div>');
+                return;
+            }
+
+            data.forEach(function(item) {
+                var $row = $('<div>').addClass('filer-search-item')
+                    .attr('data-path', item.path)
+                    .attr('data-name', item.name)
+                    .attr('data-type', item.type);
+
+                // 图标
+                var $icon = $('<span>').addClass('filer-search-item-icon');
+                if (item.type === 'directory') {
+                    $icon.html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
+                } else {
+                    $icon.html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
+                }
+                $row.append($icon);
+
+                // 路径显示（高亮匹配部分）
+                var $pathSpan = $('<span>').addClass('filer-search-item-path');
+                var pathLower = item.path.toLowerCase();
+                var idx = pathLower.indexOf(kw);
+                if (idx >= 0) {
+                    $pathSpan.html(escapeHtml(item.path.substring(0, idx))
+                        + '<mark>' + escapeHtml(item.path.substring(idx, idx + kw.length)) + '</mark>'
+                        + escapeHtml(item.path.substring(idx + kw.length)));
+                } else {
+                    $pathSpan.text(item.path);
+                }
+                $row.append($pathSpan);
+
+                // 单击：打开文件查看器（延迟 250ms，避免与双击冲突）
+                if (item.type === 'file') {
+                    (function(it, $r) {
+                        var clickTimer = null;
+                        $r.on('click', function(e) {
+                            e.stopPropagation();
+                            if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+                            clickTimer = setTimeout(function() {
+                                if (typeof window.openFileViewer === 'function') {
+                                    window.openFileViewer(it.path, it.name);
+                                }
+                            }, 250);
+                        });
+                        $r.on('dblclick', function(e) {
+                            if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+                        });
+                    })(item, $row);
                 }
 
-                data.forEach(function(item) {
-                    var row = document.createElement('div');
-                    row.className = 'filer-search-item';
-                    row.setAttribute('data-path', item.path);
-                    row.setAttribute('data-name', item.name);
-                    row.setAttribute('data-type', item.type);
+                // 双击：插入路径到输入框
+                (function(it) {
+                    $row.on('dblclick', function(e) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
+                        if (!targetInput) return;
+                        var currentVal = targetInput.value || '';
+                        var insertText = '[' + it.path + ']';
+                        var cursorPos = targetInput.selectionStart || currentVal.length;
+                        var before = currentVal.substring(0, cursorPos);
+                        var after = currentVal.substring(cursorPos);
+                        var prefix = (before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n')) ? ' ' : '';
+                        targetInput.value = before + prefix + insertText + ' ' + after;
+                        targetInput.focus();
+                        var newPos = cursorPos + prefix.length + insertText.length + 1;
+                        targetInput.setSelectionRange(newPos, newPos);
+                        if (typeof autoResize === 'function') autoResize(targetInput);
+                    });
+                })(item);
 
-                    // 图标
-                    var icon = document.createElement('span');
-                    icon.className = 'filer-search-item-icon';
-                    if (item.type === 'directory') {
-                        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
-                    } else {
-                        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
-                    }
-                    row.appendChild(icon);
-
-                    // 路径显示（高亮匹配部分）
-                    var pathSpan = document.createElement('span');
-                    pathSpan.className = 'filer-search-item-path';
-                    var pathLower = item.path.toLowerCase();
-                    var idx = pathLower.indexOf(kw);
-                    if (idx >= 0) {
-                        pathSpan.innerHTML = escapeHtml(item.path.substring(0, idx))
-                            + '<mark>' + escapeHtml(item.path.substring(idx, idx + kw.length)) + '</mark>'
-                            + escapeHtml(item.path.substring(idx + kw.length));
-                    } else {
-                        pathSpan.textContent = item.path;
-                    }
-                    row.appendChild(pathSpan);
-
-                    // 单击：打开文件查看器（延迟 250ms，避免与双击冲突）
-                    if (item.type === 'file') {
-                        (function(it, r) {
-                            var clickTimer = null;
-                            r.addEventListener('click', function(e) {
-                                e.stopPropagation();
-                                if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-                                clickTimer = setTimeout(function() {
-                                    if (typeof window.openFileViewer === 'function') {
-                                        window.openFileViewer(it.path, it.name);
-                                    }
-                                }, 250);
-                            });
-                            r.addEventListener('dblclick', function(e) {
-                                if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-                            });
-                        })(item, row);
-                    }
-
-                    // 双击：插入路径到输入框
-                    (function(it) {
-                        row.addEventListener('dblclick', function(e) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
-                            if (!targetInput) return;
-                            var currentVal = targetInput.value || '';
-                            var insertText = '[' + it.path + ']';
-                            var cursorPos = targetInput.selectionStart || currentVal.length;
-                            var before = currentVal.substring(0, cursorPos);
-                            var after = currentVal.substring(cursorPos);
-                            var prefix = (before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n')) ? ' ' : '';
-                            targetInput.value = before + prefix + insertText + ' ' + after;
-                            targetInput.focus();
-                            var newPos = cursorPos + prefix.length + insertText.length + 1;
-                            targetInput.setSelectionRange(newPos, newPos);
-                            if (typeof autoResize === 'function') autoResize(targetInput);
-                        });
-                    })(item);
-
-                    searchResultsEl.appendChild(row);
-                });
-            })
-            .catch(function(e) {
-                console.error('[filer] search error', e);
-                searchResultsEl.innerHTML = '<div class="filer-search-empty">搜索失败</div>';
+                searchResultsEl.append($row);
             });
+        }).fail(function(jqXHR, textStatus, error) {
+            console.error('[filer] search error', error);
+            searchResultsEl.html('<div class="filer-search-empty">搜索失败</div>');
+        });
     }
 
     function hideSearchResults() {
-        if (treeEl) treeEl.style.display = '';
-        if (searchResultsEl) searchResultsEl.style.display = 'none';
+        if ($treeEl.length) $treeEl.css('display', '');
+        if (searchResultsEl) searchResultsEl.hide();
     }
 
-    if (searchInput) {
+    if ($searchInput.length) {
         var searchTimer = null;
-        searchInput.addEventListener('input', function() {
-            var val = searchInput.value;
-            if (searchClear) {
-                searchClear.classList.toggle('visible', val.length > 0);
+        $searchInput.on('input', function() {
+            var val = $searchInput.val();
+            if ($searchClear.length) {
+                $searchClear.toggleClass('visible', val.length > 0);
             }
             clearTimeout(searchTimer);
             searchTimer = setTimeout(function() {
@@ -556,13 +530,13 @@
             }, 250);
         });
     }
-    if (searchClear) {
-        searchClear.addEventListener('click', function() {
-            if (searchInput) {
-                searchInput.value = '';
-                searchInput.focus();
+    if ($searchClear.length) {
+        $searchClear.on('click', function() {
+            if ($searchInput.length) {
+                $searchInput.val('');
+                $searchInput.trigger('focus');
             }
-            searchClear.classList.remove('visible');
+            $searchClear.removeClass('visible');
             hideSearchResults();
         });
     }

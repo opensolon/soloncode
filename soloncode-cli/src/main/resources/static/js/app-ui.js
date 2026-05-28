@@ -3,8 +3,8 @@
 /* 依赖：app-base.js */
 
 /* ===== Attachment Helpers ===== */
-var welcomeAttachmentsWrap = document.getElementById('welcomeAttachmentsWrap');
-var chatAttachmentsWrap = document.getElementById('chatAttachmentsWrap');
+var welcomeAttachmentsWrap = $('#welcomeAttachmentsWrap');
+var chatAttachmentsWrap = $('#chatAttachmentsWrap');
 
 function handlePasteImage(e) {
     var items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -29,30 +29,30 @@ function renderAttachments() {
 }
 
 function renderAttachmentsWrap(wrap) {
-    wrap.innerHTML = '';
+    wrap.html('');
     if (pendingFiles.length === 0) {
-        wrap.classList.remove('has-items');
+        wrap.removeClass('has-items');
         return;
     }
-    wrap.classList.add('has-items');
+    wrap.addClass('has-items');
     for (var i = 0; i < pendingFiles.length; i++) {
         var item = pendingFiles[i];
         var el = document.createElement('div');
         el.className = 'attachment-item';
         var typeTag = '<span class="attachment-type-tag ' + (item.attachmentsType || 'file') + '">' + (item.attachmentsType === 'image' ? '多模态' : '文件') + '</span>';
         if (item.type === 'image') {
-            el.innerHTML = '<img src="' + item.dataUrl + '"/>'
+            $(el).html('<img src="' + item.dataUrl + '"/>'
                 + typeTag
-                + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>';
+                + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>');
         } else {
-            el.innerHTML = '<div class="attachment-item-file">'
+            $(el).html('<div class="attachment-item-file">'
                 + '<span class="file-icon">📎</span>'
                 + '<span class="file-name">' + escapeHtml(item.name) + '</span>'
                 + '</div>'
                 + typeTag
-                + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>';
+                + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>');
         }
-        wrap.appendChild(el);
+        wrap.append(el);
     }
 }
 
@@ -99,26 +99,26 @@ function processSelectedFiles(fileList, attachmentsType) {
     }
 }
 
-welcomeInput.addEventListener('paste', handlePasteImage);
-chatInput.addEventListener('paste', handlePasteImage);
+$(welcomeInput).on('paste', handlePasteImage);
+$(chatInput).on('paste', handlePasteImage);
 
 /* ===== Drag & Drop File Upload ===== */
 (function() {
-    var welcomeDropZone = document.getElementById('welcomeDropZone');
-    var chatDropZone = document.getElementById('chatDropZone');
-    var welcomeDropOverlay = document.getElementById('welcomeDropOverlay');
-    var chatDropOverlay = document.getElementById('chatDropOverlay');
+    var welcomeDropZone = $('#welcomeDropZone');
+    var chatDropZone = $('#chatDropZone');
+    var welcomeDropOverlay = $('#welcomeDropOverlay');
+    var chatDropOverlay = $('#chatDropOverlay');
 
     // Counter to track nested enter/leave events (child elements fire their own events)
     var welcomeDragCounter = 0;
     var chatDragCounter = 0;
 
     function showOverlay(overlay) {
-        overlay.classList.add('active');
+        overlay.addClass('active');
     }
 
     function hideOverlay(overlay) {
-        overlay.classList.remove('active');
+        overlay.removeClass('active');
     }
 
     function handleDrop(e, overlay, counterReset) {
@@ -127,7 +127,8 @@ chatInput.addEventListener('paste', handlePasteImage);
         counterReset.val = 0;
         hideOverlay(overlay);
 
-        var files = e.dataTransfer && e.dataTransfer.files;
+        var dt = e.dataTransfer || (e.originalEvent && e.originalEvent.dataTransfer);
+        var files = dt && dt.files;
         if (!files || files.length === 0) return;
 
         if (pendingFiles.length >= MAX_ATTACHMENTS) {
@@ -149,20 +150,20 @@ chatInput.addEventListener('paste', handlePasteImage);
 
     function bindDropZone(zone, overlay, counter) {
         // Prevent default browser behavior (opening the file)
-        zone.addEventListener('dragenter', function(e) {
+        zone.on('dragenter', function(e) {
             e.preventDefault();
             e.stopPropagation();
             counter.val++;
             showOverlay(overlay);
         });
 
-        zone.addEventListener('dragover', function(e) {
+        zone.on('dragover', function(e) {
             e.preventDefault();
             e.stopPropagation();
             // Keep overlay visible during drag over
         });
 
-        zone.addEventListener('dragleave', function(e) {
+        zone.on('dragleave', function(e) {
             e.preventDefault();
             e.stopPropagation();
             counter.val--;
@@ -172,7 +173,7 @@ chatInput.addEventListener('paste', handlePasteImage);
             }
         });
 
-        zone.addEventListener('drop', function(e) {
+        zone.on('drop', function(e) {
             handleDrop(e, overlay, counter);
         });
     }
@@ -182,47 +183,47 @@ chatInput.addEventListener('paste', handlePasteImage);
 })();
 
 // Attachment remove buttons - use event delegation on both wraps
-welcomeAttachmentsWrap.addEventListener('click', function(e) {
+welcomeAttachmentsWrap.on('click', function(e) {
     var btn = e.target.closest('.attachment-item-remove');
     if (btn) removeAttachment(parseInt(btn.getAttribute('data-idx')));
 });
-chatAttachmentsWrap.addEventListener('click', function(e) {
+chatAttachmentsWrap.on('click', function(e) {
     var btn = e.target.closest('.attachment-item-remove');
     if (btn) removeAttachment(parseInt(btn.getAttribute('data-idx')));
 });
 
 // Attach button handlers
-document.getElementById('welcomeAttachBtn').addEventListener('click', function(e) {
+$('#welcomeAttachBtn').on('click', function(e) {
     e.stopPropagation();
-    document.getElementById('welcomeAttachInput').click();
+    $('#welcomeAttachInput')[0].click();
 });
-document.getElementById('chatAttachBtn').addEventListener('click', function(e) {
+$('#chatAttachBtn').on('click', function(e) {
     e.stopPropagation();
-    document.getElementById('chatAttachInput').click();
+    $('#chatAttachInput')[0].click();
 });
-document.getElementById('welcomeAttachInput').addEventListener('change', function(e) {
+$('#welcomeAttachInput').on('change', function(e) {
     if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'file');
     e.target.value = '';
 });
-document.getElementById('chatAttachInput').addEventListener('change', function(e) {
+$('#chatAttachInput').on('change', function(e) {
     if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'file');
     e.target.value = '';
 });
 
 // Image button handlers
-document.getElementById('welcomeImageBtn').addEventListener('click', function(e) {
+$('#welcomeImageBtn').on('click', function(e) {
     e.stopPropagation();
-    document.getElementById('welcomeImageInput').click();
+    $('#welcomeImageInput')[0].click();
 });
-document.getElementById('chatImageBtn').addEventListener('click', function(e) {
+$('#chatImageBtn').on('click', function(e) {
     e.stopPropagation();
-    document.getElementById('chatImageInput').click();
+    $('#chatImageInput')[0].click();
 });
-document.getElementById('welcomeImageInput').addEventListener('change', function(e) {
+$('#welcomeImageInput').on('change', function(e) {
     if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'image');
     e.target.value = '';
 });
-document.getElementById('chatImageInput').addEventListener('change', function(e) {
+$('#chatImageInput').on('change', function(e) {
     if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'image');
     e.target.value = '';
 });
@@ -237,7 +238,7 @@ function renderMd(text) {
 /* ===== Highlight.js ===== */
 function highlightCodeBlocks(container) {
     if (!container || typeof hljs === 'undefined') return;
-    var blocks = container.querySelectorAll('pre code');
+    var blocks = $(container).find('pre code');
     for (var i = 0; i < blocks.length; i++) {
         if (blocks[i].dataset.hljsHighlighted) continue;
         blocks[i].dataset.hljsHighlighted = 'true';
@@ -246,64 +247,60 @@ function highlightCodeBlocks(container) {
 }
 
 function applyHljsTheme(theme) {
-    var lightLink = document.getElementById('hljs-light-theme');
-    var darkLink = document.getElementById('hljs-dark-theme');
-    if (!lightLink || !darkLink) return;
+    var $lightLink = $('#hljs-light-theme');
+    var $darkLink = $('#hljs-dark-theme');
+    if (!$lightLink.length || !$darkLink.length) return;
     if (theme === 'dark') {
-        lightLink.disabled = true;
-        lightLink.media = 'not all';
-        darkLink.disabled = false;
-        darkLink.media = 'all';
+        $lightLink.prop('disabled', true).prop('media', 'not all');
+        $darkLink.prop('disabled', false).prop('media', 'all');
     } else {
-        darkLink.disabled = true;
-        darkLink.media = 'not all';
-        lightLink.disabled = false;
-        lightLink.media = 'all';
+        $darkLink.prop('disabled', true).prop('media', 'not all');
+        $lightLink.prop('disabled', false).prop('media', 'all');
     }
 }
 
 /* ===== Theme ===== */
 var currentTheme = localStorage.getItem('chat-theme') || 'light';
-document.body.setAttribute('data-theme', currentTheme);
+$('body').attr('data-theme', currentTheme);
 
 // Apply initial hljs theme (after currentTheme is defined)
 applyHljsTheme(currentTheme);
 
 updateThemeIcon();
-themeBtn.addEventListener('click', function() {
+$(themeBtn).on('click', function() {
     currentTheme = currentTheme === 'light' ? 'dark' : 'light';
-    document.body.setAttribute('data-theme', currentTheme);
+    $('body').attr('data-theme', currentTheme);
     localStorage.setItem('chat-theme', currentTheme);
     updateThemeIcon();
     applyHljsTheme(currentTheme);
 });
 function updateThemeIcon() {
-    themeIcon.innerHTML = currentTheme === 'light' ? '&#xe6c2;' : '&#xe748;';
-    themeBtn.title = currentTheme === 'light' ? '切换至暗色' : '切换至浅色';
+    $(themeIcon).html(currentTheme === 'light' ? '&#xe6c2;' : '&#xe748;');
+    $(themeBtn).prop('title', currentTheme === 'light' ? '切换至暗色' : '切换至浅色');
 }
 
 /* ===== View Switch ===== */
 function switchToChatMode() {
     if (inChatMode) return;
     inChatMode = true;
-    welcomeView.style.display = 'none';
-    chatView.classList.add('active');
+    $(welcomeView).hide();
+    $(chatView).addClass('active');
     chatInput.focus();
 }
 function switchToWelcomeMode() {
     inChatMode = false;
     SESSION_ID = 'web-' + Date.now().toString(36);
     setActiveSession(SESSION_ID);
-    welcomeView.style.display = '';
-    chatView.classList.remove('active');
+    $(welcomeView).show();
+    $(chatView).removeClass('active');
     welcomeInput.focus();
     // Reset model UI to new session
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) renderModelUI();
 }
 
 /* ===== Auto-resize ===== */
-welcomeInput.addEventListener('input', function() { autoResize(this); });
-chatInput.addEventListener('input', function() { autoResize(this); });
+$(welcomeInput).on('input', function() { autoResize(this); });
+$(chatInput).on('input', function() { autoResize(this); });
 
 /* ===== Voice Input (Web Speech API) - 按住说话（类似微信） ===== */
 var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -313,8 +310,8 @@ var voiceTargetInput = null; // 当前语音目标 textarea
 var voiceBaseText = '';      // 开始录音时 textarea 已有文本
 var voiceFinalTranscript = ''; // 累计的最终识别文本
 
-var welcomeVoiceBtn = document.getElementById('welcomeVoiceBtn');
-var chatVoiceBtn = document.getElementById('chatVoiceBtn');
+var welcomeVoiceBtn = $('#welcomeVoiceBtn');
+var chatVoiceBtn = $('#chatVoiceBtn');
 
 var voiceRafPending = false; // 限制 DOM 更新频率
 
@@ -369,8 +366,8 @@ function initVoice() {
     };
 
     // 显示语音按钮
-    welcomeVoiceBtn.classList.remove('hidden');
-    chatVoiceBtn.classList.remove('hidden');
+    welcomeVoiceBtn.removeClass('hidden');
+    chatVoiceBtn.removeClass('hidden');
 }
 
 function startVoiceRecording(inputEl) {
@@ -386,8 +383,8 @@ function startVoiceRecording(inputEl) {
 
     // 更新按钮状态
     var btn = (inputEl === welcomeInput) ? welcomeVoiceBtn : chatVoiceBtn;
-    btn.classList.add('recording');
-    btn.title = '松开结束';
+    btn.addClass('recording');
+    btn.prop('title', '松开结束');
 }
 
 function stopVoiceRecording() {
@@ -396,10 +393,10 @@ function stopVoiceRecording() {
     try { if (recognition) recognition.stop(); } catch(e) {}
 
     // 更新按钮状态
-    welcomeVoiceBtn.classList.remove('recording');
-    chatVoiceBtn.classList.remove('recording');
-    welcomeVoiceBtn.title = '按住说话';
-    chatVoiceBtn.title = '按住说话';
+    welcomeVoiceBtn.removeClass('recording');
+    chatVoiceBtn.removeClass('recording');
+    welcomeVoiceBtn.prop('title', '按住说话');
+    chatVoiceBtn.prop('title', '按住说话');
 
     // 保留识别到的文本，重置基线以便下次追加
     if (voiceTargetInput) {
@@ -412,28 +409,28 @@ function stopVoiceRecording() {
 // --- 按住说话：按下开始录音，松开结束（类似微信） ---
 function bindVoiceHold(btn, inputEl) {
     // 鼠标：按下开始，松开结束
-    btn.addEventListener('mousedown', function(e) {
+    btn.on('mousedown', function(e) {
         e.preventDefault();
         startVoiceRecording(inputEl);
     });
-    btn.addEventListener('mouseup', function(e) {
+    btn.on('mouseup', function(e) {
         e.preventDefault();
         stopVoiceRecording();
     });
-    btn.addEventListener('mouseleave', function() {
+    btn.on('mouseleave', function() {
         if (voiceRecording) stopVoiceRecording();
     });
 
     // 触摸：按下开始，松开结束
-    btn.addEventListener('touchstart', function(e) {
+    btn.on('touchstart', function(e) {
         e.preventDefault();
         startVoiceRecording(inputEl);
     });
-    btn.addEventListener('touchend', function(e) {
+    btn.on('touchend', function(e) {
         e.preventDefault();
         stopVoiceRecording();
     });
-    btn.addEventListener('touchcancel', function() {
+    btn.on('touchcancel', function() {
         if (voiceRecording) stopVoiceRecording();
     });
 }
@@ -445,60 +442,60 @@ initVoice();
 
 /* ===== Sidebar Collapse Toggle ===== */
 (function() {
-    var btn = document.getElementById('sidebarToggleBtn');
-    if (!btn) return;
-    btn.addEventListener('click', function() {
-        var sidebar = document.querySelector('.sidebar');
-        sidebar.classList.toggle('collapsed');
-        var collapsed = sidebar.classList.contains('collapsed');
-        btn.classList.toggle('collapsed', collapsed);
-        btn.innerHTML = collapsed ? '›' : '‹';
-        btn.title = collapsed ? '展开侧边栏' : '收起侧边栏';
+    var btn = $('#sidebarToggleBtn');
+    if (!btn.length) return;
+    btn.on('click', function() {
+        var sidebar = $('.sidebar');
+        sidebar.toggleClass('collapsed');
+        var collapsed = sidebar.hasClass('collapsed');
+        btn.toggleClass('collapsed', collapsed);
+        btn.html(collapsed ? '›' : '‹');
+        btn.prop('title', collapsed ? '展开侧边栏' : '收起侧边栏');
         localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
     });
     // Restore state
     if (localStorage.getItem('sidebar-collapsed') === '1') {
-        document.querySelector('.sidebar').classList.add('collapsed');
-        btn.classList.add('collapsed');
-        btn.innerHTML = '›';
-        btn.title = '展开侧边栏';
+        $('.sidebar').addClass('collapsed');
+        btn.addClass('collapsed');
+        btn.html('›');
+        btn.prop('title', '展开侧边栏');
     }
 })();
 
 /* ===== Mobile Sidebar Drawer ===== */
 (function() {
-    var mobileMenuBtn = document.getElementById('mobileMenuBtn');
-    var mobileOverlay = document.getElementById('mobileOverlay');
-    var sidebar = document.querySelector('.sidebar');
-    if (!mobileMenuBtn || !sidebar) return;
+    var mobileMenuBtn = $('#mobileMenuBtn');
+    var mobileOverlay = $('#mobileOverlay');
+    var sidebar = $('.sidebar');
+    if (!mobileMenuBtn.length || !sidebar.length) return;
 
-    mobileMenuBtn.addEventListener('click', function() {
-        sidebar.classList.toggle('mobile-open');
-        if (mobileOverlay) mobileOverlay.classList.toggle('show');
+    mobileMenuBtn.on('click', function() {
+        sidebar.toggleClass('mobile-open');
+        if (mobileOverlay.length) mobileOverlay.toggleClass('show');
     });
 
-    if (mobileOverlay) {
-        mobileOverlay.addEventListener('click', function() {
-            sidebar.classList.remove('mobile-open');
-            mobileOverlay.classList.remove('show');
+    if (mobileOverlay.length) {
+        mobileOverlay.on('click', function() {
+            sidebar.removeClass('mobile-open');
+            mobileOverlay.removeClass('show');
         });
     }
 
     // Close sidebar when selecting a chat on mobile
-    var sidebarList = document.querySelector('.sidebar-list');
-    if (sidebarList) {
-        sidebarList.addEventListener('click', function(e) {
+    var sidebarList = $('.sidebar-list');
+    if (sidebarList.length) {
+        sidebarList.on('click', function(e) {
             var item = e.target.closest('.sidebar-item');
             if (item && window.innerWidth <= 768) {
-                sidebar.classList.remove('mobile-open');
-                if (mobileOverlay) mobileOverlay.classList.remove('show');
+                sidebar.removeClass('mobile-open');
+                if (mobileOverlay.length) mobileOverlay.removeClass('show');
             }
         });
     }
 })();
 
 /* ===== Keyboard Shortcuts ===== */
-document.addEventListener('keydown', function(e) {
+$(document).on('keydown', function(e) {
     // Ctrl/Cmd + N: New chat
     if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
@@ -506,7 +503,7 @@ document.addEventListener('keydown', function(e) {
     }
     // Escape: close modals, lightbox
     if (e.key === 'Escape') {
-        var lightbox = document.querySelector('.lightbox-overlay');
-        if (lightbox) lightbox.remove();
+        var $lightbox = $('.lightbox-overlay');
+        if ($lightbox.length) $lightbox.remove();
     }
 });
