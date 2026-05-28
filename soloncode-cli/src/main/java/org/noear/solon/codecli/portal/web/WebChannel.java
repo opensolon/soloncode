@@ -80,7 +80,7 @@ public class WebChannel implements Runnable{
      * @return 包含 qrcode（二维码标识）、qrcode_img_content（二维码图片内容）、sessionId 的结果
      */
     @Get
-    @Mapping("/chat/wechat/qrcode")
+    @Mapping("/web/chat/wechat/qrcode")
     public Result<Map> wechatQrcode(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
@@ -109,7 +109,7 @@ public class WebChannel implements Runnable{
      * @return 包含扫码状态信息的结果；确认后额外触发自动绑定
      */
     @Get
-    @Mapping("/chat/wechat/qrcode/status")
+    @Mapping("/web/chat/wechat/qrcode/status")
     public Result<Map> wechatQrcodeStatus(@Param("qrcode") String qrcode,
                                           @Param("sessionId") String sessionId) {
         if (qrcode == null || qrcode.isEmpty()) {
@@ -148,7 +148,7 @@ public class WebChannel implements Runnable{
      * @return 操作结果
      */
     @Post
-    @Mapping("/chat/wechat/unbind")
+    @Mapping("/web/chat/wechat/unbind")
     public Result wechatUnbind(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
@@ -165,7 +165,7 @@ public class WebChannel implements Runnable{
      * @return 包含 bound（是否已绑定）的结果
      */
     @Get
-    @Mapping("/chat/wechat/status")
+    @Mapping("/web/chat/wechat/status")
     public Result<Map> wechatStatus(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
@@ -190,7 +190,7 @@ public class WebChannel implements Runnable{
      * @return 启动成功返回成功结果；失败返回错误提示
      */
     @Post
-    @Mapping("/chat/feishu/bind")
+    @Mapping("/web/chat/feishu/bind")
     public Result feishuBind(@Param("sessionId") String sessionId,
                              @Param("appId") String appId,
                              @Param("appSecret") String appSecret) {
@@ -223,7 +223,7 @@ public class WebChannel implements Runnable{
      * @return 操作结果
      */
     @Post
-    @Mapping("/chat/feishu/unbind")
+    @Mapping("/web/chat/feishu/unbind")
     public Result feishuUnbind(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
@@ -243,7 +243,7 @@ public class WebChannel implements Runnable{
      * @return 包含 bound（是否已绑定）、streamStarted（Stream 是否已启动）、pending（是否等待绑定确认）的结果
      */
     @Get
-    @Mapping("/chat/feishu/status")
+    @Mapping("/web/chat/feishu/status")
     public Result<Map> feishuStatus(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
@@ -272,7 +272,7 @@ public class WebChannel implements Runnable{
      * @return 启动成功返回提示信息；失败返回错误提示
      */
     @Post
-    @Mapping("/chat/dingtalk/bind")
+    @Mapping("/web/chat/dingtalk/bind")
     public Result dingtalkBind(@Param("sessionId") String sessionId,
                                @Param("appKey") String appKey,
                                @Param("appSecret") String appSecret) {
@@ -305,7 +305,7 @@ public class WebChannel implements Runnable{
      * @return 操作结果
      */
     @Post
-    @Mapping("/chat/dingtalk/unbind")
+    @Mapping("/web/chat/dingtalk/unbind")
     public Result dingtalkUnbind(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
@@ -325,7 +325,7 @@ public class WebChannel implements Runnable{
      * @return 包含 bound（是否已绑定）、streamStarted（Stream 是否已启动）、pending（是否等待绑定确认）的结果
      */
     @Get
-    @Mapping("/chat/dingtalk/status")
+    @Mapping("/web/chat/dingtalk/status")
     public Result<Map> dingtalkStatus(@Param("sessionId") String sessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");

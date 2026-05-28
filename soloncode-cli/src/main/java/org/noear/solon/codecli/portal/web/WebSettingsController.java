@@ -671,11 +671,10 @@ public class WebSettingsController {
         try {
             String targetUrl;
             if ("search".equals(action) && query != null && !query.isEmpty()) {
-                targetUrl = "https://skills.sh/api/v1/skills/search?q="
-                        + java.net.URLEncoder.encode(query, "UTF-8")
-                        + "&limit=" + limit;
+                targetUrl = "https://clawhub.ai/api/v1/search?q="
+                        + java.net.URLEncoder.encode(query, "UTF-8");
             } else {
-                targetUrl = "https://skills.sh/api/v1/skills?view=trending&per_page=" + perPage;
+                targetUrl = "https://clawhub.ai/api/v1/skills?limit=" + limit + "&sort=trending";
             }
 
             String body = HttpUtils.http(targetUrl)

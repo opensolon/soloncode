@@ -1,13 +1,12 @@
 /**
- * app-settings-skill.js — 技能市场交互逻辑（直接调用 skills.sh API）
+ * app-settings-skill.js — 技能市场交互逻辑（通过后端代理调用 ClawHub API）
  *
  * 依赖：layui.js（jQuery）、app-base.js、app-settings.js（escapeHtml/escapeAttr 全局共享）
  * 协同：app-history.js（commandList / loadCommands）
  *
- * skills.sh API 参考：
- *   GET /api/v1/skills          — 技能排行榜（trending / hot / all-time）
- *   GET /api/v1/skills/search   — 搜索技能（q=关键词，limit=数量）
- *   GET /api/v1/skills/curated  — 官方精选技能
+ * ClawHub API 参考：
+ *   GET /api/v1/skills?limit=&sort=trending  — 热门技能列表
+ *   GET /api/v1/search?q=xxx                  — 搜索技能
  */
 
 (function () {
@@ -97,12 +96,14 @@
             dataType: 'json'
         })
             .done(function (resp) {
-                // skills.sh API 直接返回 JSON，格式：
-                // 搜索: { data: [...], query, searchType, count, durationMs }
-                // 列表: { data: [...], pagination: { page, perPage, total, hasMore } }
+                // ClawHub API 返回格式：
+                // 热门列表: { items: [...], nextCursor: null }
+                // 搜索:     { results: [...] }
                 var skills = [];
-                if (resp && resp.data && Array.isArray(resp.data)) {
-                    skills = resp.data;
+                if (resp && resp.items && Array.isArray(resp.items)) {
+                    skills = resp.items;
+                } else if (resp && resp.results && Array.isArray(resp.results)) {
+                    skills = resp.results;
                 } else if (Array.isArray(resp)) {
                     skills = resp;
                 }
@@ -118,13 +119,13 @@
                 if (textStatus === 'timeout') {
                     msg = '请求超时，请检查网络连接';
                 } else if (jqXHR.status === 0) {
-                    msg = '网络错误，无法连接 skills.sh（可能被 CORS 策略阻止或网络不可达）';
+                    msg = '网络错误，无法连接技能市场（可能被 CORS 策略阻止或网络不可达）';
                 } else if (jqXHR.status === 429) {
-                    msg = 'skills.sh 请求过于频繁，请稍后再试';
+                    msg = '技能市场请求过于频繁，请稍后再试';
                 } else if (jqXHR.status >= 500) {
-                    msg = 'skills.sh 服务暂时不可用（HTTP ' + jqXHR.status + '）';
+                    msg = '技能市场服务暂时不可用（HTTP ' + jqXHR.status + '）';
                 } else {
-                    msg = '网络错误，无法连接 skills.sh（HTTP ' + (jqXHR.status || '?') + '）';
+                    msg = '网络错误，无法连接技能市场（HTTP ' + (jqXHR.status || '?') + '）';
                 }
                 $skillsError.text(msg).show();
             });
@@ -147,28 +148,29 @@
 
         var html = '';
         skills.forEach(function (skill) {
-            var name = skill.name || '';
-            var desc = skill.description || '';
-            // skills.sh API 的安装来源字段
-            var source = skill.source || '';
-            var installUrl = skill.installUrl || '';
-            // 如果 installUrl 为空，尝试从 source 拼装
-            if (!installUrl && source) {
-                installUrl = source;
-            }
-            var installs = skill.installs || 0;
+            var name = skill.slug || skill.name || '';
+            var displayName = skill.displayName || name;
+            var desc = skill.summary || skill.description || '';
+            // ClawHub API 的来源和安装信息
+            var owner = skill.ownerHandle || (skill.owner && skill.owner.handle) || '';
+            var source = owner ? owner + '/' + name : name;
+            // 安装命令：clawhub.ai/<owner>/<slug>
+            var installUrl = owner ? owner + '/' + name : name;
+            var installs = (skill.stats && skill.stats.installsCurrent) || 0;
+            var stars = (skill.stats && skill.stats.stars) || 0;
             var isInstalled = !!installedMap[name];
-            var iconText = name ? name.substring(0, 2).toUpperCase() : 'SK';
+            var iconText = displayName ? displayName.substring(0, 2).toUpperCase() : 'SK';
             var shortDesc = desc && desc.length > 60 ? desc.substring(0, 60) + '...' : desc;
 
             html += '<div class="skill-item">'
                 + '<div class="skill-item-icon">' + escapeHtml(iconText) + '</div>'
                 + '<div class="skill-item-info">'
-                + '<div class="skill-item-name" title="' + escapeAttr(name) + '">' + escapeHtml(name) + '</div>'
+                + '<div class="skill-item-name" title="' + escapeAttr(name) + '">' + escapeHtml(displayName) + '</div>'
                 + (shortDesc ? '<div class="skill-item-desc" title="' + escapeAttr(desc) + '">' + escapeHtml(shortDesc) + '</div>' : '')
                 + '<div class="skill-item-meta">'
                 + (installs > 0 ? '<span>' + (installs >= 1000 ? (installs / 1000).toFixed(1) + 'k' : installs) + ' 安装</span>' : '')
-                + (source ? '<span>' + escapeHtml(source.split('/').pop()) + '</span>' : '')
+                + (stars > 0 ? '<span>⭐ ' + (stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : stars) + '</span>' : '')
+                + (owner ? '<span>' + escapeHtml(owner) + '</span>' : '')
                 + '</div></div>'
                 + '<div class="skill-item-actions">'
                 + (isInstalled
