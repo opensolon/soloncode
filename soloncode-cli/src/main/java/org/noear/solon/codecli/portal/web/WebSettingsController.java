@@ -29,6 +29,9 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 
 /**
@@ -148,10 +151,15 @@ public class WebSettingsController {
         if (Assert.isNotEmpty(userAgent)) {
             config.setUserAgent(userAgent);
         }
+        Integer contextLength = root.get("contextLength").getInt();
+        if (contextLength != null && contextLength > 0) {
+            config.setContextLength(contextLength);
+        }
 
         engine.getProps().removeModel(model);
         engine.getProps().addModel(config);
 
+        saveLlmModelsToFile();
         LOG.info("[Settings] Model added: {}", name);
         return Result.succeed(name);
     }
@@ -171,6 +179,7 @@ public class WebSettingsController {
 
         engine.getProps().removeModel(modelName);
 
+        saveLlmModelsToFile();
         LOG.info("[Settings] Model removed: {}", modelName);
         return Result.succeed();
     }
@@ -225,9 +234,14 @@ public class WebSettingsController {
         if (Assert.isNotEmpty(userAgent)) {
             config.setUserAgent(userAgent);
         }
+        Integer contextLength = root.get("contextLength").getInt();
+        if (contextLength != null && contextLength > 0) {
+            config.setContextLength(contextLength);
+        }
 
         engine.getProps().addModel(config);
 
+        saveLlmModelsToFile();
         LOG.info("[Settings] Model updated: {} -> {}", originalModel, name);
         return Result.succeed(name);
     }
@@ -242,6 +256,7 @@ public class WebSettingsController {
             return Result.failure("modelName is required");
         }
         engine.switchMainModel(modelName);
+        saveLlmModelsToFile();
         LOG.info("[Settings] Default model set to: {}", modelName);
         return Result.succeed();
     }
@@ -259,6 +274,9 @@ public class WebSettingsController {
             item.put("model", config.getModel());
             item.put("name", config.getName());
             item.put("provider", config.getProvider());
+            if (config.getContextLength() > 0) {
+                item.put("contextLength", String.valueOf(config.getContextLength()));
+            }
             // API Key 脱敏：仅保留前后4位
             String apiKey = config.getApiKey();
             if (apiKey != null && apiKey.length() > 8) {
@@ -301,11 +319,17 @@ public class WebSettingsController {
                 config.setProvider(provider);
             }
 
+            Integer contextLength = node.get("contextLength").getInt();
+            if (contextLength != null && contextLength > 0) {
+                config.setContextLength(contextLength);
+            }
+
             engine.getProps().removeModel(model);
             engine.getProps().addModel(config);
             count++;
         }
 
+        saveLlmModelsToFile();
         LOG.info("[Settings] Models imported: {}", count);
         return Result.succeed(count);
     }
@@ -478,6 +502,127 @@ public class WebSettingsController {
 
     private java.nio.file.Path getMcpServersFile() {
         return java.nio.file.Paths.get(engine.getProps().getWorkspace(), ".soloncode", "mcp-servers.json");
+    }
+
+    // ==================== LLM 模型持久化 ====================
+
+    /**
+     * 获取 LLM 模型持久化文件路径
+     */
+    private Path getLlmModelsFile() {
+        return Paths.get(engine.getProps().getWorkspace(), ".soloncode", "llm-models.json");
+    }
+
+    /**
+     * 从持久化文件加载模型列表
+     */
+    private ONode loadLlmModelsConfig(Path file) throws Exception {
+        if (!Files.exists(file)) {
+            ONode root = new ONode();
+            root.getOrNew("models").asArray();
+            return root;
+        }
+        String content = new String(Files.readAllBytes(file), "UTF-8");
+        return ONode.ofJson(content);
+    }
+
+    /**
+     * 将内存中的模型列表持久化到文件
+     */
+    private void saveLlmModelsToFile() {
+        try {
+            Path file = getLlmModelsFile();
+            ONode root = new ONode();
+            ONode modelsArray = root.getOrNew("models").asArray();
+
+            for (ChatConfig config : engine.getProps().getModels()) {
+                ONode node = new ONode();
+                node.set("name", config.getName());
+                node.set("apiUrl", config.getApiUrl());
+                node.set("apiKey", config.getApiKey());
+                node.set("model", config.getModel());
+                node.set("provider", config.getProvider());
+                if (config.getTimeout() != null) {
+                    node.set("timeout", config.getTimeout().toString());
+                }
+                if (config.getUserAgent() != null) {
+                    node.set("userAgent", config.getUserAgent());
+                }
+                if (config.getContextLength() > 0) {
+                    node.set("contextLength", config.getContextLength());
+                }
+                modelsArray.add(node);
+            }
+
+            Files.createDirectories(file.getParent());
+            Files.write(file, root.toJson().getBytes("UTF-8"));
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to persist LLM models: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 从持久化文件加载模型到引擎（启动时调用）
+     */
+    public void loadPersistedModels() {
+        try {
+            Path file = getLlmModelsFile();
+            if (!Files.exists(file)) {
+                return;
+            }
+
+            ONode root = loadLlmModelsConfig(file);
+            ONode models = root.get("models");
+            if (models == null || !models.isArray()) {
+                return;
+            }
+
+            for (ONode node : models.getArray()) {
+                String model = node.get("model").getString();
+                String apiUrl = node.get("apiUrl").getString();
+                if (model == null || model.isEmpty() || apiUrl == null || apiUrl.isEmpty()) {
+                    continue;
+                }
+
+                String name = node.get("name").getString();
+                if (name == null || name.isEmpty()) {
+                    name = model;
+                }
+
+                ChatConfig config = new ChatConfig();
+                config.setName(name);
+                config.setApiUrl(apiUrl);
+                config.setApiKey(node.get("apiKey").getString());
+                config.setModel(model);
+
+                String provider = node.get("provider").getString();
+                if (provider != null && !provider.isEmpty()) {
+                    config.setProvider(provider);
+                }
+
+                String timeout = node.get("timeout").getString();
+                if (timeout != null && !timeout.isEmpty()) {
+                    config.setTimeout(java.time.Duration.parse(timeout));
+                }
+
+                String userAgent = node.get("userAgent").getString();
+                if (userAgent != null && !userAgent.isEmpty()) {
+                    config.setUserAgent(userAgent);
+                }
+
+                Integer contextLength = node.get("contextLength").getInt();
+                if (contextLength != null && contextLength > 0) {
+                    config.setContextLength(contextLength);
+                }
+
+                engine.getProps().removeModel(model);
+                engine.getProps().addModel(config);
+            }
+
+            LOG.info("[Settings] Loaded persisted LLM models from: {}", file);
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to load persisted LLM models: {}", e.getMessage());
+        }
     }
 
     /**

@@ -272,7 +272,7 @@
     function resetLlmForm() {
         llmEditModel = null;
         $llmSaveBtn.text('保存');
-        $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmDefaultOptions').val('');
+        $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
         $('#llmApiKey').attr('placeholder', 'sk-...');
         $llmCheckResult.hide();
     }
@@ -283,6 +283,7 @@
         $('#llmApiKey').val('').attr('placeholder', item.apiKey ? '已配置（留空保持不变）' : 'sk-...');
         if (item.model) $('#llmModel').val(item.model);
         if (item.name && item.name !== item.model) $('#llmName').val(item.name);
+        if (item.contextLength) $('#llmContextLength').val(item.contextLength);
         if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
     }
 
@@ -297,6 +298,8 @@
         var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
+        var contextLength = $('#llmContextLength').val().trim();
+        if (contextLength) bodyObj.contextLength = parseInt(contextLength, 10);
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {
             try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { /* 忽略无效 JSON */ }

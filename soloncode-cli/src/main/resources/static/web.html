@@ -371,6 +371,10 @@
                                     <input type="text" id="llmTimeout" placeholder="120s（默认 120 秒）"/>
                                 </div>
                                 <div class="form-group">
+                                    <label>上下文长度（可选）</label>
+                                    <input type="number" id="llmContextLength" placeholder="1000000（模型上下文窗口大小）"/>
+                                </div>
+                                <div class="form-group">
                                     <label>默认选项（可选，JSON 格式）</label>
                                     <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"enable_thinking":false}'></textarea>
                                 </div>
