@@ -65,30 +65,22 @@ public class WebSettingsController {
     private final Market market;
 
     /**
-     * 模型供应商工厂（用于从远程 API 获取可用模型列表）
-     */
-    private final ModelProviderFactory modelProviderFactory;
-
-    /**
      * 构造函数：初始化核心依赖。
      *
-     * @param engine              AI Agent 执行引擎
-     * @param modelProviderFactory 模型供应商工厂
+     * @param engine AI Agent 执行引擎
      */
-    public WebSettingsController(HarnessEngine engine, ModelProviderFactory modelProviderFactory) {
-        this(engine, modelProviderFactory, new ClawhubMarket());
+    public WebSettingsController(HarnessEngine engine) {
+        this(engine, new ClawhubMarket());
     }
 
     /**
      * 构造函数：支持自定义 Market 适配器（用于测试或切换市场）。
      *
-     * @param engine               AI Agent 执行引擎
-     * @param modelProviderFactory  模型供应商工厂
-     * @param market               技能市场适配器
+     * @param engine AI Agent 执行引擎
+     * @param market 技能市场适配器
      */
-    public WebSettingsController(HarnessEngine engine, ModelProviderFactory modelProviderFactory, Market market) {
+    public WebSettingsController(HarnessEngine engine, Market market) {
         this.engine = engine;
-        this.modelProviderFactory = modelProviderFactory;
         this.market = market;
     }
 
