@@ -303,7 +303,7 @@
                 <button class="settings-tab active" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> 大语言模型</button>
                 <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 技能市场</button>
                 <button class="settings-tab" data-tab="mcp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> MCP 服务器</button>
-                <button class="settings-tab" data-tab="webapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> OpenApi 服务器</button>
+                <button class="settings-tab" data-tab="openapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> OpenApi 服务器</button>
                 <div class="settings-tabs-footer">
                     <div class="settings-product-name">SolonCode</div>
                     <span id="appVersionLabel" class="settings-version"></span>
@@ -358,21 +358,25 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>模型 <span class="required">*</span></label>
-                                    <input type="text" id="llmModel" />
+                                <div class="form-row-2col">
+                                    <div class="form-group">
+                                        <label>模型 <span class="required">*</span></label>
+                                        <input type="text" id="llmModel" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>显示名称（可选）</label>
+                                        <input type="text" id="llmName" placeholder="给模型起个别名（确保唯一）"/>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>显示名称（可选）</label>
-                                    <input type="text" id="llmName" placeholder="给模型起个别名（确保唯一）"/>
-                                </div>
-                                <div class="form-group">
-                                    <label>超时时间（可选）</label>
-                                    <input type="text" id="llmTimeout" placeholder="120s（默认 120 秒）"/>
-                                </div>
-                                <div class="form-group">
-                                    <label>上下文长度（可选）</label>
-                                    <input type="number" id="llmContextLength" placeholder="1_000_000（模型上下文长度）"/>
+                                <div class="form-row-2col">
+                                    <div class="form-group">
+                                        <label>超时时间（可选）</label>
+                                        <input type="text" id="llmTimeout" placeholder="120s（默认 120 秒）"/>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>上下文长度（可选）</label>
+                                        <input type="number" id="llmContextLength" placeholder="1_000_000（模型上下文长度）"/>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label>默认选项（可选，JSON 格式）</label>
@@ -502,57 +506,57 @@
 
                 </div>
                 <!-- OpenApi Tab -->
-                <div class="settings-tab-content" id="settingsTabWebapi">
+                <div class="settings-tab-content" id="settingsTabOpenapi">
                     <!-- List View -->
-                    <div class="settings-view settings-view-list" id="webapiListView">
+                    <div class="settings-view settings-view-list" id="openapiListView">
                         <div class="settings-section">
                             <div class="settings-section-header">
                                 <span class="settings-section-title">OpenApi 服务器</span>
-                                <div class="webapi-header-actions">
-                                    <button class="settings-add-btn" id="webapiAddBtn">+ 添加服务器</button>
+                                <div class="openapi-header-actions">
+                                    <button class="settings-add-btn" id="openapiAddBtn">+ 添加服务器</button>
                                 </div>
                             </div>
-                            <div class="webapi-server-list" id="webapiServerList"></div>
+                            <div class="openapi-server-list" id="openapiServerList"></div>
                         </div>
                     </div>
                     <!-- Form View -->
-                    <div class="settings-view settings-view-form" id="webapiFormView" style="display:none">
+                    <div class="settings-view settings-view-form" id="openapiFormView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
                                 <div style="display:flex;align-items:center;gap:8px;">
-                                    <button class="settings-back-btn" id="webapiBackBtn" title="返回">
+                                    <button class="settings-back-btn" id="openapiBackBtn" title="返回">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                                     </button>
-                                    <span class="settings-section-title" id="webapiFormTitle">添加服务器</span>
+                                    <span class="settings-section-title" id="openapiFormTitle">添加服务器</span>
                                 </div>
                             </div>
-                            <div class="webapi-add-form" id="webapiAddForm">
+                            <div class="openapi-add-form" id="openapiAddForm">
                                 <div class="form-group">
                                     <label>名称 <span class="required">*</span></label>
-                                    <input type="text" id="webapiName" placeholder="my-api-server"/>
+                                    <input type="text" id="openapiName" placeholder="my-api-server"/>
                                 </div>
                                 <div class="form-group">
                                     <label>API 基地址 <span class="required">*</span></label>
-                                    <input type="text" id="webapiBaseUrl" placeholder="https://api.example.com/v1"/>
+                                    <input type="text" id="openapiBaseUrl" placeholder="https://api.example.com/v1"/>
                                 </div>
                                 <div class="form-group">
                                     <label>文档地址（OpenApi 规范） <span class="required">*</span></label>
-                                    <input type="text" id="webapiDocUrl" placeholder="https://api.example.com/docs"/>
+                                    <input type="text" id="openapiDocUrl" placeholder="https://api.example.com/docs"/>
                                 </div>
                                 <div class="form-group">
                                     <label>请求头（KEY=VALUE，每行一个）</label>
-                                    <textarea id="webapiHeaders" rows="3" placeholder="API_KEY=xxx&#10;Authorization=Bearer xxx"></textarea>
+                                    <textarea id="openapiHeaders" rows="3" placeholder="API_KEY=xxx&#10;Authorization=Bearer xxx"></textarea>
                                 </div>
                                 <div class="form-actions" style="justify-content:flex-end;">
                                     <div style="display:flex;gap:8px;">
-                                        <button class="btn-secondary" id="webapiTestBtn" style="display:flex;align-items:center;gap:4px;">
+                                        <button class="btn-secondary" id="openapiTestBtn" style="display:flex;align-items:center;gap:4px;">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                                             测试连接
                                         </button>
-                                        <button class="btn-primary" id="webapiSaveBtn">保存</button>
+                                        <button class="btn-primary" id="openapiSaveBtn">保存</button>
                                     </div>
                                 </div>
-                                <div class="llm-check-result" id="webapiCheckResult" style="display:none;"></div>
+                                <div class="llm-check-result" id="openapiCheckResult" style="display:none;"></div>
                             </div>
                         </div>
                     </div>

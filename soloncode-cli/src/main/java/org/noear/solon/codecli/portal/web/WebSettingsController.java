@@ -888,8 +888,8 @@ public class WebSettingsController {
      * 获取已配置的 OpenApi 服务器列表
      */
     @Get
-    @Mapping("/web/settings/webapi/servers")
-    public Result<List<Map>> webapiServers() throws Exception {
+    @Mapping("/web/settings/openapi/servers")
+    public Result<List<Map>> openapiServers() throws Exception {
         List<Map> list = new ArrayList<>();
         for (Map.Entry<String, ApiSource> entry : settings.getApiServers().entrySet()) {
             String name = entry.getKey();
@@ -911,8 +911,8 @@ public class WebSettingsController {
      * 添加 OpenApi 服务器配置
      */
     @Post
-    @Mapping("/web/settings/webapi/servers/add")
-    public Result webapiServersAdd(Context ctx) throws Exception {
+    @Mapping("/web/settings/openapi/servers/add")
+    public Result openapiServersAdd(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
         String name = root.get("name").getString();
         String apiBaseUrl = root.get("apiBaseUrl").getString();
@@ -958,8 +958,8 @@ public class WebSettingsController {
      * 更新 OpenApi 服务器配置
      */
     @Post
-    @Mapping("/web/settings/webapi/servers/update")
-    public Result webapiServersUpdate(Context ctx) throws Exception {
+    @Mapping("/web/settings/openapi/servers/update")
+    public Result openapiServersUpdate(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
         String name = root.get("name").getString();
         String originalName = root.get("originalName").getString();
@@ -1021,8 +1021,8 @@ public class WebSettingsController {
      * 移除 OpenApi 服务器配置
      */
     @Post
-    @Mapping("/web/settings/webapi/servers/remove")
-    public Result webapiServersRemove(Context ctx) throws Exception {
+    @Mapping("/web/settings/openapi/servers/remove")
+    public Result openapiServersRemove(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
         String name = root.get("name").getString();
 
@@ -1049,8 +1049,8 @@ public class WebSettingsController {
      * 切换 OpenApi 服务器启用/停用
      */
     @Post
-    @Mapping("/web/settings/webapi/servers/toggle")
-    public Result webapiServersToggle(Context ctx) throws Exception {
+    @Mapping("/web/settings/openapi/servers/toggle")
+    public Result openapiServersToggle(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
         String name = root.get("name").getString();
         boolean enabled = root.get("enabled").getBoolean();
@@ -1088,8 +1088,8 @@ public class WebSettingsController {
      * 检测 OpenApi 服务器连接（HTTP HEAD/GET 请求测试）
      */
     @Post
-    @Mapping("/web/settings/webapi/servers/check")
-    public Result webapiServersCheck(Context ctx) {
+    @Mapping("/web/settings/openapi/servers/check")
+    public Result openapiServersCheck(Context ctx) {
         try {
             ONode root = ONode.ofJson(ctx.body());
             String baseUrl = root.get("baseUrl").getString();
@@ -1138,8 +1138,8 @@ public class WebSettingsController {
      * 支持数组格式: {"apiServers":[{...},{...}]}
      */
     @Post
-    @Mapping("/web/settings/webapi/servers/import")
-    public Result webapiServersImport(Context ctx) throws Exception {
+    @Mapping("/web/settings/openapi/servers/import")
+    public Result openapiServersImport(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
         ONode serversNode = root.get("apiServers");
         if (serversNode == null) {

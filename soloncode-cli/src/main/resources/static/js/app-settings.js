@@ -100,12 +100,12 @@
     var $mcpTypeBtns = $('.mcp-type-btn');
     var $mcpCheckResult = $('#mcpCheckResult');
     // OpenApi
-    var $webapiServerList = $('#webapiServerList');
-    var $webapiSaveBtn = $('#webapiSaveBtn');
-    var $webapiFormTitle = $('#webapiFormTitle');
-    var $webapiListView = $('#webapiListView');
-    var $webapiFormView = $('#webapiFormView');
-    var $webapiCheckResult = $('#webapiCheckResult');
+    var $openapiServerList = $('#openapiServerList');
+    var $openapiSaveBtn = $('#openapiSaveBtn');
+    var $openapiFormTitle = $('#openapiFormTitle');
+    var $openapiListView = $('#openapiListView');
+    var $openapiFormView = $('#openapiFormView');
+    var $openapiCheckResult = $('#openapiCheckResult');
 
     // ==================== 状态 ====================
 
@@ -113,8 +113,8 @@
     var llmCachedList = [];
     var mcpEditName = null;
     var mcpCachedList = [];
-    var webapiEditName = null;
-    var webapiCachedList = [];
+    var openapiEditName = null;
+    var openapiCachedList = [];
 
     // ==================== 视图切换 ====================
 
@@ -122,8 +122,8 @@
     function showLlmFormView(title) { $llmFormTitle.text(title || '添加模型'); $llmListView.hide(); $llmFormView.show(); }
     function showMcpListView() { $mcpFormView.hide(); $mcpListView.addClass('slide-back').show(); setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260); }
     function showMcpFormView(title) { $mcpFormTitle.text(title || '添加服务器'); $mcpListView.hide(); $mcpFormView.show(); }
-    function showWebapiListView() { $webapiFormView.hide(); $webapiListView.addClass('slide-back').show(); setTimeout(function(){ $webapiListView.removeClass('slide-back'); }, 260); }
-    function showWebapiFormView(title) { $webapiFormTitle.text(title || '添加服务器'); $webapiListView.hide(); $webapiFormView.show(); }
+    function showOpenapiListView() { $openapiFormView.hide(); $openapiListView.addClass('slide-back').show(); setTimeout(function(){ $openapiListView.removeClass('slide-back'); }, 260); }
+    function showOpenapiFormView(title) { $openapiFormTitle.text(title || '添加服务器'); $openapiListView.hide(); $openapiFormView.show(); }
 
     function setMcpType(type) {
         $mcpTypeBtns.removeClass('active');
@@ -143,7 +143,7 @@
         $overlay.hide();
         showLlmListView();
         showMcpListView();
-        showWebapiListView();
+        showOpenapiListView();
         $llmCheckResult.hide();
         if ($('#skillsSearchInput').length) {
             $('#skillsSearchInput').val('');
@@ -173,9 +173,9 @@
         } else if (targetTab === 'mcp') {
             $('#settingsTabMcp').addClass('active');
             loadMcpList();
-        } else if (targetTab === 'webapi') {
-            $('#settingsTabWebapi').addClass('active');
-            loadWebapiList();
+        } else if (targetTab === 'openapi') {
+            $('#settingsTabOpenapi').addClass('active');
+            loadOpenapiList();
         }
     });
 
@@ -186,7 +186,7 @@
         if (targetTab === 'llm') loadLlmList();
         else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(); }
         else if (targetTab === 'mcp') loadMcpList();
-        else if (targetTab === 'webapi') loadWebapiList();
+        else if (targetTab === 'openapi') loadOpenapiList();
     }
 
     // ==================== LLM 管理 ====================
@@ -632,16 +632,16 @@
     // MCP 导入导出
     // ==================== OpenApi 管理 ====================
 
-    function loadWebapiList() {
-        $.get('/web/settings/webapi/servers', function (resp) {
+    function loadOpenapiList() {
+        $.get('/web/settings/openapi/servers', function (resp) {
             if (resp.code === 200 && resp.data) {
-                webapiCachedList = resp.data;
-                renderWebapiList(resp.data);
+                openapiCachedList = resp.data;
+                renderOpenapiList(resp.data);
             }
         }).fail(function () { console.error('[Settings] Failed to load OpenApi servers'); });
     }
 
-    function renderWebapiList(list) {
+    function renderOpenapiList(list) {
         var html = '';
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
@@ -663,7 +663,7 @@
                     + (docUrl ? '<div class="mcp-server-detail" style="color:var(--accent);">' + escapeHtml(docUrl) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--text-secondary);">'
-                    + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="webapi-toggle"/>'
+                    + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="openapi-toggle"/>'
                     + '</label>'
                     + '<button class="mcp-action-btn copy" data-name="' + escapeAttr(name) + '" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>'
                     + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
@@ -671,47 +671,47 @@
                     + '</div></div>';
             });
         }
-        $webapiServerList.html(html);
+        $openapiServerList.html(html);
     }
 
     // OpenApi 列表事件委托
-    $webapiServerList
-        .on('change', '.webapi-toggle', function () {
-            webapiToggleServer($(this).attr('data-name'), this.checked);
+    $openapiServerList
+        .on('change', '.openapi-toggle', function () {
+            openapiToggleServer($(this).attr('data-name'), this.checked);
         })
         .on('click', '.mcp-action-btn.copy', function () {
-            webapiCopyServer($(this).attr('data-name'));
+            openapiCopyServer($(this).attr('data-name'));
         })
         .on('click', '.mcp-action-btn.edit', function () {
-            webapiEditServer($(this).attr('data-name'));
+            openapiEditServer($(this).attr('data-name'));
         })
         .on('click', '.mcp-action-btn.delete', function () {
             var name = $(this).attr('data-name');
-            if (confirm('确定删除 OpenApi 服务器 "' + name + '"？')) webapiRemoveServer(name);
+            if (confirm('确定删除 OpenApi 服务器 "' + name + '"？')) openapiRemoveServer(name);
         });
 
     // ==================== OpenApi 表单 ====================
 
-    function resetWebapiForm() {
-        webapiEditName = null;
-        $webapiSaveBtn.text('保存');
-        $('#webapiName').val('').prop('readOnly', false);
-        $('#webapiBaseUrl, #webapiDocUrl, #webapiHeaders').val('');
+    function resetOpenapiForm() {
+        openapiEditName = null;
+        $openapiSaveBtn.text('保存');
+        $('#openapiName').val('').prop('readOnly', false);
+        $('#openapiBaseUrl, #openapiDocUrl, #openapiHeaders').val('');
     }
 
-    function fillWebapiForm(server) {
-        $('#webapiBaseUrl').val(server.apiBaseUrl || '');
-        $('#webapiDocUrl').val(server.docUrl || '');
+    function fillOpenapiForm(server) {
+        $('#openapiBaseUrl').val(server.apiBaseUrl || '');
+        $('#openapiDocUrl').val(server.docUrl || '');
         var headerLines = [];
         if (server.headers) Object.keys(server.headers).forEach(function (k) { headerLines.push(k + '=' + server.headers[k]); });
-        $('#webapiHeaders').val(headerLines.join('\n'));
+        $('#openapiHeaders').val(headerLines.join('\n'));
     }
 
-    function buildWebapiBodyObj() {
-        var name = $('#webapiName').val().trim();
-        var baseUrl = $('#webapiBaseUrl').val().trim();
-        var docUrl = $('#webapiDocUrl').val().trim();
-        var headersText = $('#webapiHeaders').val().trim();
+    function buildOpenapiBodyObj() {
+        var name = $('#openapiName').val().trim();
+        var baseUrl = $('#openapiBaseUrl').val().trim();
+        var docUrl = $('#openapiDocUrl').val().trim();
+        var headersText = $('#openapiHeaders').val().trim();
         if (!name) { showToast('名称为必填项', 'error'); return null; }
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
         if (!baseUrl) { showToast('API 基地址为必填项', 'error'); return null; }
@@ -722,84 +722,84 @@
         return bodyObj;
     }
 
-    function webapiEditServer(name) {
-        var server = webapiCachedList.find(function (s) { return s.name === name; });
+    function openapiEditServer(name) {
+        var server = openapiCachedList.find(function (s) { return s.name === name; });
         if (!server) return;
-        webapiEditName = name;
-        showWebapiFormView('编辑服务器');
-        $webapiSaveBtn.text('更新');
-        $('#webapiName').val(server.name).prop('readOnly', true);
-        fillWebapiForm(server);
+        openapiEditName = name;
+        showOpenapiFormView('编辑服务器');
+        $openapiSaveBtn.text('更新');
+        $('#openapiName').val(server.name).prop('readOnly', true);
+        fillOpenapiForm(server);
     }
 
-    function webapiCopyServer(name) {
-        var server = webapiCachedList.find(function (s) { return s.name === name; });
+    function openapiCopyServer(name) {
+        var server = openapiCachedList.find(function (s) { return s.name === name; });
         if (!server) return;
-        webapiEditName = null;
-        showWebapiFormView('添加服务器');
-        $webapiSaveBtn.text('保存');
-        $('#webapiName').val(server.name + '-copy').prop('readOnly', false);
-        fillWebapiForm(server);
+        openapiEditName = null;
+        showOpenapiFormView('添加服务器');
+        $openapiSaveBtn.text('保存');
+        $('#openapiName').val(server.name + '-copy').prop('readOnly', false);
+        fillOpenapiForm(server);
     }
 
-    function webapiRemoveServer(name) {
-        postJson('/web/settings/webapi/servers/remove', { name: name }, function (resp) {
-            if (resp.code === 200) loadWebapiList();
+    function openapiRemoveServer(name) {
+        postJson('/web/settings/openapi/servers/remove', { name: name }, function (resp) {
+            if (resp.code === 200) loadOpenapiList();
             else showToast('删除失败: ' + (resp.message || '未知错误'), 'error');
         });
     }
 
-    function webapiToggleServer(name, enabled) {
-        postJson('/web/settings/webapi/servers/toggle', { name: name, enabled: enabled }, function (resp) {
-            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadWebapiList(); }
+    function openapiToggleServer(name, enabled) {
+        postJson('/web/settings/openapi/servers/toggle', { name: name, enabled: enabled }, function (resp) {
+            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadOpenapiList(); }
         });
     }
 
     // OpenApi 按钮事件
-    $('#webapiAddBtn').on('click', function () { resetWebapiForm(); showWebapiFormView('添加服务器'); });
-    $('#webapiBackBtn').on('click', function () { showWebapiListView(); resetWebapiForm(); });
+    $('#openapiAddBtn').on('click', function () { resetOpenapiForm(); showOpenapiFormView('添加服务器'); });
+    $('#openapiBackBtn').on('click', function () { showOpenapiListView(); resetOpenapiForm(); });
 
     // OpenApi 测试连接
-    $('#webapiTestBtn').on('click', function () {
-        var baseUrl = $('#webapiBaseUrl').val().trim();
+    $('#openapiTestBtn').on('click', function () {
+        var baseUrl = $('#openapiBaseUrl').val().trim();
         if (!baseUrl) { showToast('请先填写 API 基地址', 'error'); return; }
-        var headers = parseKvLines($('#webapiHeaders').val().trim());
+        var headers = parseKvLines($('#openapiHeaders').val().trim());
         var $btn = $(this);
         var btnOriginal = $btn.html();
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
-        $webapiCheckResult.hide();
+        $openapiCheckResult.hide();
 
-        $.ajax({ url: '/web/settings/webapi/servers/check', method: 'POST', data: JSON.stringify({ baseUrl: baseUrl, headers: headers }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
+        $.ajax({ url: '/web/settings/openapi/servers/check', method: 'POST', data: JSON.stringify({ baseUrl: baseUrl, headers: headers }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var svg = ok
                     ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 连接成功'
                     : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ' + (resp.message || '连接失败');
-                $webapiCheckResult.attr('class', 'llm-check-result ' + (ok ? 'success' : 'error')).html(svg).css('display', 'flex');
+                $openapiCheckResult.attr('class', 'llm-check-result ' + (ok ? 'success' : 'error')).html(svg).css('display', 'flex');
             })
             .fail(function (jqXHR, textStatus) {
                 var msg = textStatus === 'timeout' ? '连接超时（15秒），请检查地址是否正确' : '网络错误，请重试';
-                $webapiCheckResult.attr('class', 'llm-check-result error').html(msg).css('display', 'flex');
+                $openapiCheckResult.attr('class', 'llm-check-result error').html(msg).css('display', 'flex');
             })
             .always(function () { $btn.prop('disabled', false).html(btnOriginal); });
     });
 
-    $webapiSaveBtn.on('click', function () {
-        var bodyObj = buildWebapiBodyObj();
+    $openapiSaveBtn.on('click', function () {
+        var bodyObj = buildOpenapiBodyObj();
         if (!bodyObj) return;
-        var isEdit = !!webapiEditName;
-        var url = isEdit ? '/web/settings/webapi/servers/update' : '/web/settings/webapi/servers/add';
+        var isEdit = !!openapiEditName;
+        var url = isEdit ? '/web/settings/openapi/servers/update' : '/web/settings/openapi/servers/add';
         var actionText = isEdit ? '更新' : '添加';
-        if (isEdit) bodyObj.originalName = webapiEditName;
+        if (isEdit) bodyObj.originalName = openapiEditName;
 
-        $webapiSaveBtn.prop('disabled', true);
+        $openapiSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { showToast(actionText + '成功'); loadWebapiList(); showWebapiListView(); resetWebapiForm(); }
+                if (resp.code === 200) { showToast(actionText + '成功'); loadOpenapiList(); showOpenapiListView(); resetOpenapiForm(); }
                 else showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error');
             })
             .fail(function () { showToast('网络错误', 'error'); })
-            .always(function () { $webapiSaveBtn.prop('disabled', false); });
+            .always(function () { $openapiSaveBtn.prop('disabled', false); });
     });
 
 })();
