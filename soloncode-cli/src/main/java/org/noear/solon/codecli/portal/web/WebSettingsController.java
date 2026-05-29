@@ -23,8 +23,8 @@ import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.skills.restapi.RestApiSkill;
 import org.noear.solon.ai.skills.toolgateway.ToolGatewaySkill;
 import org.noear.solon.annotation.*;
-import org.noear.solon.codecli.portal.web.market.ClawhubMarket;
 import org.noear.solon.codecli.portal.web.market.Market;
+import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
@@ -67,7 +67,7 @@ public class WebSettingsController {
     /**
      * 技能市场适配器（通过构造函数注入，方便切换不同市场）
      */
-    private final Market market;
+    private final MarketManager marketManager;
 
     /**
      * 构造函数：初始化核心依赖。
@@ -75,18 +75,18 @@ public class WebSettingsController {
      * @param engine AI Agent 执行引擎
      */
     public WebSettingsController(HarnessEngine engine) {
-        this(engine, new ClawhubMarket());
+        this(engine, new MarketManager());
     }
 
     /**
-     * 构造函数：支持自定义 Market 适配器（用于测试或切换市场）。
+     * 构造函数：支持自定义 MarketManager（用于测试）。
      *
      * @param engine AI Agent 执行引擎
-     * @param market 技能市场适配器
+     * @param marketManager 技能市场管理器
      */
-    public WebSettingsController(HarnessEngine engine, Market market) {
+    public WebSettingsController(HarnessEngine engine, MarketManager marketManager) {
         this.engine = engine;
-        this.market = market;
+        this.marketManager = marketManager;
     }
 
     // ==================== 设置：LLM 模型管理 ====================
@@ -1269,12 +1269,32 @@ public class WebSettingsController {
      * @param query  搜索关键词（action=search 时使用）
      * @param limit  返回数量限制
      */
+    /**
+     * 获取所有可用市场列表
+     */
+    @Get
+    @Mapping("/web/settings/skills/markets")
+    public Result skillsMarkets(Context ctx) {
+        return Result.succeed(marketManager.getMarketInfos());
+    }
+
+    /**
+     * 技能市场代理接口 — 获取热门技能或搜索技能。
+     * <p>所有外部 API 调用均由后端 Market 适配器完成，前端不直接访问外部服务。</p>
+     *
+     * @param action    "trending" 获取热门 | "search" 搜索
+     * @param query     搜索关键词（action=search 时使用）
+     * @param limit     返回数量限制
+     * @param marketUrl 市场URL（可选，默认使用 ClawHub）
+     */
     @Get
     @Mapping("/web/settings/skills/proxy")
     public Result skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
                               @Param(value = "q", defaultValue = "") String query,
                               @Param(value = "limit", defaultValue = "50") int limit,
-                              @Param(value = "per_page", defaultValue = "50") int perPage) {
+                              @Param(value = "per_page", defaultValue = "50") int perPage,
+                              @Param(value = "marketUrl", defaultValue = "") String marketUrl) {
+        Market market = marketManager.getMarket(marketUrl);
         if ("search".equals(action) && query != null && !query.isEmpty()) {
             return market.search(query, limit);
         } else {
@@ -1289,11 +1309,13 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/skills/install")
-    public Result skillsInstall(Context ctx, @Param("slug") String slug) {
+    public Result skillsInstall(Context ctx, @Param("slug") String slug,
+                                @Param(value = "marketUrl", defaultValue = "") String marketUrl) {
         if (Assert.isEmpty(slug)) {
             return Result.failure("slug is required");
         }
 
+        Market market = marketManager.getMarket(marketUrl);
         java.nio.file.Path skillsDir = java.nio.file.Paths.get(engine.getProps().getWorkspace(), "skills");
         Result<String> result = market.install(slug, skillsDir);
 

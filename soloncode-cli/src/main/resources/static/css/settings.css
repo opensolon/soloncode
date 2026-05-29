@@ -136,7 +136,9 @@
 .mcp-header-actions { display: flex; gap: 6px; align-items: center; }
 
 /* ===== Skills Tab ===== */
-.skills-search-bar { padding: 0 0 12px 0; }
+.skills-search-bar { padding: 0 0 12px 0; display: flex; gap: 8px; align-items: center; }
+.skills-market-select { padding: 7px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; outline: none; cursor: pointer; flex-shrink: 0; min-width: 110px; }
+.skills-market-select:focus { border-color: var(--accent); }
 .skills-search-input-wrap { position: relative; display: flex; align-items: center; }
 .skills-search-icon { position: absolute; left: 10px; color: var(--text-secondary); pointer-events: none; }
 .skills-search-input-wrap input { width: 100%; padding: 8px 32px 8px 32px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; outline: none; box-sizing: border-box; }

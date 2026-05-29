@@ -1,0 +1,338 @@
+package org.noear.solon.codecli.portal.web.market;
+
+import org.noear.solon.core.handle.Result;
+import org.noear.solon.core.util.Assert;
+import org.noear.solon.net.http.HttpUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+/**
+ * Skills.sh 市场适配器 — 通过爬取 HTML 页面获取技能列表。
+ *
+ * <p>不走 API 接口（需要 token），直接解析 HTML 页面获取数据。</p>
+ *
+ * @author noear 2026/5/29 created
+ */
+public class SkillsShMarket implements Market {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SkillsShMarket.class);
+
+    private static final String BASE_URL = "https://www.skills.sh";
+    private static final String USER_AGENT = "SolonCode/1.0";
+
+    // HTML 行解析：序号  技能名  owner/repo  安装量
+    // 示例: "1 find-skills vercel-labs/skills 1.7M"
+    private static final Pattern LINE_PATTERN = Pattern.compile(
+            "^\\s*(\\d+)\\s+" +           // 排名
+            "([a-zA-Z0-9_-]+)\\s+" +      // slug
+            "([\\w./-]+?)\\s+" +          // owner/repo
+            "([\\d.,]+[KkMm]?)\\s*$"      // 安装量
+    );
+
+    @Override
+    public String url() {
+        return BASE_URL;
+    }
+
+    @Override
+    public String name() {
+        return "Skills.sh";
+    }
+
+    @Override
+    public String description() {
+        return "The Open Agent Skills Ecosystem";
+    }
+
+    // ==================== 列表与搜索 ====================
+
+    @Override
+    public Result<List<MarketItem>> trending(int limit) {
+        try {
+            String html = httpGet(BASE_URL + "/");
+            List<MarketItem> items = parseHtmlItems(html, limit);
+            return Result.succeed(items);
+        } catch (Exception e) {
+            LOG.warn("SkillsShMarket.trending error: {}", e.getMessage());
+            return Result.failure("获取热门技能失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Result<List<MarketItem>> search(String query, int limit) {
+        if (Assert.isEmpty(query)) {
+            return trending(limit);
+        }
+
+        try {
+            // Skills.sh 的搜索页面
+            String html = httpGet(BASE_URL + "/?q=" + java.net.URLEncoder.encode(query, "UTF-8"));
+            List<MarketItem> items = parseHtmlItems(html, limit);
+
+            // 如果搜索无结果，尝试从热门列表中过滤
+            if (items.isEmpty()) {
+                html = httpGet(BASE_URL + "/");
+                List<MarketItem> all = parseHtmlItems(html, 500);
+                String q = query.toLowerCase();
+                for (MarketItem item : all) {
+                    if (item.getSlug() != null && item.getSlug().toLowerCase().contains(q)) {
+                        items.add(item);
+                    } else if (item.getDisplayName() != null && item.getDisplayName().toLowerCase().contains(q)) {
+                        items.add(item);
+                    } else if (item.getOwnerHandle() != null && item.getOwnerHandle().toLowerCase().contains(q)) {
+                        items.add(item);
+                    }
+                    if (items.size() >= limit) break;
+                }
+            }
+
+            return Result.succeed(items);
+        } catch (Exception e) {
+            LOG.warn("SkillsShMarket.search error: {}", e.getMessage());
+            return Result.failure("搜索技能失败: " + e.getMessage());
+        }
+    }
+
+    // ==================== 详情 ====================
+
+    @Override
+    public Result<MarketDetail> detail(String slug) {
+        if (Assert.isEmpty(slug)) {
+            return Result.failure("slug is required");
+        }
+
+        try {
+            // 从热门列表中查找匹配的条目
+            String html = httpGet(BASE_URL + "/");
+            List<MarketItem> all = parseHtmlItems(html, 500);
+
+            for (MarketItem item : all) {
+                if (slug.equals(item.getSlug())) {
+                    MarketDetail detail = new MarketDetail()
+                            .slug(item.getSlug())
+                            .displayName(item.getDisplayName())
+                            .summary(item.getSummary())
+                            .description(item.getDescription())
+                            .ownerHandle(item.getOwnerHandle())
+                            .installs(item.getInstalls())
+                            .stars(item.getStars())
+                            .installSlug(item.getOwnerHandle() != null
+                                    ? item.getOwnerHandle() + "/" + item.getSlug()
+                                    : item.getSlug());
+                    return Result.succeed(detail);
+                }
+            }
+
+            return Result.failure("技能不存在: " + slug);
+        } catch (Exception e) {
+            LOG.warn("SkillsShMarket.detail error: {}", e.getMessage());
+            return Result.failure("获取技能详情失败: " + e.getMessage());
+        }
+    }
+
+    // ==================== 安装 ====================
+
+    @Override
+    public Result<String> install(String slug, Path skillsDir) {
+        if (Assert.isEmpty(slug)) {
+            return Result.failure("slug is required");
+        }
+
+        try {
+            // 先查详情获取完整信息
+            Result<MarketDetail> detailResult = detail(slug);
+            if (detailResult.getCode() != 200) {
+                return Result.failure("技能不存在: " + detailResult.getDescription());
+            }
+
+            MarketDetail detailData = detailResult.getData();
+            String displayName = detailData.getDisplayName();
+            if (displayName == null || displayName.isEmpty()) {
+                displayName = slug;
+            }
+
+            // Skills.sh 技能来源于 GitHub，使用 npx skillsadd 或直接下载 GitHub repo
+            // 这里通过 GitHub 的 zipball 接口下载
+            String ownerRepo = detailData.getOwnerHandle();
+            if (ownerRepo == null || ownerRepo.isEmpty()) {
+                return Result.failure("无法确定技能的 GitHub 仓库");
+            }
+
+            // 安装 slug 清理
+            String safeSlug = slug.replaceAll("[^a-zA-Z0-9._-]", "");
+            if (safeSlug.isEmpty()) {
+                return Result.failure("Invalid slug");
+            }
+
+            // 下载 GitHub 仓库 zip
+            String downloadUrl = "https://github.com/" + ownerRepo + "/archive/refs/heads/main.zip";
+            String body = httpGetString(downloadUrl);
+
+            // 如果 main 分支不存在，尝试 master
+            if (body == null || body.length() < 200) {
+                downloadUrl = "https://github.com/" + ownerRepo + "/archive/refs/heads/master.zip";
+                body = httpGetString(downloadUrl);
+            }
+
+            if (body == null || body.length() < 200) {
+                return Result.failure("下载技能包失败: 无法从 GitHub 获取");
+            }
+
+            Files.createDirectories(skillsDir);
+
+            Path tempZip = Files.createTempFile("skill-", ".zip");
+            try {
+                Files.write(tempZip, body.getBytes("ISO-8859-1"));
+
+                if (Files.size(tempZip) == 0) {
+                    return Result.failure("下载技能包失败: 文件为空");
+                }
+
+                Path targetDir = skillsDir.resolve(safeSlug);
+                if (Files.exists(targetDir)) {
+                    deleteDirectory(targetDir);
+                }
+
+                unzipToDirectory(tempZip, targetDir);
+
+                LOG.info("SkillsShMarket.install: {} -> {}", safeSlug, targetDir);
+                return Result.succeed(displayName);
+            } finally {
+                Files.deleteIfExists(tempZip);
+            }
+
+        } catch (Exception e) {
+            LOG.warn("SkillsShMarket.install error: {}", e.getMessage(), e);
+            return Result.failure("安装失败: " + e.getMessage());
+        }
+    }
+
+    // ==================== 内部工具方法 ====================
+
+    private String httpGet(String url) throws Exception {
+        return HttpUtils.http(url)
+                .header("User-Agent", USER_AGENT)
+                .timeout(15000)
+                .get();
+    }
+
+    private String httpGetString(String url) {
+        try {
+            return HttpUtils.http(url)
+                    .header("User-Agent", USER_AGENT)
+                    .timeout(30000)
+                    .get();
+        } catch (Exception e) {
+            LOG.warn("SkillsShMarket.httpGetString error: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 解析 HTML 页面中的技能列表
+     */
+    private List<MarketItem> parseHtmlItems(String html, int limit) {
+        List<MarketItem> items = new ArrayList<>();
+        if (html == null || html.isEmpty()) return items;
+
+        String[] lines = html.split("\n");
+        for (String line : lines) {
+            if (items.size() >= limit) break;
+
+            line = line.trim();
+            if (line.isEmpty()) continue;
+
+            // 尝试匹配排名行格式: "1 find-skills vercel-labs/skills 1.7M"
+            try {
+                Matcher m = LINE_PATTERN.matcher(line);
+                if (m.find()) {
+                    String slug = m.group(2);
+                    String ownerRepo = m.group(3);
+                    String installsStr = m.group(4);
+
+                    // 从 ownerRepo 中提取 owner
+                    String owner = ownerRepo.contains("/") ? ownerRepo.split("/")[0] : ownerRepo;
+
+                    MarketItem item = new MarketItem()
+                            .slug(slug)
+                            .name(slug)
+                            .displayName(slug)
+                            .ownerHandle(ownerRepo)
+                            .installs(parseInstallCount(installsStr))
+                            .stars(0);
+
+                    items.add(item);
+                }
+            } catch (Exception e) {
+                // 跳过无法解析的行
+            }
+        }
+
+        return items;
+    }
+
+    /**
+     * 解析安装数字符串，如 "1.7M", "474.8K", "56.8K"
+     */
+    private long parseInstallCount(String str) {
+        if (str == null || str.isEmpty()) return 0;
+        try {
+            str = str.trim().replace(",", "");
+            if (str.endsWith("M") || str.endsWith("m")) {
+                return (long) (Double.parseDouble(str.substring(0, str.length() - 1)) * 1_000_000);
+            } else if (str.endsWith("K") || str.endsWith("k")) {
+                return (long) (Double.parseDouble(str.substring(0, str.length() - 1)) * 1_000);
+            } else {
+                return Long.parseLong(str);
+            }
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private void deleteDirectory(Path dir) throws Exception {
+        if (!Files.exists(dir)) return;
+        Files.walk(dir)
+                .sorted(Comparator.reverseOrder())
+                .forEach(p -> {
+                    try {
+                        Files.delete(p);
+                    } catch (Exception ignored) {
+                    }
+                });
+    }
+
+    private void unzipToDirectory(Path zipFile, Path targetDir) throws Exception {
+        ZipInputStream zis = new ZipInputStream(new BufferedInputStream(Files.newInputStream(zipFile)));
+        try {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                Path entryPath = targetDir.resolve(entry.getName()).normalize();
+
+                if (!entryPath.startsWith(targetDir.normalize())) {
+                    continue;
+                }
+
+                if (entry.isDirectory()) {
+                    Files.createDirectories(entryPath);
+                } else {
+                    Files.createDirectories(entryPath.getParent());
+                    Files.copy(zis, entryPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+                zis.closeEntry();
+            }
+        } finally {
+            zis.close();
+        }
+    }
+}
