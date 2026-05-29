@@ -159,14 +159,10 @@ public class WebSettingsController {
         String apiUrl = root.get("apiUrl").getString();
         String apiKey = root.get("apiKey").getString();
         String model = root.get("model").getString();
+        String name = root.get("name").getString();
 
         if (Assert.isEmpty(apiUrl) || Assert.isEmpty(model)) {
             return Result.failure("apiUrl and model are required");
-        }
-
-        String name = root.get("name").getString();
-        if (Assert.isEmpty(name)) {
-            name = model;
         }
 
         ChatConfig config = new ChatConfig();
@@ -189,18 +185,15 @@ public class WebSettingsController {
             config.setContextLength(contextLength);
         }
 
-        final String fName = name;
-        final String fModel = model;
 
-        engine.getProps().removeModel(fModel);
-        engine.getProps().addModel(config);
+        engine.addModel(config);
 
-        settings.getModels().removeIf(c -> fName.equals(c.getName()) || fModel.equals(c.getModel()));
+        settings.getModels().removeIf(c -> c.getNameOrModel().equals(config.getNameOrModel()));
         settings.getModels().add(config);
         saveSettings();
 
-        LOG.info("[Settings] Model added: {}", fName);
-        return Result.succeed(fName);
+        LOG.info("[Settings] Model added: {}", config.getNameOrModel());
+        return Result.succeed(config.getNameOrModel());
     }
 
     /**
