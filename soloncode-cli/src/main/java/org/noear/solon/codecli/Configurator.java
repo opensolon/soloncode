@@ -129,7 +129,7 @@ public class Configurator {
     public void init() {
         //订阅容器扩展
         appContext.subBeansOfType(HarnessExtension.class, extension -> {
-            agentRuntime.extensionAdd(extension);
+            agentRuntime.addExtension(extension);
         });
 
 

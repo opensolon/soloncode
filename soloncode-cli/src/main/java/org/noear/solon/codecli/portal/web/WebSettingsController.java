@@ -454,7 +454,7 @@ public class WebSettingsController {
                 }
                 params.setEnv(envMap);
             }
-        } else if ("sse".equals(type) || "streamable-http".equals(type)) {
+        } else if ("sse".equals(type) || "streamable".equals(type)) {
             params.setUrl(root.get("url").getString());
             if (root.hasKey("headers")) {
                 Map<String, String> headersMap = new LinkedHashMap<>();
@@ -702,7 +702,7 @@ public class WebSettingsController {
                     client.close();
                 }
 
-            } else if ("sse".equals(type) || "streamable-http".equals(type)) {
+            } else if ("sse".equals(type) || "streamable".equals(type)) {
                 String url = root.get("url").getString();
                 if (Assert.isEmpty(url)) {
                     return Result.failure("URL 不能为空");

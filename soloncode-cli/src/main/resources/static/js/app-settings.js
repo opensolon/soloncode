@@ -44,7 +44,7 @@
     function postJson(url, data, doneFn, alwaysFn) {
         return $.ajax({ url: url, method: 'POST', data: JSON.stringify(data), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) { doneFn(resp); })
-            .fail(function () { alert('网络错误'); })
+            .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { if (alwaysFn) alwaysFn(); });
     }
 
@@ -74,6 +74,16 @@
                 opts.$result.attr('class', opts.cls + ' error').html(msg).css('display', 'flex');
             })
             .always(function () { $btn.prop('disabled', false).html(btnOriginal); });
+    }
+
+    // ==================== 统一提示 ====================
+
+    function showToast(msg, type) {
+        if (typeof layer !== 'undefined' && layer.msg) {
+            layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' });
+        } else {
+            alert(msg);
+        }
     }
 
     // ==================== DOM 引用 ====================
@@ -132,7 +142,7 @@
         $mcpTypeBtns.removeClass('active');
         $('.mcp-type-btn[data-type="' + type + '"]').addClass('active');
         $('#mcpConfigStdio').toggle(type === 'stdio');
-        $('#mcpConfigRemote').toggle(type === 'sse' || type === 'streamable-http');
+        $('#mcpConfigRemote').toggle(type === 'sse' || type === 'streamable');
     }
 
     // ==================== 面板开关 ====================
@@ -294,7 +304,7 @@
         var alias = $('#llmName').val().trim();
         var provider = $('#llmProvider').val();
         var timeout = $('#llmTimeout').val().trim();
-        if (!apiUrl || !model) { alert('API 地址和模型名称为必填项'); return null; }
+        if (!apiUrl || !model) { showToast('API 地址和模型名称为必填项', 'error'); return null; }
         var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
@@ -331,7 +341,7 @@
             if (resp.code === 200) {
                 if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
                 loadLlmList();
-            } else { alert('设置失败: ' + (resp.message || '未知错误')); }
+            } else { showToast('设置失败: ' + (resp.message || '未知错误'), 'error'); }
         });
     }
 
@@ -340,7 +350,7 @@
             if (resp.code === 200) {
                 if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
                 loadLlmList();
-            } else { alert('删除失败: ' + (resp.message || '未知错误')); }
+            } else { showToast('删除失败: ' + (resp.message || '未知错误'), 'error'); }
         });
     }
 
@@ -364,16 +374,16 @@
                     loadLlmList();
                     showLlmListView();
                     resetLlmForm();
-                } else { alert(actionText + '失败: ' + (resp.message || '未知错误')); }
+                } else { showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error'); }
             })
-            .fail(function () { alert('网络错误'); })
+            .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $llmSaveBtn.prop('disabled', false); });
     });
 
     // LLM 测试连接（通过 ChatModel hello 检测）
     $('#llmTestBtn').on('click', function () {
         var apiUrl = $('#llmApiUrl').val().trim();
-        if (!apiUrl) { alert('请先填写 API 地址'); return; }
+        if (!apiUrl) { showToast('请先填写 API 地址', 'error'); return; }
         var $btn = $(this);
         var btnOriginal = $btn.html();
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
@@ -435,7 +445,7 @@
                 + '<div class="mcp-empty-desc">MCP 服务器可扩展 AI 的工具能力，如文件系统访问、数据库查询、API 调用等</div>'
                 + '</div>';
         } else {
-            var iconMap = { stdio: 'S', sse: 'R', 'streamable-http': 'H' };
+            var iconMap = { stdio: 'S', sse: 'R', streamable: 'H' };
             list.forEach(function (item) {
                 var name = item.name || '';
                 var type = item.type || 'stdio';
@@ -507,23 +517,23 @@
     function buildMcpBodyObj() {
         var name = $('#mcpName').val().trim();
         var type = $('.mcp-type-btn.active').attr('data-type') || 'stdio';
-        if (!name) { alert('名称为必填项'); return null; }
-        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { alert('名称仅允许字母、数字、下划线和连字符'); return null; }
+        if (!name) { showToast('名称为必填项', 'error'); return null; }
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
 
         var bodyObj = { name: name, type: type, enabled: true };
 
         if (type === 'stdio') {
             var command = $('#mcpCommand').val().trim();
-            if (!command) { alert('命令为必填项'); return null; }
+            if (!command) { showToast('命令为必填项', 'error'); return null; }
             bodyObj.command = command;
             var argsText = $('#mcpArgs').val().trim();
             if (argsText) bodyObj.args = argsText.split('\n').filter(function (l) { return l.trim() !== ''; });
             var env = parseKvLines($('#mcpEnv').val().trim());
             if (Object.keys(env).length > 0) bodyObj.env = env;
-        } else if (type === 'sse' || type === 'streamable-http') {
+        } else if (type === 'sse' || type === 'streamable') {
             var url = $('#mcpRemoteUrl').val().trim();
-            if (!url) { alert('URL 为必填项'); return null; }
-            if (!/^https?:\/\/.+/.test(url)) { alert('URL 必须以 http:// 或 https:// 开头'); return null; }
+            if (!url) { showToast('URL 为必填项', 'error'); return null; }
+            if (!/^https?:\/\/.+/.test(url)) { showToast('URL 必须以 http:// 或 https:// 开头', 'error'); return null; }
             bodyObj.url = url;
             var headers = parseKvLines($('#mcpHeaders').val().trim());
             if (Object.keys(headers).length > 0) bodyObj.headers = headers;
@@ -556,13 +566,13 @@
     function mcpRemoveServer(name) {
         postJson('/web/settings/mcp/servers/remove', { name: name }, function (resp) {
             if (resp.code === 200) loadMcpList();
-            else alert('删除失败: ' + (resp.message || '未知错误'));
+            else showToast('删除失败: ' + (resp.message || '未知错误'), 'error');
         });
     }
 
     function mcpToggleServer(name, enabled) {
         postJson('/web/settings/mcp/servers/toggle', { name: name, enabled: enabled }, function (resp) {
-            if (resp.code !== 200) { alert('操作失败: ' + (resp.message || '未知错误')); loadMcpList(); }
+            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadMcpList(); }
         });
     }
 
@@ -583,9 +593,9 @@
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
                 if (resp.code === 200) { loadMcpList(); showMcpListView(); resetMcpForm(); }
-                else alert(actionText + '失败: ' + (resp.message || '未知错误'));
+                else showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error');
             })
-            .fail(function () { alert('网络错误'); })
+            .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $mcpSaveBtn.prop('disabled', false); });
     });
 
@@ -641,15 +651,15 @@
     $('#mcpImportCancelBtn').on('click', function () { $mcpImportDialog.hide(); });
     $('#mcpImportConfirmBtn').on('click', function () {
         var text = $('#mcpImportText').val().trim();
-        if (!text) { alert('请粘贴 JSON 配置'); return; }
-        try { JSON.parse(text); } catch (e) { alert('JSON 格式无效'); return; }
+        if (!text) { showToast('请粘贴 JSON 配置', 'error'); return; }
+        try { JSON.parse(text); } catch (e) { showToast('JSON 格式无效', 'error'); return; }
         var $btn = $(this).prop('disabled', true);
         $.ajax({ url: '/web/settings/mcp/servers/import', method: 'POST', data: text, contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
                 if (resp.code === 200) { loadMcpList(); $mcpImportDialog.hide(); }
-                else alert('导入失败: ' + (resp.message || '未知错误'));
+                else showToast('导入失败: ' + (resp.message || '未知错误'), 'error');
             })
-            .fail(function () { alert('网络错误'); })
+            .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $btn.prop('disabled', false); });
     });
 
@@ -731,9 +741,9 @@
         var baseUrl = $('#webapiBaseUrl').val().trim();
         var docUrl = $('#webapiDocUrl').val().trim();
         var headersText = $('#webapiHeaders').val().trim();
-        if (!name) { alert('名称为必填项'); return null; }
-        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { alert('名称仅允许字母、数字、下划线和连字符'); return null; }
-        if (!baseUrl) { alert('API 基地址为必填项'); return null; }
+        if (!name) { showToast('名称为必填项', 'error'); return null; }
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
+        if (!baseUrl) { showToast('API 基地址为必填项', 'error'); return null; }
         var bodyObj = { name: name, apiBaseUrl: baseUrl, enabled: true };
         if (docUrl) bodyObj.docUrl = docUrl;
         var headers = parseKvLines(headersText);
@@ -754,13 +764,13 @@
     function webapiRemoveServer(name) {
         postJson('/web/settings/webapi/servers/remove', { name: name }, function (resp) {
             if (resp.code === 200) loadWebapiList();
-            else alert('删除失败: ' + (resp.message || '未知错误'));
+            else showToast('删除失败: ' + (resp.message || '未知错误'), 'error');
         });
     }
 
     function webapiToggleServer(name, enabled) {
         postJson('/web/settings/webapi/servers/toggle', { name: name, enabled: enabled }, function (resp) {
-            if (resp.code !== 200) { alert('操作失败: ' + (resp.message || '未知错误')); loadWebapiList(); }
+            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadWebapiList(); }
         });
     }
 
@@ -771,7 +781,7 @@
     // OpenApi 测试连接
     $('#webapiTestBtn').on('click', function () {
         var baseUrl = $('#webapiBaseUrl').val().trim();
-        if (!baseUrl) { alert('请先填写 API 基地址'); return; }
+        if (!baseUrl) { showToast('请先填写 API 基地址', 'error'); return; }
         var headers = parseKvLines($('#webapiHeaders').val().trim());
         var $btn = $(this);
         var btnOriginal = $btn.html();
@@ -799,14 +809,15 @@
         var isEdit = !!webapiEditName;
         var url = isEdit ? '/web/settings/webapi/servers/update' : '/web/settings/webapi/servers/add';
         var actionText = isEdit ? '更新' : '添加';
+        if (isEdit) bodyObj.originalName = webapiEditName;
 
         $webapiSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { loadWebapiList(); showWebapiListView(); resetWebapiForm(); }
-                else alert(actionText + '失败: ' + (resp.message || '未知错误'));
+                if (resp.code === 200) { showToast(actionText + '成功'); loadWebapiList(); showWebapiListView(); resetWebapiForm(); }
+                else showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error');
             })
-            .fail(function () { alert('网络错误'); })
+            .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $webapiSaveBtn.prop('disabled', false); });
     });
 
@@ -830,15 +841,15 @@
     $('#webapiImportCancelBtn').on('click', function () { $webapiImportDialog.hide(); });
     $('#webapiImportConfirmBtn').on('click', function () {
         var text = $('#webapiImportText').val().trim();
-        if (!text) { alert('请粘贴 JSON 配置'); return; }
-        try { JSON.parse(text); } catch (e) { alert('JSON 格式无效'); return; }
+        if (!text) { showToast('请粘贴 JSON 配置', 'error'); return; }
+        try { JSON.parse(text); } catch (e) { showToast('JSON 格式无效', 'error'); return; }
         var $btn = $(this).prop('disabled', true);
         $.ajax({ url: '/web/settings/webapi/servers/import', method: 'POST', data: text, contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
                 if (resp.code === 200) { loadWebapiList(); $webapiImportDialog.hide(); }
-                else alert('导入失败: ' + (resp.message || '未知错误'));
+                else showToast('导入失败: ' + (resp.message || '未知错误'), 'error');
             })
-            .fail(function () { alert('网络错误'); })
+            .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $btn.prop('disabled', false); });
     });
 
