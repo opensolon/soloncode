@@ -289,6 +289,16 @@ function connectWebGate() {
             var sess2 = sessionMap[sid];
             if (!sess2) return; // 未知 session
 
+            // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡
+            if (chunk.type === 'user_input') {
+                if (!sid) return;
+                var userSess = sessionMap[sid];
+                if (!userSess) return;
+                appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt);
+                if (userSess.sessionId === activeSessionId) scrollToBottom(true);
+                return;
+            }
+
             // Loop/微信 等后端推送触发流式状态
             if (!sess2.isStreaming) {
                 sess2.isStreaming = true;

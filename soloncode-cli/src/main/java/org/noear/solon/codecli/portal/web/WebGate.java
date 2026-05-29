@@ -511,6 +511,9 @@ public class WebGate extends SimpleWebSocketListener {
             return;
         }
 
+        // 先推送用户消息到前端，确保对话记录中显示用户侧消息
+        emitToClient(sessionId, WebChunk.ofUserInput(input, source));
+
         onChatInput(sessionId, null, input, null, null, null, null);
     }
 

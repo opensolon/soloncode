@@ -208,6 +208,25 @@ public class WebChunk {
     }
 
     /**
+     * 创建「用户输入」消息块。
+     * <p>type 为 {@code user_input}，用于后端推送的自动化任务（如 Loop 定时任务）中，
+     * 将用户提示词显示到前端对话记录中，避免对话只显示 AI 回复而无用户侧消息的问题。</p>
+     *
+     * @param text 用户输入文本
+     * @param source 来源标识（如 "Loop"）
+     * @return 携带用户输入文本的消息块
+     */
+    public static WebChunk ofUserInput(String text, String source) {
+        WebChunk tmp = new WebChunk();
+        tmp.type = "user_input";
+        tmp.text = text;
+        tmp.toolName = source; // 复用 toolName 字段传递来源标识
+        tmp.createdAt = Instant.now().toEpochMilli();
+
+        return tmp;
+    }
+
+    /**
      * 创建「人机协同中断」消息块。
      * <p>type 为 {@code hitl}（Human-in-the-Loop），表示执行流程暂停，
      * 等待人工对指定工具调用进行审批或确认后才会继续执行。</p>
