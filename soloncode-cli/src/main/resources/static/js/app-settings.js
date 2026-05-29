@@ -715,8 +715,8 @@
         if (!name) { showToast('名称为必填项', 'error'); return null; }
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
         if (!baseUrl) { showToast('API 基地址为必填项', 'error'); return null; }
-        var bodyObj = { name: name, apiBaseUrl: baseUrl, enabled: true };
-        if (docUrl) bodyObj.docUrl = docUrl;
+        if (!docUrl) { showToast('文档地址为必填项', 'error'); return null; }
+        var bodyObj = { name: name, apiBaseUrl: baseUrl, docUrl: docUrl, enabled: true };
         var headers = parseKvLines(headersText);
         if (Object.keys(headers).length > 0) bodyObj.headers = headers;
         return bodyObj;

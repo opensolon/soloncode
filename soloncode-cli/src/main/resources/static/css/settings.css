@@ -14,7 +14,7 @@
 .settings-tab:hover { color: var(--text-primary); background: rgba(0,0,0,0.03); }
 .settings-tab.active { color: var(--accent); border-left-color: var(--accent); background: var(--bg-sidebar); font-weight: 600; }
 .settings-tabs-footer { margin-top: auto; padding: 12px 20px 4px; }
-.settings-product-name { font-size: 15px; font-weight: 600; color: var(--text-secondary); opacity: 0.7; letter-spacing: 0.5px; margin-bottom: 2px; }
+.settings-product-name { font-size: 13px; font-weight: 500; color: var(--text-secondary); opacity: 0.7; letter-spacing: 0.5px; margin-bottom: 2px; }
 .settings-version { font-size: 11px; color: var(--text-secondary); opacity: 0.7; }
 
 .settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 28px 28px; }
