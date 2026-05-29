@@ -290,9 +290,9 @@ public class WebController {
 
         for (ChatConfig config : engine.getProps().getModels()) {
             Map<String, String> item = new LinkedHashMap<>();
-            item.put("model", config.getNameOrModel());
+            item.put("model", config.getModel());
+            item.put("name", config.getNameOrModel());
             item.put("description", config.getDescriptionOrModel());
-            item.put("name", config.getName());
             item.put("provider", config.getProvider());
             item.put("apiUrl", config.getApiUrl());
             item.put("apiKey", config.getApiKey());

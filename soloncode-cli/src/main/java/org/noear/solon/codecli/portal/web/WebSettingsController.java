@@ -392,7 +392,7 @@ public class WebSettingsController {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", name);
             item.put("type", params.getType() != null ? params.getType() : "stdio");
-            item.put("enabled", true);
+            item.put("enabled", params.isEnabled());
             if ("stdio".equals(params.getType())) {
                 item.put("command", params.getCommand());
                 if (params.getArgs() != null) {
@@ -639,9 +639,7 @@ public class WebSettingsController {
             }
         }
 
-        // 更新 enabled 状态到 settings
-        // 注意：McpServerParameters 没有 enabled 字段，暂时只操作引擎
-        // TODO: 后续在 McpServerParameters 添加 enabled 字段后可持久化
+        params.setEnabled(enabled);
 
         saveSettings();
         LOG.info("[Settings] MCP server toggled: {} -> {}", name, enabled);
@@ -859,7 +857,7 @@ public class WebSettingsController {
             item.put("name", name);
             item.put("apiBaseUrl", source.getApiBaseUrl());
             item.put("docUrl", source.getDocUrl());
-            item.put("enabled", true);
+            item.put("enabled", source.isEnabled());
             if (source.getHeaders() != null) {
                 item.put("headers", source.getHeaders());
             }
@@ -1038,8 +1036,7 @@ public class WebSettingsController {
             }
         }
 
-        // 注意：ApiSource 没有 enabled 字段，暂时只操作引擎
-        // TODO: 后续在 ApiSource 添加 enabled 字段后可持久化
+        source.setEnabled(enabled);
 
         saveSettings();
         LOG.info("[Settings] OpenApi server toggled: {} -> {}", name, enabled);
