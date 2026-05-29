@@ -37,7 +37,7 @@ soloncode:
     - apiUrl: "https://api.deepseek.com/v1/chat/completions"
       apiKey: "******"
       model: "deepseek-v4-flash"
-      timeout: "300s"
+      timeout: "120s"
       contextLength: 1_000_000 # 模型的上下文长度
 #      defaultOptions:
 #        enable_thinking: false #不同模型可能不同
