@@ -18,6 +18,7 @@ package org.noear.solon.codecli.portal.web;
 import org.noear.snack4.ONode;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
@@ -1102,6 +1103,7 @@ public class WebController {
                     engine.getMainModel().getNameOrModel()
             );
             ChatModel chatModel = engine.getModelOrMain(selectedModel);
+            ReActAgent agent = engine.getAgentOrMain("git-summary");
 
             // 收集 diff 内容（最多 15 个文件）
             File workspaceDir = new File(engine.getProps().getWorkspace());
@@ -1138,22 +1140,14 @@ public class WebController {
             String statInfo = targetFiles.size() + " 个文件" + (targetFiles.size() < files.size() ? "（仅前 15 个）" : "");
 
             // 构造系统提示词 + 用户消息，直接调 LLM（纯文本，不走 ReAct Agent）
-            Prompt prompt = Prompt.of(
-                    ChatMessage.ofSystem("你是一个专业的 Git 提交信息生成助手。"
-                            + "你的任务是根据代码变更的 diff 内容，生成一条简洁、准确的提交摘要。\n"
-                            + "要求：\n"
-                            + "1. 使用中文\n"
-                            + "2. 控制在 100 字以内\n"
-                            + "3. 突出核心变更（新增、修改、删除、重构等）\n"
-                            + "4. 使用祈使句风格（如'添加xxx功能'、'修复xxx问题'）\n"
-                            + "5. 直接输出纯文本，不要使用 Markdown 格式、不要包含代码片段\n"
-                            + "6. 如果变更涉及多个方面，按重要性排序，用分号分隔"),
-                    ChatMessage.ofUser("请根据以下 Git diff 变更内容，生成提交信息摘要。\n\n"
-                            + "变更统计：" + statInfo
-                            + "\n\n--- Diff 内容 ---\n" + combinedDiff)
-            );
+            String userMessage = "请根据以下 Git diff 变更内容，生成提交信息摘要。\n\n"
+                    + "变更统计：" + statInfo
+                    + "\n\n--- Diff 内容 ---\n" + combinedDiff;
 
-            String summary = chatModel.prompt(prompt).call().getMessage().getContent();
+            String summary = agent.prompt(userMessage)
+                    .options(o->o.chatModel(chatModel))
+                    .call()
+                    .getContent();
 
             // 清理 Markdown 格式
             if (summary != null) {
@@ -1167,7 +1161,7 @@ public class WebController {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("summary", summary != null ? summary : "");
             return Result.succeed(data);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             LOG.error("[Web] gitSummary error: {}", e.getMessage());
             return Result.failure(500, "生成摘要失败: " + e.getMessage());
         }
