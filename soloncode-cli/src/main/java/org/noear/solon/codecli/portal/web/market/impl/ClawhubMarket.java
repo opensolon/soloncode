@@ -1,6 +1,9 @@
-package org.noear.solon.codecli.portal.web.market;
+package org.noear.solon.codecli.portal.web.market.impl;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.portal.web.market.Market;
+import org.noear.solon.codecli.portal.web.market.MarketDetail;
+import org.noear.solon.codecli.portal.web.market.MarketItem;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -29,18 +32,13 @@ public class ClawhubMarket implements Market {
     private static final String USER_AGENT = "SolonCode/1.0";
 
     @Override
-    public String url() {
-        return BASE_URL;
-    }
-
-    @Override
     public String name() {
-        return "ClawHub";
+        return "clawhub.ai";
     }
 
     @Override
     public String description() {
-        return "ClawHub 技能市场";
+        return "";
     }
 
     // ==================== 列表与搜索 ====================

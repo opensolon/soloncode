@@ -8,7 +8,7 @@
  *   GET  /web/settings/skills/markets                     — 获取可用市场列表
  *   GET  /web/settings/skills/proxy?action=trending       — 热门技能列表
  *   GET  /web/settings/skills/proxy?action=search&q=xxx   — 搜索技能
- *   POST /web/settings/skills/install  {slug, marketUrl}  — 安装技能
+ *   POST /web/settings/skills/install  {slug, marketName}  — 安装技能
  */
 
 (function () {
@@ -32,7 +32,7 @@
 
     var _installedSkillsCache = null;
     var _skillsSearchTimer = null;
-    var _currentMarketUrl = '';  // 当前选中的市场URL
+    var _currentMarketName = '';  // 当前选中的市场名称
 
     // ==================== 工具函数 ====================
 
@@ -64,19 +64,17 @@
 
             var html = '';
             markets.forEach(function (m) {
-                var label = escapeHtml(m.name || m.url);
-                var desc = m.description ? ' — ' + escapeHtml(m.description) : '';
-                html += '<option value="' + escapeAttr(m.url) + '">' + label + desc + '</option>';
+                var label = escapeHtml(m.name || '');
+                html += '<option value="' + escapeAttr(m.name || '') + '">' + label + '</option>';
             });
             $skillsMarketSelect.html(html);
 
             // 默认选中第一个
-            _currentMarketUrl = markets[0].url || '';
-            $skillsMarketSelect.val(_currentMarketUrl);
+            _currentMarketName = markets[0].name || '';
+            $skillsMarketSelect.val(_currentMarketName);
         }).fail(function () {
-            // 加载失败时使用默认空值
             $skillsMarketSelect.html('<option value="">ClawHub</option>');
-            _currentMarketUrl = '';
+            _currentMarketName = '';
         });
     }
 
@@ -118,7 +116,7 @@
         $skillsList.html('');
 
         var url;
-        var marketParam = _currentMarketUrl ? '&marketUrl=' + encodeURIComponent(_currentMarketUrl) : '';
+        var marketParam = _currentMarketName ? '&marketName=' + encodeURIComponent(_currentMarketName) : '';
         if (query) {
             url = SKILLS_API_BASE + '?action=search&q=' + encodeURIComponent(query) + '&limit=50' + marketParam;
         } else {
@@ -208,7 +206,7 @@
                 + '<div class="skill-item-actions">'
                 + (isInstalled
                     ? '<button class="skill-install-btn installed" disabled>已安装</button>'
-                    : '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-market="' + escapeAttr(_currentMarketUrl) + '">安装</button>')
+                    : '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-market="' + escapeAttr(_currentMarketName) + '">安装</button>')
                 + '</div></div>';
         });
         $skillsList.html(html);
@@ -218,7 +216,7 @@
 
     // 市场切换
     $skillsMarketSelect.on('change', function () {
-        _currentMarketUrl = $(this).val() || '';
+        _currentMarketName = $(this).val() || '';
         _installedSkillsCache = null;
         loadSkillsList(null);
     });
@@ -232,7 +230,7 @@
         $btn.addClass('installing').text('安装中...').prop('disabled', true);
 
         var postData = { slug: slug };
-        if (marketUrl) postData.marketUrl = marketUrl;
+        if (marketUrl) postData.marketName = marketUrl;
 
         $.ajax({
             url: '/web/settings/skills/install',

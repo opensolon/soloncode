@@ -20,8 +20,8 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
-import org.noear.solon.ai.skills.restapi.RestApiSkill;
-import org.noear.solon.ai.skills.toolgateway.ToolGatewaySkill;
+import org.noear.solon.ai.skills.openapi.OpenApiSkill;
+import org.noear.solon.ai.skills.toolgateway.McpGatewaySkill;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
@@ -1203,9 +1203,9 @@ public class WebSettingsController {
                     }
 
                     McpClientProvider client = builder.build();
-                    ToolGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
+                    McpGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
                     if (mcpGateway != null) {
-                        mcpGateway.addTool(name, client);
+                        mcpGateway.addMcpServer(name, client);
                     }
                     LOG.info("[Settings] Loaded persisted MCP server: {} ({})", name, type);
                 } catch (Exception e) {
@@ -1231,7 +1231,7 @@ public class WebSettingsController {
             if (servers == null || !servers.isArray()) {
                 return;
             }
-            RestApiSkill restApi = engine.getRestApiSkill();
+            OpenApiSkill restApi = engine.getOpenApiSkill();
             for (ONode node : servers.getArray()) {
                 boolean enabled = node.get("enabled").getBoolean(true);
                 if (!enabled) continue;
@@ -1285,7 +1285,7 @@ public class WebSettingsController {
      * @param action    "trending" 获取热门 | "search" 搜索
      * @param query     搜索关键词（action=search 时使用）
      * @param limit     返回数量限制
-     * @param marketUrl 市场URL（可选，默认使用 ClawHub）
+     * @param marketName 市场名字（可选，默认使用 ClawHub）
      */
     @Get
     @Mapping("/web/settings/skills/proxy")
@@ -1293,8 +1293,8 @@ public class WebSettingsController {
                               @Param(value = "q", defaultValue = "") String query,
                               @Param(value = "limit", defaultValue = "50") int limit,
                               @Param(value = "per_page", defaultValue = "50") int perPage,
-                              @Param(value = "marketUrl", defaultValue = "") String marketUrl) {
-        Market market = marketManager.getMarket(marketUrl);
+                              @Param(value = "marketName", defaultValue = "") String marketName) {
+        Market market = marketManager.getMarketByName(marketName);
         if ("search".equals(action) && query != null && !query.isEmpty()) {
             return market.search(query, limit);
         } else {
@@ -1310,13 +1310,13 @@ public class WebSettingsController {
     @Post
     @Mapping("/web/settings/skills/install")
     public Result skillsInstall(Context ctx, @Param("slug") String slug,
-                                @Param(value = "marketUrl", defaultValue = "") String marketUrl) {
+                                @Param(value = "marketName", defaultValue = "") String marketName) {
         if (Assert.isEmpty(slug)) {
             return Result.failure("slug is required");
         }
 
-        Market market = marketManager.getMarket(marketUrl);
-        java.nio.file.Path skillsDir = java.nio.file.Paths.get(engine.getProps().getWorkspace(), "skills");
+        Market market = marketManager.getMarketByName(marketName);
+        Path skillsDir = Paths.get(engine.getProps().getWorkspace(), "skills");
         Result<String> result = market.install(slug, skillsDir);
 
         // 安装成功后刷新技能池

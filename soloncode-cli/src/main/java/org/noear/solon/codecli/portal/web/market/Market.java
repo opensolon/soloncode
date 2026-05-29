@@ -14,16 +14,9 @@ import java.util.List;
  */
 public interface Market {
     /**
-     * 获取市场 URL（作为唯一标识）
-     */
-    String url();
-
-    /**
      * 获取市场名称
      */
-    default String name() {
-        return url();
-    }
+     String name() ;
 
     /**
      * 获取市场描述

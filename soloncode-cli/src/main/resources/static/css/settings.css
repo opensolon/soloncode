@@ -136,31 +136,35 @@
 .mcp-header-actions { display: flex; gap: 6px; align-items: center; }
 
 /* ===== Skills Tab ===== */
-.skills-search-bar { padding: 0 0 12px 0; display: flex; gap: 8px; align-items: center; }
-.skills-market-select { padding: 7px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; outline: none; cursor: pointer; flex-shrink: 0; min-width: 110px; }
-.skills-market-select:focus { border-color: var(--accent); }
-.skills-search-input-wrap { position: relative; display: flex; align-items: center; }
+.skills-search-bar { padding: 0 0 14px 0; display: flex; gap: 6px; align-items: stretch; }
+.skills-market-wrap { position: relative; display: flex; align-items: center; flex-shrink: 0; }
+.skills-market-icon { position: absolute; left: 9px; color: var(--text-secondary); pointer-events: none; z-index: 1; }
+.skills-market-select { padding: 7px 26px 7px 28px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 12px; font-weight: 500; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; transition: border-color 0.2s, box-shadow 0.2s; }
+.skills-market-select:hover { border-color: var(--accent); }
+.skills-market-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 59,130,246), 0.15); }
+.skills-search-input-wrap { position: relative; display: flex; align-items: center; flex: 1; }
 .skills-search-icon { position: absolute; left: 10px; color: var(--text-secondary); pointer-events: none; }
-.skills-search-input-wrap input { width: 100%; padding: 8px 32px 8px 32px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; outline: none; box-sizing: border-box; }
-.skills-search-input-wrap input:focus { border-color: var(--accent); }
-.skills-search-clear { position: absolute; right: 6px; background: none; border: none; color: var(--text-secondary); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 3px; }
-.skills-search-clear:hover { background: var(--bg-hover); }
+.skills-search-input-wrap input { width: 100%; padding: 7px 32px 7px 30px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; outline: none; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
+.skills-search-input-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 59,130,246), 0.15); }
+.skills-search-input-wrap input::placeholder { color: var(--text-secondary); opacity: 0.6; }
+.skills-search-clear { position: absolute; right: 6px; background: none; border: none; color: var(--text-secondary); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: color 0.15s; }
+.skills-search-clear:hover { color: var(--text-primary); background: var(--bg-hover); }
 .skills-status { text-align: center; padding: 16px; color: var(--text-secondary); font-size: 13px; }
 .skills-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .skills-error { color: #ef4444; }
 .skills-list { display: flex; flex-direction: column; gap: 6px; }
-.skill-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; transition: border-color 0.15s; }
-.skill-item:hover { border-color: var(--accent); }
-.skill-item-icon { width: 36px; height: 36px; border-radius: 6px; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
+.skill-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; transition: border-color 0.15s, box-shadow 0.15s; }
+.skill-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.skill-item-icon { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
 .skill-item-info { flex: 1; min-width: 0; }
 .skill-item-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .skill-item-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-.skill-item-meta { font-size: 10px; color: var(--text-secondary); margin-top: 2px; display: flex; gap: 8px; }
+.skill-item-meta { font-size: 10px; color: var(--text-secondary); margin-top: 3px; display: flex; gap: 10px; }
 .skill-item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
-.skill-install-btn { padding: 4px 12px; border-radius: 5px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); transition: all 0.15s; }
-.skill-install-btn:hover { background: var(--accent); color: #fff; }
+.skill-install-btn { padding: 5px 14px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); transition: all 0.2s; }
+.skill-install-btn:hover { background: var(--accent); color: #fff; transform: translateY(-1px); box-shadow: 0 2px 6px rgba(var(--accent-rgb, 59,130,246), 0.3); }
 .skill-install-btn.installed { border-color: #22c55e; color: #22c55e; cursor: default; background: transparent; }
-.skill-install-btn.installed:hover { background: transparent; color: #22c55e; }
+.skill-install-btn.installed:hover { background: transparent; color: #22c55e; transform: none; box-shadow: none; }
 .skill-install-btn.installing { opacity: 0.6; cursor: wait; }
 .skill-empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
 

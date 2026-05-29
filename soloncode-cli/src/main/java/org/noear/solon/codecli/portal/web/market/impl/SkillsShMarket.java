@@ -1,5 +1,8 @@
-package org.noear.solon.codecli.portal.web.market;
+package org.noear.solon.codecli.portal.web.market.impl;
 
+import org.noear.solon.codecli.portal.web.market.Market;
+import org.noear.solon.codecli.portal.web.market.MarketDetail;
+import org.noear.solon.codecli.portal.web.market.MarketItem;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpUtils;
@@ -40,18 +43,13 @@ public class SkillsShMarket implements Market {
     );
 
     @Override
-    public String url() {
-        return BASE_URL;
-    }
-
-    @Override
     public String name() {
         return "Skills.sh";
     }
 
     @Override
     public String description() {
-        return "The Open Agent Skills Ecosystem";
+        return "";
     }
 
     // ==================== 列表与搜索 ====================
