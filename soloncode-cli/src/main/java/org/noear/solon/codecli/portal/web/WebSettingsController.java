@@ -108,7 +108,7 @@ public class WebSettingsController {
         this.engine = engine;
         this.settings = settings;
         this.marketManager = marketManager;
-        this.settingsFile = Paths.get(AgentProperties.getUserDir(), ".soloncode", "settings.json");
+        this.settingsFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json");
     }
 
     // ==================== 配置持久化 ====================
@@ -174,7 +174,7 @@ public class WebSettingsController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
-        config.setUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/2.0; +https://solon.noear.org/)");
+        config.setUserAgent(engine.getProps().getUserAgent());
 
         String timeout = root.get("timeout").getString();
         if (Assert.isNotEmpty(timeout)) {
@@ -260,7 +260,7 @@ public class WebSettingsController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
-        config.setUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/2.0; +https://solon.noear.org/)");
+        config.setUserAgent(engine.getProps().getUserAgent());
 
         String provider = root.get("provider").getString();
         if (Assert.isNotEmpty(provider)) {

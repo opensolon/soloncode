@@ -74,7 +74,7 @@ public class WsController {
             config.setApiUrl(apiUrl);
             config.setApiKey(apiKey);
             config.setModel(mi.getObject());
-            config.setUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/2.0; +https://solon.noear.org/)");
+            config.setUserAgent(engine.getProps().getUserAgent());
             engine.getProps().removeModel(mi.getObject());
             engine.getProps().addModel(config);
             list.add(item);
@@ -110,7 +110,7 @@ public class WsController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
-        config.setUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/2.0; +https://solon.noear.org/)");
+        config.setUserAgent(engine.getProps().getUserAgent());
 
         // timeout
         String timeout = root.get("timeout").getString();
