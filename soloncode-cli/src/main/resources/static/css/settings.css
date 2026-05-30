@@ -20,6 +20,7 @@
 .settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 28px 28px; }
 .settings-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .settings-section-title { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+.settings-section-desc { font-size: 12px; font-weight: 400; color: var(--text-secondary); margin-top: 2px; letter-spacing: 0; }
 .settings-add-btn { background: none; border: 1px dashed var(--border-color); border-radius: 6px; padding: 4px 12px; font-size: 12px; color: var(--accent); cursor: pointer; transition: all 0.15s; }
 .settings-add-btn:hover { border-color: var(--accent); background: var(--accent-light); }
 

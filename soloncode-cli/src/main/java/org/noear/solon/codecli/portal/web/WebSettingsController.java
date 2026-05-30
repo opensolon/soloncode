@@ -1268,11 +1268,7 @@ public class WebSettingsController {
 
         // 安装成功后刷新技能池
         if (result.getCode() == 200) {
-            try {
-                engine.getPoolManager().refresh(mountAlias);
-            } catch (Exception e) {
-                LOG.warn("[Settings] Skill pool refresh error after install: {}", e.getMessage());
-            }
+            engine.getPoolManager().refresh(mountAlias);
         }
 
         return result;
@@ -1286,14 +1282,13 @@ public class WebSettingsController {
     @Get
     @Mapping("/web/settings/mounts")
     public Result mountsList(Context ctx) {
-        Map<String, String> pools = engine.getProps().getMountPools();
-        Set<String> systemPools = new HashSet<>(Arrays.asList("@global", "@local", "@skills"));
         List<Map<String, Object>> list = new ArrayList<>();
-        for (Map.Entry<String, String> entry : pools.entrySet()) {
+
+        for (PoolDir poolDir : engine.getPoolManager().getPools()) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("alias", entry.getKey());
-            item.put("path", entry.getValue());
-            item.put("system", systemPools.contains(entry.getKey()));
+            item.put("alias", poolDir.getAlias());
+            item.put("path", poolDir.getPath());
+            item.put("system", poolDir.isPrimary());
             list.add(item);
         }
         return Result.succeed(list);
@@ -1312,7 +1307,7 @@ public class WebSettingsController {
         engine.getProps().getMountPools().put(alias, path);
         settings.getMountPools().put(alias, path);
         saveSettings();
-        refreshPoolManager();
+        engine.getPoolManager().register(alias, path);
         return Result.succeed("添加成功");
     }
 
@@ -1330,7 +1325,7 @@ public class WebSettingsController {
         engine.getProps().getMountPools().remove(alias);
         settings.getMountPools().remove(alias);
         saveSettings();
-        refreshPoolManager();
+        engine.getPoolManager().remove(alias);
         return Result.succeed("移除成功");
     }
 
@@ -1405,7 +1400,7 @@ public class WebSettingsController {
 
         try {
             deleteRecursively(skillDir.toPath());
-            refreshPoolManager();
+            engine.getPoolManager().refresh(alias);
             return Result.succeed("删除成功");
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());
@@ -1423,16 +1418,5 @@ public class WebSettingsController {
             }
         }
         Files.deleteIfExists(path);
-    }
-
-    /**
-     * 刷新技能池索引
-     */
-    private void refreshPoolManager() {
-        try {
-            engine.getPoolManager().refresh();
-        } catch (Exception e) {
-            LOG.warn("[Settings] Pool refresh error: {}", e.getMessage());
-        }
     }
 }
