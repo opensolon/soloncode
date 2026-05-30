@@ -23,7 +23,7 @@ $('.welcome-input-box').on('click', function(e) {
     if (!$(e.target).closest('button').length) welcomeInput.focus();
 });
 $('.input-box').on('click', function(e) {
-    if (!$(e.target).closest('button').length) chatInput.focus();
+    if (!$(e.target).closest('button').length && !$(e.target).closest('.history-panel').length) chatInput.focus();
 });
 
 /* ===== New Chat ===== */
