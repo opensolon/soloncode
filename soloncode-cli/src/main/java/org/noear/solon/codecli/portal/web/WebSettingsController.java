@@ -130,6 +130,26 @@ public class WebSettingsController {
     // ==================== 设置：LLM 模型管理 ====================
 
     /**
+     * 获取所有模型配置列表（含启用状态，专供设置面板使用）
+     */
+    @Get
+    @Mapping("/web/settings/llm/models")
+    public Result<List<Map>> llmModelsList() {
+        List<Map> list = new ArrayList<>();
+        for (ChatConfig config : settings.getModels()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", config.getNameOrModel());
+            item.put("model", config.getModel());
+            item.put("provider", config.getProvider());
+            item.put("apiUrl", config.getApiUrl());
+            item.put("apiKey", config.getApiKey());
+            item.put("enabled", config.isEnabled());
+            list.add(item);
+        }
+        return Result.succeed(list);
+    }
+
+    /**
      * 获取单个模型配置详情（用于编辑/复制时填充表单）
      */
     @Get
@@ -332,18 +352,23 @@ public class WebSettingsController {
     }
 
     /**
-     * 将指定模型设为默认主模型
+     * 切换模型启用/禁用状态
      */
     @Post
-    @Mapping("/web/settings/llm/models/setDefault")
-    public Result llmModelsSetDefault(@Param("name") String name) throws Exception {
-        if (Assert.isEmpty(name)) {
-            return Result.failure("name is required");
+    @Mapping("/web/settings/llm/models/toggle")
+    public Result llmModelsToggle(@Param("name") String name, @Param("enabled") Boolean enabled) throws Exception {
+        if (Assert.isEmpty(name) || enabled == null) {
+            return Result.failure("name and enabled are required");
         }
-        engine.switchMainModel(name);
-        saveSettings();
-        LOG.info("[Settings] Default model set to: {}", name);
-        return Result.succeed();
+        for (ChatConfig config : settings.getModels()) {
+            if (name.equals(config.getNameOrModel())) {
+                config.setEnabled(enabled);
+                saveSettings();
+                LOG.info("[Settings] Model {} {}", name, enabled ? "enabled" : "disabled");
+                return Result.succeed();
+            }
+        }
+        return Result.failure("Model not found: " + name);
     }
 
     /**
@@ -1302,7 +1327,7 @@ public class WebSettingsController {
     public Result mountsAdd(Context ctx, @Param("alias") String alias, @Param("path") String path) {
         if (Assert.isEmpty(alias) || Assert.isEmpty(path)) return Result.failure("参数不完整");
         if (!alias.startsWith("@")) return Result.failure("别名必须以 @ 开头");
-        if (engine.getProps().getMountPools().containsKey(alias)) return Result.failure("别名已存在");
+        if (engine.getPoolManager().hasPool(alias)) return Result.failure("别名已存在");
 
         engine.getProps().getMountPools().put(alias, path);
         settings.getMountPools().put(alias, path);
@@ -1319,7 +1344,7 @@ public class WebSettingsController {
     public Result mountsRemove(Context ctx, @Param("alias") String alias) {
         if (Arrays.asList("@global", "@local", "@skills").contains(alias))
             return Result.failure("系统挂载池不可移除");
-        if (!engine.getProps().getMountPools().containsKey(alias))
+        if (!engine.getPoolManager().hasPool(alias))
             return Result.failure("挂载池不存在");
 
         engine.getProps().getMountPools().remove(alias);
@@ -1335,45 +1360,21 @@ public class WebSettingsController {
     @Get
     @Mapping("/web/settings/mounts/skills")
     public Result mountsSkills(Context ctx, @Param("alias") String alias) {
-        String poolPath = engine.getProps().getMountPools().get(alias);
-        if (poolPath == null) return Result.failure("挂载池不存在: " + alias);
+        PoolDir poolDir = engine.getPoolManager().getPool(alias);
+        if (poolDir == null) return Result.failure("挂载池不存在: " + alias);
 
-        // 展开 ~/ 为用户目录
-        if (poolPath.startsWith("~/")) {
-            poolPath = Paths.get(AgentProperties.getUserHome(), poolPath.substring(2)).toString();
-        }
 
         // 构建 SkillDir 快速查找索引
-        Map<String, SkillDir> skillDirMap = engine.getPoolManager().getSkillMap();
+        List<SkillDir> skillDirList = engine.getPoolManager().getSkillsByPool(alias);
         List<Map<String, String>> skills = new ArrayList<>();
-        File poolDir = new File(poolPath);
 
-        if (poolDir.exists() && poolDir.isDirectory()) {
-            File[] subDirs = poolDir.listFiles(File::isDirectory);
-            if (subDirs != null) {
-                for (File subDir : subDirs) {
-                    if (new File(subDir, "SKILL.md").exists()) {
-                        Map<String, String> skillItem = new LinkedHashMap<>();
-                        skillItem.put("name", subDir.getName());
-                        skillItem.put("path", subDir.getAbsolutePath());
-
-                        // 优先从 PoolManager 获取描述
-                        SkillDir matched = skillDirMap.get(subDir.getName());
-                        String desc = "";
-                        if (matched != null && matched.getDescription() != null) {
-                            desc = matched.getDescription();
-                        }
-                        if (desc != null) {
-                            int idx = desc.indexOf('\n');
-                            if (idx > 0) desc = desc.substring(0, idx);
-                            if (desc.length() > 60) desc = desc.substring(0, 60) + "...";
-                        }
-                        skillItem.put("description", desc != null ? desc : "");
-                        skills.add(skillItem);
-                    }
-                }
-            }
+        for (SkillDir subDir : skillDirList) {
+            Map<String, String> skillItem = new LinkedHashMap<>();
+            skillItem.put("name", subDir.getName());
+            skillItem.put("description", subDir.getDescription());
+            skills.add(skillItem);
         }
+
         return Result.succeed(skills);
     }
 
@@ -1383,23 +1384,20 @@ public class WebSettingsController {
     @Post
     @Mapping("/web/settings/mounts/skills/remove")
     public Result mountsSkillsRemove(Context ctx, @Param("alias") String alias, @Param("skillName") String skillName) {
-        String poolPath = engine.getProps().getMountPools().get(alias);
-        if (poolPath == null) return Result.failure("挂载池不存在: " + alias);
+        PoolDir poolDir = engine.getPoolManager().getPool(alias);
+        if (poolDir == null) return Result.failure("挂载池不存在: " + alias);
 
-        if (poolPath.startsWith("~/")) {
-            poolPath = Paths.get(AgentProperties.getUserHome(), poolPath.substring(2)).toString();
-        }
 
-        File skillDir = new File(poolPath, skillName);
-        if (!skillDir.exists()) return Result.failure("技能包不存在: " + skillName);
+        Path skillDir = poolDir.getRealPath().resolve(skillName);
+        if (!Files.exists(skillDir)) return Result.failure("技能包不存在: " + skillName);
 
         // 安全校验：防止路径穿越
-        if (!skillDir.toPath().normalize().startsWith(new File(poolPath).toPath().normalize())) {
+        if (!skillDir.normalize().startsWith(poolDir.getRealPath())) {
             return Result.failure("非法路径");
         }
 
         try {
-            deleteRecursively(skillDir.toPath());
+            deleteRecursively(skillDir);
             engine.getPoolManager().refresh(alias);
             return Result.succeed("删除成功");
         } catch (Exception e) {

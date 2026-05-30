@@ -50,7 +50,7 @@
 
 .llm-model-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; transition: all 0.15s; gap: 10px; }
 .llm-model-item:hover { border-color: var(--accent); }
-.llm-model-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--accent-light); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+.llm-model-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
 .llm-model-info { flex: 1; min-width: 0; }
 .llm-model-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .llm-model-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -58,7 +58,8 @@
 .llm-action-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; }
 .llm-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .llm-action-btn.delete:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
-.llm-active-badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; background: var(--accent-light); color: var(--accent); font-weight: 500; }
+.llm-model-item.disabled { opacity: 0.5; }
+.llm-model-item.disabled .llm-model-icon { opacity: 0.5; }
 
 /* LLM header 区域按钮组 */
 .llm-header-actions { display: flex; gap: 6px; align-items: center; }
@@ -72,10 +73,8 @@
 /* LLM 操作按钮悬停色 */
 .llm-action-btn.edit:hover { background: rgba(59,130,246,0.08); color: #3b82f6; }
 .llm-action-btn.copy:hover { background: rgba(16,185,129,0.08); color: #10b981; }
-.llm-action-btn.set-default:hover { background: rgba(234,179,8,0.08); color: #eab308; }
 
-/* LLM 活跃模型项高亮 */
-.llm-model-item.active { border-color: var(--accent); background: var(--accent-light); }
+/* LLM 禁用模型项低透明度 */
 
 /* LLM 连接测试结果 */
 .llm-check-result { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.5; }
@@ -103,7 +102,7 @@
 
 .mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; }
 .mcp-server-item:hover { border-color: var(--accent); }
-.mcp-server-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--accent-light); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--accent); }
+.mcp-server-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 .mcp-server-info { flex: 1; min-width: 0; }
 .mcp-server-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
 .mcp-server-detail { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

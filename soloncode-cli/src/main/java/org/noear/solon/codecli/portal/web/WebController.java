@@ -289,14 +289,13 @@ public class WebController {
         List<Map> list = new ArrayList<>();
 
         for (ChatConfig config : engine.getProps().getModels()) {
-            Map<String, String> item = new LinkedHashMap<>();
-            item.put("model", config.getModel());
-            item.put("name", config.getNameOrModel());
-            item.put("description", config.getDescriptionOrModel());
-            item.put("provider", config.getProvider());
-            item.put("apiUrl", config.getApiUrl());
-            item.put("apiKey", config.getApiKey());
-            list.add(item);
+            if (config.isEnabled()) {
+                Map<String, String> item = new LinkedHashMap<>();
+                item.put("model", config.getModel());
+                item.put("name", config.getNameOrModel());
+                item.put("description", config.getDescriptionOrModel());
+                list.add(item);
+            }
         }
         data.put("list", list);
 

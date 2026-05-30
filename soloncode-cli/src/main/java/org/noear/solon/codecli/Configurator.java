@@ -11,6 +11,7 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
+import org.noear.solon.ai.skills.cli.PoolDir;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
@@ -77,8 +78,8 @@ public class Configurator {
 
     @Bean
     public HarnessEngine agentRuntime(AgentProperties props) throws Exception {
-        props.getMountPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
-        props.getMountPools().put("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()).toString());
+        //props.getMountPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
+        //props.getMountPools().put("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()).toString());
 
         props.getAgentPools().add(Paths.get(props.getUserHome(), props.getHarnessAgents()).toString()); //global
         props.getAgentPools().add(Paths.get(props.getWorkspace(), props.getHarnessAgents()).toString()); //local
@@ -97,6 +98,9 @@ public class Configurator {
                 .memorySolution(new MemoryFactory(agentProps))
                 .build();
 
+        engine.getPoolManager().register(new PoolDir("@global", true, "~/"+props.getHarnessSkills(), Paths.get(props.getUserHome(), props.getHarnessSkills())));
+        engine.getPoolManager().register(new PoolDir("@local", true, "./"+props.getHarnessSkills(), Paths.get(props.getWorkspace(), props.getHarnessSkills())));
+
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
         engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), props.getHarnessCommands()));
 
@@ -109,6 +113,8 @@ public class Configurator {
         // loop scheduler
         this.loopScheduler = new LoopScheduler();
         engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
+
+
 
 
         return engine;
