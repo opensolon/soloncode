@@ -37,7 +37,7 @@ public class SkillsShMarket implements Market {
 
     @Override
     public String name() {
-        return "Skills.sh";
+        return "skills.sh";
     }
 
     @Override

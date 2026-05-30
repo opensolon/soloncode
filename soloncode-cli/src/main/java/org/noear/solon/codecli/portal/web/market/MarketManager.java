@@ -19,20 +19,20 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MarketManager {
     private static final Logger LOG = LoggerFactory.getLogger(MarketManager.class);
 
-    private final Map<String, Market> markets = new ConcurrentHashMap<>();
+    private final Map<String, Market> markets = new LinkedHashMap<>();
     private Market defaultMarket;
 
     public MarketManager() {
+        Market skillhub = new SkillhubMarket();
+        register(skillhub);
+
         Market clawhub = new ClawhubMarket();
         register(clawhub);
 
         Market skillsSh = new SkillsShMarket();
         register(skillsSh);
 
-        Market skillhub = new SkillhubMarket();
-        register(skillhub);
-
-        this.defaultMarket = clawhub;
+        this.defaultMarket = skillhub;
     }
 
     /**
