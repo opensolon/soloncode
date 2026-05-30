@@ -131,6 +131,14 @@
         })
             .done(function (resp) {
                 // 后端返回 Result 包装：{code:200, data:[...], description:""}
+                // code !== 200 时为业务错误，展示后端返回的具体提示
+                if (resp && resp.code !== undefined && resp.code !== 200) {
+                    $skillsLoading.hide();
+                    var errMsg = (resp.description || '加载失败，请稍后重试');
+                    $skillsError.text(errMsg).show();
+                    return;
+                }
+
                 var payload = resp;
                 if (resp && resp.code !== undefined && resp.data !== undefined) {
                     payload = resp.data;
@@ -240,7 +248,9 @@
             dataType: 'json'
         })
             .done(function (resp) {
-                if (resp && resp.code === 200) {
+                // 严谨判断：code 必须为 200 且 data 非空才视为成功
+                var isSuccess = resp && resp.code === 200 && resp.data;
+                if (isSuccess) {
                     var skillName = (resp.data || slug) + '';
                     $btn.removeClass('installing').addClass('installed').text('已安装').prop('disabled', true);
                     if (!_installedSkillsCache) _installedSkillsCache = {};
