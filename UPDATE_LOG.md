@@ -7,6 +7,7 @@
 * 添加 soloncode web 设置/技能市场 功能（查找、安装）
 * 添加 soloncode web 设置/MCP 服务器 配置功能
 * 添加 soloncode web 设置/OpenApi 服务器 配置功能
+* 细节优化
 
 ### v2026.5.26
 
