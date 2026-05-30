@@ -754,7 +754,7 @@
         // Enter 键提交
         if (gitCommitMsg) {
             gitCommitMsg.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                     e.preventDefault();
                     gitCommitBtn.click();
                 }
