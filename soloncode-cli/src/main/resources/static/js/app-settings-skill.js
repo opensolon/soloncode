@@ -21,7 +21,6 @@
     // ==================== DOM 引用 ====================
 
     var $skillsMarketSelect = $('#skillsMarketSelect');
-    var $skillsMountSelect = $('#skillsMountSelect');
     var $skillsSearchInput = $('#skillsSearchInput');
     var $skillsSearchClear = $('#skillsSearchClear');
     var $skillsList = $('#skillsList');
@@ -80,40 +79,6 @@
         });
     }
 
-    // ==================== 挂载池选择器初始化 ====================
-
-    /**
-     * 从后端加载挂载池列表并填充下拉框，默认选中 @skills
-     */
-    function loadMountOptions() {
-        $.ajax({
-            url: '/web/settings/mounts',
-            method: 'GET',
-            timeout: 5000,
-            dataType: 'json'
-        }).done(function (resp) {
-            var pools = (resp && resp.code === 200 && resp.data) ? resp.data : [];
-            var html = '';
-            var defaultAlias = '';
-            pools.forEach(function (p) {
-                var alias = p.alias || '';
-                var label = escapeHtml(alias);
-                html += '<option value="' + escapeAttr(alias) + '">' + label + '</option>';
-                // 优先选中 @skills
-                if (alias === '@skills') defaultAlias = alias;
-            });
-            $skillsMountSelect.html(html);
-            if (defaultAlias) {
-                _currentMountAlias = defaultAlias;
-            } else if (pools.length > 0) {
-                _currentMountAlias = pools[0].alias || '';
-            }
-            $skillsMountSelect.val(_currentMountAlias);
-        }).fail(function () {
-            $skillsMountSelect.html('<option value="@skills">@skills</option>');
-            _currentMountAlias = '@skills';
-        });
-    }
 
     // ==================== 已安装技能 ====================
 
@@ -251,7 +216,7 @@
                 + '<div class="skill-item-actions">'
                 + (isInstalled
                     ? '<button class="skill-install-btn installed" disabled>已安装</button>'
-                    : '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-market="' + escapeAttr(_currentMarketName) + '">安装</button>')
+                    : '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '">安装</button>')
                 + '</div></div>';
         });
         $skillsList.html(html);
@@ -266,70 +231,130 @@
         loadSkillsList(null);
     });
 
-    // 挂载池切换
-    $skillsMountSelect.on('change', function () {
-        _currentMountAlias = $(this).val() || '@skills';
-    });
-
-    // 安装按钮（事件委托）
+    // 安装按钮（事件委托）— 弹出挂载池选择对话框
     $skillsList.on('click', '.skill-install-btn:not(.installed)', function () {
         var $btn = $(this);
         var slug = $btn.attr('data-slug');
+        var displayName = $btn.attr('data-display') || slug;
         var marketUrl = $btn.attr('data-market') || '';
 
-        $btn.addClass('installing').text('安装中...').prop('disabled', true);
+        // 构建挂载池选择对话框
+        var $dialog = $(
+            '<div class="settings-overlay" id="skillInstallOverlay">'
+            + '<div class="skill-install-dialog">'
+            + '  <div class="skill-install-dialog-title">安装技能</div>'
+            + '  <div class="skill-install-dialog-body">'
+            + '    <div class="skill-install-dialog-name">' + escapeHtml(displayName) + '</div>'
+            + '    <div class="skill-install-dialog-label">安装到挂载池：</div>'
+            + '    <select id="skillInstallMountSelect" class="skills-market-select" style="width:100%;padding:8px 28px 8px 12px;"></select>'
+            + '  </div>'
+            + '  <div class="skill-install-dialog-actions">'
+            + '    <button class="skill-install-dialog-cancel">取消</button>'
+            + '    <button class="skill-install-dialog-confirm">确认安装</button>'
+            + '  </div>'
+            + '</div>'
+            + '</div>'
+        );
+        $('body').append($dialog);
 
-        var postData = { slug: slug };
-        if (marketUrl) postData.marketName = marketUrl;
-        if (_currentMountAlias) postData.mountAlias = _currentMountAlias;
+        // 加载挂载池列表到选择器
+        var $mountSelect = $('#skillInstallMountSelect');
+        var defaultAlias = '@skills';
+
+        function populateMountSelect(pools) {
+            var html = '';
+            pools.forEach(function (p) {
+                var alias = p.alias || '';
+                html += '<option value="' + escapeAttr(alias) + '">' + escapeHtml(alias) + '</option>';
+            });
+            $mountSelect.html(html);
+            if ($mountSelect.find('option[value="' + defaultAlias + '"]').length) {
+                $mountSelect.val(defaultAlias);
+            }
+        }
 
         $.ajax({
-            url: '/web/settings/skills/install',
-            method: 'POST',
-            data: postData,
-            timeout: 60000,
+            url: '/web/settings/mounts',
+            method: 'GET',
+            timeout: 5000,
             dataType: 'json'
-        })
-            .done(function (resp) {
-                // 严谨判断：code 必须为 200 且 data 非空才视为成功
-                var isSuccess = resp && resp.code === 200 && resp.data;
-                if (isSuccess) {
-                    var skillName = (resp.data || slug) + '';
-                    $btn.removeClass('installing').addClass('installed').text('已安装').prop('disabled', true);
-                    if (!_installedSkillsCache) _installedSkillsCache = {};
-                    _installedSkillsCache[slug] = true;
-                    if (typeof loadCommands === 'function') loadCommands();
-                    if (typeof layer !== 'undefined' && layer.msg) {
-                        layer.msg('技能「' + escapeHtml(skillName) + '」安装成功！', {icon: 1, time: 2500, offset: '120px'});
+        }).done(function (resp) {
+            var pools = (resp && resp.code === 200 && resp.data) ? resp.data : [];
+            if (pools.length) {
+                populateMountSelect(pools);
+            } else {
+                $mountSelect.html('<option value="' + defaultAlias + '">' + defaultAlias + '</option>');
+            }
+        }).fail(function () {
+            $mountSelect.html('<option value="' + defaultAlias + '">' + defaultAlias + '</option>');
+        });
+
+        // 确认安装
+        $dialog.find('.skill-install-dialog-confirm').on('click', function () {
+            var mountAlias = $mountSelect.val() || defaultAlias;
+            $dialog.remove();
+
+            // 开始安装
+            $btn.addClass('installing').text('安装中...').prop('disabled', true);
+
+            var postData = { slug: slug, mountAlias: mountAlias };
+            if (marketUrl) postData.marketName = marketUrl;
+
+            $.ajax({
+                url: '/web/settings/skills/install',
+                method: 'POST',
+                data: postData,
+                timeout: 60000,
+                dataType: 'json'
+            })
+                .done(function (resp) {
+                    var isSuccess = resp && resp.code === 200 && resp.data;
+                    if (isSuccess) {
+                        var skillName = (resp.data || slug) + '';
+                        $btn.removeClass('installing').addClass('installed').text('已安装').prop('disabled', true);
+                        if (!_installedSkillsCache) _installedSkillsCache = {};
+                        _installedSkillsCache[slug] = true;
+                        if (typeof loadCommands === 'function') loadCommands();
+                        if (typeof layer !== 'undefined' && layer.msg) {
+                            layer.msg('技能「' + escapeHtml(skillName) + '」安装成功！', {icon: 1, time: 2500, offset: '120px'});
+                        } else {
+                            alert('技能「' + skillName + '」安装成功！');
+                        }
                     } else {
-                        alert('技能「' + skillName + '」安装成功！');
+                        var msg = (resp && resp.description) ? resp.description : '安装失败，请稍后重试';
+                        $btn.removeClass('installing').text('安装').prop('disabled', false);
+                        if (typeof layer !== 'undefined' && layer.msg) {
+                            layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
+                        } else {
+                            alert(msg);
+                        }
                     }
-                } else {
-                    var msg = (resp && resp.description) ? resp.description : '安装失败，请稍后重试';
+                })
+                .fail(function (jqXHR) {
                     $btn.removeClass('installing').text('安装').prop('disabled', false);
+                    var msg = '安装失败，请稍后重试';
+                    try {
+                        var err = JSON.parse(jqXHR.responseText);
+                        if (err && err.description) msg = err.description;
+                        else if (err && err.data) msg = err.data;
+                    } catch (e) {
+                        if (jqXHR.status) msg = '安装失败 (HTTP ' + jqXHR.status + ')';
+                    }
                     if (typeof layer !== 'undefined' && layer.msg) {
                         layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
                     } else {
                         alert(msg);
                     }
-                }
-            })
-            .fail(function (jqXHR) {
-                $btn.removeClass('installing').text('安装').prop('disabled', false);
-                var msg = '安装失败，请稍后重试';
-                try {
-                    var err = JSON.parse(jqXHR.responseText);
-                    if (err && err.description) msg = err.description;
-                    else if (err && err.data) msg = err.data;
-                } catch (e) {
-                    if (jqXHR.status) msg = '安装失败 (HTTP ' + jqXHR.status + ')';
-                }
-                if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
-                } else {
-                    alert(msg);
-                }
-            });
+                });
+        });
+
+        // 取消 或 点击遮罩关闭
+        $dialog.find('.skill-install-dialog-cancel').on('click', function () {
+            $dialog.remove();
+        });
+        $dialog.on('click', function (e) {
+            if (e.target === this) $dialog.remove();
+        });
     });
 
     // 搜索输入（按回车键搜索）
@@ -359,7 +384,6 @@
         resetAndLoad: function () {
             _installedSkillsCache = null;
             loadMarketOptions();
-            loadMountOptions();
             loadSkillsList(null);
         }
     };

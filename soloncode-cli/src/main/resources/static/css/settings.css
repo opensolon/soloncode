@@ -194,3 +194,71 @@
 .mounts-system-badge { font-size: 10px; background: var(--bg-accent-subtle, rgba(59,130,246,0.1)); color: var(--accent); padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
 .mounts-skills-count { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; padding: 0 4px; }
 .form-hint { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+/* ===== 技能安装挂载池选择对话框 ===== */
+.skill-install-dialog {
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    width: 360px;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.2);
+    animation: settings-slide-up 0.2s ease-out;
+}
+.skill-install-dialog-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+}
+.skill-install-dialog-body {
+    margin-bottom: 20px;
+}
+.skill-install-dialog-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    background: var(--bg-hover);
+    border-radius: 6px;
+    display: inline-block;
+}
+.skill-install-dialog-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.skill-install-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.skill-install-dialog-cancel,
+.skill-install-dialog-confirm {
+    padding: 7px 18px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.skill-install-dialog-cancel {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+.skill-install-dialog-cancel:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.skill-install-dialog-confirm {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #fff;
+}
+.skill-install-dialog-confirm:hover {
+    opacity: 0.85;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(59,130,246,0.3);
+}

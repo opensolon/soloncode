@@ -500,6 +500,7 @@ public class WebController {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", skill.getName());
             item.put("description", desc);
+            item.put("poolAlias", skill.getPoolAlias());
             item.put("type", "skill");
             data.add(item);
         }
