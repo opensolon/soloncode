@@ -29,8 +29,12 @@ soloncode:
 
   userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
 
-    #  skillPools: # 技能池（可以多个）
-#    "@media": "/path/to/media-skills"
+  skillPools: # 技能池（可以多个）
+    "@skills": "./skills/"
+    "@skillhub": "~/.skillhub/skills/"
+    "@agents_skills": "~/.agents/skills/"
+    "@opencode_skills": "~/.opencode/skills/"
+    "@claude_skills": "~/.claude/skills/"
 
   modelRetries: 5
   models: # llm 配置（参考 solon ai chatmodel 配置）

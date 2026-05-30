@@ -79,18 +79,7 @@ public class Configurator {
     public HarnessEngine agentRuntime(AgentProperties props) throws Exception {
         props.getSkillPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
         props.getSkillPools().put("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()).toString());
-
-
-        // https://skillhub.cn/
-        props.getSkillPools().put("@skills", Paths.get(props.getWorkspace(), "skills").toString());
-        props.getSkillPools().put("@skillhub", Paths.get(props.getUserHome(), ".skillhub/skills/").toString());
-
-        // https://skills.sh/
-        props.getSkillPools().put("@agents_skills", Paths.get(props.getUserHome(), ".agents/skills/").toString());
-
-        props.getSkillPools().put("@opencode_skills", Paths.get(props.getWorkspace(), props.OPENCODE_SKILLS).toString());
-        props.getSkillPools().put("@claude_skills", Paths.get(props.getWorkspace(), props.CLAUDE_SKILLS).toString());
-
+        
         props.getAgentPools().add(Paths.get(props.getUserHome(), props.getHarnessAgents()).toString()); //global
         props.getAgentPools().add(Paths.get(props.getWorkspace(), props.getHarnessAgents()).toString()); //local
 

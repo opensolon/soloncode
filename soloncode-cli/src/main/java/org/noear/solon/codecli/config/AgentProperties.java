@@ -40,9 +40,6 @@ public class AgentProperties extends HarnessProperties {
     @Deprecated
     private ChatConfig chatModel;
 
-    public final static String OPENCODE_SKILLS = ".opencode/skills/";
-    public final static String CLAUDE_SKILLS = ".claude/skills/";
-
     public final static String X_SESSION_ID = "X-Session-Id";
     public final static String X_SESSION_CWD = "X-Session-Cwd";
 
