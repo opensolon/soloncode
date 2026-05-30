@@ -203,7 +203,9 @@
             var iconText = displayName ? displayName.substring(0, 2).toUpperCase() : 'SK';
             var shortDesc = desc && desc.length > 60 ? desc.substring(0, 60) + '...' : desc;
 
-            html += '<div class="skill-item">'
+            var skillUrl = skill.url || '';
+
+            html += '<div class="skill-item" data-url="' + escapeAttr(skillUrl) + '">'
                 + '<div class="skill-item-icon">' + escapeHtml(iconText) + '</div>'
                 + '<div class="skill-item-info">'
                 + '<div class="skill-item-name" title="' + escapeAttr(name) + '">' + escapeHtml(displayName) + '</div>'
@@ -212,6 +214,7 @@
                 + (installs > 0 ? '<span>' + (installs >= 1000 ? (installs / 1000).toFixed(1) + 'k' : installs) + ' 安装</span>' : '')
                 + (stars > 0 ? '<span>⭐ ' + (stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : stars) + '</span>' : '')
                 + (owner ? '<span>' + escapeHtml(owner) + '</span>' : '')
+                + (skillUrl ? '<span class="skill-item-detail-link" title="查看详情">↗</span>' : '')
                 + '</div></div>'
                 + '<div class="skill-item-actions">'
                 + (isInstalled
@@ -232,7 +235,8 @@
     });
 
     // 安装按钮（事件委托）— 弹出挂载池选择对话框
-    $skillsList.on('click', '.skill-install-btn:not(.installed)', function () {
+    $skillsList.on('click', '.skill-install-btn:not(.installed)', function (e) {
+        e.stopPropagation();
         var $btn = $(this);
         var slug = $btn.attr('data-slug');
         var displayName = $btn.attr('data-display') || slug;
@@ -355,6 +359,14 @@
         $dialog.on('click', function (e) {
             if (e.target === this) $dialog.remove();
         });
+    });
+
+    // 点击技能行打开详情页（新窗口）
+    $skillsList.on('click', '.skill-item', function () {
+        var url = $(this).attr('data-url');
+        if (url) {
+            window.open(url, '_blank');
+        }
     });
 
     // 搜索输入（按回车键搜索）

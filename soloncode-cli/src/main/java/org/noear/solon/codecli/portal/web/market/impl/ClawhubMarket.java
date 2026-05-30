@@ -218,13 +218,18 @@ public class ClawhubMarket implements Market {
     private List<MarketItem> parseNodeArray(ONode arrayNode) {
         List<MarketItem> result = new ArrayList<>();
         for (ONode node : arrayNode.getArray()) {
+            String slug = getStringValue(node, "slug");
+            String apiUrl = getStringValue(node, "url");
+            String detailUrl = (apiUrl != null) ? apiUrl : BASE_URL + "/skills/" + slug;
+
             MarketItem item = new MarketItem()
-                    .slug(getStringValue(node, "slug"))
-                    .name(getStringValue(node, "slug"))
+                    .slug(slug)
+                    .name(slug)
                     .displayName(getStringValue(node, "displayName"))
                     .summary(getStringValue(node, "summary"))
                     .description(getStringValue(node, "description"))
-                    .ownerHandle(getStringValue(node, "ownerHandle"));
+                    .ownerHandle(getStringValue(node, "ownerHandle"))
+                    .url(detailUrl);
 
             ONode statsNode = node.get("stats");
             if (statsNode != null && !statsNode.isNull()) {

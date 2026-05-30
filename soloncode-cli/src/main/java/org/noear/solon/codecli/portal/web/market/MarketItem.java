@@ -12,6 +12,7 @@ public class MarketItem {
     private String summary;
     private String description;
     private String ownerHandle;
+    private String url;        // 技能市场详情页 URL
     private long installs;
     private long stars;
 
@@ -24,6 +25,7 @@ public class MarketItem {
     public MarketItem summary(String summary) { this.summary = summary; return this; }
     public MarketItem description(String description) { this.description = description; return this; }
     public MarketItem ownerHandle(String ownerHandle) { this.ownerHandle = ownerHandle; return this; }
+    public MarketItem url(String url) { this.url = url; return this; }
     public MarketItem installs(long installs) { this.installs = installs; return this; }
     public MarketItem stars(long stars) { this.stars = stars; return this; }
 
@@ -39,6 +41,8 @@ public class MarketItem {
     public void setDescription(String description) { this.description = description; }
     public String getOwnerHandle() { return ownerHandle; }
     public void setOwnerHandle(String ownerHandle) { this.ownerHandle = ownerHandle; }
+    public String getUrl() { return url; }
+    public void setUrl(String url) { this.url = url; }
     public long getInstalls() { return installs; }
     public void setInstalls(long installs) { this.installs = installs; }
     public long getStars() { return stars; }

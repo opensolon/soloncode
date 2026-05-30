@@ -306,9 +306,16 @@ public class SkillsShMarket implements Market {
      */
     private MarketItem buildItemFromCells(Elements cells) {
         try {
-            String slug = cells.get(0).text().trim();
+            Element firstCell = cells.get(0);
+            String slug = firstCell.text().trim();
             String ownerRepo = cells.get(1).text().trim();
             String installsStr = cells.size() > 2 ? cells.get(2).text().trim() : "0";
+
+            // 尝试从 <a> 标签提取详情页 URL
+            String href = firstCell.select("a").attr("href");
+            String url = (href != null && !href.isEmpty())
+                    ? (href.startsWith("http") ? href : BASE_URL + href)
+                    : BASE_URL + "/skill/" + slug;
 
             // 过滤无效行（如表头）
             if (slug.isEmpty() || slug.equalsIgnoreCase("name")
@@ -321,6 +328,7 @@ public class SkillsShMarket implements Market {
                     .name(slug)
                     .displayName(slug)
                     .ownerHandle(ownerRepo)
+                    .url(url)
                     .installs(parseInstallCount(installsStr))
                     .stars(0);
         } catch (Exception e) {
@@ -363,6 +371,7 @@ public class SkillsShMarket implements Market {
                     .name(slug)
                     .displayName(slug)
                     .ownerHandle(ownerRepo)
+                    .url(BASE_URL + "/skill/" + slug)
                     .installs(parseInstallCount(installsStr))
                     .stars(0);
 
