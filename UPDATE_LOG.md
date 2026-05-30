@@ -1,4 +1,13 @@
 
+### v2026.5.30
+
+* 添加 soloncode web 对话 “历史” 功能（复用，定位）
+* 添加 soloncode web 审查 “生成摘要” 功能
+* 添加 soloncode web 设置/大语言模型 配置功能
+* 添加 soloncode web 设置/技能市场 功能（查找、安装）
+* 添加 soloncode web 设置/MCP 服务器 配置功能
+* 添加 soloncode web 设置/OpenApi 服务器 配置功能
+
 ### v2026.5.26
 
 * 优化 soloncode ActionTask 增加原子性（避免单工具失败时，影响整个工作记忆）

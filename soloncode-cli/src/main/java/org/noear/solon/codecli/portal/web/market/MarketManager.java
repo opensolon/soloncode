@@ -29,8 +29,8 @@ public class MarketManager {
         Market clawhub = new ClawhubMarket();
         register(clawhub);
 
-        Market skillsSh = new SkillsShMarket();
-        register(skillsSh);
+//        Market skillsSh = new SkillsShMarket();
+//        register(skillsSh);
 
         this.defaultMarket = skillhub;
     }
