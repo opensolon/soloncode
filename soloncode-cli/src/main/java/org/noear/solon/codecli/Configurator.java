@@ -99,7 +99,7 @@ public class Configurator {
                 .build();
 
         engine.getPoolManager().register(new PoolDir("@global", true, "~/"+props.getHarnessSkills(), Paths.get(props.getUserHome(), props.getHarnessSkills())));
-        engine.getPoolManager().register(new PoolDir("@local", true, "./"+props.getHarnessSkills(), Paths.get(props.getWorkspace(), props.getHarnessSkills())));
+        engine.getPoolManager().register(new PoolDir("@workspace", true, "./"+props.getHarnessSkills(), Paths.get(props.getWorkspace(), props.getHarnessSkills())));
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
         engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), props.getHarnessCommands()));
