@@ -326,15 +326,11 @@
                         </div>
 
                         <div class="general-card-group">
-                            <!-- 上下文管理 -->
+                            <!-- 上下文压缩策略 -->
                             <div class="general-card">
                                 <div class="general-card-header">
-                                    <div class="general-card-icon">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                                    </div>
-                                    <div class="general-card-text">
-                                        <div class="general-card-title">上下文管理</div>
-                                        <div class="general-card-desc">控制对话上下文的压缩策略，防止超出模型窗口限制</div>
+                                        <div class="general-card-text">
+                                        <div class="general-card-title">上下文压缩策略</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
@@ -348,18 +344,15 @@
                                             <input type="number" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
                                         </div>
                                     </div>
+                                    <div class="general-toggle-desc" style="margin-top:8px;">控制对话上下文的压缩策略，防止超出模型窗口限制</div>
                                 </div>
                             </div>
 
                             <!-- 安全策略 -->
                             <div class="general-card">
                                 <div class="general-card-header">
-                                    <div class="general-card-icon">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                    </div>
-                                    <div class="general-card-text">
+                                        <div class="general-card-text">
                                         <div class="general-card-title">安全策略</div>
-                                        <div class="general-card-desc">限制 AI 的操作边界，保护系统与工作区安全</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
@@ -378,7 +371,7 @@
                         </div>
 
                         <div class="form-actions" style="justify-content:flex-end; margin-top:20px;">
-                            <button class="btn-primary" id="generalSaveBtn">保存设置</button>
+                            <button class="btn-primary" id="generalSaveBtn">保存</button>
                         </div>
                     </div>
                 </div>
