@@ -315,6 +315,125 @@
     box-shadow: 0 2px 6px rgba(59,130,246,0.3);
 }
 
+/* ===== General 通用设置 - 卡片布局 ===== */
+.general-card-group {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 4px;
+}
+.general-card {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-primary);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+}
+.general-card:hover {
+    border-color: rgba(var(--accent-rgb, 79,110,247), 0.35);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+.general-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 18px 0;
+}
+.general-card-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--accent-light);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.general-card-text {
+    flex: 1;
+    min-width: 0;
+}
+.general-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+.general-card-desc {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.4;
+}
+.general-card-body {
+    padding: 14px 18px 18px;
+}
+
+/* 字段行 */
+.general-field-row {
+    display: flex;
+    gap: 14px;
+}
+.general-field {
+    flex: 1;
+    min-width: 0;
+}
+.general-field-label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.general-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-input-box);
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+.general-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 79,110,247), 0.12);
+}
+.general-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+
+/* Toggle 行 */
+.general-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.general-toggle-info {
+    flex: 1;
+    min-width: 0;
+}
+.general-toggle-name {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+.general-toggle-desc {
+    display: block;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
 /* ===== 表单头部操作按钮（复制/删除） ===== */
 .settings-form-actions {
     display: flex;

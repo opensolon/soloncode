@@ -321,34 +321,64 @@
                         <div class="settings-section-header">
                             <div>
                                 <span class="settings-section-title">通用</span>
+                                <div class="settings-section-desc">全局运行参数，影响所有会话与工具行为</div>
                             </div>
                         </div>
-                        <div class="llm-add-form">
-                            <div class="form-row-2col">
-                                <div class="form-group">
-                                    <label>上下文压缩触发消息数</label>
-                                    <input type="number" id="generalSummaryWindowSize" placeholder="留空使用默认值"/>
-                                    <div class="form-hint">达到此消息数时，开始触发上下文压缩</div>
+
+                        <div class="general-card-group">
+                            <!-- 上下文管理 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    </div>
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">上下文管理</div>
+                                        <div class="general-card-desc">控制对话上下文的压缩策略，防止超出模型窗口限制</div>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>上下文压缩触发词元数</label>
-                                    <input type="number" id="generalSummaryWindowToken" placeholder="留空使用默认值"/>
-                                    <div class="form-hint">达到此词元数时，开始触发上下文压缩</div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label">触发消息数</label>
+                                            <input type="number" class="general-input" id="generalSummaryWindowSize" placeholder="默认"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">触发词元数</label>
+                                            <input type="number" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label class="toggle-label">
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="generalSandboxMode"/>
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                    <span>启用沙盒模式</span>
-                                </label>
-                                <div class="form-hint">开启后，AI 执行的命令将在受限沙盒环境（工作区范围内）中运行</div>
+
+                            <!-- 安全策略 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                    </div>
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">安全策略</div>
+                                        <div class="general-card-desc">限制 AI 的操作边界，保护系统与工作区安全</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">沙盒模式</span>
+                                            <span class="general-toggle-desc">开启后，AI 执行的命令将在受限沙盒环境中运行（只能读写工作区内的文件）</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSandboxMode"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="form-actions" style="justify-content:flex-end;">
-                                <button class="btn-primary" id="generalSaveBtn">保存</button>
-                            </div>
+                        </div>
+
+                        <div class="form-actions" style="justify-content:flex-end; margin-top:20px;">
+                            <button class="btn-primary" id="generalSaveBtn">保存设置</button>
                         </div>
                     </div>
                 </div>
