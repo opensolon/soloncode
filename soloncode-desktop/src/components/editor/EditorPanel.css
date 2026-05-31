@@ -197,14 +197,14 @@
 }
 
 /* 深色主题 - 删除行 */
-/* .diff-deleted-line-dark {
+.diff-deleted-line-dark {
   border-left: 3px solid #ef4444 !important;
-} */
+}
 
 /* 浅色主题 - 删除行 */
-/* .diff-deleted-line-light {
+.diff-deleted-line-light {
   border-left: 3px solid #ef4444 !important;
-} */
+}
 
 /* 深色主题 - 修改行 */
 .diff-modified-line-dark {

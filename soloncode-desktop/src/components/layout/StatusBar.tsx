@@ -34,6 +34,8 @@ export interface StatusBarProps {
   language?: string;
   /** 是否有未保存文件 */
   hasUnsavedChanges?: boolean;
+  /** 重连后端回调 */
+  onReconnect?: () => void;
 }
 
 export function StatusBar({
@@ -49,17 +51,18 @@ export function StatusBar({
   encoding = 'UTF-8',
   language,
   hasUnsavedChanges = false,
+  onReconnect,
 }: StatusBarProps) {
   return (
     <div className="status-bar" onMouseDown={startWindowDrag}>
       <div className="status-left" data-no-drag>
         {/* 后端连接状态 */}
-        <span className="status-item status-connection" title={
+        <span className={`status-item status-connection${backendStatus === 'disconnected' && onReconnect ? ' clickable' : ''}`} title={
           backendStatus === 'connected' ? '后端已连接' :
-          backendStatus === 'connecting' ? '正在连接后端...' : '后端连接失败'
-        }>
+          backendStatus === 'connecting' ? '正在连接后端...' : '点击重连后端'
+        } onClick={backendStatus === 'disconnected' && onReconnect ? onReconnect : undefined}>
           <span className={`status-connection-dot${backendStatus === 'connected' ? ' connected' : ''}${backendStatus === 'connecting' ? ' connecting' : ''}`} />
-          <span>{backendStatus === 'connected' ? '已连接' : backendStatus === 'connecting' ? '连接中...' : '连接失败'}</span>
+          <span>{backendStatus === 'connected' ? '已连接' : backendStatus === 'connecting' ? '连接中...' : '连接失败，点击重连'}</span>
         </span>
 
         {/* AI 模型 */}

@@ -25,8 +25,60 @@ export interface ChatMessagesRef {
   scrollToBottom: () => void;
 }
 
+function isExternalHref(href: string): boolean {
+  return /^(https?:|mailto:|tel:|data:|blob:|#)/i.test(href);
+}
+
+function toFileLinkTarget(href?: string): string | null {
+  if (!href || isExternalHref(href)) return null;
+
+  let target = href.trim();
+  try {
+    target = decodeURIComponent(target);
+  } catch {
+    // 保持原始 href，继续按文件路径处理
+  }
+
+  if (target.startsWith('file:///')) {
+    target = target.slice('file:///'.length);
+  } else if (target.startsWith('file://')) {
+    target = target.slice('file://'.length);
+  }
+
+  target = target.replace(/^\/([A-Za-z]:[\\/])/, '$1');
+  target = target.replace(/[?#].*$/, '');
+
+  if (!target || isExternalHref(target)) return null;
+
+  return target;
+}
+
 // Markdown 代码渲染组件（稳定引用）
-const markdownComponents = (theme?: Theme) => ({
+const markdownComponents = (theme?: Theme, onFileSelect?: (path: string) => void) => ({
+  a({ href, children, ...props }: any) {
+    const fileTarget = toFileLinkTarget(href);
+    if (fileTarget && onFileSelect) {
+      return (
+        <a
+          {...props}
+          href={href}
+          className="chat-file-link"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onFileSelect(fileTarget);
+          }}
+        >
+          {children}
+        </a>
+      );
+    }
+    return (
+      <a href={href} target="_blank" rel="noreferrer" {...props}>
+        {children}
+      </a>
+    );
+  },
   code({ node, inline, className, children, ...props }: any) {
     const match = /language-(\w+)/.exec(className || '');
     return !inline && match ? (
@@ -142,7 +194,7 @@ const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme, onH
 
   return (
     <div className="content-item text-item">
-      <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents(theme)}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents(theme, onFileSelect)}>
         {item.text}
       </ReactMarkdown>
       {item.agentName && (
