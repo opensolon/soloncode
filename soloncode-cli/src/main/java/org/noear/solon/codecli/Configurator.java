@@ -98,8 +98,8 @@ public class Configurator {
                 .memorySolution(new MemoryFactory(agentProps))
                 .build();
 
-        engine.getPoolManager().register(new PoolDir("@global", true, "~/"+props.getHarnessSkills(), Paths.get(props.getUserHome(), props.getHarnessSkills())));
-        engine.getPoolManager().register(new PoolDir("@workspace", true, "./"+props.getHarnessSkills(), Paths.get(props.getWorkspace(), props.getHarnessSkills())));
+        engine.getPoolManager().register(new PoolDir("@global-skills", true, "~/"+props.getHarnessSkills(), Paths.get(props.getUserHome(), props.getHarnessSkills())));
+        engine.getPoolManager().register(new PoolDir("@workspace-skills", true, "./"+props.getHarnessSkills(), Paths.get(props.getWorkspace(), props.getHarnessSkills())));
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
         engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), props.getHarnessCommands()));
