@@ -346,16 +346,6 @@
                                 </label>
                                 <div class="form-hint">开启后，AI 执行的命令将在受限沙盒环境（工作区范围内）中运行</div>
                             </div>
-                            <div class="form-group">
-                                <label class="toggle-label">
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="generalBashAsyncEnabled"/>
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                    <span>启用异步 Bash</span>
-                                </label>
-                                <div class="form-hint">开启后，Bash 命令将支持异步方式，支持长时间运行的任务（具体由 LLM 按需控制）</div>
-                            </div>
                             <div class="form-actions" style="justify-content:flex-end;">
                                 <button class="btn-primary" id="generalSaveBtn">保存</button>
                             </div>
@@ -530,6 +520,17 @@
                                 </div>
                                 <div class="form-actions" style="justify-content:flex-end;">
                                     <button class="btn-primary" id="mountsSaveBtn">保存</button>
+                                </div>
+                                <div class="mounts-divider"></div>
+                                <div class="mounts-presets">
+                                    <div class="mounts-presets-label">常见挂载池</div>
+                                    <div class="mounts-presets-btns">
+                                        <button type="button" class="mounts-preset-btn" data-alias="@skills" data-path="./skills/">@skills  ./skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@skillhub" data-path="~/.skillhub/skills/">@skillhub  ~/.skillhub/skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@agents_skills" data-path="~/.agents/skills/">@agents_skills  ~/.agents/skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@opencode_skills" data-path="~/.opencode/skills/">@opencode_skills  ~/.opencode/skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@claude_skills" data-path="~/.claude/skills/">@claude_skills  ~/.claude/skills/</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

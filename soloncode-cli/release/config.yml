@@ -20,7 +20,6 @@ soloncode:
 
   hitlEnabled: false # 是否启用人工审核危险操作，和 maxSteps 动态继步
   subagentEnabled: true # 是否启用子代理模式
-  bashAsyncEnabled: false # 是否启用 bash 异步机制
 
   cliPrintSimplified: true # 控制台打印是否简化
 

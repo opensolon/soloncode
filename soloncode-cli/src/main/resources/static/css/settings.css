@@ -345,3 +345,41 @@
     color: #ef4444;
     border-color: #ef4444;
 }
+
+/* ===== 挂载池表单 - 分割线与预设按钮 ===== */
+.mounts-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 16px 0;
+}
+.mounts-presets-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+.mounts-presets-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.mounts-preset-btn {
+    padding: 6px 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    white-space: nowrap;
+}
+.mounts-preset-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light, rgba(59,130,246,0.08));
+}
+.mounts-preset-btn:active {
+    transform: scale(0.97);
+}

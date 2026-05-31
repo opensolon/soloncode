@@ -19,6 +19,4 @@ public class GeneralSettings implements Serializable {
     private Integer summaryWindowToken;
     //启用消盒模式
     private Boolean sandboxMode;
-    //启用异步 Bash
-    private Boolean bashAsyncEnabled;
 }

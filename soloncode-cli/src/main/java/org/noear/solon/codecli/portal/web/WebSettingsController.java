@@ -163,9 +163,6 @@ public class WebSettingsController {
                 engine.getCliSkills().getTerminalSkill().setSandboxMode(tmp.getSandboxMode());
             }
 
-            if (tmp.getBashAsyncEnabled() != null) {
-                engine.getCliSkills().getTerminalSkill().setBashAsyncEnabled(tmp.getBashAsyncEnabled());
-            }
         }
 
         saveSettings();

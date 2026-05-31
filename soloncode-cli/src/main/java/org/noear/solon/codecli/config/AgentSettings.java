@@ -74,12 +74,6 @@ public class AgentSettings implements Serializable {
             general.setSandboxMode(props.isSandboxMode());
         }
 
-        if (general.getBashAsyncEnabled() != null) {
-            props.setBashAsyncEnabled(general.getBashAsyncEnabled());
-        } else {
-            general.setBashAsyncEnabled(props.isBashAsyncEnabled());
-        }
-
         //-------------
 
         if (this.models.size() > 0) {

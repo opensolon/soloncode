@@ -983,7 +983,6 @@
                 $('#generalSummaryWindowSize').val(d.summaryWindowSize || '');
                 $('#generalSummaryWindowToken').val(d.summaryWindowToken || '');
                 $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
-                $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
     }
@@ -992,8 +991,7 @@
         var bodyObj = {
             summaryWindowSize: $('#generalSummaryWindowSize').val().trim() ? parseInt($('#generalSummaryWindowSize').val().trim(), 10) : null,
             summaryWindowToken: $('#generalSummaryWindowToken').val().trim() ? parseInt($('#generalSummaryWindowToken').val().trim(), 10) : null,
-            sandboxMode: $('#generalSandboxMode').is(':checked'),
-            bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked')
+            sandboxMode: $('#generalSandboxMode').is(':checked')
         };
 
         $generalSaveBtn.prop('disabled', true);
@@ -1031,6 +1029,15 @@
             })
             .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $mountsSaveBtn.prop('disabled', false); });
+    });
+
+    // 常见挂载池预设按钮 - 点击填充表单
+    $(document).on('click', '.mounts-preset-btn', function () {
+        var alias = $(this).data('alias');
+        var path = $(this).data('path');
+        $('#mountsAlias').val(alias);
+        $('#mountsPath').val(path);
+        showToast('已填充: ' + alias);
     });
 
 })();
