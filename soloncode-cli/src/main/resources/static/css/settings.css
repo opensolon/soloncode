@@ -78,6 +78,8 @@
 /* LLM 禁用模型项低透明度 */
 
 /* ===== Toggle Switch（大号） ===== */
+.toggle-label { display: flex; align-items: center; gap: 10px; font-weight: 500; cursor: default; }
+.toggle-label > span { font-size: 13px; color: var(--text-primary); }
 .toggle-switch {
     position: relative;
     display: inline-flex;

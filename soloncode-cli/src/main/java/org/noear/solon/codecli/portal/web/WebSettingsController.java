@@ -29,6 +29,7 @@ import org.noear.solon.ai.skills.toolgateway.McpGatewaySkill;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.GeneralSettings;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -125,6 +126,49 @@ public class WebSettingsController {
      */
     private void saveSettings() {
         settings.saveToFile(settingsFile);
+    }
+
+    // ==================== 设置：General 通用配置 ====================
+
+    /**
+     * 获取通用配置
+     */
+    @Get
+    @Mapping("/web/settings/general")
+    public Result<GeneralSettings> generalGet() {
+        return Result.succeed(settings.getGeneral());
+    }
+
+    /**
+     * 保存通用配置
+     */
+    @Post
+    @Mapping("/web/settings/general/save")
+    public Result generalSave(Context ctx) throws Exception {
+        String body = ctx.body();
+        GeneralSettings tmp = ONode.ofJson(body).toBean(GeneralSettings.class);
+        if (tmp != null) {
+            settings.setGeneral(tmp);
+
+            if (tmp.getSummaryWindowSize() != null) {
+                engine.getSummarizationInterceptor().setMaxMessages(tmp.getSummaryWindowSize());
+            }
+
+            if (tmp.getSummaryWindowToken() != null) {
+                engine.getSummarizationInterceptor().setMaxTokens(tmp.getSummaryWindowToken());
+            }
+
+            if (tmp.getSandboxMode() != null) {
+                engine.getCliSkills().getTerminalSkill().setSandboxMode(tmp.getSandboxMode());
+            }
+
+            if (tmp.getBashAsyncEnabled() != null) {
+                engine.getCliSkills().getTerminalSkill().setBashAsyncEnabled(tmp.getBashAsyncEnabled());
+            }
+        }
+
+        saveSettings();
+        return Result.succeed();
     }
 
     // ==================== 设置：LLM 模型管理 ====================

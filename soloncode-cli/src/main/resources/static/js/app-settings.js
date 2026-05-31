@@ -128,6 +128,9 @@
     var mountsCachedList = [];
     var mountsCurrentAlias = null;
 
+    // General
+    var $generalSaveBtn = $('#generalSaveBtn');
+
     // ==================== 视图切换 ====================
 
     function showLlmListView() { $llmFormView.hide(); $llmListView.addClass('slide-back').show(); setTimeout(function(){ $llmListView.removeClass('slide-back'); }, 260); }
@@ -181,7 +184,10 @@
         $tab.addClass('active');
 
         var targetTab = $tab.attr('data-tab');
-        if (targetTab === 'llm') {
+        if (targetTab === 'general') {
+            $('#settingsTabGeneral').addClass('active');
+            loadGeneralSettings();
+        } else if (targetTab === 'llm') {
             $('#settingsTabLlm').addClass('active');
             loadLlmList();
         } else if (targetTab === 'skills') {
@@ -203,7 +209,8 @@
         var $active = $('.settings-tab.active');
         if (!$active.length) return;
         var targetTab = $active.attr('data-tab');
-        if (targetTab === 'llm') loadLlmList();
+        if (targetTab === 'general') loadGeneralSettings();
+        else if (targetTab === 'llm') loadLlmList();
         else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(); }
         else if (targetTab === 'mounts') loadMountsList();
         else if (targetTab === 'mcp') loadMcpList();
@@ -965,6 +972,38 @@
                 else showToast('删除失败: ' + (resp.message || ''), 'error');
             });
         }
+    });
+
+    // ==================== General 通用设置 ====================
+
+    function loadGeneralSettings() {
+        $.get('/web/settings/general', function (resp) {
+            if (resp.code === 200 && resp.data) {
+                var d = resp.data;
+                $('#generalSummaryWindowSize').val(d.summaryWindowSize || '');
+                $('#generalSummaryWindowToken').val(d.summaryWindowToken || '');
+                $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
+                $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
+            }
+        }).fail(function () { console.error('[Settings] Failed to load general settings'); });
+    }
+
+    $generalSaveBtn.on('click', function () {
+        var bodyObj = {
+            summaryWindowSize: $('#generalSummaryWindowSize').val().trim() ? parseInt($('#generalSummaryWindowSize').val().trim(), 10) : null,
+            summaryWindowToken: $('#generalSummaryWindowToken').val().trim() ? parseInt($('#generalSummaryWindowToken').val().trim(), 10) : null,
+            sandboxMode: $('#generalSandboxMode').is(':checked'),
+            bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked')
+        };
+
+        $generalSaveBtn.prop('disabled', true);
+        $.ajax({ url: '/web/settings/general/save', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
+            .done(function (resp) {
+                if (resp.code === 200) showToast('保存成功');
+                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+            })
+            .fail(function () { showToast('网络错误', 'error'); })
+            .always(function () { $generalSaveBtn.prop('disabled', false); });
     });
 
     // 添加/返回/保存按钮
