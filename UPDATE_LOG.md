@@ -1,4 +1,11 @@
 
+### v2026.6.1
+
+* 添加 soloncode web 挂载池管理
+* 添加 soloncode web 技能市场安装到（挂载池）选择功能
+* 优化 soloncode web 设置面板样式
+* 修复 soloncode 压缩后可能会引起 ToolMessage 无法对齐的问题
+
 ### v2026.5.30
 
 * 添加 soloncode web 对话 “历史” 功能（复用，定位）
