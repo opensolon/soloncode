@@ -81,7 +81,7 @@ public class CliCompleter implements Completer {
         if (line.word().startsWith("$")) {
             Set<String> added = new HashSet<>();
             String prefix = line.word().substring(1).toLowerCase();
-            for (SkillDir skill : engine.getPoolManager().getSkillMap().values()) {
+            for (SkillDir skill : engine.getPoolManager().getSkills()) {
                 if (skill.getName().startsWith(prefix)) {
                     if (added.contains(skill.getName())) {
                         continue;

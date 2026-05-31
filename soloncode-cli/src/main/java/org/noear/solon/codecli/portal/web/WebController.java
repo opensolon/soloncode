@@ -478,7 +478,7 @@ public class WebController {
         }
 
         Set<String> added = new HashSet<>();
-        for (SkillDir skill : engine.getPoolManager().getSkillMap().values()) {
+        for (SkillDir skill : engine.getPoolManager().getSkills()) {
             if (added.contains(skill.getName())) {
                 continue;
             } else {
