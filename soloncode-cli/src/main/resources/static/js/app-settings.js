@@ -952,9 +952,13 @@
 
         $.get('/web/settings/mounts/content', { alias: alias, type: mountsCurrentType }, function (resp) {
             if (resp.code === 200 && resp.data) renderMountsContent(resp.data, mountsCurrentType);
-            else $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+            else {
+                $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+                layer.msg(resp.message || '加载失败', { icon: 2, time: 3000, offset: '120px' });
+            }
         }).fail(function () {
             $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
+            layer.msg('加载失败，请检查网络', { icon: 2, time: 3000, offset: '120px' });
         });
     }
 
@@ -1036,21 +1040,36 @@
         if ($(e.target).closest('.mcp-action-btn').length) return;
         var realPath = $(this).data('real-path') || '';
         if (realPath) {
-            $.get('/web/settings/mounts/open', { path: realPath });
+            $.get('/web/settings/mounts/open', { path: realPath }, function (resp) {
+                if (resp && resp.code !== 200) {
+                    layer.msg(resp.message || '打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                }
+            }).fail(function () {
+                layer.msg('打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+            });
         }
     });
 
     // 打开挂载池根目录按钮
     $('#mountsOpenDirBtn').on('click', function () {
         if (mountsCurrentRealPath) {
-            $.get('/web/settings/mounts/open', { path: mountsCurrentRealPath });
+            $.get('/web/settings/mounts/open', { path: mountsCurrentRealPath }, function (resp) {
+                if (resp && resp.code !== 200) {
+                    layer.msg(resp.message || '打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                }
+            }).fail(function () {
+                layer.msg('打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+            });
         }
     });
 
     // 刷新挂载池内容按钮
     $('#mountsRefreshBtn').on('click', function () {
         if (mountsCurrentAlias) {
-            loadMountsContent(mountsCurrentAlias, mountsCurrentType);
+            var alias = mountsCurrentAlias;
+            var type = mountsCurrentType;
+            mountsCurrentAlias = null; // 强制重新加载
+            loadMountsContent(alias, type);
         }
     });
 
@@ -1116,7 +1135,7 @@
             .always(function () { $mountsSaveBtn.prop('disabled', false); });
     });
 
-    // 常见挂载池预设按钮 - 点击填充表单
+    // 常见挂载池预设按钮 - 点击填充表单（静默，不出浮层）
     $(document).on('click', '.mounts-preset-btn', function () {
         var alias = $(this).data('alias');
         var path = $(this).data('path');
@@ -1125,7 +1144,6 @@
         $('#mountsType').val('SKILLS');
         $('#mountsWriteable').prop('checked', false);
         $('#mountsWriteableGroup').hide();
-        showToast('已填充: ' + alias);
     });
 
     // 类型联动：仅 FILES 类型显示 writeable 选项

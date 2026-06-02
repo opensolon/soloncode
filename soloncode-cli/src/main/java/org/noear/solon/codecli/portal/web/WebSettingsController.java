@@ -1409,7 +1409,28 @@ public class WebSettingsController {
         try {
             java.io.File dir = new java.io.File(path);
             if (!dir.exists()) return Result.failure("目录不存在: " + path);
-            java.awt.Desktop.getDesktop().open(dir);
+
+            // 优先尝试 Desktop.open，失败时 fallback 到系统命令
+            try {
+                if (java.awt.Desktop.isDesktopSupported()) {
+                    java.awt.Desktop.getDesktop().open(dir);
+                    return Result.succeed("已打开");
+                }
+            } catch (Exception ignored) {
+                // Desktop.open 失败，尝试 fallback
+            }
+
+            // Fallback: 使用系统命令打开目录
+            String os = System.getProperty("os.name", "").toLowerCase();
+            String[] cmd;
+            if (os.contains("mac")) {
+                cmd = new String[]{"open", dir.getAbsolutePath()};
+            } else if (os.contains("win")) {
+                cmd = new String[]{"explorer", dir.getAbsolutePath()};
+            } else {
+                cmd = new String[]{"xdg-open", dir.getAbsolutePath()};
+            }
+            new ProcessBuilder(cmd).start();
             return Result.succeed("已打开");
         } catch (Exception e) {
             return Result.failure("打开失败: " + e.getMessage());
