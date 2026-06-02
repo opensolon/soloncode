@@ -5,13 +5,13 @@ import com.agentclientprotocol.sdk.agent.transport.WebSocketSolonAcpAgentTranspo
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.noear.solon.Solon;
-import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
-import org.noear.solon.ai.skills.cli.PoolDir;
+import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
@@ -81,8 +81,8 @@ public class Configurator {
         //props.getMountPools().put("@global", Paths.get(props.getUserHome(), props.getHarnessSkills()).toString());
         //props.getMountPools().put("@local", Paths.get(props.getWorkspace(), props.getHarnessSkills()).toString());
 
-        props.getAgentPools().add(Paths.get(props.getUserHome(), props.getHarnessAgents()).toString()); //global
-        props.getAgentPools().add(Paths.get(props.getWorkspace(), props.getHarnessAgents()).toString()); //local
+        //props.getAgentPools().add(Paths.get(props.getUserHome(), props.getHarnessAgents()).toString()); //global
+        //props.getAgentPools().add(Paths.get(props.getWorkspace(), props.getHarnessAgents()).toString()); //local
 
 
         //-----------------
@@ -93,13 +93,32 @@ public class Configurator {
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
                 new FileAgentSession(key, Paths.get(props.getWorkspace(), props.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
 
-        HarnessEngine engine = HarnessEngine.of(props)
+        HarnessEngine engine = HarnessEngine.of(props.getWorkspace(),props.getHarnessHome())
+                .systemPrompt(props.getSystemPrompt())
+                .userAgent(props.getUserAgent())
+                .maxTurns(props.getMaxSteps())
+                .autoRethink(props.isAutoRethink())
+                .sessionWindowSize(props.getSessionWindowSize())
                 .sessionProvider(sessionProvider)
+                .compressionThreshold(props.getSummaryWindowSize(), props.getSummaryWindowToken())
+                .compressionModel(props.getSummaryModel())
+                .memoryEnabled(props.isMemoryEnabled())
+                .memoryIsolation(props.isMemoryIsolation())
                 .memorySolution(new MemoryFactory(agentProps))
+                .sandboxMode(props.isSandboxMode())
+                .subagentEnabled(props.isSubagentEnabled())
+                .bashAsyncEnabled(props.isBashAsyncEnabled())
+                .apiRetries(props.getApiRetries())
+                .modelRetries(props.getModelRetries())
+                .mcpRetries(props.getModelRetries())
+                .modelAdd(props.getModels())
                 .build();
 
-        engine.getPoolManager().register(new PoolDir("@global-skills", true, "~/"+props.getHarnessSkills(), Paths.get(props.getUserHome(), props.getHarnessSkills())));
-        engine.getPoolManager().register(new PoolDir("@workspace-skills", true, "./"+props.getHarnessSkills(), Paths.get(props.getWorkspace(), props.getHarnessSkills())));
+        engine.addMount(new MountDir("@global-skills", MountType.SKILLS, "~/" + props.getHarnessSkills(), true, true));
+        engine.addMount(new MountDir("@workspace-skills", MountType.SKILLS, "./" + props.getHarnessSkills(), true, true));
+        engine.addMount(new MountDir("@global-agents", MountType.SUBAGENTS, "~/"+ props.getHarnessAgents(), true, true));
+        engine.addMount(new MountDir("@workspace-agents", MountType.SUBAGENTS, "./"+ props.getHarnessAgents(), true, true));
+
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
         engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), props.getHarnessCommands()));
@@ -113,8 +132,6 @@ public class Configurator {
         // loop scheduler
         this.loopScheduler = new LoopScheduler();
         engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
-
-
 
 
         return engine;

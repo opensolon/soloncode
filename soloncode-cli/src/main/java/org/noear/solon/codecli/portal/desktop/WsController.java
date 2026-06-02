@@ -43,7 +43,7 @@ public class WsController {
     public Result<Map> version() {
         Map<String, String> data = new LinkedHashMap<>();
         data.put("version", AgentFlags.getVersion());
-        data.put("workspace", engine.getProps().getWorkspace());
+        data.put("workspace", engine.getWorkspace());
         return Result.succeed(data);
     }
 
@@ -74,9 +74,8 @@ public class WsController {
             config.setApiUrl(apiUrl);
             config.setApiKey(apiKey);
             config.setModel(mi.getObject());
-            config.setUserAgent(engine.getProps().getUserAgent());
-            engine.getProps().removeModel(mi.getObject());
-            engine.getProps().addModel(config);
+            engine.removeModel(mi.getObject());
+            engine.addModel(config);
             list.add(item);
         }
 
@@ -110,7 +109,6 @@ public class WsController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
-        config.setUserAgent(engine.getProps().getUserAgent());
 
         // timeout
         String timeout = root.get("timeout").getString();
@@ -123,8 +121,8 @@ public class WsController {
         if (Assert.isNotEmpty(userAgent)) {
             config.setUserAgent(userAgent);
         }
-        engine.getProps().removeModel(model);
-        engine.getProps().addModel(config);
+        engine.removeModel(model);
+        engine.addModel(config);
 
         LOG.info("[Web] Model added: {}", name);
         return Result.succeed(name);
@@ -144,7 +142,7 @@ public class WsController {
             return Result.failure("Cannot remove the active main model");
         }
 
-        engine.getProps().removeModel(modelName);
+        engine.removeModel(modelName);
 
         LOG.info("[Web] Model removed: {}", modelName);
         return Result.succeed();

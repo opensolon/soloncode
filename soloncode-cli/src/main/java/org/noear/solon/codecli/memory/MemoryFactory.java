@@ -1,7 +1,7 @@
 package org.noear.solon.codecli.memory;
 
-import org.noear.solon.ai.skills.memory.MemorySolution;
-import org.noear.solon.ai.skills.memory.md.MemorySolutionMdImpl;
+import org.noear.solon.ai.talents.memory.MemorySolution;
+import org.noear.solon.ai.talents.memory.md.MemorySolutionMdImpl;
 import org.noear.solon.codecli.config.AgentProperties;
 
 import java.nio.file.Paths;

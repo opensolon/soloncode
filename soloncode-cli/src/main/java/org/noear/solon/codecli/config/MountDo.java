@@ -1,25 +1,32 @@
-package org.noear.solon.codecli.config.entity;
+package org.noear.solon.codecli.config;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.noear.solon.ai.talents.mount.MountType;
 
 import java.io.Serializable;
 
 /**
  *
- * @author noear 2026/5/31 created
+ * @author noear 2026/6/2 created
  *
  */
-@NoArgsConstructor
 @AllArgsConstructor
-@Setter
+@NoArgsConstructor
 @Getter
+@Setter
 public class MountDo implements Serializable {
+    //挂载类型
+    private MountType type;
     //配置地址支持 "~/"（用户目录相对位置） 和 "./"（工作区相对位置）
     private String path;
 
+    //是否原始（不可删除）
+    private boolean primary;
     //是否启用
     private boolean enabled = true;
+    //是否可写
+    private boolean writeable = false;
 }

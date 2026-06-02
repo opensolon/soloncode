@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 import org.noear.solon.ai.chat.ChatConfig;
-import org.noear.solon.ai.harness.HarnessProperties;
 import org.noear.solon.core.util.IoUtil;
 import org.noear.solon.core.util.ResourceUtil;
 import org.slf4j.Logger;

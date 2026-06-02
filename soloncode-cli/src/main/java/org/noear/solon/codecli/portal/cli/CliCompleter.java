@@ -23,7 +23,7 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.skills.cli.SkillDir;
+import org.noear.solon.ai.talents.mount.SkillDir;
 
 import java.util.HashSet;
 import java.util.List;
@@ -61,7 +61,7 @@ public class CliCompleter implements Completer {
 
         if (line.word().startsWith("/m")) {
             String prefix = line.word().substring(1).toLowerCase();
-            for (ChatConfig c : engine.getProps().getModels()) {
+            for (ChatConfig c : engine.getModels()) {
                 if (("model " + c.getNameOrModel()).startsWith(prefix)) {
                     candidates.add(new Candidate("/model " + c.getNameOrModel(), "/model " + c.getNameOrModel(), null, null, null, null, true));
                 }
@@ -81,7 +81,7 @@ public class CliCompleter implements Completer {
         if (line.word().startsWith("$")) {
             Set<String> added = new HashSet<>();
             String prefix = line.word().substring(1).toLowerCase();
-            for (SkillDir skill : engine.getPoolManager().getSkills()) {
+            for (SkillDir skill : engine.getSkills()) {
                 if (skill.getName().startsWith(prefix)) {
                     if (added.contains(skill.getName())) {
                         continue;

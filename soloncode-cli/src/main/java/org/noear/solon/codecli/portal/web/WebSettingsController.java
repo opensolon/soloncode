@@ -15,22 +15,21 @@
  */
 package org.noear.solon.codecli.portal.web;
 
-import org.eclipse.jetty.util.Pool;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
-import org.noear.solon.ai.skills.cli.PoolDir;
-import org.noear.solon.ai.skills.openapi.ApiSource;
-import org.noear.solon.ai.skills.openapi.OpenApiSkill;
-import org.noear.solon.ai.skills.toolgateway.McpGatewaySkill;
+import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.talents.mount.SkillDir;
+import org.noear.solon.ai.talents.openapi.ApiSource;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.GeneralSettings;
-import org.noear.solon.codecli.config.entity.MountDo;
+import org.noear.solon.codecli.config.MountDo;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -39,9 +38,6 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.noear.solon.ai.skills.cli.SkillDir;
-
-import java.io.File;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -99,7 +95,7 @@ public class WebSettingsController {
     /**
      * 构造函数：使用容器注入的 AgentSettings。
      *
-     * @param engine AI Agent 执行引擎
+     * @param engine   AI Agent 执行引擎
      * @param settings 统一配置管理器（由 App.initAgentSettings 创建并注册到容器）
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings) {
@@ -109,8 +105,8 @@ public class WebSettingsController {
     /**
      * 构造函数：支持自定义 MarketManager（用于测试）。
      *
-     * @param engine AI Agent 执行引擎
-     * @param settings 统一配置管理器
+     * @param engine        AI Agent 执行引擎
+     * @param settings      统一配置管理器
      * @param marketManager 技能市场管理器
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager) {
@@ -151,17 +147,8 @@ public class WebSettingsController {
         if (tmp != null) {
             settings.setGeneral(tmp);
 
-            if (tmp.getSummaryWindowSize() != null) {
-                engine.getSummarizationInterceptor().setMaxMessages(tmp.getSummaryWindowSize());
-            }
-
-            if (tmp.getSummaryWindowToken() != null) {
-                engine.getSummarizationInterceptor().setMaxTokens(tmp.getSummaryWindowToken());
-            }
-
-            if (tmp.getSandboxMode() != null) {
-                engine.getCliSkills().getTerminalSkill().setSandboxMode(tmp.getSandboxMode());
-            }
+            engine.setCompressionThreshold(tmp.getSummaryWindowSize(), tmp.getSummaryWindowToken());
+            engine.setSandboxMode(tmp.getSandboxMode());
 
         }
 
@@ -280,11 +267,10 @@ public class WebSettingsController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
-        config.setUserAgent(engine.getProps().getUserAgent());
 
         String timeout = root.get("timeout").getString();
         if (Assert.isNotEmpty(timeout)) {
-            config.setTimeout(java.time.Duration.parse(timeout));
+            config.setTimeout(Duration.parse(timeout));
         }
         String userAgent = root.get("userAgent").getString();
         if (Assert.isNotEmpty(userAgent)) {
@@ -319,7 +305,7 @@ public class WebSettingsController {
             return Result.failure("Cannot remove the active main model");
         }
 
-        engine.getProps().removeModel(name);
+        engine.removeModel(name);
 
         settings.getModels().removeIf(c -> name.equals(c.getName()));
         saveSettings();
@@ -342,7 +328,7 @@ public class WebSettingsController {
         }
 
         // 先移除旧配置
-        engine.getProps().removeModel(originalModel);
+        engine.removeModel(originalModel);
 
         // 复用 add 逻辑构建新配置
         String apiUrl = root.get("apiUrl").getString();
@@ -363,7 +349,6 @@ public class WebSettingsController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
-        config.setUserAgent(engine.getProps().getUserAgent());
 
         String provider = root.get("provider").getString();
         if (Assert.isNotEmpty(provider)) {
@@ -383,7 +368,7 @@ public class WebSettingsController {
             config.setContextLength(contextLength);
         }
 
-        engine.getProps().addModel(config);
+        engine.addModel(config);
 
         settings.getModels().removeIf(c -> originalModel.equals(c.getName()) || originalModel.equals(c.getModel()));
         settings.getModels().add(config);
@@ -479,8 +464,8 @@ public class WebSettingsController {
             final String fName = name;
             final String fModel = model;
 
-            engine.getProps().removeModel(fModel);
-            engine.getProps().addModel(config);
+            engine.removeModel(fModel);
+            engine.addModel(config);
 
             settings.getModels().removeIf(c -> fName.equals(c.getName()) || fModel.equals(c.getModel()));
             settings.getModels().add(config);
@@ -589,10 +574,7 @@ public class WebSettingsController {
 
         // 如果启用，同步到引擎
         if (enabled) {
-            McpGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
-            if (mcpGateway != null) {
-                mcpGateway.addMcpServer(name, params);
-            }
+            engine.addMcpServer(name, params);
         }
 
         saveSettings();
@@ -613,14 +595,9 @@ public class WebSettingsController {
             return Result.failure("name is required");
         }
 
-        // 从引擎移除
-        McpGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
-        if (mcpGateway != null) {
-            mcpGateway.removeMcpServer(name);
-        }
-
         settings.getMcpServers().remove(name);
         saveSettings();
+        engine.removeMcpServer(name);
         LOG.info("[Settings] MCP server removed: {}", name);
         return Result.succeed();
     }
@@ -649,17 +626,11 @@ public class WebSettingsController {
 
         // 如果名称变更，先从引擎移除旧名称
         if (!lookupName.equals(name)) {
-            McpGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
-            if (mcpGateway != null) {
-                mcpGateway.removeMcpServer(lookupName);
-            }
             settings.getMcpServers().remove(lookupName);
+            engine.removeMcpServer(lookupName);
         } else {
             // 名称没变，仍然先从引擎移除（稍后重新添加）
-            McpGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
-            if (mcpGateway != null) {
-                mcpGateway.removeMcpServer(name);
-            }
+            engine.removeMcpServer(name);
         }
 
         // 构建新参数
@@ -711,10 +682,7 @@ public class WebSettingsController {
 
         // 如果启用，同步到引擎
         if (enabled) {
-            McpGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
-            if (mcpGateway != null) {
-                mcpGateway.addMcpServer(name, params);
-            }
+            engine.addMcpServer(name, params);
         }
 
         saveSettings();
@@ -741,17 +709,12 @@ public class WebSettingsController {
             return Result.failure("Server not found: " + name);
         }
 
-        McpGatewaySkill mcpGateway = engine.getMcpGatewaySkill();
         if (enabled) {
             // 启用：添加到引擎
-            if (mcpGateway != null) {
-                mcpGateway.addMcpServer(name, params);
-            }
+            engine.addMcpServer(name, params);
         } else {
             // 停用：从引擎移除
-            if (mcpGateway != null) {
-                mcpGateway.removeMcpServer(name);
-            }
+            engine.removeMcpServer(name);
         }
 
         params.setEnabled(enabled);
@@ -1017,10 +980,7 @@ public class WebSettingsController {
 
         // 如果启用，同步到引擎
         if (enabled) {
-            OpenApiSkill restApi = engine.getOpenApiSkill();
-            if (restApi != null) {
-                restApi.addApi(source);
-            }
+            engine.addApi(source);
         }
 
         saveSettings();
@@ -1051,10 +1011,7 @@ public class WebSettingsController {
         }
 
         // 从引擎移除旧的
-        OpenApiSkill restApi = engine.getOpenApiSkill();
-        if (restApi != null) {
-            restApi.removeApi(existing.getDocUrl());
-        }
+        engine.removeApi(existing.getDocUrl());
 
         // 如果名称变更，移除旧 key
         if (!lookupName.equals(name)) {
@@ -1081,9 +1038,7 @@ public class WebSettingsController {
 
         // 如果启用，同步到引擎
         if (enabled) {
-            if (restApi != null) {
-                restApi.addApi(source);
-            }
+            engine.addApi(source);
         }
 
         saveSettings();
@@ -1107,10 +1062,7 @@ public class WebSettingsController {
         ApiSource source = settings.getApiServers().get(name);
         if (source != null) {
             // 从引擎移除
-            OpenApiSkill restApi = engine.getOpenApiSkill();
-            if (restApi != null) {
-                restApi.removeApi(source.getDocUrl());
-            }
+            engine.removeApi(source.getDocUrl());
         }
 
         settings.getApiServers().remove(name);
@@ -1138,17 +1090,12 @@ public class WebSettingsController {
             return Result.failure("Server not found: " + name);
         }
 
-        OpenApiSkill restApi = engine.getOpenApiSkill();
         if (enabled) {
             // 启用：添加到引擎
-            if (restApi != null) {
-                restApi.addApi(source);
-            }
+            engine.addApi(source);
         } else {
             // 停用：从引擎移除
-            if (restApi != null) {
-                restApi.removeApi(source.getDocUrl());
-            }
+            engine.removeApi(source.getDocUrl());
         }
 
         source.setEnabled(enabled);
@@ -1280,9 +1227,9 @@ public class WebSettingsController {
      * 技能市场代理接口 — 获取热门技能或搜索技能。
      * <p>所有外部 API 调用均由后端 Market 适配器完成，前端不直接访问外部服务。</p>
      *
-     * @param action    "trending" 获取热门 | "search" 搜索
-     * @param query     搜索关键词（action=search 时使用）
-     * @param limit     返回数量限制
+     * @param action     "trending" 获取热门 | "search" 搜索
+     * @param query      搜索关键词（action=search 时使用）
+     * @param limit      返回数量限制
      * @param marketName 市场名字（可选，默认使用 ClawHub）
      */
     @Get
@@ -1321,21 +1268,21 @@ public class WebSettingsController {
         // 确定安装目标目录：若指定了挂载池别名，则安装到对应池目录；否则默认 workspace/skills
         Path skillsDir;
         if (!Assert.isEmpty(mountAlias)) {
-            PoolDir poolDir = engine.getPoolManager().getPool(mountAlias);
+            MountDir poolDir = engine.getMount(mountAlias);
             if (poolDir == null) {
                 return Result.failure("挂载池不存在: " + mountAlias);
             }
 
             skillsDir = poolDir.getRealPath();
         } else {
-            skillsDir = Paths.get(engine.getProps().getWorkspace(), "skills");
+            skillsDir = Paths.get(engine.getWorkspace(), "skills");
         }
 
         Result<String> result = market.install(slug, skillsDir);
 
         // 安装成功后刷新技能池
         if (result.getCode() == 200) {
-            engine.getPoolManager().refresh(mountAlias);
+            engine.refreshMount(mountAlias);
         }
 
         return result;
@@ -1351,11 +1298,12 @@ public class WebSettingsController {
     public Result mountsList(Context ctx) {
         List<Map<String, Object>> list = new ArrayList<>();
 
-        for (PoolDir poolDir : engine.getPoolManager().getPools()) {
+        for (MountDir entry : engine.getMounts()) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("alias", poolDir.getAlias());
-            item.put("path", poolDir.getPath());
-            item.put("system", poolDir.isPrimary());
+            item.put("alias", entry.getAlias());
+            item.put("type", entry.getType());
+            item.put("path", entry.getPath());
+            item.put("system", entry.isPrimary());
             list.add(item);
         }
         return Result.succeed(list);
@@ -1366,15 +1314,19 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/mounts/add")
-    public Result mountsAdd(Context ctx, @Param("alias") String alias, @Param("path") String path) {
+    public Result mountsAdd(Context ctx, @Param("alias") String alias, @Param("path") String path, MountType type, boolean writeable) {
         if (Assert.isEmpty(alias) || Assert.isEmpty(path)) return Result.failure("参数不完整");
         if (!alias.startsWith("@")) return Result.failure("别名必须以 @ 开头");
-        if (engine.getPoolManager().hasPool(alias)) return Result.failure("别名已存在");
+        if (engine.hasMount(alias)) return Result.failure("别名已存在");
 
-        engine.getProps().getMountPools().put(alias, path);
-        settings.getMountPools().put(alias, new MountDo(path, true));
+        if (type == null) {
+            type = MountType.SKILLS;
+        }
+
+        MountDo mountDo = new MountDo(type, path, false, true, writeable);
+        settings.getMountPools().put(alias, mountDo);
         saveSettings();
-        engine.getPoolManager().register(alias, path);
+        engine.addMount(alias, type, path, false, true, writeable);
         return Result.succeed("添加成功");
     }
 
@@ -1386,13 +1338,12 @@ public class WebSettingsController {
     public Result mountsRemove(Context ctx, @Param("alias") String alias) {
         if (Arrays.asList("@global", "@local", "@skills").contains(alias))
             return Result.failure("系统挂载池不可移除");
-        if (!engine.getPoolManager().hasPool(alias))
+        if (!engine.hasMount(alias))
             return Result.failure("挂载池不存在");
 
-        engine.getProps().getMountPools().remove(alias);
         settings.getMountPools().remove(alias);
         saveSettings();
-        engine.getPoolManager().remove(alias);
+        engine.removeMount(alias);
         return Result.succeed("移除成功");
     }
 
@@ -1402,12 +1353,12 @@ public class WebSettingsController {
     @Get
     @Mapping("/web/settings/mounts/skills")
     public Result mountsSkills(Context ctx, @Param("alias") String alias) {
-        PoolDir poolDir = engine.getPoolManager().getPool(alias);
-        if (poolDir == null) return Result.failure("挂载池不存在: " + alias);
-
+        if (engine.hasMount(alias) == false) {
+            return Result.failure("挂载池不存在: " + alias);
+        }
 
         // 构建 SkillDir 快速查找索引
-        List<SkillDir> skillDirList = engine.getPoolManager().getSkillsByPool(alias);
+        Collection<SkillDir> skillDirList = engine.getSkillsByMount(alias);
         List<Map<String, String>> skills = new ArrayList<>();
 
         for (SkillDir subDir : skillDirList) {
@@ -1426,21 +1377,21 @@ public class WebSettingsController {
     @Post
     @Mapping("/web/settings/mounts/skills/remove")
     public Result mountsSkillsRemove(Context ctx, @Param("alias") String alias, @Param("skillName") String skillName) {
-        PoolDir poolDir = engine.getPoolManager().getPool(alias);
-        if (poolDir == null) return Result.failure("挂载池不存在: " + alias);
+        MountDir mountDir = engine.getMount(alias);
+        if (mountDir == null) return Result.failure("挂载池不存在: " + alias);
 
 
-        Path skillDir = poolDir.getRealPath().resolve(skillName);
+        Path skillDir = mountDir.getRealPath().resolve(skillName);
         if (!Files.exists(skillDir)) return Result.failure("技能包不存在: " + skillName);
 
         // 安全校验：防止路径穿越
-        if (!skillDir.normalize().startsWith(poolDir.getRealPath())) {
+        if (!skillDir.normalize().startsWith(mountDir.getRealPath())) {
             return Result.failure("非法路径");
         }
 
         try {
             deleteRecursively(skillDir);
-            engine.getPoolManager().refresh(alias);
+            engine.refreshMount(alias);
             return Result.succeed("删除成功");
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());

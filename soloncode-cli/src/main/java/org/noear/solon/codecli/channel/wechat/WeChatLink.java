@@ -65,7 +65,7 @@ public class WeChatLink implements Channel, Runnable {
     public WeChatLink(HarnessEngine engine, WebGate webGate) {
         this.engine = engine;
         this.webGate = webGate;
-        this.credentialStore = new WeChatCredentialStore((AgentProperties)engine.getProps());
+        this.credentialStore = new WeChatCredentialStore(engine);
 
         webGate.getStreamBuilder().bind(this);
     }

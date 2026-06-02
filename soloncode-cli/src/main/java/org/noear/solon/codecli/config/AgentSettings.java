@@ -6,10 +6,10 @@ import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.solon.ai.chat.ChatConfig;
-import org.noear.solon.ai.harness.HarnessProperties;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
-import org.noear.solon.ai.skills.openapi.ApiSource;
-import org.noear.solon.codecli.config.entity.MountDo;
+import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.talents.openapi.ApiSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,7 +104,7 @@ public class AgentSettings implements Serializable {
             }
         } else {
             for (Map.Entry<String, String> entry : props.getMountPools().entrySet()) {
-                this.mountPools.put(entry.getKey(), new MountDo(entry.getValue(), true));
+                this.mountPools.put(entry.getKey(), new MountDo(MountType.SKILLS, entry.getValue(), false, true, false));
             }
         }
     }

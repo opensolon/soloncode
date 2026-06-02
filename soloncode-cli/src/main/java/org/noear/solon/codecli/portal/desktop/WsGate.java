@@ -20,9 +20,9 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.task.ActionEndChunk;
-import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
-import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
+import org.noear.solon.ai.agent.react.task.ObservationChunk;
+import org.noear.solon.ai.agent.react.task.ReasonChunk;
+import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
@@ -32,9 +32,9 @@ import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
-import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.skills.memory.MemorySkill;
+import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentProperties;
@@ -131,8 +131,8 @@ public class WsGate extends SimpleWebSocketListener {
 
             AgentSession session = engine.getSession(sessionId);
 
-            if("[(sec)interrupt]".equals(req.getInput())) {
-                Disposable disposable = (Disposable)session.attrs().remove("disposable");
+            if ("[(sec)interrupt]".equals(req.getInput())) {
+                Disposable disposable = (Disposable) session.attrs().remove("disposable");
                 if (disposable != null) {
                     disposable.dispose();
                 }
@@ -156,7 +156,6 @@ public class WsGate extends SimpleWebSocketListener {
                         .set("elapsedMs", 0).toJson());
                 return;
             }
-
 
 
             if (Assert.isEmpty(req.getCwd())) {
@@ -187,7 +186,7 @@ public class WsGate extends SimpleWebSocketListener {
             String agentName = null;
             String currentInput = input;
 
-            if(input.startsWith("@")) {
+            if (input.startsWith("@")) {
                 int agentNameIdx = input.indexOf(" ");
                 if (agentNameIdx > 0) {
                     agentName = input.substring(1, agentNameIdx);
@@ -271,14 +270,14 @@ public class WsGate extends SimpleWebSocketListener {
                         // ReActChunk 需要优先处理 metrics 收集（无论 hasContent 状态）
                         String msg = null;
                         if (chunk instanceof ReActChunk) {
-                           onReActChunk((ReActChunk) chunk, finalSessionId, socket);
-                           return;
-                        } else if (chunk instanceof ReasonDeltaChunk) {
-                            msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
-                        } else if (chunk instanceof ActionEndChunk) {
-                            msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
-                        } else if (chunk instanceof ReasonCompleteChunk) {
-                            msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
+                            onReActChunk((ReActChunk) chunk, finalSessionId, socket);
+                            return;
+                        } else if (chunk instanceof ReasonChunk) {
+                            msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ObservationChunk) {
+                            msg = onObservationChunk((ObservationChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ThoughtChunk) {
+                            msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
                         }
 
                         if (Assert.isNotEmpty(msg)) {
@@ -319,7 +318,7 @@ public class WsGate extends SimpleWebSocketListener {
         socket.send(msg2);
     }
 
-    private String onReasonDeltaChunk(ReasonDeltaChunk chunk, String finalSessionId) {
+    private String onReasonChunk(ReasonChunk chunk, String finalSessionId) {
         if (!chunk.isToolCalls() && chunk.getMessage() != null) {
             String content = chunk.getMessage().getContent();
             if (content != null && !content.isEmpty()) {
@@ -337,14 +336,18 @@ public class WsGate extends SimpleWebSocketListener {
         return null;
     }
 
-    private String onActionEndChunk(ActionEndChunk chunk, String finalSessionId) {
+    private String onObservationChunk(ObservationChunk chunk, String finalSessionId) {
+        if (chunk.getError() != null) {
+            return null;
+        }
+
         if (Assert.isEmpty(chunk.getToolName())) {
             return null;
         }
 
-        if (TaskSkill.TOOL_MULTITASK.equals(chunk.getToolName()) ||
-                TaskSkill.TOOL_TASK.equals(chunk.getToolName()) ||
-                MemorySkill.isMemoryTool(chunk.getToolName())) {
+        if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
+                TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||
+                MemoryTalent.isMemoryTool(chunk.getToolName())) {
             return null;
         }
 
@@ -357,8 +360,8 @@ public class WsGate extends SimpleWebSocketListener {
             node.set("toolName", chunk.getAgentName() + "/" + chunk.getToolName());
         }
 
-        if (chunk.getResult() != null && chunk.getResult().getContent() != null) {
-            node.set("text", chunk.getResult().getContent());
+        if (chunk.getObservation() != null && chunk.getObservation().getContent() != null) {
+            node.set("text", chunk.getObservation().getContent());
         }
         if (chunk.getArgs() != null) node.set("args", chunk.getArgs());
 
@@ -422,12 +425,12 @@ public class WsGate extends SimpleWebSocketListener {
                             return;
                         }
                         String msg = null;
-                        if (chunk instanceof ReasonDeltaChunk) {
-                            msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, sessionId);
-                        } else if (chunk instanceof ActionEndChunk) {
-                            msg = onActionEndChunk((ActionEndChunk) chunk, sessionId);
-                        } else if (chunk instanceof ReasonCompleteChunk) {
-                            msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, sessionId);
+                        if (chunk instanceof ReasonChunk) {
+                            msg = onReasonChunk((ReasonChunk) chunk, sessionId);
+                        } else if (chunk instanceof ObservationChunk) {
+                            msg = onObservationChunk((ObservationChunk) chunk, sessionId);
+                        } else if (chunk instanceof ThoughtChunk) {
+                            msg = onThoughtChunk((ThoughtChunk) chunk, sessionId);
                         }
                         if (Assert.isNotEmpty(msg)) {
                             socket.send(msg);
@@ -444,8 +447,8 @@ public class WsGate extends SimpleWebSocketListener {
         }
     }
 
-    private String onReasonCompleteChunk(ReasonCompleteChunk chunk, String finalSessionId) {
-        if (chunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+    private String onThoughtChunk(ThoughtChunk chunk, String finalSessionId) {
+        if (chunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             String content = chunk.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
                 return new ONode().set("type", "reason")
@@ -635,12 +638,12 @@ public class WsGate extends SimpleWebSocketListener {
                         return;
                     }
                     String msg = null;
-                    if (chunk instanceof ReasonDeltaChunk) {
-                        msg = onReasonDeltaChunk((ReasonDeltaChunk) chunk, finalSessionId);
-                    } else if (chunk instanceof ActionEndChunk) {
-                        msg = onActionEndChunk((ActionEndChunk) chunk, finalSessionId);
-                    } else if (chunk instanceof ReasonCompleteChunk) {
-                        msg = onReasonCompleteChunk((ReasonCompleteChunk) chunk, finalSessionId);
+                    if (chunk instanceof ReasonChunk) {
+                        msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                    } else if (chunk instanceof ObservationChunk) {
+                        msg = onObservationChunk((ObservationChunk) chunk, finalSessionId);
+                    } else if (chunk instanceof ThoughtChunk) {
+                        msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
                     }
                     if (Assert.isNotEmpty(msg)) {
                         socket.send(msg);

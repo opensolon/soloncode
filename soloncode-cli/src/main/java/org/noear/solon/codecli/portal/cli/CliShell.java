@@ -30,18 +30,16 @@ import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.agent.react.task.ActionEndChunk;
-import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
-import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
+import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
-import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.skills.cli.TodoSkill;
-import org.noear.solon.ai.skills.memory.MemorySkill;
+import org.noear.solon.ai.talents.cli.TodoTalent;
+import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.config.AgentFlags;
@@ -323,15 +321,15 @@ public class CliShell implements Runnable {
                     .stream()
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
-                        if (chunk instanceof ReasonDeltaChunk) {
-                            // ReasonDeltaChunk 为增量块（工具调用时为全量，不需要打印）
-                            onReasonDeltaChunk((ReasonDeltaChunk) chunk, isFirstReasonDeltaChunk, isFirstConversation);
-                        } else if (chunk instanceof ReasonCompleteChunk) {
-                            //ReasonCompleteChunk 为完成块
-                            onReasonCompleteChunk((ReasonCompleteChunk) chunk);
-                        } else if (chunk instanceof ActionEndChunk) {
-                            //ActionEndChunk 为全量，一次工具调用一个 ActionEndChunk
-                            onActionEndChunk((ActionEndChunk) chunk, isFirstReasonDeltaChunk);
+                        if (chunk instanceof ReasonChunk) {
+                            // ReasonChunk （思考）为增量块（工具调用时为全量，不需要打印）
+                            onReasonChunk((ReasonChunk) chunk, isFirstReasonDeltaChunk, isFirstConversation);
+                        } else if (chunk instanceof ThoughtChunk) {
+                            //ThoughtChunk （想法）为完成块
+                            onThoughtChunk((ThoughtChunk) chunk);
+                        } else if (chunk instanceof ObservationChunk) {
+                            //ObservationChunk 为全量，一次工具调用产生一个 ObservationChunk
+                            onObservationChunk((ObservationChunk) chunk, isFirstReasonDeltaChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
                             onFinalChunk((ReActChunk) chunk);
@@ -483,7 +481,7 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void onReasonDeltaChunk(ReasonDeltaChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
+    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             String delta = clearThink(reason.getContent());
 
@@ -521,8 +519,8 @@ public class CliShell implements Runnable {
     }
 
 
-    private void onReasonCompleteChunk(ReasonCompleteChunk thought) {
-        if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+    private void onThoughtChunk(ThoughtChunk thought) {
+        if (thought.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
@@ -538,11 +536,15 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void onActionEndChunk(ActionEndChunk action, AtomicBoolean isFirstReasonDeltaChunk) {
+    private void onObservationChunk(ObservationChunk action, AtomicBoolean isFirstReasonDeltaChunk) {
+        if(action.getError() != null){
+            return;
+        }
+
         if (Assert.isNotEmpty(action.getToolName())) {
-            if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
-                    TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
-                    MemorySkill.isMemoryTool(action.getToolName())) {
+            if (TaskTalent.TOOL_MULTITASK.equals(action.getToolName()) ||
+                    TaskTalent.TOOL_TASK.equals(action.getToolName()) ||
+                    MemoryTalent.isMemoryTool(action.getToolName())) {
                 return;
             }
 
@@ -572,7 +574,7 @@ public class CliShell implements Runnable {
                 });
             }
 
-            boolean isTodo = TodoSkill.TOOL_TODOREAD.equals(action.getToolName()) || TodoSkill.TOOL_TODOWRITE.equals(action.getToolName());
+            boolean isTodo = TodoTalent.TOOL_TODOREAD.equals(action.getToolName()) || TodoTalent.TOOL_TODOWRITE.equals(action.getToolName());
             String argsStr = argsBuilder.toString().replace("\n", " ");
             boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
@@ -603,7 +605,7 @@ public class CliShell implements Runnable {
                 // --- 全量风格 ---
                 // 1. 打印指令行
                 terminal.writer().println();
-                if (TodoSkill.TOOL_TODOWRITE.equals(action.getToolName())) {
+                if (TodoTalent.TOOL_TODOWRITE.equals(action.getToolName())) {
                     //优化 todowrite 打印
                     argsStr = "\n" + ((String) args.get("todos")).trim();
                     terminal.writer().println(PURPLE + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
@@ -653,7 +655,7 @@ public class CliShell implements Runnable {
     protected void printWelcome(AgentSession session) {
         final String modelName;
 
-        if (engine.getProps().getModels().isEmpty()) {
+        if (engine.getModels().isEmpty()) {
             modelName = "no model";
         } else {
             if (session == null) {
@@ -664,7 +666,7 @@ public class CliShell implements Runnable {
             }
         }
 
-        String path = new File(engine.getProps().getWorkspace()).getAbsolutePath();
+        String path = new File(engine.getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
         terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
         terminal.writer().println(DIM + path + RESET);
@@ -681,13 +683,13 @@ public class CliShell implements Runnable {
     public void printWelcome(String text) {
         final String modelName;
 
-        if (engine.getProps().getModels().isEmpty()) {
+        if (engine.getModels().isEmpty()) {
             modelName = "no model";
         } else {
             modelName = engine.getMainModel().getNameOrModel();
         }
 
-        String path = new File(engine.getProps().getWorkspace()).getAbsolutePath();
+        String path = new File(engine.getWorkspace()).getAbsolutePath();
 
         System.err.println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
         System.err.println(DIM + path + RESET);

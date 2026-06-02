@@ -57,7 +57,7 @@ public class ModelCommand implements Command {
             currentModel = ctx.getEngine().getModelOrMain(currentModel).getNameOrModel();
 
             ctx.println(ctx.color(BOLD + "Models:" + RESET));
-            for (ChatConfig m : ctx.getEngine().getProps().getModels()) {
+            for (ChatConfig m : ctx.getEngine().getModels()) {
                 String model = m.getNameOrModel();
                 String desc = m.getDescriptionOrModel();
                 String suffix = model.equals(currentModel) ? " " + GREEN + "(active)" + RESET : "";
@@ -71,7 +71,7 @@ public class ModelCommand implements Command {
             ctx.println(ctx.color(DIM + "  /model ls" + RESET + "       List all available models"));
             ctx.println(ctx.color(DIM + "  /model <name>" + RESET + "   Switch to the specified model"));
         } else {
-            if (ctx.getEngine().getProps().getModelOrNil(flag) == null) {
+            if (ctx.getEngine().getModelOrNil(flag) == null) {
                 ctx.println(ctx.color(RED + "Model not found: " + RESET + BOLD + flag + RESET));
                 ctx.println(ctx.color(DIM + "Use '/model' to see available models." + RESET));
             } else {

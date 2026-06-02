@@ -18,6 +18,7 @@ package org.noear.solon.codecli.channel.wechat;
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,9 +45,9 @@ public class WeChatCredentialStore {
 
     private final Path storePath;
 
-    public WeChatCredentialStore(AgentProperties agentProps) {
-        storePath = Paths.get(AgentProperties.getUserDir(),
-                agentProps.getHarnessChannels(),
+    public WeChatCredentialStore(HarnessEngine engine) {
+        storePath = Paths.get(engine.getUserDir(),
+                engine.getHarnessChannels(),
                 STORE_FILE).toAbsolutePath();
     }
 

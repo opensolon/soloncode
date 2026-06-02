@@ -15,6 +15,7 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.codecli.config.AgentProperties;
@@ -72,9 +73,9 @@ public class LoopCommand implements Command {
     @Override
     public boolean execute(CommandContext ctx) throws Exception {
         String sessionId = ctx.getSession().getSessionId();
-        AgentProperties props = (AgentProperties) ctx.getEngine().getProps();
-        String workspace = props.getWorkspace();
-        String harnessSessions = props.getHarnessSessions();
+        HarnessEngine  engine = ctx.getEngine();
+        String workspace = engine.getWorkspace();
+        String harnessSessions = engine.getHarnessSessions();
 
         String sub = ctx.argAt(0);
 
