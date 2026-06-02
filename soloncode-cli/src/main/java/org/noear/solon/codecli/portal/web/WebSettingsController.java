@@ -1307,6 +1307,7 @@ public class WebSettingsController {
             item.put("enabled", entry.isEnabled());
             item.put("system", entry.isPrimary());
             item.put("writeable", entry.isWriteable());
+            item.put("realPath", entry.getRealPath() != null ? entry.getRealPath().toString() : "");
             list.add(item);
         }
         return Result.succeed(list);
