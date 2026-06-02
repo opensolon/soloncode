@@ -62,7 +62,7 @@ public class App {
 
         //兼容旧的模型配置
         if (c.getChatModel() != null) {
-            c.addModel(c.getChatModel());
+            c.getModels().add(c.getChatModel());
         }
 
         //设定默认会话id

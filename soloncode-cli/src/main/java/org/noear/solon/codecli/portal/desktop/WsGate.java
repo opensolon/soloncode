@@ -480,8 +480,8 @@ public class WsGate extends SimpleWebSocketListener {
                     }
 
                     // 重建 ChatModel 并注入 kernel
-                    agentPros.removeModel(agentPros.getChatModel().getNameOrModel());
-                    agentPros.addModel(agentPros.getChatModel());
+                    engine.removeModel(agentPros.getChatModel().getNameOrModel());
+                    engine.addModel(agentPros.getChatModel());
                     engine.switchMainModel(agentPros.getChatModel().getNameOrModel());
 
                     LOG.info("[WS] Config updated: model={}", model);

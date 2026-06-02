@@ -125,14 +125,14 @@ public class Configurator {
                     mount.isWriteable()));
         }
 
-        engine.addMount(new MountDir("@global-skills", MountType.SKILLS, "~/" + props.getHarnessSkills(), true, true));
-        engine.addMount(new MountDir("@workspace-skills", MountType.SKILLS, "./" + props.getHarnessSkills(), true, true));
-        engine.addMount(new MountDir("@global-agents", MountType.SUBAGENTS, "~/"+ props.getHarnessAgents(), true, true));
-        engine.addMount(new MountDir("@workspace-agents", MountType.SUBAGENTS, "./"+ props.getHarnessAgents(), true, true));
+        engine.addMount(new MountDir("@global-skills", MountType.SKILLS, "~/" + engine.getHarnessSkills(), true, true));
+        engine.addMount(new MountDir("@workspace-skills", MountType.SKILLS, "./" + engine.getHarnessSkills(), true, true));
+        engine.addMount(new MountDir("@global-agents", MountType.SUBAGENTS, "~/"+ engine.getHarnessAgents(), true, true));
+        engine.addMount(new MountDir("@workspace-agents", MountType.SUBAGENTS, "./"+ engine.getHarnessAgents(), true, true));
 
 
-        engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), props.getHarnessCommands()));
-        engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), props.getHarnessCommands()));
+        engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), engine.getHarnessCommands()));
+        engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), engine.getHarnessCommands()));
 
         engine.getCommandRegistry().register(new ExitCommand());
         engine.getCommandRegistry().register(new ClearCommand());

@@ -97,10 +97,10 @@ public class HarnessProperties implements Serializable {
      */
     @Deprecated
     private Map<String, String> skillPools = new ConcurrentHashMap<>();
-    //挂载池
-    private Map<String, String> mountPools = new ConcurrentHashMap<>();
-
-    //代理池
+    /**
+     * @deprecated 4.0.0
+     */
+    @Deprecated
     private List<String> agentPools = new CopyOnWriteArrayList<>();
     //mcp集
     private Map<String, McpServerParameters> mcpServers = new ConcurrentHashMap<>();
@@ -120,151 +120,24 @@ public class HarnessProperties implements Serializable {
     }
 
     /**
-     * @deprecated 4.0.0 {@link #getMountPools()}
-     * */
+     * @deprecated 4.0.0
+     *
+     */
     @Deprecated
-    protected Map<String, String> getSkillPools() {
+    public Map<String, String> getSkillPools() {
         return skillPools;
     }
 
-    /**
-     * @deprecated 4.0.0 {@link #setMountPools(Map)}
-     * */
-    @Deprecated
-    protected void setSkillPools(Map<String, String> skillPools) {
-        this.skillPools = skillPools;
-    }
-
-    /**
-     * 添加扩展
-     */
-    public void addExtension(HarnessExtension extension) {
-        this.extensions.add(extension);
-    }
-
-    /**
-     * 添加接口源
-     */
-    public void addApiSource(String name, ApiSource apiSource) {
-        getApiServers().put(name, apiSource);
-    }
-
-    /**
-     * 添加 mcp 服务
-     */
-    public void addMcpServer(String name, McpServerParameters mcpParameters) {
-        getMcpServers().put(name, mcpParameters);
-    }
-
-    /**
-     * 添加 lsp 服务
-     */
-    public void addLspServer(String name, LspServerParameters lspParameters) {
-        getLspServers().put(name, lspParameters);
-    }
-
-    /**
-     * 添加挂载池（主要是技能持载池）
-     *
-     * @param alias 必须 @ 开头
-     */
-    public void addMountPool(String alias, String path) {
-        getMountPools().put(alias, path);
-    }
-
-    /**
-     * 添加代理池
-     */
-    public void addAgentPool(String path) {
-        getAgentPools().add(path);
-    }
-
-    /**
-     * 添加工具权限
-     */
-    public void addTools(ToolPermission... toolPermissions) {
-        for (ToolPermission p1 : toolPermissions) {
-            tools.add(p1.getName());
-        }
-    }
-
-    public void addDisallowedTools(ToolPermission... toolPermissions) {
-        for (ToolPermission p1 : toolPermissions) {
-            disallowedTools.add(p1.getName());
-        }
-    }
 
     public List<ChatConfig> getModels() {
         return models;
     }
 
-    /**
-     * 添加模型配置
-     */
-    public void addModel(ChatConfig chatConfig) {
-        if (Assert.isEmpty(chatConfig.getUserAgent())) {
-            chatConfig.setUserAgent(this.getUserAgent());
-        }
-
-        models.add(chatConfig);
-    }
-
-    /**
-     * 移除模型
-     */
-    public void removeModel(String modelName) {
-        models.removeIf(m -> m.getNameOrModel().equals(modelName));
-    }
-
-    public ChatConfig getModelOrNil(String modelName) {
-        if (models.isEmpty()) {
-            return null;
-        }
-
-        if (Assert.isEmpty(modelName)) {
-            return models.get(0);
-        }
-
-        for (ChatConfig c : models) {
-            if (c.isEnabled()) {
-                //只检查已启用的
-                if (c.getNameOrModel().equals(modelName)) {
-                    return c;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    public ChatConfig getModelOrDef(String modelName) {
-        if (models.isEmpty()) {
-            return null;
-        }
-
-        if (Assert.isEmpty(modelName)) {
-            return models.get(0);
-        }
-
-        for (ChatConfig c : models) {
-            if (c.isEnabled()) {
-                //只检查已启用的
-                if (c.getNameOrModel().equals(modelName)) {
-                    return c;
-                }
-            }
-        }
-
-        return models.get(0);
-    }
 
     public boolean isAutoRethink() {
         return autoRethink;
     }
 
-    public void setAutoRethink(boolean autoRethink) {
-        this.autoRethink = autoRethink;
-    }
 
     //--------------------------
 

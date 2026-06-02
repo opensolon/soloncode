@@ -27,6 +27,6 @@ public class MountDo implements Serializable {
     private boolean primary;
     //是否启用
     private boolean enabled = true;
-    //是否可写
+    //是否可写（type == MountType.FILES 时有效）
     private boolean writeable = false;
 }
