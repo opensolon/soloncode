@@ -130,8 +130,8 @@ public class Configurator {
 
         engine.addMount(new MountDir("@global-skills", MountType.SKILLS, "~/" + engine.getHarnessSkills(), true, true));
         engine.addMount(new MountDir("@workspace-skills", MountType.SKILLS, "./" + engine.getHarnessSkills(), true, true));
-        engine.addMount(new MountDir("@global-agents", MountType.SUBAGENTS, "~/"+ engine.getHarnessAgents(), true, true));
-        engine.addMount(new MountDir("@workspace-agents", MountType.SUBAGENTS, "./"+ engine.getHarnessAgents(), true, true));
+        engine.addMount(new MountDir("@global-agents", MountType.AGENTS, "~/"+ engine.getHarnessAgents(), true, true));
+        engine.addMount(new MountDir("@workspace-agents", MountType.AGENTS, "./"+ engine.getHarnessAgents(), true, true));
 
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), engine.getHarnessCommands()));

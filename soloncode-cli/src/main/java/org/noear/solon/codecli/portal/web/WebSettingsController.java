@@ -1361,7 +1361,7 @@ public class WebSettingsController {
             return Result.failure("挂载池不存在: " + alias);
         }
 
-        if ("SUBAGENTS".equals(type)) {
+        if ("AGENTS".equals(type)) {
             return loadAgentsContent(alias);
         } else if ("FILES".equals(type)) {
             return Result.succeed(Collections.emptyList());

@@ -945,7 +945,7 @@
         var mountItem = mountsCachedList.find(function (m) { return m.alias === alias; });
         mountsCurrentRealPath = mountItem ? (mountItem.realPath || '') : '';
 
-        var titleMap = { SKILLS: '技能包列表', SUBAGENTS: '子代理列表', FILES: '文件列表' };
+        var titleMap = { SKILLS: '技能包列表', AGENTS: '子代理列表', FILES: '文件列表' };
         $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || '内容列表'));
         showMountsSkillsView();
         $mountsSkillsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
@@ -959,7 +959,7 @@
     }
 
     function renderMountsContent(list, type) {
-        if (type === 'SUBAGENTS') { renderAgentsList(list); return; }
+        if (type === 'AGENTS') { renderAgentsList(list); return; }
         if (type === 'FILES') {
             $mountsSkillsList.html('<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>'
