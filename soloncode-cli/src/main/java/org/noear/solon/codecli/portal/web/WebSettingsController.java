@@ -1304,6 +1304,7 @@ public class WebSettingsController {
             item.put("alias", entry.getAlias());
             item.put("type", entry.getType());
             item.put("path", entry.getPath());
+            item.put("enabled", entry.isEnabled());
             item.put("system", entry.isPrimary());
             item.put("writeable", entry.isWriteable());
             list.add(item);
@@ -1376,6 +1377,7 @@ public class WebSettingsController {
             Map<String, String> skillItem = new LinkedHashMap<>();
             skillItem.put("name", subDir.getName());
             skillItem.put("description", subDir.getDescription());
+            skillItem.put("realPath", subDir.getRealPath() != null ? subDir.getRealPath().toString() : "");
             skills.add(skillItem);
         }
 
