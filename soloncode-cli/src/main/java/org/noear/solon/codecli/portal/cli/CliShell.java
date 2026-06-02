@@ -69,6 +69,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class CliShell implements Runnable {
     private final static Logger LOG = LoggerFactory.getLogger(CliShell.class);
 
+    private final static String SESSION_ID_CLI = "cli";
+
     private Terminal terminal;
     private LineReader reader;
     private final HarnessEngine engine;
@@ -147,7 +149,7 @@ public class CliShell implements Runnable {
             return;
         }
 
-        AgentSession session = prepare(agentProps.getSessionId());
+        AgentSession session = prepare(SESSION_ID_CLI);
 
         try {
             if (!isCommand(session, input)) {
@@ -163,16 +165,16 @@ public class CliShell implements Runnable {
      */
     @Override
     public void run() {
-        AgentSession session = prepare(agentProps.getSessionId());
+        AgentSession session = prepare(SESSION_ID_CLI);
 
 
         if (loopScheduler != null) {
             // 恢复上次未过期的 loop 定时任务（如果有）
-            loopScheduler.restore(session.getSessionId(), agentProps.getWorkspace(), agentProps.getHarnessSessions());
+            loopScheduler.restore(session.getSessionId(), engine.getWorkspace(), engine.getHarnessSessions());
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
             loopScheduler.addTaskExecutor((sessionId, prompt) -> {
-                if (agentProps.getSessionId().equals(sessionId) == false) {
+                if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return;
                 }
 

@@ -127,6 +127,7 @@
     var $mountsSaveBtn = $('#mountsSaveBtn');
     var mountsCachedList = [];
     var mountsCurrentAlias = null;
+    var mountsCurrentType = null;
 
     // General
     var $generalSaveBtn = $('#generalSaveBtn');
@@ -906,11 +907,18 @@
         $mountsList.html(html);
     }
 
+    // 从缓存查找挂载类型
+    function getMountType(alias) {
+        var item = mountsCachedList.find(function (m) { return m.alias === alias; });
+        return item ? (item.type || 'SKILLS') : 'SKILLS';
+    }
+
     // 池列表事件委托
     $mountsList
         .on('click', '.mcp-action-btn.browse', function (e) {
             e.stopPropagation();
-            loadMountsSkills($(this).attr('data-alias'));
+            var alias = $(this).attr('data-alias');
+            loadMountsContent(alias, getMountType(alias));
         })
         .on('click', '.mcp-action-btn.delete', function (e) {
             e.stopPropagation();
@@ -923,25 +931,35 @@
             }
         })
         .on('click', '.mounts-pool-item', function () {
-            loadMountsSkills($(this).attr('data-alias'));
+            var alias = $(this).attr('data-alias');
+            loadMountsContent(alias, getMountType(alias));
         });
 
-    // 池内技能包加载与渲染
-    function loadMountsSkills(alias) {
+    // 池内容加载与渲染（按类型分发）
+    function loadMountsContent(alias, type) {
         mountsCurrentAlias = alias;
-        $mountsSkillsTitle.text(alias + ' - 技能包列表');
+        mountsCurrentType = type || 'SKILLS';
+
+        var titleMap = { SKILLS: '技能包列表', SUBAGENTS: '子代理列表', FILES: '文件列表' };
+        $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || '内容列表'));
         showMountsSkillsView();
         $mountsSkillsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
 
-        $.get('/web/settings/mounts/skills', { alias: alias }, function (resp) {
-            if (resp.code === 200 && resp.data) renderMountsSkills(resp.data);
+        $.get('/web/settings/mounts/content', { alias: alias, type: mountsCurrentType }, function (resp) {
+            if (resp.code === 200 && resp.data) renderMountsContent(resp.data, mountsCurrentType);
             else $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
         }).fail(function () {
             $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
         });
     }
 
-    function renderMountsSkills(list) {
+    function renderMountsContent(list, type) {
+        if (type === 'SUBAGENTS') { renderAgentsList(list); return; }
+        // SKILLS / FILES 默认走技能渲染
+        renderSkillsList(list);
+    }
+
+    function renderSkillsList(list) {
         var html = '';
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
@@ -965,12 +983,36 @@
         $mountsSkillsList.html(html);
     }
 
+    function renderAgentsList(list) {
+        var html = '';
+        if (!list || list.length === 0) {
+            html = '<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>'
+                + '<div class="mcp-empty-title">该池暂无子代理</div>'
+                + '<div class="mcp-empty-desc">将代理配置文件放入池目录即可自动加载</div></div>';
+        } else {
+            html += '<div class="mounts-skills-count">' + list.length + ' 个子代理</div>';
+            list.forEach(function (agent) {
+                var name = agent.name || '';
+                var filePath = agent.filePath || '';
+                var iconText = name.substring(0, Math.min(name.length, 2)).toUpperCase();
+                html += '<div class="mcp-server-item mounts-skill-item">'
+                    + '<div class="mcp-server-icon" style="background:#fef3c7;color:#92400e;">' + escapeHtml(iconText) + '</div>'
+                    + '<div class="mcp-server-info">'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + '</div>'
+                    + (filePath ? '<div class="mcp-server-detail">' + escapeHtml(filePath) + '</div>' : '')
+                    + '</div></div>';
+            });
+        }
+        $mountsSkillsList.html(html);
+    }
+
     // 技能包删除事件
     $mountsSkillsList.on('click', '.mcp-action-btn.delete', function () {
         var skillName = $(this).attr('data-skill');
         if (confirm('确定删除技能包 "' + skillName + '"？此操作不可恢复。')) {
             postJson('/web/settings/mounts/skills/remove', { alias: mountsCurrentAlias, skillName: skillName }, function (resp) {
-                if (resp.code === 200) { showToast('删除成功'); loadMountsSkills(mountsCurrentAlias); }
+                if (resp.code === 200) { showToast('删除成功'); loadMountsContent(mountsCurrentAlias, mountsCurrentType); }
                 else showToast('删除失败: ' + (resp.message || ''), 'error');
             });
         }

@@ -54,7 +54,7 @@ public class AgentSettings implements Serializable {
      * <p>如果 settings 有数据，以 settings 为准同步到 props；
      * 如果 settings 为空，则从 props 补充到 settings。</p>
      */
-    public void mergeFrom(HarnessProperties props) {
+    public void mergeFrom(AgentProperties props) {
         if (general.getSummaryWindowSize() != null) {
             props.setSummaryWindowSize(general.getSummaryWindowSize());
         } else {

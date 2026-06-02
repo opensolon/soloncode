@@ -88,17 +88,20 @@ public class Configurator {
 
         //-----------------
 
+        String workspace = AgentProperties.getUserDir();
         Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
         // 会话数据存到全局目录 ~/.soloncode/sessions/<sessionId>/
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, Paths.get(props.getWorkspace(), props.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
+                new FileAgentSession(key, Paths.get(workspace, props.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
 
-        HarnessEngine engine = HarnessEngine.of(props.getWorkspace(),props.getHarnessHome())
-                .systemPrompt(props.getSystemPrompt())
+        HarnessEngine engine = HarnessEngine.of(workspace, props.getHarnessHome())
                 .userAgent(props.getUserAgent())
+                .systemPrompt(props.getAgentsMd())
                 .maxTurns(props.getMaxSteps())
                 .autoRethink(props.isAutoRethink())
+                .toolsAdd(props.getTools())
+                .disallowedToolsAdd(props.getTools())
                 .sessionWindowSize(props.getSessionWindowSize())
                 .sessionProvider(sessionProvider)
                 .compressionThreshold(props.getSummaryWindowSize(), props.getSummaryWindowToken())
@@ -132,7 +135,7 @@ public class Configurator {
 
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), engine.getHarnessCommands()));
-        engine.getCommandRegistry().load(Paths.get(agentProps.getWorkspace(), engine.getHarnessCommands()));
+        engine.getCommandRegistry().load(Paths.get(workspace, engine.getHarnessCommands()));
 
         engine.getCommandRegistry().register(new ExitCommand());
         engine.getCommandRegistry().register(new ClearCommand());
@@ -259,7 +262,7 @@ public class Configurator {
 
         // 启动工作区文件变化监听
         try {
-            Path workspacePath = Paths.get(agentProps.getWorkspace()).toAbsolutePath().normalize();
+            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
             WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
             workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
             workspaceWatcher.start();

@@ -23,6 +23,7 @@ import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.talents.mount.AgentMd;
 import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.ai.talents.openapi.ApiSource;
 import org.noear.solon.annotation.*;
@@ -1349,17 +1350,26 @@ public class WebSettingsController {
     }
 
     /**
-     * 获取某挂载池内的技能包列表
+     * 获取某挂载池内的内容列表（根据类型分发）
      */
     @Get
-    @Mapping("/web/settings/mounts/skills")
-    public Result mountsSkills(Context ctx, @Param("alias") String alias) {
+    @Mapping("/web/settings/mounts/content")
+    public Result mountsContent(Context ctx, @Param("alias") String alias, @Param("type") String type) {
         if (engine.hasMount(alias) == false) {
             return Result.failure("挂载池不存在: " + alias);
         }
 
-        // 构建 SkillDir 快速查找索引
-        Collection<SkillDir> skillDirList = engine.getSkillsByMount(alias); //engine.getAgentsByMount(alias);
+        if ("SUBAGENTS".equals(type)) {
+            return loadAgentsContent(alias);
+        } else if ("FILES".equals(type)) {
+            return Result.succeed(Collections.emptyList());
+        } else {
+            return loadSkillsContent(alias);
+        }
+    }
+
+    private Result loadSkillsContent(String alias) {
+        Collection<SkillDir> skillDirList = engine.getSkillsByMount(alias);
         List<Map<String, String>> skills = new ArrayList<>();
 
         for (SkillDir subDir : skillDirList) {
@@ -1370,6 +1380,20 @@ public class WebSettingsController {
         }
 
         return Result.succeed(skills);
+    }
+
+    private Result loadAgentsContent(String alias) {
+        Collection<AgentMd> agentList = engine.getAgentsByMount(alias);
+        List<Map<String, String>> agents = new ArrayList<>();
+
+        for (AgentMd agent : agentList) {
+            Map<String, String> agentItem = new LinkedHashMap<>();
+            agentItem.put("name", agent.getName());
+            agentItem.put("filePath", agent.getFilePath() != null ? agent.getFilePath().toString() : "");
+            agents.add(agentItem);
+        }
+
+        return Result.succeed(agents);
     }
 
     /**

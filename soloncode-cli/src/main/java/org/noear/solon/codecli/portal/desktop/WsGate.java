@@ -65,6 +65,8 @@ import java.nio.charset.StandardCharsets;
 
 public class WsGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WsGate.class);
+    private static final String SESSION_ID_DESKTOP = "desktop";
+
     private final HarnessEngine engine;
     private final AgentProperties agentPros;
 
@@ -75,7 +77,7 @@ public class WsGate extends SimpleWebSocketListener {
 
     @Override
     public void onOpen(WebSocket socket) {
-        String sessionId = socket.paramOrDefault("sessionId", agentPros.getSessionId());
+        String sessionId = socket.paramOrDefault("sessionId", SESSION_ID_DESKTOP);
         String sessionCwd = socket.param(AgentProperties.X_SESSION_CWD);//工作区
 
         if (Assert.isNotEmpty(sessionId)) {
