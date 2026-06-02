@@ -898,6 +898,7 @@
                     + (isSystem ? ' <span class="mounts-system-badge">系统</span>' : '')
                     + (item.writeable ? ' <span class="mounts-writeable-badge">可写</span>' : '')
                     + '</div>'
+                    + (item.description ? '<div class="mcp-server-detail" style="color:#999">' + escapeHtml(item.description) + '</div>' : '')
                     + (path ? '<div class="mcp-server-detail">' + escapeHtml(path) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn browse" data-alias="' + escapeAttr(alias) + '" title="浏览技能"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>'
@@ -1111,7 +1112,7 @@
         $('#mountsPath').val('');
         $('#mountsType').val('SKILLS');
         $('#mountsWriteable').prop('checked', false);
-        $('#mountsWriteableGroup').hide();
+        $('#mountsDescription').val('');
         $mountsSaveBtn.text('保存');
         showMountsFormView('添加挂载池');
     });
@@ -1127,8 +1128,9 @@
 
         var type = $('#mountsType').val();
         var writeable = $('#mountsWriteable').is(':checked');
+        var description = $('#mountsDescription').val().trim();
         $mountsSaveBtn.prop('disabled', true);
-        $.ajax({ url: '/web/settings/mounts/add', method: 'POST', data: JSON.stringify({ alias: alias, path: path, type: type, writeable: writeable }), contentType: 'application/json', dataType: 'json' })
+        $.ajax({ url: '/web/settings/mounts/add', method: 'POST', data: JSON.stringify({ alias: alias, path: path, type: type, writeable: writeable, description: description }), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
                 if (resp.code === 200) { showToast('添加成功'); loadMountsList(); showMountsListView(); }
                 else showToast('添加失败: ' + (resp.message || ''), 'error');
@@ -1145,17 +1147,12 @@
         $('#mountsPath').val(path);
         $('#mountsType').val('SKILLS');
         $('#mountsWriteable').prop('checked', false);
-        $('#mountsWriteableGroup').hide();
+        $('#mountsDescription').val('');
     });
 
-    // 类型联动：仅 FILES 类型显示 writeable 选项
+    // 类型联动
     $('#mountsType').on('change', function () {
-        if ($(this).val() === 'FILES') {
-            $('#mountsWriteableGroup').show();
-        } else {
-            $('#mountsWriteableGroup').hide();
-            $('#mountsWriteable').prop('checked', false);
-        }
+        // writeable 对所有类型有效，不再隐藏
     });
 
 })();

@@ -1312,6 +1312,7 @@ public class WebSettingsController {
             item.put("system", entry.isPrimary());
             item.put("writeable", entry.isWriteable());
             item.put("realPath", entry.getRealPath() != null ? entry.getRealPath().toString() : "");
+            item.put("description", entry.getDescription());
             list.add(item);
         }
         return Result.succeed(list);
@@ -1322,7 +1323,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/mounts/add")
-    public Result mountsAdd(Context ctx, @Param("alias") String alias, @Param("path") String path, MountType type, boolean writeable) {
+    public Result mountsAdd(Context ctx, @Param("description") String description, @Param("alias") String alias, @Param("path") String path, @Param("type") MountType type, @Param("writeable") boolean writeable) {
         if (Assert.isEmpty(alias) || Assert.isEmpty(path)) return Result.failure("参数不完整");
         if (!alias.startsWith("@")) return Result.failure("别名必须以 @ 开头");
         if (engine.hasMount(alias)) return Result.failure("别名已存在");
@@ -1331,10 +1332,18 @@ public class WebSettingsController {
             type = MountType.SKILLS;
         }
 
-        MountDo mountDo = new MountDo(type, path, false, true, writeable);
+        MountDo mountDo = new MountDo(description,
+                type,
+                path,
+                false, true, writeable);
         settings.getMountPools().put(alias, mountDo);
         saveSettings();
-        engine.addMount(alias, type, path, false, true, writeable);
+        engine.addMount(MountDir.builder()
+                .alias(alias)
+                .type(type)
+                .path(path)
+                .writeable(writeable)
+                .build());
         return Result.succeed("添加成功");
     }
 

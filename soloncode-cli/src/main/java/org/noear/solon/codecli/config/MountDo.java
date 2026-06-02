@@ -18,6 +18,8 @@ import java.io.Serializable;
 @Getter
 @Setter
 public class MountDo implements Serializable {
+    //描述
+    private String description;
     //挂载类型
     private MountType type = MountType.SKILLS;
     //配置地址支持 "~/"（用户目录相对位置） 和 "./"（工作区相对位置）

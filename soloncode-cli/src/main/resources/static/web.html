@@ -576,12 +576,16 @@
                                     </select>
                                     <div class="form-hint">选择挂载类型，技能为默认</div>
                                 </div>
-                                <div class="form-group" id="mountsWriteableGroup" style="display:none">
+                                <div class="form-group" id="mountsWriteableGroup">
                                     <label class="checkbox-label">
                                         <input type="checkbox" id="mountsWriteable"/>
                                         <span>允许写入</span>
                                     </label>
-                                    <div class="form-hint">仅对 FILES 类型生效，启用后允许通过代理写入文件</div>
+                                    <div class="form-hint">对所有类型生效，启用后允许通过代理写入文件</div>
+                                </div>
+                                <div class="form-group">
+                                    <label>描述</label>
+                                    <input type="text" id="mountsDescription" placeholder="可选，简要描述此挂载池用途"/>
                                 </div>
                                 <div class="form-actions" style="justify-content:flex-end;">
                                     <button class="btn-primary" id="mountsSaveBtn">保存</button>

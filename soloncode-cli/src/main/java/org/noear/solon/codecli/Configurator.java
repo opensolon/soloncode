@@ -38,7 +38,6 @@ import org.noear.solon.codecli.portal.desktop.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
 import org.noear.solon.core.util.JavaUtil;
-import org.noear.solon.core.util.ResourceUtil;
 import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.net.websocket.WebSocketRouter;
 import org.slf4j.Logger;
@@ -119,21 +118,24 @@ public class Configurator {
                 .modelAdd(props.getModels())
                 .build();
 
-        for(Map.Entry<String, MountDo> entry : agentSettings.getMountPools().entrySet()){
+        for (Map.Entry<String, MountDo> entry : agentSettings.getMountPools().entrySet()) {
             MountDo mount = entry.getValue();
-            engine.addMount(new MountDir(entry.getKey(),
-                    mount.getType(),
-                    mount.getPath(),
-                    mount.isPrimary(),
-                    mount.isEnabled(),
-                    mount.isWriteable()));
+            engine.addMount(MountDir.builder()
+                    .alias(entry.getKey())
+                    .description(mount.getDescription())
+                    .type(mount.getType())
+                    .path(mount.getPath())
+                    .primary(mount.isPrimary())
+                    .enabled(mount.isEnabled())
+                    .writeable(mount.isWriteable())
+                    .build());
         }
 
-        engine.addMount(new MountDir("@global-skills", MountType.SKILLS, "~/" + engine.getHarnessSkills(), true, true));
-        engine.addMount(new MountDir("@workspace-skills", MountType.SKILLS, "./" + engine.getHarnessSkills(), true, true));
-        engine.addMount(new MountDir("@global-agents", MountType.AGENTS, "~/"+ engine.getHarnessAgents(), true, true));
-        engine.addMount(new MountDir("@workspace-agents", MountType.AGENTS, "./"+ engine.getHarnessAgents(), true, true));
+        engine.addMount( MountDir.builder().alias("@global-skills").type(MountType.SKILLS).path( "~/" + engine.getHarnessSkills()).primary(true).build());
+        engine.addMount( MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path( "./" + engine.getHarnessSkills()).primary(true).build());
 
+        engine.addMount( MountDir.builder().alias("@global-agents").type(MountType.AGENTS).path( "~/" + engine.getHarnessAgents()).primary(true).build());
+        engine.addMount( MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path( "~/" + engine.getHarnessAgents()).primary(true).build());
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), engine.getHarnessCommands()));
         engine.getCommandRegistry().load(Paths.get(workspace, engine.getHarnessCommands()));

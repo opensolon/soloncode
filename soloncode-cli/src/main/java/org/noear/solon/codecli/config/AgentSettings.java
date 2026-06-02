@@ -121,7 +121,7 @@ public class AgentSettings implements Serializable {
             }
         } else {
             for (Map.Entry<String, String> entry : props.getSkillPools().entrySet()) {
-                this.mountPools.put(entry.getKey(), new MountDo(MountType.SKILLS, entry.getValue(), false, true, false));
+                this.mountPools.put(entry.getKey(), new MountDo("", MountType.SKILLS, entry.getValue(), false, true, false));
             }
         }
     }
