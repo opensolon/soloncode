@@ -99,6 +99,7 @@ public class Configurator {
                 .userAgent(props.getUserAgent())
                 .systemPrompt(props.getAgentsMd())
                 .maxTurns(props.getMaxSteps())
+                .maxTurns(props.getMaxTurns())
                 .autoRethink(props.isAutoRethink())
                 .toolsAdd(props.getTools())
                 .disallowedToolsAdd(props.getTools())

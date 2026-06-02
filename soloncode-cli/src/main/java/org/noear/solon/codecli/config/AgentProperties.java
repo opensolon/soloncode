@@ -61,7 +61,9 @@ public class AgentProperties implements Serializable {
     private List<String> disallowedTools = new CopyOnWriteArrayList<>();
 
     //最大步数
-    private int maxSteps = 30;
+    @Deprecated
+    private Integer maxSteps;
+    private Integer maxTurns;
 
     //自我反思
     private boolean autoRethink = true;
