@@ -120,7 +120,7 @@ public class Configurator {
             engine.addMount(new MountDir(entry.getKey(),
                     mount.getType(),
                     mount.getPath(),
-                    false,
+                    mount.isPrimary(),
                     mount.isEnabled(),
                     mount.isWriteable()));
         }

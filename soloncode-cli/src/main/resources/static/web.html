@@ -541,6 +541,22 @@
                                     <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
                                     <div class="form-hint">技能文件所在的本地目录路径</div>
                                 </div>
+                                <div class="form-group">
+                                    <label>类型</label>
+                                    <select id="mountsType">
+                                        <option value="SKILLS" selected>技能 (SKILLS)</option>
+                                        <option value="FILES">文件 (FILES)</option>
+                                        <option value="SUBAGENTS">子代理 (SUBAGENTS)</option>
+                                    </select>
+                                    <div class="form-hint">选择挂载类型，技能为默认</div>
+                                </div>
+                                <div class="form-group" id="mountsWriteableGroup" style="display:none">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="mountsWriteable"/>
+                                        <span>允许写入</span>
+                                    </label>
+                                    <div class="form-hint">仅对 FILES 类型生效，启用后允许通过代理写入文件</div>
+                                </div>
                                 <div class="form-actions" style="justify-content:flex-end;">
                                     <button class="btn-primary" id="mountsSaveBtn">保存</button>
                                 </div>

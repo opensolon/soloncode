@@ -1304,6 +1304,7 @@ public class WebSettingsController {
             item.put("type", entry.getType());
             item.put("path", entry.getPath());
             item.put("system", entry.isPrimary());
+            item.put("writeable", entry.isWriteable());
             list.add(item);
         }
         return Result.succeed(list);
@@ -1358,7 +1359,7 @@ public class WebSettingsController {
         }
 
         // 构建 SkillDir 快速查找索引
-        Collection<SkillDir> skillDirList = engine.getSkillsByMount(alias);
+        Collection<SkillDir> skillDirList = engine.getSkillsByMount(alias); //engine.getAgentsByMount(alias);
         List<Map<String, String>> skills = new ArrayList<>();
 
         for (SkillDir subDir : skillDirList) {
