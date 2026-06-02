@@ -216,12 +216,21 @@
 .skill-item-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .skill-item-meta { font-size: 10px; color: var(--text-secondary); margin-top: 3px; display: flex; gap: 10px; }
 .skill-item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
-.skill-install-btn { padding: 5px 14px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); transition: all 0.2s; }
+.skill-install-btn { padding: 5px 14px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); transition: all 0.2s; min-width: 72px; text-align: center; box-sizing: border-box; }
 .skill-install-btn:hover { background: var(--accent); color: #fff; transform: translateY(-1px); box-shadow: 0 2px 6px rgba(var(--accent-rgb, 59,130,246), 0.3); }
 .skill-install-btn.installed { border-color: #22c55e; color: #22c55e; cursor: default; background: transparent; }
 .skill-install-btn.installed:hover { background: transparent; color: #22c55e; transform: none; box-shadow: none; }
 .skill-install-btn.installing { opacity: 0.6; cursor: wait; }
 .skill-empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+
+/* ===== 技能"安装到"下拉菜单 ===== */
+.skill-install-wrap { position: relative; flex-shrink: 0; padding-bottom: 8px; margin-bottom: -8px; }
+.skill-install-dropdown { position: absolute; right: 0; top: 100%; min-width: 160px; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 100; padding: 4px 0; opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s 0.12s; pointer-events: none; }
+.skill-install-dropdown.active { opacity: 1; visibility: visible; transform: translateY(0); transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s 0s; pointer-events: auto; }
+.skill-install-dropdown-loading { padding: 8px 14px; font-size: 11px; color: var(--text-secondary); }
+.skill-install-mount-option { padding: 7px 14px; font-size: 12px; color: var(--text-primary); cursor: pointer; transition: background 0.1s; white-space: nowrap; }
+.skill-install-mount-option:hover { background: var(--bg-hover); color: var(--accent); }
+
 
 /* ===== 二级面板过渡动画 ===== */
 @keyframes settings-slide-in-right {
@@ -250,73 +259,7 @@
 .mounts-skills-count { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; padding: 0 4px; }
 .form-hint { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
 
-/* ===== 技能安装挂载池选择对话框 ===== */
-.skill-install-dialog {
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 24px;
-    width: 360px;
-    box-shadow: 0 12px 48px rgba(0,0,0,0.2);
-    animation: settings-slide-up 0.2s ease-out;
-}
-.skill-install-dialog-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 16px;
-}
-.skill-install-dialog-body {
-    margin-bottom: 20px;
-}
-.skill-install-dialog-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--accent);
-    margin-bottom: 12px;
-    padding: 6px 10px;
-    background: var(--bg-hover);
-    border-radius: 6px;
-    display: inline-block;
-}
-.skill-install-dialog-label {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-}
-.skill-install-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-}
-.skill-install-dialog-cancel,
-.skill-install-dialog-confirm {
-    padding: 7px 18px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-.skill-install-dialog-cancel {
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-}
-.skill-install-dialog-cancel:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-.skill-install-dialog-confirm {
-    background: var(--accent);
-    border: 1px solid var(--accent);
-    color: #fff;
-}
-.skill-install-dialog-confirm:hover {
-    opacity: 0.85;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(59,130,246,0.3);
-}
+
 
 /* ===== General 通用设置 - 卡片布局 ===== */
 .general-card-group {
