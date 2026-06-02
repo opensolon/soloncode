@@ -22,6 +22,7 @@ import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.MountDo;
 import org.noear.solon.codecli.memory.MemoryFactory;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.portal.acp.AcpLink;
@@ -113,6 +114,16 @@ public class Configurator {
                 .mcpRetries(props.getModelRetries())
                 .modelAdd(props.getModels())
                 .build();
+
+        for(Map.Entry<String, MountDo> entry : agentSettings.getMountPools().entrySet()){
+            MountDo mount = entry.getValue();
+            engine.addMount(new MountDir(entry.getKey(),
+                    mount.getType(),
+                    mount.getPath(),
+                    false,
+                    mount.isEnabled(),
+                    mount.isWriteable()));
+        }
 
         engine.addMount(new MountDir("@global-skills", MountType.SKILLS, "~/" + props.getHarnessSkills(), true, true));
         engine.addMount(new MountDir("@workspace-skills", MountType.SKILLS, "./" + props.getHarnessSkills(), true, true));

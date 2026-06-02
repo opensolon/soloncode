@@ -7,7 +7,6 @@ import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
-import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.openapi.ApiSource;
 import org.slf4j.Logger;
