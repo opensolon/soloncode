@@ -955,7 +955,13 @@
 
     function renderMountsContent(list, type) {
         if (type === 'SUBAGENTS') { renderAgentsList(list); return; }
-        // SKILLS / FILES 默认走技能渲染
+        if (type === 'FILES') {
+            $mountsSkillsList.html('<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>'
+                + '<div class="mcp-empty-title">暂不展示文件</div>'
+                + '<div class="mcp-empty-desc">文件浏览功能将在后续版本支持</div></div>');
+            return;
+        }
         renderSkillsList(list);
     }
 
