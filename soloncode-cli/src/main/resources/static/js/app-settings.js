@@ -889,8 +889,8 @@
                 var alias = item.alias || '';
                 var path = item.path || '';
                 var isSystem = item.system === true;
-                var cleanAlias = alias.replace(/^@/, '');
-                var iconText = cleanAlias.substring(0, Math.min(cleanAlias.length, 2)).toUpperCase();
+                var typeMap = { SKILLS: 'S', FILES: 'F', AGENTS: 'A' };
+                var iconText = typeMap[item.type] || (item.type ? item.type.charAt(0).toUpperCase() : 'M');
                 html += '<div class="mcp-server-item mounts-pool-item' + (isSystem ? ' mounts-system' : '') + '" data-alias="' + escapeAttr(alias) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(iconText) + '</div>'
                     + '<div class="mcp-server-info">'
@@ -985,8 +985,6 @@
             html += '<div class="mounts-skills-count">' + list.length + ' 个技能包</div>';
             list.forEach(function (skill) {
                 html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '" style="cursor:pointer">'
-                    + '<div class="mcp-server-icon" style="background:var(--bg-accent-subtle);color:var(--accent);">'
-                    + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(skill.name) + '</div>'
                     + (skill.realPath ? '<div class="mcp-server-detail">' + escapeHtml(skill.realPath) + '</div>' : '')
@@ -1011,9 +1009,7 @@
             list.forEach(function (agent) {
                 var name = agent.name || '';
                 var filePath = agent.filePath || '';
-                var iconText = name.substring(0, Math.min(name.length, 2)).toUpperCase();
                 html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '" style="cursor:pointer">'
-                    + '<div class="mcp-server-icon" style="background:#fef3c7;color:#92400e;">' + escapeHtml(iconText) + '</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + '</div>'
                     + (filePath ? '<div class="mcp-server-detail">' + escapeHtml(filePath) + '</div>' : '')
