@@ -1400,6 +1400,23 @@ public class WebSettingsController {
     }
 
     /**
+     * 打开挂载池的真实目录
+     */
+    @Get
+    @Mapping("/web/settings/mounts/open")
+    public Result mountsOpen(Context ctx, @Param("path") String path) {
+        if (Assert.isEmpty(path)) return Result.failure("路径为空");
+        try {
+            java.io.File dir = new java.io.File(path);
+            if (!dir.exists()) return Result.failure("目录不存在: " + path);
+            java.awt.Desktop.getDesktop().open(dir);
+            return Result.succeed("已打开");
+        } catch (Exception e) {
+            return Result.failure("打开失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 删除挂载池内的技能包
      */
     @Post

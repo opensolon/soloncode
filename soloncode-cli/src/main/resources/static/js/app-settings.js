@@ -128,6 +128,7 @@
     var mountsCachedList = [];
     var mountsCurrentAlias = null;
     var mountsCurrentType = null;
+    var mountsCurrentRealPath = null;
 
     // General
     var $generalSaveBtn = $('#generalSaveBtn');
@@ -940,6 +941,10 @@
         mountsCurrentAlias = alias;
         mountsCurrentType = type || 'SKILLS';
 
+        // 从缓存列表中查找 realPath
+        var mountItem = mountsCachedList.find(function (m) { return m.alias === alias; });
+        mountsCurrentRealPath = mountItem ? (mountItem.realPath || '') : '';
+
         var titleMap = { SKILLS: '技能包列表', SUBAGENTS: '子代理列表', FILES: '文件列表' };
         $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || '内容列表'));
         showMountsSkillsView();
@@ -975,11 +980,12 @@
         } else {
             html += '<div class="mounts-skills-count">' + list.length + ' 个技能包</div>';
             list.forEach(function (skill) {
-                html += '<div class="mcp-server-item mounts-skill-item">'
+                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '" style="cursor:pointer">'
                     + '<div class="mcp-server-icon" style="background:var(--bg-accent-subtle);color:var(--accent);">'
                     + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(skill.name) + '</div>'
+                    + (skill.realPath ? '<div class="mcp-server-detail">' + escapeHtml(skill.realPath) + '</div>' : '')
                     + (skill.description ? '<div class="mcp-server-detail">' + escapeHtml(skill.description) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="删除技能包"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
@@ -1002,7 +1008,7 @@
                 var name = agent.name || '';
                 var filePath = agent.filePath || '';
                 var iconText = name.substring(0, Math.min(name.length, 2)).toUpperCase();
-                html += '<div class="mcp-server-item mounts-skill-item">'
+                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '" style="cursor:pointer">'
                     + '<div class="mcp-server-icon" style="background:#fef3c7;color:#92400e;">' + escapeHtml(iconText) + '</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + '</div>'
@@ -1014,13 +1020,37 @@
     }
 
     // 技能包删除事件
-    $mountsSkillsList.on('click', '.mcp-action-btn.delete', function () {
+    $mountsSkillsList.on('click', '.mcp-action-btn.delete', function (e) {
+        e.stopPropagation();
         var skillName = $(this).attr('data-skill');
         if (confirm('确定删除技能包 "' + skillName + '"？此操作不可恢复。')) {
             postJson('/web/settings/mounts/skills/remove', { alias: mountsCurrentAlias, skillName: skillName }, function (resp) {
                 if (resp.code === 200) { showToast('删除成功'); loadMountsContent(mountsCurrentAlias, mountsCurrentType); }
                 else showToast('删除失败: ' + (resp.message || ''), 'error');
             });
+        }
+    });
+
+    // 点击技能/子代理条目 → 打开其所在目录
+    $mountsSkillsList.on('click', '.mounts-skill-item', function (e) {
+        if ($(e.target).closest('.mcp-action-btn').length) return;
+        var realPath = $(this).data('real-path') || '';
+        if (realPath) {
+            $.get('/web/settings/mounts/open', { path: realPath });
+        }
+    });
+
+    // 打开挂载池根目录按钮
+    $('#mountsOpenDirBtn').on('click', function () {
+        if (mountsCurrentRealPath) {
+            $.get('/web/settings/mounts/open', { path: mountsCurrentRealPath });
+        }
+    });
+
+    // 刷新挂载池内容按钮
+    $('#mountsRefreshBtn').on('click', function () {
+        if (mountsCurrentAlias) {
+            loadMountsContent(mountsCurrentAlias, mountsCurrentType);
         }
     });
 
