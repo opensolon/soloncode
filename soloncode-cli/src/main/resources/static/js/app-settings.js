@@ -113,7 +113,7 @@
 
     // ==================== 状态 ====================
 
-    var llmEditModel = null;
+    var llmEditName = null;
     var llmCachedList = [];
     var mcpEditName = null;
     var mcpCachedList = [];
@@ -300,7 +300,7 @@
         .on('click', '.llm-edit-btn', function (e) {
             e.stopPropagation();
             var model = $(this).closest('.llm-model-item').attr('data-model');
-            if (model) llmEditModelFunc(model);
+            if (model) llmEditNameFunc(model);
         })
         .on('change', '.llm-toggle', function () {
             var name = $(this).attr('data-name');
@@ -311,7 +311,7 @@
     // ==================== LLM 表单 ====================
 
     function resetLlmForm() {
-        llmEditModel = null;
+        llmEditName = null;
         $llmSaveBtn.text('保存');
         $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
         $('#llmApiKey').attr('placeholder', 'sk-...');
@@ -353,11 +353,11 @@
         return bodyObj;
     }
 
-    function llmEditModelFunc(model) {
+    function llmEditNameFunc(name) {
         showLlmFormView('编辑模型', true);
         $llmSaveBtn.text('更新');
         resetLlmForm();
-        llmEditModel = model;
+        llmEditName = name;
 
         $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(model), function (resp) {
             if (resp.code === 200 && resp.data) {
@@ -369,7 +369,7 @@
     }
 
     function llmCopyModel(model) {
-        llmEditModel = null;
+        llmEditName = null;
         showLlmFormView('添加模型', false);
         $llmSaveBtn.text('保存');
         resetLlmForm();
@@ -402,16 +402,16 @@
     }
 
     // LLM 按钮事件
-    $('#llmAddBtn').on('click', function () { llmEditModel = null; resetLlmForm(); showLlmFormView('添加模型', false); });
+    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView('添加模型', false); });
     $('#llmBackBtn').on('click', function () { showLlmListView(); resetLlmForm(); });
 
     $llmSaveBtn.on('click', function () {
         var bodyObj = buildLlmBodyObj();
         if (!bodyObj) return;
-        var isEdit = !!llmEditModel;
+        var isEdit = !!llmEditName;
         var url = isEdit ? '/web/settings/llm/models/update' : '/web/settings/llm/models/add';
         var actionText = isEdit ? '更新' : '添加';
-        if (isEdit) bodyObj.originalName = llmEditModel;
+        if (isEdit) bodyObj.originalName = llmEditName;
 
         $llmSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
@@ -429,16 +429,16 @@
 
     // LLM 表单 - 复制按钮
     $('#llmFormCopyBtn').on('click', function () {
-        var currentModel = llmEditModel;
-        if (!currentModel) return;
-        llmCopyModel(currentModel);
+        var currentName = llmEditName;
+        if (!currentName) return;
+        llmCopyModel(currentName);
     });
     // LLM 表单 - 删除按钮
     $('#llmFormDeleteBtn').on('click', function () {
-        var currentModel = llmEditModel;
-        if (!currentModel) return;
-        if (confirm('确定删除模型 "' + currentModel + '"？')) {
-            llmRemoveModel(currentModel);
+        var currentName = llmEditName;
+        if (!currentName) return;
+        if (confirm('确定删除模型 "' + currentName + '"？')) {
+            llmRemoveModel(currentName);
         }
     });
 
