@@ -1,4 +1,17 @@
 
+### v2026.6.3
+
+* 添加 soloncode web 通用设置“重试策略”功能
+* 添加 soloncode web 技能市场“安装到”功能（可选择技能池）
+* 添加 soloncode web 技能市场点击查看详情的功能
+* 添加 soloncode web 挂载点击内容查看目录的功能
+* 添加 soloncode web 挂载启用开关
+* 添加 soloncode mcp 服务器权限控制（禁用工具）
+* 添加 soloncode openapi 服务器权限控制（禁用工具）
+* 优化 soloncode mcp 协议兼容性（兼容更多非规范协议）
+* 优化 soloncode 上下文压缩算法
+* 细节优化
+
 ### v2026.5.31
 
 * 添加 soloncode web 挂载池管理
