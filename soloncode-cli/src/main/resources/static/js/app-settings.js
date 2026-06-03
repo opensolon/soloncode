@@ -246,11 +246,7 @@
                 + '<div class="llm-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>'
                 + '<div class="llm-empty-title">暂无大模型配置</div>'
                 + '<div class="llm-empty-desc">添加至少一个大模型以开始 AI 对话</div>'
-                + '<div class="llm-empty-templates">'
-                + '<button class="llm-template-btn" data-api-url="https://api.openai.com/v1" data-provider="openai">OpenAI</button>'
-                + '<button class="llm-template-btn" data-api-url="http://localhost:11434" data-provider="ollama">Ollama (本地)</button>'
-                + '<button class="llm-template-btn" data-api-url="https://api.deepseek.com/v1" data-provider="deepseek">DeepSeek</button>'
-                + '</div></div>';
+                + '</div>';
         } else {
             var providerIcons = { 'openai': 'OAI', 'ollama': 'OLA', 'zhipu': 'ZP', 'deepseek': 'DS', 'baidu-qianfan': 'BD', 'ali-tongyi': 'ALI', 'moonshot': 'MS', 'minimax': 'MM' };
             list.forEach(function (item) {
@@ -290,13 +286,6 @@
 
     // LLM 列表事件委托（一次绑定，无需每次 render 后重绑）
     $llmModelList
-        .on('click', '.llm-template-btn', function () {
-            resetLlmForm();
-            showLlmFormView('添加模型', false);
-            $('#llmApiUrl').val($(this).attr('data-api-url'));
-            $('#llmProvider').val($(this).attr('data-provider'));
-            $('#llmModel').focus();
-        })
         .on('click', '.llm-edit-btn', function (e) {
             e.stopPropagation();
             var model = $(this).closest('.llm-model-item').attr('data-model');
