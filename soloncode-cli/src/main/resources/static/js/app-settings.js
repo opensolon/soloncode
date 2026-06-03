@@ -610,15 +610,14 @@
             var toolName = tool.name || '';
             var isEnabled = !!allowedMap[toolName];
             html += '<div class="mcp-server-item mcp-tool-item" style="cursor:default" data-tool="' + escapeAttr(toolName) + '">'
+                + '<label class="mcp-tool-checkbox" title="' + (isEnabled ? '禁用' : '启用') + '">'
+                + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(toolName) + '" class="mcp-tool-toggle"/>'
+                + '<span class="mcp-tool-checkmark"></span>'
+                + '</label>'
                 + '<div class="mcp-server-icon">T</div>'
                 + '<div class="mcp-server-info">'
                 + '<div class="mcp-server-name">' + escapeHtml(toolName) + '</div>'
                 + (tool.description ? '<div class="mcp-server-detail">' + escapeHtml(tool.description) + '</div>' : '')
-                + '</div><div class="mcp-server-actions">'
-                + '<label class="toggle-switch" title="' + (isEnabled ? '禁用' : '启用') + '">'
-                + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(toolName) + '" class="mcp-tool-toggle"/>'
-                + '<span class="toggle-slider"></span>'
-                + '</label>'
                 + '</div></div>';
         });
         $mcpToolsList.html(html);
@@ -883,7 +882,7 @@
 
     function loadOpenapiApis(name) {
         openapiApisCurrentName = name;
-        showOpenapiApisView(name + ' - API 列表');
+        showOpenapiApisView(name + ' - 接口列表');
         $openapiApisList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
 
         $.get('/web/settings/openapi/servers/apis?name=' + encodeURIComponent(name), function (resp) {
@@ -939,16 +938,13 @@
                 var apiName = api.name || '';
                 var isEnabled = !!allowedMap[apiName];
                 html += '<div class="openapi-api-item" data-name="' + escapeAttr(apiName) + '">'
+                    + '<div class="openapi-api-checkbox">'
+                    + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-api="' + escapeAttr(apiName) + '" class="openapi-api-toggle" title="' + (isEnabled ? '禁用' : '启用') + '"/>'
+                    + '</div>'
                     + '<div class="openapi-api-method">' + escapeHtml(method) + '</div>'
                     + '<div class="openapi-api-info">'
                     + '<div class="openapi-api-path">' + escapeHtml(api.path || apiName) + '</div>'
                     + (api.description ? '<div class="openapi-api-desc">' + escapeHtml(api.description) + '</div>' : '')
-                    + '</div>'
-                    + '<div class="mcp-server-actions">'
-                    + '<label class="toggle-switch" title="' + (isEnabled ? '禁用' : '启用') + '">'
-                    + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-api="' + escapeAttr(apiName) + '" class="openapi-api-toggle"/>'
-                    + '<span class="toggle-slider"></span>'
-                    + '</label>'
                     + '</div>'
                     + '</div>';
             });

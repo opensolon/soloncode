@@ -164,7 +164,7 @@
 /* MCP 工具列表工具栏 */
 .mcp-tools-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); }
 .mcp-tools-select-all { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-primary); cursor: pointer; user-select: none; }
-.mcp-tools-select-all input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.mcp-tools-select-all input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; border-radius: 3px; }
 .mcp-tools-toolbar-actions { display: flex; align-items: center; gap: 12px; }
 .mcp-tools-count { font-size: 12px; color: var(--text-secondary); }
 .mcp-action-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; }
@@ -192,6 +192,53 @@
 .mcp-import-dialog { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 10; border-radius: 0 0 16px 16px; }
 .mcp-import-dialog-content { width: 440px; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
 .mcp-import-dialog-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; }
+
+/* MCP 工具列表 - 左侧方块复选框 */
+.mcp-tool-item .mcp-server-icon { display: none; }
+.mcp-tool-checkbox {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    cursor: pointer;
+    margin-right: 2px;
+}
+.mcp-tool-checkbox input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.mcp-tool-checkmark {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--border-color);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    transition: all 0.2s;
+    position: relative;
+}
+.mcp-tool-checkbox:hover .mcp-tool-checkmark {
+    border-color: var(--accent);
+}
+.mcp-tool-checkbox input:checked + .mcp-tool-checkmark {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+.mcp-tool-checkbox input:checked + .mcp-tool-checkmark::after {
+    content: '';
+    position: absolute;
+    left: 4.5px;
+    top: 1.5px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
 
 /* MCP header 区域按钮组 */
 .mcp-header-actions { display: flex; gap: 6px; align-items: center; }
@@ -476,6 +523,15 @@ select.readonly-gray {
     margin-bottom: 8px;
     gap: 10px;
     transition: all 0.15s;
+}
+.openapi-api-checkbox {
+    flex-shrink: 0;
+}
+.openapi-api-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
 }
 .openapi-api-item:hover {
     border-color: var(--accent);
