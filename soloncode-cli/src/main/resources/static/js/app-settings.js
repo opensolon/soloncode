@@ -559,9 +559,25 @@
         });
     }
 
+    // 当前工具列表所在的 serverName
+    var mcpToolsServerName = '';
+
+    /** 更新工具栏计数和全选状态 */
+    function updateMcpToolsToolbar() {
+        var $toggles = $mcpToolsList.find('.mcp-tool-toggle');
+        var total = $toggles.length;
+        var checked = $toggles.filter(':checked').length;
+        $('#mcpToolsCount').text(checked + ' / ' + total + ' 已启用');
+        $('#mcpToolsSelectAll').prop('checked', total > 0 && checked === total);
+    }
+
     function renderMcpTools(data, name) {
+        mcpToolsServerName = name;
         var connected = data.connected !== false;
+        var $toolbar = $('#mcpToolsToolbar');
+
         if (!connected) {
+            $toolbar.hide();
             $mcpToolsList.html('<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>'
                 + '<div class="mcp-empty-title">服务器未连接</div>'
@@ -570,26 +586,39 @@
         }
         var tools = data.tools || [];
         if (tools.length === 0) {
+            $toolbar.hide();
             $mcpToolsList.html('<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>'
                 + '<div class="mcp-empty-title">暂无工具</div>'
                 + '<div class="mcp-empty-desc">该 MCP 服务器未提供任何工具</div></div>');
             return;
         }
-        var html = '<div class="mounts-skills-count">' + tools.length + ' 个工具</div>';
+
+        // 获取已允许的工具列表
+        var allowedTools = data.allowedTools || [];
+        var allowedMap = {};
+        allowedTools.forEach(function (t) { allowedMap[t] = true; });
+
+        // 显示工具栏
+        $toolbar.show();
+        var checkedCount = tools.filter(function (t) { return allowedMap[t.name]; }).length;
+        $('#mcpToolsCount').text(checkedCount + ' / ' + tools.length + ' 已启用');
+        $('#mcpToolsSelectAll').prop('checked', checkedCount === tools.length);
+
+        var html = '';
         tools.forEach(function (tool) {
-            var status = tool.status || '';
-            var statusBadge = '';
-            if (status === 'allowed') {
-                statusBadge = ' <span style="font-size:10px;background:rgba(34,197,94,0.1);color:#22c55e;padding:1px 6px;border-radius:3px;">允许</span>';
-            } else if (status === 'disallowed') {
-                statusBadge = ' <span style="font-size:10px;background:rgba(239,68,68,0.1);color:#ef4444;padding:1px 6px;border-radius:3px;">禁止</span>';
-            }
-            html += '<div class="mcp-server-item" style="cursor:default">'
+            var toolName = tool.name || '';
+            var isEnabled = !!allowedMap[toolName];
+            html += '<div class="mcp-server-item mcp-tool-item" style="cursor:default" data-tool="' + escapeAttr(toolName) + '">'
                 + '<div class="mcp-server-icon" style="background:var(--bg-accent-subtle,rgba(59,130,246,0.1));color:var(--accent)">T</div>'
                 + '<div class="mcp-server-info">'
-                + '<div class="mcp-server-name">' + escapeHtml(tool.name || '') + statusBadge + '</div>'
+                + '<div class="mcp-server-name">' + escapeHtml(toolName) + '</div>'
                 + (tool.description ? '<div class="mcp-server-detail">' + escapeHtml(tool.description) + '</div>' : '')
+                + '</div><div class="mcp-server-actions">'
+                + '<label class="toggle-switch" title="' + (isEnabled ? '禁用' : '启用') + '">'
+                + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(toolName) + '" class="mcp-tool-toggle"/>'
+                + '<span class="toggle-slider"></span>'
+                + '</label>'
                 + '</div></div>';
         });
         $mcpToolsList.html(html);
@@ -597,8 +626,40 @@
 
     $('#mcpToolsBackBtn').on('click', function () {
         $mcpToolsView.hide();
+        $('#mcpToolsToolbar').hide();
         $mcpListView.addClass('slide-back').show();
         setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260);
+    });
+
+    // 工具开关变化 → 实时更新计数和全选状态
+    $mcpToolsList.on('change', '.mcp-tool-toggle', function () {
+        updateMcpToolsToolbar();
+    });
+
+    // 全选/取消全选
+    $('#mcpToolsSelectAll').on('change', function () {
+        var checked = this.checked;
+        $mcpToolsList.find('.mcp-tool-toggle').prop('checked', checked);
+        updateMcpToolsToolbar();
+    });
+
+    // 保存工具权限
+    $('#mcpToolsSaveBtn').on('click', function () {
+        if (!mcpToolsServerName) return;
+        var allowedTools = [];
+        $mcpToolsList.find('.mcp-tool-toggle:checked').each(function () {
+            allowedTools.push($(this).attr('data-tool'));
+        });
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        postJson('/web/settings/mcp/servers/tools/save',
+            { serverName: mcpToolsServerName, allowedTools: allowedTools },
+            function (resp) {
+                if (resp.code === 200) showToast('工具权限已保存');
+                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+            },
+            function () { $btn.prop('disabled', false); }
+        );
     });
 
     // ==================== MCP 表单 ====================
