@@ -185,6 +185,21 @@ function App() {
 
   const { gitStatus, diffLines, refreshGitStatus, setGitStatus } = useGit(activeProjectPath, activeFilePath, gitPanelVisible);
 
+  const statusBarModel = useMemo(
+    () => settings.providers.find(p => p.id === settings.activeProviderId)?.model,
+    [settings.providers, settings.activeProviderId]
+  );
+
+  const hasUnsavedChanges = useMemo(
+    () => openFiles.some(f => f.modified),
+    [openFiles]
+  );
+
+  const cursorLine = useMemo(() => {
+    if (!activeFile) return undefined;
+    return activeFile.content.split('\n').length;
+  }, [activeFile?.content]);
+
   // 面板状态
   const [panelState, setPanelState] = useState<PanelState>({
     editorVisible: false, chatVisible: true,
@@ -611,10 +626,10 @@ function App() {
         </div>
       </div>
       <StatusBar
-        backendStatus={backendStatus} model={settings.providers.find(p => p.id === settings.activeProviderId)?.model} branch={gitStatus.branch}
+        backendStatus={backendStatus} model={statusBarModel} branch={gitStatus.branch}
         ahead={gitStatus.ahead} behind={gitStatus.behind} warningCount={0} errorCount={0}
-        cursorLine={activeFile ? activeFile.content.split('\n').length : undefined} cursorColumn={1}
-        encoding="UTF-8" language={activeFile?.language} hasUnsavedChanges={openFiles.some(f => f.modified)}
+        cursorLine={cursorLine} cursorColumn={1}
+        encoding="UTF-8" language={activeFile?.language} hasUnsavedChanges={hasUnsavedChanges}
         onReconnect={() => reconnectBackend((updater) => setSettings(updater))}
       />
       {toast && <div className="toast-message">{toast}</div>}

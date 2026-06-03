@@ -1,9 +1,10 @@
-import { memo, useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
+import { memo, useState, useRef, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { Icon } from './common/Icon';
 import { ThinkBlock } from './ThinkBlock';
 import { ActionBlock } from './ActionBlock';
@@ -53,48 +54,61 @@ function toFileLinkTarget(href?: string): string | null {
   return target;
 }
 
-// Markdown 代码渲染组件（稳定引用）
-const markdownComponents = (theme?: Theme, onFileSelect?: (path: string) => void) => ({
-  a({ href, children, ...props }: any) {
-    const fileTarget = toFileLinkTarget(href);
-    if (fileTarget && onFileSelect) {
+// Markdown 代码渲染组件 — 按 onFileSelect 引用缓存，避免每次渲染重建
+const markdownComponentsCache = new WeakMap<object, any>();
+const noFileSelectKey = {};
+
+function createMarkdownComponents(theme?: Theme, onFileSelect?: (path: string) => void) {
+  return {
+    a({ href, children, ...props }: any) {
+      const fileTarget = toFileLinkTarget(href);
+      if (fileTarget && onFileSelect) {
+        return (
+          <a
+            {...props}
+            href={href}
+            className="chat-file-link"
+            onClick={(e: React.MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onFileSelect(fileTarget);
+            }}
+          >
+            {children}
+          </a>
+        );
+      }
       return (
-        <a
-          {...props}
-          href={href}
-          className="chat-file-link"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onFileSelect(fileTarget);
-          }}
-        >
+        <a href={href} target="_blank" rel="noreferrer" {...props}>
           {children}
         </a>
       );
+    },
+    code({ node, inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      return !inline && match ? (
+        <SyntaxHighlighter
+          style={theme === 'dark' ? oneDark : oneLight}
+          language={match[1]}
+          PreTag="div"
+          {...props}
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
+      ) : (
+        <code className={className} {...props}>{children}</code>
+      );
     }
-    return (
-      <a href={href} target="_blank" rel="noreferrer" {...props}>
-        {children}
-      </a>
-    );
-  },
-  code({ node, inline, className, children, ...props }: any) {
-    const match = /language-(\w+)/.exec(className || '');
-    return !inline && match ? (
-      <SyntaxHighlighter
-        style={theme === 'dark' ? oneDark : oneLight}
-        language={match[1]}
-        PreTag="div"
-        {...props}
-      >
-        {String(children).replace(/\n$/, '')}
-      </SyntaxHighlighter>
-    ) : (
-      <code className={className} {...props}>{children}</code>
-    );
-  }
-});
+  };
+}
+
+function getMarkdownComponents(theme?: Theme, onFileSelect?: (path: string) => void) {
+  const key = (onFileSelect as object) || noFileSelectKey;
+  if (markdownComponentsCache.has(key)) return markdownComponentsCache.get(key);
+  const components = createMarkdownComponents(theme, onFileSelect);
+  markdownComponentsCache.set(key, components);
+  return components;
+}
 
 const remarkPlugins = [remarkGfm, remarkBreaks];
 
@@ -109,7 +123,7 @@ function CollapsibleBlock({ label, text, theme }: { label: string; text: string;
       </div>
       {open && (
         <div className="collapsible-content">
-          <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents(theme)}>
+          <ReactMarkdown remarkPlugins={remarkPlugins} components={getMarkdownComponents(theme)}>
             {text}
           </ReactMarkdown>
         </div>
@@ -194,7 +208,7 @@ const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme, onH
 
   return (
     <div className="content-item text-item">
-      <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents(theme, onFileSelect)}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={getMarkdownComponents(theme, onFileSelect)}>
         {item.text}
       </ReactMarkdown>
       {item.agentName && (
@@ -282,35 +296,43 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onHitlAc
 
 export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
   ({ messages, isLoading, theme, projectName, onDeleteMessage, onHitlAction, onFileSelect }, ref) => {
-    const chatContainer = useRef<HTMLDivElement>(null);
+    const virtuosoRef = useRef<VirtuosoHandle>(null);
 
     useImperativeHandle(ref, () => ({
-      scrollToBottom
+      scrollToBottom() {
+        virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' });
+      }
     }));
 
-    function scrollToBottom() {
-      if (chatContainer.current) {
-        chatContainer.current.scrollTop = chatContainer.current.scrollHeight;
-      }
-    }
+    const itemContent = useCallback((index: number) => {
+      const message = messages[index];
+      return (
+        <MessageRow message={message} theme={theme} onDelete={onDeleteMessage} onHitlAction={onHitlAction} onFileSelect={onFileSelect} />
+      );
+    }, [messages, theme, onDeleteMessage, onHitlAction, onFileSelect]);
 
-    useEffect(() => {
-      scrollToBottom();
-    }, [messages.length]);
-
-    return (
-      <div className="chat-messages" ref={chatContainer}>
-        {messages.length === 0 && !isLoading && (
+    if (messages.length === 0 && !isLoading) {
+      return (
+        <div className="chat-messages">
           <div className="empty-messages">
             <div className="empty-logo">SolonCode</div>
             <div className="empty-slogan">{projectName ? `在${projectName}` : ''}做你想做的事</div>
           </div>
-        )}
+        </div>
+      );
+    }
 
-        {messages.map((message) => (
-          <MessageRow key={message.id} message={message} theme={theme} onDelete={onDeleteMessage} onHitlAction={onHitlAction} onFileSelect={onFileSelect} />
-        ))}
-
+    return (
+      <div className="chat-messages">
+        <Virtuoso
+          ref={virtuosoRef}
+          totalCount={messages.length}
+          itemContent={itemContent}
+          followOutput="smooth"
+          initialTopMostItemIndex={messages.length - 1}
+          computeItemKey={(index) => messages[index]?.id ?? index}
+          style={{ height: '100%' }}
+        />
         {isLoading && (
           <div className="message assistant loading">
             <div className="message-bubble">

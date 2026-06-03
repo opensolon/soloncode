@@ -164,11 +164,21 @@ class WebSocketManager {
     this.messageCallback = null;
   }
 
-  /** 推送配置变更到后端（短连接） */
+  /** 推送配置变更到后端（HTTP POST 代替短连接 WS） */
   async sendConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }): Promise<void> {
-    const ws = await this.createConnection();
-    ws.send(JSON.stringify({ type: 'config', chatModel }));
-    ws.close();
+    const port = this.backendPort || 4808;
+    try {
+      await fetch(`http://localhost:${port}/chat/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'config', chatModel }),
+      });
+    } catch {
+      // fallback: 短连接 WS
+      const ws = await this.createConnection();
+      ws.send(JSON.stringify({ type: 'config', chatModel }));
+      ws.close();
+    }
   }
 
   private closeActive() {
@@ -270,6 +280,35 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     | { type: 'ACTION'; text: string; toolName?: string; args?: Record<string, unknown> };
 
   const accumulatedContentRef = useRef<AccSegment[]>([]);
+
+  // RAF 节流：流式更新时合并多次 chunk 到一帧渲染
+  const rafIdRef = useRef<number | null>(null);
+  const pendingUpdateRef = useRef(false);
+
+  const scheduleMessageUpdate = useCallback(() => {
+    if (pendingUpdateRef.current) return;
+    pendingUpdateRef.current = true;
+    rafIdRef.current = requestAnimationFrame(() => {
+      pendingUpdateRef.current = false;
+      const contentItems = buildContentItems();
+      const tempMsg: Message = {
+        id: assistantMsgIdRef.current,
+        role: 'ASSISTANT',
+        timestamp: new Date().toLocaleTimeString(),
+        contents: contentItems
+      };
+      setMessages(prev => {
+        const existingIndex = prev.findIndex(m => m.id === assistantMsgIdRef.current);
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = tempMsg;
+          return updated;
+        }
+        return [...prev, tempMsg];
+      });
+      chatMessagesRef.current?.scrollToBottom();
+    });
+  }, []);
 
   // 待持久化的首条用户消息（新会话时暂存，done/error 时真正保存）
   const pendingPersistRef = useRef<{
@@ -438,6 +477,8 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
         // 重置累积器
         accumulatedContentRef.current = [];
+        if (rafIdRef.current) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
+        pendingUpdateRef.current = false;
 
         setIsLoading(false);
         isStreamingRef.current = false;
@@ -555,27 +596,8 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           break;
       }
 
-      // 实时更新显示（显示当前累积的内容）
-      setMessages(prev => {
-        const contentItems = buildContentItems();
-        const tempMsg: Message = {
-          id: assistantMsgIdRef.current,
-          role: 'ASSISTANT',
-          timestamp: new Date().toLocaleTimeString(),
-          contents: contentItems
-        };
-
-        // 查找是否已有临时消息
-        const existingIndex = prev.findIndex(m => m.id === assistantMsgIdRef.current);
-        if (existingIndex >= 0) {
-          const updated = [...prev];
-          updated[existingIndex] = tempMsg;
-          return updated;
-        }
-        return [...prev, tempMsg];
-      });
-
-      chatMessagesRef.current?.scrollToBottom();
+      // 实时更新显示（RAF 节流，合并多次 chunk）
+      scheduleMessageUpdate();
     };
 
     wsManager.registerCallback(handleMessage);

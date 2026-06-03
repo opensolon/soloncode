@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { Icon, getFileIconName } from '../common/Icon';
@@ -177,11 +177,41 @@ export function EditorPanel({
     decorationsRef.current = editorInstance.createDecorationsCollection(decorations);
   }, [diffLines, activeTheme]);
 
-  const handleEditorChange = (value: string | undefined) => {
+  const handleEditorChange = useCallback((value: string | undefined) => {
     if (activeFilePath && value !== undefined) {
       onContentChange(activeFilePath, value);
     }
-  };
+  }, [activeFilePath, onContentChange]);
+
+  const editorOptions = useMemo(() => ({
+    fontSize: 14,
+    fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
+    fontLigatures: true,
+    tabSize: 2,
+    minimap: { enabled: true },
+    wordWrap: 'on' as const,
+    lineNumbers: 'on' as const,
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    padding: { top: 8 },
+    renderWhitespace: 'selection' as const,
+    bracketPairColorization: { enabled: true },
+    smoothScrolling: true,
+    cursorBlinking: 'smooth' as const,
+    cursorSmoothCaretAnimation: 'on' as const,
+    scrollbar: {
+      verticalScrollbarSize: 8,
+      horizontalScrollbarSize: 8,
+      useShadows: false,
+      verticalSliderSize: 8,
+      horizontalSliderSize: 8,
+    },
+  }), []);
+
+  const lineCount = useMemo(() => {
+    if (!activeFile || activeFile.isImage) return 0;
+    return activeFile.content.split('\n').length;
+  }, [activeFile?.content, activeFile?.isImage]);
 
   if (files.length === 0) {
     return (
@@ -244,30 +274,7 @@ export function EditorPanel({
             onChange={handleEditorChange}
             onMount={handleEditorMount}
             theme={activeTheme === 'dark' ? 'vs-dark' : 'light'}
-            options={{
-              fontSize: 14,
-              fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-              fontLigatures: true,
-              tabSize: 2,
-              minimap: { enabled: true },
-              wordWrap: 'on',
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              padding: { top: 8 },
-              renderWhitespace: 'selection',
-              bracketPairColorization: { enabled: true },
-              smoothScrolling: true,
-              cursorBlinking: 'smooth',
-              cursorSmoothCaretAnimation: 'on',
-              scrollbar: {
-                verticalScrollbarSize: 8,
-                horizontalScrollbarSize: 8,
-                useShadows: false,
-                verticalSliderSize: 8,
-                horizontalSliderSize: 8,
-              },
-            }}
+            options={editorOptions}
             path={activeFile.path}
           />
           )}
@@ -278,7 +285,7 @@ export function EditorPanel({
         <div className="editor-status">
           <span className="status-item">{activeFile.language}</span>
           <span className="status-item">UTF-8</span>
-          <span className="status-item">行 {activeFile.content.split('\n').length}</span>
+          <span className="status-item">行 {lineCount}</span>
         </div>
       )}
     </div>
