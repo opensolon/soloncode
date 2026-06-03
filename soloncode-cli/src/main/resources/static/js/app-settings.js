@@ -610,7 +610,7 @@
             var toolName = tool.name || '';
             var isEnabled = !!allowedMap[toolName];
             html += '<div class="mcp-server-item mcp-tool-item" style="cursor:default" data-tool="' + escapeAttr(toolName) + '">'
-                + '<div class="mcp-server-icon" style="background:var(--bg-accent-subtle,rgba(59,130,246,0.1));color:var(--accent)">T</div>'
+                + '<div class="mcp-server-icon">T</div>'
                 + '<div class="mcp-server-info">'
                 + '<div class="mcp-server-name">' + escapeHtml(toolName) + '</div>'
                 + (tool.description ? '<div class="mcp-server-detail">' + escapeHtml(tool.description) + '</div>' : '')
@@ -934,14 +934,12 @@
             $('#openapiApisCount').text(checkedCount + ' / ' + apis.length + ' 已启用');
             $('#openapiApisSelectAll').prop('checked', checkedCount === apis.length);
 
-            var methodColors = { GET: '#22c55e', POST: '#3b82f6', PUT: '#f59e0b', DELETE: '#ef4444', PATCH: '#8b5cf6', HEAD: '#6b7280', OPTIONS: '#6b7280' };
             apis.forEach(function (api) {
                 var method = (api.method || 'GET').toUpperCase();
-                var color = methodColors[method] || '#6b7280';
                 var apiName = api.name || '';
                 var isEnabled = !!allowedMap[apiName];
                 html += '<div class="openapi-api-item" data-name="' + escapeAttr(apiName) + '">'
-                    + '<span class="openapi-api-method" style="background:' + color + '">' + escapeHtml(method) + '</span>'
+                    + '<div class="openapi-api-method">' + escapeHtml(method) + '</div>'
                     + '<div class="openapi-api-info">'
                     + '<div class="openapi-api-path">' + escapeHtml(api.path || apiName) + '</div>'
                     + (api.description ? '<div class="openapi-api-desc">' + escapeHtml(api.description) + '</div>' : '')
