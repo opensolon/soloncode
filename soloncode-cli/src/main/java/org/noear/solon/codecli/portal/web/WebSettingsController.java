@@ -335,13 +335,13 @@ public class WebSettingsController {
     public Result llmModelsUpdate(@Body String json) throws Exception {
         ONode root = ONode.ofJson(json);
 
-        String originalModel = root.get("originalModel").getString();
-        if (Assert.isEmpty(originalModel)) {
-            return Result.failure("originalModel is required");
+        String originalName = root.get("originalName").getString();
+        if (Assert.isEmpty(originalName)) {
+            return Result.failure("originalName is required");
         }
 
         // 先移除旧配置
-        engine.removeModel(originalModel);
+        engine.removeModel(originalName);
 
         // 复用 add 逻辑构建新配置
         String apiUrl = root.get("apiUrl").getString();
@@ -383,11 +383,11 @@ public class WebSettingsController {
 
         engine.addModel(config);
 
-        settings.getModels().removeIf(c -> originalModel.equals(c.getName()) || originalModel.equals(c.getModel()));
+        settings.getModels().removeIf(c -> originalName.equals(c.getNameOrModel()));
         settings.getModels().add(config);
         saveSettings();
 
-        LOG.info("[Settings] Model updated: {} -> {}", originalModel, name);
+        LOG.info("[Settings] Model updated: {} -> {}", originalName, name);
         return Result.succeed(name);
     }
 

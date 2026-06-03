@@ -411,7 +411,7 @@
         var isEdit = !!llmEditModel;
         var url = isEdit ? '/web/settings/llm/models/update' : '/web/settings/llm/models/add';
         var actionText = isEdit ? '更新' : '添加';
-        if (isEdit) bodyObj.originalModel = llmEditModel;
+        if (isEdit) bodyObj.originalName = llmEditModel;
 
         $llmSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
