@@ -359,7 +359,7 @@
         resetLlmForm();
         llmEditName = name;
 
-        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(model), function (resp) {
+        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) {
                 fillLlmForm(resp.data);
             } else {
@@ -368,13 +368,13 @@
         }).fail(function () { showToast('网络错误', 'error'); });
     }
 
-    function llmCopyModel(model) {
+    function llmCopyModel(name) {
         llmEditName = null;
         showLlmFormView('添加模型', false);
         $llmSaveBtn.text('保存');
         resetLlmForm();
 
-        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(model), function (resp) {
+        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) {
                 fillLlmForm(resp.data);
                 $('#llmName').val((resp.data.name || resp.data.model) + '-copy');
@@ -391,8 +391,8 @@
         });
     }
 
-    function llmRemoveModel(model) {
-        $.post('/web/settings/llm/models/remove?name=' + encodeURIComponent(model), function (resp) {
+    function llmRemoveModel(name) {
+        $.post('/web/settings/llm/models/remove?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200) {
                 if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
                 showLlmListView();
