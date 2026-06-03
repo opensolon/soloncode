@@ -299,14 +299,18 @@ public class WebController {
         }
         data.put("list", list);
 
-        if (Assert.isNotEmpty(sessionId)) {
-            AgentSession session = engine.getSession(sessionId);
-            String selected = session.getContext().getOrDefault(HarnessFlags.VAR_MODEL_SELECTED,
-                    engine.getMainModel().getNameOrModel());
+        if(Assert.isNotEmpty(list)) {
+            if (Assert.isNotEmpty(sessionId)) {
+                AgentSession session = engine.getSession(sessionId);
+                String selected = session.getContext().getOrDefault(HarnessFlags.VAR_MODEL_SELECTED,
+                        engine.getMainModel().getNameOrModel());
 
-            data.put("selected", selected);
+                data.put("selected", selected);
+            } else {
+                data.put("selected", engine.getMainModel().getNameOrModel());
+            }
         } else {
-            data.put("selected", engine.getMainModel().getNameOrModel());
+            data.put("selected", "");
         }
 
         return Result.succeed(data);
