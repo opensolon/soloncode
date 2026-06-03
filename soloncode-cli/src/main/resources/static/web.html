@@ -559,6 +559,9 @@
                                     <button class="settings-back-btn" id="mountsBackBtn" title="返回"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
                                     <span class="settings-section-title" id="mountsFormTitle">添加挂载</span>
                                 </div>
+                                <div class="settings-form-actions" id="mountsFormActions" style="display:none">
+                                    <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" title="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 删除</button>
+                                </div>
                             </div>
                             <div class="mounts-add-form">
                                 <div class="form-group">
@@ -569,10 +572,10 @@
                                 <div class="form-group">
                                     <label>路径 <span class="required">*</span></label>
                                     <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
-                                    <div class="form-hint">技能文件所在的本地目录路径</div>
+                                    <div class="form-hint">技能文件所在的本地目录路径（支持 './' 和 '~/' 相对路径）</div>
                                 </div>
                                 <div class="form-group">
-                                    <label>类型</label>
+                                    <label>内容类型</label>
                                     <select id="mountsType">
                                         <option value="SKILLS" selected>技能 (SKILLS)</option>
                                         <option value="FILES">文件 (FILES)</option>
@@ -583,18 +586,14 @@
                                 <div class="form-group" id="mountsWriteableGroup">
                                     <label class="checkbox-label">
                                         <input type="checkbox" id="mountsWriteable"/>
-                                        <span>允许写入</span>
+                                        <span>开放写权限</span>
                                     </label>
-                                    <div class="form-hint">对所有类型生效，启用后允许通过代理写入文件</div>
                                 </div>
                                 <div class="form-group">
-                                    <label>描述</label>
-                                    <input type="text" id="mountsDescription" placeholder="可选，简要描述此挂载用途"/>
+                                    <label>描述（可选）</label>
+                                    <input type="text" id="mountsDescription" placeholder="简要描述此挂载用途"/>
                                 </div>
-                                <div class="form-actions" style="justify-content:space-between;">
-                                    <div class="settings-form-actions" id="mountsFormActions" style="display:none">
-                                        <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" title="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 删除</button>
-                                    </div>
+                                <div class="form-actions" style="justify-content:flex-end;">
                                     <button class="btn-primary" id="mountsSaveBtn">保存</button>
                                 </div>
                                 <div class="mounts-divider" id="mountsPresetsDivider"></div>
