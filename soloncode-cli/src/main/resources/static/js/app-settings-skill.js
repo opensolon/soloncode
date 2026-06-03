@@ -238,7 +238,7 @@
             html += '<div class="skill-item" data-url="' + escapeAttr(skillUrl) + '">'
                 + '<div class="skill-item-icon">' + escapeHtml(iconText) + '</div>'
                 + '<div class="skill-item-info">'
-                + '<div class="skill-item-name" title="' + escapeAttr(name) + '">' + escapeHtml(displayName) + '</div>'
+                + '<div class="skill-item-name" title="' + escapeAttr(name) + '">' + escapeHtml(displayName) + (isInstalled ? '<span class="skill-installed-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><polyline points="20 6 9 17 4 12"/></svg>已安装</span>' : '') + '</div>'
                 + (shortDesc ? '<div class="skill-item-desc" title="' + escapeAttr(desc) + '">' + escapeHtml(shortDesc) + '</div>' : '')
                 + '<div class="skill-item-meta">'
                 + (installs > 0 ? '<span>' + (installs >= 1000 ? (installs / 1000).toFixed(1) + 'k' : installs) + ' 安装</span>' : '')
@@ -248,9 +248,9 @@
                 + '</div></div>'
                 + '<div class="skill-item-actions">'
                 + (isInstalled
-                    ? '<button class="skill-install-btn installed" disabled>已安装</button>'
+                    ? ''
                     : '<div class="skill-install-wrap">'
-                    +   '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '">安装到 ▾</button>'
+                    +   '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '"><span class="skill-install-text">安装到</span><svg class="skill-install-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>'
                     +   '<div class="skill-install-dropdown" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '">'
                     +     '<div class="skill-install-dropdown-loading">加载中...</div>'
                     +   '</div>'
@@ -366,7 +366,12 @@
             var isSuccess = resp && resp.code === 200 && resp.data;
             if (isSuccess) {
                 var skillName = (resp.data || slug) + '';
-                $btn.removeClass('installing').addClass('installed').text('已安装').prop('disabled', true);
+                var $item = $btn.closest('.skill-item');
+                var $nameEl = $item.find('.skill-item-name');
+                if (!$nameEl.find('.skill-installed-badge').length) {
+                    $nameEl.append('<span class="skill-installed-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><polyline points="20 6 9 17 4 12"/></svg>已安装</span>');
+                }
+                $btn.closest('.skill-install-wrap').remove();
                 if (!_installedSkillsCache) _installedSkillsCache = {};
                 _installedSkillsCache[slug] = true;
                 if (typeof loadCommands === 'function') loadCommands();
@@ -377,7 +382,7 @@
                 }
             } else {
                 var msg = (resp && resp.description) ? resp.description : '安装失败，请稍后重试';
-                $btn.removeClass('installing').text('安装到 ▾').prop('disabled', false);
+                $btn.removeClass('installing').html('<span class="skill-install-text">安装到</span><svg class="skill-install-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>').prop('disabled', false);
                 if (typeof layer !== 'undefined' && layer.msg) {
                     layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
                 } else {
@@ -386,7 +391,7 @@
             }
         })
         .fail(function (jqXHR) {
-            $btn.removeClass('installing').text('安装到 ▾').prop('disabled', false);
+            $btn.removeClass('installing').html('<span class="skill-install-text">安装到</span><svg class="skill-install-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>').prop('disabled', false);
             var msg = '安装失败，请稍后重试';
             try {
                 var err = JSON.parse(jqXHR.responseText);
