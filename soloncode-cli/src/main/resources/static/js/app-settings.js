@@ -902,9 +902,7 @@
                     + (item.description ? '<div class="mcp-server-detail" style="color:#999">' + escapeHtml(item.description) + '</div>' : '')
                     + (path ? '<div class="mcp-server-detail">' + escapeHtml(path) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn browse" data-alias="' + escapeAttr(alias) + '" title="浏览技能"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>'
-                    + '<button class="mcp-action-btn edit" data-alias="' + escapeAttr(alias) + '" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
-                    + (isSystem ? '' : '<button class="mcp-action-btn delete" data-alias="' + escapeAttr(alias) + '" title="移除挂载"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>')
+                    + '<button class="mcp-action-btn browse" data-alias="' + escapeAttr(alias) + '" title="查看内容"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>'
                     + '</div></div>';
             });
         }
@@ -922,13 +920,25 @@
         var item = mountsCachedList.find(function (m) { return m.alias === alias; });
         if (!item) return;
         mountsEditAlias = alias;
+        var isSystem = item.system === true;
 
         // 填充表单（别名和路径只读）
         $('#mountsAlias').val(item.alias || '').prop('readOnly', true);
         $('#mountsPath').val(item.path || '').prop('readOnly', true);
-        $('#mountsType').val(item.type || 'SKILLS');
-        $('#mountsWriteable').prop('checked', !!item.writeable);
-        $('#mountsDescription').val(item.description || '');
+        $('#mountsType').val(item.type || 'SKILLS').prop('disabled', isSystem);
+        $('#mountsWriteable').prop('checked', !!item.writeable).prop('disabled', isSystem);
+        $('#mountsDescription').val(item.description || '').prop('readOnly', isSystem);
+
+        // 系统挂载：隐藏保存按钮、预设区；非系统：显示删除按钮
+        $mountsSaveBtn.toggle(!isSystem);
+        $('#mountsFormActions').toggle(!isSystem);
+        $('#mountsPresetsDivider, .mounts-presets').toggle(!isSystem);
+
+        // 只读输入控件浅灰底色
+        $('#mountsAlias, #mountsPath').addClass('readonly-gray');
+        if (isSystem) { $('#mountsType, #mountsDescription').addClass('readonly-gray'); }
+        else { $('#mountsType, #mountsDescription').removeClass('readonly-gray'); }
+
         $mountsSaveBtn.text('更新');
         showMountsFormView('编辑挂载 - ' + alias);
     }
@@ -940,24 +950,10 @@
             var alias = $(this).attr('data-alias');
             loadMountsContent(alias, getMountType(alias));
         })
-        .on('click', '.mcp-action-btn.edit', function (e) {
-            e.stopPropagation();
+        .on('click', '.mounts-pool-item', function (e) {
+            if ($(e.target).closest('.mcp-action-btn').length) return;
             var alias = $(this).attr('data-alias');
             mountsEditPool(alias);
-        })
-        .on('click', '.mcp-action-btn.delete', function (e) {
-            e.stopPropagation();
-            var alias = $(this).attr('data-alias');
-            if (confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）')) {
-                postJson('/web/settings/mounts/remove', { alias: alias }, function (resp) {
-                    if (resp.code === 200) { showToast('已移除'); loadMountsList(); }
-                    else showToast('移除失败: ' + (resp.message || ''), 'error');
-                });
-            }
-        })
-        .on('click', '.mounts-pool-item', function () {
-            var alias = $(this).attr('data-alias');
-            loadMountsContent(alias, getMountType(alias));
         });
 
     // 池内容加载与渲染（按类型分发）
@@ -1131,15 +1127,29 @@
             .always(function () { $generalSaveBtn.prop('disabled', false); });
     });
 
+    // 删除按钮（在二次编辑页）
+    $('#mountsFormDeleteBtn').on('click', function () {
+        var alias = mountsEditAlias;
+        if (!alias) return;
+        if (confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）')) {
+            postJson('/web/settings/mounts/remove', { alias: alias }, function (resp) {
+                if (resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); }
+                else showToast('移除失败: ' + (resp.message || ''), 'error');
+            });
+        }
+    });
+
     // 添加/返回/保存按钮
     $('#mountsAddBtn').on('click', function () {
         mountsEditAlias = null;
-        $('#mountsAlias').val('').prop('readOnly', false);
-        $('#mountsPath').val('').prop('readOnly', false);
-        $('#mountsType').val('SKILLS');
-        $('#mountsWriteable').prop('checked', false);
-        $('#mountsDescription').val('');
-        $mountsSaveBtn.text('保存');
+        $('#mountsAlias').val('').prop('readOnly', false).removeClass('readonly-gray');
+        $('#mountsPath').val('').prop('readOnly', false).removeClass('readonly-gray');
+        $('#mountsType').val('SKILLS').prop('disabled', false).removeClass('readonly-gray');
+        $('#mountsWriteable').prop('checked', false).prop('disabled', false);
+        $('#mountsDescription').val('').prop('readOnly', false).removeClass('readonly-gray');
+        $('#mountsFormActions').hide();
+        $('#mountsPresetsDivider, .mounts-presets').show();
+        $mountsSaveBtn.text('保存').show();
         showMountsFormView('添加挂载');
     });
     $('#mountsBackBtn').on('click', function () { mountsEditAlias = null; showMountsListView(); });

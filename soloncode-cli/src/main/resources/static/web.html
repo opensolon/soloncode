@@ -591,10 +591,13 @@
                                     <label>描述</label>
                                     <input type="text" id="mountsDescription" placeholder="可选，简要描述此挂载用途"/>
                                 </div>
-                                <div class="form-actions" style="justify-content:flex-end;">
+                                <div class="form-actions" style="justify-content:space-between;">
+                                    <div class="settings-form-actions" id="mountsFormActions" style="display:none">
+                                        <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" title="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 删除</button>
+                                    </div>
                                     <button class="btn-primary" id="mountsSaveBtn">保存</button>
                                 </div>
-                                <div class="mounts-divider"></div>
+                                <div class="mounts-divider" id="mountsPresetsDivider"></div>
                                 <div class="mounts-presets">
                                     <div class="mounts-presets-label">常见挂载选择</div>
                                     <div class="mounts-presets-btns">

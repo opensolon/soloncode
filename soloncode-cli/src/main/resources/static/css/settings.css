@@ -448,3 +448,13 @@
 .mounts-preset-btn:active {
     transform: scale(0.97);
 }
+
+/* 只读输入控件浅灰底色 */
+input.readonly-gray, select.readonly-gray, textarea.readonly-gray {
+    background: var(--bg-hover, #f5f5f5) !important;
+    cursor: default;
+    opacity: 0.85;
+}
+select.readonly-gray {
+    pointer-events: none;
+}
