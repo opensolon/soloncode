@@ -248,7 +248,7 @@
 .settings-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px 6px; border-radius: 6px; display: inline-flex; align-items: center; transition: all 0.15s; }
 .settings-back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-/* ===== 挂载池 ===== */
+/* ===== 挂载 ===== */
 .mounts-pool-item { cursor: pointer; }
 .mounts-pool-item:hover { border-color: var(--accent); }
 .mounts-pool-item.mounts-system { opacity: 0.85; }
@@ -411,7 +411,7 @@
     border-color: #ef4444;
 }
 
-/* ===== 挂载池表单 - 分割线与预设按钮 ===== */
+/* ===== 挂载表单 - 分割线与预设按钮 ===== */
 .mounts-divider {
     height: 1px;
     background: var(--border-color);

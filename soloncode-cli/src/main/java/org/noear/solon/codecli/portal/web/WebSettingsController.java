@@ -19,6 +19,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.chat.tool.FunctionTool;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.mount.MountDir;
@@ -26,6 +27,8 @@ import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.AgentMd;
 import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.ai.talents.openapi.ApiSource;
+import org.noear.solon.ai.talents.openapi.ApiSourceClient;
+import org.noear.solon.ai.talents.openapi.ApiTool;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -39,6 +42,7 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -925,6 +929,100 @@ public class WebSettingsController {
         return Result.succeed("Imported " + imported + " server(s)");
     }
 
+    // ==================== 设置：MCP 工具权限管理 ====================
+
+    /**
+     * 获取指定 MCP 服务器的工具列表及权限状态
+     */
+    @Get
+    @Mapping("/web/settings/mcp/servers/{name}/tools")
+    public Result mcpServerTools(Context ctx) {
+        String name = ctx.param("name");
+        McpServerParameters params = settings.getMcpServers().get(name);
+        if (params == null) {
+            return Result.failure("Server not found: " + name);
+        }
+
+        McpClientProvider provider = engine.getMcpServer(name);
+        if (provider == null) {
+            // 服务器未启用或未连接
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("serverName", name);
+            data.put("connected", false);
+            data.put("tools", Collections.emptyList());
+            return Result.succeed(data);
+        }
+
+        Collection<FunctionTool> allTools = provider.getTools();
+        List<Map<String, Object>> toolList = new ArrayList<>();
+        for (FunctionTool tool : allTools) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", tool.name());
+            item.put("description", tool.description());
+            item.put("status", computeToolStatus(tool.name(), params.getAllowedTools(), params.getDisallowedTools()));
+            toolList.add(item);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("serverName", name);
+        data.put("connected", true);
+        data.put("tools", toolList);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 更新指定 MCP 服务器的工具权限（allowedTools/disallowedTools）
+     * <p>通过 engine.refreshMcpServer 影子交换策略热重载，无需重启。</p>
+     */
+    @Post
+    @Mapping("/web/settings/mcp/servers/{name}/tools/permissions")
+    public Result mcpServerToolsPermissions(@Param("name") String name, @Body String json) throws IOException {
+        McpServerParameters params = settings.getMcpServers().get(name);
+        if (params == null) {
+            return Result.failure("Server not found: " + name);
+        }
+
+        ONode root = ONode.ofJson(json);
+
+        // allowedTools
+        if (root.hasKey("allowedTools")) {
+            List<String> allowedTools = new ArrayList<>();
+            ONode arr = root.get("allowedTools");
+            if (arr.isArray()) {
+                for (ONode n : arr.getArray()) {
+                    String v = n.getString();
+                    if (v != null && !v.isEmpty()) allowedTools.add(v);
+                }
+            }
+            params.setAllowedTools(allowedTools);
+        }
+
+        // disallowedTools
+        if (root.hasKey("disallowedTools")) {
+            List<String> disallowedTools = new ArrayList<>();
+            ONode arr = root.get("disallowedTools");
+            if (arr.isArray()) {
+                for (ONode n : arr.getArray()) {
+                    String v = n.getString();
+                    if (v != null && !v.isEmpty()) disallowedTools.add(v);
+                }
+            }
+            params.setDisallowedTools(disallowedTools);
+        }
+
+        // 同步到引擎 provider 并热重载
+        McpClientProvider provider = engine.getMcpServer(name);
+        if (provider != null) {
+            provider.setAllowedTools(params.getAllowedTools());
+            provider.setDisallowedTools(params.getDisallowedTools());
+            engine.refreshMcpServer(name);
+        }
+
+        saveSettings();
+        LOG.info("[Settings] MCP server tools permissions updated: {}", name);
+        return Result.succeed();
+    }
+
     // ==================== 设置：OpenApi 服务器管理 ====================
 
     /**
@@ -1217,6 +1315,102 @@ public class WebSettingsController {
         return Result.succeed("Imported " + imported + " server(s)");
     }
 
+    // ==================== 设置：OpenApi 工具权限管理 ====================
+
+    /**
+     * 获取指定 OpenApi 服务器的 API 列表及权限状态
+     */
+    @Get
+    @Mapping("/web/settings/openapi/servers/{name}/apis")
+    public Result openapiServerApis(Context ctx) {
+        String name = ctx.param("name");
+        ApiSource source = settings.getApiServers().get(name);
+        if (source == null) {
+            return Result.failure("Server not found: " + name);
+        }
+
+        ApiSourceClient client = engine.getApiServer(source.getDocUrl());
+        if (client == null) {
+            // 服务器未启用或未加载
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("serverName", name);
+            data.put("connected", false);
+            data.put("apis", Collections.emptyList());
+            return Result.succeed(data);
+        }
+
+        Collection<ApiTool> allTools = client.getTools();
+        List<Map<String, Object>> apiList = new ArrayList<>();
+        for (ApiTool tool : allTools) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", tool.getName());
+            item.put("method", tool.getMethod());
+            item.put("path", tool.getPath());
+            item.put("description", tool.getDescription());
+            item.put("status", computeToolStatus(tool.getName(), source.getAllowedTools(), source.getDisallowedTools()));
+            apiList.add(item);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("serverName", name);
+        data.put("connected", true);
+        data.put("apis", apiList);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 更新指定 OpenApi 服务器的 API 权限（allowedTools/disallowedTools）
+     * <p>通过 engine.refreshApiServer 影子交换策略热重载，无需重启。</p>
+     */
+    @Post
+    @Mapping("/web/settings/openapi/servers/{name}/apis/permissions")
+    public Result openapiServerApisPermissions(@Param("name") String name, @Body String json) {
+        ApiSource source = settings.getApiServers().get(name);
+        if (source == null) {
+            return Result.failure("Server not found: " + name);
+        }
+
+        ONode root = ONode.ofJson(json);
+
+        // allowedTools
+        if (root.hasKey("allowedTools")) {
+            List<String> allowedTools = new ArrayList<>();
+            ONode arr = root.get("allowedTools");
+            if (arr.isArray()) {
+                for (ONode n : arr.getArray()) {
+                    String v = n.getString();
+                    if (v != null && !v.isEmpty()) allowedTools.add(v);
+                }
+            }
+            source.setAllowedTools(allowedTools);
+        }
+
+        // disallowedTools
+        if (root.hasKey("disallowedTools")) {
+            List<String> disallowedTools = new ArrayList<>();
+            ONode arr = root.get("disallowedTools");
+            if (arr.isArray()) {
+                for (ONode n : arr.getArray()) {
+                    String v = n.getString();
+                    if (v != null && !v.isEmpty()) disallowedTools.add(v);
+                }
+            }
+            source.setDisallowedTools(disallowedTools);
+        }
+
+        // 同步到引擎 client 并热重载
+        ApiSourceClient client = engine.getApiServer(source.getDocUrl());
+        if (client != null) {
+            client.setAllowedTools(source.getAllowedTools());
+            client.setDisallowedTools(source.getDisallowedTools());
+            engine.refreshApiServer(source.getDocUrl());
+        }
+
+        saveSettings();
+        LOG.info("[Settings] OpenApi server apis permissions updated: {}", name);
+        return Result.succeed();
+    }
+
 
     // ==================== 设置：Skills 市场（委派给 Market 接口） ====================
 
@@ -1258,7 +1452,7 @@ public class WebSettingsController {
      *
      * @param slug       技能 slug（必填）
      * @param marketName 市场名称（可选）
-     * @param mountAlias 挂载池别名（可选，默认安装到 workspace/skills）
+     * @param mountAlias 挂载点别名（可选，默认安装到 workspace/skills）
      */
     @Post
     @Mapping("/web/settings/skills/install")
@@ -1271,7 +1465,7 @@ public class WebSettingsController {
 
         Market market = marketManager.getMarketByName(marketName);
 
-        // 确定安装目标目录：若指定了挂载池别名，则安装到对应池目录；否则默认 workspace/skills
+        // 确定安装目标目录：若指定了挂载别名，则安装到对应池目录；否则默认 workspace/skills
         Path skillsDir;
         if (!Assert.isEmpty(mountAlias)) {
             MountDir poolDir = engine.getMount(mountAlias);
@@ -1346,6 +1540,35 @@ public class WebSettingsController {
                 .writeable(writeable)
                 .build());
         return Result.succeed("添加成功");
+    }
+
+    /**
+     * 更新挂载池（只允许修改描述和可写属性）
+     */
+    @Post
+    @Mapping("/web/settings/mounts/update")
+    public Result mountsUpdate(Context ctx, @Param("alias") String alias, @Param("description") String description, @Param("writeable") boolean writeable) {
+        if (Assert.isEmpty(alias)) return Result.failure("参数不完整");
+        if (!engine.hasMount(alias)) return Result.failure("挂载池不存在");
+
+        // 更新配置中的数据
+        MountDo mountDo = settings.getMountPools().get(alias);
+        if (mountDo != null) {
+            mountDo.setDescription(description);
+            mountDo.setWriteable(writeable);
+        }
+
+        // 更新运行时挂载
+        for (MountDir entry : engine.getMounts()) {
+            if (alias.equals(entry.getAlias())) {
+                entry.setDescription(description);
+                entry.setWriteable(writeable);
+                break;
+            }
+        }
+
+        saveSettings();
+        return Result.succeed("更新成功");
     }
 
     /**
@@ -1477,6 +1700,26 @@ public class WebSettingsController {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());
             return Result.failure("删除失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 计算工具的权限状态
+     *
+     * @param toolName       工具名
+     * @param allowedTools   允许列表（空或null表示全部允许）
+     * @param disallowedTools 禁止列表（优先级高于允许列表）
+     * @return "allowed" 或 "disallowed"
+     */
+    private String computeToolStatus(String toolName, List<String> allowedTools, List<String> disallowedTools) {
+        // disallow 优先级最高
+        if (disallowedTools != null && disallowedTools.contains(toolName)) {
+            return "disallowed";
+        }
+        // 有白名单但不在其中
+        if (allowedTools != null && !allowedTools.isEmpty() && !allowedTools.contains(toolName)) {
+            return "disallowed";
+        }
+        return "allowed";
     }
 
     /**

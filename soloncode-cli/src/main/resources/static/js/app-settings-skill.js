@@ -33,7 +33,7 @@
     var _installedSkillsCache = null;
     var _skillsSearchTimer = null;
     var _currentMarketName = '';  // 当前选中的市场名称
-    var _mountPoolsCache = null;  // SKILLS 类型挂载池缓存 [{alias, path}, ...]
+    var _mountPoolsCache = null;  // SKILLS 类型挂载缓存 [{alias, path}, ...]
 
     // ==================== 工具函数 ====================
 
@@ -48,9 +48,9 @@
         return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
-    // ==================== 挂载池预加载 ====================
+    // ==================== 挂载预加载 ====================
 
-    /** 加载 SKILLS 类型挂载池列表（带缓存） */
+    /** 加载 SKILLS 类型挂载列表（带缓存） */
     function loadMountPools(callback) {
         if (_mountPoolsCache) {
             callback(_mountPoolsCache);
@@ -336,7 +336,7 @@
         }
     });
 
-    // 点击挂载池选项，执行安装
+    // 点击挂载选项，执行安装
     $skillsList.on('click', '.skill-install-mount-option', function (e) {
         e.stopPropagation();
         var $option = $(this);

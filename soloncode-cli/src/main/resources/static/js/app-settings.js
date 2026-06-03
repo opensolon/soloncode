@@ -129,6 +129,7 @@
     var mountsCurrentAlias = null;
     var mountsCurrentType = null;
     var mountsCurrentRealPath = null;
+    var mountsEditAlias = null;
 
     // General
     var $generalSaveBtn = $('#generalSaveBtn');
@@ -142,7 +143,7 @@
     function showOpenapiListView() { $openapiFormView.hide(); $openapiListView.addClass('slide-back').show(); setTimeout(function(){ $openapiListView.removeClass('slide-back'); }, 260); }
     function showOpenapiFormView(title, isEdit) { $openapiFormTitle.text(title || '添加服务器'); $openapiListView.hide(); $openapiFormView.show(); $('#openapiFormActions').toggle(!!isEdit); }
     function showMountsListView() { $mountsFormView.hide(); $mountsSkillsView.hide(); $mountsListView.addClass('slide-back').show(); setTimeout(function(){ $mountsListView.removeClass('slide-back'); }, 260); }
-    function showMountsFormView(title) { $mountsFormTitle.text(title || '添加挂载池'); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
+    function showMountsFormView(title) { $mountsFormTitle.text(title || '添加挂载'); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
     function showMountsSkillsView() { $mountsListView.hide(); $mountsFormView.hide(); $mountsSkillsView.show(); }
 
     function setMcpType(type) {
@@ -860,7 +861,7 @@
     });
 
 
-    // ==================== 挂载池管理 ====================
+    // ==================== 挂载管理 ====================
 
     function loadMountsList() {
         $.get('/web/settings/mounts', function (resp) {
@@ -876,10 +877,10 @@
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无挂载池</div>'
-                + '<div class="mcp-empty-desc">挂载池是本地目录映射，为 AI 提供技能加载路径</div></div>';
+                + '<div class="mcp-empty-title">暂无挂载</div>'
+                + '<div class="mcp-empty-desc">挂载是本地目录映射，为 AI 提供技能加载路径</div></div>';
         } else {
-            // 系统挂载池排前面
+            // 系统挂载排前面
             var sorted = list.slice().sort(function (a, b) {
                 var as = a.system === true ? 0 : 1;
                 var bs = b.system === true ? 0 : 1;
@@ -902,7 +903,8 @@
                     + (path ? '<div class="mcp-server-detail">' + escapeHtml(path) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn browse" data-alias="' + escapeAttr(alias) + '" title="浏览技能"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>'
-                    + (isSystem ? '' : '<button class="mcp-action-btn delete" data-alias="' + escapeAttr(alias) + '" title="移除挂载池"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>')
+                    + '<button class="mcp-action-btn edit" data-alias="' + escapeAttr(alias) + '" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + (isSystem ? '' : '<button class="mcp-action-btn delete" data-alias="' + escapeAttr(alias) + '" title="移除挂载"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>')
                     + '</div></div>';
             });
         }
@@ -915,6 +917,22 @@
         return item ? (item.type || 'SKILLS') : 'SKILLS';
     }
 
+    // 编辑挂载（只允许编辑描述和可写）
+    function mountsEditPool(alias) {
+        var item = mountsCachedList.find(function (m) { return m.alias === alias; });
+        if (!item) return;
+        mountsEditAlias = alias;
+
+        // 填充表单（别名和路径只读）
+        $('#mountsAlias').val(item.alias || '').prop('readOnly', true);
+        $('#mountsPath').val(item.path || '').prop('readOnly', true);
+        $('#mountsType').val(item.type || 'SKILLS');
+        $('#mountsWriteable').prop('checked', !!item.writeable);
+        $('#mountsDescription').val(item.description || '');
+        $mountsSaveBtn.text('更新');
+        showMountsFormView('编辑挂载 - ' + alias);
+    }
+
     // 池列表事件委托
     $mountsList
         .on('click', '.mcp-action-btn.browse', function (e) {
@@ -922,10 +940,15 @@
             var alias = $(this).attr('data-alias');
             loadMountsContent(alias, getMountType(alias));
         })
+        .on('click', '.mcp-action-btn.edit', function (e) {
+            e.stopPropagation();
+            var alias = $(this).attr('data-alias');
+            mountsEditPool(alias);
+        })
         .on('click', '.mcp-action-btn.delete', function (e) {
             e.stopPropagation();
             var alias = $(this).attr('data-alias');
-            if (confirm('确定移除挂载池 "' + alias + '"？（磁盘文件不会被删除）')) {
+            if (confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）')) {
                 postJson('/web/settings/mounts/remove', { alias: alias }, function (resp) {
                     if (resp.code === 200) { showToast('已移除'); loadMountsList(); }
                     else showToast('移除失败: ' + (resp.message || ''), 'error');
@@ -1047,7 +1070,7 @@
         }
     });
 
-    // 打开挂载池根目录按钮
+    // 打开挂载根目录按钮
     $('#mountsOpenDirBtn').on('click', function () {
         if (mountsCurrentRealPath) {
             $.get('/web/settings/mounts/open', { path: mountsCurrentRealPath }, function (resp) {
@@ -1060,7 +1083,7 @@
         }
     });
 
-    // 刷新挂载池内容按钮
+    // 刷新挂载内容按钮
     $('#mountsRefreshBtn').on('click', function () {
         if (mountsCurrentAlias) {
             var alias = mountsCurrentAlias;
@@ -1110,15 +1133,16 @@
 
     // 添加/返回/保存按钮
     $('#mountsAddBtn').on('click', function () {
+        mountsEditAlias = null;
         $('#mountsAlias').val('').prop('readOnly', false);
-        $('#mountsPath').val('');
+        $('#mountsPath').val('').prop('readOnly', false);
         $('#mountsType').val('SKILLS');
         $('#mountsWriteable').prop('checked', false);
         $('#mountsDescription').val('');
         $mountsSaveBtn.text('保存');
-        showMountsFormView('添加挂载池');
+        showMountsFormView('添加挂载');
     });
-    $('#mountsBackBtn').on('click', function () { showMountsListView(); });
+    $('#mountsBackBtn').on('click', function () { mountsEditAlias = null; showMountsListView(); });
     $('#mountsSkillsBackBtn').on('click', function () { showMountsListView(); loadMountsList(); });
 
     $mountsSaveBtn.on('click', function () {
@@ -1131,17 +1155,24 @@
         var type = $('#mountsType').val();
         var writeable = $('#mountsWriteable').is(':checked');
         var description = $('#mountsDescription').val().trim();
+
+        var isEdit = !!mountsEditAlias;
+        var url = isEdit ? '/web/settings/mounts/update' : '/web/settings/mounts/add';
+        var actionText = isEdit ? '更新' : '添加';
+
+        var bodyObj = { alias: alias, path: path, type: type, writeable: writeable, description: description };
+
         $mountsSaveBtn.prop('disabled', true);
-        $.ajax({ url: '/web/settings/mounts/add', method: 'POST', data: JSON.stringify({ alias: alias, path: path, type: type, writeable: writeable, description: description }), contentType: 'application/json', dataType: 'json' })
+        $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { showToast('添加成功'); loadMountsList(); showMountsListView(); }
-                else showToast('添加失败: ' + (resp.message || ''), 'error');
+                if (resp.code === 200) { showToast(actionText + '成功'); mountsEditAlias = null; loadMountsList(); showMountsListView(); }
+                else showToast(actionText + '失败: ' + (resp.message || ''), 'error');
             })
             .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $mountsSaveBtn.prop('disabled', false); });
     });
 
-    // 常见挂载池预设按钮 - 点击填充表单（静默，不出浮层）
+    // 常见挂载预设按钮 - 点击填充表单（静默，不出浮层）
     $(document).on('click', '.mounts-preset-btn', function () {
         var alias = $(this).data('alias');
         var path = $(this).data('path');

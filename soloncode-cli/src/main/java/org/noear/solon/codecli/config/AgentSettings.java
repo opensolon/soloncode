@@ -39,7 +39,7 @@ public class AgentSettings implements Serializable {
     private Map<String, McpServerParameters> mcpServers = new LinkedHashMap<>();
     //api集
     private Map<String, ApiSource> apiServers = new LinkedHashMap<>();
-    //挂载池
+    //挂载
     private Map<String, MountDo> mountPools = new LinkedHashMap<>();
 
     /**
