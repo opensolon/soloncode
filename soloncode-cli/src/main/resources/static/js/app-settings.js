@@ -106,6 +106,10 @@
     var $openapiListView = $('#openapiListView');
     var $openapiFormView = $('#openapiFormView');
     var $openapiCheckResult = $('#openapiCheckResult');
+    var $openapiApisView = $('#openapiApisView');
+    var $openapiApisList = $('#openapiApisList');
+    var $openapiApisTitle = $('#openapiApisTitle');
+    var openapiApisCurrentName = null;
 
     // ==================== 状态 ====================
 
@@ -113,6 +117,9 @@
     var llmCachedList = [];
     var mcpEditName = null;
     var mcpCachedList = [];
+    var $mcpToolsView = $('#mcpToolsView');
+    var $mcpToolsList = $('#mcpToolsList');
+    var $mcpToolsTitle = $('#mcpToolsTitle');
     var openapiEditName = null;
     var openapiCachedList = [];
 
@@ -140,7 +147,8 @@
     function showLlmFormView(title, isEdit) { $llmFormTitle.text(title || '添加模型'); $llmListView.hide(); $llmFormView.show(); $('#llmFormActions').toggle(!!isEdit); }
     function showMcpListView() { $mcpFormView.hide(); $mcpListView.addClass('slide-back').show(); setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260); }
     function showMcpFormView(title, isEdit) { $mcpFormTitle.text(title || '添加服务器'); $mcpListView.hide(); $mcpFormView.show(); $('#mcpFormActions').toggle(!!isEdit); }
-    function showOpenapiListView() { $openapiFormView.hide(); $openapiListView.addClass('slide-back').show(); setTimeout(function(){ $openapiListView.removeClass('slide-back'); }, 260); }
+    function showOpenapiListView() { $openapiFormView.hide(); $openapiApisView.hide(); $openapiListView.addClass('slide-back').show(); setTimeout(function(){ $openapiListView.removeClass('slide-back'); }, 260); }
+    function showOpenapiApisView(title) { $openapiListView.hide(); $openapiFormView.hide(); $openapiApisTitle.text(title || 'API 列表'); $openapiApisView.show(); }
     function showOpenapiFormView(title, isEdit) { $openapiFormTitle.text(title || '添加服务器'); $openapiListView.hide(); $openapiFormView.show(); $('#openapiFormActions').toggle(!!isEdit); }
     function showMountsListView() { $mountsFormView.hide(); $mountsSkillsView.hide(); $mountsListView.addClass('slide-back').show(); setTimeout(function(){ $mountsListView.removeClass('slide-back'); }, 260); }
     function showMountsFormView(title) { $mountsFormTitle.text(title || '添加挂载'); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
@@ -473,6 +481,9 @@
     // ==================== MCP 管理 ====================
 
     function loadMcpList() {
+        $mcpToolsView.hide();
+        $mcpFormView.hide();
+        $mcpListView.show();
         $.get('/web/settings/mcp/servers', function (resp) {
             if (resp.code === 200 && resp.data) {
                 mcpCachedList = resp.data;
@@ -502,6 +513,7 @@
                     + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[' + escapeHtml(type) + ']</span></div>'
                     + (detail ? '<div class="mcp-server-detail">' + escapeHtml(detail) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
+                    + '<button class="mcp-action-btn browse" data-name="' + escapeAttr(name) + '" title="查看工具"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>'
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="mcp-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -516,12 +528,78 @@
     $mcpServerList
         .on('click', '.mcp-server-item', function (e) {
             if ($(e.target).closest('.toggle-switch').length) return;
+            if ($(e.target).closest('.mcp-action-btn.browse').length) return;
             var name = $(this).attr('data-name');
             if (name) mcpEditServer(name);
+        })
+        .on('click', '.mcp-action-btn.browse', function (e) {
+            e.stopPropagation();
+            var name = $(this).attr('data-name');
+            if (name) showMcpTools(name);
         })
         .on('change', '.mcp-toggle', function () {
             mcpToggleServer($(this).attr('data-name'), this.checked);
         });
+
+    // MCP 工具列表查看
+    function showMcpTools(name) {
+        $mcpListView.hide();
+        $mcpFormView.hide();
+        $mcpToolsView.show();
+        $mcpToolsTitle.text(name + ' - 工具列表');
+        $mcpToolsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $.get('/web/settings/mcp/servers/' + encodeURIComponent(name) + '/tools', function (resp) {
+            if (resp.code === 200 && resp.data) {
+                renderMcpTools(resp.data, name);
+            } else {
+                $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+            }
+        }).fail(function () {
+            $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
+        });
+    }
+
+    function renderMcpTools(data, name) {
+        var connected = data.connected !== false;
+        if (!connected) {
+            $mcpToolsList.html('<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>'
+                + '<div class="mcp-empty-title">服务器未连接</div>'
+                + '<div class="mcp-empty-desc">请先启用并确保该 MCP 服务器可正常连接</div></div>');
+            return;
+        }
+        var tools = data.tools || [];
+        if (tools.length === 0) {
+            $mcpToolsList.html('<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>'
+                + '<div class="mcp-empty-title">暂无工具</div>'
+                + '<div class="mcp-empty-desc">该 MCP 服务器未提供任何工具</div></div>');
+            return;
+        }
+        var html = '<div class="mounts-skills-count">' + tools.length + ' 个工具</div>';
+        tools.forEach(function (tool) {
+            var status = tool.status || '';
+            var statusBadge = '';
+            if (status === 'allowed') {
+                statusBadge = ' <span style="font-size:10px;background:rgba(34,197,94,0.1);color:#22c55e;padding:1px 6px;border-radius:3px;">允许</span>';
+            } else if (status === 'disallowed') {
+                statusBadge = ' <span style="font-size:10px;background:rgba(239,68,68,0.1);color:#ef4444;padding:1px 6px;border-radius:3px;">禁止</span>';
+            }
+            html += '<div class="mcp-server-item" style="cursor:default">'
+                + '<div class="mcp-server-icon" style="background:var(--bg-accent-subtle,rgba(59,130,246,0.1));color:var(--accent)">T</div>'
+                + '<div class="mcp-server-info">'
+                + '<div class="mcp-server-name">' + escapeHtml(tool.name || '') + statusBadge + '</div>'
+                + (tool.description ? '<div class="mcp-server-detail">' + escapeHtml(tool.description) + '</div>' : '')
+                + '</div></div>';
+        });
+        $mcpToolsList.html(html);
+    }
+
+    $('#mcpToolsBackBtn').on('click', function () {
+        $mcpToolsView.hide();
+        $mcpListView.addClass('slide-back').show();
+        setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260);
+    });
 
     // ==================== MCP 表单 ====================
 
@@ -712,6 +790,7 @@
                     + (baseUrl ? '<div class="mcp-server-detail">' + escapeHtml(baseUrl) + '</div>' : '')
                     + (docUrl ? '<div class="mcp-server-detail" style="color:var(--accent);">' + escapeHtml(docUrl) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
+                    + '<button class="mcp-action-btn browse" data-name="' + escapeAttr(name) + '" title="查看 API 列表"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="openapi-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -724,7 +803,13 @@
 
     // OpenApi 列表事件委托
     $openapiServerList
+        .on('click', '.mcp-action-btn.browse', function (e) {
+            e.stopPropagation();
+            var name = $(this).attr('data-name');
+            if (name) loadOpenapiApis(name);
+        })
         .on('click', '.mcp-server-item', function (e) {
+            if ($(e.target).closest('.mcp-action-btn').length) return;
             if ($(e.target).closest('.toggle-switch').length) return;
             var name = $(this).attr('data-name');
             if (name) openapiEditServer(name);
@@ -732,6 +817,60 @@
         .on('change', '.openapi-toggle', function () {
             openapiToggleServer($(this).attr('data-name'), this.checked);
         });
+
+    // ==================== OpenApi API 列表查看 ====================
+
+    function loadOpenapiApis(name) {
+        openapiApisCurrentName = name;
+        showOpenapiApisView(name + ' - API 列表');
+        $openapiApisList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+
+        $.get('/web/settings/openapi/servers/' + encodeURIComponent(name) + '/apis', function (resp) {
+            if (resp.code === 200 && resp.data) renderOpenapiApis(resp.data);
+            else {
+                $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+            }
+        }).fail(function () {
+            $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败，请检查网络</div></div>');
+        });
+    }
+
+    function renderOpenapiApis(data) {
+        var connected = data.connected !== false;
+        var apis = data.apis || [];
+        var html = '';
+        if (!connected) {
+            html = '<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>'
+                + '<div class="mcp-empty-title">未连接</div>'
+                + '<div class="mcp-empty-desc">服务器未启用或文档未加载，请先启用服务器</div></div>';
+        } else if (apis.length === 0) {
+            html = '<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>'
+                + '<div class="mcp-empty-title">暂无 API</div>'
+                + '<div class="mcp-empty-desc">该服务器未解析到任何 API 接口</div></div>';
+        } else {
+            var methodColors = { GET: '#22c55e', POST: '#3b82f6', PUT: '#f59e0b', DELETE: '#ef4444', PATCH: '#8b5cf6', HEAD: '#6b7280', OPTIONS: '#6b7280' };
+            html += '<div class="mounts-skills-count">' + apis.length + ' 个 API</div>';
+            apis.forEach(function (api) {
+                var method = (api.method || 'GET').toUpperCase();
+                var color = methodColors[method] || '#6b7280';
+                var statusText = api.status || 'default';
+                var statusBadge = '';
+                if (statusText === 'allowed') statusBadge = '<span class="openapi-api-status allowed">允许</span>';
+                else if (statusText === 'disallowed') statusBadge = '<span class="openapi-api-status disallowed">禁止</span>';
+                html += '<div class="openapi-api-item" data-name="' + escapeAttr(api.name || '') + '">'
+                    + '<span class="openapi-api-method" style="background:' + color + '">' + escapeHtml(method) + '</span>'
+                    + '<div class="openapi-api-info">'
+                    + '<div class="openapi-api-path">' + escapeHtml(api.path || api.name || '') + '</div>'
+                    + (api.description ? '<div class="openapi-api-desc">' + escapeHtml(api.description) + '</div>' : '')
+                    + '</div>'
+                    + statusBadge
+                    + '</div>';
+            });
+        }
+        $openapiApisList.html(html);
+    }
 
     // ==================== OpenApi 表单 ====================
 
@@ -801,6 +940,7 @@
     // OpenApi 按钮事件
     $('#openapiAddBtn').on('click', function () { resetOpenapiForm(); showOpenapiFormView('添加服务器', false); });
     $('#openapiBackBtn').on('click', function () { showOpenapiListView(); resetOpenapiForm(); });
+    $('#openapiApisBackBtn').on('click', function () { showOpenapiListView(); loadOpenapiList(); });
 
     // OpenApi 测试连接
     $('#openapiTestBtn').on('click', function () {
@@ -925,7 +1065,7 @@
         // 填充表单（别名和路径只读）
         $('#mountsAlias').val(item.alias || '').prop('readOnly', true);
         $('#mountsPath').val(item.path || '').prop('readOnly', true);
-        $('#mountsType').val(item.type || 'SKILLS').prop('disabled', isSystem);
+        $('#mountsType').val(item.type || 'SKILLS').prop('disabled', true).addClass('readonly-gray');
         $('#mountsWriteable').prop('checked', !!item.writeable).prop('disabled', isSystem);
         $('#mountsDescription').val(item.description || '').prop('readOnly', isSystem);
 
@@ -936,7 +1076,7 @@
 
         // 只读输入控件浅灰底色
         $('#mountsAlias, #mountsPath').addClass('readonly-gray');
-        if (isSystem) { $('#mountsType, #mountsDescription').addClass('readonly-gray'); }
+        if (isSystem) { $('#mountsDescription').addClass('readonly-gray'); }
         else { $('#mountsType, #mountsDescription').removeClass('readonly-gray'); }
 
         $mountsSaveBtn.text('更新');
@@ -1132,10 +1272,10 @@
         var alias = mountsEditAlias;
         if (!alias) return;
         if (confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）')) {
-            postJson('/web/settings/mounts/remove', { alias: alias }, function (resp) {
+            $.post('/web/settings/mounts/remove', { alias: alias }, function (resp) {
                 if (resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); }
                 else showToast('移除失败: ' + (resp.message || ''), 'error');
-            });
+            }, 'json').fail(function () { showToast('网络错误', 'error'); });
         }
     });
 

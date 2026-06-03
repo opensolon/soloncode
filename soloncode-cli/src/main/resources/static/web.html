@@ -717,6 +717,21 @@
                         </div>
                     </div>
 
+                    <!-- Tools View -->
+                    <div class="settings-view settings-view-form" id="mcpToolsView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <button class="settings-back-btn" id="mcpToolsBackBtn" title="返回">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="mcpToolsTitle">工具列表</span>
+                                </div>
+                            </div>
+                            <div class="mcp-tools-list" id="mcpToolsList"></div>
+                        </div>
+                    </div>
+
                 </div>
                 <!-- OpenApi Tab -->
                 <div class="settings-tab-content" id="settingsTabOpenapi">
@@ -781,6 +796,20 @@
                                 </div>
                                 <div class="llm-check-result" id="openapiCheckResult" style="display:none;"></div>
                             </div>
+                        </div>
+                    </div>
+                    <!-- Apis View -->
+                    <div class="settings-view settings-view-form" id="openapiApisView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <button class="settings-back-btn" id="openapiApisBackBtn" title="返回">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="openapiApisTitle">API 列表</span>
+                                </div>
+                            </div>
+                            <div id="openapiApisList"></div>
                         </div>
                     </div>
 

@@ -1577,10 +1577,14 @@ public class WebSettingsController {
     @Post
     @Mapping("/web/settings/mounts/remove")
     public Result mountsRemove(Context ctx, @Param("alias") String alias) {
-        if (Arrays.asList("@global", "@local", "@skills").contains(alias))
-            return Result.failure("系统挂载池不可移除");
-        if (!engine.hasMount(alias))
+        MountDir mountDir = engine.getMount(alias);
+        if (mountDir == null) {
             return Result.failure("挂载池不存在");
+        }
+
+        if (mountDir.isPrimary()) {
+            return Result.failure("系统挂载池不可移除");
+        }
 
         settings.getMountPools().remove(alias);
         saveSettings();
