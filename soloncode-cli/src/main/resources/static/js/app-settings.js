@@ -1080,7 +1080,7 @@
         else { $('#mountsType, #mountsDescription').removeClass('readonly-gray'); }
 
         $mountsSaveBtn.text('更新');
-        showMountsFormView('编辑挂载 - ' + alias);
+        showMountsFormView('编辑挂载');
     }
 
     // 池列表事件委托
