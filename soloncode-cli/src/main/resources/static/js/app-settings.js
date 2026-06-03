@@ -896,37 +896,62 @@
         });
     }
 
+    /** 更新 OpenAPI 工具栏计数和全选状态 */
+    function updateOpenapiApisToolbar() {
+        var $toggles = $openapiApisList.find('.openapi-api-toggle');
+        var total = $toggles.length;
+        var checked = $toggles.filter(':checked').length;
+        $('#openapiApisCount').text(checked + ' / ' + total + ' 已启用');
+        $('#openapiApisSelectAll').prop('checked', total > 0 && checked === total);
+    }
+
     function renderOpenapiApis(data) {
         var connected = data.connected !== false;
         var apis = data.apis || [];
+        var $toolbar = $('#openapiApisToolbar');
         var html = '';
         if (!connected) {
+            $toolbar.hide();
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>'
                 + '<div class="mcp-empty-title">未连接</div>'
                 + '<div class="mcp-empty-desc">服务器未启用或文档未加载，请先启用服务器</div></div>';
         } else if (apis.length === 0) {
+            $toolbar.hide();
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>'
                 + '<div class="mcp-empty-title">暂无 API</div>'
                 + '<div class="mcp-empty-desc">该服务器未解析到任何 API 接口</div></div>';
         } else {
+            // 获取已允许的 API 列表
+            var allowedTools = data.allowedTools || [];
+            var allowedMap = {};
+            allowedTools.forEach(function (t) { allowedMap[t] = true; });
+
+            // 显示工具栏
+            $toolbar.show();
+            var checkedCount = apis.filter(function (api) { return allowedMap[api.name]; }).length;
+            $('#openapiApisCount').text(checkedCount + ' / ' + apis.length + ' 已启用');
+            $('#openapiApisSelectAll').prop('checked', checkedCount === apis.length);
+
             var methodColors = { GET: '#22c55e', POST: '#3b82f6', PUT: '#f59e0b', DELETE: '#ef4444', PATCH: '#8b5cf6', HEAD: '#6b7280', OPTIONS: '#6b7280' };
-            html += '<div class="mounts-skills-count">' + apis.length + ' 个 API</div>';
             apis.forEach(function (api) {
                 var method = (api.method || 'GET').toUpperCase();
                 var color = methodColors[method] || '#6b7280';
-                var statusText = api.status || 'default';
-                var statusBadge = '';
-                if (statusText === 'allowed') statusBadge = '<span class="openapi-api-status allowed">允许</span>';
-                else if (statusText === 'disallowed') statusBadge = '<span class="openapi-api-status disallowed">禁止</span>';
-                html += '<div class="openapi-api-item" data-name="' + escapeAttr(api.name || '') + '">'
+                var apiName = api.name || '';
+                var isEnabled = !!allowedMap[apiName];
+                html += '<div class="openapi-api-item" data-name="' + escapeAttr(apiName) + '">'
                     + '<span class="openapi-api-method" style="background:' + color + '">' + escapeHtml(method) + '</span>'
                     + '<div class="openapi-api-info">'
-                    + '<div class="openapi-api-path">' + escapeHtml(api.path || api.name || '') + '</div>'
+                    + '<div class="openapi-api-path">' + escapeHtml(api.path || apiName) + '</div>'
                     + (api.description ? '<div class="openapi-api-desc">' + escapeHtml(api.description) + '</div>' : '')
                     + '</div>'
-                    + statusBadge
+                    + '<div class="mcp-server-actions">'
+                    + '<label class="toggle-switch" title="' + (isEnabled ? '禁用' : '启用') + '">'
+                    + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-api="' + escapeAttr(apiName) + '" class="openapi-api-toggle"/>'
+                    + '<span class="toggle-slider"></span>'
+                    + '</label>'
+                    + '</div>'
                     + '</div>';
             });
         }
@@ -1002,6 +1027,37 @@
     $('#openapiAddBtn').on('click', function () { resetOpenapiForm(); showOpenapiFormView('添加服务器', false); });
     $('#openapiBackBtn').on('click', function () { showOpenapiListView(); resetOpenapiForm(); });
     $('#openapiApisBackBtn').on('click', function () { showOpenapiListView(); loadOpenapiList(); });
+
+    // OpenAPI API 开关变化 → 实时更新计数和全选状态
+    $openapiApisList.on('change', '.openapi-api-toggle', function () {
+        updateOpenapiApisToolbar();
+    });
+
+    // OpenAPI API 全选/取消全选
+    $('#openapiApisSelectAll').on('change', function () {
+        var checked = this.checked;
+        $openapiApisList.find('.openapi-api-toggle').prop('checked', checked);
+        updateOpenapiApisToolbar();
+    });
+
+    // OpenAPI API 保存权限
+    $('#openapiApisSaveBtn').on('click', function () {
+        if (!openapiApisCurrentName) return;
+        var allowedTools = [];
+        $openapiApisList.find('.openapi-api-toggle:checked').each(function () {
+            allowedTools.push($(this).attr('data-api'));
+        });
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        postJson('/web/settings/openapi/servers/apis/save',
+            { serverName: openapiApisCurrentName, allowedTools: allowedTools },
+            function (resp) {
+                if (resp.code === 200) showToast('API 权限已保存');
+                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+            },
+            function () { $btn.prop('disabled', false); }
+        );
+    });
 
     // OpenApi 测试连接
     $('#openapiTestBtn').on('click', function () {
