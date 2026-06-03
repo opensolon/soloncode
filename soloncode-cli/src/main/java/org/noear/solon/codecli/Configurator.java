@@ -10,8 +10,11 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
+import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.talents.openapi.ApiSource;
+import org.noear.solon.ai.talents.openapi.ApiSourceClient;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
@@ -131,11 +134,20 @@ public class Configurator {
                     .build());
         }
 
-        engine.addMount( MountDir.builder().alias("@global-skills").type(MountType.SKILLS).path( "~/" + engine.getHarnessSkills()).primary(true).build());
-        engine.addMount( MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path( "./" + engine.getHarnessSkills()).primary(true).build());
 
-        engine.addMount( MountDir.builder().alias("@global-agents").type(MountType.AGENTS).path( "~/" + engine.getHarnessAgents()).primary(true).build());
-        engine.addMount( MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path( "~/" + engine.getHarnessAgents()).primary(true).build());
+        engine.addMount(MountDir.builder().alias("@global-skills").type(MountType.SKILLS).path("~/" + engine.getHarnessSkills()).primary(true).build());
+        engine.addMount(MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path("./" + engine.getHarnessSkills()).primary(true).build());
+
+        engine.addMount(MountDir.builder().alias("@global-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
+        engine.addMount(MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
+
+        for (Map.Entry<String, McpServerParameters> entry : agentSettings.getMcpServers().entrySet()) {
+            engine.addMcpServer(entry.getKey(), entry.getValue());
+        }
+
+        for (Map.Entry<String, ApiSource> entry : agentSettings.getApiServers().entrySet()) {
+            engine.addApiServer(entry.getValue());
+        }
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), engine.getHarnessCommands()));
         engine.getCommandRegistry().load(Paths.get(workspace, engine.getHarnessCommands()));
