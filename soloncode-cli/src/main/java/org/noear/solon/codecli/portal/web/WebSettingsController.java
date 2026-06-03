@@ -203,7 +203,7 @@ public class WebSettingsController {
 
         ChatConfig config = null;
         for (ChatConfig c : settings.getModels()) {
-            if (name.equals(c.getName())) {
+            if (name.equals(c.getNameOrModel())) {
                 config = c;
                 break;
             }
@@ -216,7 +216,7 @@ public class WebSettingsController {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("apiUrl", config.getApiUrl());
         item.put("model", config.getModel());
-        item.put("name", config.getName());
+        item.put("name", config.getNameOrModel());
         item.put("apiKey", config.getApiKey());
         item.put("provider", config.getProvider());
         if (config.getTimeout() != null) {
