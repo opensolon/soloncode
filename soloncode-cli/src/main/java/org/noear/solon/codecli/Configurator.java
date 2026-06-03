@@ -139,7 +139,7 @@ public class Configurator {
         engine.addMount(MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path("./" + engine.getHarnessSkills()).primary(true).build());
 
         engine.addMount(MountDir.builder().alias("@global-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
-        engine.addMount(MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
+        engine.addMount(MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path("./" + engine.getHarnessAgents()).primary(true).build());
 
         for (Map.Entry<String, McpServerParameters> entry : agentSettings.getMcpServers().entrySet()) {
             engine.addMcpServer(entry.getKey(), entry.getValue());
