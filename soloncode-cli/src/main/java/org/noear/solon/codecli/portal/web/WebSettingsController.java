@@ -21,6 +21,7 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.chat.tool.FunctionTool;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
+import org.noear.solon.ai.mcp.client.McpClientProviders;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
@@ -935,37 +936,39 @@ public class WebSettingsController {
      * 获取指定 MCP 服务器的工具列表及权限状态
      */
     @Get
-    @Mapping("/web/settings/mcp/servers/{name}/tools")
-    public Result mcpServerTools(Context ctx) {
-        String name = ctx.param("name");
-        McpServerParameters params = settings.getMcpServers().get(name);
-        if (params == null) {
+    @Mapping("/web/settings/mcp/servers/tools")
+    public Result mcpServerTools(String name) throws IOException {
+        McpServerParameters serverParameters = settings.getMcpServers().get(name);
+        if (serverParameters == null) {
             return Result.failure("Server not found: " + name);
         }
 
+        final Collection<FunctionTool> allTools;
         McpClientProvider provider = engine.getMcpServer(name);
         if (provider == null) {
-            // 服务器未启用或未连接
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("serverName", name);
-            data.put("connected", false);
-            data.put("tools", Collections.emptyList());
-            return Result.succeed(data);
+            provider = McpClientProviders.fromMcpServer(serverParameters);
+            try {
+                allTools = provider.getTools();
+            } finally {
+                provider.close();
+            }
+        } else {
+            allTools = provider.getTools();
         }
 
-        Collection<FunctionTool> allTools = provider.getTools();
         List<Map<String, Object>> toolList = new ArrayList<>();
         for (FunctionTool tool : allTools) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", tool.name());
+            item.put("inputSchema", tool.inputSchema());
             item.put("description", tool.description());
-            item.put("status", computeToolStatus(tool.name(), params.getAllowedTools(), params.getDisallowedTools()));
             toolList.add(item);
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("serverName", name);
         data.put("connected", true);
+        data.put("allowedTools", serverParameters.getAllowedTools());
         data.put("tools", toolList);
         return Result.succeed(data);
     }
@@ -975,51 +978,24 @@ public class WebSettingsController {
      * <p>通过 engine.refreshMcpServer 影子交换策略热重载，无需重启。</p>
      */
     @Post
-    @Mapping("/web/settings/mcp/servers/{name}/tools/permissions")
-    public Result mcpServerToolsPermissions(@Param("name") String name, @Body String json) throws IOException {
-        McpServerParameters params = settings.getMcpServers().get(name);
-        if (params == null) {
-            return Result.failure("Server not found: " + name);
+    @Mapping("/web/settings/mcp/servers/tools/save")
+    public Result mcpServerToolsSave(@Param("serverName") String serverName, @Param("allowedTools") String[] allowedTools) throws IOException {
+        McpServerParameters serverParameters = settings.getMcpServers().get(serverName);
+        if (serverParameters == null) {
+            return Result.failure("Server not found: " + serverName);
         }
 
-        ONode root = ONode.ofJson(json);
-
-        // allowedTools
-        if (root.hasKey("allowedTools")) {
-            List<String> allowedTools = new ArrayList<>();
-            ONode arr = root.get("allowedTools");
-            if (arr.isArray()) {
-                for (ONode n : arr.getArray()) {
-                    String v = n.getString();
-                    if (v != null && !v.isEmpty()) allowedTools.add(v);
-                }
-            }
-            params.setAllowedTools(allowedTools);
-        }
-
-        // disallowedTools
-        if (root.hasKey("disallowedTools")) {
-            List<String> disallowedTools = new ArrayList<>();
-            ONode arr = root.get("disallowedTools");
-            if (arr.isArray()) {
-                for (ONode n : arr.getArray()) {
-                    String v = n.getString();
-                    if (v != null && !v.isEmpty()) disallowedTools.add(v);
-                }
-            }
-            params.setDisallowedTools(disallowedTools);
-        }
+        serverParameters.setAllowedTools(Arrays.asList(allowedTools));
 
         // 同步到引擎 provider 并热重载
-        McpClientProvider provider = engine.getMcpServer(name);
+        McpClientProvider provider = engine.getMcpServer(serverName);
         if (provider != null) {
-            provider.setAllowedTools(params.getAllowedTools());
-            provider.setDisallowedTools(params.getDisallowedTools());
-            engine.refreshMcpServer(name);
+            provider.setAllowedTools(serverParameters.getAllowedTools());
+            engine.refreshMcpServer(serverName);
         }
 
         saveSettings();
-        LOG.info("[Settings] MCP server tools permissions updated: {}", name);
+        LOG.info("[Settings] MCP server tools permissions updated: {}", serverName);
         return Result.succeed();
     }
 
