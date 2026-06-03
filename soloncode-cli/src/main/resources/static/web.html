@@ -330,21 +330,25 @@
                             <div class="general-card">
                                 <div class="general-card-header">
                                         <div class="general-card-text">
-                                        <div class="general-card-title">上下文压缩策略</div>
+                                        <div class="general-card-title">会话策略</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
                                     <div class="general-field-row">
                                         <div class="general-field">
-                                            <label class="general-field-label">触发消息数</label>
+                                            <label class="general-field-label">历史窗口大小</label>
+                                            <input type="number" class="general-input" id="generalSessionWindowSize" placeholder="默认 8"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">压缩触发消息数</label>
                                             <input type="number" class="general-input" id="generalSummaryWindowSize" placeholder="默认"/>
                                         </div>
                                         <div class="general-field">
-                                            <label class="general-field-label">触发词元数</label>
+                                            <label class="general-field-label">压缩触发词元数</label>
                                             <input type="number" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
                                         </div>
                                     </div>
-                                    <div class="general-toggle-desc" style="margin-top:8px;">控制对话上下文的压缩策略，防止超出模型窗口限制</div>
+                                    <div class="general-toggle-desc" style="margin-top:8px;">历史窗口控制新指令时使用几条历史消息；压缩策略控制对话上下文的自动压缩，防止超出模型窗口限制</div>
                                 </div>
                             </div>
 

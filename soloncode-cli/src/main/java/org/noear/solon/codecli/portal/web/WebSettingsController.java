@@ -150,6 +150,7 @@ public class WebSettingsController {
 
             engine.setCompressionThreshold(tmp.getSummaryWindowSize(), tmp.getSummaryWindowToken());
             engine.setSandboxMode(tmp.getSandboxMode());
+            engine.setSessionWindowSize(tmp.getSessionWindowSize());
 
             engine.setModelRetries(tmp.getModelRetries());
             engine.setMcpRetries(tmp.getMcpRetries());
@@ -985,7 +986,7 @@ public class WebSettingsController {
 
         // 如果启用，同步到引擎
         if (enabled) {
-            engine.addApi(source);
+            engine.addApiServer(source);
         }
 
         saveSettings();
@@ -1016,7 +1017,7 @@ public class WebSettingsController {
         }
 
         // 从引擎移除旧的
-        engine.removeApi(existing.getDocUrl());
+        engine.removeApiServer(existing.getDocUrl());
 
         // 如果名称变更，移除旧 key
         if (!lookupName.equals(name)) {
@@ -1043,7 +1044,7 @@ public class WebSettingsController {
 
         // 如果启用，同步到引擎
         if (enabled) {
-            engine.addApi(source);
+            engine.addApiServer(source);
         }
 
         saveSettings();
@@ -1067,7 +1068,7 @@ public class WebSettingsController {
         ApiSource source = settings.getApiServers().get(name);
         if (source != null) {
             // 从引擎移除
-            engine.removeApi(source.getDocUrl());
+            engine.removeApiServer(source.getDocUrl());
         }
 
         settings.getApiServers().remove(name);
@@ -1097,10 +1098,10 @@ public class WebSettingsController {
 
         if (enabled) {
             // 启用：添加到引擎
-            engine.addApi(source);
+            engine.addApiServer(source);
         } else {
             // 停用：从引擎移除
-            engine.removeApi(source.getDocUrl());
+            engine.removeApiServer(source.getDocUrl());
         }
 
         source.setEnabled(enabled);

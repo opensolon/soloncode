@@ -13,6 +13,8 @@ import java.io.Serializable;
 @Getter
 @Setter
 public class GeneralSettings implements Serializable {
+    //会话历史窗口大小（即，新指令时使用几条历史消息）
+    private Integer sessionWindowSize;
     //上下文压缩触发消息数（达到这个数，就开始触发）
     private Integer summaryWindowSize;
     //上下文压缩触发词元数（达到这个数，就开始触发）

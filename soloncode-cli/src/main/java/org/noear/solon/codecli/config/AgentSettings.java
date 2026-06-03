@@ -55,6 +55,12 @@ public class AgentSettings implements Serializable {
      * 如果 settings 为空，则从 props 补充到 settings。</p>
      */
     public void mergeFrom(AgentProperties props) {
+        if (general.getSessionWindowSize() != null) {
+            props.setSessionWindowSize(general.getSessionWindowSize());
+        } else {
+            general.setSessionWindowSize(props.getSessionWindowSize());
+        }
+
         if (general.getSummaryWindowSize() != null) {
             props.setSummaryWindowSize(general.getSummaryWindowSize());
         } else {

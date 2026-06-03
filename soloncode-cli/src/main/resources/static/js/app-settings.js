@@ -1076,6 +1076,7 @@
         $.get('/web/settings/general', function (resp) {
             if (resp.code === 200 && resp.data) {
                 var d = resp.data;
+                $('#generalSessionWindowSize').val(d.sessionWindowSize != null ? d.sessionWindowSize : '');
                 $('#generalSummaryWindowSize').val(d.summaryWindowSize || '');
                 $('#generalSummaryWindowToken').val(d.summaryWindowToken || '');
                 $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
@@ -1088,6 +1089,7 @@
 
     $generalSaveBtn.on('click', function () {
         var bodyObj = {
+            sessionWindowSize: $('#generalSessionWindowSize').val().trim() ? parseInt($('#generalSessionWindowSize').val().trim(), 10) : null,
             summaryWindowSize: $('#generalSummaryWindowSize').val().trim() ? parseInt($('#generalSummaryWindowSize').val().trim(), 10) : null,
             summaryWindowToken: $('#generalSummaryWindowToken').val().trim() ? parseInt($('#generalSummaryWindowToken').val().trim(), 10) : null,
             sandboxMode: $('#generalSandboxMode').is(':checked'),
