@@ -1339,10 +1339,10 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/apis/save")
-    public Result openapiServerApisSave(@Param("name") String name, @Param("allowedTools") String[] allowedTools) {
-        ApiSource source = settings.getApiServers().get(name);
+    public Result openapiServerApisSave(@Param("serverName") String serverName, @Param("allowedTools") String[] allowedTools) {
+        ApiSource source = settings.getApiServers().get(serverName);
         if (source == null) {
-            return Result.failure("Server not found: " + name);
+            return Result.failure("Server not found: " + serverName);
         }
 
         // allowedTools
@@ -1357,7 +1357,7 @@ public class WebSettingsController {
         }
 
         saveSettings();
-        LOG.info("[Settings] OpenApi server apis permissions updated: {}", name);
+        LOG.info("[Settings] OpenApi server apis permissions updated: {}", serverName);
         return Result.succeed();
     }
 
