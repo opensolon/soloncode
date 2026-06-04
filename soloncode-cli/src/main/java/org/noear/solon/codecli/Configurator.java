@@ -10,10 +10,8 @@ import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
-import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.gateway.openapi.ApiSource;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
@@ -27,6 +25,7 @@ import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
+import org.noear.solon.codecli.config.entity.LspServerDo;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.memory.MemoryFactory;
 import org.noear.solon.codecli.portal.*;
@@ -111,7 +110,6 @@ public class Configurator {
                 .compressionThreshold(props.getSummaryWindowSize(), props.getSummaryWindowToken())
                 .compressionModel(props.getSummaryModel())
                 .memoryEnabled(props.isMemoryEnabled())
-                .memoryIsolation(props.isMemoryIsolation())
                 .memorySolution(new MemoryFactory(agentProps))
                 .sandboxMode(props.isSandboxMode())
                 .subagentEnabled(props.isSubagentEnabled())
@@ -153,6 +151,10 @@ public class Configurator {
 
         for (Map.Entry<String, ApiSourceDo> entry : agentSettings.getApiServers().entrySet()) {
             engine.addApiServer(entry.getValue());
+        }
+
+        for (Map.Entry<String, LspServerDo> entry : agentSettings.getLspServers().entrySet()) {
+            engine.addLspServer(entry.getKey(), entry.getValue());
         }
 
         engine.getCommandRegistry().load(Paths.get(AgentProperties.getUserHome(), engine.getHarnessCommands()));

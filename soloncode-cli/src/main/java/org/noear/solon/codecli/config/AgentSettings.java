@@ -9,6 +9,7 @@ import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
+import org.noear.solon.codecli.config.entity.LspServerDo;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,12 +38,15 @@ public class AgentSettings implements Serializable {
     private GeneralSettings general = new GeneralSettings();
     //models
     private List<ModelDo> models = new ArrayList<>();
+    //挂载
+    private Map<String, MountDo> mountPools = new LinkedHashMap<>();
+
     //mcp集
     private Map<String, McpServerDo> mcpServers = new LinkedHashMap<>();
     //api集
     private Map<String, ApiSourceDo> apiServers = new LinkedHashMap<>();
-    //挂载
-    private Map<String, MountDo> mountPools = new LinkedHashMap<>();
+    //lsp集
+    private Map<String, LspServerDo> lspServers = new LinkedHashMap<>();
 
     /**
      * 与 HarnessProperties（即 AgentProperties）双向合并。
@@ -142,6 +146,13 @@ public class AgentSettings implements Serializable {
             for (Map.Entry<String, String> entry : props.getSkillPools().entrySet()) {
                 this.mountPools.put(entry.getKey(), new MountDo(AgentFlags.SCOPE_GLOBAL, "", MountType.SKILLS, entry.getValue(), false, true, false));
             }
+        }
+
+        if (this.lspServers.size() > 0) {
+            props.getLspServers().clear();
+            props.getLspServers().putAll(this.lspServers);
+        } else {
+            this.lspServers.putAll(props.getLspServers());
         }
     }
 
@@ -258,6 +269,15 @@ public class AgentSettings implements Serializable {
             }
         });
 
+        oNode.getOrNew("lspServers").asObject().then(map -> {
+            for (Map.Entry<String, LspServerDo> entry : lspServers.entrySet()) {
+                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())){
+                    continue;
+                }
+                map.getOrNew(entry.getKey()).fill(entry.getValue());
+            }
+        });
+
         return oNode.toJson();
     }
 
@@ -319,6 +339,15 @@ public class AgentSettings implements Serializable {
                     continue;
                 }
 
+                map.getOrNew(entry.getKey()).fill(entry.getValue());
+            }
+        });
+
+        oNode.getOrNew("lspServers").asObject().then(map -> {
+            for (Map.Entry<String, LspServerDo> entry : lspServers.entrySet()) {
+                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false){
+                    continue;
+                }
                 map.getOrNew(entry.getKey()).fill(entry.getValue());
             }
         });
