@@ -13,7 +13,7 @@ import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.openapi.ApiSource;
+import org.noear.solon.ai.talents.gateway.openapi.ApiSource;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;

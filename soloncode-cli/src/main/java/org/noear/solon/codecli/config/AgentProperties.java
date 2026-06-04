@@ -5,10 +5,9 @@ import lombok.Setter;
 
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessExtension;
-import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
-import org.noear.solon.ai.talents.openapi.ApiSource;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
+import org.noear.solon.codecli.config.entity.LspServerDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.core.util.IoUtil;
@@ -113,7 +112,7 @@ public class AgentProperties implements Serializable {
     //api集
     private Map<String, ApiSourceDo> apiServers = new ConcurrentHashMap<>();
     //lsp集
-    private Map<String, LspServerParameters> lspServers = new ConcurrentHashMap<>();
+    private Map<String, LspServerDo> lspServers = new ConcurrentHashMap<>();
 
     private boolean thinkPrinted = false;
     private boolean cliPrintSimplified = true;

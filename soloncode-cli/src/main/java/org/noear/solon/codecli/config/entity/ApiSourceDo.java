@@ -1,6 +1,6 @@
 package org.noear.solon.codecli.config.entity;
 
-import org.noear.solon.ai.talents.openapi.ApiSource;
+import org.noear.solon.ai.talents.gateway.openapi.ApiSource;
 import org.noear.solon.codecli.config.AgentFlags;
 
 /**

@@ -27,9 +27,9 @@ import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.AgentMd;
 import org.noear.solon.ai.talents.mount.SkillDir;
-import org.noear.solon.ai.talents.openapi.ApiSource;
-import org.noear.solon.ai.talents.openapi.ApiSourceClient;
-import org.noear.solon.ai.talents.openapi.ApiTool;
+import org.noear.solon.ai.talents.gateway.openapi.ApiSource;
+import org.noear.solon.ai.talents.gateway.openapi.ApiSourceClient;
+import org.noear.solon.ai.talents.gateway.openapi.ApiTool;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -1007,7 +1007,7 @@ public class WebSettingsController {
             return Result.failure("name is required");
         }
 
-        ApiSource source = settings.getApiServers().get(name);
+        ApiSourceDo source = settings.getApiServers().get(name);
         if (source != null) {
             // 从引擎移除
             engine.removeApiServer(source.getDocUrl());
@@ -1485,7 +1485,6 @@ public class WebSettingsController {
             skillItem.put("name", subDir.getName());
             skillItem.put("description", subDir.getDescription());
             skillItem.put("realPath", subDir.getRealPath() != null ? subDir.getRealPath().toString() : "");
-            skillItem.put("path", subDir.getRealPath() != null ? subDir.getRealPath().toString().replace('\\', '/') : "");
             skills.add(skillItem);
         }
 
