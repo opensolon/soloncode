@@ -175,7 +175,7 @@ public class WebSettingsController {
     @Mapping("/web/settings/llm/models")
     public Result<List<Map>> llmModelsList() {
         List<Map> list = new ArrayList<>();
-        for (ChatConfig config : settings.getModels()) {
+        for (ModelDo config : settings.getModels()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", config.getNameOrModel());
             item.put("model", config.getModel());
@@ -183,6 +183,7 @@ public class WebSettingsController {
             item.put("apiUrl", config.getApiUrl());
             item.put("apiKey", config.getApiKey());
             item.put("enabled", config.isEnabled());
+            item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
             list.add(item);
         }
         return Result.succeed(list);
@@ -198,8 +199,8 @@ public class WebSettingsController {
             return Result.failure("name is required");
         }
 
-        ChatConfig config = null;
-        for (ChatConfig c : settings.getModels()) {
+        ModelDo config = null;
+        for (ModelDo c : settings.getModels()) {
             if (name.equals(c.getNameOrModel())) {
                 config = c;
                 break;
@@ -216,6 +217,7 @@ public class WebSettingsController {
         item.put("name", config.getNameOrModel());
         item.put("apiKey", config.getApiKey());
         item.put("provider", config.getProvider());
+        item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
         if (config.getTimeout() != null) {
             item.put("timeout", config.getTimeout().toString());
         }

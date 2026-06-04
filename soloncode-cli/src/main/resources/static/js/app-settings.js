@@ -270,7 +270,7 @@
 
                 html += '<div class="llm-model-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">'
                     + '<div class="llm-model-icon">' + escapeHtml(icon) + '</div>'
-                    + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + '</div><div class="llm-model-meta">'
+                    + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div><div class="llm-model-meta">'
                     + '<span class="llm-api-hint">' + metaLine + '</span>'
                     + '</div></div><div class="llm-model-actions">'
                     + '<button class="llm-action-btn edit llm-edit-btn" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
@@ -303,6 +303,7 @@
         llmEditName = null;
         $llmSaveBtn.text('保存');
         $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
+        $('#llmScope').val('user');
         $('#llmApiKey').attr('placeholder', 'sk-...');
         $llmCheckResult.hide();
     }
@@ -318,6 +319,7 @@
         $('#llmApiKey').attr('placeholder', item.apiKey ? '已配置（留空保持不变）' : 'sk-...');
         if (item.model) $('#llmModel').val(item.model);
         if (item.name) $('#llmName').val(item.name);
+        if (item.scope) $('#llmScope').val(item.scope);
         if (item.timeout) $('#llmTimeout').val(item.timeout);
         if (item.contextLength) $('#llmContextLength').val(item.contextLength);
     }
@@ -330,7 +332,7 @@
         var provider = $('#llmProvider').val();
         var timeout = $('#llmTimeout').val().trim();
         if (!apiUrl || !model) { showToast('API 地址和模型名称为必填项', 'error'); return null; }
-        var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider };
+        var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider, scope: $('#llmScope').val() || 'user' };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
         var contextLength = $('#llmContextLength').val().trim();

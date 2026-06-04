@@ -445,6 +445,17 @@
                             </div>
                             <div class="llm-add-form" id="llmAddForm">
                                 <div class="form-group">
+                                    <label>名称</label>
+                                    <input type="text" id="llmName"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <select id="llmScope">
+                                        <option value="user">用户（全局）</option>
+                                        <option value="workspace">工作区（本地）</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
                                     <label>接口地址规范</label>
                                     <select id="llmProvider">
                                         <option value="">自动检测（须填写完整地址）</option>
@@ -466,15 +477,9 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="form-row-2col">
-                                    <div class="form-group">
-                                        <label>模型 <span class="required">*</span></label>
-                                        <input type="text" id="llmModel" />
-                                    </div>
-                                    <div class="form-group">
-                                        <label>显示名称（可选）</label>
-                                        <input type="text" id="llmName" placeholder="给模型起个别名（确保唯一）"/>
-                                    </div>
+                                <div class="form-group">
+                                    <label>模型 <span class="required">*</span></label>
+                                    <input type="text" id="llmModel" />
                                 </div>
                                 <div class="form-row-2col">
                                     <div class="form-group">
