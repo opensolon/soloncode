@@ -8,6 +8,9 @@ import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
 import org.noear.solon.ai.talents.openapi.ApiSource;
+import org.noear.solon.codecli.config.entity.ApiSourceDo;
+import org.noear.solon.codecli.config.entity.McpServerDo;
+import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.core.util.IoUtil;
 import org.noear.solon.core.util.ResourceUtil;
 import org.slf4j.Logger;
@@ -45,7 +48,7 @@ public class AgentProperties implements Serializable {
      *
      */
     @Deprecated
-    private ChatConfig chatModel;
+    private ModelDo chatModel;
 
     public final static String X_SESSION_ID = "X-Session-Id";
     public final static String X_SESSION_CWD = "X-Session-Cwd";
@@ -94,7 +97,7 @@ public class AgentProperties implements Serializable {
     private List<HarnessExtension> extensions = new CopyOnWriteArrayList<>();
 
     //大模型
-    private List<ChatConfig> models = new CopyOnWriteArrayList<>();
+    private List<ModelDo> models = new CopyOnWriteArrayList<>();
     /**
      * @deprecated 4.0.0
      */
@@ -106,9 +109,9 @@ public class AgentProperties implements Serializable {
     @Deprecated
     private List<String> agentPools = new CopyOnWriteArrayList<>();
     //mcp集
-    private Map<String, McpServerParameters> mcpServers = new ConcurrentHashMap<>();
+    private Map<String, McpServerDo> mcpServers = new ConcurrentHashMap<>();
     //api集
-    private Map<String, ApiSource> apiServers = new ConcurrentHashMap<>();
+    private Map<String, ApiSourceDo> apiServers = new ConcurrentHashMap<>();
     //lsp集
     private Map<String, LspServerParameters> lspServers = new ConcurrentHashMap<>();
 
@@ -164,35 +167,6 @@ public class AgentProperties implements Serializable {
 
         //4. 程序边上的配置文件
         tmp = ResourceUtil.getResourceByFile(NAME_CONFIG_YML);
-        if (tmp != null) {
-            return tmp;
-        }
-
-        return null;
-    }
-
-    public URL getSettingsUrl() throws MalformedURLException {
-        //1. 资源文件（一般开发时）
-        URL tmp = ResourceUtil.getResource(NAME_SETTINGS_JSON);
-        if (tmp != null) {
-            return tmp;
-        }
-
-        //2. 工作区配置
-        Path path = Paths.get(getUserDir(), getHarnessHome(), NAME_SETTINGS_JSON);
-        if (Files.exists(path)) {
-            return path.toUri().toURL();
-        }
-
-        //3. 用户目录区配置
-        path = Paths.get(getUserHome(), getHarnessHome(), NAME_SETTINGS_JSON);
-
-        if (Files.exists(path)) {
-            return path.toUri().toURL();
-        }
-
-        //4. 程序边上的配置文件
-        tmp = ResourceUtil.getResourceByFile(NAME_SETTINGS_JSON);
         if (tmp != null) {
             return tmp;
         }
@@ -258,7 +232,7 @@ public class AgentProperties implements Serializable {
     }
 
 
-    public List<ChatConfig> getModels() {
+    public List<ModelDo> getModels() {
         return models;
     }
 

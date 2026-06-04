@@ -31,10 +31,13 @@ import org.noear.solon.ai.talents.openapi.ApiSource;
 import org.noear.solon.ai.talents.openapi.ApiSourceClient;
 import org.noear.solon.ai.talents.openapi.ApiTool;
 import org.noear.solon.annotation.*;
-import org.noear.solon.codecli.config.AgentProperties;
+import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.GeneralSettings;
-import org.noear.solon.codecli.config.MountDo;
+import org.noear.solon.codecli.config.entity.ApiSourceDo;
+import org.noear.solon.codecli.config.entity.McpServerDo;
+import org.noear.solon.codecli.config.entity.ModelDo;
+import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -97,11 +100,6 @@ public class WebSettingsController {
     private final AgentSettings settings;
 
     /**
-     * 统一配置文件路径
-     */
-    private final Path settingsFile;
-
-    /**
      * 构造函数：使用容器注入的 AgentSettings。
      *
      * @param engine   AI Agent 执行引擎
@@ -122,7 +120,6 @@ public class WebSettingsController {
         this.engine = engine;
         this.settings = settings;
         this.marketManager = marketManager;
-        this.settingsFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json");
     }
 
     // ==================== 配置持久化 ====================
@@ -131,7 +128,7 @@ public class WebSettingsController {
      * 将当前配置保存到 settings.json
      */
     private void saveSettings() {
-        settings.saveToFile(settingsFile);
+        settings.saveToFile();
     }
 
     // ==================== 设置：General 通用配置 ====================
@@ -263,7 +260,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/models/add")
-    public Result llmModelsAdd(@Body ChatConfig config) throws Exception {
+    public Result llmModelsAdd(@Body ModelDo config) throws Exception {
         if (Assert.isEmpty(config.getApiUrl()) || Assert.isEmpty(config.getModel())) {
             return Result.failure("apiUrl and model are required");
         }
@@ -302,7 +299,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/models/update")
-    public Result llmModelsUpdate(@Param("originalName") String originalName, @Body ChatConfig config) throws Exception {
+    public Result llmModelsUpdate(@Param("originalName") String originalName, @Body ModelDo config) throws Exception {
         if (Assert.isEmpty(originalName)) {
             return Result.failure("originalName is required");
         }
@@ -348,7 +345,7 @@ public class WebSettingsController {
     @Mapping("/web/settings/mcp/servers")
     public Result<List<Map>> mcpServers() throws Exception {
         List<Map> list = new ArrayList<>();
-        for (Map.Entry<String, McpServerParameters> entry : settings.getMcpServers().entrySet()) {
+        for (Map.Entry<String, McpServerDo> entry : settings.getMcpServers().entrySet()) {
             String name = entry.getKey();
             McpServerParameters params = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
@@ -397,7 +394,7 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
-        McpServerParameters params = new McpServerParameters();
+        McpServerDo params = new McpServerDo();
         params.setType(type);
 
         if ("stdio".equals(type)) {
@@ -499,7 +496,7 @@ public class WebSettingsController {
         String type = root.hasKey("type") ? root.get("type").getString() : existing.getType();
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
 
-        McpServerParameters params = new McpServerParameters();
+        McpServerDo params = new McpServerDo();
         params.setType(type);
 
         if ("stdio".equals(type)) {
@@ -708,7 +705,7 @@ public class WebSettingsController {
                 String name = entry.getKey();
                 if (settings.getMcpServers().containsKey(name)) continue;
                 ONode src = entry.getValue();
-                McpServerParameters params = new McpServerParameters();
+                McpServerDo params = new McpServerDo();
                 params.setType(src.hasKey("type") ? src.get("type").getString() : "stdio");
                 if (src.hasKey("command")) params.setCommand(src.get("command").getString());
                 if (src.hasKey("args")) {
@@ -743,7 +740,7 @@ public class WebSettingsController {
             for (ONode src : serversNode.getArray()) {
                 String name = src.get("name").getString();
                 if (settings.getMcpServers().containsKey(name) || Assert.isEmpty(name)) continue;
-                McpServerParameters params = new McpServerParameters();
+                McpServerDo params = new McpServerDo();
                 params.setType(src.hasKey("type") ? src.get("type").getString() : "stdio");
                 if (src.hasKey("command")) params.setCommand(src.get("command").getString());
                 if (src.hasKey("args")) {
@@ -831,7 +828,7 @@ public class WebSettingsController {
     @Post
     @Mapping("/web/settings/mcp/servers/tools/save")
     public Result mcpServerToolsSave(@Param("serverName") String serverName, @Param("disallowedTools") String[] disallowedTools) throws IOException {
-        McpServerParameters serverParameters = settings.getMcpServers().get(serverName);
+        McpServerDo serverParameters = settings.getMcpServers().get(serverName);
         if (serverParameters == null) {
             return Result.failure("Server not found: " + serverName);
         }
@@ -859,7 +856,7 @@ public class WebSettingsController {
     @Mapping("/web/settings/openapi/servers")
     public Result<List<Map>> openapiServers() throws Exception {
         List<Map> list = new ArrayList<>();
-        for (Map.Entry<String, ApiSource> entry : settings.getApiServers().entrySet()) {
+        for (Map.Entry<String, ApiSourceDo> entry : settings.getApiServers().entrySet()) {
             String name = entry.getKey();
             ApiSource source = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
@@ -896,7 +893,7 @@ public class WebSettingsController {
 
         boolean enabled = root.get("enabled").getBoolean(true);
 
-        ApiSource source = new ApiSource();
+        ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(apiBaseUrl);
         source.setDocUrl(root.get("docUrl").getString());
         if (root.hasKey("headers")) {
@@ -952,7 +949,7 @@ public class WebSettingsController {
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
 
         // 构建新配置
-        ApiSource source = new ApiSource();
+        ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(root.hasKey("apiBaseUrl") ? root.get("apiBaseUrl").getString() : existing.getApiBaseUrl());
         source.setDocUrl(root.hasKey("docUrl") ? root.get("docUrl").getString() : existing.getDocUrl());
         if (root.hasKey("headers")) {
@@ -982,10 +979,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/remove")
-    public Result openapiServersRemove(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
-        String name = root.get("name").getString();
-
+    public Result openapiServersRemove(@Param("name") String name) throws Exception {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
         }
@@ -1105,7 +1099,7 @@ public class WebSettingsController {
                 String name = entry.getKey();
                 if (settings.getApiServers().containsKey(name)) continue;
                 ONode src = entry.getValue();
-                ApiSource source = new ApiSource();
+                ApiSourceDo source = new ApiSourceDo();
                 source.setApiBaseUrl(src.hasKey("apiBaseUrl") ? src.get("apiBaseUrl").getString() : "");
                 source.setDocUrl(src.hasKey("docUrl") ? src.get("docUrl").getString() : "");
                 if (src.hasKey("headers")) {
@@ -1122,7 +1116,7 @@ public class WebSettingsController {
             for (ONode src : serversNode.getArray()) {
                 String name = src.get("name").getString();
                 if (settings.getApiServers().containsKey(name) || Assert.isEmpty(name)) continue;
-                ApiSource source = new ApiSource();
+                ApiSourceDo source = new ApiSourceDo();
                 source.setApiBaseUrl(src.hasKey("apiBaseUrl") ? src.get("apiBaseUrl").getString() : "");
                 source.setDocUrl(src.hasKey("docUrl") ? src.get("docUrl").getString() : "");
                 if (src.hasKey("headers")) {
@@ -1327,7 +1321,9 @@ public class WebSettingsController {
             type = MountType.SKILLS;
         }
 
-        MountDo mountDo = new MountDo(description,
+        MountDo mountDo = new MountDo(
+                AgentFlags.SCOPE_GLOBAL,
+                description,
                 type,
                 path,
                 false, true, writeable);

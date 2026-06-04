@@ -14,7 +14,6 @@ import org.noear.solon.ai.mcp.client.McpServerParameters;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.openapi.ApiSource;
-import org.noear.solon.ai.talents.openapi.ApiSourceClient;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
@@ -25,7 +24,10 @@ import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.config.MountDo;
+import org.noear.solon.codecli.config.entity.ApiSourceDo;
+import org.noear.solon.codecli.config.entity.McpServerDo;
+import org.noear.solon.codecli.config.entity.ModelDo;
+import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.memory.MemoryFactory;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.portal.acp.AcpLink;
@@ -46,7 +48,6 @@ import org.noear.solon.net.websocket.WebSocketRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
@@ -118,8 +119,11 @@ public class Configurator {
                 .apiRetries(props.getApiRetries())
                 .modelRetries(props.getModelRetries())
                 .mcpRetries(props.getModelRetries())
-                .modelAdd(props.getModels())
                 .build();
+
+        for (ModelDo model : agentSettings.getModels()) {
+            engine.addModel(model);
+        }
 
         for (Map.Entry<String, MountDo> entry : agentSettings.getMountPools().entrySet()) {
             MountDo mount = entry.getValue();
@@ -141,11 +145,11 @@ public class Configurator {
         engine.addMount(MountDir.builder().alias("@global-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
         engine.addMount(MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path("./" + engine.getHarnessAgents()).primary(true).build());
 
-        for (Map.Entry<String, McpServerParameters> entry : agentSettings.getMcpServers().entrySet()) {
+        for (Map.Entry<String, McpServerDo> entry : agentSettings.getMcpServers().entrySet()) {
             engine.addMcpServer(entry.getKey(), entry.getValue());
         }
 
-        for (Map.Entry<String, ApiSource> entry : agentSettings.getApiServers().entrySet()) {
+        for (Map.Entry<String, ApiSourceDo> entry : agentSettings.getApiServers().entrySet()) {
             engine.addApiServer(entry.getValue());
         }
 

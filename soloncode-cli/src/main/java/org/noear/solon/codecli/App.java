@@ -94,20 +94,8 @@ public class App {
     }
 
     private static void initAgentSettings(SolonApp app, AgentProperties props) throws Exception {
-        URL settingsUrl = props.getSettingsUrl();
-        AgentSettings agentSettings = null;
 
-        if (settingsUrl != null) {
-            String settingsJson = ResourceUtil.getResourceAsString(settingsUrl);
-
-            if (Utils.isNotEmpty(settingsJson)) {
-                agentSettings = AgentSettings.fromJson(settingsJson);
-            }
-        }
-
-        if (agentSettings == null) {
-            agentSettings = new AgentSettings();
-        }
+        AgentSettings agentSettings = AgentSettings.loadFromFile();
 
         //与 AgentProperties 双向合并
         agentSettings.mergeFrom(props);

@@ -1,10 +1,11 @@
-package org.noear.solon.codecli.config;
+package org.noear.solon.codecli.config.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.codecli.config.AgentFlags;
 
 import java.io.Serializable;
 
@@ -18,6 +19,9 @@ import java.io.Serializable;
 @Getter
 @Setter
 public class MountDo implements Serializable {
+    //作用域（全局或本地）
+    private String scope = AgentFlags.SCOPE_LOCAL;
+
     //描述
     private String description;
     //挂载类型

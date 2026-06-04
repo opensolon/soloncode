@@ -23,6 +23,9 @@ public class AgentFlags {
     public final static String FLAG_ACP = "acp";
     public final static String FLAG_WEB = "web";
 
+    public final static String SCOPE_GLOBAL = "global"; //作用域：全局
+    public final static String SCOPE_LOCAL = "local"; //作用域：本地
+
     public static String getVersion() {
         return "v2026.6.4";
     }
