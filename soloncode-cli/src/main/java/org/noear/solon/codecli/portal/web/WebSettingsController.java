@@ -165,6 +165,8 @@ public class WebSettingsController {
             engine.setBashAsyncEnabled(tmp.getBashAsyncEnabled());
             engine.setMemoryEnabled(tmp.getMemoryEnabled());
 
+            engine.getMcpGatewayTalent().setEnabled(tmp.getMcpEnabled());
+            engine.getOpenApiGatewayTalent().setEnabled(tmp.getOpenApiEnabled());
             engine.getLspTalent().setEnabled(tmp.getLspEnabled());
         }
 
