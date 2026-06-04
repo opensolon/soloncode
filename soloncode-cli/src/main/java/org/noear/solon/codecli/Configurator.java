@@ -116,6 +116,8 @@ public class Configurator {
                 .sandboxMode(props.isSandboxMode())
                 .subagentEnabled(props.isSubagentEnabled())
                 .bashAsyncEnabled(props.isBashAsyncEnabled())
+                .lspEnabled(props.isLspEnabled())
+                .hitlEnabled(props.isHitlEnabled())
                 .apiRetries(props.getApiRetries())
                 .modelRetries(props.getModelRetries())
                 .mcpRetries(props.getModelRetries())

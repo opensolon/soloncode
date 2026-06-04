@@ -83,7 +83,7 @@ public class AgentProperties implements Serializable {
     private boolean subagentEnabled = true;
 
     private boolean bashAsyncEnabled = false;
-    private boolean lspEnabled = true;
+    private boolean lspEnabled = false;
 
     private String userAgent;
 

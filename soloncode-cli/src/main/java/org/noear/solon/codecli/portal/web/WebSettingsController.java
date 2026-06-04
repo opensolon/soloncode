@@ -160,6 +160,9 @@ public class WebSettingsController {
             engine.setMcpRetries(tmp.getMcpRetries());
             engine.setApiRetries(tmp.getApiRetries());
 
+            engine.setBashAsyncEnabled(tmp.getBashAsyncEnabled());
+            engine.setLspEnabled(tmp.getLspEnabled());
+            engine.setMemoryEnabled(tmp.getMemoryEnabled());
         }
 
         saveSettings();

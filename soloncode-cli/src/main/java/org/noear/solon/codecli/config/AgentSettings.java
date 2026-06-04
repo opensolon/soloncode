@@ -115,6 +115,24 @@ public class AgentSettings implements Serializable {
             this.apiServers.putAll(props.getApiServers());
         }
 
+        if (general.getBashAsyncEnabled() != null) {
+            props.setBashAsyncEnabled(general.getBashAsyncEnabled());
+        } else {
+            general.setBashAsyncEnabled(props.isBashAsyncEnabled());
+        }
+
+        if (general.getLspEnabled() != null) {
+            props.setLspEnabled(general.getLspEnabled());
+        } else {
+            general.setLspEnabled(props.isLspEnabled());
+        }
+
+        if (general.getMemoryEnabled() != null) {
+            props.setMemoryEnabled(general.getMemoryEnabled());
+        } else {
+            general.setMemoryEnabled(props.isMemoryEnabled());
+        }
+
         if (this.mountPools.size() > 0) {
             props.getSkillPools().clear();
             for (Map.Entry<String, MountDo> entry : this.mountPools.entrySet()) {

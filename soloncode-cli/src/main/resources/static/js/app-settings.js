@@ -1378,6 +1378,9 @@
                 $('#generalApiRetries').val(d.apiRetries != null ? d.apiRetries : '');
                 $('#generalMcpRetries').val(d.mcpRetries != null ? d.mcpRetries : '');
                 $('#generalModelRetries').val(d.modelRetries != null ? d.modelRetries : '');
+                $('#generalMemoryEnabled').prop('checked', d.memoryEnabled !== false);
+                $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
+                $('#generalLspEnabled').prop('checked', !!d.lspEnabled);
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
     }
@@ -1390,7 +1393,10 @@
             sandboxMode: $('#generalSandboxMode').is(':checked'),
             apiRetries: $('#generalApiRetries').val().trim() ? parseInt($('#generalApiRetries').val().trim(), 10) : null,
             mcpRetries: $('#generalMcpRetries').val().trim() ? parseInt($('#generalMcpRetries').val().trim(), 10) : null,
-            modelRetries: $('#generalModelRetries').val().trim() ? parseInt($('#generalModelRetries').val().trim(), 10) : null
+            modelRetries: $('#generalModelRetries').val().trim() ? parseInt($('#generalModelRetries').val().trim(), 10) : null,
+            memoryEnabled: $('#generalMemoryEnabled').is(':checked'),
+            bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked'),
+            lspEnabled: $('#generalLspEnabled').is(':checked')
         };
 
         $generalSaveBtn.prop('disabled', true);

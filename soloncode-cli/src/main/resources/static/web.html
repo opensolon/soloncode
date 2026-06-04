@@ -398,6 +398,47 @@
                                     <div class="general-toggle-desc" style="margin-top:8px;">控制各类请求失败后的自动重试次数，重启会话后生效</div>
                                 </div>
                             </div>
+
+                            <!-- 功能开关 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">功能开关</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">心智记忆</span>
+                                            <span class="general-toggle-desc">开启后，AI 将跨会话保留长期记忆；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalMemoryEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row" style="margin-top:12px;">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">异步终端</span>
+                                            <span class="general-toggle-desc">开启后支持异步执行终端命令；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalBashAsyncEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row" style="margin-top:12px;">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">LSP 代码智能</span>
+                                            <span class="general-toggle-desc">开启后提供代码补全、定义跳转等语言服务；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalLspEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-actions" style="justify-content:flex-end; margin-top:20px;">

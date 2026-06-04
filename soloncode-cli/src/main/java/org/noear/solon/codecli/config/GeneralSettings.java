@@ -27,4 +27,10 @@ public class GeneralSettings implements Serializable {
     private Integer mcpRetries;
     //模型重试次数
     private Integer modelRetries;
+    //启用异步终端（增加上下文消耗，非编码用户建议关闭）
+    private Boolean bashAsyncEnabled;
+    //启用LSP代码智能（增加上下文消耗，非编码用户建议关闭）
+    private Boolean lspEnabled;
+    //启用心智记忆（跨会话长期记忆）
+    private Boolean memoryEnabled;
 }
