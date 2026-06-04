@@ -184,6 +184,8 @@ function loadMessages(sess) {
                     var el = ensureAssistantBubble(sess);
                     sess.reasonBuffer = isConsecutive ? sess.reasonBuffer + '\n\n' + m.content : m.content;
                     $(el).html(renderMd(sess.reasonBuffer));
+                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
                     // 显示时间戳（连续助手消息取最后一条的时间）
                     setAssistantTime(sess, m.createdAt);
                 }
