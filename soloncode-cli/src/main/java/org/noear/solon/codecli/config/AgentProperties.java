@@ -71,6 +71,7 @@ public class AgentProperties implements Serializable {
     private boolean autoRethink = true;
 
     private int sessionWindowSize = 8;
+
     private int summaryWindowSize = 30;
     private int summaryWindowToken = 30000;
     private String summaryModel; //摘要大模型
@@ -85,7 +86,7 @@ public class AgentProperties implements Serializable {
 
     private boolean mcpEnabled = true;
     private boolean openApiEnabled = true;
-    private boolean lspEnabled = false;
+    private boolean lspEnabled = true;
 
     private String userAgent;
 
