@@ -513,8 +513,12 @@ input.readonly-gray, select.readonly-gray, textarea.readonly-gray {
     cursor: default;
     opacity: 0.85;
 }
-select.readonly-gray {
+select.readonly-gray,
+select[disabled] {
     pointer-events: none;
+    background: var(--bg-hover, #f5f5f5) !important;
+    cursor: default;
+    opacity: 0.85;
 }
 
 /* ===== OpenApi API 列表 ===== */

@@ -1139,7 +1139,7 @@
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(alias)
                     + (isSystem ? ' <span class="mounts-system-badge">系统</span>' : '')
-                    + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : ' <span class="mounts-scope-badge scope-user">用户</span>')
+                    + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '')
                     + (item.writeable ? ' <span class="mounts-writeable-badge">可写</span>' : '')
                     + '</div>'
                     + (item.description ? '<div class="mcp-server-detail" style="color:#999">' + escapeHtml(item.description) + '</div>' : '')
@@ -1172,8 +1172,9 @@
         // 填充表单（别名和路径只读）
         $('#mountsAlias').val(item.alias || '').prop('readOnly', true);
         $('#mountsPath').val(item.path || '').prop('readOnly', true);
+        var isSystemScope = isSystem;
         $('#mountsType').val(item.type || 'SKILLS').prop('disabled', true).addClass('readonly-gray');
-        $('#mountsScope').val(item.scope || 'user').prop('disabled', true).addClass('readonly-gray');
+        $('#mountsScope').val(item.scope || 'user').prop('disabled', isSystemScope).toggleClass('readonly-gray', isSystemScope);
         $('#mountsWriteable').prop('checked', !!item.writeable).prop('disabled', isSystem);
         $('#mountsDescription').val(item.description || '').prop('readOnly', isSystem);
 
@@ -1185,7 +1186,7 @@
         // 只读输入控件浅灰底色
         $('#mountsAlias, #mountsPath').addClass('readonly-gray');
         if (isSystem) { $('#mountsDescription').addClass('readonly-gray'); }
-        else { $('#mountsType, #mountsDescription').removeClass('readonly-gray'); }
+        else { $('#mountsDescription').removeClass('readonly-gray'); }
 
         $mountsSaveBtn.text('更新');
         showMountsFormView('编辑挂载');
