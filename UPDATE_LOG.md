@@ -6,6 +6,7 @@
 * 优化 soloncode web 挂载点编辑逻辑
 * 修复 soloncode web 历史对话里没有代码语法高亮的问题
 * 修复 soloncode web 模型列表为空时仍尝试获取选中模型导致的逻辑问题
+* 细节优化
 
 ### v2026.6.3
 
