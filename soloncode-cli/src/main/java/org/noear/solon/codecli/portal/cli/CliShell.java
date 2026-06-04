@@ -19,6 +19,8 @@ import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.UserInterruptException;
+import org.jline.reader.Widget;
+import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -57,6 +59,7 @@ import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalTime;
@@ -71,12 +74,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Preview("3.9.4")
 public class CliShell implements Runnable {
     private final static Logger LOG = LoggerFactory.getLogger(CliShell.class);
+    private static final Field JLINE_POST_FIELD = initJlinePostField();
 
     private Terminal terminal;
     private LineReader reader;
     private final HarnessEngine engine;
     private final AgentProperties agentProps;
     private final LoopScheduler loopScheduler;
+    private int cliHintStart = -1;
 
     // ANSI 颜色常量
     private final static String
@@ -104,8 +109,9 @@ public class CliShell implements Runnable {
 
             this.reader = LineReaderBuilder.builder()
                     .terminal(terminal)
-                    .completer(new CliCompleter(engine))
+                    .completer(new CliCompleter(engine, agentProps.getWorkspace()))
                     .build();
+            setupInputHints();
         } catch (Throwable e) {
             LOG.error("JLine initialization failed", e);
         }
@@ -117,6 +123,123 @@ public class CliShell implements Runnable {
 
     public LineReader getReader() {
         return reader;
+    }
+
+    private static Field initJlinePostField() {
+        try {
+            Field field = LineReaderImpl.class.getDeclaredField("post");
+            field.setAccessible(true);
+            return field;
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    private void setupInputHints() {
+        reader.setOpt(LineReader.Option.AUTO_LIST);
+        reader.setOpt(LineReader.Option.AUTO_MENU_LIST);
+        reader.setOpt(LineReader.Option.CASE_INSENSITIVE);
+        reader.setVariable(LineReader.MENU_LIST_MAX, 12);
+
+        if (reader instanceof LineReaderImpl) {
+            LineReaderImpl impl = (LineReaderImpl) reader;
+            wrapSelfInsert(impl);
+            wrapDeleteWidget(impl, LineReader.BACKWARD_DELETE_CHAR);
+            wrapDeleteWidget(impl, LineReader.VI_BACKWARD_DELETE_CHAR);
+            wrapDeleteWidget(impl, LineReader.DELETE_CHAR);
+            wrapDeleteWidget(impl, LineReader.KILL_WORD);
+            wrapDeleteWidget(impl, LineReader.BACKWARD_KILL_WORD);
+            wrapDeleteWidget(impl, LineReader.KILL_LINE);
+            wrapDeleteWidget(impl, LineReader.KILL_WHOLE_LINE);
+        }
+    }
+
+    private void wrapSelfInsert(LineReaderImpl impl) {
+        Widget selfInsert = impl.getWidgets().get(LineReader.SELF_INSERT);
+        if (selfInsert == null) {
+            return;
+        }
+
+        impl.getWidgets().put(LineReader.SELF_INSERT, () -> {
+            int cursorBefore = impl.getBuffer().cursor();
+            boolean handled = selfInsert.apply();
+            String binding = impl.getLastBinding();
+
+            if (handled && isTriggerBinding(binding) && isTokenStart(impl, cursorBefore)) {
+                cliHintStart = cursorBefore;
+                impl.callWidget("." + LineReader.LIST_CHOICES);
+            }
+            return handled;
+        });
+    }
+
+    private void wrapDeleteWidget(LineReaderImpl impl, String widgetName) {
+        Widget deleteWidget = impl.getWidgets().get(widgetName);
+        if (deleteWidget == null) {
+            return;
+        }
+
+        impl.getWidgets().put(widgetName, () -> {
+            String before = impl.getBuffer().toString();
+            int cursorBefore = impl.getBuffer().cursor();
+            boolean activeBefore = hasActiveHint(impl);
+            boolean deletesTrigger = deletesTrigger(widgetName, before, cursorBefore);
+            boolean handled = deleteWidget.apply();
+
+            if (handled && (deletesTrigger || (activeBefore && hasActiveHint(impl) == false))) {
+                clearInputChoices(impl);
+            }
+            return handled;
+        });
+    }
+
+    private boolean isTriggerBinding(String binding) {
+        return "/".equals(binding) || "@".equals(binding) || "$".equals(binding) || "!".equals(binding);
+    }
+
+    private boolean deletesTrigger(String widgetName, String buffer, int cursorBefore) {
+        if (LineReader.BACKWARD_DELETE_CHAR.equals(widgetName) || LineReader.VI_BACKWARD_DELETE_CHAR.equals(widgetName)) {
+            return isTriggerAt(buffer, cursorBefore - 1);
+        }
+        if (LineReader.DELETE_CHAR.equals(widgetName)) {
+            return isTriggerAt(buffer, cursorBefore);
+        }
+        return hasActiveHint(buffer);
+    }
+
+    private boolean hasActiveHint(LineReaderImpl impl) {
+        return hasActiveHint(impl.getBuffer().toString());
+    }
+
+    private boolean hasActiveHint(String buffer) {
+        return cliHintStart >= 0 && isTriggerAt(buffer, cliHintStart);
+    }
+
+    private boolean isTriggerAt(String buffer, int index) {
+        if (index < 0 || index >= buffer.length()) {
+            return false;
+        }
+        char c = buffer.charAt(index);
+        return (c == '/' || c == '@' || c == '$' || c == '!') &&
+                (index == 0 || Character.isWhitespace(buffer.charAt(index - 1)));
+    }
+
+    private boolean isTokenStart(LineReaderImpl impl, int cursorBefore) {
+        if (cursorBefore == 0) {
+            return true;
+        }
+        return Character.isWhitespace(impl.getBuffer().atChar(cursorBefore - 1));
+    }
+
+    private void clearInputChoices(LineReaderImpl impl) {
+        cliHintStart = -1;
+        if (JLINE_POST_FIELD != null) {
+            try {
+                JLINE_POST_FIELD.set(impl, null);
+            } catch (Throwable ignored) {
+            }
+        }
+        impl.callWidget("." + LineReader.REDISPLAY);
     }
 
     /**
@@ -186,30 +309,57 @@ public class CliShell implements Runnable {
         }
 
         // 2. 主循环
+        boolean shellMode = false;
         while (true) {
             try {
                 String input;
 
                 try {
                     terminal.writer().println();
-                    terminal.writer().print(BOLD + CYAN + "User" + RESET);
+                    terminal.writer().print(BOLD + (shellMode ? YELLOW + "Shell" : CYAN + "User") + RESET);
                     terminal.writer().println();
                     terminal.flush();
 
-                    input = reader.readLine(CYAN + "❯ " + RESET).trim();
+                    input = reader.readLine((shellMode ? YELLOW + "$ " : CYAN + "❯ ") + RESET).trim();
                 } catch (UserInterruptException e) {
+                    if (shellMode) {
+                        shellMode = false;
+                        terminal.writer().println(DIM + "已退出本地命令模式" + RESET);
+                        terminal.flush();
+                    }
                     continue;
                 } catch (EndOfFileException e) {
+                    if (shellMode) {
+                        shellMode = false;
+                        terminal.writer().println(DIM + "已退出本地命令模式" + RESET);
+                        terminal.flush();
+                        continue;
+                    }
                     terminal.writer().println("\nBye!");
                     terminal.flush();
                     break; // 直接跳出主循环，优雅退出
+                }
+
+                if (shellMode) {
+                    if (Assert.isEmpty(input) || "exit".equals(input) || "/exit".equals(input)) {
+                        shellMode = false;
+                        terminal.writer().println(DIM + "已退出本地命令模式" + RESET);
+                        terminal.flush();
+                    } else {
+                        runShellCommand(session, "!" + input);
+                    }
+                    continue;
                 }
 
                 if (Assert.isEmpty(input)) {
                     continue;
                 }
 
-                if (ShellCommandSupport.isShellCommand(input)) {
+                if ("!".equals(input)) {
+                    shellMode = true;
+                    terminal.writer().println(DIM + "已进入本地命令模式，输入空行或 exit 退出" + RESET);
+                    terminal.flush();
+                } else if (ShellCommandSupport.isShellCommand(input)) {
                     runShellCommand(session, input);
                 } else if (!isCommand(session, input)) {
                     performAgentTask(session, input, null);
@@ -685,7 +835,8 @@ public class CliShell implements Runnable {
                 RESET + "(esc)" + DIM + " interrupt | " +
                 RESET + "/(tab)" + DIM + " command | " +
                 RESET + "$(tab)" + DIM + " skill | " +
-                RESET + "@(tab)" + DIM + " agent" + RESET);
+                RESET + "@(tab)" + DIM + " file | " +
+                RESET + "!(tab)" + DIM + " shell" + RESET);
 
         terminal.flush();
     }
