@@ -1485,6 +1485,7 @@ public class WebSettingsController {
             skillItem.put("name", subDir.getName());
             skillItem.put("description", subDir.getDescription());
             skillItem.put("realPath", subDir.getRealPath() != null ? subDir.getRealPath().toString() : "");
+            skillItem.put("path", subDir.getRealPath() != null ? subDir.getRealPath().toString().replace('\\', '/') : "");
             skills.add(skillItem);
         }
 

@@ -74,10 +74,8 @@ function getImageMimeType(path: string): string {
 
 // 检测是否在 Tauri 环境中运行
 function isTauriEnv(): boolean {
-  // Tauri 2.0 的检测方式
   const result = typeof window !== 'undefined' &&
     ('__TAURI__' in window || '__TAURI_INTERNALS__' in window);
-  console.log('[fileService] Tauri环境检测:', result, 'window.__TAURI__:', !!(window as any).__TAURI__, 'window.__TAURI_INTERNALS__:', !!(window as any).__TAURI_INTERNALS__);
   return result;
 }
 
@@ -276,9 +274,7 @@ export const fileService = {
    */
   async readFile(path: string): Promise<string> {
     try {
-      console.log('[fileService] 读取文件:', path);
       const result = await invoke<string>('read_file', { path });
-      console.log('[fileService] 文件内容长度:', result.length);
       return result;
     } catch (err) {
       console.error('[fileService] 读取文件失败:', err);
@@ -327,12 +323,10 @@ export const fileService = {
    */
   async listDirectoryTree(path: string, maxDepth: number = 5): Promise<FileInfo[]> {
     try {
-      console.log('[fileService] 调用 list_directory_tree, path:', path, 'max_depth:', maxDepth);
       const result = await invoke<RawFileInfo[]>('list_directory_tree', {
         path,
         maxDepth: maxDepth
       });
-      console.log('[fileService] 返回结果数量:', result.length);
       return result.map(transformFileInfo);
     } catch (err) {
       console.error('[fileService] 列出目录树失败:', err);

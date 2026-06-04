@@ -256,6 +256,11 @@ public class Configurator {
         Solon.app().router().add(channelBean);
         RunUtil.async((Runnable) webChannel);
 
+        //settings controller
+        WebSettingsController settingsController = new WebSettingsController(agentRuntime, agentSettings);
+        BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
+        Solon.app().router().add(webSettingsController);
+
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
     }
 

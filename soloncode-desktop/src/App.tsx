@@ -63,6 +63,33 @@ interface PanelState {
   panelOrder: PanelPosition[];
 }
 
+function normalizePath(path: string): string {
+  return path.trim().replace(/\\/g, '/').replace(/\/+/g, '/');
+}
+
+function isAbsolutePath(path: string): boolean {
+  return /^[A-Za-z]:\//.test(path) || path.startsWith('/');
+}
+
+function resolveWorkspaceFilePath(path: string, workspacePath: string | null): string {
+  let filePath = path.trim();
+  try {
+    filePath = decodeURIComponent(filePath);
+  } catch {
+    // 保持原始路径
+  }
+
+  filePath = filePath.replace(/^file:\/\/\//i, '').replace(/^file:\/\//i, '');
+  filePath = filePath.replace(/^\/([A-Za-z]:\/)/, '$1');
+  filePath = normalizePath(filePath).replace(/[?#].*$/, '');
+
+  if (!workspacePath || isAbsolutePath(filePath)) {
+    return filePath;
+  }
+
+  return `${normalizePath(workspacePath).replace(/\/$/, '')}/${filePath.replace(/^\//, '')}`;
+}
+
 function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityType>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -130,12 +157,14 @@ function App() {
   }, [settings]);
 
   // ====== Hooks ======
-  const { backendPort, backendPortRef, backendStatus, startBackend } = useBackend();
+  const { backendPort, backendPortRef, backendStatus, startBackend, reconnectBackend } = useBackend();
   const {
     openFiles, activeFilePath, activeFile, setActiveFilePath,
     handleFileSelect, handleFileClose, handleContentChange,
     handleFileSave, handleSaveCurrentFile, clearEditorState, setOpenFiles,
-  } = useFileManager(null);
+  } = useFileManager(null, () => {
+    setPanelState(prev => ({ ...prev, editorVisible: false }));
+  });
 
   const {
     sessions, currentSessionId, setCurrentSessionId, currentConversation,
@@ -157,6 +186,23 @@ function App() {
   });
 
   const { gitStatus, diffLines, refreshGitStatus, setGitStatus } = useGit(activeProjectPath, activeFilePath, gitPanelVisible);
+
+  const [diffFiles, setDiffFiles] = useState<Record<string, string>>({});
+
+  const statusBarModel = useMemo(
+    () => settings.providers.find(p => p.id === settings.activeProviderId)?.model,
+    [settings.providers, settings.activeProviderId]
+  );
+
+  const hasUnsavedChanges = useMemo(
+    () => openFiles.some(f => f.modified),
+    [openFiles]
+  );
+
+  const cursorLine = useMemo(() => {
+    if (!activeFile) return undefined;
+    return activeFile.content.split('\n').length;
+  }, [activeFile?.content]);
 
   // 面板状态
   const [panelState, setPanelState] = useState<PanelState>({
@@ -308,6 +354,25 @@ function App() {
     if (selectedPath) await openFolderByPath(selectedPath);
   }, [openFolderByPath]);
 
+  const handleChatFileSelect = useCallback((path: string) => {
+    const trimmed = path.trim().replace(/\\/g, '/');
+    if (!trimmed || trimmed === '.' || trimmed === './' || trimmed === '..' || trimmed === '../' || trimmed.endsWith('/')) return;
+    if (!/\.[a-zA-Z0-9]+$/.test(trimmed) && !trimmed.includes('.')) return;
+    const filePath = resolveWorkspaceFilePath(path, activeProjectPath);
+    if (activeProjectPath && normalizePath(filePath) === normalizePath(activeProjectPath)) return;
+    setPanelState(prev => ({ ...prev, editorVisible: true }));
+    handleFileSelect(filePath);
+  }, [activeProjectPath, handleFileSelect]);
+
+  const handleDiffFileSelect = useCallback(async (relPath: string) => {
+    if (!activeProjectPath) return;
+    const absPath = activeProjectPath.replace(/\\/g, '/') + '/' + relPath;
+    const original = await gitService.showHead(activeProjectPath, relPath);
+    setPanelState(prev => ({ ...prev, editorVisible: true }));
+    await handleFileSelect(absPath);
+    setDiffFiles(prev => ({ ...prev, [absPath]: original }));
+  }, [activeProjectPath, handleFileSelect]);
+
   // Toast
   const [terminalVisible, setTerminalVisible] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -426,7 +491,7 @@ function App() {
           />
         );
       case 'skills':
-        return <SkillsPanel skills={settings.skills} onSkillsChange={(skills) => setSettings(prev => ({ ...prev, skills }))} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('skill', name, desc)} />;
+        return <SkillsPanel backendPort={backendPort} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('skill', name, desc)} />;
       case 'agents':
         return <AgentsPanel agents={settings.agents} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('agent', name, desc)} />;
       default:
@@ -443,7 +508,7 @@ function App() {
       if (!panelState.editorVisible) return null;
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
-          <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={handleFileClose} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} diffLines={diffLines} />
+          <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} diffLines={diffLines} diffFiles={diffFiles} />
           {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
       );
@@ -458,6 +523,7 @@ function App() {
             theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => { setNewSessionFromProject(false); return handleNewSession(undefined, title); }}
             providers={settings.providers} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
             activeFileName={activeFile?.name} activeFilePath={activeFilePath || undefined}
+            onFileSelect={handleChatFileSelect}
             onNewProject={handleCreateProject} onOpenFolder={handleOpenFolder}
             initialPrompt={aiCreatePrompt} onAiCreateComplete={handleAiCreateComplete}
             newSessionFromProject={newSessionFromProject}
@@ -514,7 +580,7 @@ function App() {
                   onPush={async () => { if (activeProjectPath) { await gitService.push(activeProjectPath); refreshGitStatus(); } }}
                   onPull={async () => { if (activeProjectPath) { await gitService.pull(activeProjectPath); refreshGitStatus(); } }}
                   onDiscard={async (path) => { if (activeProjectPath) { await gitService.discard(activeProjectPath, [path]); refreshGitStatus(); } }}
-                  onFileClick={(relPath) => { if (activeProjectPath) handleFileSelect(activeProjectPath.replace(/\\/g, '/') + '/' + relPath); }}
+                  onFileClick={(relPath) => { handleDiffFileSelect(relPath); }}
                   onGenerateCommitMessage={async () => {
                     if (!activeProjectPath) throw new Error('无活跃项目');
                     const diff = await gitService.diffStaged(activeProjectPath);
@@ -577,10 +643,11 @@ function App() {
         </div>
       </div>
       <StatusBar
-        backendStatus={backendStatus} model={settings.providers.find(p => p.id === settings.activeProviderId)?.model} branch={gitStatus.branch}
+        backendStatus={backendStatus} model={statusBarModel} branch={gitStatus.branch}
         ahead={gitStatus.ahead} behind={gitStatus.behind} warningCount={0} errorCount={0}
-        cursorLine={activeFile ? activeFile.content.split('\n').length : undefined} cursorColumn={1}
-        encoding="UTF-8" language={activeFile?.language} hasUnsavedChanges={openFiles.some(f => f.modified)}
+        cursorLine={cursorLine} cursorColumn={1}
+        encoding="UTF-8" language={activeFile?.language} hasUnsavedChanges={hasUnsavedChanges}
+        onReconnect={() => reconnectBackend((updater) => setSettings(updater))}
       />
       {toast && <div className="toast-message">{toast}</div>}
       <SettingsPanel visible={settingsVisible} settings={settings} onSettingsChange={handleSettingsChange} onClose={() => setSettingsVisible(false)} backendPort={backendPort} workspacePath={activeProjectPath} sessionId={currentSessionId} />

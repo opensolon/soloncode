@@ -1,40 +1,32 @@
 .think-block {
-  margin: 8px 0;
-  border-radius: 8px;
-  border: 1px solid var(--border-color, #3a3a3a);
-  background: var(--think-bg, #2a2a2a);
-  overflow: hidden;
+  margin: 2px 0;
 }
 
 .think-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 4px 0;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.2s;
+  color: var(--cb-text-secondary);
+  opacity: 0.7;
+  font-size: 12px;
+  transition: opacity 0.15s;
 }
 
 .think-header:hover {
-  background: var(--think-header-hover, #333);
-}
-
-.think-icon {
-  font-size: 14px;
+  opacity: 1;
 }
 
 .think-title {
   flex: 1;
-  font-size: 13px;
-  color: var(--text-secondary, #888);
   font-weight: 500;
 }
 
 .think-arrow {
-  font-size: 10px;
-  color: var(--text-secondary, #888);
-  transition: transform 0.2s;
+  font-size: 9px;
+  transition: transform 0.15s;
 }
 
 .think-arrow.expanded {
@@ -42,28 +34,25 @@
 }
 
 .think-content {
-  padding: 12px 16px;
+  padding: 6px 0 6px 12px;
   font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-secondary, #aaa);
-  border-top: 1px solid var(--border-color, #3a3a3a);
-  word-break: break-word;
+  line-height: 1.5;
+  color: var(--cb-text-secondary);
+  opacity: 0.7;
+  border-left: 2px solid var(--cb-vscode-panel-border);
   max-height: 400px;
   overflow-y: auto;
 }
 
-/* 深色主题 */
-[data-theme="dark"] .think-block {
-  --think-bg: #1e1e1e;
-  --think-header-hover: #2a2a2a;
-  --border-color: #333;
-  --text-secondary: #888;
+.think-content pre {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 4px 0;
+  overflow-x: auto;
 }
 
-/* 浅色主题 */
-[data-theme="light"] .think-block {
-  --think-bg: #f5f5f5;
-  --think-header-hover: #e8e8e8;
-  --border-color: #ddd;
-  --text-secondary: #666;
+.think-content code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
 }

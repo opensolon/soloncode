@@ -11,7 +11,6 @@ interface ThinkBlockProps {
   theme?: Theme;
 }
 
-/** 过滤 think/thinking 标签 */
 function stripThinkTags(text: string): string {
   return text.replace(/<\/?(think|thinking)>/g, '');
 }
@@ -22,12 +21,9 @@ export function ThinkBlock({ content, theme }: ThinkBlockProps) {
 
   return (
     <div className="think-block">
-      <div
-        className="think-header"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <span className="think-title">思考过程</span>
-        <span className={`think-arrow ${isExpanded ? 'expanded' : ''}`}>▼</span>
+      <div className="think-header" onClick={() => setIsExpanded(!isExpanded)}>
+        <span className="think-title">思考</span>
+        <span className={`think-arrow ${isExpanded ? 'expanded' : ''}`}>▾</span>
       </div>
       {isExpanded && (
         <div className="think-content">

@@ -204,6 +204,21 @@ public class WsGate extends SimpleWebSocketListener {
             ChatModel chatModel = engine.getModelOrMain(modelName);
 
             session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
+
+            // 模式处理：根据前端 mode 字段配置 session 行为
+            String mode = req.getMode();
+            if ("plan".equals(mode)) {
+                // 规划模式：只读分析，不执行文件/命令操作
+                session.attrs().put("_plan_mode", true);
+                if (!currentInput.contains("不要执行") && !currentInput.contains("只分析")) {
+                    currentInput = "[规划模式 - 仅分析不执行任何操作] " + currentInput;
+                }
+            } else if ("auto".equals(mode)) {
+                // 自动编辑模式：文件编辑自动放行，shell 命令仍需审批
+                session.attrs().put("_hitl_shell_only", true);
+            }
+            // default 模式：不做特殊处理，所有操作走正常 HITL 流程
+
             final ReActAgent agent = engine.getAgentOrMain(agentName);
 
             // 命令处理：以 / 开头的输入走命令分发
@@ -327,12 +342,16 @@ public class WsGate extends SimpleWebSocketListener {
                 boolean isThinking = chunk.getMessage().isThinking();
                 String chunkTypeToSend = isThinking ? "think" : "reason";
 
-                LOG.debug("[WS] sending {}: {}", chunkTypeToSend,
-                        content.substring(0, Math.min(50, content.length())));
-                return new ONode().set("type", chunkTypeToSend)
+                ONode node = new ONode().set("type", chunkTypeToSend)
                         .set("sessionId", finalSessionId)
-                        .set("text", content)
-                        .toJson();
+                        .set("text", content);
+
+                String agentName = chunk.getTrace().getAgentName();
+                if (!engine.getName().equals(agentName)) {
+                    node.set("agentName", agentName);
+                }
+
+                return node.toJson();
             }
         }
         return null;
@@ -453,10 +472,16 @@ public class WsGate extends SimpleWebSocketListener {
         if (chunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             String content = chunk.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
-                return new ONode().set("type", "reason")
+                ONode node = new ONode().set("type", "reason")
                         .set("sessionId", finalSessionId)
-                        .set("text", "\n" + content)
-                        .toJson();
+                        .set("text", "\n" + content);
+
+                String agentName = chunk.getTrace().getAgentName();
+                if (!engine.getName().equals(agentName)) {
+                    node.set("agentName", agentName);
+                }
+
+                return node.toJson();
             }
         }
         return null;

@@ -197,14 +197,14 @@
 }
 
 /* 深色主题 - 删除行 */
-/* .diff-deleted-line-dark {
+.diff-deleted-line-dark {
   border-left: 3px solid #ef4444 !important;
-} */
+}
 
 /* 浅色主题 - 删除行 */
-/* .diff-deleted-line-light {
+.diff-deleted-line-light {
   border-left: 3px solid #ef4444 !important;
-} */
+}
 
 /* 深色主题 - 修改行 */
 .diff-modified-line-dark {
@@ -214,6 +214,39 @@
 /* 浅色主题 - 修改行 */
 .diff-modified-line-light {
   border-left: 3px solid #22c55e !important;
+}
+
+/* ===== DIFF 标签样式 ===== */
+.tab-diff-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+/* ===== Monaco DiffEditor 颜色覆盖 ===== */
+.monaco-diff-editor .line-insert,
+.monaco-diff-editor .char-insert {
+  background: rgba(34, 197, 94, 0.2) !important;
+}
+
+.monaco-diff-editor .line-delete,
+.monaco-diff-editor .char-delete {
+  background: rgba(239, 68, 68, 0.2) !important;
+}
+
+[data-theme="light"] .monaco-diff-editor .line-insert,
+[data-theme="light"] .monaco-diff-editor .char-insert {
+  background: rgba(34, 197, 94, 0.15) !important;
+}
+
+[data-theme="light"] .monaco-diff-editor .line-delete,
+[data-theme="light"] .monaco-diff-editor .char-delete {
+  background: rgba(239, 68, 68, 0.15) !important;
 }
 
 /* ===== 图片预览 ===== */

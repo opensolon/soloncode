@@ -25,6 +25,7 @@ interface ChatViewProps {
   activeFilePath?: string;
   onNewProject?: () => void;
   onOpenFolder?: () => void;
+  onFileSelect?: (path: string) => void;
   initialPrompt?: {
     prompt: string;
     type: 'skill' | 'agent';
@@ -163,11 +164,21 @@ class WebSocketManager {
     this.messageCallback = null;
   }
 
-  /** 推送配置变更到后端（短连接） */
+  /** 推送配置变更到后端（HTTP POST 代替短连接 WS） */
   async sendConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }): Promise<void> {
-    const ws = await this.createConnection();
-    ws.send(JSON.stringify({ type: 'config', chatModel }));
-    ws.close();
+    const port = this.backendPort || 4808;
+    try {
+      await fetch(`http://localhost:${port}/chat/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'config', chatModel }),
+      });
+    } catch {
+      // fallback: 短连接 WS
+      const ws = await this.createConnection();
+      ws.send(JSON.stringify({ type: 'config', chatModel }));
+      ws.close();
+    }
   }
 
   private closeActive() {
@@ -245,7 +256,7 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
   await registerModelToBackend(provider, true);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder, initialPrompt, onAiCreateComplete, newSessionFromProject }: ChatViewProps) {
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder, onFileSelect, initialPrompt, onAiCreateComplete, newSessionFromProject }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>('default');
@@ -255,21 +266,49 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   const isStreamingRef = useRef(false);
   const aiCreateRef = useRef<{ type: 'skill' | 'agent'; name: string } | null>(null);
   const initialPromptSentRef = useRef(false);
+  const onUpdateSessionTitleRef = useRef(onUpdateSessionTitle);
+  onUpdateSessionTitleRef.current = onUpdateSessionTitle;
+  const onNewSessionRef = useRef(onNewSession);
+  onNewSessionRef.current = onNewSession;
+  const workspacePathRef = useRef(workspacePath);
+  workspacePathRef.current = workspacePath;
 
-  // 累积的消息内容 - 只有 think 标签内的才是思考块
-  const accumulatedContentRef = useRef<{
-    think: string;
-    text: string;
-    actions: Array<{
-      text: string;
-      toolName?: string;
-      args?: Record<string, unknown>;
-    }>;
-  }>({
-    think: '',
-    text: '',
-    actions: [],
-  });
+  // 有序 segment 列表 — 保留 think/action/text 的真实交错顺序
+  type AccSegment =
+    | { type: 'THINK'; text: string }
+    | { type: 'TEXT'; text: string; agentName?: string }
+    | { type: 'ACTION'; text: string; toolName?: string; args?: Record<string, unknown> };
+
+  const accumulatedContentRef = useRef<AccSegment[]>([]);
+
+  // RAF 节流：流式更新时合并多次 chunk 到一帧渲染
+  const rafIdRef = useRef<number | null>(null);
+  const pendingUpdateRef = useRef(false);
+
+  const scheduleMessageUpdate = useCallback(() => {
+    if (pendingUpdateRef.current) return;
+    pendingUpdateRef.current = true;
+    rafIdRef.current = requestAnimationFrame(() => {
+      pendingUpdateRef.current = false;
+      const contentItems = buildContentItems();
+      const tempMsg: Message = {
+        id: assistantMsgIdRef.current,
+        role: 'ASSISTANT',
+        timestamp: new Date().toLocaleTimeString(),
+        contents: contentItems
+      };
+      setMessages(prev => {
+        const existingIndex = prev.findIndex(m => m.id === assistantMsgIdRef.current);
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = tempMsg;
+          return updated;
+        }
+        return [...prev, tempMsg];
+      });
+      chatMessagesRef.current?.scrollToBottom();
+    });
+  }, []);
 
   // 待持久化的首条用户消息（新会话时暂存，done/error 时真正保存）
   const pendingPersistRef = useRef<{
@@ -316,38 +355,30 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
   }, [initialPrompt]);
 
-  // 构建当前累积内容的 ContentItem 数组
+  // 构建当前累积内容的 ContentItem 数组 — 直接映射有序 segment
   function buildContentItems(): ContentItem[] {
-    const acc = accumulatedContentRef.current;
-    const items: ContentItem[] = [];
-
-    // 只有 think 标签内的内容才是思考块（可折叠）
-    if (acc.think.trim()) {
-      items.push({ type: 'THINK', text: acc.think.trim() });
-    }
-
-    // 每个工具调用独立显示
-    for (const act of acc.actions) {
-      if (act.text.trim()) {
-        items.push({
-          type: 'ACTION',
-          text: act.text.trim(),
-          toolName: act.toolName,
-          args: act.args
-        });
-      }
-    }
-
-    // 正文内容（包括 reason 和 text 类型）
-    if (acc.text.trim()) {
-      let text = acc.text.trim();
-      // 过滤末尾的模型 trace 信息，如 (glm-4.7, 6985tk, 4s) 或 `(...)` 包裹
-      text = text.replace(/`\s*\([\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*`\s*$/, '');
-      text = text.replace(/\([\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*$/, '');
-      items.push({ type: 'TEXT', text });
-    }
-
-    return items;
+    const segments = accumulatedContentRef.current;
+    return segments
+      .filter(seg => seg.text.trim())
+      .map(seg => {
+        if (seg.type === 'THINK') {
+          return { type: 'THINK' as const, text: seg.text.trim() };
+        }
+        if (seg.type === 'ACTION') {
+          return {
+            type: 'ACTION' as const,
+            text: seg.text.trim(),
+            toolName: seg.toolName,
+            args: seg.args,
+          };
+        }
+        // TEXT — 过滤末尾模型 trace
+        let text = seg.text.trim();
+        text = text.replace(/`\s*\([\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*`\s*$/, '');
+        text = text.replace(/\([\w.\-]+(?:,\s*\d+\.?\d*\w+)*\)\s*$/, '');
+        return { type: 'TEXT' as const, text, agentName: seg.agentName };
+      })
+      .filter(item => item.text.length > 0);
   }
 
   // 注册消息回调（只注册一次，通过 ref 获取当前 sessionId）
@@ -366,7 +397,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         role: 'USER',
         timestamp: pending.userMessage.timestamp,
         contents: pending.userMessage.contents,
-        workspacePath,
+        workspacePath: workspacePathRef.current,
       });
 
       return {
@@ -412,19 +443,23 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             role: 'ASSISTANT',
             timestamp: finalMsg.timestamp,
             contents: JSON.stringify({ items: contentItems, metadata: finalMsg.metadata }),
-            workspacePath,
+            workspacePath: workspacePathRef.current,
           });
         }
 
         // 所有消息保存后，触发会话持久化（reassignMessages 会把 temp ID 转为 real ID）
-        if (pending?.wasNew && onUpdateSessionTitle) {
-          onUpdateSessionTitle(pending.sessionId, pending.title);
+        if (pending?.wasNew && onUpdateSessionTitleRef.current) {
+          onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
         }
 
         // AI 创建自动保存
         if (aiCreateRef.current) {
           const { type, name } = aiCreateRef.current;
-          const aiContent = accumulatedContentRef.current.text.trim();
+          const aiContent = accumulatedContentRef.current
+            .filter(seg => seg.type === 'TEXT')
+            .map(seg => seg.text.trim())
+            .join('\n')
+            .trim();
           if (aiContent) {
             try {
               if (type === 'skill') {
@@ -441,11 +476,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         }
 
         // 重置累积器
-        accumulatedContentRef.current = {
-          think: '',
-          text: '',
-          actions: [],
-        };
+        accumulatedContentRef.current = [];
+        if (rafIdRef.current) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
+        pendingUpdateRef.current = false;
 
         setIsLoading(false);
         isStreamingRef.current = false;
@@ -473,12 +506,12 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           role: 'ERROR',
           timestamp: errorMsg.timestamp,
           contents: JSON.stringify(errorMsg.contents),
-          workspacePath,
+          workspacePath: workspacePathRef.current,
         });
 
         // 所有消息保存后，触发会话持久化
-        if (pending?.wasNew && onUpdateSessionTitle) {
-          onUpdateSessionTitle(pending.sessionId, pending.title);
+        if (pending?.wasNew && onUpdateSessionTitleRef.current) {
+          onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
         }
 
         setIsLoading(false);
@@ -531,61 +564,40 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       startLoadingTimer();
 
       // 累积内容
-      // 注意：只有 think 类型（<think/`thinking`> 标签内）才是思考块
-      // reason 类型也是正文内容
-      const acc = accumulatedContentRef.current;
+      // 累积内容 — 保留交错顺序
+      const segs = accumulatedContentRef.current;
+      const last = segs.length > 0 ? segs[segs.length - 1] : null;
+
       switch (type) {
         case 'THINK':
-          acc.think += text;
-          break;
-        case 'TEXT':
-          acc.text += text;
-          break;
-        case 'REASON':
-          acc.text += text;
-          break;
-        case 'ACTION':
-          if (data.toolName) {
-            // 新的工具调用开始，推入新条目
-            acc.actions.push({
-              text: text,
-              toolName: data.toolName,
-              args: data.args
-            });
-          } else if (acc.actions.length > 0) {
-            // 追加到当前最后一个 action
-            acc.actions[acc.actions.length - 1].text += text;
+          if (last && last.type === 'THINK') {
+            last.text += text;
           } else {
-            // 没有 toolName 且没有已有 action，创建一个
-            acc.actions.push({ text });
+            segs.push({ type: 'THINK', text });
           }
           break;
         case 'TEXT':
-          acc.text += text;
+        case 'REASON':
+          if (last && last.type === 'TEXT') {
+            last.text += text;
+            if (data.agentName) last.agentName = data.agentName;
+          } else {
+            segs.push({ type: 'TEXT', text, agentName: data.agentName });
+          }
+          break;
+        case 'ACTION':
+          if (data.toolName) {
+            segs.push({ type: 'ACTION', text, toolName: data.toolName, args: data.args });
+          } else if (last && last.type === 'ACTION') {
+            last.text += text;
+          } else {
+            segs.push({ type: 'ACTION', text });
+          }
           break;
       }
 
-      // 实时更新显示（显示当前累积的内容）
-      setMessages(prev => {
-        const contentItems = buildContentItems();
-        const tempMsg: Message = {
-          id: assistantMsgIdRef.current,
-          role: 'ASSISTANT',
-          timestamp: new Date().toLocaleTimeString(),
-          contents: contentItems
-        };
-
-        // 查找是否已有临时消息
-        const existingIndex = prev.findIndex(m => m.id === assistantMsgIdRef.current);
-        if (existingIndex >= 0) {
-          const updated = [...prev];
-          updated[existingIndex] = tempMsg;
-          return updated;
-        }
-        return [...prev, tempMsg];
-      });
-
-      chatMessagesRef.current?.scrollToBottom();
+      // 实时更新显示（RAF 节流，合并多次 chunk）
+      scheduleMessageUpdate();
     };
 
     wsManager.registerCallback(handleMessage);
@@ -644,11 +656,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     startLoadingTimer(); // 开始超时计时
 
     // 重置累积器
-    accumulatedContentRef.current = {
-      think: '',
-      text: '',
-      actions: [],
-    };
+    accumulatedContentRef.current = [];
 
     assistantMsgIdRef.current = Date.now() + Math.floor(Math.random() * 1000);
 
@@ -688,6 +696,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         model: modelName,
         agent: options.agent,
         cwd: workspacePath || undefined,
+        mode: chatMode,
       };
 
       // 附件数据（图片 base64，文本内容）
@@ -865,11 +874,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
 
     // 重置累积器
-    accumulatedContentRef.current = {
-      think: '',
-      text: '',
-      actions: [],
-    };
+    accumulatedContentRef.current = [];
   }, []);
 
   // 模型切换时推送配置到后端
@@ -896,7 +901,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       {showHeader && (
         <ChatHeader title={currentConversation.title} status={currentConversation.status} projectName={currentConversation.workspacePath && currentConversation.workspacePath === workspacePath ? projectName : undefined} />
       )}
-      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isLoading} theme={theme} projectName={projectName} onDeleteMessage={handleDeleteMessage} onHitlAction={handleHitlAction} />
+      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isLoading} theme={theme} projectName={projectName} onDeleteMessage={handleDeleteMessage} onHitlAction={handleHitlAction} onFileSelect={onFileSelect} />
 
       {isEmpty ? (
         <div className="empty-center-container">

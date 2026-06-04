@@ -106,7 +106,7 @@ function getModelDisplayName(p: ModelProvider): string {
   return modelLabel || p.model;
 }
 
-export type ChatMode = 'default' | 'agent' | 'plan' | 'auto';
+export type ChatMode = 'default' | 'auto' | 'plan';
 
 export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, mode = 'default', onModeChange }: ChatInputProps & { mode?: ChatMode; onModeChange?: (mode: ChatMode) => void }) {
   // 从每个 provider 的 availableModels 展开为独立的可选模型
@@ -134,7 +134,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   }, [providers]);
 
   const [userInput, setUserInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('soloncode-last-model') || '');
   const [selectedAgent, setSelectedAgent] = useState('default');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -158,8 +158,13 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const voiceFinalRef = useRef('');
   const voiceRafRef = useRef(false);
 
-  // 同步 activeProviderId 到 selectedModel（优先恢复上次使用的模型）
+  // 同步模型选择：优先 localStorage 记忆，其次 activeProviderId
   useEffect(() => {
+    const lastUsed = localStorage.getItem('soloncode-last-model');
+    if (lastUsed && allModels.some(m => m.id === lastUsed)) {
+      setSelectedModel(lastUsed);
+      return;
+    }
     if (activeProviderId && allModels.some(m => m.id === activeProviderId)) {
       setSelectedModel(activeProviderId);
     } else if (allModels.length > 0) {
@@ -539,6 +544,15 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   // 键盘导航
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Shift+Tab 切换模式
+    if (event.key === 'Tab' && event.shiftKey) {
+      event.preventDefault();
+      const modes: ChatMode[] = ['default', 'auto', 'plan'];
+      const idx = modes.indexOf(mode);
+      onModeChange?.(modes[(idx + 1) % modes.length]);
+      return;
+    }
+
     if (showAutocomplete) {
       const options = getFilteredOptions();
       if (options.length > 0) {
@@ -707,20 +721,19 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
                 onClick={() => setShowModePicker(!showModePicker)}
               >
                 <Icon name={
-                  mode === 'agent' ? 'bot' : mode === 'plan' ? 'explorer' : mode === 'auto' ? 'terminal' : 'chat'
+                  mode === 'plan' ? 'eye' : mode === 'auto' ? 'zap' : 'shield'
                 } size={12} />
                 <span className="model-picker-name">
-                  {mode === 'default' ? '默认' : mode === 'agent' ? '代理' : mode === 'plan' ? '规划' : '自动'}
+                  {mode === 'default' ? '默认' : mode === 'auto' ? '自动编辑' : '规划'}
                 </span>
                 <span className={`model-picker-arrow${showModePicker ? ' open' : ''}`}>▾</span>
               </button>
               {showModePicker && (
                 <div className="model-picker-dropdown" style={{ left: modePickerPos.left, bottom: modePickerPos.bottom }}>
                   {([
-                    { key: 'default' as ChatMode, label: '默认', desc: '普通对话', icon: 'chat' as const },
-                    { key: 'agent' as ChatMode, label: '代理', desc: '智能体模式', icon: 'bot' as const },
-                    { key: 'plan' as ChatMode, label: '规划', desc: '规划模式', icon: 'explorer' as const },
-                    { key: 'auto' as ChatMode, label: '自动', desc: '自动执行', icon: 'terminal' as const },
+                    { key: 'default' as ChatMode, label: '默认', desc: '手动审批所有操作', icon: 'shield' as const },
+                    { key: 'auto' as ChatMode, label: '自动编辑', desc: '自动接受文件修改', icon: 'zap' as const },
+                    { key: 'plan' as ChatMode, label: '规划', desc: '只读分析不执行', icon: 'eye' as const },
                   ]).map(m => (
                     <button
                       key={m.key}
@@ -765,6 +778,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
                           className={`model-picker-item${isActive ? ' active' : ''}`}
                           onClick={() => {
                             setSelectedModel(p.id);
+                            localStorage.setItem('soloncode-last-model', p.id);
                             onModelChange?.(p.id);
                             setShowModelPicker(false);
                           }}
@@ -850,13 +864,15 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
                   className={`autocomplete-item${index === selectedIndex ? ' selected' : ''}`}
                   onClick={() => selectAutocompleteItem(option)}
                 >
-                  <Icon name={
-                    autocompleteType === 'command'
-                      ? 'terminal'
-                      : autocompleteType === 'agent'
-                        ? (option as any).icon || 'bot'
-                        : (option as any).type === 'folder' ? 'folder' : 'file'
-                  } size={16} />
+                  <span className="item-icon">
+                    <Icon name={
+                      autocompleteType === 'command'
+                        ? 'terminal'
+                        : autocompleteType === 'agent'
+                          ? (option as any).icon || 'bot'
+                          : (option as any).type === 'folder' ? 'folder' : 'file'
+                    } size={12} />
+                  </span>
                   <div className="item-info">
                     <span className="item-name">
                       {autocompleteType === 'command' ? `/${option.name}` : option.name}
