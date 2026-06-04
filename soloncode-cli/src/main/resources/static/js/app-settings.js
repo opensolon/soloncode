@@ -387,7 +387,7 @@
                 showLlmListView();
                 loadLlmList();
             } else { showToast('删除失败: ' + (resp.message || '未知错误'), 'error'); }
-        });
+        }, 'json').fail(function () { showToast('网络错误，删除失败', 'error'); });
     }
 
     // LLM 按钮事件
@@ -1400,8 +1400,8 @@
         if (!alias) return;
         if (confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）')) {
             $.post('/web/settings/mounts/remove', { alias: alias }, function (resp) {
-                if (resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); }
-                else showToast('移除失败: ' + (resp.message || ''), 'error');
+                if (resp && resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); }
+                else showToast('移除失败: ' + ((resp && resp.message) || '未知错误'), 'error');
             }, 'json').fail(function () { showToast('网络错误', 'error'); });
         }
     });

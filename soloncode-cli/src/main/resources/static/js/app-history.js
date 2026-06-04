@@ -122,6 +122,8 @@ function deleteSession(idx) {
     var entry = chatHistory[idx];
     if (!entry) return;
 
+    if (!confirm('确定删除对话 "' + (entry.label || '未命名') + '"？')) return;
+
     $.post('/web/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId), function() {
         /* Clean up session state after server confirms */
         var sess = sessionMap[entry.sessionId];
@@ -144,6 +146,12 @@ function deleteSession(idx) {
         }
 
         updateHistoryUI();
+    }).fail(function () {
+        if (typeof layer !== 'undefined' && layer.msg) {
+            layer.msg('删除对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+        } else {
+            alert('删除对话失败，请重试');
+        }
     });
 }
 
