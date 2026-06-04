@@ -21,12 +21,23 @@ import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.mount.SkillDir;
 
+import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -36,10 +47,28 @@ import java.util.Set;
  * @since 2026.4.28
  */
 public class CliCompleter implements Completer {
-    private final HarnessEngine engine;
+    private static final int MAX_FILE_CANDIDATES = 80;
+    private static final int MAX_FILE_SCAN = 2_000;
+    private static final Set<String> EXCLUDED_DIRS = new HashSet<>();
 
-    public CliCompleter(HarnessEngine engine) {
+    static {
+        EXCLUDED_DIRS.add(".git");
+        EXCLUDED_DIRS.add(".idea");
+        EXCLUDED_DIRS.add(".soloncode");
+        EXCLUDED_DIRS.add("node_modules");
+        EXCLUDED_DIRS.add("target");
+        EXCLUDED_DIRS.add("__pycache__");
+        EXCLUDED_DIRS.add(".gradle");
+        EXCLUDED_DIRS.add(".mvn");
+        EXCLUDED_DIRS.add("build");
+    }
+
+    private final HarnessEngine engine;
+    private final Path workspace;
+
+    public CliCompleter(HarnessEngine engine, String workspace) {
         this.engine = engine;
+        this.workspace = workspace == null ? null : Paths.get(workspace).toAbsolutePath().normalize();
     }
 
     @Override
@@ -48,63 +77,154 @@ public class CliCompleter implements Completer {
             return;
         }
 
-        if (line.word().startsWith("/")) {
-            String prefix = line.word().substring(1).toLowerCase();
-            for (String name : engine.getCommandRegistry().names()) {
-                if (name.startsWith(prefix)) {
-                    Command cmd = engine.getCommandRegistry().find(name);
-                    // 构建补全提示：description + argument-hint
-                    candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(), null, null, null, null, true));
-                }
-            }
+        String word = line.word();
+
+        if (word.startsWith("/")) {
+            completeCommands(word, candidates);
+            completeModels(word, candidates);
+            return;
         }
 
-        if (line.word().startsWith("/m")) {
-            String prefix = line.word().substring(1).toLowerCase();
-            for (ChatConfig c : engine.getModels()) {
-                if (("model " + c.getNameOrModel()).startsWith(prefix)) {
-                    candidates.add(new Candidate("/model " + c.getNameOrModel(), "/model " + c.getNameOrModel(), null, null, null, null, true));
-                }
-            }
+        if (word.startsWith("@")) {
+            completeFiles(word, candidates);
+            return;
         }
 
-        if (line.word().startsWith("@")) {
-            String prefix = line.word().substring(1).toLowerCase();
-            for (AgentDefinition definition : engine.getAgentManager().getAgents()) {
-                if (definition.getName().startsWith(prefix)) {
-                    // 构建补全提示：description + argument-hint
-                    candidates.add(new Candidate("@" + definition.getName(), "@" + definition.getName() + "  " + definition.getDescription(), null, null, null, null, true));
-                }
-            }
+        if (word.startsWith("$")) {
+            completeSkills(word, candidates);
+            return;
         }
 
-        if (line.word().startsWith("$")) {
-            Set<String> added = new HashSet<>();
-            String prefix = line.word().substring(1).toLowerCase();
-            for (SkillDir skill : engine.getSkills()) {
-                if (skill.getName().startsWith(prefix)) {
-                    if (added.contains(skill.getName())) {
-                        continue;
-                    } else {
-                        added.add(skill.getName());
+        if (word.startsWith("!")) {
+            candidates.add(new Candidate("!", "!  进入本地命令模式", null, null, null, null, true));
+            candidates.add(new Candidate("!pwd", "!pwd  执行一次本地命令", null, null, null, null, true));
+            candidates.add(new Candidate("!ls", "!ls  列出当前工作区文件", null, null, null, null, true));
+        }
+    }
+
+    private void completeCommands(String word, List<Candidate> candidates) {
+        String prefix = normalize(word.substring(1));
+        for (String name : engine.getCommandRegistry().names()) {
+            if (normalize(name).startsWith(prefix)) {
+                Command cmd = engine.getCommandRegistry().find(name);
+                candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(), null, null, null, null, true));
+            }
+        }
+    }
+
+    private void completeModels(String word, List<Candidate> candidates) {
+        String prefix = normalize(word.substring(1));
+        for (ChatConfig c : engine.getModels()) {
+            if (normalize("model " + c.getNameOrModel()).startsWith(prefix)) {
+                candidates.add(new Candidate("/model " + c.getNameOrModel(), "/model " + c.getNameOrModel(), null, null, null, null, true));
+            }
+        }
+    }
+
+    private void completeSkills(String word, List<Candidate> candidates) {
+        Set<String> added = new HashSet<>();
+        String prefix = normalize(word.substring(1));
+        for (SkillDir skill : engine.getSkills()) {
+            if (normalize(skill.getName()).startsWith(prefix)) {
+                if (added.add(skill.getName()) == false) {
+                    continue;
+                }
+
+                String desc = shorten(skill.getDescription(), 40);
+                candidates.add(new Candidate("$" + skill.getName(), "$" + skill.getName() + "  " + desc, null, null, null, null, true));
+            }
+        }
+    }
+
+    private void completeFiles(String word, List<Candidate> candidates) {
+        if (workspace == null || Files.isDirectory(workspace) == false) {
+            return;
+        }
+
+        String query = normalize(word.substring(1));
+        int[] scanned = {0};
+        List<Path> matches = new ArrayList<>();
+
+        try {
+            Files.walkFileTree(workspace, EnumSet.noneOf(FileVisitOption.class), 5, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (workspace.equals(dir) == false && isVisibleWorkspacePath(dir) == false) {
+                        return FileVisitResult.SKIP_SUBTREE;
                     }
-
-                    // 构建补全提示：description + argument-hint
-                    String desc = skill.getDescription();
-                    if (desc != null) {
-                        // 取第一行，并限制最大长度
-                        int newlineIdx = desc.indexOf('\n');
-                        if (newlineIdx > 0) {
-                            desc = desc.substring(0, newlineIdx);
-                        }
-                        if (desc.length() > 30) {
-                            desc = desc.substring(0, 30) + "...";
-                        }
-                    }
-
-                    candidates.add(new Candidate("$" + skill.getName(), "$" + skill.getName() + "  " + desc, null, null, null, null, true));
+                    return collectFileCandidate(dir, query, scanned, matches);
                 }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (isVisibleWorkspacePath(file) == false) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    return collectFileCandidate(file, query, scanned, matches);
+                }
+            });
+
+            matches.sort(Comparator
+                    .comparing((Path path) -> Files.isDirectory(path) ? 0 : 1)
+                    .thenComparing(this::toRelativePath, String.CASE_INSENSITIVE_ORDER));
+
+            for (Path path : matches) {
+                String relative = toRelativePath(path);
+                boolean dir = Files.isDirectory(path);
+                String value = "@" + relative + (dir ? "/" : "");
+                String display = value + "  " + (dir ? "目录" : "文件");
+                candidates.add(new Candidate(value, display, null, null, null, null, true));
+            }
+        } catch (IOException ignored) {
+        }
+    }
+
+    private FileVisitResult collectFileCandidate(Path path, String query, int[] scanned, List<Path> matches) {
+        if (workspace.equals(path)) {
+            return FileVisitResult.CONTINUE;
+        }
+        if (scanned[0]++ >= MAX_FILE_SCAN) {
+            return FileVisitResult.TERMINATE;
+        }
+
+        String relative = toRelativePath(path);
+        if (query.length() == 0 || normalize(relative).contains(query)) {
+            matches.add(path);
+        }
+        return matches.size() >= MAX_FILE_CANDIDATES ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
+    }
+
+    private boolean isVisibleWorkspacePath(Path path) {
+        Path relative = workspace.relativize(path.toAbsolutePath().normalize());
+        for (Path part : relative) {
+            String name = part.toString();
+            if (name.startsWith(".") || EXCLUDED_DIRS.contains(name)) {
+                return false;
             }
         }
+        return true;
+    }
+
+    private String toRelativePath(Path path) {
+        return workspace.relativize(path.toAbsolutePath().normalize()).toString().replace('\\', '/');
+    }
+
+    private String shorten(String desc, int maxLength) {
+        if (desc == null) {
+            return "";
+        }
+
+        int newlineIdx = desc.indexOf('\n');
+        if (newlineIdx > 0) {
+            desc = desc.substring(0, newlineIdx);
+        }
+        if (desc.length() > maxLength) {
+            desc = desc.substring(0, maxLength - 3) + "...";
+        }
+        return desc;
+    }
+
+    private String normalize(String text) {
+        return text.toLowerCase(Locale.ROOT);
     }
 }
