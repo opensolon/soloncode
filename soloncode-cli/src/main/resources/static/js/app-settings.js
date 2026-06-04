@@ -501,7 +501,7 @@
                 html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[' + escapeHtml(type) + ']</span></div>'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
                     + (detail ? '<div class="mcp-server-detail">' + escapeHtml(detail) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
@@ -659,12 +659,14 @@
         $mcpSaveBtn.text('保存');
         $('#mcpName').val('').prop('readOnly', false);
         $('#mcpCommand, #mcpArgs, #mcpEnv, #mcpRemoteUrl, #mcpHeaders, #mcpTimeout').val('');
+        $('#mcpScope').val('user').prop('disabled', false).removeClass('readonly-gray');
         setMcpType('stdio');
     }
 
     function fillMcpForm(server) {
         var type = server.type || 'stdio';
         setMcpType(type);
+        $('#mcpScope').val(server.scope || 'user');
 
         if (type === 'stdio') {
             $('#mcpCommand').val(server.command || '');
@@ -687,7 +689,7 @@
         if (!name) { showToast('名称为必填项', 'error'); return null; }
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
 
-        var bodyObj = { name: name, type: type, enabled: true };
+        var bodyObj = { name: name, type: type, enabled: true, scope: $('#mcpScope').val() || 'user' };
 
         if (type === 'stdio') {
             var command = $('#mcpCommand').val().trim();
@@ -837,7 +839,7 @@
                 html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">A</div>'
                     + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[openapi]</span></div>'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
                     + (baseUrl ? '<div class="mcp-server-detail">' + escapeHtml(baseUrl) + '</div>' : '')
                     + (docUrl ? '<div class="mcp-server-detail" style="color:var(--accent);">' + escapeHtml(docUrl) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
@@ -950,9 +952,11 @@
         $openapiSaveBtn.text('保存');
         $('#openapiName').val('').prop('readOnly', false);
         $('#openapiBaseUrl, #openapiDocUrl, #openapiHeaders').val('');
+        $('#openapiScope').val('user').prop('disabled', false).removeClass('readonly-gray');
     }
 
     function fillOpenapiForm(server) {
+        $('#openapiScope').val(server.scope || 'user');
         $('#openapiBaseUrl').val(server.apiBaseUrl || '');
         $('#openapiDocUrl').val(server.docUrl || '');
         var headerLines = [];
@@ -969,7 +973,7 @@
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
         if (!baseUrl) { showToast('API 基地址为必填项', 'error'); return null; }
         if (!docUrl) { showToast('文档地址为必填项', 'error'); return null; }
-        var bodyObj = { name: name, apiBaseUrl: baseUrl, docUrl: docUrl, enabled: true };
+        var bodyObj = { name: name, apiBaseUrl: baseUrl, docUrl: docUrl, enabled: true, scope: $('#openapiScope').val() || 'user' };
         var headers = parseKvLines(headersText);
         if (Object.keys(headers).length > 0) bodyObj.headers = headers;
         return bodyObj;

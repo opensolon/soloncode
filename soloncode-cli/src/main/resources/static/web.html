@@ -683,6 +683,13 @@
                                         <button class="mcp-type-btn" data-type="streamable">http streamable</button>
                                     </div>
                                 </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <select id="mcpScope">
+                                        <option value="user">用户(全局)</option>
+                                        <option value="workspace">工作区(本地)</option>
+                                    </select>
+                                </div>
                                 <div class="mcp-config-stdio" id="mcpConfigStdio">
                                     <div class="form-group">
                                         <label>命令 <span class="required">*</span></label>
@@ -790,6 +797,13 @@
                                 <div class="form-group">
                                     <label>名称 <span class="required">*</span></label>
                                     <input type="text" id="openapiName" placeholder="my-api-server"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <select id="openapiScope">
+                                        <option value="user">用户(全局)</option>
+                                        <option value="workspace">工作区(本地)</option>
+                                    </select>
                                 </div>
                                 <div class="form-group">
                                     <label>API 基地址 <span class="required">*</span></label>

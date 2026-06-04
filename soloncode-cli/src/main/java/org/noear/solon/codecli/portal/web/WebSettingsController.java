@@ -347,11 +347,12 @@ public class WebSettingsController {
         List<Map> list = new ArrayList<>();
         for (Map.Entry<String, McpServerDo> entry : settings.getMcpServers().entrySet()) {
             String name = entry.getKey();
-            McpServerParameters params = entry.getValue();
+            McpServerDo params = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", name);
             item.put("type", params.getType() != null ? params.getType() : "stdio");
             item.put("enabled", params.isEnabled());
+            item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_GLOBAL);
             if ("stdio".equals(params.getType())) {
                 item.put("command", params.getCommand());
                 if (params.getArgs() != null) {
@@ -394,8 +395,14 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL;
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_GLOBAL;
+        }
+
         McpServerDo params = new McpServerDo();
         params.setType(type);
+        params.setScope(scope);
 
         if ("stdio".equals(type)) {
             params.setCommand(root.get("command").getString());
@@ -478,7 +485,7 @@ public class WebSettingsController {
         // 如果 name 变了，使用 originalName 查找旧记录
         String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
 
-        McpServerParameters existing = settings.getMcpServers().get(lookupName);
+        McpServerDo existing = settings.getMcpServers().get(lookupName);
         if (existing == null) {
             return Result.failure("Server not found: " + lookupName);
         }
@@ -495,9 +502,14 @@ public class WebSettingsController {
         // 构建新参数
         String type = root.hasKey("type") ? root.get("type").getString() : existing.getType();
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL);
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_GLOBAL;
+        }
 
         McpServerDo params = new McpServerDo();
         params.setType(type);
+        params.setScope(scope);
 
         if ("stdio".equals(type)) {
             params.setCommand(root.hasKey("command") ? root.get("command").getString() : existing.getCommand());
@@ -858,12 +870,13 @@ public class WebSettingsController {
         List<Map> list = new ArrayList<>();
         for (Map.Entry<String, ApiSourceDo> entry : settings.getApiServers().entrySet()) {
             String name = entry.getKey();
-            ApiSource source = entry.getValue();
+            ApiSourceDo source = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", name);
             item.put("apiBaseUrl", source.getApiBaseUrl());
             item.put("docUrl", source.getDocUrl());
             item.put("enabled", source.isEnabled());
+            item.put("scope", source.getScope() != null ? source.getScope() : AgentFlags.SCOPE_GLOBAL);
             if (source.getHeaders() != null) {
                 item.put("headers", source.getHeaders());
             }
@@ -892,10 +905,15 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL;
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_GLOBAL;
+        }
 
         ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(apiBaseUrl);
         source.setDocUrl(root.get("docUrl").getString());
+        source.setScope(scope);
         if (root.hasKey("headers")) {
             Map<String, String> headersMap = new LinkedHashMap<>();
             for (Map.Entry<String, ONode> entry : root.get("headers").getObject().entrySet()) {
@@ -933,7 +951,7 @@ public class WebSettingsController {
         // 如果 name 变了，使用 originalName 查找旧记录
         String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
 
-        ApiSource existing = settings.getApiServers().get(lookupName);
+        ApiSourceDo existing = settings.getApiServers().get(lookupName);
         if (existing == null) {
             return Result.failure("Server not found: " + lookupName);
         }
@@ -949,9 +967,14 @@ public class WebSettingsController {
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
 
         // 构建新配置
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL);
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_GLOBAL;
+        }
         ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(root.hasKey("apiBaseUrl") ? root.get("apiBaseUrl").getString() : existing.getApiBaseUrl());
         source.setDocUrl(root.hasKey("docUrl") ? root.get("docUrl").getString() : existing.getDocUrl());
+        source.setScope(scope);
         if (root.hasKey("headers")) {
             Map<String, String> headersMap = new LinkedHashMap<>();
             for (Map.Entry<String, ONode> entry : root.get("headers").getObject().entrySet()) {
