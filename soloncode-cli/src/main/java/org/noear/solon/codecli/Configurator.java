@@ -159,13 +159,13 @@ public class Configurator {
         }
 
         //系统级 LSP 服务器（参考 OpenCode / Claude Code 内置列表，仅注册常见语言）
-        addSystemLspServer(engine, agentSettings, "java", Arrays.asList("jdtls", "-data", "./"), Arrays.asList(".java"));
+        addSystemLspServer(engine, agentSettings, "java", Arrays.asList("jdtls"), Arrays.asList(".java"));
         addSystemLspServer(engine, agentSettings, "typescript", Arrays.asList("typescript-language-server", "--stdio"), Arrays.asList(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"));
         addSystemLspServer(engine, agentSettings, "go", Arrays.asList("gopls"), Arrays.asList(".go"));
-        addSystemLspServer(engine, agentSettings, "python", Arrays.asList("pylsp"), Arrays.asList(".py", ".pyi"));
+        addSystemLspServer(engine, agentSettings, "python", Arrays.asList("pyright-langserver", "--stdio"), Arrays.asList(".py", ".pyi"));
         addSystemLspServer(engine, agentSettings, "rust", Arrays.asList("rust-analyzer"), Arrays.asList(".rs"));
         addSystemLspServer(engine, agentSettings, "c-cpp", Arrays.asList("clangd"), Arrays.asList(".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".m", ".mm"));
-        addSystemLspServer(engine, agentSettings, "csharp", Arrays.asList("omnisharp", "-lsp"), Arrays.asList(".cs"));
+        addSystemLspServer(engine, agentSettings, "csharp", Arrays.asList("omnisharp", "--lsp"), Arrays.asList(".cs"));
         addSystemLspServer(engine, agentSettings, "ruby", Arrays.asList("solargraph", "stdio"), Arrays.asList(".rb", ".rake", ".gemspec"));
         addSystemLspServer(engine, agentSettings, "php", Arrays.asList("intelephense", "--stdio"), Arrays.asList(".php", ".phtml"));
         addSystemLspServer(engine, agentSettings, "bash", Arrays.asList("bash-language-server", "start"), Arrays.asList(".sh", ".bash", ".zsh", ".ksh"));
