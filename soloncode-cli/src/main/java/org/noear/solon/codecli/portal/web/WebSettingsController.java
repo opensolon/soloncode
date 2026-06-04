@@ -1246,9 +1246,10 @@ public class WebSettingsController {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", name);
             item.put("enabled", params.isEnabled());
-item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_GLOBAL);
+            item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_LOCAL);
             item.put("command", params.getCommand());
             item.put("extensions", params.getExtensions());
+            item.put("installed", isCommandInstalled(params.getCommand()));
             if (params.getEnv() != null && !params.getEnv().isEmpty()) {
                 item.put("env", params.getEnv());
             }
@@ -1258,6 +1259,25 @@ item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCO
             list.add(item);
         }
         return Result.succeed(list);
+    }
+
+    /**
+     * 检测 LSP 启动命令是否已安装（通过 which 检测可执行文件是否存在）
+     */
+    private boolean isCommandInstalled(List<String> command) {
+        if (command == null || command.isEmpty()) return false;
+        String cmd = command.get(0);
+        if (cmd == null || cmd.isEmpty()) return false;
+        try {
+            ProcessBuilder pb = new ProcessBuilder("which", cmd);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            int exitCode = p.waitFor();
+            return exitCode == 0;
+        } catch (Exception e) {
+            LOG.warn("[LSP] Failed to check command: {}", cmd);
+            return false;
+        }
     }
 
     /**
