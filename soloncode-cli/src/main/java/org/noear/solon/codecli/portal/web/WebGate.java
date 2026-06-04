@@ -28,7 +28,6 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
@@ -254,9 +253,9 @@ public class WebGate extends SimpleWebSocketListener {
             }
 
             if (selectedModel != null) {
-                session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, selectedModel);
+                session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
             } else {
-                selectedModel = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+                selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
             }
 
 

@@ -31,7 +31,6 @@ import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
@@ -203,7 +202,7 @@ public class WsGate extends SimpleWebSocketListener {
             String modelName = req.getModel();
             ChatModel chatModel = engine.getModelOrMain(modelName);
 
-            session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
 
             // 模式处理：根据前端 mode 字段配置 session 行为
             String mode = req.getMode();
@@ -424,7 +423,7 @@ public class WsGate extends SimpleWebSocketListener {
             }
 
             // 审批后恢复流执行
-            String modelName = (String) session.getContext().get(HarnessFlags.VAR_MODEL_SELECTED);
+            String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
             ChatModel chatModel = engine.getModelOrMain(modelName);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
 

@@ -20,7 +20,6 @@ import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.mount.SkillDir;
@@ -302,7 +301,7 @@ public class WebController {
         if(Assert.isNotEmpty(list)) {
             if (Assert.isNotEmpty(sessionId)) {
                 AgentSession session = engine.getSession(sessionId);
-                String selected = session.getContext().getOrDefault(HarnessFlags.VAR_MODEL_SELECTED,
+                String selected = session.getContext().getOrDefault(HarnessEngine.CTX_MODEL_SELECTED,
                         engine.getMainModel().getNameOrModel());
 
                 data.put("selected", selected);
@@ -330,7 +329,7 @@ public class WebController {
     public Result models_select(@Param("sessionId") String sessionId, @Param("modelName") String modelName) throws Exception {
         AgentSession session = engine.getSession(sessionId);
 
-        session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
+        session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
 
         session.updateSnapshot();
 
