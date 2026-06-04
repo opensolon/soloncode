@@ -159,7 +159,7 @@ public class Configurator {
         }
 
         //系统级 LSP 服务器（参考 OpenCode / Claude Code 内置列表，仅注册常见语言）
-        addSystemLspServer(engine, agentSettings, "java", Arrays.asList("jdtls", "-data", ".soloncode/lsp/java-workspace"), Arrays.asList(".java"));
+        addSystemLspServer(engine, agentSettings, "java", Arrays.asList("jdtls", "-data", "./"), Arrays.asList(".java"));
         addSystemLspServer(engine, agentSettings, "typescript", Arrays.asList("typescript-language-server", "--stdio"), Arrays.asList(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"));
         addSystemLspServer(engine, agentSettings, "go", Arrays.asList("gopls"), Arrays.asList(".go"));
         addSystemLspServer(engine, agentSettings, "python", Arrays.asList("pylsp"), Arrays.asList(".py", ".pyi"));
@@ -383,7 +383,7 @@ public class Configurator {
         lspServer.setCommand(command);
         lspServer.setExtensions(extensions);
         lspServer.setEnabled(false); // 默认禁用，用户按需启用
-        lspServer.setScope(AgentFlags.SCOPE_GLOBAL);
+        lspServer.setScope(AgentFlags.SCOPE_LOCAL);
 
         // 注册到引擎（不启用不会真正加载，仅作为可选项）
         engine.addLspServer(name, lspServer);
