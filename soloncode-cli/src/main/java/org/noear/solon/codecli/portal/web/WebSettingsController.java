@@ -1414,6 +1414,7 @@ public class WebSettingsController {
             Map<String, String> skillItem = new LinkedHashMap<>();
             skillItem.put("name", subDir.getName());
             skillItem.put("description", subDir.getDescription());
+            skillItem.put("path", subDir.getRealPath().toString().replace('\\', '/'));
             skills.add(skillItem);
         }
 

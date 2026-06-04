@@ -227,6 +227,15 @@ function GeneralSettings({ settings, updateSetting }: {
       </SettingRow>
 
       <div className="settings-section-title">编辑器</div>
+      <SettingRow label="编辑器主题">
+        <select className="setting-select" value={settings.editorTheme}
+          onChange={e => updateSetting('editorTheme', e.target.value)}>
+          <option value="vs-dark">VS Dark</option>
+          <option value="light">VS Light</option>
+          <option value="hc-black">High Contrast Dark</option>
+          <option value="hc-light">High Contrast Light</option>
+        </select>
+      </SettingRow>
       <SettingRow label="Tab 大小">
         <input type="number" className="setting-input number" value={settings.tabSize}
           onChange={e => updateSetting('tabSize', parseInt(e.target.value) || 2)} min={1} max={8} />

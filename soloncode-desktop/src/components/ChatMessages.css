@@ -15,17 +15,24 @@
 
 /* 对话消息滚动条 — 始终可见 */
 .chat-messages::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 .chat-messages::-webkit-scrollbar-track {
   background: transparent;
 }
 .chat-messages::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  background: #5a5a5a;
+  border-radius: 4px;
 }
 .chat-messages::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: #787878;
+}
+
+[data-theme="light"] .chat-messages::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+}
+[data-theme="light"] .chat-messages::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
 }
 
 .message {

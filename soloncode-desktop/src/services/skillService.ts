@@ -12,6 +12,7 @@ export interface PoolSkill {
   name: string;
   description: string;
   poolAlias: string;
+  path?: string;
 }
 
 export interface MarketInfo {

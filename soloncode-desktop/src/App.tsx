@@ -162,7 +162,9 @@ function App() {
     openFiles, activeFilePath, activeFile, setActiveFilePath,
     handleFileSelect, handleFileClose, handleContentChange,
     handleFileSave, handleSaveCurrentFile, clearEditorState, setOpenFiles,
-  } = useFileManager(null);
+  } = useFileManager(null, () => {
+    setPanelState(prev => ({ ...prev, editorVisible: false }));
+  });
 
   const {
     sessions, currentSessionId, setCurrentSessionId, currentConversation,
@@ -184,6 +186,8 @@ function App() {
   });
 
   const { gitStatus, diffLines, refreshGitStatus, setGitStatus } = useGit(activeProjectPath, activeFilePath, gitPanelVisible);
+
+  const [diffFiles, setDiffFiles] = useState<Record<string, string>>({});
 
   const statusBarModel = useMemo(
     () => settings.providers.find(p => p.id === settings.activeProviderId)?.model,
@@ -351,9 +355,22 @@ function App() {
   }, [openFolderByPath]);
 
   const handleChatFileSelect = useCallback((path: string) => {
+    const trimmed = path.trim().replace(/\\/g, '/');
+    if (!trimmed || trimmed === '.' || trimmed === './' || trimmed === '..' || trimmed === '../' || trimmed.endsWith('/')) return;
+    if (!/\.[a-zA-Z0-9]+$/.test(trimmed) && !trimmed.includes('.')) return;
     const filePath = resolveWorkspaceFilePath(path, activeProjectPath);
+    if (activeProjectPath && normalizePath(filePath) === normalizePath(activeProjectPath)) return;
     setPanelState(prev => ({ ...prev, editorVisible: true }));
     handleFileSelect(filePath);
+  }, [activeProjectPath, handleFileSelect]);
+
+  const handleDiffFileSelect = useCallback(async (relPath: string) => {
+    if (!activeProjectPath) return;
+    const absPath = activeProjectPath.replace(/\\/g, '/') + '/' + relPath;
+    const original = await gitService.showHead(activeProjectPath, relPath);
+    setPanelState(prev => ({ ...prev, editorVisible: true }));
+    await handleFileSelect(absPath);
+    setDiffFiles(prev => ({ ...prev, [absPath]: original }));
   }, [activeProjectPath, handleFileSelect]);
 
   // Toast
@@ -491,7 +508,7 @@ function App() {
       if (!panelState.editorVisible) return null;
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
-          <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={handleFileClose} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} diffLines={diffLines} />
+          <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} diffLines={diffLines} diffFiles={diffFiles} />
           {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
       );
@@ -563,7 +580,7 @@ function App() {
                   onPush={async () => { if (activeProjectPath) { await gitService.push(activeProjectPath); refreshGitStatus(); } }}
                   onPull={async () => { if (activeProjectPath) { await gitService.pull(activeProjectPath); refreshGitStatus(); } }}
                   onDiscard={async (path) => { if (activeProjectPath) { await gitService.discard(activeProjectPath, [path]); refreshGitStatus(); } }}
-                  onFileClick={(relPath) => { if (activeProjectPath) handleFileSelect(activeProjectPath.replace(/\\/g, '/') + '/' + relPath); }}
+                  onFileClick={(relPath) => { handleDiffFileSelect(relPath); }}
                   onGenerateCommitMessage={async () => {
                     if (!activeProjectPath) throw new Error('无活跃项目');
                     const diff = await gitService.diffStaged(activeProjectPath);

@@ -12,7 +12,7 @@ interface OpenFile {
   imageMimeType?: string;
 }
 
-export function useFileManager(activeProjectPath: string | null) {
+export function useFileManager(activeProjectPath: string | null, onAllFilesClosed?: () => void) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const openFilesRef = useRef(openFiles);
@@ -62,10 +62,11 @@ export function useFileManager(activeProjectPath: string | null) {
         setActiveFilePath(newFiles[newFiles.length - 1].path);
       } else if (newFiles.length === 0) {
         setActiveFilePath(null);
+        onAllFilesClosed?.();
       }
       return newFiles;
     });
-  }, [activeFilePath]);
+  }, [activeFilePath, onAllFilesClosed]);
 
   const handleContentChange = useCallback((path: string, content: string) => {
     setOpenFiles(prev => prev.map(f =>

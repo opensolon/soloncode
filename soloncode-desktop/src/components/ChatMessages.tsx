@@ -51,6 +51,11 @@ function toFileLinkTarget(href?: string): string | null {
 
   if (!target || isExternalHref(target)) return null;
 
+  const normalized = target.replace(/\\/g, '/');
+  if (normalized === '.' || normalized === './' || normalized === '..' || normalized === '../' || normalized.endsWith('/')) return null;
+  const basename = normalized.split('/').pop() || '';
+  if (!basename.includes('.')) return null;
+
   return target;
 }
 

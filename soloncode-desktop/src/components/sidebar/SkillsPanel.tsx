@@ -72,7 +72,17 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: Skill
                 {mount.system && <span className="pool-system-badge">系统</span>}
               </div>
               {!collapsed && skills.map(skill => (
-                <div key={skill.name} className="file-node file" style={{ paddingLeft: "20px" }}>
+                <div
+                  key={skill.name}
+                  className="file-node file"
+                  style={{ paddingLeft: "20px", cursor: skill.path ? "pointer" : "default" }}
+                  onClick={() => {
+                    if (skill.path) {
+                      const mdPath = skill.path.replace(/\/$/, '') + '/skill.md';
+                      onFileSelect(mdPath);
+                    }
+                  }}
+                >
                   <span className="chevron-placeholder" />
                   <Icon name="skills" size={16} className="file-icon" />
                   <span className="file-name">{skill.name}</span>

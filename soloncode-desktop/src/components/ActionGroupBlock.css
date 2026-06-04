@@ -148,3 +148,19 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
 }
+
+.action-block-diff {
+  display: inline-flex;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.action-block-diff .diff-added {
+  color: #22c55e;
+}
+
+.action-block-diff .diff-removed {
+  color: #ef4444;
+}
