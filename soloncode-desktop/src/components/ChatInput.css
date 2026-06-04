@@ -368,15 +368,15 @@
 /* 自动完成下拉框 */
 .autocomplete-dropdown {
   position: absolute;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + 6px);
   left: 0;
-  min-width: 200px;
-  max-width: 360px;
-  background-color: var(--cb-vscode-input-background);
+  min-width: 220px;
+  max-width: 340px;
+  background-color: var(--cb-vscode-editor-background);
   border: 1px solid var(--cb-vscode-panel-border);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  max-height: min(260px, 40vh);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  max-height: min(240px, 40vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -384,12 +384,11 @@
 }
 
 .autocomplete-header {
-  padding: 10px 14px;
+  padding: 6px 10px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--cb-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  opacity: 0.7;
   border-bottom: 1px solid var(--cb-vscode-panel-border);
 }
 
@@ -397,17 +396,17 @@
   flex: 1;
   overflow-y: auto;
   max-height: 180px;
-  padding: 4px;
+  padding: 2px;
 }
 
 .autocomplete-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 6px 8px;
   cursor: pointer;
-  transition: background-color 0.1s;
-  border-radius: 12px;
+  transition: background-color 0.08s;
+  border-radius: 4px;
 }
 
 .autocomplete-item:hover,
@@ -419,47 +418,63 @@
   background-color: var(--cb-vscode-list-activeSelectionBackground);
 }
 
+.autocomplete-item .item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  background-color: var(--cb-vscode-sideBar-background);
+  flex-shrink: 0;
+  color: var(--cb-text-secondary);
+}
+
 .item-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   flex: 1;
   min-width: 0;
 }
 
 .item-name {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--cb-text-primary);
   font-weight: 500;
+  line-height: 1.3;
 }
 
 .item-desc,
 .item-path {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--cb-text-secondary);
+  opacity: 0.7;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.3;
 }
 
 .autocomplete-footer {
   display: flex;
   justify-content: center;
-  gap: 16px;
-  padding: 8px 14px;
+  gap: 12px;
+  padding: 4px 10px;
   font-size: 10px;
   color: var(--cb-text-secondary);
+  opacity: 0.5;
   border-top: 1px solid var(--cb-vscode-panel-border);
-  background-color: var(--cb-vscode-sideBar-background);
 }
 
 .autocomplete-footer span {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
+  gap: 3px;
+  padding: 1px 5px;
   background-color: var(--cb-vscode-input-background);
-  border-radius: 4px;
+  border-radius: 3px;
+  font-size: 9px;
 }
 
 /* 附件预览 */

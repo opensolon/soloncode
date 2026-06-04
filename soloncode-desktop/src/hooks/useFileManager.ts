@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { fileService } from '../services/fileService';
 
 interface OpenFile {
@@ -12,14 +12,19 @@ interface OpenFile {
   imageMimeType?: string;
 }
 
-export function useFileManager(activeProjectPath: string | null) {
+export function useFileManager(activeProjectPath: string | null, onAllFilesClosed?: () => void) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+  const openFilesRef = useRef(openFiles);
+  openFilesRef.current = openFiles;
 
-  const activeFile = openFiles.find(f => f.path === activeFilePath);
+  const activeFile = useMemo(
+    () => openFiles.find(f => f.path === activeFilePath),
+    [openFiles, activeFilePath]
+  );
 
   const handleFileSelect = useCallback(async (path: string) => {
-    const existingFile = openFiles.find(f => f.path === path);
+    const existingFile = openFilesRef.current.find(f => f.path === path);
     if (existingFile) {
       setActiveFilePath(path);
       return;
@@ -48,7 +53,7 @@ export function useFileManager(activeProjectPath: string | null) {
       }]);
       setActiveFilePath(path);
     }
-  }, [openFiles]);
+  }, []);
 
   const handleFileClose = useCallback((path: string) => {
     setOpenFiles(prev => {
@@ -57,10 +62,11 @@ export function useFileManager(activeProjectPath: string | null) {
         setActiveFilePath(newFiles[newFiles.length - 1].path);
       } else if (newFiles.length === 0) {
         setActiveFilePath(null);
+        onAllFilesClosed?.();
       }
       return newFiles;
     });
-  }, [activeFilePath]);
+  }, [activeFilePath, onAllFilesClosed]);
 
   const handleContentChange = useCallback((path: string, content: string) => {
     setOpenFiles(prev => prev.map(f =>
@@ -69,7 +75,7 @@ export function useFileManager(activeProjectPath: string | null) {
   }, []);
 
   const handleFileSave = useCallback(async (path: string) => {
-    const file = openFiles.find(f => f.path === path);
+    const file = openFilesRef.current.find(f => f.path === path);
     if (file && activeProjectPath) {
       try {
         await fileService.writeFile(path, file.content);
@@ -84,7 +90,7 @@ export function useFileManager(activeProjectPath: string | null) {
         f.path === path ? { ...f, modified: false } : f
       ));
     }
-  }, [openFiles, activeProjectPath]);
+  }, [activeProjectPath]);
 
   const handleSaveCurrentFile = useCallback(() => {
     if (activeFilePath) {

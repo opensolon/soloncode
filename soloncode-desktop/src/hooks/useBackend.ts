@@ -115,5 +115,10 @@ export function useBackend() {
     if (backendPortRef.current) { setChatBackendPort(backendPortRef.current); }
   }, []);
 
-  return { backendPort, backendPortRef, backendStatus, startBackend, updateWorkspaceForChat };
+  const reconnectBackend = useCallback(async (onSettingsUpdate?: (updater: (prev: any) => any) => void) => {
+    const port = backendPortRef.current;
+    await startBackend(port, onSettingsUpdate);
+  }, [startBackend]);
+
+  return { backendPort, backendPortRef, backendStatus, startBackend, reconnectBackend, updateWorkspaceForChat };
 }

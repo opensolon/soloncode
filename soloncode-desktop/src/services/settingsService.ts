@@ -96,6 +96,7 @@ export interface ModelProvider {
 /** 常规设置（键值对，存在 globalSettings 表） */
 export interface GeneralSettings {
   theme: 'dark' | 'light';
+  editorTheme: string;
   fontSize: number;
   language: string;
   tabSize: number;
@@ -220,6 +221,7 @@ description: {description}
 
 const defaultGeneral: GeneralSettings = {
   theme: 'dark',
+  editorTheme: 'vs-dark',
   fontSize: 14,
   language: 'zh-CN',
   tabSize: 2,

@@ -7,17 +7,17 @@ import com.agentclientprotocol.sdk.spec.AcpSchema;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.task.ActionEndChunk;
+import org.noear.solon.ai.agent.react.task.ObservationChunk;
 import org.noear.solon.ai.agent.react.task.PlanChunk;
-import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
-import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
+import org.noear.solon.ai.agent.react.task.ReasonChunk;
+import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.chat.content.Contents;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.agent.TaskSkill;
+import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.util.Assert;
 import reactor.core.publisher.Mono;
@@ -118,8 +118,8 @@ public class AcpLink implements Runnable {
                                             .thenReturn(chunk);
                                 }
                                 // === 思考阶段 ===
-                                else if (chunk instanceof ReasonDeltaChunk) {
-                                    ReasonDeltaChunk reasonChunk = (ReasonDeltaChunk) chunk;
+                                else if (chunk instanceof ReasonChunk) {
+                                    ReasonChunk reasonChunk = (ReasonChunk) chunk;
                                     if (chunk.hasContent() && !reasonChunk.isToolCalls()) {
                                         if (agentProps.isThinkPrinted() || !reasonChunk.getMessage().isThinking()) {
                                             return acpContext.sendThought(chunk.getContent())
@@ -127,10 +127,10 @@ public class AcpLink implements Runnable {
                                         }
                                     }
                                 }
-                                // === ReasonCompleteChunk（多任务并行） ===
-                                else if (chunk instanceof ReasonCompleteChunk) {
-                                    ReasonCompleteChunk thoughtChunk = (ReasonCompleteChunk) chunk;
-                                    if (thoughtChunk.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+                                // === ThoughtChunk（多任务并行） ===
+                                else if (chunk instanceof ThoughtChunk) {
+                                    ThoughtChunk thoughtChunk = (ThoughtChunk) chunk;
+                                    if (thoughtChunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
                                         String content = thoughtChunk.getAssistantMessage().getResultContent();
                                         if (Assert.isNotEmpty(content)) {
                                             return acpContext.sendThought(content)
@@ -139,12 +139,12 @@ public class AcpLink implements Runnable {
                                     }
                                 }
                                 // === 工具执行阶段：映射到 ACP ToolCall 结构化输出 ===
-                                else if (chunk instanceof ActionEndChunk) {
-                                    ActionEndChunk actionChunk = (ActionEndChunk) chunk;
-                                    String toolName = actionChunk.getToolName();
+                                else if (chunk instanceof ObservationChunk) {
+                                    ObservationChunk observationChunk = (ObservationChunk) chunk;
+                                    String toolName = observationChunk.getToolName();
 
                                     // 跳过内部任务分发工具（不向客户端展示）
-                                    if (TaskSkill.TOOL_MULTITASK.equals(toolName) || TaskSkill.TOOL_TASK.equals(toolName)) {
+                                    if (TaskTalent.TOOL_MULTITASK.equals(toolName) || TaskTalent.TOOL_TASK.equals(toolName)) {
                                         return Mono.just(chunk);
                                     }
 
@@ -155,12 +155,12 @@ public class AcpLink implements Runnable {
                                     AcpSchema.ToolCall toolCall = new AcpSchema.ToolCall(
                                             "tool_call",
                                             toolCallId,
-                                            buildToolTitle(toolName, actionChunk.getArgs(), content),
+                                            buildToolTitle(toolName, observationChunk.getArgs(), content),
                                             AcpSchema.ToolKind.EXECUTE,
                                             AcpSchema.ToolCallStatus.COMPLETED,
                                             Collections.emptyList(),
                                             Collections.emptyList(),
-                                            actionChunk.getArgs(),   // rawInput
+                                            observationChunk.getArgs(),   // rawInput
                                             content,                 // rawOutput
                                             null                     // meta
                                     );

@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Um agente de codificação de código aberto construído com <a href="https://github.com/opensolon/solon-ai">Solon AI</a> e Java (suporta ambientes de runtime Java8 a Java26)</p>
-<p>Versão Mais Recente: v2026.5.31</p>
+<p>Versão Mais Recente: v2026.6.4</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -42,7 +42,7 @@ Execute o comando `soloncode` (CLI interativo) ou `soloncode web 0` (Web interat
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.5.31 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.5.31 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/

@@ -23,6 +23,7 @@ import java.util.Map;
  *   <tr><td>{@code rewind}</td><td>回退指令，表示需要撤销或回退之前若干步操作</td></tr>
  *   <tr><td>{@code done}</td><td>完成信号，表示当前响应流已全部发送完毕</td></tr>
  *   <tr><td>{@code error}</td><td>错误信息，表示处理过程中发生了异常</td></tr>
+ *   <tr><td>{@code trace}</td><td>追踪信息，包含模型名称、token 消耗和推理耗时（仅在最终汇总时输出）</td></tr>
  * </table>
  *
  * <h3>架构位置</h3>
@@ -72,6 +73,15 @@ public class WebChunk {
 
     /** 命令内容，仅在 type 为 {@code hitl} 时使用，表示需要人工审批的命令文本。 */
     private String command;
+
+    /** 模型名称，仅在 type 为 {@code trace} 时使用，记录本次推理使用的模型标识。 */
+    private String model;
+
+    /** 总 token 数，仅在 type 为 {@code trace} 时使用，记录本次推理消耗的总 token 数。 */
+    private Long totalTokens;
+
+    /** 推理耗时秒数，仅在 type 为 {@code trace} 时使用，记录从 ReAct 开始到结束的耗时。 */
+    private Long elapsedSeconds;
 
     /** 消息块创建时间戳（ epoch 毫秒），由工厂方法自动填充。 */
     private Long createdAt;
@@ -240,6 +250,27 @@ public class WebChunk {
         tmp.type = "hitl";
         tmp.toolName = toolName;
         tmp.command = command;
+        tmp.createdAt = Instant.now().toEpochMilli();
+
+        return tmp;
+    }
+
+    /**
+     * 创建「追踪信息」消息块。
+     * <p>type 为 {@code trace}，携带模型名称、token 消耗和推理耗时等元数据，
+     * 供前端以独立样式渲染，不混入回复正文。</p>
+     *
+     * @param model          模型名称（如 "gpt-4o"）
+     * @param totalTokens    总 token 消耗数，可为 null（无指标时）
+     * @param elapsedSeconds 推理耗时（秒），可为 null（无开始时间时）
+     * @return 携带追踪元数据的消息块
+     */
+    public static WebChunk ofTrace(String model, Long totalTokens, Long elapsedSeconds) {
+        WebChunk tmp = new WebChunk();
+        tmp.type = "trace";
+        tmp.model = model;
+        tmp.totalTokens = totalTokens;
+        tmp.elapsedSeconds = elapsedSeconds;
         tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;

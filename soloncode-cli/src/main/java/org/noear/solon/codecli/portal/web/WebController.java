@@ -23,7 +23,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.skills.cli.SkillDir;
+import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
@@ -100,8 +100,8 @@ public class WebController {
         this.engine = engine;
         this.webGate = webGate;
         this.loopScheduler = loopScheduler;
-        this.gitService = new GitService(engine.getProps().getWorkspace(), engine);
-        this.fileService = new FileService(engine.getProps().getWorkspace());
+        this.gitService = new GitService(engine.getWorkspace(), engine);
+        this.fileService = new FileService(engine.getWorkspace());
 
         // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，通过 WebGate WebSocket 推送到前端
         if (loopScheduler != null) {
@@ -139,8 +139,8 @@ public class WebController {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("appTitle", Solon.cfg().appTitle());
         data.put("appVersion", AgentFlags.getVersion());
-        data.put("workspace", engine.getProps().getWorkspace());
-        data.put("workname", getLastSegment(engine.getProps().getWorkspace()));
+        data.put("workspace", engine.getWorkspace());
+        data.put("workname", getLastSegment(engine.getWorkspace()));
         return Result.succeed(data);
     }
 
@@ -170,7 +170,7 @@ public class WebController {
     @Get
     @Mapping("/web/chat/sessions")
     public Result<List<Map>> sessions() throws Exception {
-        Path sessionsPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions").toAbsolutePath().normalize();
+        Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions").toAbsolutePath().normalize();
         File sessionsDir = sessionsPath.toFile();
         List<Map> data = new ArrayList<>();
 
@@ -205,7 +205,7 @@ public class WebController {
                     data.add(item);
 
                     //恢复定时任务
-                    loopScheduler.restore(sid, engine.getProps().getWorkspace(), engine.getProps().getHarnessSessions());
+                    loopScheduler.restore(sid, engine.getWorkspace(), engine.getHarnessSessions());
                 }
             }
         }
@@ -228,7 +228,7 @@ public class WebController {
             return Result.failure();
         }
 
-        Path sessionPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
         File sessionDir = sessionPath.toFile();
 
         if (sessionDir.exists() && sessionDir.isDirectory()) {
@@ -261,7 +261,7 @@ public class WebController {
             label = label.substring(0, 50);
         }
 
-        Path sessionPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
         File labelFile = new File(sessionPath.toFile(), "label.txt");
 
         if (!sessionPath.toFile().exists() || !sessionPath.toFile().isDirectory()) {
@@ -288,7 +288,7 @@ public class WebController {
         Map<String, Object> data = new LinkedHashMap<>();
         List<Map> list = new ArrayList<>();
 
-        for (ChatConfig config : engine.getProps().getModels()) {
+        for (ChatConfig config : engine.getModels()) {
             if (config.isEnabled()) {
                 Map<String, String> item = new LinkedHashMap<>();
                 item.put("model", config.getModel());
@@ -299,14 +299,18 @@ public class WebController {
         }
         data.put("list", list);
 
-        if (Assert.isNotEmpty(sessionId)) {
-            AgentSession session = engine.getSession(sessionId);
-            String selected = session.getContext().getOrDefault(HarnessFlags.VAR_MODEL_SELECTED,
-                    engine.getMainModel().getNameOrModel());
+        if(Assert.isNotEmpty(list)) {
+            if (Assert.isNotEmpty(sessionId)) {
+                AgentSession session = engine.getSession(sessionId);
+                String selected = session.getContext().getOrDefault(HarnessFlags.VAR_MODEL_SELECTED,
+                        engine.getMainModel().getNameOrModel());
 
-            data.put("selected", selected);
+                data.put("selected", selected);
+            } else {
+                data.put("selected", engine.getMainModel().getNameOrModel());
+            }
         } else {
-            data.put("selected", engine.getMainModel().getNameOrModel());
+            data.put("selected", "");
         }
 
         return Result.succeed(data);
@@ -345,7 +349,7 @@ public class WebController {
     @Mapping("/web/chat/messages")
     public Result<List<Map>> messages(@Param("sessionId") String sessionId) throws Exception {
         List<Map> data = new ArrayList<>();
-        Path sessionsPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
         File msgFile = new File(sessionsPath.toFile(), sessionId + ".messages.ndjson");
 
         if (msgFile.exists()) {
@@ -414,7 +418,7 @@ public class WebController {
 
         try {
             // 只操作 ndjson 文件（内存中的 AgentSession 在重新生成时会通过新的 prompt 重建上下文）
-            Path sessionsPath = Paths.get(engine.getProps().getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+            Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
             File msgFile = new File(sessionsPath.toFile(), sessionId + ".messages.ndjson");
             if (msgFile.exists()) {
                 // 读取现有消息
@@ -478,7 +482,7 @@ public class WebController {
         }
 
         Set<String> added = new HashSet<>();
-        for (SkillDir skill : engine.getPoolManager().getSkills()) {
+        for (SkillDir skill : engine.getSkills()) {
             if (added.contains(skill.getName())) {
                 continue;
             } else {
@@ -500,7 +504,7 @@ public class WebController {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", skill.getName());
             item.put("description", desc);
-            item.put("poolAlias", skill.getPoolAlias());
+            item.put("mountAlias", skill.getMountAlias());
             item.put("type", "skill");
             data.add(item);
         }

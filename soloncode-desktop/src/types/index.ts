@@ -7,6 +7,7 @@ export interface ContentItem {
   toolName?: string;
   args?: Record<string, unknown>;
   command?: string;
+  agentName?: string;
 }
 
 export interface MessageMetadata {

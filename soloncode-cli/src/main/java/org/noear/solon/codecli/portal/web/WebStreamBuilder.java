@@ -21,14 +21,12 @@ import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.agent.react.task.ActionEndChunk;
-import org.noear.solon.ai.agent.react.task.ReasonDeltaChunk;
-import org.noear.solon.ai.agent.react.task.ReasonCompleteChunk;
+import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.agent.TaskSkill;
-import org.noear.solon.ai.skills.memory.MemorySkill;
+import org.noear.solon.ai.harness.agent.TaskTalent;
+import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.core.util.Assert;
@@ -158,12 +156,12 @@ public class WebStreamBuilder {
                 })
                 .stream()
                 .map(chunk -> {
-                    if (chunk instanceof ReasonDeltaChunk) {
-                        return onReasonDeltaChunk((ReasonDeltaChunk) chunk);
-                    } else if (chunk instanceof ReasonCompleteChunk) {
-                        return onReasonCompleteChunk(session, (ReasonCompleteChunk) chunk);
-                    } else if (chunk instanceof ActionEndChunk) {
-                        return onActionEndChunk((ActionEndChunk) chunk);
+                    if (chunk instanceof ReasonChunk) {
+                        return onReasonChunk((ReasonChunk) chunk);
+                    } else if (chunk instanceof ThoughtChunk) {
+                        return onThoughtChunk(session, (ThoughtChunk) chunk);
+                    } else if (chunk instanceof ObservationChunk) {
+                        return onObservationChunk((ObservationChunk) chunk);
                     } else if (chunk instanceof ReActChunk) {
                         return onFinalChunk(session, (ReActChunk) chunk);
                     }
@@ -247,7 +245,7 @@ public class WebStreamBuilder {
      * @param reason 推理阶段的 chunk 数据
      * @return 映射后的 WebChunk，或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onReasonDeltaChunk(ReasonDeltaChunk reason) {
+    private WebChunk onReasonChunk(ReasonChunk reason) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             if (reason.getMessage().isThinking()) {
                 return WebChunk.ofReason(reason.getContent());
@@ -270,29 +268,33 @@ public class WebStreamBuilder {
      *   <li>特殊处理 {@code todowrite} 工具：将 todos 参数内容设为文本</li>
      * </ul></p>
      *
-     * @param action 工具调用结束的 chunk 数据
+     * @param chunk 工具调用结束的 chunk 数据
      * @return 映射后的 WebChunk（含工具信息），或 {@link WebChunk#EMPTY}（内部工具或无名称时）
      */
-    private WebChunk onActionEndChunk(ActionEndChunk action) {
-        if (Assert.isNotEmpty(action.getToolName())) {
-            if (TaskSkill.TOOL_MULTITASK.equals(action.getToolName()) ||
-                    TaskSkill.TOOL_TASK.equals(action.getToolName()) ||
-                    MemorySkill.isMemoryTool(action.getToolName())) {
+    private WebChunk onObservationChunk(ObservationChunk chunk) {
+        if(chunk.getError() != null){
+            return WebChunk.EMPTY;
+        }
+
+        if (Assert.isNotEmpty(chunk.getToolName())) {
+            if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
+                    TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||
+                    MemoryTalent.isMemoryTool(chunk.getToolName())) {
                 return WebChunk.EMPTY;
             }
 
-            WebChunk webChunk = WebChunk.ofAction(action.getContent());
+            WebChunk webChunk = WebChunk.ofAction(chunk.getContent());
 
-            if (Assert.isNotEmpty(action.getToolName())) {
-                if (engine.getName().equals(action.getAgentName())) {
-                    webChunk.setToolName(action.getToolName());
+            if (Assert.isNotEmpty(chunk.getToolName())) {
+                if (engine.getName().equals(chunk.getAgentName())) {
+                    webChunk.setToolName(chunk.getToolName());
                 } else {
-                    webChunk.setToolName(action.getAgentName() + "/" + action.getToolName());
+                    webChunk.setToolName(chunk.getAgentName() + "/" + chunk.getToolName());
                 }
-                webChunk.setArgs(action.getArgs());
+                webChunk.setArgs(chunk.getArgs());
 
-                if ("todowrite".equals(action.getToolName())) {
-                    String todos = (String) action.getArgs().get("todos");
+                if ("todowrite".equals(chunk.getToolName())) {
+                    String todos = (String) chunk.getArgs().get("todos");
 
                     if (Assert.isNotEmpty(todos)) {
                         webChunk.setText(todos);
@@ -321,7 +323,7 @@ public class WebStreamBuilder {
      * @param thought 思考轮次的 chunk 数据，包含助手消息和追踪信息
      * @return 映射后的 WebChunk（多任务并行时有内容），或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onReasonCompleteChunk(AgentSession session, ReasonCompleteChunk thought) {
+    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk thought) {
         String sessionId = session.getSessionId();
         String resultContent = thought.getAssistantMessage().getResultContent();
 
@@ -336,8 +338,8 @@ public class WebStreamBuilder {
 
                 if (thought.getTrace().getAgentName().equals(agentSelectedTmp)) {
                     // 说明是源代理（说明是最终结果）
-                    StringBuilder traceInfo = getTraceInfo(thought.getTrace());
-                    replyToBoundChannel(sessionId, resultContent + traceInfo, true);
+                    //StringBuilder traceInfo = getTraceInfo(thought.getTrace());
+                    replyToBoundChannel(sessionId, resultContent, true);//+ traceInfo, true);
                 } else {
                     // 说明是次代理
                     replyToBoundChannel(sessionId, resultContent, false);
@@ -345,7 +347,7 @@ public class WebStreamBuilder {
             }
 
 
-            if (thought.hasMeta(TaskSkill.TOOL_MULTITASK)) {
+            if (thought.hasMeta(TaskTalent.TOOL_MULTITASK)) {
                 // 仅在多任务并行且有内容时输出
                 return WebChunk.ofText("\n" + resultContent);
             }
@@ -359,21 +361,28 @@ public class WebStreamBuilder {
      *
      * <p>当 Agent 流结束时触发。若检测到异常终止，将异常内容连同追踪信息
      * 同步转发到所有已绑定的 IM 通道。无论是否异常，都将追踪信息
-     * （模型名称、token 数、耗时）作为文本 WebChunk 输出到 Web 端。</p>
+     * （模型名称、token 数、耗时）以结构化 trace 类型输出到 Web 端。</p>
      *
      * @param session Agent 会话，用于获取会话ID以进行 IM 通道转发
      * @param react   ReAct 最终汇总 chunk，包含追踪信息和可能的异常内容
-     * @return 包含追踪信息的文本 WebChunk
+     * @return 包含追踪信息的 trace 类型 WebChunk
      */
     private WebChunk onFinalChunk(AgentSession session, ReActChunk react) {
-        StringBuilder traceInfo = getTraceInfo(react.getTrace());
+        ReActTrace trace = react.getTrace();
 
         if (react.isAbnormal()) {
-            // 向所有已绑定的 IM 通道回复异常
-            replyToBoundChannel(session.getSessionId(), react.getContent() + traceInfo, true);
+            // IM 通道仍使用字符串格式的追踪信息
+            //StringBuilder traceInfo = getTraceInfo(trace);
+            replyToBoundChannel(session.getSessionId(), react.getContent(), true); //+ traceInfo, true);
         }
 
-        return WebChunk.ofText(traceInfo.toString());
+        // 结构化 trace 数据，供前端独立渲染
+        String model = trace.getOptions().getChatModel().getNameOrModel();
+        Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
+        long startMs = trace.getBeginTimeMs();
+        Long elapsedSeconds = startMs > 0 ? Duration.ofMillis(System.currentTimeMillis() - startMs).getSeconds() : null;
+
+        return WebChunk.ofTrace(model, totalTokens, elapsedSeconds);
     }
 
     /**

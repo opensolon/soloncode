@@ -22,7 +22,7 @@
     --bg-input-box: #ffffff;
     --bg-hover: #f0f1f5;
     --bg-code: #f6f8fa;
-    --bg-code-block: #1e1e2e;
+    --bg-code-block: #f6f8fa;
     --bg-primary: #ffffff;
     --bg-secondary: #f5f6fa;
 
@@ -36,7 +36,7 @@
     --text-user-msg: #ffffff;
     --text-ai-msg: #1a1a2e;
     --text-sidebar: #374151;
-    --text-code: #d4d4d4;
+    --text-code: #24292e;
     --text-tertiary: #999999;
 
     /* Border */

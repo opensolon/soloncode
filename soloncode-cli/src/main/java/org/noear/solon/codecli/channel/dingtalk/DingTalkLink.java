@@ -87,8 +87,7 @@ public class DingTalkLink implements Channel, Runnable {
     public DingTalkLink(HarnessEngine engine, WebGate webGate) {
         this.engine = engine;
         this.webGate = webGate;
-        AgentProperties agentProps = (AgentProperties) engine.getProps();
-        this.credentialStore = new DingTalkCredentialStore(agentProps);
+        this.credentialStore = new DingTalkCredentialStore(engine);
 
         webGate.getStreamBuilder().bind(this);
 

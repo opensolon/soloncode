@@ -93,25 +93,6 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
     }));
   }
 
-  // ---- Skills ----
-  function handleAddSkill() {
-    setLocalSettings(prev => ({
-      ...prev,
-      skills: [...prev.skills, { name: '', description: '', path: '', enabled: true, source: 'manual' as const, group: 'project' as const }],
-    }));
-  }
-  function handleRemoveSkill(index: number) {
-    setLocalSettings(prev => ({
-      ...prev,
-      skills: prev.skills.filter((_, i) => i !== index),
-    }));
-  }
-  function handleUpdateSkill(index: number, updates: Partial<SkillConfig>) {
-    setLocalSettings(prev => ({
-      ...prev,
-      skills: prev.skills.map((s, i) => i === index ? { ...s, ...updates } : s),
-    }));
-  }
 
   // ---- Provider ----
   function handleAddProvider(type: ProviderType) {
@@ -192,12 +173,7 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
               />
             )}
             {activeMenu === 'skills' && (
-              <SkillsSettings
-                skills={localSettings.skills}
-                onAdd={handleAddSkill}
-                onRemove={handleRemoveSkill}
-                onUpdate={handleUpdateSkill}
-              />
+              <SkillsSettings backendPort={backendPort} />
             )}
             {activeMenu === 'prompts' && (
               <PromptsSettings
@@ -251,6 +227,15 @@ function GeneralSettings({ settings, updateSetting }: {
       </SettingRow>
 
       <div className="settings-section-title">编辑器</div>
+      <SettingRow label="编辑器主题">
+        <select className="setting-select" value={settings.editorTheme}
+          onChange={e => updateSetting('editorTheme', e.target.value)}>
+          <option value="vs-dark">VS Dark</option>
+          <option value="light">VS Light</option>
+          <option value="hc-black">High Contrast Dark</option>
+          <option value="hc-light">High Contrast Light</option>
+        </select>
+      </SettingRow>
       <SettingRow label="Tab 大小">
         <input type="number" className="setting-input number" value={settings.tabSize}
           onChange={e => updateSetting('tabSize', parseInt(e.target.value) || 2)} min={1} max={8} />
@@ -554,63 +539,229 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate }: {
   );
 }
 
-/* ==================== Skills 设置 ==================== */
-function SkillsSettings({ skills, onAdd, onRemove, onUpdate }: {
-  skills: SkillConfig[];
-  onAdd: () => void;
-  onRemove: (index: number) => void;
-  onUpdate: (index: number, updates: Partial<SkillConfig>) => void;
-}) {
+/* ==================== Skills 设置（挂载池 + 市场） ==================== */
+function SkillsSettings({ backendPort }: { backendPort?: number | null }) {
+  const [mounts, setMounts] = useState<Array<{ alias: string; path: string; system: boolean }>>([]);
+  const [poolSkills, setPoolSkills] = useState<Record<string, Array<{ name: string; description: string }>>>({});
+  const [loading, setLoading] = useState(false);
+  const [showAddPool, setShowAddPool] = useState(false);
+  const [newAlias, setNewAlias] = useState("");
+  const [newPath, setNewPath] = useState("");
+  const [addError, setAddError] = useState("");
+  const [markets, setMarkets] = useState<Array<{ name: string; description: string }>>([]);
+  const [selectedMarket, setSelectedMarket] = useState("");
+  const [marketItems, setMarketItems] = useState<Array<any>>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [installingSlug, setInstallingSlug] = useState<string | null>(null);
+  const [collapsedPools, setCollapsedPools] = useState<Set<string>>(new Set());
+
+  const baseUrl = backendPort ? `http://localhost:${backendPort}` : "";
+
+  const fetchJson = useCallback(async (path: string, params?: Record<string, string>) => {
+    if (!baseUrl) return null;
+    const url = new URL(baseUrl + path);
+    if (params) Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
+    const resp = await fetch(url.toString());
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    if (json.code !== undefined && json.code !== 200) throw new Error(json.description || json.msg || "Error");
+    return json.data ?? json;
+  }, [baseUrl]);
+
+  const postJson = useCallback(async (path: string, body: Record<string, string>) => {
+    if (!baseUrl) return null;
+    const resp = await fetch(baseUrl + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body).toString(),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    if (json.code !== undefined && json.code !== 200) throw new Error(json.description || json.msg || "Error");
+    return json.data ?? json;
+  }, [baseUrl]);
+
+  const loadMounts = useCallback(async () => {
+    if (!baseUrl) return;
+    setLoading(true);
+    try {
+      const list = await fetchJson("/web/settings/mounts") || [];
+      setMounts(list);
+      const skillsMap: Record<string, Array<{ name: string; description: string }>> = {};
+      await Promise.all(list.map(async (m: any) => {
+        try { skillsMap[m.alias] = await fetchJson("/web/settings/mounts/skills", { alias: m.alias }) || []; }
+        catch { skillsMap[m.alias] = []; }
+      }));
+      setPoolSkills(skillsMap);
+    } catch (err) { console.warn("[SkillsSettings] load mounts failed:", err); }
+    finally { setLoading(false); }
+  }, [baseUrl, fetchJson]);
+
+  const loadMarkets = useCallback(async () => {
+    if (!baseUrl) return;
+    try {
+      const list = await fetchJson("/web/settings/skills/markets") || [];
+      setMarkets(list);
+      if (list.length > 0 && !selectedMarket) setSelectedMarket(list[0].name);
+    } catch (err) { console.warn("[SkillsSettings] load markets failed:", err); }
+  }, [baseUrl, fetchJson, selectedMarket]);
+
+  const browseMarket = useCallback(async (query?: string) => {
+    if (!baseUrl || !selectedMarket) return;
+    setMarketLoading(true);
+    try {
+      const params: Record<string, string> = { action: query ? "search" : "trending", marketName: selectedMarket };
+      if (query) params.q = query;
+      params.limit = "20";
+      const items = await fetchJson("/web/settings/skills/proxy", params) || [];
+      setMarketItems(items);
+    } catch { setMarketItems([]); }
+    finally { setMarketLoading(false); }
+  }, [baseUrl, selectedMarket, fetchJson]);
+
+  useEffect(() => { loadMounts(); }, [loadMounts]);
+  useEffect(() => { loadMarkets(); }, [loadMarkets]);
+  useEffect(() => { if (selectedMarket) browseMarket(searchQuery || undefined); }, [selectedMarket]);
+
+  const handleAddPool = async () => {
+    if (!backendPort || !newAlias.trim() || !newPath.trim()) return;
+    setAddError("");
+    try {
+      const alias = newAlias.trim().startsWith("@") ? newAlias.trim() : "@" + newAlias.trim();
+      await postJson("/web/settings/mounts/add", { alias, path: newPath.trim() });
+      setShowAddPool(false); setNewAlias(""); setNewPath("");
+      await loadMounts();
+    } catch (err) { setAddError(String(err)); }
+  };
+
+  const handleRemovePool = async (alias: string) => {
+    if (!backendPort) return;
+    try { await postJson("/web/settings/mounts/remove", { alias }); await loadMounts(); }
+    catch (err) { console.warn("remove pool failed:", err); }
+  };
+
+  const handleRemoveSkill = async (alias: string, skillName: string) => {
+    if (!backendPort) return;
+    try { await postJson("/web/settings/mounts/skills/remove", { alias, skillName }); await loadMounts(); }
+    catch (err) { console.warn("remove skill failed:", err); }
+  };
+
+  const handleInstall = async (slug: string, mountAlias: string) => {
+    if (!backendPort) return;
+    setInstallingSlug(slug);
+    try { await postJson("/web/settings/skills/install", { slug, marketName: selectedMarket, mountAlias }); await loadMounts(); }
+    catch (err) { console.warn("install failed:", err); }
+    finally { setInstallingSlug(null); }
+  };
+
+  const togglePool = (alias: string) => {
+    setCollapsedPools(prev => { const next = new Set(prev); if (next.has(alias)) next.delete(alias); else next.add(alias); return next; });
+  };
+
   return (
-    <div className="settings-section-content">
-      <div className="settings-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>Skills</span>
-        <button className="mcp-add-btn" onClick={onAdd}>+ 添加</button>
+    <div className="settings-section-content skills-settings-layout">
+      <div className="skills-col skills-col-pools">
+        <div className="skills-col-header">
+          <span className="skills-col-title">挂载池</span>
+          <button className="mcp-add-btn" onClick={loadMounts}>刷新</button>
+        </div>
+        <div className="skills-col-body">
+          {!backendPort && <div className="mcp-empty">等待后端连接...</div>}
+          {backendPort && loading && <div className="mcp-empty">加载中...</div>}
+          {backendPort && !loading && mounts.length === 0 && <div className="mcp-empty">暂无挂载池</div>}
+          {backendPort && !loading && mounts.map(mount => {
+            const collapsed = collapsedPools.has(mount.alias);
+            const skills = poolSkills[mount.alias] || [];
+            return (
+              <div key={mount.alias} className="skill-pool-card">
+                <div className="skill-pool-header" onClick={() => togglePool(mount.alias)}>
+                  <span className="skill-pool-arrow">{collapsed ? "▶" : "▼"}</span>
+                  <span className="skill-pool-alias">{mount.alias}</span>
+                  <span className="skill-pool-count">{skills.length}</span>
+                  {mount.system && <span className="skill-pool-badge">系统</span>}
+                  {!mount.system && <button className="mcp-remove-btn" onClick={(e) => { e.stopPropagation(); handleRemovePool(mount.alias); }}><Icon name="close" size={12} /></button>}
+                </div>
+                {!collapsed && skills.length > 0 && (
+                  <div className="skill-pool-skills">
+                    {skills.map(skill => (
+                      <div key={skill.name} className="skill-pool-skill-item">
+                        <span>{skill.name}</span>
+                        <button className="mcp-remove-btn" onClick={() => handleRemoveSkill(mount.alias, skill.name)}><Icon name="close" size={12} /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {backendPort && !loading && (
+            showAddPool ? (
+              <div className="skill-pool-card skill-add-form">
+                <div className="mcp-field">
+                  <label>别名</label>
+                  <input type="text" className="setting-input" placeholder="@my-skills" value={newAlias} onChange={e => setNewAlias(e.target.value)} />
+                </div>
+                <div className="mcp-field">
+                  <label>路径</label>
+                  <input type="text" className="setting-input" placeholder="~/my-skills" value={newPath} onChange={e => setNewPath(e.target.value)} />
+                </div>
+                {addError && <div style={{ color: "#ef5350", fontSize: 11, padding: "4px 0" }}>{addError}</div>}
+                <div className="skill-add-actions">
+                  <button className="settings-btn cancel" onClick={() => { setShowAddPool(false); setNewAlias(""); setNewPath(""); setAddError(""); }}>取消</button>
+                  <button className="settings-btn save" onClick={handleAddPool} disabled={!newAlias.trim() || !newPath.trim()}>添加</button>
+                </div>
+              </div>
+            ) : (
+              <button className="mcp-add-btn skill-add-pool-btn" onClick={() => setShowAddPool(true)}>+ 添加挂载池</button>
+            )
+          )}
+        </div>
       </div>
 
-      {skills.length === 0 && (
-        <div className="mcp-empty">暂无 Skill 配置，点击上方"添加"按钮新增</div>
-      )}
-
-      {skills.map((skill, index) => (
-        <div key={index} className="mcp-server-card">
-          <div className="mcp-server-header">
-            <label className="checkbox-label">
-              <input type="checkbox" checked={skill.enabled}
-                onChange={e => onUpdate(index, { enabled: e.target.checked })} />
-              <span>启用</span>
-            </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {skill.source === 'discovered' && (
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', opacity: 0.7 }}>自动发现</span>
-              )}
-              <button className="mcp-remove-btn" onClick={() => onRemove(index)}>
-                <Icon name="close" size={12} />
-              </button>
-            </div>
-          </div>
-          <div className="mcp-server-fields">
-            <div className="mcp-field">
-              <label>名称</label>
-              <input type="text" className="setting-input" value={skill.name}
-                onChange={e => onUpdate(index, { name: e.target.value })} placeholder="my-skill" />
-            </div>
-            <div className="mcp-field">
-              <label>描述</label>
-              <input type="text" className="setting-input" value={skill.description}
-                onChange={e => onUpdate(index, { description: e.target.value })} placeholder="Skill 描述" />
-            </div>
-            <div className="mcp-field">
-              <label>路径</label>
-              <input type="text" className="setting-input" value={skill.path}
-                onChange={e => onUpdate(index, { path: e.target.value })} placeholder=".soloncode/skills/my-skill" />
-            </div>
-          </div>
+      <div className="skills-col skills-col-market">
+        <div className="skills-col-header">
+          <span className="skills-col-title">市场</span>
+          {markets.length > 1 && (
+            <select className="setting-select skill-market-select" value={selectedMarket} onChange={e => setSelectedMarket(e.target.value)}>
+              {markets.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
+            </select>
+          )}
         </div>
-      ))}
+        <div className="skills-col-body">
+          <input type="text" className="setting-input skill-market-search" placeholder="搜索 skill..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTimeout(() => browseMarket(e.target.value || undefined), 400); }} />
+          {marketLoading && <div className="mcp-empty">加载中...</div>}
+          {!marketLoading && marketItems.length === 0 && <div className="mcp-empty">{searchQuery ? "无搜索结果" : "暂无推荐"}</div>}
+          {!marketLoading && marketItems.map((item: any) => (
+            <div key={item.slug} className="skill-market-card">
+              <div className="skill-market-card-header">
+                <span className="skill-market-card-name">{item.displayName || item.name}</span>
+                {item.ownerHandle && <span className="skill-market-card-author">@{item.ownerHandle}</span>}
+              </div>
+              <div className="skill-market-card-desc">{item.summary || item.description}</div>
+              <div className="skill-market-card-footer">
+                <div className="skill-market-card-meta">
+                  {item.installs > 0 && <span>⬇ {item.installs}</span>}
+                  {item.stars > 0 && <span>⭐ {item.stars}</span>}
+                </div>
+                {mounts.length <= 1 ? (
+                  <button className="settings-btn save skill-install-btn" disabled={installingSlug === item.slug} onClick={() => handleInstall(item.slug, mounts[0]?.alias || "")}>{installingSlug === item.slug ? "安装中..." : "安装"}</button>
+                ) : (
+                  <select className="setting-select skill-install-select" value="" onChange={e => { if (e.target.value) handleInstall(item.slug, e.target.value); }}>
+                    <option value="">安装到...</option>
+                    {mounts.map(m => <option key={m.alias} value={m.alias}>{m.alias}</option>)}
+           </select>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
+
+
 
 /* ==================== AI 提示词设置 ==================== */
 type PromptKey = 'skillPrompt' | 'agentPrompt' | 'gitPrompt';

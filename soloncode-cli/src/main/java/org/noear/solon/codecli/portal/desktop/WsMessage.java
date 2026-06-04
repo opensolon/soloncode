@@ -17,6 +17,8 @@ public class WsMessage {
 
     String cwd;
 
+    String mode; // "default" | "auto" | "plan"
+
     List<WsAttachment> attachments;
 
     @Data

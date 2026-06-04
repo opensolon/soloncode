@@ -259,7 +259,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     30% { box-shadow: 0 0 0 5px rgba(79,110,247,0.35); }
     100% { box-shadow: 0 0 0 3px rgba(79,110,247,0); }
 }
-.msg-elapsed { font-size: 11px; color: var(--text-secondary); opacity: 0.5; text-align: right; margin-top: 2px; line-height: 1; pointer-events: none; }
+.msg-trace { font-size: 11px; color: var(--text-secondary); opacity: 0.5; text-align: right; margin-top: 2px; line-height: 1; pointer-events: none; }
 /* Msg Actions */
 .msg-actions { display: flex; gap: 6px; margin-top: 10px; opacity: 0; transition: opacity 0.2s; }
 .msg-row.assistant:hover .msg-actions { opacity: 1; }

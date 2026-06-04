@@ -27,7 +27,6 @@ import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;
 
 import java.net.URL;
-import java.nio.file.Paths;
 
 /**
  * Cli 应用
@@ -57,25 +56,12 @@ public class App {
         app.cfg().loadAdd(configUrl);
 
         //获取命令行运行的当前用户工作区
-        String workspace = Paths.get(AgentProperties.getUserDir()).toAbsolutePath().normalize().toString();
         app.cfg().getProp("soloncode").bindTo(c);
 
         //兼容旧的模型配置
         if (c.getChatModel() != null) {
-            c.addModel(c.getChatModel());
+            c.getModels().add(c.getChatModel());
         }
-
-        //设定默认会话id
-        String sessionId = Solon.cfg().argx().get(AgentProperties.ARG_SESSION);
-        if (Assert.isNotEmpty(sessionId)) {
-            c.setSessionId(sessionId);
-        }
-
-        //设定默认工作区
-        c.setWorkspace(workspace);
-
-        //设定系统提示词
-        c.setSystemPrompt(c.getAgentsMd());
 
         initAgentSettings(app, c);
 
@@ -108,20 +94,8 @@ public class App {
     }
 
     private static void initAgentSettings(SolonApp app, AgentProperties props) throws Exception {
-        URL settingsUrl = props.getSettingsUrl();
-        AgentSettings agentSettings = null;
 
-        if (settingsUrl != null) {
-            String settingsJson = ResourceUtil.getResourceAsString(settingsUrl);
-
-            if (Utils.isNotEmpty(settingsJson)) {
-                agentSettings = AgentSettings.fromJson(settingsJson);
-            }
-        }
-
-        if (agentSettings == null) {
-            agentSettings = new AgentSettings();
-        }
+        AgentSettings agentSettings = AgentSettings.loadFromFile();
 
         //与 AgentProperties 双向合并
         agentSettings.mergeFrom(props);
@@ -146,6 +120,7 @@ public class App {
         // 允许跨域（桌面端前端通过 localhost 访问 CLI 后端）
         app.router().filter(new CrossFilter().pathPatterns("/ws").allowedOrigins("*"));
         app.router().filter(new CrossFilter().pathPatterns("/chat/**").allowedOrigins("*"));
+        app.router().filter(new CrossFilter().pathPatterns("/web/**").allowedOrigins("*"));
     }
 
     private static void enabledAcp(SolonApp app, AgentProperties c) {

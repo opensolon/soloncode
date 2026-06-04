@@ -106,15 +106,31 @@
     var $openapiListView = $('#openapiListView');
     var $openapiFormView = $('#openapiFormView');
     var $openapiCheckResult = $('#openapiCheckResult');
+    var $openapiApisView = $('#openapiApisView');
+    var $openapiApisList = $('#openapiApisList');
+    var $openapiApisTitle = $('#openapiApisTitle');
+    var openapiApisCurrentName = null;
+
+    // LSP
+    var $lspServerList = $('#lspServerList');
+    var $lspSaveBtn = $('#lspSaveBtn');
+    var $lspFormTitle = $('#lspFormTitle');
+    var $lspListView = $('#lspListView');
+    var $lspFormView = $('#lspFormView');
 
     // ==================== 状态 ====================
 
-    var llmEditModel = null;
+    var llmEditName = null;
     var llmCachedList = [];
     var mcpEditName = null;
     var mcpCachedList = [];
+    var $mcpToolsView = $('#mcpToolsView');
+    var $mcpToolsList = $('#mcpToolsList');
+    var $mcpToolsTitle = $('#mcpToolsTitle');
     var openapiEditName = null;
     var openapiCachedList = [];
+    var lspEditName = null;
+    var lspCachedList = [];
 
     // MountPools
     var $mountsList = $('#mountsList');
@@ -127,6 +143,9 @@
     var $mountsSaveBtn = $('#mountsSaveBtn');
     var mountsCachedList = [];
     var mountsCurrentAlias = null;
+    var mountsCurrentType = null;
+    var mountsCurrentRealPath = null;
+    var mountsEditAlias = null;
 
     // General
     var $generalSaveBtn = $('#generalSaveBtn');
@@ -137,10 +156,13 @@
     function showLlmFormView(title, isEdit) { $llmFormTitle.text(title || '添加模型'); $llmListView.hide(); $llmFormView.show(); $('#llmFormActions').toggle(!!isEdit); }
     function showMcpListView() { $mcpFormView.hide(); $mcpListView.addClass('slide-back').show(); setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260); }
     function showMcpFormView(title, isEdit) { $mcpFormTitle.text(title || '添加服务器'); $mcpListView.hide(); $mcpFormView.show(); $('#mcpFormActions').toggle(!!isEdit); }
-    function showOpenapiListView() { $openapiFormView.hide(); $openapiListView.addClass('slide-back').show(); setTimeout(function(){ $openapiListView.removeClass('slide-back'); }, 260); }
+    function showOpenapiListView() { $openapiFormView.hide(); $openapiApisView.hide(); $openapiListView.addClass('slide-back').show(); setTimeout(function(){ $openapiListView.removeClass('slide-back'); }, 260); }
+    function showOpenapiApisView(title) { $openapiListView.hide(); $openapiFormView.hide(); $openapiApisTitle.text(title || 'API 列表'); $openapiApisView.show(); }
     function showOpenapiFormView(title, isEdit) { $openapiFormTitle.text(title || '添加服务器'); $openapiListView.hide(); $openapiFormView.show(); $('#openapiFormActions').toggle(!!isEdit); }
+    function showLspListView() { $lspFormView.hide(); $lspListView.addClass('slide-back').show(); setTimeout(function(){ $lspListView.removeClass('slide-back'); }, 260); }
+    function showLspFormView(title, isEdit) { $lspFormTitle.text(title || '添加服务器'); $lspListView.hide(); $lspFormView.show(); $('#lspFormActions').toggle(!!isEdit); }
     function showMountsListView() { $mountsFormView.hide(); $mountsSkillsView.hide(); $mountsListView.addClass('slide-back').show(); setTimeout(function(){ $mountsListView.removeClass('slide-back'); }, 260); }
-    function showMountsFormView(title) { $mountsFormTitle.text(title || '添加挂载池'); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
+    function showMountsFormView(title) { $mountsFormTitle.text(title || '添加挂载'); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
     function showMountsSkillsView() { $mountsListView.hide(); $mountsFormView.hide(); $mountsSkillsView.show(); }
 
     function setMcpType(type) {
@@ -162,9 +184,10 @@
         showLlmListView();
         showMcpListView();
         showOpenapiListView();
+        showLspListView();
         showMountsListView();
         $llmCheckResult.hide();
-        $('#llmFormActions, #mcpFormActions, #openapiFormActions').hide();
+        $('#llmFormActions, #mcpFormActions, #openapiFormActions, #lspFormActions').hide();
         if ($('#skillsSearchInput').length) {
             $('#skillsSearchInput').val('');
             $('#skillsSearchClear').hide();
@@ -202,6 +225,9 @@
         } else if (targetTab === 'openapi') {
             $('#settingsTabOpenapi').addClass('active');
             loadOpenapiList();
+        } else if (targetTab === 'lsp') {
+            $('#settingsTabLsp').addClass('active');
+            loadLspList();
         }
     });
 
@@ -215,6 +241,7 @@
         else if (targetTab === 'mounts') loadMountsList();
         else if (targetTab === 'mcp') loadMcpList();
         else if (targetTab === 'openapi') loadOpenapiList();
+    else if (targetTab === 'lsp') loadLspList();
     }
 
     // ==================== LLM 管理 ====================
@@ -235,11 +262,7 @@
                 + '<div class="llm-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>'
                 + '<div class="llm-empty-title">暂无大模型配置</div>'
                 + '<div class="llm-empty-desc">添加至少一个大模型以开始 AI 对话</div>'
-                + '<div class="llm-empty-templates">'
-                + '<button class="llm-template-btn" data-api-url="https://api.openai.com/v1" data-provider="openai">OpenAI</button>'
-                + '<button class="llm-template-btn" data-api-url="http://localhost:11434" data-provider="ollama">Ollama (本地)</button>'
-                + '<button class="llm-template-btn" data-api-url="https://api.deepseek.com/v1" data-provider="deepseek">DeepSeek</button>'
-                + '</div></div>';
+                + '</div>';
         } else {
             var providerIcons = { 'openai': 'OAI', 'ollama': 'OLA', 'zhipu': 'ZP', 'deepseek': 'DS', 'baidu-qianfan': 'BD', 'ali-tongyi': 'ALI', 'moonshot': 'MS', 'minimax': 'MM' };
             list.forEach(function (item) {
@@ -263,9 +286,10 @@
 
                 html += '<div class="llm-model-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">'
                     + '<div class="llm-model-icon">' + escapeHtml(icon) + '</div>'
-                    + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + '</div><div class="llm-model-meta">'
+                    + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div><div class="llm-model-meta">'
                     + '<span class="llm-api-hint">' + metaLine + '</span>'
                     + '</div></div><div class="llm-model-actions">'
+                    + '<button class="llm-action-btn edit llm-edit-btn" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="llm-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -278,16 +302,10 @@
 
     // LLM 列表事件委托（一次绑定，无需每次 render 后重绑）
     $llmModelList
-        .on('click', '.llm-template-btn', function () {
-            resetLlmForm();
-            showLlmFormView('添加模型', false);
-            $('#llmApiUrl').val($(this).attr('data-api-url'));
-            $('#llmProvider').val($(this).attr('data-provider'));
-            $('#llmModel').focus();
-        })
-        .on('click', '.llm-model-item', function () {
-            var model = $(this).attr('data-model');
-            if (model) llmEditModelFunc(model);
+        .on('click', '.llm-edit-btn', function (e) {
+            e.stopPropagation();
+            var model = $(this).closest('.llm-model-item').attr('data-model');
+            if (model) llmEditNameFunc(model);
         })
         .on('change', '.llm-toggle', function () {
             var name = $(this).attr('data-name');
@@ -298,9 +316,10 @@
     // ==================== LLM 表单 ====================
 
     function resetLlmForm() {
-        llmEditModel = null;
+        llmEditName = null;
         $llmSaveBtn.text('保存');
         $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
+        $('#llmScope').val('user');
         $('#llmApiKey').attr('placeholder', 'sk-...');
         $llmCheckResult.hide();
     }
@@ -316,6 +335,7 @@
         $('#llmApiKey').attr('placeholder', item.apiKey ? '已配置（留空保持不变）' : 'sk-...');
         if (item.model) $('#llmModel').val(item.model);
         if (item.name) $('#llmName').val(item.name);
+        if (item.scope) $('#llmScope').val(item.scope);
         if (item.timeout) $('#llmTimeout').val(item.timeout);
         if (item.contextLength) $('#llmContextLength').val(item.contextLength);
     }
@@ -328,7 +348,7 @@
         var provider = $('#llmProvider').val();
         var timeout = $('#llmTimeout').val().trim();
         if (!apiUrl || !model) { showToast('API 地址和模型名称为必填项', 'error'); return null; }
-        var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider };
+        var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider, scope: $('#llmScope').val() || 'user' };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
         var contextLength = $('#llmContextLength').val().trim();
@@ -340,13 +360,13 @@
         return bodyObj;
     }
 
-    function llmEditModelFunc(model) {
+    function llmEditNameFunc(name) {
         showLlmFormView('编辑模型', true);
         $llmSaveBtn.text('更新');
         resetLlmForm();
-        llmEditModel = model;
+        llmEditName = name;
 
-        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(model), function (resp) {
+        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) {
                 fillLlmForm(resp.data);
             } else {
@@ -355,13 +375,13 @@
         }).fail(function () { showToast('网络错误', 'error'); });
     }
 
-    function llmCopyModel(model) {
-        llmEditModel = null;
+    function llmCopyModel(name) {
+        llmEditName = null;
         showLlmFormView('添加模型', false);
         $llmSaveBtn.text('保存');
         resetLlmForm();
 
-        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(model), function (resp) {
+        $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) {
                 fillLlmForm(resp.data);
                 $('#llmName').val((resp.data.name || resp.data.model) + '-copy');
@@ -378,27 +398,27 @@
         });
     }
 
-    function llmRemoveModel(model) {
-        $.post('/web/settings/llm/models/remove?name=' + encodeURIComponent(model), function (resp) {
+    function llmRemoveModel(name) {
+        $.post('/web/settings/llm/models/remove?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200) {
                 if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
                 showLlmListView();
                 loadLlmList();
             } else { showToast('删除失败: ' + (resp.message || '未知错误'), 'error'); }
-        });
+        }, 'json').fail(function () { showToast('网络错误，删除失败', 'error'); });
     }
 
     // LLM 按钮事件
-    $('#llmAddBtn').on('click', function () { llmEditModel = null; resetLlmForm(); showLlmFormView('添加模型', false); });
+    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView('添加模型', false); });
     $('#llmBackBtn').on('click', function () { showLlmListView(); resetLlmForm(); });
 
     $llmSaveBtn.on('click', function () {
         var bodyObj = buildLlmBodyObj();
         if (!bodyObj) return;
-        var isEdit = !!llmEditModel;
+        var isEdit = !!llmEditName;
         var url = isEdit ? '/web/settings/llm/models/update' : '/web/settings/llm/models/add';
         var actionText = isEdit ? '更新' : '添加';
-        if (isEdit) bodyObj.originalModel = llmEditModel;
+        if (isEdit) bodyObj.originalName = llmEditName;
 
         $llmSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
@@ -416,16 +436,16 @@
 
     // LLM 表单 - 复制按钮
     $('#llmFormCopyBtn').on('click', function () {
-        var currentModel = llmEditModel;
-        if (!currentModel) return;
-        llmCopyModel(currentModel);
+        var currentName = llmEditName;
+        if (!currentName) return;
+        llmCopyModel(currentName);
     });
     // LLM 表单 - 删除按钮
     $('#llmFormDeleteBtn').on('click', function () {
-        var currentModel = llmEditModel;
-        if (!currentModel) return;
-        if (confirm('确定删除模型 "' + currentModel + '"？')) {
-            llmRemoveModel(currentModel);
+        var currentName = llmEditName;
+        if (!currentName) return;
+        if (confirm('确定删除模型 "' + currentName + '"？')) {
+            llmRemoveModel(currentName);
         }
     });
 
@@ -470,6 +490,9 @@
     // ==================== MCP 管理 ====================
 
     function loadMcpList() {
+        $mcpToolsView.hide();
+        $mcpFormView.hide();
+        $mcpListView.show();
         $.get('/web/settings/mcp/servers', function (resp) {
             if (resp.code === 200 && resp.data) {
                 mcpCachedList = resp.data;
@@ -482,7 +505,7 @@
         var html = '';
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>'
                 + '<div class="mcp-empty-title">暂无 MCP 服务器</div>'
                 + '<div class="mcp-empty-desc">MCP 服务器可扩展 AI 的工具能力，如文件系统访问、数据库查询、API 调用等</div>'
                 + '</div>';
@@ -496,9 +519,10 @@
                 html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[' + escapeHtml(type) + ']</span></div>'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
                     + (detail ? '<div class="mcp-server-detail">' + escapeHtml(detail) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
+                    + '<button class="mcp-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="mcp-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -511,14 +535,140 @@
 
     // MCP 列表事件委托
     $mcpServerList
-        .on('click', '.mcp-server-item', function (e) {
-            if ($(e.target).closest('.toggle-switch').length) return;
+        .on('click', '.mcp-action-btn.edit.mcp-edit-btn', function (e) {
+            e.stopPropagation();
             var name = $(this).attr('data-name');
             if (name) mcpEditServer(name);
+        })
+        .on('click', '.mcp-server-item', function (e) {
+            if ($(e.target).closest('.toggle-switch').length) return;
+            if ($(e.target).closest('.mcp-action-btn').length) return;
+            var name = $(this).attr('data-name');
+            if (name) showMcpTools(name);
         })
         .on('change', '.mcp-toggle', function () {
             mcpToggleServer($(this).attr('data-name'), this.checked);
         });
+
+    // MCP 工具列表查看
+    function showMcpTools(name) {
+        $mcpListView.hide();
+        $mcpFormView.hide();
+        $mcpToolsView.show();
+        $mcpToolsTitle.text(name + ' - 工具列表');
+        $mcpToolsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $.get('/web/settings/mcp/servers/tools?name=' + encodeURIComponent(name), function (resp) {
+            if (resp.code === 200 && resp.data) {
+                renderMcpTools(resp.data, name);
+            } else {
+                $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+            }
+        }).fail(function () {
+            $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
+        });
+    }
+
+    // 当前工具列表所在的 serverName
+    var mcpToolsServerName = '';
+
+    /** 更新工具栏计数和全选状态 */
+    function updateMcpToolsToolbar() {
+        var $toggles = $mcpToolsList.find('.mcp-tool-toggle');
+        var total = $toggles.length;
+        var checked = $toggles.filter(':checked').length;
+        $('#mcpToolsCount').text(checked + ' / ' + total + ' 已启用');
+        $('#mcpToolsSelectAll').prop('checked', total > 0 && checked === total);
+    }
+
+    function renderMcpTools(data, name) {
+        mcpToolsServerName = name;
+        var connected = data.connected !== false;
+        var $toolbar = $('#mcpToolsToolbar');
+
+        if (!connected) {
+            $toolbar.hide();
+            $mcpToolsList.html('<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>'
+                + '<div class="mcp-empty-title">服务器未连接</div>'
+                + '<div class="mcp-empty-desc">请先启用并确保该 MCP 服务器可正常连接</div></div>');
+            return;
+        }
+        var tools = data.tools || [];
+        if (tools.length === 0) {
+            $toolbar.hide();
+            $mcpToolsList.html('<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>'
+                + '<div class="mcp-empty-title">暂无工具</div>'
+                + '<div class="mcp-empty-desc">该 MCP 服务器未提供任何工具</div></div>');
+            return;
+        }
+
+        // 获取已禁用的工具列表
+        var disallowedTools = data.disallowedTools || [];
+        var disallowedMap = {};
+        disallowedTools.forEach(function (t) { disallowedMap[t] = true; });
+
+        // 显示工具栏
+        $toolbar.show();
+        var checkedCount = tools.filter(function (t) { return !disallowedMap[t.name]; }).length;
+        $('#mcpToolsCount').text(checkedCount + ' / ' + tools.length + ' 已启用');
+        $('#mcpToolsSelectAll').prop('checked', checkedCount === tools.length);
+
+        var html = '';
+        tools.forEach(function (tool) {
+            var toolName = tool.name || '';
+            var isEnabled = !disallowedMap[toolName];
+            html += '<div class="mcp-server-item mcp-tool-item" style="cursor:default" data-tool="' + escapeAttr(toolName) + '">'
+                + '<label class="mcp-tool-checkbox" title="' + (isEnabled ? '禁用' : '启用') + '">'
+                + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(toolName) + '" class="mcp-tool-toggle"/>'
+                + '<span class="mcp-tool-checkmark"></span>'
+                + '</label>'
+                + '<div class="mcp-server-icon">T</div>'
+                + '<div class="mcp-server-info">'
+                + '<div class="mcp-server-name">' + escapeHtml(toolName) + '</div>'
+                + (tool.description ? '<div class="mcp-server-detail">' + escapeHtml(tool.description) + '</div>' : '')
+                + '</div></div>';
+        });
+        $mcpToolsList.html(html);
+    }
+
+    $('#mcpToolsBackBtn').on('click', function () {
+        $mcpToolsView.hide();
+        $('#mcpToolsToolbar').hide();
+        $mcpListView.addClass('slide-back').show();
+        setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260);
+    });
+
+    // 工具开关变化 → 实时更新计数和全选状态
+    $mcpToolsList.on('change', '.mcp-tool-toggle', function () {
+        updateMcpToolsToolbar();
+    });
+
+    // 全选/取消全选
+    $('#mcpToolsSelectAll').on('change', function () {
+        var checked = this.checked;
+        $mcpToolsList.find('.mcp-tool-toggle').prop('checked', checked);
+        updateMcpToolsToolbar();
+    });
+
+    // 保存工具权限（提交未勾选的作为 disallowedTools）
+    $('#mcpToolsSaveBtn').on('click', function () {
+        if (!mcpToolsServerName) return;
+        var disallowedTools = [];
+        $mcpToolsList.find('.mcp-tool-toggle:not(:checked)').each(function () {
+            disallowedTools.push($(this).attr('data-tool'));
+        });
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        postJson('/web/settings/mcp/servers/tools/save',
+            { serverName: mcpToolsServerName, disallowedTools: disallowedTools },
+            function (resp) {
+                if (resp.code === 200) showToast('工具权限已保存');
+                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+            },
+            function () { $btn.prop('disabled', false); }
+        );
+    });
 
     // ==================== MCP 表单 ====================
 
@@ -527,12 +677,14 @@
         $mcpSaveBtn.text('保存');
         $('#mcpName').val('').prop('readOnly', false);
         $('#mcpCommand, #mcpArgs, #mcpEnv, #mcpRemoteUrl, #mcpHeaders, #mcpTimeout').val('');
+        $('#mcpScope').val('user').prop('disabled', false).removeClass('readonly-gray');
         setMcpType('stdio');
     }
 
     function fillMcpForm(server) {
         var type = server.type || 'stdio';
         setMcpType(type);
+        $('#mcpScope').val(server.scope || 'user');
 
         if (type === 'stdio') {
             $('#mcpCommand').val(server.command || '');
@@ -555,7 +707,7 @@
         if (!name) { showToast('名称为必填项', 'error'); return null; }
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
 
-        var bodyObj = { name: name, type: type, enabled: true };
+        var bodyObj = { name: name, type: type, enabled: true, scope: $('#mcpScope').val() || 'user' };
 
         if (type === 'stdio') {
             var command = $('#mcpCommand').val().trim();
@@ -705,10 +857,11 @@
                 html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">A</div>'
                     + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[openapi]</span></div>'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
                     + (baseUrl ? '<div class="mcp-server-detail">' + escapeHtml(baseUrl) + '</div>' : '')
                     + (docUrl ? '<div class="mcp-server-detail" style="color:var(--accent);">' + escapeHtml(docUrl) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
+                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="openapi-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -721,14 +874,94 @@
 
     // OpenApi 列表事件委托
     $openapiServerList
-        .on('click', '.mcp-server-item', function (e) {
-            if ($(e.target).closest('.toggle-switch').length) return;
+        .on('click', '.mcp-action-btn.edit', function (e) {
+            e.stopPropagation();
             var name = $(this).attr('data-name');
             if (name) openapiEditServer(name);
+        })
+        .on('click', '.mcp-server-item', function (e) {
+            if ($(e.target).closest('.mcp-action-btn').length) return;
+            if ($(e.target).closest('.toggle-switch').length) return;
+            var name = $(this).attr('data-name');
+            if (name) loadOpenapiApis(name);
         })
         .on('change', '.openapi-toggle', function () {
             openapiToggleServer($(this).attr('data-name'), this.checked);
         });
+
+    // ==================== OpenApi API 列表查看 ====================
+
+    function loadOpenapiApis(name) {
+        openapiApisCurrentName = name;
+        showOpenapiApisView(name + ' - 接口列表');
+        $openapiApisList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+
+        $.get('/web/settings/openapi/servers/apis?name=' + encodeURIComponent(name), function (resp) {
+            if (resp.code === 200 && resp.data) renderOpenapiApis(resp.data);
+            else {
+                $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+            }
+        }).fail(function () {
+            $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败，请检查网络</div></div>');
+        });
+    }
+
+    /** 更新 OpenAPI 工具栏计数和全选状态 */
+    function updateOpenapiApisToolbar() {
+        var $toggles = $openapiApisList.find('.openapi-api-toggle');
+        var total = $toggles.length;
+        var checked = $toggles.filter(':checked').length;
+        $('#openapiApisCount').text(checked + ' / ' + total + ' 已启用');
+        $('#openapiApisSelectAll').prop('checked', total > 0 && checked === total);
+    }
+
+    function renderOpenapiApis(data) {
+        var connected = data.connected !== false;
+        var apis = data.apis || [];
+        var $toolbar = $('#openapiApisToolbar');
+        var html = '';
+        if (!connected) {
+            $toolbar.hide();
+            html = '<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>'
+                + '<div class="mcp-empty-title">未连接</div>'
+                + '<div class="mcp-empty-desc">服务器未启用或文档未加载，请先启用服务器</div></div>';
+        } else if (apis.length === 0) {
+            $toolbar.hide();
+            html = '<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>'
+                + '<div class="mcp-empty-title">暂无 API</div>'
+                + '<div class="mcp-empty-desc">该服务器未解析到任何 API 接口</div></div>';
+        } else {
+            // 获取已禁用的 API 列表
+            var disallowedTools = data.disallowedTools || [];
+            var disallowedMap = {};
+            disallowedTools.forEach(function (t) { disallowedMap[t] = true; });
+
+            // 显示工具栏
+            $toolbar.show();
+            var checkedCount = apis.filter(function (api) { return !disallowedMap[api.name]; }).length;
+            $('#openapiApisCount').text(checkedCount + ' / ' + apis.length + ' 已启用');
+            $('#openapiApisSelectAll').prop('checked', checkedCount === apis.length);
+
+            apis.forEach(function (api) {
+                var method = (api.method || 'GET').toUpperCase();
+                var apiName = api.name || '';
+                var isEnabled = !disallowedMap[apiName];
+                html += '<div class="openapi-api-item" data-name="' + escapeAttr(apiName) + '">'
+                    + '<div class="openapi-api-checkbox">'
+                    + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-api="' + escapeAttr(apiName) + '" class="openapi-api-toggle" title="' + (isEnabled ? '禁用' : '启用') + '"/>'
+                    + '</div>'
+                    + '<div class="openapi-api-method">' + escapeHtml(method) + '</div>'
+                    + '<div class="openapi-api-info">'
+                    + '<div class="openapi-api-path">' + escapeHtml(api.path || apiName) + '</div>'
+                    + (api.description ? '<div class="openapi-api-desc">' + escapeHtml(api.description) + '</div>' : '')
+                    + '</div>'
+                    + '</div>';
+            });
+        }
+        $openapiApisList.html(html);
+    }
 
     // ==================== OpenApi 表单 ====================
 
@@ -737,9 +970,11 @@
         $openapiSaveBtn.text('保存');
         $('#openapiName').val('').prop('readOnly', false);
         $('#openapiBaseUrl, #openapiDocUrl, #openapiHeaders').val('');
+        $('#openapiScope').val('user').prop('disabled', false).removeClass('readonly-gray');
     }
 
     function fillOpenapiForm(server) {
+        $('#openapiScope').val(server.scope || 'user');
         $('#openapiBaseUrl').val(server.apiBaseUrl || '');
         $('#openapiDocUrl').val(server.docUrl || '');
         var headerLines = [];
@@ -756,7 +991,7 @@
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
         if (!baseUrl) { showToast('API 基地址为必填项', 'error'); return null; }
         if (!docUrl) { showToast('文档地址为必填项', 'error'); return null; }
-        var bodyObj = { name: name, apiBaseUrl: baseUrl, docUrl: docUrl, enabled: true };
+        var bodyObj = { name: name, apiBaseUrl: baseUrl, docUrl: docUrl, enabled: true, scope: $('#openapiScope').val() || 'user' };
         var headers = parseKvLines(headersText);
         if (Object.keys(headers).length > 0) bodyObj.headers = headers;
         return bodyObj;
@@ -798,6 +1033,38 @@
     // OpenApi 按钮事件
     $('#openapiAddBtn').on('click', function () { resetOpenapiForm(); showOpenapiFormView('添加服务器', false); });
     $('#openapiBackBtn').on('click', function () { showOpenapiListView(); resetOpenapiForm(); });
+    $('#openapiApisBackBtn').on('click', function () { showOpenapiListView(); loadOpenapiList(); });
+
+    // OpenAPI API 开关变化 → 实时更新计数和全选状态
+    $openapiApisList.on('change', '.openapi-api-toggle', function () {
+        updateOpenapiApisToolbar();
+    });
+
+    // OpenAPI API 全选/取消全选
+    $('#openapiApisSelectAll').on('change', function () {
+        var checked = this.checked;
+        $openapiApisList.find('.openapi-api-toggle').prop('checked', checked);
+        updateOpenapiApisToolbar();
+    });
+
+    // OpenAPI API 保存权限（提交未勾选的作为 disallowedTools）
+    $('#openapiApisSaveBtn').on('click', function () {
+        if (!openapiApisCurrentName) return;
+        var disallowedTools = [];
+        $openapiApisList.find('.openapi-api-toggle:not(:checked)').each(function () {
+            disallowedTools.push($(this).attr('data-api'));
+        });
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        postJson('/web/settings/openapi/servers/apis/save',
+            { serverName: openapiApisCurrentName, disallowedTools: disallowedTools },
+            function (resp) {
+                if (resp.code === 200) showToast('API 权限已保存');
+                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+            },
+            function () { $btn.prop('disabled', false); }
+        );
+    });
 
     // OpenApi 测试连接
     $('#openapiTestBtn').on('click', function () {
@@ -858,7 +1125,158 @@
     });
 
 
-    // ==================== 挂载池管理 ====================
+    // ==================== LSP 服务器管理 ====================
+
+    function loadLspList() {
+        $.get('/web/settings/lsp/servers', function (resp) {
+            if (resp.code === 200 && resp.data) {
+                lspCachedList = resp.data;
+                renderLspList(resp.data);
+            }
+        }).fail(function () { console.error('[Settings] Failed to load LSP servers'); });
+    }
+
+    function renderLspList(list) {
+        var html = '';
+        if (!list || list.length === 0) {
+            html = '<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>'
+                + '<div class="mcp-empty-title">暂无 LSP 服务器</div>'
+                + '<div class="mcp-empty-desc">LSP 服务器可提供代码补全、诊断等智能编辑能力</div>'
+                + '</div>';
+        } else {
+            list.forEach(function (item) {
+                var name = item.name || '';
+                var command = (item.command && item.command.length > 0) ? item.command.join(' ') : '';
+                var extensions = (item.extensions && item.extensions.length > 0) ? item.extensions.join(', ') : '';
+                var enabled = item.enabled !== false;
+                var badges = '<span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[lsp]</span>';
+                if (item.scope === 'workspace') badges += ' <span class="mounts-scope-badge scope-workspace">工作区</span>';
+                html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
+                    + '<div class="mcp-server-icon">L</div>'
+                    + '<div class="mcp-server-info">'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' ' + badges + '</div>'
+                    + (command ? '<div class="mcp-server-detail">' + escapeHtml(command) + '</div>' : '')
+                    + (extensions ? '<div class="mcp-server-detail" style="color:var(--accent);">' + escapeHtml(extensions) + '</div>' : '')
+                    + '</div><div class="mcp-server-actions">'
+                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
+                    + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="lsp-toggle"/>'
+                    + '<span class="toggle-slider"></span>'
+                    + '</label>'
+                    + '</div></div>';
+            });
+        }
+        $lspServerList.html(html);
+    }
+
+    // LSP 列表事件委托
+    $lspServerList
+        .on('click', '.mcp-action-btn.edit', function (e) {
+            e.stopPropagation();
+            var name = $(this).attr('data-name');
+            if (name) lspEditServer(name);
+        })
+        .on('change', '.lsp-toggle', function () {
+            lspToggleServer($(this).attr('data-name'), this.checked);
+        });
+
+    // ==================== LSP 表单 ====================
+
+    function resetLspForm() {
+        lspEditName = null;
+        $lspSaveBtn.text('保存');
+        $('#lspName').val('').prop('readOnly', false);
+        $('#lspCommand, #lspExtensions, #lspEnv').val('');
+        $('#lspScope').val('user').prop('disabled', false).removeClass('readonly-gray');
+        $('#lspFormDeleteBtn').hide();
+    }
+
+    function fillLspForm(server) {
+        $('#lspScope').val(server.scope || 'user');
+        var command = (server.command && server.command.length > 0) ? server.command.join(' ') : '';
+        $('#lspCommand').val(command);
+        var extensions = (server.extensions && server.extensions.length > 0) ? server.extensions.join(', ') : '';
+        $('#lspExtensions').val(extensions);
+        var envLines = [];
+        if (server.env) Object.keys(server.env).forEach(function (k) { envLines.push(k + '=' + server.env[k]); });
+        $('#lspEnv').val(envLines.join('\n'));
+    }
+
+    function buildLspBodyObj() {
+        var name = $('#lspName').val().trim();
+        var command = $('#lspCommand').val().trim();
+        var extensions = $('#lspExtensions').val().trim();
+        var envText = $('#lspEnv').val().trim();
+        if (!name) { showToast('名称为必填项', 'error'); return null; }
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
+        if (!command) { showToast('启动命令为必填项', 'error'); return null; }
+        var bodyObj = { name: name, enabled: true, scope: $('#lspScope').val() || 'user' };
+        // command as string (backend handles split)
+        bodyObj.command = command;
+        // extensions as array
+        if (extensions) {
+            bodyObj.extensions = extensions.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+        }
+        var env = parseKvLines(envText);
+        if (Object.keys(env).length > 0) bodyObj.env = env;
+        return bodyObj;
+    }
+
+    function lspEditServer(name) {
+        var server = lspCachedList.find(function (s) { return s.name === name; });
+        if (!server) return;
+        lspEditName = name;
+        showLspFormView('编辑服务器', true);
+        $lspSaveBtn.text('更新');
+        $('#lspName').val(server.name).prop('readOnly', true).addClass('readonly-gray');
+        $('#lspScope').val(server.scope || 'user');
+        $('#lspFormDeleteBtn').show();
+        fillLspForm(server);
+    }
+
+    function lspToggleServer(name, enabled) {
+        postJson('/web/settings/lsp/servers/toggle', { name: name, enabled: enabled }, function (resp) {
+            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadLspList(); }
+        });
+    }
+
+    // LSP 按钮事件
+    $('#lspAddBtn').on('click', function () { resetLspForm(); showLspFormView('添加服务器', false); });
+    $('#lspBackBtn').on('click', function () { showLspListView(); resetLspForm(); });
+
+    // LSP 表单 - 删除按钮
+    $('#lspFormDeleteBtn').on('click', function () {
+        var name = lspEditName;
+        if (!name) return;
+        if (confirm('确定删除 LSP 服务器 "' + name + '"？')) {
+            postJson('/web/settings/lsp/servers/remove', { name: name }, function (resp) {
+                if (resp.code === 200) { showLspListView(); loadLspList(); }
+                else showToast('删除失败: ' + (resp.message || '未知错误'), 'error');
+            });
+        }
+    });
+
+    $lspSaveBtn.on('click', function () {
+        var bodyObj = buildLspBodyObj();
+        if (!bodyObj) return;
+        var isEdit = !!lspEditName;
+        var url = isEdit ? '/web/settings/lsp/servers/update' : '/web/settings/lsp/servers/add';
+        var actionText = isEdit ? '更新' : '添加';
+        if (isEdit) bodyObj.originalName = lspEditName;
+
+        $lspSaveBtn.prop('disabled', true);
+        $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
+            .done(function (resp) {
+                if (resp.code === 200) { showToast(actionText + '成功'); loadLspList(); showLspListView(); resetLspForm(); }
+                else showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error');
+            })
+            .fail(function () { showToast('网络错误', 'error'); })
+            .always(function () { $lspSaveBtn.prop('disabled', false); });
+    });
+
+
+    // ==================== 挂载管理 ====================
 
     function loadMountsList() {
         $.get('/web/settings/mounts', function (resp) {
@@ -874,10 +1292,10 @@
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无挂载池</div>'
-                + '<div class="mcp-empty-desc">挂载池是本地目录映射，为 AI 提供技能加载路径</div></div>';
+                + '<div class="mcp-empty-title">暂无挂载</div>'
+                + '<div class="mcp-empty-desc">挂载是本地目录映射，为 AI 提供技能加载路径</div></div>';
         } else {
-            // 系统挂载池排前面
+            // 系统挂载排前面
             var sorted = list.slice().sort(function (a, b) {
                 var as = a.system === true ? 0 : 1;
                 var bs = b.system === true ? 0 : 1;
@@ -887,59 +1305,139 @@
                 var alias = item.alias || '';
                 var path = item.path || '';
                 var isSystem = item.system === true;
-                var cleanAlias = alias.replace(/^@/, '');
-                var iconText = cleanAlias.substring(0, Math.min(cleanAlias.length, 2)).toUpperCase();
+                var typeMap = { SKILLS: 'S', FILES: 'F', AGENTS: 'A' };
+                var iconText = typeMap[item.type] || (item.type ? item.type.charAt(0).toUpperCase() : 'M');
                 html += '<div class="mcp-server-item mounts-pool-item' + (isSystem ? ' mounts-system' : '') + '" data-alias="' + escapeAttr(alias) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(iconText) + '</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(alias)
-                    + (isSystem ? ' <span class="mounts-system-badge">系统</span>' : '') + '</div>'
+                    + (isSystem ? ' <span class="mounts-system-badge">系统</span>' : '')
+                    + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '')
+                    + (item.writeable ? ' <span class="mounts-writeable-badge">可写</span>' : '')
+                    + '</div>'
+                    + (item.description ? '<div class="mcp-server-detail" style="color:#999">' + escapeHtml(item.description) + '</div>' : '')
                     + (path ? '<div class="mcp-server-detail">' + escapeHtml(path) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn browse" data-alias="' + escapeAttr(alias) + '" title="浏览技能"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>'
-                    + (isSystem ? '' : '<button class="mcp-action-btn delete" data-alias="' + escapeAttr(alias) + '" title="移除挂载池"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>')
+                    + '<button class="mcp-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
+                    + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-alias="' + escapeAttr(alias) + '" class="mounts-toggle"/> '
+                    + '<span class="toggle-slider"></span>'
+                    + '</label>'
                     + '</div></div>';
             });
         }
         $mountsList.html(html);
     }
 
+    // 从缓存查找挂载类型
+    function getMountType(alias) {
+        var item = mountsCachedList.find(function (m) { return m.alias === alias; });
+        return item ? (item.type || 'SKILLS') : 'SKILLS';
+    }
+
+    // 编辑挂载（只允许编辑描述和可写）
+    function mountsEditPool(alias) {
+        var item = mountsCachedList.find(function (m) { return m.alias === alias; });
+        if (!item) return;
+        mountsEditAlias = alias;
+        var isSystem = item.system === true;
+
+        // 填充表单（别名和路径只读）
+        $('#mountsAlias').val(item.alias || '').prop('readOnly', true);
+        $('#mountsPath').val(item.path || '').prop('readOnly', true);
+        var isSystemScope = isSystem;
+        $('#mountsType').val(item.type || 'SKILLS').prop('disabled', true).addClass('readonly-gray');
+        $('#mountsScope').val(item.scope || 'user').prop('disabled', isSystemScope).toggleClass('readonly-gray', isSystemScope);
+        $('#mountsWriteable').prop('checked', !!item.writeable).prop('disabled', isSystem);
+        $('#mountsDescription').val(item.description || '').prop('readOnly', isSystem);
+
+        // 编辑模式：隐藏保存按钮（系统挂载）、预设区；非系统：显示删除按钮
+        $mountsSaveBtn.toggle(!isSystem);
+        $('#mountsFormActions').toggle(!isSystem);
+        $('#mountsPresetsDivider, .mounts-presets').hide(); // 编辑时始终隐藏预设区
+
+        // 只读输入控件浅灰底色
+        $('#mountsAlias, #mountsPath').addClass('readonly-gray');
+        if (isSystem) { $('#mountsDescription').addClass('readonly-gray'); }
+        else { $('#mountsDescription').removeClass('readonly-gray'); }
+
+        $mountsSaveBtn.text('更新');
+        showMountsFormView('编辑挂载');
+    }
+
     // 池列表事件委托
     $mountsList
-        .on('click', '.mcp-action-btn.browse', function (e) {
-            e.stopPropagation();
-            loadMountsSkills($(this).attr('data-alias'));
-        })
-        .on('click', '.mcp-action-btn.delete', function (e) {
+        .on('click', '.mcp-action-btn.edit.mounts-edit-btn', function (e) {
             e.stopPropagation();
             var alias = $(this).attr('data-alias');
-            if (confirm('确定移除挂载池 "' + alias + '"？（磁盘文件不会被删除）')) {
-                postJson('/web/settings/mounts/remove', { alias: alias }, function (resp) {
-                    if (resp.code === 200) { showToast('已移除'); loadMountsList(); }
-                    else showToast('移除失败: ' + (resp.message || ''), 'error');
-                });
-            }
+            mountsEditPool(alias);
         })
-        .on('click', '.mounts-pool-item', function () {
-            loadMountsSkills($(this).attr('data-alias'));
+        .on('click', '.mounts-pool-item', function (e) {
+            if ($(e.target).closest('.toggle-switch').length) return;
+            if ($(e.target).closest('.mcp-action-btn').length) return;
+            var alias = $(this).attr('data-alias');
+            loadMountsContent(alias, getMountType(alias));
+        })
+        .on('change', '.mounts-toggle', function () {
+            var alias = $(this).attr('data-alias');
+            var enabled = this.checked;
+            $.ajax({
+                url: '/web/settings/mounts/toggle',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ alias: alias, enabled: enabled }),
+                success: function (resp) {
+                    if (resp.code === 200) {
+                        layer.msg(enabled ? '已启用' : '已停用', { icon: 1, time: 1500, offset: '120px' });
+                    } else {
+                        layer.msg(resp.message || '操作失败', { icon: 2, time: 3000, offset: '120px' });
+                    }
+                },
+                error: function () {
+                    layer.msg('操作失败，请检查网络', { icon: 2, time: 3000, offset: '120px' });
+                }
+            });
         });
 
-    // 池内技能包加载与渲染
-    function loadMountsSkills(alias) {
+    // 池内容加载与渲染（按类型分发）
+    function loadMountsContent(alias, type) {
         mountsCurrentAlias = alias;
-        $mountsSkillsTitle.text(alias + ' - 技能包列表');
+        mountsCurrentType = type || 'SKILLS';
+
+        // 从缓存列表中查找 realPath
+        var mountItem = mountsCachedList.find(function (m) { return m.alias === alias; });
+        mountsCurrentRealPath = mountItem ? (mountItem.realPath || '') : '';
+
+        var titleMap = { SKILLS: '技能包列表', AGENTS: '子代理列表', FILES: '文件列表' };
+        $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || '内容列表'));
         showMountsSkillsView();
         $mountsSkillsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
 
-        $.get('/web/settings/mounts/skills', { alias: alias }, function (resp) {
-            if (resp.code === 200 && resp.data) renderMountsSkills(resp.data);
-            else $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+        $.get('/web/settings/mounts/content', { alias: alias, type: mountsCurrentType }, function (resp) {
+            if (resp.code === 200 && resp.data) renderMountsContent(resp.data, mountsCurrentType);
+            else {
+                $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+                layer.msg(resp.message || '加载失败', { icon: 2, time: 3000, offset: '120px' });
+            }
         }).fail(function () {
             $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
+            layer.msg('加载失败，请检查网络', { icon: 2, time: 3000, offset: '120px' });
         });
     }
 
-    function renderMountsSkills(list) {
+    function renderMountsContent(list, type) {
+        if (type === 'AGENTS') { renderAgentsList(list); return; }
+        if (type === 'FILES') {
+            $mountsSkillsList.html('<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>'
+                + '<div class="mcp-empty-title">暂不展示文件</div>'
+                + '<div class="mcp-empty-desc">文件浏览功能将在后续版本支持</div></div>');
+            return;
+        }
+        renderSkillsList(list);
+    }
+
+    function renderSkillsList(list) {
         var html = '';
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
@@ -949,11 +1447,10 @@
         } else {
             html += '<div class="mounts-skills-count">' + list.length + ' 个技能包</div>';
             list.forEach(function (skill) {
-                html += '<div class="mcp-server-item mounts-skill-item">'
-                    + '<div class="mcp-server-icon" style="background:var(--bg-accent-subtle);color:var(--accent);">'
-                    + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>'
+                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '" style="cursor:pointer">'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(skill.name) + '</div>'
+                    + (skill.realPath ? '<div class="mcp-server-detail">' + escapeHtml(skill.realPath) + '</div>' : '')
                     + (skill.description ? '<div class="mcp-server-detail">' + escapeHtml(skill.description) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="删除技能包"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
@@ -963,14 +1460,75 @@
         $mountsSkillsList.html(html);
     }
 
+    function renderAgentsList(list) {
+        var html = '';
+        if (!list || list.length === 0) {
+            html = '<div class="mcp-empty-state">'
+                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>'
+                + '<div class="mcp-empty-title">该池暂无子代理</div>'
+                + '<div class="mcp-empty-desc">将代理配置文件放入池目录即可自动加载</div></div>';
+        } else {
+            html += '<div class="mounts-skills-count">' + list.length + ' 个子代理</div>';
+            list.forEach(function (agent) {
+                var name = agent.name || '';
+                var filePath = agent.filePath || '';
+                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '" style="cursor:pointer">'
+                    + '<div class="mcp-server-info">'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + '</div>'
+                    + (filePath ? '<div class="mcp-server-detail">' + escapeHtml(filePath) + '</div>' : '')
+                    + '</div></div>';
+            });
+        }
+        $mountsSkillsList.html(html);
+    }
+
     // 技能包删除事件
-    $mountsSkillsList.on('click', '.mcp-action-btn.delete', function () {
+    $mountsSkillsList.on('click', '.mcp-action-btn.delete', function (e) {
+        e.stopPropagation();
         var skillName = $(this).attr('data-skill');
         if (confirm('确定删除技能包 "' + skillName + '"？此操作不可恢复。')) {
             postJson('/web/settings/mounts/skills/remove', { alias: mountsCurrentAlias, skillName: skillName }, function (resp) {
-                if (resp.code === 200) { showToast('删除成功'); loadMountsSkills(mountsCurrentAlias); }
+                if (resp.code === 200) { showToast('删除成功'); loadMountsContent(mountsCurrentAlias, mountsCurrentType); }
                 else showToast('删除失败: ' + (resp.message || ''), 'error');
             });
+        }
+    });
+
+    // 点击技能/子代理条目 → 打开其所在目录
+    $mountsSkillsList.on('click', '.mounts-skill-item', function (e) {
+        if ($(e.target).closest('.mcp-action-btn').length) return;
+        var realPath = $(this).data('real-path') || '';
+        if (realPath) {
+            $.get('/web/settings/mounts/open', { path: realPath }, function (resp) {
+                if (resp && resp.code !== 200) {
+                    layer.msg(resp.message || '打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                }
+            }).fail(function () {
+                layer.msg('打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+            });
+        }
+    });
+
+    // 打开挂载根目录按钮
+    $('#mountsOpenDirBtn').on('click', function () {
+        if (mountsCurrentRealPath) {
+            $.get('/web/settings/mounts/open', { path: mountsCurrentRealPath }, function (resp) {
+                if (resp && resp.code !== 200) {
+                    layer.msg(resp.message || '打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                }
+            }).fail(function () {
+                layer.msg('打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+            });
+        }
+    });
+
+    // 刷新挂载内容按钮
+    $('#mountsRefreshBtn').on('click', function () {
+        if (mountsCurrentAlias) {
+            var alias = mountsCurrentAlias;
+            var type = mountsCurrentType;
+            mountsCurrentAlias = null; // 强制重新加载
+            loadMountsContent(alias, type);
         }
     });
 
@@ -980,18 +1538,36 @@
         $.get('/web/settings/general', function (resp) {
             if (resp.code === 200 && resp.data) {
                 var d = resp.data;
+                $('#generalSessionWindowSize').val(d.sessionWindowSize != null ? d.sessionWindowSize : '');
                 $('#generalSummaryWindowSize').val(d.summaryWindowSize || '');
                 $('#generalSummaryWindowToken').val(d.summaryWindowToken || '');
                 $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
+                $('#generalApiRetries').val(d.apiRetries != null ? d.apiRetries : '');
+                $('#generalMcpRetries').val(d.mcpRetries != null ? d.mcpRetries : '');
+                $('#generalModelRetries').val(d.modelRetries != null ? d.modelRetries : '');
+                $('#generalMemoryEnabled').prop('checked', d.memoryEnabled !== false);
+                $('#generalMcpEnabled').prop('checked', d.mcpEnabled !== false);
+                $('#generalOpenApiEnabled').prop('checked', d.openApiEnabled !== false);
+                $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
+                $('#generalLspEnabled').prop('checked', !!d.lspEnabled);
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
     }
 
     $generalSaveBtn.on('click', function () {
         var bodyObj = {
+            sessionWindowSize: $('#generalSessionWindowSize').val().trim() ? parseInt($('#generalSessionWindowSize').val().trim(), 10) : null,
             summaryWindowSize: $('#generalSummaryWindowSize').val().trim() ? parseInt($('#generalSummaryWindowSize').val().trim(), 10) : null,
             summaryWindowToken: $('#generalSummaryWindowToken').val().trim() ? parseInt($('#generalSummaryWindowToken').val().trim(), 10) : null,
-            sandboxMode: $('#generalSandboxMode').is(':checked')
+            sandboxMode: $('#generalSandboxMode').is(':checked'),
+            apiRetries: $('#generalApiRetries').val().trim() ? parseInt($('#generalApiRetries').val().trim(), 10) : null,
+            mcpRetries: $('#generalMcpRetries').val().trim() ? parseInt($('#generalMcpRetries').val().trim(), 10) : null,
+            modelRetries: $('#generalModelRetries').val().trim() ? parseInt($('#generalModelRetries').val().trim(), 10) : null,
+            memoryEnabled: $('#generalMemoryEnabled').is(':checked'),
+            mcpEnabled: $('#generalMcpEnabled').is(':checked'),
+            openApiEnabled: $('#generalOpenApiEnabled').is(':checked'),
+            bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked'),
+            lspEnabled: $('#generalLspEnabled').is(':checked')
         };
 
         $generalSaveBtn.prop('disabled', true);
@@ -1004,14 +1580,33 @@
             .always(function () { $generalSaveBtn.prop('disabled', false); });
     });
 
+    // 删除按钮（在二次编辑页）
+    $('#mountsFormDeleteBtn').on('click', function () {
+        var alias = mountsEditAlias;
+        if (!alias) return;
+        if (confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）')) {
+            $.post('/web/settings/mounts/remove', { alias: alias }, function (resp) {
+                if (resp && resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); }
+                else showToast('移除失败: ' + ((resp && resp.message) || '未知错误'), 'error');
+            }, 'json').fail(function () { showToast('网络错误', 'error'); });
+        }
+    });
+
     // 添加/返回/保存按钮
     $('#mountsAddBtn').on('click', function () {
-        $('#mountsAlias').val('').prop('readOnly', false);
-        $('#mountsPath').val('');
-        $mountsSaveBtn.text('保存');
-        showMountsFormView('添加挂载池');
+        mountsEditAlias = null;
+        $('#mountsAlias').val('').prop('readOnly', false).removeClass('readonly-gray');
+        $('#mountsPath').val('').prop('readOnly', false).removeClass('readonly-gray');
+        $('#mountsType').val('SKILLS').prop('disabled', false).removeClass('readonly-gray');
+        $('#mountsWriteable').prop('checked', false).prop('disabled', false);
+        $('#mountsDescription').val('').prop('readOnly', false).removeClass('readonly-gray');
+        $('#mountsScope').val('user').prop('disabled', false).removeClass('readonly-gray');
+        $('#mountsFormActions').hide();
+        $('#mountsPresetsDivider, .mounts-presets').show();
+        $mountsSaveBtn.text('保存').show();
+        showMountsFormView('添加挂载');
     });
-    $('#mountsBackBtn').on('click', function () { showMountsListView(); });
+    $('#mountsBackBtn').on('click', function () { mountsEditAlias = null; showMountsListView(); });
     $('#mountsSkillsBackBtn').on('click', function () { showMountsListView(); loadMountsList(); });
 
     $mountsSaveBtn.on('click', function () {
@@ -1021,23 +1616,41 @@
         if (!/^@/.test(alias)) { showToast('别名必须以 @ 开头', 'error'); return; }
         if (!path) { showToast('路径为必填项', 'error'); return; }
 
+        var type = $('#mountsType').val();
+        var writeable = $('#mountsWriteable').is(':checked');
+        var description = $('#mountsDescription').val().trim();
+
+        var isEdit = !!mountsEditAlias;
+        var url = isEdit ? '/web/settings/mounts/update' : '/web/settings/mounts/add';
+        var actionText = isEdit ? '更新' : '添加';
+
+        var bodyObj = { alias: alias, path: path, type: type, writeable: writeable, description: description, scope: $('#mountsScope').val() || 'user' };
+
         $mountsSaveBtn.prop('disabled', true);
-        $.ajax({ url: '/web/settings/mounts/add', method: 'POST', data: JSON.stringify({ alias: alias, path: path }), contentType: 'application/json', dataType: 'json' })
+        $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { showToast('添加成功'); loadMountsList(); showMountsListView(); }
-                else showToast('添加失败: ' + (resp.message || ''), 'error');
+                if (resp.code === 200) { showToast(actionText + '成功'); mountsEditAlias = null; loadMountsList(); showMountsListView(); }
+                else showToast(actionText + '失败: ' + (resp.message || ''), 'error');
             })
             .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $mountsSaveBtn.prop('disabled', false); });
     });
 
-    // 常见挂载池预设按钮 - 点击填充表单
-    $(document).on('click', '.mounts-preset-btn', function () {
+    // 常见挂载预设按钮 - 仅在添加模式下可用，编辑模式下禁止点击
+    $(document).on('click', '.mounts-preset-btn', function (e) {
+        if (mountsEditAlias) { e.preventDefault(); return; }
         var alias = $(this).data('alias');
         var path = $(this).data('path');
         $('#mountsAlias').val(alias);
         $('#mountsPath').val(path);
-        showToast('已填充: ' + alias);
+        $('#mountsType').val('SKILLS');
+        $('#mountsWriteable').prop('checked', false);
+        $('#mountsDescription').val('');
+    });
+
+    // 类型联动
+    $('#mountsType').on('change', function () {
+        // writeable 对所有类型有效，不再隐藏
     });
 
 })();

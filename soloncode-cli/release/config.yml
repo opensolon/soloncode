@@ -6,7 +6,7 @@ solon.logging.appender:
 
 soloncode:
   tools: "**"
-  maxSteps: 20 # ReAct 最大循环步数
+  maxTurns: 20 # ReAct 最大循环步数
   autoRethink: true #自我反思（每超过 maxSteps后，会由 LLM 自我反思决定是结束或继续）
 
   sessionWindowSize: 8 # 会话历史窗口大小（即，新指令时使用几条历史消息）
@@ -28,20 +28,13 @@ soloncode:
 
   userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
 
-  mountPools: # 技能池（可以多个）
-    "@skills": "./skills/"
-    "@skillhub": "~/.skillhub/skills/"
-    "@agents_skills": "~/.agents/skills/"
-    "@opencode_skills": "~/.opencode/skills/"
-    "@claude_skills": "~/.claude/skills/"
-
   modelRetries: 5
-  models: # llm 配置（参考 solon ai chatmodel 配置）
-    - apiUrl: "https://api.deepseek.com/v1/chat/completions"
-      apiKey: "******"
-      model: "deepseek-v4-flash"
-      timeout: "120s"
-      contextLength: 1_000_000 # 模型的上下文长度
+#  models: # llm 配置（参考 solon ai chatmodel 配置）
+#    - apiUrl: "https://api.deepseek.com/v1/chat/completions"
+#      apiKey: "******"
+#      model: "deepseek-v4-flash"
+#      timeout: "120s"
+#      contextLength: 1_000_000 # 模型的上下文长度
 #      defaultOptions:
 #        enable_thinking: false #不同模型可能不同
 #        temperature: 0.2

@@ -22,7 +22,7 @@ import org.jline.reader.ParsedLine;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.skills.cli.SkillDir;
+import org.noear.solon.ai.talents.mount.SkillDir;
 
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -114,7 +114,7 @@ public class CliCompleter implements Completer {
 
     private void completeModels(String word, List<Candidate> candidates) {
         String prefix = normalize(word.substring(1));
-        for (ChatConfig c : engine.getProps().getModels()) {
+        for (ChatConfig c : engine.getModels()) {
             if (normalize("model " + c.getNameOrModel()).startsWith(prefix)) {
                 candidates.add(new Candidate("/model " + c.getNameOrModel(), "/model " + c.getNameOrModel(), null, null, null, null, true));
             }
@@ -124,7 +124,7 @@ public class CliCompleter implements Completer {
     private void completeSkills(String word, List<Candidate> candidates) {
         Set<String> added = new HashSet<>();
         String prefix = normalize(word.substring(1));
-        for (SkillDir skill : engine.getPoolManager().getSkills()) {
+        for (SkillDir skill : engine.getSkills()) {
             if (normalize(skill.getName()).startsWith(prefix)) {
                 if (added.add(skill.getName()) == false) {
                     continue;

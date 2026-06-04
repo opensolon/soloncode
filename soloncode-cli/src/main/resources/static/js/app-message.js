@@ -269,6 +269,19 @@ function appendErrorChunk(sess, text) {
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
+/* ===== Trace Badge ===== */
+function appendTraceBadge(sess, chunk) {
+    ensureAssistantBubble(sess);
+    var parts = [];
+    if (chunk.model) parts.push(chunk.model);
+    if (chunk.totalTokens != null) parts.push(chunk.totalTokens + 'tk');
+    if (chunk.elapsedSeconds != null) parts.push(chunk.elapsedSeconds + 's');
+    if (parts.length === 0) return;
+    var badge = $('<div>').addClass('msg-trace').text(parts.join(' \u00b7 '));
+    insertBeforeActions(sess, badge[0]);
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
 /* ===== Command Output ===== */
 function appendCommandOutput(sess, text) {
     ensureAssistantBubble(sess);

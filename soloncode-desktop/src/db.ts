@@ -196,7 +196,10 @@ export async function saveConversation(conversation: DbConversation): Promise<nu
   return newId;
 }
 
-export async function getAllConversations(): Promise<DbConversation[]> {
+export async function getAllConversations(workspacePath?: string): Promise<DbConversation[]> {
+  if (workspacePath) {
+    return await db.conversations.where('workspacePath').equals(workspacePath).reverse().sortBy('timestamp');
+  }
   return await db.conversations.toArray();
 }
 

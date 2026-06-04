@@ -1,4 +1,26 @@
 
+### v2026.6.4
+
+* 添加 soloncode web 专门的 trace 显示块
+* 优化 soloncode web 代码语法高亮看不清的问题（改成了浅底色）
+* 优化 soloncode web 挂载点编辑逻辑
+* 修复 soloncode web 历史对话里没有代码语法高亮的问题
+* 修复 soloncode web 模型列表为空时仍尝试获取选中模型导致的逻辑问题
+* 细节优化
+
+### v2026.6.3
+
+* 添加 soloncode web 通用设置“重试策略”功能
+* 添加 soloncode web 技能市场“安装到”功能（可选择技能池）
+* 添加 soloncode web 技能市场点击查看详情的功能
+* 添加 soloncode web 挂载点击内容查看目录的功能
+* 添加 soloncode web 挂载启用开关
+* 添加 soloncode mcp 服务器权限控制（禁用工具）
+* 添加 soloncode openapi 服务器权限控制（禁用工具）
+* 优化 soloncode mcp 协议兼容性（兼容更多非规范协议）
+* 优化 soloncode 上下文压缩算法
+* 细节优化
+
 ### v2026.5.31
 
 * 添加 soloncode web 挂载池管理
