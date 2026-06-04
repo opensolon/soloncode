@@ -30,6 +30,7 @@ import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.ai.talents.gateway.openapi.ApiSource;
 import org.noear.solon.ai.talents.gateway.openapi.ApiSourceClient;
 import org.noear.solon.ai.talents.gateway.openapi.ApiTool;
+import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -1313,11 +1314,7 @@ public class WebSettingsController {
                 }
             } else {
                 String cmd = root.get("command").getString();
-                if (cmd != null && !cmd.isEmpty()) {
-                    for (String part : cmd.split("\\s+")) {
-                        commandList.add(part);
-                    }
-                }
+                commandList.addAll(CmdUtil.parseArguments(cmd));
             }
             params.setCommand(commandList);
         }
@@ -1395,11 +1392,7 @@ public class WebSettingsController {
                 }
             } else {
                 String cmd = root.get("command").getString();
-                if (cmd != null && !cmd.isEmpty()) {
-                    for (String part : cmd.split("\\s+")) {
-                        commandList.add(part);
-                    }
-                }
+                commandList.addAll(CmdUtil.parseArguments(cmd));
             }
             params.setCommand(commandList);
         } else {
