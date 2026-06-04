@@ -565,14 +565,9 @@
                             </div>
                             <div class="mounts-add-form">
                                 <div class="form-group">
-                                    <label>别名 <span class="required">*</span></label>
+                                    <label>名称 <span class="required">*</span></label>
                                     <input type="text" id="mountsAlias" placeholder="@my_mount"/>
                                     <div class="form-hint">必须以 @ 开头，例如 @my_skills</div>
-                                </div>
-                                <div class="form-group">
-                                    <label>路径 <span class="required">*</span></label>
-                                    <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
-                                    <div class="form-hint">技能文件所在的本地目录路径（支持 './' 和 '~/' 相对路径）</div>
                                 </div>
                                 <div class="form-group">
                                     <label>作用域</label>
@@ -581,6 +576,11 @@
                                         <option value="workspace">工作区 (本地)</option>
                                     </select>
                                     <div class="form-hint">用户作用域对所有工作区生效，工作区作用域仅当前项目生效</div>
+                                </div>
+                                <div class="form-group">
+                                    <label>路径 <span class="required">*</span></label>
+                                    <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
+                                    <div class="form-hint">技能文件所在的本地目录路径（支持 './' 和 '~/' 相对路径）</div>
                                 </div>
                                 <div class="form-group">
                                     <label>挂载内容类型</label>
@@ -707,7 +707,7 @@
                                 <div class="mcp-config-remote" id="mcpConfigRemote" style="display:none">
                                     <div class="form-group">
                                         <label>URL <span class="required">*</span></label>
-                                        <input type="text" id="mcpRemoteUrl" placeholder="http://localhost:3001/sse"/>
+                                        <input type="text" id="mcpRemoteUrl" placeholder="http://localhost:3001/mcp"/>
                                     </div>
                                     <div class="form-group">
                                         <label>请求头（KEY=VALUE，每行一个）</label>
@@ -811,7 +811,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label>文档地址（OpenApi 规范） <span class="required">*</span></label>
-                                    <input type="text" id="openapiDocUrl" placeholder="https://api.example.com/swagger/v2?group=app"/>
+                                    <input type="text" id="openapiDocUrl" placeholder="https://api.example.com/app/openapi.json"/>
                                 </div>
                                 <div class="form-group">
                                     <label>请求头（KEY=VALUE，每行一个）</label>
