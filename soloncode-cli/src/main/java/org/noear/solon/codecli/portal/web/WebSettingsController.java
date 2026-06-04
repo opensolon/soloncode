@@ -287,13 +287,10 @@ public class WebSettingsController {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
         }
-        if (name.equals(engine.getMainModel().getConfig().getName())) {
-            return Result.failure("Cannot remove the active main model");
-        }
 
         engine.removeModel(name);
 
-        settings.getModels().removeIf(c -> name.equals(c.getName()));
+        settings.getModels().removeIf(c -> name.equals(c.getNameOrModel()));
         saveSettings();
 
         LOG.info("[Settings] Model removed: {}", name);
@@ -340,85 +337,6 @@ public class WebSettingsController {
             }
         }
         return Result.failure("Model not found: " + name);
-    }
-
-    /**
-     * 导出所有模型配置（API Key 脱敏）
-     */
-    @Get
-    @Mapping("/web/settings/llm/models/export")
-    public Result<List<Map>> llmModelsExport() throws Exception {
-        List<Map> list = new ArrayList<>();
-        for (ChatConfig config : settings.getModels()) {
-            Map<String, String> item = new LinkedHashMap<>();
-            item.put("apiUrl", config.getApiUrl());
-            item.put("model", config.getModel());
-            item.put("name", config.getName());
-            item.put("provider", config.getProvider());
-            if (config.getContextLength() > 0) {
-                item.put("contextLength", String.valueOf(config.getContextLength()));
-            }
-            // API Key 脱敏：仅保留前后4位
-            String apiKey = config.getApiKey();
-            if (apiKey != null && apiKey.length() > 8) {
-                item.put("apiKey", apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4));
-            }
-            list.add(item);
-        }
-        return Result.succeed(list);
-    }
-
-    /**
-     * 批量导入模型配置
-     */
-    @Post
-    @Mapping("/web/settings/llm/models/import")
-    public Result llmModelsImport(@Body String json) throws Exception {
-        ONode root = ONode.ofJson(json);
-        ONode models = root.get("models");
-        if (models == null || !models.isArray()) {
-            return Result.failure("Invalid format: expected {models:[...]}");
-        }
-
-        int count = 0;
-        for (ONode node : models.getArray()) {
-            String apiUrl = node.get("apiUrl").getString();
-            String model = node.get("model").getString();
-            if (Assert.isEmpty(apiUrl) || Assert.isEmpty(model)) continue;
-
-            String name = node.get("name").getString();
-            if (Assert.isEmpty(name)) name = model;
-
-            ChatConfig config = new ChatConfig();
-            config.setName(name);
-            config.setApiUrl(apiUrl);
-            config.setApiKey(node.get("apiKey").getString());
-            config.setModel(model);
-
-            String provider = node.get("provider").getString();
-            if (Assert.isNotEmpty(provider)) {
-                config.setProvider(provider);
-            }
-
-            Integer contextLength = node.get("contextLength").getInt();
-            if (contextLength != null && contextLength > 0) {
-                config.setContextLength(contextLength);
-            }
-
-            final String fName = name;
-            final String fModel = model;
-
-            engine.removeModel(fModel);
-            engine.addModel(config);
-
-            settings.getModels().removeIf(c -> fName.equals(c.getName()) || fModel.equals(c.getModel()));
-            settings.getModels().add(config);
-            count++;
-        }
-
-        saveSettings();
-        LOG.info("[Settings] Models imported: {}", count);
-        return Result.succeed(count);
     }
 
     // ==================== 设置：MCP 服务器管理 ====================
