@@ -31,6 +31,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
+import org.noear.solon.codecli.command.ShellCommandSupport;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.core.handle.UploadedFile;
@@ -327,6 +328,14 @@ public class WebGate extends SimpleWebSocketListener {
                     }
                 }
 
+                if (ShellCommandSupport.isShellCommand(currentInput) && imageBlocks.isEmpty()) {
+                    ShellCommandSupport.Result result = ShellCommandSupport.executeAndInject(
+                            session, getCommandWorkspace(sessionCwd), currentInput);
+                    emitToClient(session.getSessionId(), WebChunk.ofCommand(result.toDisplayText()));
+                    emitToClient(session.getSessionId(), WebChunk.ofDone());
+                    return;
+                }
+
                 Prompt prompt;
                 if (!imageBlocks.isEmpty()) {
                     Contents contents = new Contents();
@@ -473,6 +482,13 @@ public class WebGate extends SimpleWebSocketListener {
         }
 
         return true;
+    }
+
+    private String getCommandWorkspace(String sessionCwd) {
+        if (Assert.isEmpty(sessionCwd) || ".".equals(sessionCwd)) {
+            return engine.getProps().getWorkspace();
+        }
+        return sessionCwd;
     }
 
 

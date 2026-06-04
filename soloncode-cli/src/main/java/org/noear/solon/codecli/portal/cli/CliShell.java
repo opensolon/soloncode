@@ -44,6 +44,7 @@ import org.noear.solon.ai.skills.cli.TodoSkill;
 import org.noear.solon.ai.skills.memory.MemorySkill;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.CliCommandContext;
+import org.noear.solon.codecli.command.ShellCommandSupport;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
@@ -152,7 +153,9 @@ public class CliShell implements Runnable {
         AgentSession session = prepare(agentProps.getSessionId());
 
         try {
-            if (!isCommand(session, input)) {
+            if (ShellCommandSupport.isShellCommand(input)) {
+                runShellCommand(session, input);
+            } else if (!isCommand(session, input)) {
                 performAgentTask(session, input, null);
             }
         } catch (Throwable e) {
@@ -206,7 +209,9 @@ public class CliShell implements Runnable {
                     continue;
                 }
 
-                if (!isCommand(session, input)) {
+                if (ShellCommandSupport.isShellCommand(input)) {
+                    runShellCommand(session, input);
+                } else if (!isCommand(session, input)) {
                     performAgentTask(session, input, null);
                 }
             } catch (Throwable e) {
@@ -227,6 +232,14 @@ public class CliShell implements Runnable {
                 terminal.raise(Terminal.Signal.INT);
             }
         }
+    }
+
+    private void runShellCommand(AgentSession session, String input) throws Exception {
+        ShellCommandSupport.Result result = ShellCommandSupport.executeAndInject(session, agentProps.getWorkspace(), input);
+        terminal.writer().println();
+        terminal.writer().println(BOLD + "Shell" + RESET + DIM + " " + getTimeNow() + RESET);
+        terminal.writer().println("  " + result.toDisplayText().replace("\n", "\n  "));
+        terminal.flush();
     }
 
     private boolean isCommand(AgentSession session, String input) throws Exception {
