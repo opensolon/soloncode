@@ -97,7 +97,7 @@
     var $mcpFormTitle = $('#mcpFormTitle');
     var $mcpListView = $('#mcpListView');
     var $mcpFormView = $('#mcpFormView');
-    var $mcpTypeBtns = $('.mcp-type-btn');
+    var $mcpTypeBtns = $('#mcpAddForm .mcp-type-btn');
     var $mcpCheckResult = $('#mcpCheckResult');
     // OpenApi
     var $openapiServerList = $('#openapiServerList');
@@ -148,9 +148,6 @@
     var mountsEditAlias = null;
     var $mountsTypeBtns = $('#mountsTypeToggle .mcp-type-btn');
 
-    // General
-    var $generalSaveBtn = $('#generalSaveBtn');
-
     // ==================== 视图切换 ====================
 
     function showLlmListView() { $llmFormView.hide(); $llmListView.addClass('slide-back').show(); setTimeout(function(){ $llmListView.removeClass('slide-back'); }, 260); }
@@ -168,7 +165,7 @@
 
     function setMcpType(type) {
         $mcpTypeBtns.removeClass('active');
-        $('.mcp-type-btn[data-type="' + type + '"]').addClass('active');
+        $mcpTypeBtns.filter('[data-type="' + type + '"]').addClass('active');
         $('#mcpConfigStdio').toggle(type === 'stdio');
         $('#mcpConfigRemote').toggle(type === 'sse' || type === 'streamable');
     }
@@ -181,6 +178,32 @@
     function getMountsType() {
         return $mountsTypeBtns.filter('.active').attr('data-type') || 'SKILLS';
     }
+    function getScopeControl(scopeInput) {
+        return $('.settings-scope-toggle[data-target="' + scopeInput + '"]');
+    }
+
+    function setScopeValue(scopeInput, value) {
+        value = value || 'user';
+        $('#' + scopeInput).val(value);
+        var $toggle = getScopeControl(scopeInput);
+        $toggle.find('.settings-scope-btn').removeClass('active');
+        $toggle.find('.settings-scope-btn[data-scope="' + value + '"]').addClass('active');
+    }
+
+    function setScopeReadonly(scopeInput, readonly) {
+        var $toggle = getScopeControl(scopeInput);
+        $toggle.toggleClass('readonly-gray disabled', !!readonly);
+        $toggle.find('.settings-scope-btn').toggleClass('disabled', !!readonly).prop('disabled', !!readonly);
+    }
+
+    function resetCurrentTabView(targetTab) {
+        if (targetTab === 'llm') { showLlmListView(); resetLlmForm(); }
+        else if (targetTab === 'mounts') { mountsEditAlias = null; showMountsListView(); }
+        else if (targetTab === 'mcp') { showMcpListView(); resetMcpForm(); $('#mcpToolsToolbar').hide(); }
+        else if (targetTab === 'openapi') { showOpenapiListView(); resetOpenapiForm(); }
+        else if (targetTab === 'lsp') { showLspListView(); resetLspForm(); }
+    }
+
 
     // ==================== 面板开关 ====================
 
@@ -208,6 +231,15 @@
     $overlay.on('click', function (e) { if (e.target === $overlay[0]) closeSettings(); });
     $(document).on('keydown', function (e) { if (e.key === 'Escape' && $overlay.is(':visible')) closeSettings(); });
 
+    $(document).on('click', '.settings-scope-btn', function () {
+        var $btn = $(this);
+        if ($btn.prop('disabled') || $btn.hasClass('disabled')) return;
+        var $toggle = $btn.closest('.settings-scope-toggle');
+        var target = $toggle.attr('data-target');
+        if (!target) return;
+        setScopeValue(target, $btn.attr('data-scope') || 'user');
+    });
+
     // ==================== Tab 切换（事件委托，统一管理） ====================
 
     $('.settings-tabs').on('click', '.settings-tab', function () {
@@ -217,9 +249,10 @@
         $tab.addClass('active');
 
         var targetTab = $tab.attr('data-tab');
+        resetCurrentTabView(targetTab);
         if (targetTab === 'general') {
             $('#settingsTabGeneral').addClass('active');
-            loadGeneralSettings();
+            if (window._settingsGeneral) window._settingsGeneral.load();
         } else if (targetTab === 'llm') {
             $('#settingsTabLlm').addClass('active');
             loadLlmList();
@@ -245,13 +278,13 @@
         var $active = $('.settings-tab.active');
         if (!$active.length) return;
         var targetTab = $active.attr('data-tab');
-        if (targetTab === 'general') loadGeneralSettings();
+        if (targetTab === 'general') { if (window._settingsGeneral) window._settingsGeneral.load(); }
         else if (targetTab === 'llm') loadLlmList();
         else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(); }
         else if (targetTab === 'mounts') loadMountsList();
         else if (targetTab === 'mcp') loadMcpList();
         else if (targetTab === 'openapi') loadOpenapiList();
-    else if (targetTab === 'lsp') loadLspList();
+        else if (targetTab === 'lsp') loadLspList();
     }
 
     // ==================== LLM 管理 ====================
@@ -329,7 +362,7 @@
         llmEditName = null;
         $llmSaveBtn.text('保存');
         $('#llmProvider, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
-        $('#llmScope').val('user');
+        setScopeValue('llmScope', 'user');
         $('#llmApiKey').attr('placeholder', 'sk-...');
         $llmCheckResult.hide();
     }
@@ -345,9 +378,10 @@
         $('#llmApiKey').attr('placeholder', item.apiKey ? '已配置（留空保持不变）' : 'sk-...');
         if (item.model) $('#llmModel').val(item.model);
         if (item.name) $('#llmName').val(item.name);
-        if (item.scope) $('#llmScope').val(item.scope);
+        if (item.scope) setScopeValue('llmScope', item.scope);
         if (item.timeout) $('#llmTimeout').val(item.timeout);
         if (item.contextLength) $('#llmContextLength').val(item.contextLength);
+        if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
     }
 
     function buildLlmBodyObj() {
@@ -365,7 +399,7 @@
         if (contextLength) bodyObj.contextLength = parseInt(contextLength, 10);
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {
-            try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { /* 忽略无效 JSON */ }
+            try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { showToast('默认选项 JSON 格式无效', 'error'); return null; }
         }
         return bodyObj;
     }
@@ -435,6 +469,7 @@
             .done(function (resp) {
                 if (resp.code === 200) {
                     if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
+                    showToast(actionText + '成功');
                     loadLlmList();
                     showLlmListView();
                     resetLlmForm();
@@ -463,7 +498,12 @@
     // LLM 测试连接（通过 ChatModel hello 检测）
     $('#llmTestBtn').on('click', function () {
         var apiUrl = $('#llmApiUrl').val().trim();
-        if (!apiUrl) { showToast('请先填写 API 地址', 'error'); return; }
+        var model = $('#llmModel').val().trim();
+        if (!apiUrl || !model) { showToast('请先填写 API 地址和模型', 'error'); return; }
+        var optionsText = $('#llmDefaultOptions').val().trim();
+        if (optionsText) {
+            try { JSON.parse(optionsText); } catch (e) { showToast('默认选项 JSON 格式无效', 'error'); return; }
+        }
         var $btn = $(this);
         var btnOriginal = $btn.html();
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
@@ -483,6 +523,26 @@
                 $llmCheckResult.attr('class', 'llm-check-result error').html(msg).css('display', 'flex');
             })
             .always(function () { $btn.prop('disabled', false).html(btnOriginal); });
+    });
+
+
+    $('#llmFormatJsonBtn').on('click', function () {
+        var $input = $('#llmDefaultOptions');
+        var text = $input.val().trim();
+        if (!text) { showToast('请先填写 JSON 内容', 'error'); return; }
+        try {
+            $input.val(JSON.stringify(JSON.parse(text), null, 2));
+            showToast('JSON 格式化成功');
+        } catch (e) {
+            showToast('默认选项 JSON 格式无效', 'error');
+        }
+    });
+
+    $('#llmDefaultOptions').on('blur', function () {
+        var text = $(this).val().trim();
+        if (!text) return;
+        try { JSON.parse(text); }
+        catch (e) { showToast('默认选项 JSON 格式无效', 'error'); }
     });
 
     // LLM API Key 显示切换
@@ -529,7 +589,7 @@
                 html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
                     + (detail ? '<div class="mcp-server-detail">' + escapeHtml(detail) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
@@ -628,7 +688,7 @@
         tools.forEach(function (tool) {
             var toolName = tool.name || '';
             var isEnabled = !disallowedMap[toolName];
-            html += '<div class="mcp-server-item mcp-tool-item" style="cursor:default" data-tool="' + escapeAttr(toolName) + '">'
+            html += '<div class="mcp-server-item mcp-tool-item" data-tool="' + escapeAttr(toolName) + '">'
                 + '<label class="mcp-tool-checkbox" title="' + (isEnabled ? '禁用' : '启用') + '">'
                 + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(toolName) + '" class="mcp-tool-toggle"/>'
                 + '<span class="mcp-tool-checkmark"></span>'
@@ -685,16 +745,17 @@
     function resetMcpForm() {
         mcpEditName = null;
         $mcpSaveBtn.text('保存');
-        $('#mcpName').val('').prop('readOnly', false);
+        $('#mcpName').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#mcpCommand, #mcpArgs, #mcpEnv, #mcpRemoteUrl, #mcpHeaders, #mcpTimeout').val('');
-        $('#mcpScope').val('user').prop('disabled', false).removeClass('readonly-gray');
+        setScopeValue('mcpScope', 'user');
+        setScopeReadonly('mcpScope', false);
         setMcpType('stdio');
     }
 
     function fillMcpForm(server) {
         var type = server.type || 'stdio';
         setMcpType(type);
-        $('#mcpScope').val(server.scope || 'user');
+        setScopeValue('mcpScope', server.scope || 'user');
 
         if (type === 'stdio') {
             $('#mcpCommand').val(server.command || '');
@@ -746,7 +807,7 @@
         mcpEditName = name;
         showMcpFormView('编辑服务器', true);
         $mcpSaveBtn.text('更新');
-        $('#mcpName').val(server.name).prop('readOnly', true);
+        $('#mcpName').val(server.name).prop('readOnly', true).addClass('readonly-gray');
         fillMcpForm(server);
     }
 
@@ -756,7 +817,7 @@
         mcpEditName = null;
         showMcpFormView('添加服务器', false);
         $mcpSaveBtn.text('保存');
-        $('#mcpName').val(server.name + '-copy').prop('readOnly', false);
+        $('#mcpName').val(server.name + '-copy').prop('readOnly', false).removeClass('readonly-gray');
         fillMcpForm(server);
     }
 
@@ -789,7 +850,7 @@
         $mcpSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { loadMcpList(); showMcpListView(); resetMcpForm(); }
+                if (resp.code === 200) { showToast(actionText + '成功'); loadMcpList(); showMcpListView(); resetMcpForm(); }
                 else showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error');
             })
             .fail(function () { showToast('网络错误', 'error'); })
@@ -867,9 +928,9 @@
                 html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">A</div>'
                     + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
+                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
                     + (baseUrl ? '<div class="mcp-server-detail">' + escapeHtml(baseUrl) + '</div>' : '')
-                    + (docUrl ? '<div class="mcp-server-detail" style="color:var(--accent);">' + escapeHtml(docUrl) + '</div>' : '')
+                    + (docUrl ? '<div class="mcp-server-detail settings-accent-text">' + escapeHtml(docUrl) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
@@ -978,13 +1039,14 @@
     function resetOpenapiForm() {
         openapiEditName = null;
         $openapiSaveBtn.text('保存');
-        $('#openapiName').val('').prop('readOnly', false);
+        $('#openapiName').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#openapiBaseUrl, #openapiDocUrl, #openapiHeaders').val('');
-        $('#openapiScope').val('user').prop('disabled', false).removeClass('readonly-gray');
+        setScopeValue('openapiScope', 'user');
+        setScopeReadonly('openapiScope', false);
     }
 
     function fillOpenapiForm(server) {
-        $('#openapiScope').val(server.scope || 'user');
+        setScopeValue('openapiScope', server.scope || 'user');
         $('#openapiBaseUrl').val(server.apiBaseUrl || '');
         $('#openapiDocUrl').val(server.docUrl || '');
         var headerLines = [];
@@ -1013,7 +1075,7 @@
         openapiEditName = name;
         showOpenapiFormView('编辑服务器', true);
         $openapiSaveBtn.text('更新');
-        $('#openapiName').val(server.name).prop('readOnly', true);
+        $('#openapiName').val(server.name).prop('readOnly', true).addClass('readonly-gray');
         fillOpenapiForm(server);
     }
 
@@ -1023,7 +1085,7 @@
         openapiEditName = null;
         showOpenapiFormView('添加服务器', false);
         $openapiSaveBtn.text('保存');
-        $('#openapiName').val(server.name + '-copy').prop('readOnly', false);
+        $('#openapiName').val(server.name + '-copy').prop('readOnly', false).removeClass('readonly-gray');
         fillOpenapiForm(server);
     }
 
@@ -1078,15 +1140,14 @@
 
     // OpenApi 测试连接
     $('#openapiTestBtn').on('click', function () {
-        var baseUrl = $('#openapiBaseUrl').val().trim();
-        if (!baseUrl) { showToast('请先填写 API 基地址', 'error'); return; }
-        var headers = parseKvLines($('#openapiHeaders').val().trim());
+        var bodyObj = buildOpenapiBodyObj();
+        if (!bodyObj) return;
         var $btn = $(this);
         var btnOriginal = $btn.html();
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
         $openapiCheckResult.hide();
 
-        $.ajax({ url: '/web/settings/openapi/servers/check', method: 'POST', data: JSON.stringify({ baseUrl: baseUrl, headers: headers }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
+        $.ajax({ url: '/web/settings/openapi/servers/check', method: 'POST', data: JSON.stringify({ baseUrl: bodyObj.apiBaseUrl, docUrl: bodyObj.docUrl, headers: bodyObj.headers || {} }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var svg = ok
@@ -1161,7 +1222,7 @@
                 var extensions = (item.extensions && item.extensions.length > 0) ? item.extensions.join(', ') : '';
                 var enabled = item.enabled !== false;
                 var installed = item.installed !== false;
-                var badges = '<span style="font-size:10px;color:var(--text-secondary);font-weight:400;">[lsp]</span>';
+                var badges = '<span class="settings-inline-tag">[lsp]</span>';
                 if (item.scope === 'workspace') badges += ' <span class="mounts-scope-badge scope-workspace">工作区</span>';
                 if (installed) badges += ' <span class="skill-installed-badge">已安装</span>';
                 html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
@@ -1169,7 +1230,7 @@
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + ' ' + badges + '</div>'
                     + (command ? '<div class="mcp-server-detail">' + escapeHtml(command) + '</div>' : '')
-                    + (extensions ? '<div class="mcp-server-detail" style="color:var(--accent);">' + escapeHtml(extensions) + '</div>' : '')
+                    + (extensions ? '<div class="mcp-server-detail settings-accent-text">' + escapeHtml(extensions) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
@@ -1198,14 +1259,15 @@
     function resetLspForm() {
         lspEditName = null;
         $lspSaveBtn.text('保存');
-        $('#lspName').val('').prop('readOnly', false);
+        $('#lspName').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#lspCommand, #lspExtensions, #lspEnv').val('');
-        $('#lspScope').val('user').prop('disabled', false).removeClass('readonly-gray');
+        setScopeValue('lspScope', 'user');
+        setScopeReadonly('lspScope', false);
         $('#lspFormDeleteBtn').hide();
     }
 
     function fillLspForm(server) {
-        $('#lspScope').val(server.scope || 'user');
+        setScopeValue('lspScope', server.scope || 'user');
         var command = (server.command && server.command.length > 0) ? server.command.join(' ') : '';
         $('#lspCommand').val(command);
         var extensions = (server.extensions && server.extensions.length > 0) ? server.extensions.join(', ') : '';
@@ -1242,7 +1304,7 @@
         showLspFormView('编辑服务器', true);
         $lspSaveBtn.text('更新');
         $('#lspName').val(server.name).prop('readOnly', true).addClass('readonly-gray');
-        $('#lspScope').val(server.scope || 'user');
+        setScopeValue('lspScope', server.scope || 'user');
         $('#lspFormDeleteBtn').show();
         fillLspForm(server);
     }
@@ -1327,7 +1389,7 @@
                     + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '')
                     + (item.writeable ? ' <span class="mounts-writeable-badge">可写</span>' : '')
                     + '</div>'
-                    + (item.description ? '<div class="mcp-server-detail" style="color:#999">' + escapeHtml(item.description) + '</div>' : '')
+                    + (item.description ? '<div class="mcp-server-detail settings-muted-text">' + escapeHtml(item.description) + '</div>' : '')
                     + (path ? '<div class="mcp-server-detail">' + escapeHtml(path) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
                     + '<button class="mcp-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
@@ -1360,7 +1422,8 @@
         var isSystemScope = isSystem;
         setMountsType(item.type || 'SKILLS');
         $mountsTypeBtns.prop('disabled', true).addClass('disabled');
-        $('#mountsScope').val(item.scope || 'user').prop('disabled', isSystemScope).toggleClass('readonly-gray', isSystemScope);
+        setScopeValue('mountsScope', item.scope || 'user');
+        setScopeReadonly('mountsScope', isSystemScope);
         $('#mountsWriteable').prop('checked', !!item.writeable).prop('disabled', isSystem);
         $('#mountsDescription').val(item.description || '').prop('readOnly', isSystem);
 
@@ -1460,7 +1523,7 @@
         } else {
             html += '<div class="mounts-skills-count">' + list.length + ' 个技能包</div>';
             list.forEach(function (skill) {
-                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '" style="cursor:pointer">'
+                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '">'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(skill.name) + '</div>'
                     + (skill.realPath ? '<div class="mcp-server-detail">' + escapeHtml(skill.realPath) + '</div>' : '')
@@ -1485,7 +1548,7 @@
             list.forEach(function (agent) {
                 var name = agent.name || '';
                 var filePath = agent.filePath || '';
-                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '" style="cursor:pointer">'
+                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '">'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + '</div>'
                     + (filePath ? '<div class="mcp-server-detail">' + escapeHtml(filePath) + '</div>' : '')
@@ -1545,54 +1608,6 @@
         }
     });
 
-    // ==================== General 通用设置 ====================
-
-    function loadGeneralSettings() {
-        $.get('/web/settings/general', function (resp) {
-            if (resp.code === 200 && resp.data) {
-                var d = resp.data;
-                $('#generalSessionWindowSize').val(d.sessionWindowSize != null ? d.sessionWindowSize : '');
-                $('#generalSummaryWindowSize').val(d.summaryWindowSize || '');
-                $('#generalSummaryWindowToken').val(d.summaryWindowToken || '');
-                $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
-                $('#generalApiRetries').val(d.apiRetries != null ? d.apiRetries : '');
-                $('#generalMcpRetries').val(d.mcpRetries != null ? d.mcpRetries : '');
-                $('#generalModelRetries').val(d.modelRetries != null ? d.modelRetries : '');
-                $('#generalMemoryEnabled').prop('checked', d.memoryEnabled !== false);
-                $('#generalMcpEnabled').prop('checked', d.mcpEnabled !== false);
-                $('#generalOpenApiEnabled').prop('checked', d.openApiEnabled !== false);
-                $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
-                $('#generalLspEnabled').prop('checked', !!d.lspEnabled);
-            }
-        }).fail(function () { console.error('[Settings] Failed to load general settings'); });
-    }
-
-    $generalSaveBtn.on('click', function () {
-        var bodyObj = {
-            sessionWindowSize: $('#generalSessionWindowSize').val().trim() ? parseInt($('#generalSessionWindowSize').val().trim(), 10) : null,
-            summaryWindowSize: $('#generalSummaryWindowSize').val().trim() ? parseInt($('#generalSummaryWindowSize').val().trim(), 10) : null,
-            summaryWindowToken: $('#generalSummaryWindowToken').val().trim() ? parseInt($('#generalSummaryWindowToken').val().trim(), 10) : null,
-            sandboxMode: $('#generalSandboxMode').is(':checked'),
-            apiRetries: $('#generalApiRetries').val().trim() ? parseInt($('#generalApiRetries').val().trim(), 10) : null,
-            mcpRetries: $('#generalMcpRetries').val().trim() ? parseInt($('#generalMcpRetries').val().trim(), 10) : null,
-            modelRetries: $('#generalModelRetries').val().trim() ? parseInt($('#generalModelRetries').val().trim(), 10) : null,
-            memoryEnabled: $('#generalMemoryEnabled').is(':checked'),
-            mcpEnabled: $('#generalMcpEnabled').is(':checked'),
-            openApiEnabled: $('#generalOpenApiEnabled').is(':checked'),
-            bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked'),
-            lspEnabled: $('#generalLspEnabled').is(':checked')
-        };
-
-        $generalSaveBtn.prop('disabled', true);
-        $.ajax({ url: '/web/settings/general/save', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
-            .done(function (resp) {
-                if (resp.code === 200) showToast('保存成功');
-                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
-            })
-            .fail(function () { showToast('网络错误', 'error'); })
-            .always(function () { $generalSaveBtn.prop('disabled', false); });
-    });
-
     // 删除按钮（在二次编辑页）
     $('#mountsFormDeleteBtn').on('click', function () {
         var alias = mountsEditAlias;
@@ -1614,7 +1629,8 @@
         $mountsTypeBtns.prop('disabled', false).removeClass('disabled');
         $('#mountsWriteable').prop('checked', false).prop('disabled', false);
         $('#mountsDescription').val('').prop('readOnly', false).removeClass('readonly-gray');
-        $('#mountsScope').val('user').prop('disabled', false).removeClass('readonly-gray');
+        setScopeValue('mountsScope', 'user');
+        setScopeReadonly('mountsScope', false);
         $('#mountsFormActions').hide();
         $('#mountsPresetsDivider, .mounts-presets').show();
         $mountsSaveBtn.text('保存').show();
