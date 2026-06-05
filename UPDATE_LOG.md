@@ -1,5 +1,5 @@
 
-### v2026.6.4
+### v2026.6.5
 
 * 添加 soloncode web 专门的 trace 显示块
 * 优化 soloncode web 代码语法高亮看不清的问题（改成了浅底色）

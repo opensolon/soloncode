@@ -17,14 +17,13 @@ package org.noear.solon.codecli;
 
 import org.noear.solon.Solon;
 import org.noear.solon.SolonApp;
-import org.noear.solon.Utils;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.util.Assert;
-import org.noear.solon.core.util.ResourceUtil;
 import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;
+import org.slf4j.bridge.SLF4JBridgeHandler;
 
 import java.net.URL;
 
@@ -38,6 +37,11 @@ import java.net.URL;
 public class App {
 
     public static void main(String[] args) {
+        // 1. 移除 JUL 默认的控制台处理器
+        SLF4JBridgeHandler.removeHandlersForRootLogger();
+        // 2. 添加 SLF4J 处理器
+        SLF4JBridgeHandler.install();
+
         AgentProperties agentProps = new AgentProperties();
 
         //配置用户扩展目录
