@@ -624,23 +624,27 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     color: var(--text-sidebar);
     transition: background 0.15s;
     white-space: nowrap;
+    position: relative;
 }
 .filer-node-row:hover { background: var(--bg-hover); }
-.filer-node-row::after {
-    content: '双击可选中';
+.filer-node-row:hover::after {
+    content: '双击插入路径';
     position: absolute;
-    right: 12px;
+    right: 10px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 11px;
+    max-width: 88px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    opacity: 0;
+    font-size: 11px;
+    line-height: 1.4;
     pointer-events: none;
-    transition: opacity 0.2s;
     white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
-
-
 .filer-node[data-indent="1"] .filer-node-row { padding-left: 28px; }
 .filer-node[data-indent="2"] .filer-node-row { padding-left: 44px; }
 .filer-node[data-indent="3"] .filer-node-row { padding-left: 60px; }

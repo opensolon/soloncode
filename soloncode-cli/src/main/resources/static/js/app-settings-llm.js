@@ -35,6 +35,14 @@
         }).fail(function () { console.error('[Settings] Failed to load models'); });
     }
 
+    function syncChatModelList() {
+        if (typeof window.reloadModels === 'function') {
+            window.reloadModels();
+        } else if (typeof modelsLoaded !== 'undefined') {
+            modelsLoaded = false;
+        }
+    }
+
     function renderLlmList(list, selected) {
         llmCachedList = list || [];
         var html = '';
@@ -176,14 +184,14 @@
     function llmToggleModel(name, enabled) {
         postJson('/web/settings/llm/models/toggle', { name: name, enabled: enabled }, function (resp) {
             if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadLlmList(); }
-            else { if (typeof modelsLoaded !== 'undefined') modelsLoaded = false; }
+            else { syncChatModelList(); }
         });
     }
 
     function llmRemoveModel(name) {
         $.post('/web/settings/llm/models/remove?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200) {
-                if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
+                syncChatModelList();
                 showLlmListView();
                 loadLlmList();
             } else { showToast('删除失败: ' + (resp.message || '未知错误'), 'error'); }
@@ -206,7 +214,7 @@
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
                 if (resp.code === 200) {
-                    if (typeof modelsLoaded !== 'undefined') modelsLoaded = false;
+                    syncChatModelList();
                     showToast(actionText + '成功');
                     loadLlmList();
                     showLlmListView();

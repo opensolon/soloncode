@@ -648,7 +648,7 @@ function loadModels(sessionId, callback) {
 
     $.get(url, function(resp) {
         try {
-            var data = resp.data;
+            var data = resp.data || {};
             var selected = data.selected || '';
 
             // Store selected model per session
@@ -674,6 +674,11 @@ function loadModels(sessionId, callback) {
             console.error('Failed to parse models:', e);
         }
     });
+}
+
+function reloadModels(callback) {
+    modelsLoaded = false;
+    loadModels(activeSessionId || null, callback);
 }
 
 // Refresh model UI for a specific session using local cache (no network request)
@@ -760,6 +765,8 @@ $(document).on('click', function() {
 
 initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
 initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
+
+window.reloadModels = reloadModels;
 
 // Initial load (no specific session, get default selected)
 loadModels(null);

@@ -150,7 +150,10 @@
             .attr('data-path', node.path)
             .attr('data-type', node.type);
 
-        var $row = $('<div>').addClass('filer-node-row');
+        var $row = $('<div>').addClass('filer-node-row')
+            .attr('title', node.type === 'directory'
+                ? '单击展开/折叠，双击插入路径到输入框：' + node.path
+                : '单击打开文件，双击插入路径到输入框：' + node.path);
 
         if (node.type === 'directory') {
             var $arrow = $('<span>').addClass('filer-arrow')
@@ -169,7 +172,9 @@
 
         var $name = $('<span>').addClass('filer-node-name')
             .text(node.name)
-            .attr('title', node.path);
+            .attr('title', node.type === 'directory'
+                ? '单击展开/折叠，双击插入路径到输入框：' + node.path
+                : '单击打开文件，双击插入路径到输入框：' + node.path);
         $row.append($name);
 
         $nodeEl.append($row);
