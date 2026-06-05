@@ -347,8 +347,8 @@
         var alias = $('#llmName').val().trim();
         var provider = $('#llmProvider').val();
         var timeout = $('#llmTimeout').val().trim();
-        if (!apiUrl || !model) { showToast('API 地址和模型名称为必填项', 'error'); return null; }
-        var bodyObj = { apiUrl: apiUrl, model: model, name: alias || model, provider: provider, scope: $('#llmScope').val() || 'user' };
+        if (!apiUrl || !model || !alias) { showToast('API 地址、模型和名称为必填项', 'error'); return null; }
+        var bodyObj = { apiUrl: apiUrl, model: model, name: alias, provider: provider, scope: $('#llmScope').val() || 'user' };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
         var contextLength = $('#llmContextLength').val().trim();
