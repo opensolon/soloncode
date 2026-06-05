@@ -146,6 +146,7 @@
     var mountsCurrentType = null;
     var mountsCurrentRealPath = null;
     var mountsEditAlias = null;
+    var $mountsTypeBtns = $('#mountsTypeToggle .mcp-type-btn');
 
     // General
     var $generalSaveBtn = $('#generalSaveBtn');
@@ -170,6 +171,15 @@
         $('.mcp-type-btn[data-type="' + type + '"]').addClass('active');
         $('#mcpConfigStdio').toggle(type === 'stdio');
         $('#mcpConfigRemote').toggle(type === 'sse' || type === 'streamable');
+    }
+
+    function setMountsType(type) {
+        $mountsTypeBtns.removeClass('active');
+        $mountsTypeBtns.filter('[data-type="' + type + '"]').addClass('active');
+    }
+
+    function getMountsType() {
+        return $mountsTypeBtns.filter('.active').attr('data-type') || 'SKILLS';
     }
 
     // ==================== 面板开关 ====================
@@ -1348,7 +1358,8 @@
         $('#mountsAlias').val(item.alias || '').prop('readOnly', true);
         $('#mountsPath').val(item.path || '').prop('readOnly', true);
         var isSystemScope = isSystem;
-        $('#mountsType').val(item.type || 'SKILLS').prop('disabled', true).addClass('readonly-gray');
+        setMountsType(item.type || 'SKILLS');
+        $mountsTypeBtns.prop('disabled', true).addClass('disabled');
         $('#mountsScope').val(item.scope || 'user').prop('disabled', isSystemScope).toggleClass('readonly-gray', isSystemScope);
         $('#mountsWriteable').prop('checked', !!item.writeable).prop('disabled', isSystem);
         $('#mountsDescription').val(item.description || '').prop('readOnly', isSystem);
@@ -1599,7 +1610,8 @@
         mountsEditAlias = null;
         $('#mountsAlias').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#mountsPath').val('').prop('readOnly', false).removeClass('readonly-gray');
-        $('#mountsType').val('SKILLS').prop('disabled', false).removeClass('readonly-gray');
+        setMountsType('SKILLS');
+        $mountsTypeBtns.prop('disabled', false).removeClass('disabled');
         $('#mountsWriteable').prop('checked', false).prop('disabled', false);
         $('#mountsDescription').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#mountsScope').val('user').prop('disabled', false).removeClass('readonly-gray');
@@ -1618,7 +1630,7 @@
         if (!/^@/.test(alias)) { showToast('别名必须以 @ 开头', 'error'); return; }
         if (!path) { showToast('路径为必填项', 'error'); return; }
 
-        var type = $('#mountsType').val();
+        var type = getMountsType();
         var writeable = $('#mountsWriteable').is(':checked');
         var description = $('#mountsDescription').val().trim();
 
@@ -1645,14 +1657,16 @@
         var path = $(this).data('path');
         $('#mountsAlias').val(alias);
         $('#mountsPath').val(path);
-        $('#mountsType').val('SKILLS');
+        setMountsType('SKILLS');
         $('#mountsWriteable').prop('checked', false);
         $('#mountsDescription').val('');
     });
 
     // 类型联动
-    $('#mountsType').on('change', function () {
-        // writeable 对所有类型有效，不再隐藏
+    $('#mountsTypeToggle').on('click', '.mcp-type-btn', function () {
+        if ($(this).prop('disabled')) return;
+        $mountsTypeBtns.removeClass('active');
+        $(this).addClass('active');
     });
 
 })();

@@ -152,6 +152,7 @@
 .mcp-type-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
 .mcp-type-btn { flex: 1; padding: 6px 16px; border: none; background: none; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .mcp-type-btn.active { background: var(--accent); color: #fff; }
+.mcp-type-btn.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
 .mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
 .mcp-server-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }

@@ -644,17 +644,17 @@
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>路径 <span class="required">*</span></label>
-                                    <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
-                                    <div class="form-hint">技能文件所在的本地目录路径（支持 './' 和 '~/' 相对路径）</div>
+                                    <label>内容类型</label>
+                                    <div class="mcp-type-toggle" id="mountsTypeToggle">
+                                        <button class="mcp-type-btn active" data-type="SKILLS" type="button">技能 (SKILLS)</button>
+                                        <button class="mcp-type-btn" data-type="AGENTS" type="button">子代理 (AGENTS)</button>
+                                        <button class="mcp-type-btn" data-type="FILES" type="button">文件 (FILES)</button>
+                                    </div>
                                 </div>
                                 <div class="form-group">
-                                    <label>挂载内容类型</label>
-                                    <select id="mountsType">
-                                        <option value="SKILLS" selected>技能 (SKILLS)</option>
-                                        <option value="FILES">文件 (FILES)</option>
-                                        <option value="AGENTS">子代理 (AGENTS)</option>
-                                    </select>
+                                    <label>映射路径 <span class="required">*</span></label>
+                                    <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
+                                    <div class="form-hint">文件所在的本地目录路径（支持 './' 和 '~/' 相对路径）</div>
                                 </div>
                                 <div class="form-group" id="mountsWriteableGroup">
                                     <label>开放写权限</label>
