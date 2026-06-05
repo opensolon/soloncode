@@ -28,6 +28,7 @@ $('.input-box').on('click', function(e) {
 
 /* ===== New Chat ===== */
 $(newChatBtn).on('click', function() {
+    if (typeof closeDiffViewer === 'function') closeDiffViewer();
     currentChatIndex = -1;
     switchToWelcomeMode();
     updateHistoryUI();

@@ -843,4 +843,5 @@
     // 暴露全局（供 app-filer.js 调用）
     window.loadGitStatus = loadGitStatus;
     window.openFileViewer = openFileViewer;
+    window.closeDiffViewer = closeDiffViewer;
 })();

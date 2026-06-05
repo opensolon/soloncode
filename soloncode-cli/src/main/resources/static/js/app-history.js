@@ -162,6 +162,7 @@ function selectSession(idx) {
 
     currentChatIndex = idx;
     SESSION_ID = entry.sessionId;
+    if (typeof closeDiffViewer === 'function') closeDiffViewer();
     if (!inChatMode) switchToChatMode();
     setActiveSession(entry.sessionId);
     updateHistoryUI();
