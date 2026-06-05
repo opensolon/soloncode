@@ -1596,8 +1596,13 @@ public class WebSettingsController {
     @Mapping("/web/settings/mounts/add")
     public Result mountsAdd(Context ctx, @Param("description") String description, @Param("alias") String alias, @Param("path") String path, @Param("type") MountType type, @Param("writeable") boolean writeable, @Param("scope") String scope) {
         if (Assert.isEmpty(alias) || Assert.isEmpty(path)) return Result.failure("参数不完整");
-        if (!alias.startsWith("@")) return Result.failure("别名必须以 @ 开头");
+
+        if (alias.startsWith("@") == false) {
+            alias = "@" + alias;
+        }
+
         if (engine.hasMount(alias)) return Result.failure("别名已存在");
+
 
         if (type == null) {
             type = MountType.SKILLS;
@@ -1631,6 +1636,11 @@ public class WebSettingsController {
     @Mapping("/web/settings/mounts/update")
     public Result mountsUpdate(Context ctx, @Param("alias") String alias, @Param("description") String description, @Param("writeable") boolean writeable) {
         if (Assert.isEmpty(alias)) return Result.failure("参数不完整");
+
+        if (alias.startsWith("@") == false) {
+            alias = "@" + alias;
+        }
+
         if (!engine.hasMount(alias)) return Result.failure("挂载池不存在");
 
         // 更新配置中的数据
