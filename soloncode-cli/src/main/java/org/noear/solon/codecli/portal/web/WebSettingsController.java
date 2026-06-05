@@ -703,99 +703,7 @@ public class WebSettingsController {
         }
     }
 
-    /**
-     * 批量导入 MCP 服务器配置
-     * 支持 Map 格式: {"mcpServers":{"name1":{...},"name2":{...}}}
-     * 支持数组格式: {"mcpServers":[{...},{...}]}
-     */
-    @Post
-    @Mapping("/web/settings/mcp/servers/import")
-    public Result mcpServersImport(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
-        ONode serversNode = root.get("mcpServers");
-        if (serversNode == null) {
-            return Result.failure("Invalid format: mcpServers not found");
-        }
 
-        int imported = 0;
-        if (serversNode.isObject()) {
-            // Map 格式: name -> config
-            for (Map.Entry<String, ONode> entry : serversNode.getObject().entrySet()) {
-                String name = entry.getKey();
-                if (settings.getMcpServers().containsKey(name)) continue;
-                ONode src = entry.getValue();
-                McpServerDo params = new McpServerDo();
-                params.setType(src.hasKey("type") ? src.get("type").getString() : "stdio");
-                if (src.hasKey("command")) params.setCommand(src.get("command").getString());
-                if (src.hasKey("args")) {
-                    List<String> argsList = new ArrayList<>();
-                    for (ONode a : src.get("args").getArray()) {
-                        argsList.add(a.getString());
-                    }
-                    params.setArgs(argsList);
-                }
-                if (src.hasKey("env")) {
-                    Map<String, String> envMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("env").getObject().entrySet()) {
-                        envMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setEnv(envMap);
-                }
-                if (src.hasKey("url")) params.setUrl(src.get("url").getString());
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setHeaders(headersMap);
-                }
-                if (src.hasKey("timeout")) {
-                    params.setTimeout(Duration.parse(src.get("timeout").getString()));
-                }
-                settings.getMcpServers().put(name, params);
-                imported++;
-            }
-        } else if (serversNode.isArray()) {
-            for (ONode src : serversNode.getArray()) {
-                String name = src.get("name").getString();
-                if (settings.getMcpServers().containsKey(name) || Assert.isEmpty(name)) continue;
-                McpServerDo params = new McpServerDo();
-                params.setType(src.hasKey("type") ? src.get("type").getString() : "stdio");
-                if (src.hasKey("command")) params.setCommand(src.get("command").getString());
-                if (src.hasKey("args")) {
-                    List<String> argsList = new ArrayList<>();
-                    for (ONode a : src.get("args").getArray()) {
-                        argsList.add(a.getString());
-                    }
-                    params.setArgs(argsList);
-                }
-                if (src.hasKey("env")) {
-                    Map<String, String> envMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("env").getObject().entrySet()) {
-                        envMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setEnv(envMap);
-                }
-                if (src.hasKey("url")) params.setUrl(src.get("url").getString());
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setHeaders(headersMap);
-                }
-                if (src.hasKey("timeout")) {
-                    params.setTimeout(Duration.parse(src.get("timeout").getString()));
-                }
-                settings.getMcpServers().put(name, params);
-                imported++;
-            }
-        }
-
-        saveSettings();
-        LOG.info("[Settings] MCP servers imported: {} items", imported);
-        return Result.succeed("Imported " + imported + " server(s)");
-    }
 
     // ==================== 设置：MCP 工具权限管理 ====================
 
@@ -1104,63 +1012,6 @@ public class WebSettingsController {
         }
     }
 
-    /**
-     * 批量导入 OpenApi 服务器配置
-     * 支持 Map 格式: {"apiServers":{"name1":{...},"name2":{...}}}
-     * 支持数组格式: {"apiServers":[{...},{...}]}
-     */
-    @Post
-    @Mapping("/web/settings/openapi/servers/import")
-    public Result openapiServersImport(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
-        ONode serversNode = root.get("apiServers");
-        if (serversNode == null) {
-            return Result.failure("Invalid format: apiServers not found");
-        }
-
-        int imported = 0;
-        if (serversNode.isObject()) {
-            // Map 格式: name -> config
-            for (Map.Entry<String, ONode> entry : serversNode.getObject().entrySet()) {
-                String name = entry.getKey();
-                if (settings.getApiServers().containsKey(name)) continue;
-                ONode src = entry.getValue();
-                ApiSourceDo source = new ApiSourceDo();
-                source.setApiBaseUrl(src.hasKey("apiBaseUrl") ? src.get("apiBaseUrl").getString() : "");
-                source.setDocUrl(src.hasKey("docUrl") ? src.get("docUrl").getString() : "");
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    source.setHeaders(headersMap);
-                }
-                settings.getApiServers().put(name, source);
-                imported++;
-            }
-        } else if (serversNode.isArray()) {
-            for (ONode src : serversNode.getArray()) {
-                String name = src.get("name").getString();
-                if (settings.getApiServers().containsKey(name) || Assert.isEmpty(name)) continue;
-                ApiSourceDo source = new ApiSourceDo();
-                source.setApiBaseUrl(src.hasKey("apiBaseUrl") ? src.get("apiBaseUrl").getString() : "");
-                source.setDocUrl(src.hasKey("docUrl") ? src.get("docUrl").getString() : "");
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    source.setHeaders(headersMap);
-                }
-                settings.getApiServers().put(name, source);
-                imported++;
-            }
-        }
-
-        saveSettings();
-        LOG.info("[Settings] OpenApi servers imported: {} items", imported);
-        return Result.succeed("Imported " + imported + " server(s)");
-    }
 
     // ==================== 设置：OpenApi 工具权限管理 ====================
 
@@ -1824,26 +1675,6 @@ public class WebSettingsController {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());
             return Result.failure("删除失败: " + e.getMessage());
         }
-    }
-
-    /**
-     * 计算工具的权限状态
-     *
-     * @param toolName       工具名
-     * @param allowedTools   允许列表（空或null表示全部允许）
-     * @param disallowedTools 禁止列表（优先级高于允许列表）
-     * @return "allowed" 或 "disallowed"
-     */
-    private String computeToolStatus(String toolName, List<String> allowedTools, List<String> disallowedTools) {
-        // disallow 优先级最高
-        if (disallowedTools != null && disallowedTools.contains(toolName)) {
-            return "disallowed";
-        }
-        // 有白名单但不在其中
-        if (allowedTools != null && !allowedTools.isEmpty() && !allowedTools.contains(toolName)) {
-            return "disallowed";
-        }
-        return "allowed";
     }
 
     /**

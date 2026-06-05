@@ -659,7 +659,7 @@
                                 <div class="form-group">
                                     <label>映射路径 <span class="required">*</span></label>
                                     <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
-                                    <div class="form-hint">文件所在的本地目录路径（支持相对路径和 '~/' 用户目录路径）</div>
+                                    <div class="form-hint">文件所在的本地目录路径（支持 './' 工作区路径和 '~/' 用户目录路径）</div>
                                 </div>
                                 <div class="form-group" id="mountsWriteableGroup">
                                     <label>开放写权限</label>
@@ -679,7 +679,7 @@
                                 <div class="mounts-presets">
                                     <div class="mounts-presets-label">常见挂载选择</div>
                                     <div class="mounts-presets-btns">
-                                        <button type="button" class="mounts-preset-btn" data-alias="@skills" data-path="skills/">@skills  skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@skills" data-path="./skills/">@skills ./skills/</button>
                                         <button type="button" class="mounts-preset-btn" data-alias="@skillhub" data-path="~/.skillhub/skills/">@skillhub  ~/.skillhub/skills/</button>
                                         <button type="button" class="mounts-preset-btn" data-alias="@agents_skills" data-path="~/.agents/skills/">@agents_skills  ~/.agents/skills/</button>
                                         <button type="button" class="mounts-preset-btn" data-alias="@opencode_skills" data-path="~/.opencode/skills/">@opencode_skills  ~/.opencode/skills/</button>
@@ -1035,8 +1035,13 @@
 <script src="/js/app-streaming.js"></script>
 <script src="/js/app-filer.js"></script>
 <script src="/js/app-gitdiff.js"></script>
-<script src="/js/app-settings-general.js"></script>
 <script src="/js/app-settings.js"></script>
+<script src="/js/app-settings-general.js"></script>
+<script src="/js/app-settings-llm.js"></script>
+<script src="/js/app-settings-mounts.js"></script>
+<script src="/js/app-settings-mcp.js"></script>
+<script src="/js/app-settings-openapi.js"></script>
+<script src="/js/app-settings-lsp.js"></script>
 <script src="/js/app-settings-skill.js"></script>
 </body>
 </html>
