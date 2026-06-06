@@ -297,19 +297,19 @@
         var $ApiUrl = $('#llmApiUrl');
         switch (selectedValue) {
             case 'openai':
-                $ApiUrl.attr('placeholder', 'https://api.deepseek.com');
+                $ApiUrl.attr('placeholder', 'https://api.openai.com');
                 break;
             case 'openai-responses':
                 $ApiUrl.attr('placeholder', 'https://api.openai.com');
                 break;
             case 'anthropic':
-                $ApiUrl.attr('placeholder', 'https://api.deepseek.com/anthropic');
+                $ApiUrl.attr('placeholder', 'https://api.anthropic.com');
                 break;
             case 'ollama':
                 $ApiUrl.attr('placeholder', 'http://127.0.0.1:11434/api/chat');
                 break;
             default:
-                $ApiUrl.attr('placeholder', 'https://api.deepseek.com/chat/completions');
+                $ApiUrl.attr('placeholder', 'https://api.deepseek.com/v1/chat/completions');
         }
     });
 
