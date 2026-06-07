@@ -22,6 +22,7 @@
                 $('#generalSummaryWindowSize').val(d.summaryWindowSize || '');
                 $('#generalSummaryWindowToken').val(d.summaryWindowToken || '');
                 $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
+                $('#generalSandboxAllowUserHome').prop('checked', d.sandboxAllowUserHome !== false);
                 $('#generalApiRetries').val(d.apiRetries != null ? d.apiRetries : '');
                 $('#generalMcpRetries').val(d.mcpRetries != null ? d.mcpRetries : '');
                 $('#generalModelRetries').val(d.modelRetries != null ? d.modelRetries : '');
@@ -42,6 +43,7 @@
             summaryWindowSize: $('#generalSummaryWindowSize').val().trim() ? parseInt($('#generalSummaryWindowSize').val().trim(), 10) : null,
             summaryWindowToken: $('#generalSummaryWindowToken').val().trim() ? parseInt($('#generalSummaryWindowToken').val().trim(), 10) : null,
             sandboxMode: $('#generalSandboxMode').is(':checked'),
+            sandboxAllowUserHome: $('#generalSandboxAllowUserHome').is(':checked'),
             apiRetries: $('#generalApiRetries').val().trim() ? parseInt($('#generalApiRetries').val().trim(), 10) : null,
             mcpRetries: $('#generalMcpRetries').val().trim() ? parseInt($('#generalMcpRetries').val().trim(), 10) : null,
             modelRetries: $('#generalModelRetries').val().trim() ? parseInt($('#generalModelRetries').val().trim(), 10) : null,

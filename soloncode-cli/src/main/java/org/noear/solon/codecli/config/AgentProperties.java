@@ -80,6 +80,7 @@ public class AgentProperties implements Serializable {
     private boolean memoryEnabled = true;
 
     private boolean sandboxMode = true;
+    private boolean sandboxAllowUserHome = true;
     private boolean hitlEnabled = false;
     private boolean subagentEnabled = true;
     private boolean bashAsyncEnabled = false;

@@ -19,8 +19,10 @@ public class GeneralSettings implements Serializable {
     private Integer summaryWindowSize;
     //上下文压缩触发词元数（达到这个数，就开始触发）
     private Integer summaryWindowToken;
-    //启用消盒模式
+    //启用沙盒模式
     private Boolean sandboxMode;
+    //沙盒允许访问用户主目录
+    private Boolean sandboxAllowUserHome;
     //api 重试次数
     private Integer apiRetries;
     //Mcp 重试次数

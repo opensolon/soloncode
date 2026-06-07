@@ -161,6 +161,9 @@ public class WebSettingsController {
             if(tmp.getMemoryIsolation() != null) {
                 properties.setMemoryIsolation(tmp.getMemoryIsolation());
             }
+            if(tmp.getSandboxAllowUserHome() != null) {
+                properties.setSandboxAllowUserHome(tmp.getSandboxAllowUserHome());
+            }
 
             engine.setCompressionThreshold(tmp.getSummaryWindowSize(), tmp.getSummaryWindowToken());
             engine.setSessionWindowSize(tmp.getSessionWindowSize());
