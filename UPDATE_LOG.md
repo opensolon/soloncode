@@ -1,4 +1,9 @@
 
+
+### v2026.6.9
+
+* 优化 soloncode web json 输出时间段格式
+
 ### v2026.6.8
 
 * 新增 soloncode 通过提示词自动添加 config 的支持
