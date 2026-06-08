@@ -277,7 +277,7 @@
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
         $openapiCheckResult.hide();
 
-        $.ajax({ url: '/web/settings/openapi/servers/check', method: 'POST', data: JSON.stringify({ baseUrl: bodyObj.apiBaseUrl, docUrl: bodyObj.docUrl, headers: bodyObj.headers || {} }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
+        $.ajax({ url: '/web/settings/openapi/servers/check', method: 'POST', data: JSON.stringify({ apiBaseUrl: bodyObj.apiBaseUrl, docUrl: bodyObj.docUrl, headers: bodyObj.headers || {} }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var svg = ok

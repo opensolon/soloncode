@@ -980,16 +980,18 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/check")
-    public Result openapiServersCheck(Context ctx) {
+    public Result openapiServersCheck(@Body ApiSourceDo sourceDo) {
         try {
-            ONode root = ONode.ofJson(ctx.body());
-            String baseUrl = root.get("baseUrl").getString();
-            if (Assert.isEmpty(baseUrl)) {
+            if (Assert.isEmpty(sourceDo.getApiBaseUrl())) {
                 return Result.failure("API 基地址不能为空");
             }
 
+            if (Assert.isEmpty(sourceDo.getDocUrl())) {
+                return Result.failure("API 文档地址不能为空");
+            }
+
             // 构建HTTP连接测试
-            java.net.URL url = new java.net.URL(baseUrl);
+            java.net.URL url = new java.net.URL(sourceDo.getDocUrl());
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(10000);
@@ -997,17 +999,16 @@ public class WebSettingsController {
             conn.setInstanceFollowRedirects(true);
 
             // 设置自定义 headers
-            ONode headersNode = root.get("headers");
-            if (headersNode != null && headersNode.isObject()) {
-                for (Map.Entry<String, ONode> entry : headersNode.getObject().entrySet()) {
-                    conn.setRequestProperty(entry.getKey(), entry.getValue().getString());
+            if (Assert.isNotEmpty(sourceDo.getHeaders())) {
+                for (Map.Entry<String, String> entry : sourceDo.getHeaders().entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue());
                 }
             }
 
             int responseCode = conn.getResponseCode();
             conn.disconnect();
 
-            if (responseCode >= 200 && responseCode < 500) {
+            if (responseCode >= 200 && responseCode < 400) {
                 return Result.succeed("连接成功：HTTP " + responseCode);
             } else {
                 return Result.failure("连接失败：HTTP " + responseCode);
