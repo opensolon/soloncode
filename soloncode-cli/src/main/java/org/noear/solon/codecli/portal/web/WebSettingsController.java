@@ -372,10 +372,10 @@ public class WebSettingsController {
             McpServerDo params = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", name);
-            item.put("type", params.getType() != null ? params.getType() : "stdio");
+            item.put("type", params.getTypeOrTransport() != null ? params.getTypeOrTransport() : "stdio");
             item.put("enabled", params.isEnabled());
             item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_GLOBAL);
-            if ("stdio".equals(params.getType())) {
+            if ("stdio".equals(params.getTypeOrTransport())) {
                 item.put("command", params.getCommand());
                 if (params.getArgs() != null) {
                     item.put("args", params.getArgs());
@@ -522,7 +522,7 @@ public class WebSettingsController {
         }
 
         // 构建新参数
-        String type = root.hasKey("type") ? root.get("type").getString() : existing.getType();
+        String type = root.hasKey("type") ? root.get("type").getString() : existing.getTypeOrTransport();
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
         String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL);
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {

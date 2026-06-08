@@ -23,6 +23,7 @@ import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
+import org.noear.solon.core.util.Assert;
 
 import java.time.Duration;
 import java.util.List;
@@ -117,17 +118,17 @@ public class ConfigTalent extends AbsTalent {
         String t = transport.toLowerCase();
 
         if ("stdio".equals(t)) {
-            if (command == null || command.isEmpty()) {
+            if (Assert.isEmpty(command)) {
                 return "ERROR: stdio 模式必须提供 command 参数（启动命令，如 'npx'、'uvx'、'node' 等）。请补充 command 后重试。";
             }
-            if (url != null && !url.isEmpty()) {
+            if (Assert.isNotEmpty(url)) {
                 return "ERROR: stdio 模式不支持 url 参数（url 仅用于 sse/streamable 模式）。请移除 url 后重试。";
             }
         } else if ("sse".equals(t) || "streamable".equals(t)) {
-            if (url == null || url.isEmpty()) {
+            if (Assert.isEmpty(url)) {
                 return "ERROR: " + transport + " 模式必须提供 url 参数（服务地址，如 'http://localhost:8080/mcp'）。请补充 url 后重试。";
             }
-            if (command != null && !command.isEmpty()) {
+            if (Assert.isNotEmpty(command)) {
                 return "ERROR: " + transport + " 模式不支持 command 参数（command 仅用于 stdio 模式）。请移除 command 后重试。";
             }
         } else {
@@ -136,7 +137,7 @@ public class ConfigTalent extends AbsTalent {
 
         // ---- 构建并注册 ----
         McpServerDo mcpDo = new McpServerDo();
-        mcpDo.setTransport(transport);
+        mcpDo.setType(transport);
         if (url != null) mcpDo.setUrl(url);
         if (headers != null && !headers.isEmpty()) mcpDo.setHeaders(headers);
         if (command != null) mcpDo.setCommand(command);
