@@ -50,7 +50,7 @@ public class ConfigTalent extends AbsTalent {
 
     @Override
     public String getInstruction(Prompt prompt) {
-        return "用户提供的信息（如密钥、地址等）由 AI 调用工具完成配置。" +
+        return "根据用户提供的信息（如密钥、地址等）由 AI 调用工具完成配置。" +
                 "若信息不能直接映射到工具参数，应先通过网络搜索等方式查找能实现用户目的的工具或服务，" +
                 "再转换为完整配置；信息不足时先向用户确认。";
     }
