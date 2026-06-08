@@ -40,12 +40,7 @@
 
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>solon-server-jetty</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.noear</groupId>
-            <artifactId>solon-server-jetty-add-websocket</artifactId>
+            <artifactId>solon-server-smarthttp</artifactId>
         </dependency>
 
         <dependency>

@@ -3,6 +3,8 @@
 ### v2026.6.9
 
 * 优化 soloncode web json 输出时间段格式
+* 修复 soloncode web 设置/大模型检测失败的问题（有些模型需要有 user-agent）
+* 修复 soloncode web 沙盒模式下 git log 限制的问题（沙盒误伤）
 
 ### v2026.6.8
 

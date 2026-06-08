@@ -268,6 +268,7 @@ public class WebSettingsController {
                     .apiKey(apiKey)
                     .standard(standard)
                     .model(model)
+                    .userAgent(properties.getUserAgent())
                     .build();
 
             chatModel.prompt("hi").call();
