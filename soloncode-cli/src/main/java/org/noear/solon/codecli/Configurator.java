@@ -22,6 +22,7 @@ import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.ConfigExtension;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
@@ -190,6 +191,8 @@ public class Configurator {
         this.loopScheduler = new LoopScheduler();
         engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
 
+
+        engine.addExtension(new ConfigExtension(engine, agentSettings));
 
         return engine;
     }

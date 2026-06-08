@@ -199,7 +199,7 @@ public class WebSettingsController {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", config.getNameOrModel());
             item.put("model", config.getModel());
-            item.put("provider", config.getProvider());
+            item.put("standard", config.getStandardOrProvider());
             item.put("apiUrl", config.getApiUrl());
             item.put("apiKey", config.getApiKey());
             item.put("enabled", config.isEnabled());
@@ -236,7 +236,7 @@ public class WebSettingsController {
         item.put("model", config.getModel());
         item.put("name", config.getNameOrModel());
         item.put("apiKey", config.getApiKey());
-        item.put("provider", config.getProvider());
+        item.put("standard", config.getStandardOrProvider());
         item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
         if (config.getTimeout() != null) {
             item.put("timeout", config.getTimeout().toString());
@@ -256,7 +256,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/models/fetch")
-    public Result llmModelsFetch(String apiUrl, String apiKey, String provider, String model) {
+    public Result llmModelsFetch(String apiUrl, String apiKey, String standard, String model) {
         if (Assert.isEmpty(apiUrl)) {
             return Result.failure("apiUrl is required");
         }
@@ -264,7 +264,7 @@ public class WebSettingsController {
         try {
             ChatModel chatModel = ChatModel.of(apiUrl)
                     .apiKey(apiKey)
-                    .provider(provider)
+                    .standard(standard)
                     .model(model)
                     .build();
 

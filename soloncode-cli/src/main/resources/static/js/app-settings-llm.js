@@ -56,11 +56,11 @@
             var providerIcons = { 'openai': 'OAI', 'ollama': 'OLA', 'zhipu': 'ZP', 'deepseek': 'DS', 'baidu-qianfan': 'BD', 'ali-tongyi': 'ALI', 'moonshot': 'MS', 'minimax': 'MM' };
             list.forEach(function (item) {
                 var model = item.model || '';
-                var provider = item.provider || '';
+                var standard = item.standard || '';
                 var name = item.name || '';
                 var apiUrl = item.apiUrl || '';
                 var enabled = item.enabled !== false;
-                var icon = providerIcons[provider] || model.substring(0, 2).toUpperCase();
+                var icon = providerIcons[standard] || model.substring(0, 2).toUpperCase();
                 var apiUrlShort = apiUrl ? apiUrl.replace(/^https?:\/\//, '').split('/')[0] : '';
 
                 var displayName = name || model;
@@ -114,7 +114,7 @@
     }
 
     function fillLlmForm(item) {
-        if (item.provider) $('#llmProvider').val(item.provider);
+        if (item.standard) $('#llmProvider').val(item.standard);
         if (item.apiUrl) $('#llmApiUrl').val(item.apiUrl);
         if (item.apiKey) {
             $('#llmApiKey').val(item.apiKey);
@@ -135,10 +135,10 @@
         var apiKey = $('#llmApiKey').val().trim();
         var model = $('#llmModel').val().trim();
         var alias = $('#llmName').val().trim();
-        var provider = $('#llmProvider').val();
+        var standard = $('#llmProvider').val();
         var timeout = $('#llmTimeout').val().trim();
         if (!apiUrl || !model || !alias) { showToast('API 地址、模型和名称为必填项', 'error'); return null; }
-        var bodyObj = { apiUrl: apiUrl, model: model, name: alias, provider: provider, scope: $('#llmScope').val() || 'user' };
+        var bodyObj = { apiUrl: apiUrl, model: model, name: alias, standard: standard, scope: $('#llmScope').val() || 'user' };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
         var contextLength = $('#llmContextLength').val().trim();
@@ -255,7 +255,7 @@
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
         $llmCheckResult.hide();
 
-        $.ajax({ url: '/web/settings/llm/models/fetch', type: 'POST', contentType: 'application/json', data: JSON.stringify({ apiUrl: apiUrl, apiKey: $('#llmApiKey').val().trim(), provider: $('#llmProvider').val(), model: ($('#llmModel').val() || '').trim() }), timeout: 30000, dataType: 'json' })
+        $.ajax({ url: '/web/settings/llm/models/fetch', type: 'POST', contentType: 'application/json', data: JSON.stringify({ apiUrl: apiUrl, apiKey: $('#llmApiKey').val().trim(), standard: $('#llmProvider').val(), model: ($('#llmModel').val() || '').trim() }), timeout: 30000, dataType: 'json' })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var msg = ok ? resp.data : ('连接失败: ' + (resp.description || '未知错误'));
