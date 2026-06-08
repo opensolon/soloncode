@@ -45,14 +45,14 @@ public class ConfigTalent extends AbsTalent {
 
     @Override
     public String description() {
-        return "配置管理专家：允许在运行时动态添加 LLM 模型、MCP 服务、OpenAPI 源。";
+        return "运行时动态添加 LLM 模型、MCP 服务、OpenAPI 源，添加后立即生效并持久化。";
     }
 
     @Override
     public String getInstruction(Prompt prompt) {
-        return "## 配置管理工具\n" +
-                "需要用户提供关键信息（如密钥、地址等），由 AI 调用工具完成配置添加。\n" +
-                "添加后配置会同时注册到引擎（立即生效）并持久化。\n";
+        return "用户提供的信息（如密钥、地址等）由 AI 调用工具完成配置。" +
+                "若信息不能直接映射到工具参数，应先通过网络搜索等方式查找能实现用户目的的工具或服务，" +
+                "再转换为完整配置；信息不足时先向用户确认。";
     }
 
     // ==================== add_model ====================
@@ -92,7 +92,12 @@ public class ConfigTalent extends AbsTalent {
 
     // ==================== add_mcp_server ====================
 
-    @ToolMapping(name = "add_mcp_server", description = "添加一个新的 MCP 服务，使其工具可被调用。添加后立即生效并持久化。")
+    @ToolMapping(name = "add_mcp_server",
+            description = "添加一个新的 MCP 服务，使其工具可被调用。添加后立即生效并持久化。" +
+                    "不同 transport 的必输参数说明：" +
+                    "1) stdio 模式：必须输入 command（启动命令，如 'npx'、'uvx'、'node' 等）；args（命令参数列表）可选；env（环境变量）可选。" +
+                    "2) streamable 或 sse 模式：必须输入 url（服务地址，如 'http://localhost:8080/mcp'）；headers（自定义请求头）可选。" +
+                    "三种模式互斥，只能选一种 transport。")
     public String addMcpServer(
             @Param(name = "name", description = "服务名称标识") String name,
             @Param(name = "transport", description = "传输协议：sse、streamable、stdio（三选一）") String transport,
@@ -104,6 +109,32 @@ public class ConfigTalent extends AbsTalent {
             @Param(name = "disallowedTools", description = "不允许用的工具黑名单", required = false) List<String> disallowedTools,
             @Param(name = "timeout", description = "超时秒数", required = false) String timeout) {
 
+        // ---- transport 参数校验 ----
+        if (transport == null || transport.isEmpty()) {
+            return "ERROR: transport 不能为空，必须为 stdio、sse 或 streamable 三者之一。请补充 transport 参数后重试。";
+        }
+
+        String t = transport.toLowerCase();
+
+        if ("stdio".equals(t)) {
+            if (command == null || command.isEmpty()) {
+                return "ERROR: stdio 模式必须提供 command 参数（启动命令，如 'npx'、'uvx'、'node' 等）。请补充 command 后重试。";
+            }
+            if (url != null && !url.isEmpty()) {
+                return "ERROR: stdio 模式不支持 url 参数（url 仅用于 sse/streamable 模式）。请移除 url 后重试。";
+            }
+        } else if ("sse".equals(t) || "streamable".equals(t)) {
+            if (url == null || url.isEmpty()) {
+                return "ERROR: " + transport + " 模式必须提供 url 参数（服务地址，如 'http://localhost:8080/mcp'）。请补充 url 后重试。";
+            }
+            if (command != null && !command.isEmpty()) {
+                return "ERROR: " + transport + " 模式不支持 command 参数（command 仅用于 stdio 模式）。请移除 command 后重试。";
+            }
+        } else {
+            return "ERROR: 不支持的 transport 类型 '" + transport + "'。仅支持 stdio、sse、streamable。请修正后重试。";
+        }
+
+        // ---- 构建并注册 ----
         McpServerDo mcpDo = new McpServerDo();
         mcpDo.setTransport(transport);
         if (url != null) mcpDo.setUrl(url);
@@ -121,7 +152,7 @@ public class ConfigTalent extends AbsTalent {
         settings.getMcpServers().put(name, mcpDo);
         settings.saveToFile();
 
-        return "OK: MCP 服务 '" + name + "' 已添加";
+        return "OK: MCP 服务 '" + name + "' 已添加（transport=" + transport + "）";
     }
 
     // ==================== add_api_server ====================
