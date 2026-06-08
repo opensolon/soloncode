@@ -51,7 +51,7 @@ public class ConfigTalent extends AbsTalent {
     @Override
     public String getInstruction(Prompt prompt) {
         return "## 配置管理工具\n" +
-                "通过用户的主动输入，可在运行时动态添加配置。\n" +
+                "需要用户提供关键信息（如密钥、地址等），由 AI 调用工具完成配置添加。\n" +
                 "添加后配置会同时注册到引擎（立即生效）并持久化。\n";
     }
 
@@ -129,7 +129,7 @@ public class ConfigTalent extends AbsTalent {
     @ToolMapping(name = "add_api_server", description = "添加一个新的 OpenAPI 源，使其接口可被调用。添加后立即生效并持久化。")
     public String addApiServer(
             @Param(name = "docUrl", description = "OpenAPI 文档地址") String docUrl,
-            @Param(name = "apiBaseUrl", description = "API 基础路径") String apiBaseUrl,
+            @Param(name = "apiBaseUrl", description = "API 基础路径", required = false) String apiBaseUrl,
             @Param(name = "headers", description = "自定义请求头", required = false) Map<String, String> headers,
             @Param(name = "disallowedTools", description = "不允许用的工具黑名单", required = false) List<String> disallowedTools,
             @Param(name = "timeout", description = "超时秒数", required = false) String timeout) {
