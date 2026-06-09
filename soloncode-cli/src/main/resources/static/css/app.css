@@ -1123,9 +1123,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     font-family: var(--font-mono);
     color: var(--text-primary);
     font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    word-break: break-all;
 }
 .git-viewer-close {
     width: 32px;
@@ -1673,6 +1671,14 @@ pre:hover .code-copy-btn { opacity: 1; }
     line-height: 1.5;
 }
 
+.todo-text {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .todo-item:hover {
     background: var(--bg-hover);
 }
@@ -1715,3 +1721,25 @@ pre:hover .code-copy-btn { opacity: 1; }
     padding: 24px;
     text-align: center;
 }
+
+/* ===== Context Size Indicator ===== */
+.context-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    white-space: nowrap;
+    transition: opacity 0.3s, color 0.3s;
+    user-select: none;
+}
+.context-indicator.ctx-compressed {
+    opacity: 1;
+    color: #e6a23c;
+}
+.ctx-sep {
+    margin: 0 2px;
+    opacity: 0.5;
+}
+

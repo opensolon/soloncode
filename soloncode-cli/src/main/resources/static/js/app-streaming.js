@@ -143,6 +143,7 @@ function onWebChunk(sess, chunk) {
             case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
             case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
             case 'trace':  finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
+            case 'context_size': if (typeof updateContextIndicator === 'function') updateContextIndicator(chunk); break;
         }
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
@@ -382,6 +383,8 @@ setActiveSession = function(sid) {
     updateDingTalkUI();
     // 切换会话时刷新任务面板
     if (window.loadTodos) window.loadTodos();
+    // 切换会话时重置上下文指示器
+    if (typeof resetContextIndicator === 'function') resetContextIndicator();
 };
 
 wechatHeaderBtn.on('click', function() {

@@ -24,6 +24,7 @@ import java.util.Map;
  *   <tr><td>{@code done}</td><td>完成信号，表示当前响应流已全部发送完毕</td></tr>
  *   <tr><td>{@code error}</td><td>错误信息，表示处理过程中发生了异常</td></tr>
  *   <tr><td>{@code trace}</td><td>追踪信息，包含模型名称、token 消耗和推理耗时（仅在最终汇总时输出）</td></tr>
+ *   <tr><td>{@code context_size}</td><td>上下文大小信息，包含当前上下文的消息数和 token 数（每次推理前推送）</td></tr>
  * </table>
  *
  * <h3>架构位置</h3>
