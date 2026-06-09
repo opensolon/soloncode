@@ -365,6 +365,7 @@
 .mounts-scope-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
 .mounts-scope-badge.scope-user { background: rgba(99,102,241,0.1); color: #6366f1; }
 .mounts-scope-badge.scope-workspace { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.llm-default-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; background: rgba(16,185,129,0.1); color: #10b981; }
 
 .mounts-skills-count { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; padding: 0 4px; }
 .form-hint { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }

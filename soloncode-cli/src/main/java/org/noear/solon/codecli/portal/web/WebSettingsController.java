@@ -203,7 +203,9 @@ public class WebSettingsController {
      */
     @Get
     @Mapping("/web/settings/llm/models")
-    public Result<List<Map>> llmModelsList() {
+    public Result<Map<String,Object>> llmModelsList() {
+        Map<String,Object> data = new LinkedHashMap<>();
+
         List<Map> list = new ArrayList<>();
         for (ModelDo config : settings.getModels()) {
             Map<String, Object> item = new LinkedHashMap<>();
@@ -216,7 +218,13 @@ public class WebSettingsController {
             item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
             list.add(item);
         }
-        return Result.succeed(list);
+
+        sortByName(list, "name");
+
+        data.put("list", list);
+        data.put("default", settings.getDefaultModel());
+
+        return Result.succeed(data);
     }
 
     /**
@@ -293,12 +301,16 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/models/add")
-    public Result llmModelsAdd(@Body ModelDo config) throws Exception {
+    public Result llmModelsAdd(@Body ModelDo config, boolean isDefaultModel) throws Exception {
         if (Assert.isEmpty(config.getApiUrl()) || Assert.isEmpty(config.getModel())) {
             return Result.failure("apiUrl and model are required");
         }
 
         engine.addModel(config);
+
+//        if(isDefaultModel){
+//            engine.setDefaultModel(config.getNameOrModel());
+//        }
 
         settings.getModels().removeIf(c -> c.getNameOrModel().equals(config.getNameOrModel()));
         settings.getModels().add(config);
@@ -405,6 +417,10 @@ public class WebSettingsController {
             }
             list.add(item);
         }
+
+
+        sortByName(list, "name");
+
         return Result.succeed(list);
     }
 
@@ -804,6 +820,9 @@ public class WebSettingsController {
             }
             list.add(item);
         }
+
+        sortByName(list, "name");
+
         return Result.succeed(list);
     }
 
@@ -1118,6 +1137,9 @@ public class WebSettingsController {
             }
             list.add(item);
         }
+
+        sortByName(list, "name");
+
         return Result.succeed(list);
     }
 
@@ -1445,6 +1467,9 @@ public class WebSettingsController {
 
             list.add(item);
         }
+
+        sortByName(list, "alias");
+
         return Result.succeed(list);
     }
 
@@ -1683,6 +1708,17 @@ public class WebSettingsController {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());
             return Result.failure("删除失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 按 Map 中指定 key 进行不区分大小写排序
+     */
+    private void sortByName(List<? extends Map> list, String key) {
+        list.sort((a, b) -> {
+            String nameA = (String) a.getOrDefault(key, "");
+            String nameB = (String) b.getOrDefault(key, "");
+            return nameA.compareToIgnoreCase(nameB);
+        });
     }
 
     /**

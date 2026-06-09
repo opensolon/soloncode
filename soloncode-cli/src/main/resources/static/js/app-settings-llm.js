@@ -30,7 +30,10 @@
     function loadLlmList() {
         $.get('/web/settings/llm/models', function (resp) {
             if (resp.code === 200 && resp.data) {
-                renderLlmList(resp.data || [], '');
+                var data = resp.data;
+                var list = data.list || (Array.isArray(data) ? data : []);
+                var defaultModel = data.default || '';
+                renderLlmList(list, defaultModel);
             }
         }).fail(function () { console.error('[Settings] Failed to load models'); });
     }
@@ -73,9 +76,10 @@
                     metaLine = escapeHtml(model);
                 }
 
+                var isDefault = name === selected;
                 html += '<div class="llm-model-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">'
                     + '<div class="llm-model-icon">' + escapeHtml(icon) + '</div>'
-                    + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div><div class="llm-model-meta">'
+                    + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + (isDefault ? ' <span class="llm-default-badge">默认</span>' : '') + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div><div class="llm-model-meta">'
                     + '<span class="llm-api-hint">' + metaLine + '</span>'
                     + '</div></div><div class="llm-model-actions">'
                     + '<button class="llm-action-btn edit llm-edit-btn" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
@@ -108,6 +112,7 @@
         llmEditName = null;
         $llmSaveBtn.text('保存');
         $('#llmStandard, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
+        $('#llmIsDefaultModel').prop('checked', false);
         setScopeValue('llmScope', 'user');
         $('#llmApiKey').attr('placeholder', 'sk-...');
         $llmCheckResult.hide();
@@ -206,7 +211,11 @@
         var bodyObj = buildLlmBodyObj();
         if (!bodyObj) return;
         var isEdit = !!llmEditName;
+        var isDefaultModel = $('#llmIsDefaultModel').is(':checked');
         var url = isEdit ? '/web/settings/llm/models/update' : '/web/settings/llm/models/add';
+        if (isDefaultModel) {
+            url += (url.indexOf('?') === -1 ? '?' : '&') + 'isDefaultModel=true';
+        }
         var actionText = isEdit ? '更新' : '添加';
         if (isEdit) bodyObj.originalName = llmEditName;
 

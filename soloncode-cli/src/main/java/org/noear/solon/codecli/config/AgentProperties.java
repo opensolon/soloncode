@@ -92,6 +92,8 @@ public class AgentProperties implements Serializable {
     private boolean lspEnabled = true;
 
     private String userAgent;
+    //defaultModel
+    private String defaultModel;
 
     //api 重试次数
     private int apiRetries = 3;

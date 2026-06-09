@@ -309,12 +309,12 @@ public class WebController {
         if(Assert.isNotEmpty(list)) {
             if (Assert.isNotEmpty(sessionId)) {
                 AgentSession session = engine.getSession(sessionId);
-                String selected = session.getContext().getOrDefault(HarnessEngine.CTX_MODEL_SELECTED,
-                        engine.getMainModel().getNameOrModel());
+                String selected = session.getContext()
+                        .getOrDefault(HarnessEngine.CTX_MODEL_SELECTED, engine.getModelOrDef(null).getNameOrModel());
 
                 data.put("selected", selected);
             } else {
-                data.put("selected", engine.getMainModel().getNameOrModel());
+                data.put("selected", engine.getModelOrDef(null).getNameOrModel());
             }
         } else {
             data.put("selected", "");

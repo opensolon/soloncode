@@ -125,6 +125,8 @@ public class Configurator {
                 .mcpRetries(props.getModelRetries())
                 .build();
 
+
+        engine.setDefaultModel(props.getDefaultModel());
         for (ModelDo model : agentSettings.getModels()) {
             engine.addModel(model);
         }
