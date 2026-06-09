@@ -1644,8 +1644,8 @@ pre:hover .code-copy-btn { opacity: 1; }
 .todo-stats {
     font-size: 11px;
     color: var(--text-secondary);
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border-color);
+    flex: 1;
+    text-align: center;
 }
 
 .todo-group {
