@@ -115,6 +115,8 @@ public class Configurator {
                 .memoryEnabled(props.isMemoryEnabled())
                 .memorySolution(new MemoryFactory(agentProps))
                 .sandboxEnabled(props.isSandboxMode())
+                .sandboxAllowUserHome(props.isSandboxAllowUserHome())
+                .sandboxSystemRestrict(props.isSandboxSystemRestrict())
                 .bashAsyncEnabled(props.isBashAsyncEnabled())
                 .subagentEnabled(props.isSubagentEnabled())
                 .hitlEnabled(props.isHitlEnabled())

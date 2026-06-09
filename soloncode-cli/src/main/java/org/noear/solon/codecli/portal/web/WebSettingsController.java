@@ -163,8 +163,13 @@ public class WebSettingsController {
             if(tmp.getMemoryIsolation() != null) {
                 properties.setMemoryIsolation(tmp.getMemoryIsolation());
             }
+
             if(tmp.getSandboxAllowUserHome() != null) {
                 properties.setSandboxAllowUserHome(tmp.getSandboxAllowUserHome());
+            }
+
+            if(tmp.getSandboxSystemRestrict() != null) {
+                properties.setSandboxSystemRestrict(tmp.getSandboxSystemRestrict());
             }
 
             engine.setCompressionThreshold(tmp.getSummaryWindowSize(), tmp.getSummaryWindowToken());
@@ -175,6 +180,9 @@ public class WebSettingsController {
             engine.setApiRetries(tmp.getApiRetries());
 
             engine.setSandboxEnabled(tmp.getSandboxMode());
+            engine.setSandboxAllowUserHome(tmp.getSandboxAllowUserHome());
+            engine.setSandboxSystemRestrict(tmp.getSandboxSystemRestrict());
+
             engine.setBashAsyncEnabled(tmp.getBashAsyncEnabled());
             engine.setMemoryEnabled(tmp.getMemoryEnabled());
 

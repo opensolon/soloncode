@@ -84,6 +84,12 @@ public class AgentSettings implements Serializable {
             general.setSandboxAllowUserHome(props.isSandboxAllowUserHome());
         }
 
+        if (general.getSandboxSystemRestrict() != null) {
+            props.setSandboxSystemRestrict(general.getSandboxSystemRestrict());
+        } else {
+            general.setSandboxSystemRestrict(props.isSandboxSystemRestrict());
+        }
+
         if (general.getApiRetries() != null) {
             props.setApiRetries(general.getApiRetries());
         } else {
