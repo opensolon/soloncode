@@ -205,11 +205,33 @@
     <div class="filer-resize-handle" id="filerResizeHandle"></div>
     <div class="filer-panel collapsed" id="filerPanel">
         <div class="filer-tabs">
+            <button class="filer-tab" data-tab="tasks">
+                任务
+                <span class="todo-badge" id="todoBadge" style="display:none">0</span>
+            </button>
             <button class="filer-tab active" data-tab="files">文件</button>
             <button class="filer-tab" data-tab="gitdiff">
                 审查
                 <span class="git-badge" id="gitBadge" style="display:none">0</span>
             </button>
+        </div>
+
+
+        <!-- Tab Content: 任务 -->
+        <div class="filer-tab-content" id="tabContentTasks">
+            <div class="todo-panel">
+                <div class="todo-header">
+                    <div class="todo-title">当前任务</div>
+                    <button class="todo-refresh-btn" id="todoRefreshBtn" title="刷新">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    </button>
+                </div>
+                <div class="todo-stats" id="todoStats" style="display:none"></div>
+                <div class="todo-list" id="todoList"></div>
+                <div class="todo-empty" id="todoEmpty" style="display:none">
+                    当前会话暂无任务清单
+                </div>
+            </div>
         </div>
 
         <!-- Tab Content: 文件树 -->
@@ -1071,6 +1093,7 @@
 <script src="/js/app-streaming.js"></script>
 <script src="/js/app-filer.js"></script>
 <script src="/js/app-gitdiff.js"></script>
+<script src="/js/app-todos.js"></script>
 <script src="/js/app-settings.js"></script>
 <script src="/js/app-settings-general.js"></script>
 <script src="/js/app-settings-llm.js"></script>

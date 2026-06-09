@@ -37,6 +37,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -752,6 +753,100 @@ public class WebController {
             // ignore
         }
         return null;
+    }
+
+    /**
+     * 获取指定会话的 TODO 列表。
+     * <p>从会话对应的 TODO.md 文件中解析 checkbox 任务项，返回结构化的任务列表及统计信息。</p>
+     *
+     * @param sessionId 会话 ID
+     * @return 包含 exists、raw、items、stats 的结果对象
+     */
+    @Get
+    @Mapping("/web/chat/todos")
+    public Result<Map> todos(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+
+        Path todoPath = engine.getTodoTalent().getTodoPath(engine.getWorkspace(), sessionId);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        if (!Files.exists(todoPath)) {
+            data.put("exists", false);
+            data.put("items", new ArrayList<>());
+            Map<String, Integer> stats = new LinkedHashMap<>();
+            stats.put("total", 0);
+            stats.put("pending", 0);
+            stats.put("inProgress", 0);
+            stats.put("done", 0);
+            data.put("stats", stats);
+            return Result.succeed(data);
+        }
+
+        try {
+            String raw = new String(Files.readAllBytes(todoPath), "UTF-8");
+            data.put("exists", true);
+            data.put("raw", raw);
+
+            List<Map> items = new ArrayList<>();
+            String currentGroup = "";
+            int total = 0, pending = 0, inProgress = 0, done = 0;
+
+            String[] lines = raw.split("\n");
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+
+                // 匹配 ## 标题行作为 group
+                if (line.matches("^\\s*##\\s+.+$")) {
+                    currentGroup = line.replaceFirst("^\\s*##\\s+", "").trim();
+                    continue;
+                }
+
+                // 匹配 checkbox 行: - [ ] / - [/] / - [x] / - [X]
+                if (line.matches("^\\s*-\\s*\\[( |x|X|/)\\]\\s+.+$")) {
+                    total++;
+
+                    char statusChar = line.replaceAll("^\\s*-\\s*\\[([ xX/])]\\s+.+$", "$1").charAt(0);
+                    String status;
+                    if (statusChar == ' ') {
+                        status = "pending";
+                        pending++;
+                    } else if (statusChar == '/') {
+                        status = "in_progress";
+                        inProgress++;
+                    } else {
+                        status = "done";
+                        done++;
+                    }
+
+                    String text = line.replaceFirst("^\\s*-\\s*\\[[ xX/]]\\s+", "").trim();
+
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("line", i + 1);
+                    item.put("status", status);
+                    item.put("text", text);
+                    item.put("raw", line.trim());
+                    item.put("group", currentGroup);
+                    items.add(item);
+                }
+            }
+
+            data.put("items", items);
+
+            Map<String, Integer> stats = new LinkedHashMap<>();
+            stats.put("total", total);
+            stats.put("pending", pending);
+            stats.put("inProgress", inProgress);
+            stats.put("done", done);
+            data.put("stats", stats);
+
+            return Result.succeed(data);
+        } catch (Exception e) {
+            LOG.error("Failed to read TODO for session {}: {}", sessionId, e.getMessage());
+            return Result.failure(500, e.getMessage());
+        }
     }
 
     // ==================== 文件浏览（委派给 FileService） ====================

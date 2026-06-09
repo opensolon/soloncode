@@ -204,6 +204,9 @@ function finishStream(sess) {
         chatInput.focus();
     }
     loadSessionHistory();
+
+    // 刷新任务面板
+    if (window.loadTodos) window.loadTodos();
 }
 
 /* ===== WebSocket 单连接 ===== */
