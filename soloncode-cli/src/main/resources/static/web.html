@@ -363,7 +363,7 @@
                                 <div class="general-card-body">
                                     <div class="general-toggle-row">
                                         <div class="general-toggle-info">
-                                            <span class="general-toggle-desc">开启后，AI 执行的命令将在受限沙盒环境中运行（只能读写'工作区'和'挂载'内的文件）</span>
+                                            <span class="general-toggle-desc">AI 执行的命令将在受限沙盒环境中运行（只能读写'工作区'和'挂载'内的文件）</span>
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="generalSandboxMode"/>
@@ -376,6 +376,15 @@
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="generalSandboxAllowUserHome"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc">AI 沙盒，采用更严格的系统接口限制；关闭则放宽限制</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSandboxSystemRestrict"/>
                                             <span class="toggle-slider"></span>
                                         </label>
                                     </div>
