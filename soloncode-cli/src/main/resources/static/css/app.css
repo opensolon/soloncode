@@ -841,11 +841,27 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .git-diff-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 0 12px;
     height: 46px;
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
+}
+.git-header-left {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+.git-header-center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.git-header-right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
 }
 .git-branch {
     font-size: 12px;
@@ -854,7 +870,22 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
+}
+.git-refresh-btn {
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+.git-refresh-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
 }
 .git-branch::before {
     content: '\21C2';

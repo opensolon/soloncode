@@ -18,6 +18,7 @@
     var gitCommitMsg = document.getElementById('gitCommitMsg');
     var gitCommitBar = document.getElementById('gitCommitBar');
     var gitSelectAll = document.getElementById('gitSelectAll');
+    var gitRefreshBtn = document.getElementById('gitRefreshBtn');
 
     // Diff Viewer / File Viewer 元素（内联在 main-area 内）
     var gitDiffViewer = document.getElementById('gitDiffViewer');
@@ -33,6 +34,13 @@
     var gitStatus = null;
     var isInitializing = false;
     var viewerMode = null; // 'diff' | 'file' | null
+
+    // ---- 刷新按钮 ----
+    if (gitRefreshBtn) {
+        gitRefreshBtn.addEventListener('click', function() {
+            loadGitStatus();
+        });
+    }
 
     // ---- Tab 切换 ----
     tabs.forEach(function(tab) {
