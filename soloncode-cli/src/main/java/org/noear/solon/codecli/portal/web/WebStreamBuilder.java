@@ -276,6 +276,8 @@ public class WebStreamBuilder {
             return WebChunk.EMPTY;
         }
 
+        // todowrite 完成时，前端通过 action chunk 的 toolName='todowrite' 自动刷新任务面板
+
         if (Assert.isNotEmpty(chunk.getToolName())) {
             if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
                     TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||

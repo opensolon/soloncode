@@ -88,6 +88,16 @@
         todoRefreshBtn.addEventListener('click', loadTodos);
     }
 
+    // 监听 WebSocket action chunk，当 todowrite 完成时自动刷新
+    if (typeof window._todoChunkHandlers === 'undefined') {
+        window._todoChunkHandlers = [];
+    }
+    window._todoChunkHandlers.push(function(chunk) {
+        if (chunk && chunk.toolName === 'todowrite') {
+            loadTodos();
+        }
+    });
+
     // expose for external calls
     window.loadTodos = loadTodos;
 })();

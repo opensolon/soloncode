@@ -3,6 +3,7 @@ package org.noear.solon.codecli.config;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
+import org.noear.solon.ai.harness.agent.AgentDefinition;
 
 /**
  *
@@ -22,7 +23,7 @@ public class ConfigExtension implements HarnessExtension {
 
     @Override
     public void configure(String agentName, ReActAgent.Builder agentBuilder) {
-        if ("main".equals(agentName)) {
+        if (AgentDefinition.AGENT_MAIN.equals(agentName)) {
             agentBuilder.defaultTalentAdd(configTalent);
         }
     }
