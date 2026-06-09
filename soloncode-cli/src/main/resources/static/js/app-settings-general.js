@@ -14,19 +14,32 @@
         }
     }
 
+    // 解析带千位分隔符的数字（支持 _ 和 ,）
+    function parseNumStr(s) {
+        if (!s) return null;
+        var n = parseInt(s.replace(/[, _]/g, ''), 10);
+        return isNaN(n) ? null : n;
+    }
+
+    // 将数字格式化为千位分隔（用下划线，与 placeholder 一致）
+    function formatNum(n) {
+        if (n == null || n === '') return '';
+        return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '_');
+    }
+
     function loadGeneralSettings() {
         $.get('/web/settings/general', function (resp) {
             if (resp.code === 200 && resp.data) {
                 var d = resp.data;
-                $('#generalSessionWindowSize').val(d.sessionWindowSize != null ? d.sessionWindowSize : '');
-                $('#generalSummaryWindowSize').val(d.summaryWindowSize || '');
-                $('#generalSummaryWindowToken').val(d.summaryWindowToken || '');
+                $('#generalSessionWindowSize').val(d.sessionWindowSize != null ? formatNum(d.sessionWindowSize) : '');
+                $('#generalSummaryWindowSize').val(d.summaryWindowSize != null ? formatNum(d.summaryWindowSize) : '');
+                $('#generalSummaryWindowToken').val(d.summaryWindowToken != null ? formatNum(d.summaryWindowToken) : '');
                 $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
                 $('#generalSandboxAllowUserHome').prop('checked', d.sandboxAllowUserHome !== false);
                 $('#generalSandboxSystemRestrict').prop('checked', !!d.sandboxSystemRestrict);
-                $('#generalApiRetries').val(d.apiRetries != null ? d.apiRetries : '');
-                $('#generalMcpRetries').val(d.mcpRetries != null ? d.mcpRetries : '');
-                $('#generalModelRetries').val(d.modelRetries != null ? d.modelRetries : '');
+                $('#generalApiRetries').val(d.apiRetries != null ? formatNum(d.apiRetries) : '');
+                $('#generalMcpRetries').val(d.mcpRetries != null ? formatNum(d.mcpRetries) : '');
+                $('#generalModelRetries').val(d.modelRetries != null ? formatNum(d.modelRetries) : '');
                 $('#generalMemoryEnabled').prop('checked', d.memoryEnabled !== false);
                 $('#generalMemoryIsolation').prop('checked', d.memoryIsolation !== false);
                 $('#generalMcpEnabled').prop('checked', d.mcpEnabled !== false);
@@ -40,15 +53,15 @@
     $('#generalSaveBtn').on('click', function () {
         var $generalSaveBtn = $('#generalSaveBtn');
         var bodyObj = {
-            sessionWindowSize: $('#generalSessionWindowSize').val().trim() ? parseInt($('#generalSessionWindowSize').val().trim(), 10) : null,
-            summaryWindowSize: $('#generalSummaryWindowSize').val().trim() ? parseInt($('#generalSummaryWindowSize').val().trim(), 10) : null,
-            summaryWindowToken: $('#generalSummaryWindowToken').val().trim() ? parseInt($('#generalSummaryWindowToken').val().trim(), 10) : null,
+            sessionWindowSize: parseNumStr($('#generalSessionWindowSize').val().trim()),
+            summaryWindowSize: parseNumStr($('#generalSummaryWindowSize').val().trim()),
+            summaryWindowToken: parseNumStr($('#generalSummaryWindowToken').val().trim()),
             sandboxMode: $('#generalSandboxMode').is(':checked'),
             sandboxAllowUserHome: $('#generalSandboxAllowUserHome').is(':checked'),
             sandboxSystemRestrict: $('#generalSandboxSystemRestrict').is(':checked'),
-            apiRetries: $('#generalApiRetries').val().trim() ? parseInt($('#generalApiRetries').val().trim(), 10) : null,
-            mcpRetries: $('#generalMcpRetries').val().trim() ? parseInt($('#generalMcpRetries').val().trim(), 10) : null,
-            modelRetries: $('#generalModelRetries').val().trim() ? parseInt($('#generalModelRetries').val().trim(), 10) : null,
+            apiRetries: parseNumStr($('#generalApiRetries').val().trim()),
+            mcpRetries: parseNumStr($('#generalMcpRetries').val().trim()),
+            modelRetries: parseNumStr($('#generalModelRetries').val().trim()),
             memoryEnabled: $('#generalMemoryEnabled').is(':checked'),
             memoryIsolation: $('#generalMemoryIsolation').is(':checked'),
             mcpEnabled: $('#generalMcpEnabled').is(':checked'),

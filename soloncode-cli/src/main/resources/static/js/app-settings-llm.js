@@ -126,7 +126,7 @@
         if (item.name) $('#llmName').val(item.name);
         if (item.scope) setScopeValue('llmScope', item.scope);
         if (item.timeout) $('#llmTimeout').val(item.timeout);
-        if (item.contextLength) $('#llmContextLength').val(item.contextLength);
+        if (item.contextLength) $('#llmContextLength').val(String(item.contextLength).replace(/\B(?=(\d{3})+(?!\d))/g, '_'));
         if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
     }
 
@@ -141,7 +141,7 @@
         var bodyObj = { apiUrl: apiUrl, model: model, name: alias, standard: standard, scope: $('#llmScope').val() || 'user' };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
-        var contextLength = $('#llmContextLength').val().trim();
+        var contextLength = $('#llmContextLength').val().trim().replace(/[, _]/g, '');
         if (contextLength) bodyObj.contextLength = parseInt(contextLength, 10);
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {

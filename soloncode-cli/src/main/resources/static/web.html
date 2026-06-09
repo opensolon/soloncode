@@ -361,15 +361,15 @@
                                     <div class="general-field-row">
                                         <div class="general-field">
                                             <label class="general-field-label">历史窗口大小</label>
-                                            <input type="number" class="general-input" id="generalSessionWindowSize" placeholder="默认 8"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSessionWindowSize" placeholder="默认 8"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">压缩触发消息数</label>
-                                            <input type="number" class="general-input" id="generalSummaryWindowSize" placeholder="默认"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowSize" placeholder="默认"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">压缩触发词元数</label>
-                                            <input type="number" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm">历史窗口控制新指令时使用几条历史消息；压缩策略控制对话上下文的自动压缩，防止超出模型窗口限制</div>
@@ -454,15 +454,15 @@
                                     <div class="general-field-row">
                                         <div class="general-field">
                                             <label class="general-field-label">模型重试次数</label>
-                                            <input type="number" class="general-input" id="generalModelRetries" placeholder="默认 3" min="0" max="10"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalModelRetries" placeholder="默认 3"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">MCP 重试次数</label>
-                                            <input type="number" class="general-input" id="generalMcpRetries" placeholder="默认 3" min="0" max="10"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalMcpRetries" placeholder="默认 3"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">OpenAPI 重试次数</label>
-                                            <input type="number" class="general-input" id="generalApiRetries" placeholder="默认 3" min="0" max="10"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalApiRetries" placeholder="默认 3"/>
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm">控制各类请求失败后的自动重试次数</div>
@@ -611,7 +611,7 @@
                                     </div>
                                     <div class="form-group">
                                         <label>上下文长度（可选）</label>
-                                        <input type="number" id="llmContextLength" placeholder="1_000_000（模型上下文长度）"/>
+                                        <input type="text" inputmode="numeric" id="llmContextLength" placeholder="1_000_000（模型上下文长度）"/>
                                     </div>
                                 </div>
                                 <div class="form-group">

@@ -290,10 +290,11 @@ public class WebController {
 
         for (ChatConfig config : engine.getModels()) {
             if (config.isEnabled()) {
-                Map<String, String> item = new LinkedHashMap<>();
+                Map<String, Object> item = new LinkedHashMap<>();
                 item.put("model", config.getModel());
                 item.put("name", config.getNameOrModel());
                 item.put("description", config.getDescriptionOrModel());
+                item.put("contextLength", config.getContextLength());
                 list.add(item);
             }
         }
