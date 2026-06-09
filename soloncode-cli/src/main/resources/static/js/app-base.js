@@ -86,6 +86,7 @@ function setActiveSession(sessionId) {
     if (isStreaming) setBtnStopMode();
     else setBtnSendMode();
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) refreshSessionModel(sessionId);
+    if (typeof resetContextIndicator === 'function') resetContextIndicator();
 }
 
 function deactivateSession() {
