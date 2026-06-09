@@ -214,6 +214,7 @@ public class WebSettingsController {
             item.put("standard", config.getStandardOrProvider());
             item.put("apiUrl", config.getApiUrl());
             item.put("apiKey", config.getApiKey());
+            item.put("contextLength", config.getContextLength());
             item.put("enabled", config.isEnabled());
             item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
             list.add(item);

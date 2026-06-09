@@ -15,7 +15,8 @@ function updateContextIndicator(chunk) {
     }
     var percent = contextLength > 0 ? Math.round(tokens / contextLength * 100) : 0;
 
-    $status.text('Context: ' + tokens + ' / ' + contextLength + ' (' + percent + '%)');
+    function fmt(n) { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '_'); }
+    $status.text('Context: ' + fmt(tokens) + ' / ' + fmt(contextLength) + ' (' + percent + '%)');
     $status.show();
 }
 

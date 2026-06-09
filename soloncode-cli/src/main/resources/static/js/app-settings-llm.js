@@ -75,6 +75,9 @@
                 } else if (model) {
                     metaLine = escapeHtml(model);
                 }
+                if (item.contextLength) {
+                    metaLine += ' / ' + String(item.contextLength).replace(/\B(?=(\d{3})+(?!\d))/g, '_');
+                }
 
                 var isDefault = name === selected;
                 html += '<div class="llm-model-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">'
