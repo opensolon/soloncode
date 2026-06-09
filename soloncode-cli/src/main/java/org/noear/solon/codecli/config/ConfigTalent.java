@@ -52,7 +52,7 @@ public class ConfigTalent extends AbsTalent {
     @Override
     public String getInstruction(Prompt prompt) {
         return "根据用户提供的信息（如密钥、地址等）由 AI 调用工具完成配置。" +
-                "若信息不能直接映射到工具参数，应先通过网络搜索等方式查找能实现用户目的的工具或服务，" +
+                "若信息不能直接映射到工具参数，应先通过网络搜索等方式查找能实现用户目的的工具或服务（若涉及远程依赖包，须先确认已安装到本地，再调用工具），" +
                 "再转换为完整配置；信息不足时先向用户确认。";
     }
 
@@ -95,20 +95,19 @@ public class ConfigTalent extends AbsTalent {
 
     @ToolMapping(name = "add_mcp_server",
             description = "添加一个新的 MCP 服务，使其工具可被调用。添加后立即生效并持久化。" +
-                    "不同 transport 的必输参数说明：" +
-                    "1) stdio 模式：必须输入 command（启动命令，如 'npx'、'uvx'、'node' 等）；args（命令参数列表）可选；env（环境变量）可选。如果命令依赖远程包（如 npx、uvx），相关依赖包本地如查没有，必须先下载到本地，再调用本接口。" +
-                    "2) streamable 或 sse 模式：必须输入 url（服务地址，如 'http://localhost:8080/mcp'）；headers（自定义请求头）可选。" +
-                    "三种模式互斥，只能选一种 transport。")
+                    "传输协议（transport）三选一，不同模式所需的参数不同：" +
+                    "- stdio 模式：必填 command（如 'npx'、'uvx'、'node'）；可选 args、env。若依赖远程包，须先确认本地已安装，再调用本接口。" +
+                    "- sse / streamable 模式：必填 url（如 'http://localhost:8080/mcp'）；可选 headers。" +
+                    "三种模式互斥，不可混用。timeout（超时秒数，默认 120）适用于所有模式。")
     public String addMcpServer(
-            @Param(name = "name", description = "服务名称标识") String name,
-            @Param(name = "transport", description = "传输协议：sse、streamable、stdio（三选一）") String transport,
-            @Param(name = "url", description = "sse、streamable 模式的服务地址", required = false) String url,
-            @Param(name = "headers", description = "sse、streamable 模式自定义请求头", required = false) Map<String, String> headers,
-            @Param(name = "command", description = "stdio 模式的启动命令", required = false) String command,
-            @Param(name = "args", description = "stdio 模式的命令参数", required = false) List<String> args,
-            @Param(name = "env", description = "stdio 模式的环境变量", required = false) Map<String, String> env,
-            @Param(name = "disallowedTools", description = "不允许用的工具黑名单", required = false) List<String> disallowedTools,
-            @Param(name = "timeout", description = "超时秒数", required = false) String timeout) {
+            @Param(name = "name", description = "服务名称标识，需全局唯一") String name,
+            @Param(name = "transport", description = "传输协议：stdio、sse、streamable（三选一）") String transport,
+            @Param(name = "url", description = "服务地址（仅 sse / streamable 模式必填，如 'http://localhost:8080/mcp'）", required = false) String url,
+            @Param(name = "headers", description = "自定义请求头（仅 sse / streamable 模式）", required = false) Map<String, String> headers,
+            @Param(name = "command", description = "启动命令（仅 stdio 模式必填，如 'npx'、'uvx'、'node'）", required = false) String command,
+            @Param(name = "args", description = "命令参数列表（仅 stdio 模式）", required = false) List<String> args,
+            @Param(name = "env", description = "环境变量（仅 stdio 模式）", required = false) Map<String, String> env,
+            @Param(name = "timeout", description = "超时秒数（所有模式通用，默认 120）", required = false) String timeout) {
 
         // ---- transport 参数校验 ----
         if (transport == null || transport.isEmpty()) {
@@ -143,7 +142,6 @@ public class ConfigTalent extends AbsTalent {
         if (command != null) mcpDo.setCommand(command);
         if (args != null) mcpDo.setArgs(args);
         if (env != null) mcpDo.setEnv(env);
-        if (disallowedTools != null) mcpDo.setDisallowedTools(disallowedTools);
         if (timeout != null && !timeout.isEmpty()) mcpDo.setTimeout(Duration.ofSeconds(Long.parseLong(timeout)));
 
         // 1) 注册到引擎（运行时生效）
