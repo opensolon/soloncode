@@ -256,6 +256,8 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("general").fill(general);
 
+        oNode.set("defaultModel", this.defaultModel);
+
         oNode.getOrNew("models").asArray().then(ary -> {
             for (ModelDo entry : models) {
                 if(AgentFlags.SCOPE_LOCAL.equals(entry.getScope())){

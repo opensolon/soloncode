@@ -1641,11 +1641,11 @@ pre:hover .code-copy-btn { opacity: 1; }
     background: var(--bg-hover);
 }
 
-.todo-stats {
-    font-size: 11px;
-    color: var(--text-secondary);
-    flex: 1;
-    text-align: center;
+.todo-stats-count {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-tertiary, var(--text-secondary));
+    margin-left: 4px;
 }
 
 .todo-group {

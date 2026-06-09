@@ -44,8 +44,7 @@
 
         todoEmpty.style.display = 'none';
         todoStats.style.display = '';
-        todoStats.textContent =
-            '\u5171 ' + stats.total + ' \u9879\uFF0C\u672A\u5B8C\u6210 ' + (stats.pending + stats.inProgress) + ' \u9879\uFF0C\u5DF2\u5B8C\u6210 ' + stats.done + ' \u9879';
+        todoStats.textContent = '(' + stats.done + ' / ' + stats.total + ')';
 
         var html = '';
         var lastGroup = '';
