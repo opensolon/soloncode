@@ -1,4 +1,4 @@
-/* ===== 上下文使用情况指示器 ===== */
+/* ===== 上下文使用情况指示器（仅显示 token 数） ===== */
 
 /**
  * 更新上下文指示器 UI
@@ -9,33 +9,25 @@ function updateContextIndicator(chunk) {
     if (!$indicator.length) return;
 
     var tokenCount = chunk.totalTokens || 0;
-    var msgCount = chunk.text ? parseInt(chunk.text) : 0;
 
-    // 格式化 token 数
-    var tokenText = tokenCount >= 1000
-        ? (tokenCount / 1000).toFixed(1) + 'k'
-        : String(tokenCount);
+    // 显示原始 token 数（无小数，不转 k），单位 tk
+    var tokenText = String(Math.round(tokenCount));
 
-    $indicator.find('.ctx-tokens').text(tokenText + ' tk');
-    $indicator.find('.ctx-msgs').text(msgCount);
+    $indicator.find('.ctx-tokens').text(tokenText);
     $indicator.show();
 
     // 如果发生了压缩，短暂高亮提示
     if (chunk.args && chunk.args.compressed) {
         $indicator.addClass('ctx-compressed');
-        var beforeTk = chunk.args.beforeTokenCount || 0;
-        var afterTk = chunk.args.afterTokenCount || 0;
-        var beforeMsg = chunk.args.beforeMessageCount || 0;
-        var afterMsg = chunk.args.afterMessageCount || 0;
+        var beforeTk = Math.round(chunk.args.beforeTokenCount || 0);
+        var afterTk = Math.round(chunk.args.afterTokenCount || 0);
         $indicator.attr('title',
-            '上下文已压缩: ' + beforeMsg + '→' + afterMsg + ' msgs, ' +
-            (beforeTk >= 1000 ? (beforeTk / 1000).toFixed(1) + 'k' : beforeTk) + '→' +
-            (afterTk >= 1000 ? (afterTk / 1000).toFixed(1) + 'k' : afterTk) + ' tokens');
+            '上下文已压缩: ' + beforeTk + '→' + afterTk + ' tokens');
         setTimeout(function() {
             $indicator.removeClass('ctx-compressed');
         }, 3000);
     } else {
-        $indicator.attr('title', '上下文: ' + msgCount + ' 条消息, ' + tokenText + ' tokens');
+        $indicator.attr('title', '上下文: ' + tokenText + ' tokens');
         $indicator.removeClass('ctx-compressed');
     }
 }
@@ -47,8 +39,7 @@ function resetContextIndicator() {
     var $indicator = $('.context-indicator');
     if ($indicator.length) {
         $indicator.hide();
-        $indicator.find('.ctx-msgs').text('0');
-        $indicator.find('.ctx-tokens').text('0 tk');
+        $indicator.find('.ctx-tokens').text('0');
         $indicator.removeClass('ctx-compressed');
         $indicator.attr('title', '');
     }
