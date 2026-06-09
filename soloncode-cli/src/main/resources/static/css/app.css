@@ -1736,7 +1736,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 }
 
 .todo-done .todo-text {
-    color: var(--text-secondary);
+    color: #999999;
 }
 
 .todo-in_progress .todo-text {

@@ -96,7 +96,7 @@ public class ConfigTalent extends AbsTalent {
     @ToolMapping(name = "add_mcp_server",
             description = "添加一个新的 MCP 服务，使其工具可被调用。添加后立即生效并持久化。" +
                     "不同 transport 的必输参数说明：" +
-                    "1) stdio 模式：必须输入 command（启动命令，如 'npx'、'uvx'、'node' 等）；args（命令参数列表）可选；env（环境变量）可选。如果命令依赖远程包（如 npx、uvx），应确保相关依赖包已下载到本地，再调用本接口。" +
+                    "1) stdio 模式：必须输入 command（启动命令，如 'npx'、'uvx'、'node' 等）；args（命令参数列表）可选；env（环境变量）可选。如果命令依赖远程包（如 npx、uvx），相关依赖包本地如查没有，必须先下载到本地，再调用本接口。" +
                     "2) streamable 或 sse 模式：必须输入 url（服务地址，如 'http://localhost:8080/mcp'）；headers（自定义请求头）可选。" +
                     "三种模式互斥，只能选一种 transport。")
     public String addMcpServer(
