@@ -298,6 +298,12 @@ public class WebController {
                 list.add(item);
             }
         }
+        list.sort((a, b) -> {
+            String nameA = (String) a.getOrDefault("name", "");
+            String nameB = (String) b.getOrDefault("name", "");
+            return nameA.compareToIgnoreCase(nameB);
+        });
+
         data.put("list", list);
 
         if(Assert.isNotEmpty(list)) {

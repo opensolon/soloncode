@@ -663,7 +663,7 @@ function loadModels(sessionId, callback) {
                 modelList = [];
                 var list = data.list || [];
                 for (var i = 0; i < list.length; i++) {
-                    modelList.push({ name: list[i].name || list[i].model, desc: list[i].description });
+                    modelList.push({ name: list[i].name || list[i].model, desc: list[i].description, contextLength: list[i].contextLength || 0 });
                 }
                 modelsLoaded = true;
             }
@@ -715,8 +715,9 @@ function renderModelUI() {
     for (var i = 0; i < modelList.length; i++) {
         var m = modelList[i];
         var cls = m.name === currentModel ? ' active' : '';
+        var ctxLen = m.contextLength ? (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength) : '';
         html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
-            + '<span class="model-item-name">' + escapeHtml(m.name) + '</span>'
+            + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
             + (m.desc ? '<span class="model-item-desc">' + escapeHtml(m.desc) + '</span>' : '')
             + '</div>';
     }
