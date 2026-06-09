@@ -1,4 +1,14 @@
 
+### v2026.6.10
+
+* 添加 soloncode web 任务面板（待办事清单）
+* 添加 soloncode web 上下文使用情况实时展示
+* 添加 soloncode web 大语言模型默认设置
+* 添加 soloncode 消盒模式系统内核级支持
+* 优化 soloncode ConfigTalent 引导词和参数校验
+* 优化 soloncode 上下文压缩算法（增加 tool 计数）
+* 细节优化
+
 
 ### v2026.6.9
 
