@@ -71,23 +71,29 @@ public class AgentProperties implements Serializable {
     private boolean autoRethink = true;
 
     private int sessionWindowSize = 8;
+
     private int summaryWindowSize = 30;
     private int summaryWindowToken = 30000;
     private String summaryModel; //摘要大模型
 
-    private boolean memoryIsolation = false;
+    private boolean memoryIsolation = true;
     private boolean memoryEnabled = true;
 
     private boolean sandboxMode = true;
+    private boolean sandboxAllowUserHome = true;
+    private boolean sandboxSystemRestrict = false;
+
     private boolean hitlEnabled = false;
     private boolean subagentEnabled = true;
     private boolean bashAsyncEnabled = false;
 
     private boolean mcpEnabled = true;
     private boolean openApiEnabled = true;
-    private boolean lspEnabled = false;
+    private boolean lspEnabled = true;
 
     private String userAgent;
+    //defaultModel
+    private String defaultModel;
 
     //api 重试次数
     private int apiRetries = 3;

@@ -24,12 +24,63 @@
 .settings-add-btn { background: none; border: 1px dashed var(--border-color); border-radius: 6px; padding: 4px 12px; font-size: 12px; color: var(--accent); cursor: pointer; transition: all 0.15s; }
 .settings-add-btn:hover { border-color: var(--accent); background: var(--accent-light); }
 
+/* ===== Settings common list item ===== */
+.settings-list-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
+.settings-list-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.settings-list-item:active { transform: scale(0.997); }
+.settings-list-item.disabled { opacity: 0.5; }
+.settings-list-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
+.settings-list-item.disabled .settings-list-icon { opacity: 0.5; }
+.settings-list-info { flex: 1; min-width: 0; }
+.settings-list-title { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-list-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-list-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
+.settings-inline-tag { font-size: 10px; color: var(--text-secondary); font-weight: 400; }
+.settings-accent-text { color: var(--accent); }
+.settings-muted-text { color: var(--text-secondary); opacity: 0.75; }
+
+/* Backward compatible aliases */
+.llm-model-item, .mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
+.llm-model-item:hover, .mcp-server-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.llm-model-item:active, .mcp-server-item:active { transform: scale(0.997); }
+.llm-model-icon, .mcp-server-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
+.llm-model-info, .mcp-server-info { flex: 1; min-width: 0; }
+.llm-model-name, .mcp-server-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.llm-model-desc, .mcp-server-detail { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.llm-model-actions, .mcp-server-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
+
+/* ===== Segmented scope selector ===== */
+.settings-scope-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--bg-input-box); }
+.settings-scope-btn { flex: 1; padding: 7px 14px; border: none; background: none; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+.settings-scope-btn.active { background: var(--accent); color: #fff; }
+.settings-scope-btn.disabled, .settings-scope-toggle.disabled .settings-scope-btn { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+.settings-scope-toggle.readonly-gray { background: var(--bg-hover, #f5f5f5) !important; opacity: 0.85; }
+
+/* ===== Settings utility classes ===== */
+.settings-title-row { display: flex; align-items: center; gap: 8px; }
+.settings-header-icon-actions { display: flex; gap: 6px; }
+.settings-inline-actions { display: flex; gap: 8px; }
+.form-actions-end { justify-content: flex-end; }
+.settings-actions-spacious { margin-top: 20px; }
+.settings-gap-top-sm { margin-top: 8px; }
+.settings-gap-top-md { margin-top: 12px; }
+.settings-short-input { width: 120px !important; }
+.settings-icon-btn { display: flex; align-items: center; gap: 4px; }
+.settings-toolbar-save-btn { padding: 6px 16px; font-size: 12px; }
+.form-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.form-label-row label { margin-bottom: 0; }
+.settings-mini-btn { border: 1px solid var(--border-color); border-radius: 6px; padding: 3px 8px; background: none; color: var(--text-secondary); font-size: 11px; cursor: pointer; transition: all 0.15s; }
+.settings-mini-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+
 .settings-tab-content { display: none; }
 .settings-tab-content.active { display: block; }
 
 .form-group { margin-bottom: 12px; }
 .form-row-2col { display: flex; gap: 12px; }
 .form-row-2col .form-group { flex: 1; min-width: 0; }
+.form-row-3col { display: flex; gap: 12px; }
+.form-row-3col .form-group { flex: 1; min-width: 0; }
 .form-group label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
 .form-group .required { color: #ef4444; }
 .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-primary); font-size: 13px; outline: none; transition: border-color 0.2s; font-family: inherit; box-sizing: border-box; }
@@ -70,6 +121,7 @@
 .llm-provider-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--accent-light); color: var(--accent); font-weight: 500; }
 .llm-alias-hint { font-size: 10px; color: var(--text-secondary); }
 .llm-api-hint { font-size: 10px; color: var(--text-secondary); }
+
 
 /* LLM 操作按钮悬停色 */
 .llm-action-btn.edit:hover { background: rgba(59,130,246,0.08); color: #3b82f6; }
@@ -150,6 +202,7 @@
 .mcp-type-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
 .mcp-type-btn { flex: 1; padding: 6px 16px; border: none; background: none; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .mcp-type-btn.active { background: var(--accent); color: #fff; }
+.mcp-type-btn.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
 .mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
 .mcp-server-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
@@ -268,7 +321,7 @@
 .skill-item-icon { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
 .skill-item-info { flex: 1; min-width: 0; }
 .skill-item-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
-.skill-installed-badge { display: inline-flex; align-items: center; gap: 2px; font-size: 10px; font-weight: 500; color: #22c55e; background: rgba(34,197,94,0.1); padding: 1px 6px; border-radius: 3px; flex-shrink: 0; line-height: 16px; }
+.skill-installed-badge { font-size: 10px; font-weight: 500; color: #22c55e; background: rgba(34,197,94,0.1); padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; flex-shrink: 0; }
 .skill-item-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .skill-item-meta { font-size: 10px; color: var(--text-secondary); margin-top: 3px; display: flex; gap: 10px; }
 .skill-item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
@@ -313,6 +366,7 @@
 .mounts-scope-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
 .mounts-scope-badge.scope-user { background: rgba(99,102,241,0.1); color: #6366f1; }
 .mounts-scope-badge.scope-workspace { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.llm-default-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; background: rgba(16,185,129,0.1); color: #10b981; }
 
 .mounts-skills-count { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; padding: 0 4px; }
 .form-hint { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
@@ -577,4 +631,53 @@ select[disabled] {
     overflow: hidden;
     text-overflow: ellipsis;
     margin-top: 2px;
+}
+
+/* ===== Settings common overrides ===== */
+.mcp-tool-item { cursor: default; }
+.mounts-skill-item { cursor: pointer; }
+
+/* LLM 默认模型方块勾选框 */
+.llm-default-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    user-select: none;
+}
+.llm-default-checkbox input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.llm-default-checkmark {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--border-color);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    transition: all 0.2s;
+    position: relative;
+    flex-shrink: 0;
+}
+.llm-default-checkbox:hover .llm-default-checkmark {
+    border-color: var(--accent);
+}
+.llm-default-checkbox input:checked + .llm-default-checkmark {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+.llm-default-checkbox input:checked + .llm-default-checkmark::after {
+    content: '';
+    position: absolute;
+    left: 4.5px;
+    top: 1.5px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
 }

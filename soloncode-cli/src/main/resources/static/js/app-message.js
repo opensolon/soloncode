@@ -6,7 +6,7 @@
 function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt) {
     var row = $('<div>').addClass('msg-row user')[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
-    row.innerHTML = '<button class="user-copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i></button><div class="msg-bubble"></div><div class="msg-avatar">我</div>';
+    row.innerHTML = '<button class="user-copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i></button><div class="msg-bubble"></div>';
     var bubble = $(row).find('.msg-bubble')[0];
 
     // Multiple images
@@ -73,8 +73,7 @@ function ensureAssistantBubble(sess) {
         console.log('[ensureAssistantBubble] 新建 AI bubble, isStreaming=%s', sess.isStreaming, new Error().stack.split('\n').slice(1,4).join('\n'));
         removeThinking(sess);
         var row = $('<div>').addClass('msg-row assistant')[0];
-        row.innerHTML = '<div class="msg-avatar"><i class="layui-icon layui-icon-bot" style="font-size:18px"></i></div>'
-            + '<div class="msg-bubble"><div class="md-content"></div>'
+        row.innerHTML = '<div class="msg-bubble"><div class="md-content"></div>'
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
             + '<button class="msg-action-btn copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i> 复制</button>'
@@ -272,9 +271,10 @@ function appendErrorChunk(sess, text) {
 /* ===== Trace Badge ===== */
 function appendTraceBadge(sess, chunk) {
     ensureAssistantBubble(sess);
+    function fmt(n) { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '_'); }
     var parts = [];
     if (chunk.model) parts.push(chunk.model);
-    if (chunk.totalTokens != null) parts.push(chunk.totalTokens + 'tk');
+    if (chunk.totalTokens != null) parts.push(fmt(chunk.totalTokens) + 'tk');
     if (chunk.elapsedSeconds != null) parts.push(chunk.elapsedSeconds + 's');
     if (parts.length === 0) return;
     var badge = $('<div>').addClass('msg-trace').text(parts.join(' \u00b7 '));
@@ -311,9 +311,7 @@ function showThinking(sess) {
     console.log('[showThinking] isStreaming=%s', sess.isStreaming, new Error().stack.split('\n').slice(1,4).join('\n'));
     removeThinking(sess);
     sess.thinkingEl = $('<div>').addClass('thinking-row')[0];
-    sess.thinkingEl.innerHTML = '<div class="msg-avatar" style="background:linear-gradient(135deg,var(--accent),#a78bfa);color:#fff">'
-        + '<i class="layui-icon layui-icon-bot" style="font-size:18px"></i></div>'
-        + '<div class="thinking-bubble">思考中' + DOTS_HTML + '<span class="thinking-timer">0s</span></div>';
+    sess.thinkingEl.innerHTML = '<div class="thinking-bubble">思考中' + DOTS_HTML + '<span class="thinking-timer">0s</span></div>';
     $(sess.container).append(sess.thinkingEl);
     var timerSpan = $(sess.thinkingEl).find('.thinking-timer')[0];
     startThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime', timerSpan);

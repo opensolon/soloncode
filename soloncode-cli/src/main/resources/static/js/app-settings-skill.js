@@ -238,7 +238,7 @@
             html += '<div class="skill-item" data-url="' + escapeAttr(skillUrl) + '">'
                 + '<div class="skill-item-icon">' + escapeHtml(iconText) + '</div>'
                 + '<div class="skill-item-info">'
-                + '<div class="skill-item-name" title="' + escapeAttr(name) + '">' + escapeHtml(displayName) + (isInstalled ? '<span class="skill-installed-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><polyline points="20 6 9 17 4 12"/></svg>已安装</span>' : '') + '</div>'
+                + '<div class="skill-item-name" title="' + escapeAttr(name) + '">' + escapeHtml(displayName) + (isInstalled ? '<span class="skill-installed-badge">已安装</span>' : '') + '</div>'
                 + (shortDesc ? '<div class="skill-item-desc" title="' + escapeAttr(desc) + '">' + escapeHtml(shortDesc) + '</div>' : '')
                 + '<div class="skill-item-meta">'
                 + (installs > 0 ? '<span>' + (installs >= 1000 ? (installs / 1000).toFixed(1) + 'k' : installs) + ' 安装</span>' : '')
@@ -369,7 +369,7 @@
                 var $item = $btn.closest('.skill-item');
                 var $nameEl = $item.find('.skill-item-name');
                 if (!$nameEl.find('.skill-installed-badge').length) {
-                    $nameEl.append('<span class="skill-installed-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><polyline points="20 6 9 17 4 12"/></svg>已安装</span>');
+                    $nameEl.append('<span class="skill-installed-badge">已安装</span>');
                 }
                 $btn.closest('.skill-install-wrap').remove();
                 if (!_installedSkillsCache) _installedSkillsCache = {};

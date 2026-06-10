@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>SolonCode è un agente di codifica open source basato su <a href="https://github.com/opensolon/solon-ai">Solon AI</a> e Java, che supporta ambienti runtime da Java8 a Java26.</p>
-<p>Ultima Versione: v2026.6.4</p>
+<p>Ultima Versione: v2026.6.10</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 Installazione:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ Eseguire il comando `soloncode` (CLI interattiva) o `soloncode web 0` (Web inter
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Se utilizzate "soloncode" nel nome del vostro progetto (ad esempio, "soloncode-d
 
 Sono funzionalmente simili, con differenze chiave:
 
-* Sviluppato in Java, 100% open-source.
+* Sviluppato in Java, 100% open-source. Compatibile con BiSheng JDK (Huawei) e Harmony PC.
 * Interamente guidato e costruito con prompt in cinese
 * Agnostico rispetto ai provider. Configurare i modelli secondo le necessità. L'iterazione dei modelli ridurrà i divari e i costi, rendendo importante la configurazione flessibile.
 * Supporta contemporaneamente l'interfaccia a riga di comando (CLI), l'interfaccia browser (WEB) e l'interfaccia IDE desktop (Desktop).

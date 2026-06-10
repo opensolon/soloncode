@@ -17,7 +17,6 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 
@@ -54,7 +53,7 @@ public class ModelCommand implements Command {
         String flag = ctx.argAt(0);
 
         if ("ls".equals(flag) || flag == null || flag.isEmpty()) {
-            String currentModel = ctx.getSession().getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+            String currentModel = ctx.getSession().getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
             currentModel = ctx.getEngine().getModelOrMain(currentModel).getNameOrModel();
 
             ctx.println(ctx.color(BOLD + "Models:" + RESET));
@@ -76,7 +75,7 @@ public class ModelCommand implements Command {
                 ctx.println(ctx.color(RED + "Model not found: " + RESET + BOLD + flag + RESET));
                 ctx.println(ctx.color(DIM + "Use '/model' to see available models." + RESET));
             } else {
-                ctx.getSession().getContext().put(HarnessFlags.VAR_MODEL_SELECTED, flag);
+                ctx.getSession().getContext().put(HarnessEngine.CTX_MODEL_SELECTED, flag);
                 ctx.getSession().updateSnapshot();
                 ctx.println(ctx.color(GREEN + "Model switched to: " + RESET + BOLD + flag + RESET));
             }

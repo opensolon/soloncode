@@ -22,6 +22,7 @@ import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.ConfigExtension;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
@@ -113,15 +114,19 @@ public class Configurator {
                 .compressionModel(props.getSummaryModel())
                 .memoryEnabled(props.isMemoryEnabled())
                 .memorySolution(new MemoryFactory(agentProps))
-                .sandboxMode(props.isSandboxMode())
-                .subagentEnabled(props.isSubagentEnabled())
+                .sandboxEnabled(props.isSandboxMode())
+                .sandboxAllowUserHome(props.isSandboxAllowUserHome())
+                .sandboxSystemRestrict(props.isSandboxSystemRestrict())
                 .bashAsyncEnabled(props.isBashAsyncEnabled())
+                .subagentEnabled(props.isSubagentEnabled())
                 .hitlEnabled(props.isHitlEnabled())
                 .apiRetries(props.getApiRetries())
                 .modelRetries(props.getModelRetries())
                 .mcpRetries(props.getModelRetries())
                 .build();
 
+
+        engine.setDefaultModel(props.getDefaultModel());
         for (ModelDo model : agentSettings.getModels()) {
             engine.addModel(model);
         }
@@ -159,19 +164,19 @@ public class Configurator {
         }
 
         //系统级 LSP 服务器（参考 OpenCode / Claude Code 内置列表，仅注册常见语言）
-        addSystemLspServer(engine, agentSettings, "java", Arrays.asList("jdtls", "-data", ".soloncode/lsp/java-workspace"), Arrays.asList(".java"));
-        addSystemLspServer(engine, agentSettings, "typescript", Arrays.asList("typescript-language-server", "--stdio"), Arrays.asList(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"));
+        addSystemLspServer(engine, agentSettings, "java", Arrays.asList("jdtls"), Arrays.asList(".java"));
+        addSystemLspServer(engine, agentSettings, "typescript", Arrays.asList("typescript-language-server", "--stdio"), Arrays.asList(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"));
         addSystemLspServer(engine, agentSettings, "go", Arrays.asList("gopls"), Arrays.asList(".go"));
-        addSystemLspServer(engine, agentSettings, "python", Arrays.asList("pylsp"), Arrays.asList(".py", ".pyi"));
+        addSystemLspServer(engine, agentSettings, "python", Arrays.asList("pyright-langserver", "--stdio"), Arrays.asList(".py", ".pyi"));
         addSystemLspServer(engine, agentSettings, "rust", Arrays.asList("rust-analyzer"), Arrays.asList(".rs"));
-        addSystemLspServer(engine, agentSettings, "c-cpp", Arrays.asList("clangd"), Arrays.asList(".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".m", ".mm"));
-        addSystemLspServer(engine, agentSettings, "csharp", Arrays.asList("omnisharp", "-lsp"), Arrays.asList(".cs"));
-        addSystemLspServer(engine, agentSettings, "ruby", Arrays.asList("solargraph", "stdio"), Arrays.asList(".rb", ".rake", ".gemspec"));
-        addSystemLspServer(engine, agentSettings, "php", Arrays.asList("intelephense", "--stdio"), Arrays.asList(".php", ".phtml"));
+        addSystemLspServer(engine, agentSettings, "c-cpp", Arrays.asList("clangd", "--background-index", "--clang-tidy"), Arrays.asList(".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".c++", ".h++", ".hh"));
+        addSystemLspServer(engine, agentSettings, "csharp", Arrays.asList("roslyn-language-server", "--stdio", "--autoLoadProjects"), Arrays.asList(".cs", ".csx"));
+        addSystemLspServer(engine, agentSettings, "ruby", Arrays.asList("solargraph", "stdio"), Arrays.asList(".rb", ".rake", ".gemspec", ".ru"));
+        addSystemLspServer(engine, agentSettings, "php", Arrays.asList("intelephense", "--stdio"), Arrays.asList(".php"));
         addSystemLspServer(engine, agentSettings, "bash", Arrays.asList("bash-language-server", "start"), Arrays.asList(".sh", ".bash", ".zsh", ".ksh"));
         addSystemLspServer(engine, agentSettings, "lua", Arrays.asList("lua-language-server"), Arrays.asList(".lua"));
-        addSystemLspServer(engine, agentSettings, "dart", Arrays.asList("dart", "language-server", "--protocol=lsp"), Arrays.asList(".dart"));
-        addSystemLspServer(engine, agentSettings, "swift", Arrays.asList("sourcekit-lsp"), Arrays.asList(".swift"));
+        addSystemLspServer(engine, agentSettings, "dart", Arrays.asList("dart", "language-server", "--lsp"), Arrays.asList(".dart"));
+        addSystemLspServer(engine, agentSettings, "swift", Arrays.asList("sourcekit-lsp"), Arrays.asList(".swift", ".objc", ".objcpp"));
         addSystemLspServer(engine, agentSettings, "kotlin", Arrays.asList("kotlin-language-server"), Arrays.asList(".kt", ".kts"));
         addSystemLspServer(engine, agentSettings, "yaml", Arrays.asList("yaml-language-server", "--stdio"), Arrays.asList(".yaml", ".yml"));
 
@@ -190,6 +195,8 @@ public class Configurator {
         this.loopScheduler = new LoopScheduler();
         engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
 
+
+        engine.addExtension(new ConfigExtension(engine, agentSettings));
 
         return engine;
     }
@@ -278,10 +285,10 @@ public class Configurator {
         streamBuilder.bind(webChannel.getDingTalkLink());
         BeanWrap channelBean = Solon.context().wrapAndPut(WebChannel.class, webChannel);
         Solon.app().router().add(channelBean);
-        RunUtil.async((Runnable) webChannel);
+        RunUtil.async(webChannel);
 
         //settings controller
-        WebSettingsController settingsController = new WebSettingsController(agentRuntime, agentSettings);
+        WebSettingsController settingsController = new WebSettingsController(agentRuntime, agentProps, agentSettings);
         BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
         Solon.app().router().add(webSettingsController);
 
@@ -298,7 +305,7 @@ public class Configurator {
         BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
         Solon.app().router().add(webController);
 
-        WebSettingsController settingsController = new WebSettingsController(agentRuntime, agentSettings);
+        WebSettingsController settingsController = new WebSettingsController(agentRuntime, agentProps, agentSettings);
         BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
         Solon.app().router().add(webSettingsController);
 
@@ -383,7 +390,7 @@ public class Configurator {
         lspServer.setCommand(command);
         lspServer.setExtensions(extensions);
         lspServer.setEnabled(false); // 默认禁用，用户按需启用
-        lspServer.setScope(AgentFlags.SCOPE_GLOBAL);
+        lspServer.setScope(AgentFlags.SCOPE_LOCAL);
 
         // 注册到引擎（不启用不会真正加载，仅作为可选项）
         engine.addLspServer(name, lspServer);

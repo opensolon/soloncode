@@ -28,6 +28,7 @@ $('.input-box').on('click', function(e) {
 
 /* ===== New Chat ===== */
 $(newChatBtn).on('click', function() {
+    if (typeof closeDiffViewer === 'function') closeDiffViewer();
     currentChatIndex = -1;
     switchToWelcomeMode();
     updateHistoryUI();
@@ -137,11 +138,12 @@ function onWebChunk(sess, chunk) {
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
             case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
             case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
-            case 'action': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); break;
+            case 'action': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
             case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, false); break;
             case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
             case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
             case 'trace':  finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
+            case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
         }
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
@@ -203,6 +205,9 @@ function finishStream(sess) {
         chatInput.focus();
     }
     loadSessionHistory();
+
+    // 刷新任务面板
+    if (window.loadTodos) window.loadTodos();
 }
 
 /* ===== WebSocket 单连接 ===== */
@@ -376,6 +381,10 @@ setActiveSession = function(sid) {
     updateWechatUI();
     updateFeishuUI();
     updateDingTalkUI();
+    // 切换会话时刷新任务面板
+    if (window.loadTodos) window.loadTodos();
+    // 切换会话时重置上下文指示器
+    if (typeof resetContextIndicator === 'function') resetContextIndicator();
 };
 
 wechatHeaderBtn.on('click', function() {

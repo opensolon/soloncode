@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Ένας ανοιχτού κώδικα πράκτορας κωδικοποίησης βασισμένος στο <a href="https://github.com/opensolon/solon-ai">Solon AI</a> και Java (υποστηρίζει περιβάλλοντα εκτέλεσης Java8 έως Java26)</p>
-<p>Τελευταία Έκδοση: v2026.6.4</p>
+<p>Τελευταία Έκδοση: v2026.6.10</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 Εγκατάσταση:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Web interface: http://localhost:50488/
 
 Είναι λειτουργικά παρόμοια, με βασικές διαφορές:
 
-* Αναπτύχθηκε με Java, 100% ανοιχτού κώδικα.
+* Αναπτύχθηκε με Java, 100% ανοιχτού κώδικα. Συμβατό με BiSheng JDK (Huawei) και Harmony PC.
 * Πλήρως καθοδηγούμενο και κατασκευασμένο με κινέζικες prompt
 * Ανεξάρτητο από πάροχο. Διαμορφώστε τα μοντέλα ανάλογα με τις ανάγκες. Η επανάληψη μοντέλων θα μειώσει τα κενά και το κόστος, καθιστώντας την ευέλικτη διαμόρφωση σημαντική.
 * Υποστηρίζει ταυτόχρονα τη διεπαφή γραμμής εντολών τερματικού (CLI), τη διεπαφή περιηγητή (WEB) και τη διεπαφή IDE επιφάνειας εργασίας (Desktop).

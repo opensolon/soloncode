@@ -37,7 +37,6 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.cli.TodoTalent;
@@ -445,7 +444,7 @@ public class CliShell implements Runnable {
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
 
         if (modelSelected == null) {
-            modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+            modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
         }
 
 
@@ -826,7 +825,7 @@ public class CliShell implements Runnable {
             if (session == null) {
                 modelName = engine.getMainModel().getNameOrModel();
             } else {
-                String modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+                String modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
                 modelName = engine.getModelOrMain(modelSelected).getNameOrModel();
             }
         }

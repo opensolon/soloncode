@@ -2,6 +2,7 @@ package org.noear.solon.codecli.config;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.noear.solon.core.util.Assert;
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
@@ -36,6 +37,9 @@ public class AgentSettings implements Serializable {
 
     //general 常规
     private GeneralSettings general = new GeneralSettings();
+
+    //defaultModel
+    private String defaultModel;
     //models
     private List<ModelDo> models = new ArrayList<>();
     //挂载
@@ -78,6 +82,18 @@ public class AgentSettings implements Serializable {
             general.setSandboxMode(props.isSandboxMode());
         }
 
+        if (general.getSandboxAllowUserHome() != null) {
+            props.setSandboxAllowUserHome(general.getSandboxAllowUserHome());
+        } else {
+            general.setSandboxAllowUserHome(props.isSandboxAllowUserHome());
+        }
+
+        if (general.getSandboxSystemRestrict() != null) {
+            props.setSandboxSystemRestrict(general.getSandboxSystemRestrict());
+        } else {
+            general.setSandboxSystemRestrict(props.isSandboxSystemRestrict());
+        }
+
         if (general.getApiRetries() != null) {
             props.setApiRetries(general.getApiRetries());
         } else {
@@ -108,6 +124,12 @@ public class AgentSettings implements Serializable {
             general.setMemoryEnabled(props.isMemoryEnabled());
         }
 
+        if (general.getMemoryIsolation() != null) {
+            props.setMemoryIsolation(general.getMemoryIsolation());
+        } else {
+            general.setMemoryIsolation(props.isMemoryIsolation());
+        }
+
         if (general.getMcpEnabled() != null) {
             props.setMcpEnabled(general.getMcpEnabled());
         } else {
@@ -128,11 +150,23 @@ public class AgentSettings implements Serializable {
 
         //-------------
 
+        if(Assert.isNotEmpty(this.defaultModel)){
+            props.setDefaultModel(this.defaultModel);
+        } else {
+            this.defaultModel = props.getDefaultModel();
+        }
+
         if (this.models.size() > 0) {
             props.getModels().clear();
             props.getModels().addAll(this.models);
         } else {
             this.models.addAll(props.getModels());
+        }
+
+        // 合并完成后统一兜底：如果 defaultModel 未指定，取第一个模型
+        if (Assert.isEmpty(this.defaultModel) && this.models.size() > 0) {
+            this.defaultModel = this.models.get(0).getNameOrModel();
+            props.setDefaultModel(this.defaultModel);
         }
 
         if (this.mcpServers.size() > 0) {
@@ -221,6 +255,8 @@ public class AgentSettings implements Serializable {
         ONode oNode = new ONode(Options.of(Feature.Write_PrettyFormat));
 
         oNode.getOrNew("general").fill(general);
+
+        oNode.set("defaultModel", this.defaultModel);
 
         oNode.getOrNew("models").asArray().then(ary -> {
             for (ModelDo entry : models) {

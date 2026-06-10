@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>基於 Solon AI 與 Java 實現的開源編碼智能體（支援 Java8 到 Java26 環境啟動）</p>
-<p>最新版本：v2026.6.4</p>
+<p>最新版本：v2026.6.10</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 安裝：
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Web interface: http://localhost:50488/
 
 功能上很相似，關鍵差異：
 
-* 採用 Java 實現，100% 開源。
+* 採用 Java 實現，100% 開源。兼容畢昇 JDK（Huawei BiSheng JDK），兼容鴻蒙 PC（Huawei Harmony PC）。
 * 純中文提示詞驅動與構建。
 * 不綁定特定提供商。按需設定模型。模型迭代會縮小差異、降低成本，因此自由設定很重要。
 * 同時支援終端命令列介面 (CLI)、瀏覽器介面（WEB）、桌面IDE介面（Desktop）。

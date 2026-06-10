@@ -19,6 +19,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.intercept.ContextSizeChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.*;
@@ -37,7 +38,9 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Web 流式响应构建器
@@ -156,7 +159,9 @@ public class WebStreamBuilder {
                 })
                 .stream()
                 .map(chunk -> {
-                    if (chunk instanceof ReasonChunk) {
+                    if (chunk instanceof ContextSizeChunk) {
+                        return onContextSizeChunk(chatModel, (ContextSizeChunk) chunk);
+                    } else if (chunk instanceof ReasonChunk) {
                         return onReasonChunk((ReasonChunk) chunk);
                     } else if (chunk instanceof ThoughtChunk) {
                         return onThoughtChunk(session, (ThoughtChunk) chunk);
@@ -232,6 +237,33 @@ public class WebStreamBuilder {
         return buf;
     }
 
+    public WebChunk onContextSizeChunk(ChatModel chatModel, ContextSizeChunk chunk){
+        WebChunk wc = new WebChunk();
+        wc.setType("context_size");
+        wc.setSessionId(chunk.getSession().getSessionId());
+        wc.setTotalTokens((long) chunk.getTokenCount());
+        wc.setText(String.valueOf(chunk.getMessageCount()));
+
+        long contextLength = chatModel.getConfig().getContextLength();
+        if(contextLength == 0){
+            contextLength = 128_000; //默认
+        }
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("contextLength", contextLength);
+
+        if (chunk.isCompressed()) {
+            args.put("compressed", true);
+            args.put("beforeTokenCount", chunk.getBeforeTokenCount());
+            args.put("afterTokenCount", chunk.getAfterTokenCount());
+            args.put("beforeMessageCount", chunk.getBeforeMessageCount());
+            args.put("afterMessageCount", chunk.getAfterMessageCount());
+        }
+        wc.setArgs(args);
+        wc.setCreatedAt(java.time.Instant.now().toEpochMilli());
+        return wc;
+    }
+
     /**
      * 处理推理阶段的 chunk
      *
@@ -242,15 +274,15 @@ public class WebStreamBuilder {
      * </ul>
      * 否则返回空 chunk。</p>
      *
-     * @param reason 推理阶段的 chunk 数据
+     * @param chunk 推理阶段的 chunk 数据
      * @return 映射后的 WebChunk，或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onReasonChunk(ReasonChunk reason) {
-        if (!reason.isToolCalls() && reason.hasContent()) {
-            if (reason.getMessage().isThinking()) {
-                return WebChunk.ofReason(reason.getContent());
+    private WebChunk onReasonChunk(ReasonChunk chunk) {
+        if (!chunk.isToolCalls() && chunk.hasContent()) {
+            if (chunk.getMessage().isThinking()) {
+                return WebChunk.ofReason(chunk.getContent());
             } else {
-                return WebChunk.ofText(reason.getContent());
+                return WebChunk.ofText(chunk.getContent());
             }
         }
 
@@ -275,6 +307,8 @@ public class WebStreamBuilder {
         if(chunk.getError() != null){
             return WebChunk.EMPTY;
         }
+
+        // todowrite 完成时，前端通过 action chunk 的 toolName='todowrite' 自动刷新任务面板
 
         if (Assert.isNotEmpty(chunk.getToolName())) {
             if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
@@ -320,23 +354,23 @@ public class WebStreamBuilder {
      * </ol></p>
      *
      * @param session Agent 会话，用于获取会话ID和已选择的代理名称
-     * @param thought 思考轮次的 chunk 数据，包含助手消息和追踪信息
+     * @param chunk 思考轮次的 chunk 数据，包含助手消息和追踪信息
      * @return 映射后的 WebChunk（多任务并行时有内容），或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk thought) {
+    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk chunk) {
         String sessionId = session.getSessionId();
-        String resultContent = thought.getAssistantMessage().getResultContent();
+        String resultContent = chunk.getAssistantMessage().getResultContent();
 
         if (Assert.isNotEmpty(resultContent)) {
             // 向所有已绑定的 IM 通道回复
-            if (thought.isToolCalls()) {
+            if (chunk.isToolCalls()) {
                 // 说明是过程
                 replyToBoundChannel(sessionId, resultContent, false);
             } else {
                 // 说明是结果
                 String agentSelectedTmp = (String) session.attrs().get("_agent_selected_tmp");
 
-                if (thought.getTrace().getAgentName().equals(agentSelectedTmp)) {
+                if (chunk.getTrace().getAgentName().equals(agentSelectedTmp)) {
                     // 说明是源代理（说明是最终结果）
                     //StringBuilder traceInfo = getTraceInfo(thought.getTrace());
                     replyToBoundChannel(sessionId, resultContent, true);//+ traceInfo, true);
@@ -347,7 +381,7 @@ public class WebStreamBuilder {
             }
 
 
-            if (thought.hasMeta(TaskTalent.TOOL_MULTITASK)) {
+            if (chunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
                 // 仅在多任务并行且有内容时输出
                 return WebChunk.ofText("\n" + resultContent);
             }
@@ -364,16 +398,16 @@ public class WebStreamBuilder {
      * （模型名称、token 数、耗时）以结构化 trace 类型输出到 Web 端。</p>
      *
      * @param session Agent 会话，用于获取会话ID以进行 IM 通道转发
-     * @param react   ReAct 最终汇总 chunk，包含追踪信息和可能的异常内容
+     * @param chunk   ReAct 最终汇总 chunk，包含追踪信息和可能的异常内容
      * @return 包含追踪信息的 trace 类型 WebChunk
      */
-    private WebChunk onFinalChunk(AgentSession session, ReActChunk react) {
-        ReActTrace trace = react.getTrace();
+    private WebChunk onFinalChunk(AgentSession session, ReActChunk chunk) {
+        ReActTrace trace = chunk.getTrace();
 
-        if (react.isAbnormal()) {
+        if (chunk.isAbnormal()) {
             // IM 通道仍使用字符串格式的追踪信息
             //StringBuilder traceInfo = getTraceInfo(trace);
-            replyToBoundChannel(session.getSessionId(), react.getContent(), true); //+ traceInfo, true);
+            replyToBoundChannel(session.getSessionId(), chunk.getContent(), true); //+ traceInfo, true);
         }
 
         // 结构化 trace 数据，供前端独立渲染

@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>SolonCode je open-source kodirajući agent izgrađen s <a href="https://github.com/opensolon/solon-ai">Solon AI</a> i Javom (podržava Java8 do Java26 runtime okruženja)</p>
-<p>Najnovija verzija: v2026.6.4</p>
+<p>Najnovija verzija: v2026.6.10</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 Instalacija:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ Pokrenite naredbu `soloncode` (CLI interaktivno) ili `soloncode web 0` (Web inte
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Ako koristite "soloncode" u nazivu svog projekta (npr. "soloncode-dashboard" ili
 
 Oni su funkcionalno slični, sa ključnim razlikama:
 
-* Izgrađen s Javom, 100% open-source.
+* Izgrađen s Javom, 100% open-source. Kompatibilan s BiSheng JDK (Huawei) i Harmony PC.
 * Potpuno vođen i izgrađen kineskim promptovima
 * Nezavisan od pružatelja usluga. Konfigurišite modele prema potrebi. Iteracija modela će smanjiti razlike i troškove, čineći fleksibilnu konfiguraciju važnom.
 * Istovremeno podržava terminalski komandni interfejs (CLI), interfejs pretraživača (WEB) i desktop IDE interfejs (Desktop).

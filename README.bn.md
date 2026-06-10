@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a> এবং জাভা দিয়ে তৈরি একটি ওপেন-সোর্স কোডিং এজেন্ট (Java8 থেকে Java26 রানটাইম পরিবেশ সমর্থিত)</p>
-<p>সর্বশেষ সংস্করণ: v2026.6.4</p>
+<p>সর্বশেষ সংস্করণ: v2026.6.10</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 ইনস্টলেশন:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Web interface: http://localhost:50488/
 
 এগুলো কার্যক্ষমতার দিক থেকে অনুরূপ, মূল পার্থক্যগুলো হলো:
 
-* জাভা দিয়ে তৈরি, ১০০% ওপেন-সোর্স।
+* জাভা দিয়ে তৈরি, ১০০% ওপেন-সোর্স। BiSheng JDK (Huawei) এবং Harmony PC এর সাথে সামঞ্জস্যপূর্ণ।
 * সম্পূর্ণ চীনা প্রম্পট দ্বারা পরিচালিত এবং নির্মিত
 * প্রোভাইডার-স্বাধীন। প্রয়োজন অনুযায়ী মডেল কনফিগার করুন। মডেল পুনরাবৃত্তি ব্যবধান কমাবে এবং খরচ কমাবে, যা নমনীয় কনফিগারেশনকে গুরুত্বপূর্ণ করে তোলে।
 * একই সাথে টার্মিনাল কমান্ড-লাইন ইন্টারফেস (CLI), ব্রাউজার ইন্টারফেস (WEB) এবং ডেস্কটপ IDE ইন্টারফেস (Desktop) সমর্থন করে।

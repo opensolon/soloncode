@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>soloncode-parent</artifactId>
-        <version>2026.6.4</version>
+        <version>2026.6.10</version>
         <relativePath>../soloncode-parent/pom.xml</relativePath>
     </parent>
 
@@ -40,12 +40,7 @@
 
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>solon-server-jetty</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.noear</groupId>
-            <artifactId>solon-server-jetty-add-websocket</artifactId>
+            <artifactId>solon-server-smarthttp</artifactId>
         </dependency>
 
         <dependency>

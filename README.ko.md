@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a>와 Java로 구축된 오픈소스 코딩 에이전트 (Java8부터 Java26 런타임 환경 지원)</p>
-<p>최신 버전: v2026.6.4</p>
+<p>최신 버전: v2026.6.10</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 설치:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.10 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Web interface: http://localhost:50488/
 
 기능적으로 유사하지만, 주요 차이점은 다음과 같습니다:
 
-* Java로 구축되었으며 100% 오픈소스입니다.
+* Java로 구축되었으며 100% 오픈소스입니다. BiSheng JDK(Huawei) 및 Harmony PC와 호환됩니다.
 * 순수 중국어 프롬프트 기반 구동 및 빌드
 * 제공자에 구애받지 않습니다. 필요에 따라 모델을 설정할 수 있습니다. 모델의 지속적인 발전으로 격차가 좁아지고 비용이 절감됨에 따라 자유로운 설정이 중요합니다.
 * 터미널 명령줄 인터페이스(CLI), 브라우저 인터페이스(WEB), 데스크톱 IDE 인터페이스(Desktop)를 동시에 지원합니다.
