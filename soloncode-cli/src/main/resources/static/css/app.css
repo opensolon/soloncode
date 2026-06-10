@@ -427,8 +427,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 }
 .filer-resize-handle:hover,
 .filer-resize-handle.dragging {
-    background: var(--accent);
-    opacity: 0.5;
+    /*background: #fff;*/
+    /*opacity: 0.5;*/
 }
 .filer-panel {
     width: var(--filer-panel-width);
