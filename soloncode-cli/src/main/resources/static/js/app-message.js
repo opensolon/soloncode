@@ -31,15 +31,19 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         }
     }
 
-    var span = $('<span>').addClass('user-msg-text').text(text)[0];
+    var span = $('<span>').addClass('user-msg-text md-content')[0];
+    span.setAttribute('data-md-raw', text);
+    span.innerHTML = renderMd(text);
     $(bubble).append(span);
+    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(span);
+    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(span);
 
     var copyBtn = $(row).find('.user-copy-btn')[0];
     $(copyBtn).on('click', function() {
         var txtEl = $(bubble).find('.user-msg-text')[0];
-        var txt = txtEl ? $(txtEl).text() : '';
+        var md = txtEl ? (txtEl.getAttribute('data-md-raw') || txtEl.innerText) : '';
         if (navigator.clipboard) {
-            navigator.clipboard.writeText(txt).then(function() {
+            navigator.clipboard.writeText(md).then(function() {
                 $(copyBtn).addClass('copied');
                 copyBtn.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:14px"></i>';
                 setTimeout(function() {
@@ -83,8 +87,8 @@ function ensureAssistantBubble(sess) {
         var copyBtn = $(row).find('.copy-btn')[0];
         var mdRef = sess.currentBubbleEl;
         $(copyBtn).on('click', function() {
-            var txt = mdRef.innerText || '';
-            if (navigator.clipboard) { navigator.clipboard.writeText(txt); }
+            var md = mdRef.getAttribute('data-md-raw') || mdRef.innerText || '';
+            if (navigator.clipboard) { navigator.clipboard.writeText(md); }
         });
     }
     return sess.currentBubbleEl;

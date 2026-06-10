@@ -1,4 +1,10 @@
 
+### v2026.6.11
+
+* 修复 soloncode web 发送消息时，格式被清的问题
+* 修复 soloncode web 复制“历史消息”时，格式被清的问题
+* 修复 soloncode web 历史记录选对时，格式被清的问题
+
 ### v2026.6.10
 
 * 添加 soloncode web 任务面板（待办事清单）

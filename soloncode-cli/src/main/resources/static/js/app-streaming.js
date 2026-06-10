@@ -164,6 +164,7 @@ function finishStream(sess) {
     // 2. 立即把 Buffer 内容渲染出来
     if (sess.reasonBuffer) {
         var el = ensureAssistantBubble(sess);
+        el.setAttribute('data-md-raw', sess.reasonBuffer);
         $(el).html(renderMd(sess.reasonBuffer));
         if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
         if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
