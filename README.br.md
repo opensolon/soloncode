@@ -85,7 +85,7 @@ Qual é a diferença em relação ao Claude Code?
 
 Eles são funcionalmente semelhantes, com diferenças principais:
 
-* Construído com Java, 100% código aberto.
+* Construído com Java, 100% código aberto. Compatível com BiSheng JDK (Huawei) e Harmony PC.
 * Totalmente orientado e construído com prompts em chinês
 * Independente de provedor. Configure modelos conforme necessário. A iteração de modelos reduzirá lacunas e custos, tornando a configuração flexível importante.
 * Suporta simultaneamente a interface de linha de comando (CLI), a interface do navegador (WEB) e a interface IDE de desktop (Desktop).

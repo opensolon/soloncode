@@ -83,7 +83,7 @@ Se utilizzate "soloncode" nel nome del vostro progetto (ad esempio, "soloncode-d
 
 Sono funzionalmente simili, con differenze chiave:
 
-* Sviluppato in Java, 100% open-source.
+* Sviluppato in Java, 100% open-source. Compatibile con BiSheng JDK (Huawei) e Harmony PC.
 * Interamente guidato e costruito con prompt in cinese
 * Agnostico rispetto ai provider. Configurare i modelli secondo le necessità. L'iterazione dei modelli ridurrà i divari e i costi, rendendo importante la configurazione flessibile.
 * Supporta contemporaneamente l'interfaccia a riga di comando (CLI), l'interfaccia browser (WEB) e l'interfaccia IDE desktop (Desktop).

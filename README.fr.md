@@ -83,7 +83,7 @@ Si vous utilisez « soloncode » dans le nom de votre projet (par exemple, « so
 
 Ils sont fonctionnellement similaires, avec des différences clés :
 
-* Construit avec Java, 100% open-source.
+* Construit avec Java, 100% open-source. Compatible avec BiSheng JDK (Huawei) et Harmony PC.
 * Entièrement piloté et construit par des prompts en chinois
 * Indépendant du fournisseur. Configurer les modèles selon les besoins. L'itération des modèles réduira les écarts et les coûts, rendant la configuration flexible importante.
 * Prend simultanément en charge l'interface en ligne de commande (CLI), l'interface navigateur (WEB) et l'interface IDE de bureau (Desktop).

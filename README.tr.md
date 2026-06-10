@@ -83,7 +83,7 @@ Proje adınızda "soloncode" kullanıyorsanız (örneğin "soloncode-dashboard" 
 
 İşlevsel olarak benzerdirler, temel farklar şunlardır:
 
-* Java ile oluşturulmuş, %100 açık kaynaklıdır.
+* Java ile oluşturulmuş, %100 açık kaynaklıdır. BiSheng JDK (Huawei) ve Harmony PC ile uyumludur.
 * Tamamen Çince promptlarla yönetilir ve oluşturulur
 * Sağlayıcıdan bağımsızdır. Modelleri ihtiyaca göre yapılandırın. Model yinelemeleri boşlukları daraltacak ve maliyetleri azaltacaktır, bu da esnek yapılandırmayı önemli kılar.
 * Aynı anda terminal komut satırı arayüzünü (CLI), tarayıcı arayüzünü (WEB) ve masaüstü IDE arayüzünü (Desktop) destekler.

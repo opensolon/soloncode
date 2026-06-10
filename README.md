@@ -84,7 +84,7 @@ If you use "soloncode" in your project name (e.g., "soloncode-dashboard" or "sol
 
 They are functionally similar, with key differences:
 
-* Built with Java, 100% open-source.
+* Built with Java, 100% open-source. Compatible with BiSheng JDK (Huawei) and Harmony PC.
 * Pure Chinese prompt-driven development and construction.
 * Provider-agnostic. Configure models as needed. Model iteration will narrow gaps and reduce costs, making flexible configuration important.
 * Simultaneously supports terminal command-line interface (CLI), browser interface (WEB), and desktop IDE interface (Desktop).

@@ -83,7 +83,7 @@ Jeśli używasz "soloncode" w nazwie swojego projektu (np. "soloncode-dashboard"
 
 Pod względem funkcjonalności są podobne, z kluczowymi różnicami:
 
-* Zbudowany w Javie, w 100% otwarty kod źródłowy.
+* Zbudowany w Javie, w 100% otwarty kod źródłowy. Kompatybilny z BiSheng JDK (Huawei) i Harmony PC.
 * W pełni sterowany i budowany przy użyciu promptów w języku chińskim
 * Niezależny od dostawcy. Konfiguruj modele według potrzeb. Iteracja modeli będzie zmniejszać luki i obniżać koszty, co sprawia, że elastyczna konfiguracja jest ważna.
 * Jednocześnie obsługuje interfejs wiersza poleceń terminala (CLI), interfejs przeglądarki (WEB) i interfejs IDE na pulpicie (Desktop).

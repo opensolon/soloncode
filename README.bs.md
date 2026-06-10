@@ -83,7 +83,7 @@ Ako koristite "soloncode" u nazivu svog projekta (npr. "soloncode-dashboard" ili
 
 Oni su funkcionalno slični, sa ključnim razlikama:
 
-* Izgrađen s Javom, 100% open-source.
+* Izgrađen s Javom, 100% open-source. Kompatibilan s BiSheng JDK (Huawei) i Harmony PC.
 * Potpuno vođen i izgrađen kineskim promptovima
 * Nezavisan od pružatelja usluga. Konfigurišite modele prema potrebi. Iteracija modela će smanjiti razlike i troškove, čineći fleksibilnu konfiguraciju važnom.
 * Istovremeno podržava terminalski komandni interfejs (CLI), interfejs pretraživača (WEB) i desktop IDE interfejs (Desktop).

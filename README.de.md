@@ -83,7 +83,7 @@ Wenn Sie "soloncode" in Ihrem Projektnamen verwenden (z.B. "soloncode-dashboard"
 
 Sie sind funktionell ähnlich, mit folgenden wesentlichen Unterschieden:
 
-* Mit Java entwickelt, 100% Open-Source.
+* Mit Java entwickelt, 100% Open-Source. Kompatibel mit BiSheng JDK (Huawei) und Harmony PC.
 * Rein chinesisch Prompt-gesteuert und gebaut
 * Anbieterunabhängig. Modelle nach Bedarf konfigurieren. Die Modelliteration wird Lücken schließen und Kosten senken, was eine flexible Konfiguration wichtig macht.
 * Gleichzeitig unterstützt: Terminal-Kommandozeilenschnittstelle (CLI), Browser-Oberfläche (WEB) und Desktop-IDE-Oberfläche (Desktop).

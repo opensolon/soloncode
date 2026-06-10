@@ -83,7 +83,7 @@ Web interface: http://localhost:50488/
 
 功能上很相似，關鍵差異：
 
-* 採用 Java 實現，100% 開源。
+* 採用 Java 實現，100% 開源。兼容畢昇 JDK（Huawei BiSheng JDK），兼容鴻蒙 PC（Huawei Harmony PC）。
 * 純中文提示詞驅動與構建。
 * 不綁定特定提供商。按需設定模型。模型迭代會縮小差異、降低成本，因此自由設定很重要。
 * 同時支援終端命令列介面 (CLI)、瀏覽器介面（WEB）、桌面IDE介面（Desktop）。

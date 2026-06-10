@@ -83,7 +83,7 @@ Si utiliza "soloncode" en el nombre de su proyecto (por ejemplo, "soloncode-dash
 
 Son funcionalmente similares, con las siguientes diferencias clave:
 
-* Desarrollado con Java, 100% de código abierto.
+* Desarrollado con Java, 100% de código abierto. Compatible con BiSheng JDK (Huawei) y Harmony PC.
 * Completamente impulsado y construido con prompts en chino
 * Agnóstico del proveedor. Configurar modelos según sea necesario. La iteración de modelos reducirá brechas y costos, haciendo importante la configuración flexible.
 * Soporta simultáneamente la interfaz de línea de comandos (CLI), la interfaz del navegador (WEB) y la interfaz IDE de escritorio (Desktop).

@@ -83,7 +83,7 @@ Nếu bạn sử dụng "soloncode" trong tên dự án của mình (ví dụ: "
 
 Về mặt chức năng, chúng tương tự nhau, với các điểm khác biệt chính:
 
-* Được xây dựng bằng Java, 100% mã nguồn mở.
+* Được xây dựng bằng Java, 100% mã nguồn mở. Tương thích với BiSheng JDK (Huawei) và Harmony PC.
 * Hoàn toàn được điều khiển và xây dựng bằng prompt tiếng Trung
 * Không phụ thuộc vào nhà cung cấp. Cấu hình mô hình theo nhu cầu. Việc lặp lại mô hình sẽ thu hẹp khoảng cách và giảm chi phí, khiến cấu hình linh hoạt trở nên quan trọng.
 * Hỗ trợ đồng thời giao diện dòng lệnh terminal (CLI), giao diện trình duyệt (WEB) và giao diện IDE máy tính để bàn (Desktop).

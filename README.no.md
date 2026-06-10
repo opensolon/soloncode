@@ -83,7 +83,7 @@ Hvis du bruker "soloncode" i prosjektnavnet ditt (f.eks. "soloncode-dashboard" e
 
 De er funksjonelt like, med viktige forskjeller:
 
-* Bygget med Java, 100% åpen kildekode.
+* Bygget med Java, 100% åpen kildekode. Kompatibel med BiSheng JDK (Huawei) og Harmony PC.
 * Helt drevet og bygget med kinesiske prompter
 * Leverandøruavhengig. Konfigurer modeller etter behov. Modelliterasjon vil redusere gap og kostnader, noe som gjør fleksibel konfigurasjon viktig.
 * Støtter samtidig terminal kommandolinjegrensesnitt (CLI), nettlesergrensesnitt (WEB) og skrivebords-IDE-grensesnitt (Desktop).
