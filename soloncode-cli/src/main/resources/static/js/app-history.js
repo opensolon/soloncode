@@ -461,7 +461,8 @@ function extractUserMessages() {
         var $bubble = $row.find('.msg-bubble');
         if (!$bubble.length) continue;
         var $lastSpan = $bubble.find('.user-msg-text');
-        var text = $lastSpan.length ? $lastSpan.text().trim() : '';
+        var rawMd = $lastSpan.length ? ($lastSpan.attr('data-md-raw') || '').trim() : '';
+        var text = rawMd || ($lastSpan.length ? $lastSpan.text().trim() : '');
         if (!text) continue;
         // 去重
         var dup = false;
