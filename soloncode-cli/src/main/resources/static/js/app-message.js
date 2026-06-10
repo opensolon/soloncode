@@ -31,13 +31,16 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         }
     }
 
-    var span = $('<span>').addClass('user-msg-text').text(text)[0];
+    var span = $('<span>').addClass('user-msg-text md-content')[0];
+    span.innerHTML = renderMd(text);
     $(bubble).append(span);
+    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(span);
+    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(span);
 
     var copyBtn = $(row).find('.user-copy-btn')[0];
     $(copyBtn).on('click', function() {
         var txtEl = $(bubble).find('.user-msg-text')[0];
-        var txt = txtEl ? $(txtEl).text() : '';
+        var txt = txtEl ? txtEl.innerText : '';
         if (navigator.clipboard) {
             navigator.clipboard.writeText(txt).then(function() {
                 $(copyBtn).addClass('copied');

@@ -6,8 +6,11 @@
 var welcomeAttachmentsWrap = $('#welcomeAttachmentsWrap');
 var chatAttachmentsWrap = $('#chatAttachmentsWrap');
 
-function handlePasteImage(e) {
-    var items = (e.clipboardData || e.originalEvent.clipboardData).items;
+function handlePaste(e) {
+    var clipboard = e.clipboardData || e.originalEvent.clipboardData;
+    if (!clipboard) return;
+
+    var items = clipboard.items;
     for (var i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
             e.preventDefault();
@@ -15,6 +18,25 @@ function handlePasteImage(e) {
             processSelectedFile(file, 'image');
             return;
         }
+    }
+
+    // Handle HTML paste: convert to text preserving formatting
+    var htmlData = clipboard.getData('text/html');
+    if (htmlData) {
+        e.preventDefault();
+        var text = clipboard.getData('text/plain') || '';
+        // If plain text has content, use it directly (preserves newlines/indentation)
+        // textarea.value = text already preserves formatting
+        var textarea = e.target;
+        var start = textarea.selectionStart;
+        var end = textarea.selectionEnd;
+        var before = textarea.value.substring(0, start);
+        var after = textarea.value.substring(end);
+        textarea.value = before + text + after;
+        textarea.selectionStart = textarea.selectionEnd = start + text.length;
+        autoResize(textarea);
+        // Trigger input event for command completion
+        $(textarea).trigger('input');
     }
 }
 
@@ -99,8 +121,8 @@ function processSelectedFiles(fileList, attachmentsType) {
     }
 }
 
-$(welcomeInput).on('paste', handlePasteImage);
-$(chatInput).on('paste', handlePasteImage);
+$(welcomeInput).on('paste', handlePaste);
+$(chatInput).on('paste', handlePaste);
 
 /* ===== Drag & Drop File Upload ===== */
 (function() {
