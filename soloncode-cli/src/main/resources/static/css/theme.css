@@ -27,13 +27,15 @@
     --bg-secondary: #f5f6fa;
 
     /* Message */
-    --bg-user-msg: #4f6ef7;
+    --bg-user-msg: #EDF3FE;
     --bg-action: #f0f7f0;
 
     /* Text */
     --text-primary: #1a1a2e;
     --text-secondary: #6b7280;
-    --text-user-msg: #ffffff;
+    --text-user-msg: #1a1a2e;
+    --text-user-msg-link: #4f6ef7;
+    --text-user-msg-link-hover: #3b5de7;
     --text-ai-msg: #1a1a2e;
     --text-sidebar: #374151;
     --text-code: #24292e;
@@ -108,6 +110,8 @@
     --text-primary: #e4e4ed;
     --text-secondary: #8b8ba0;
     --text-user-msg: #ffffff;
+    --text-user-msg-link: #ffffff;
+    --text-user-msg-link-hover: #d0d8ff;
     --text-ai-msg: #e4e4ed;
     --text-sidebar: #c0c0d0;
     --text-code: #d4d4d4;
@@ -197,6 +201,8 @@
         --text-primary: #e4e4ed;
         --text-secondary: #8b8ba0;
         --text-user-msg: #ffffff;
+        --text-user-msg-link: #ffffff;
+        --text-user-msg-link-hover: #d0d8ff;
         --text-ai-msg: #e4e4ed;
         --text-sidebar: #c0c0d0;
         --text-code: #d4d4d4;

@@ -205,7 +205,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .md-content li { margin: 4px 0; }
 .md-content blockquote { border-left: 3px solid var(--accent); padding-left: 14px; color: var(--text-secondary); margin: 10px 0; }
 .md-content a { color: var(--accent); text-decoration: none; } .md-content a:hover { text-decoration: underline; }
-.msg-row.user .md-content a { color: #fff; text-decoration: underline; } .msg-row.user .md-content a:hover { color: #e0e8ff; }
+.msg-row.user .md-content a { color: var(--text-user-msg-link, #fff); text-decoration: underline; } .msg-row.user .md-content a:hover { color: var(--text-user-msg-link-hover, #e0e8ff); }
 .md-content table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13px; }
 .md-content th, .md-content td { border: 1px solid var(--border-color); padding: 7px 12px; text-align: left; }
 .md-content th { background: var(--bg-hover); font-weight: 600; }
