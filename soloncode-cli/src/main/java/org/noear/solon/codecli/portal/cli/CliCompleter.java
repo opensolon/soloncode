@@ -21,6 +21,7 @@ import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.mount.SkillDir;
 
@@ -86,6 +87,7 @@ public class CliCompleter implements Completer {
         }
 
         if (word.startsWith("@")) {
+            completeAgents(word, candidates);
             completeFiles(word, candidates);
             return;
         }
@@ -132,6 +134,20 @@ public class CliCompleter implements Completer {
 
                 String desc = shorten(skill.getDescription(), 40);
                 candidates.add(new Candidate("$" + skill.getName(), "$" + skill.getName() + "  " + desc, null, null, null, null, true));
+            }
+        }
+    }
+
+    private void completeAgents(String word, List<Candidate> candidates) {
+        String prefix = normalize(word.substring(1));
+        for (AgentDefinition agent : engine.getAgentManager().getAgents()) {
+            if (agent.isHidden()) {
+                continue;
+            }
+
+            if (normalize(agent.getName()).startsWith(prefix)) {
+                String desc = shorten(agent.getDescription(), 40);
+                candidates.add(new Candidate("@" + agent.getName(), "@" + agent.getName() + "  子代理" + formatDescription(desc), null, null, null, null, true));
             }
         }
     }
@@ -222,6 +238,10 @@ public class CliCompleter implements Completer {
             desc = desc.substring(0, maxLength - 3) + "...";
         }
         return desc;
+    }
+
+    private String formatDescription(String desc) {
+        return desc.length() == 0 ? "" : "  " + desc;
     }
 
     private String normalize(String text) {
