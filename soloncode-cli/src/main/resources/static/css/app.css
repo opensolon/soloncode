@@ -482,8 +482,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-tpl-desc { font-size: 10px; color: var(--text-secondary); }
 
 /* Loop Checkbox */
-.loop-checkbox { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
-.loop-checkbox input { margin: 0; }
+.loop-checkbox { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; line-height: 1; }
+.loop-checkbox input[type="checkbox"] { margin: 0; width: 14px; height: 14px; flex-shrink: 0; vertical-align: middle; }
 
 /* Loop Form Inline */
 .loop-form-inline { display: flex; gap: 16px; align-items: flex-start; }
