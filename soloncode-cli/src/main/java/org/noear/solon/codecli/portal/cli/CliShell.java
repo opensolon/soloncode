@@ -76,6 +76,13 @@ public class CliShell implements Runnable {
     private final AgentProperties agentProps;
     private final LoopScheduler loopScheduler;
 
+    /**
+     * Loop 执行时的 AI 响应捕获缓冲区。
+     * 在 performAgentTask 的流式处理中由 ReasonChunk 写入，
+     * 在 taskExecutor lambda 中读取并返回给 LoopScheduler。
+     */
+    private final StringBuilder loopResponseCapture = new StringBuilder();
+
     // ANSI 颜色常量
     private final static String
             BOLD = "\033[1m",      // 粗体 / 高亮
@@ -172,12 +179,29 @@ public class CliShell implements Runnable {
             loopScheduler.restore(session.getSessionId(), engine.getWorkspace(), engine.getHarnessSessions());
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
-            loopScheduler.addTaskExecutor((sessionId, prompt) -> {
+            loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
-                    return;
+                    return null;
                 }
 
-                safeChatInput(session, prompt);
+                // P0-fix: 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
+                // performAgentTask 内部通过 input.startsWith("@") 识别并路由到对应 agent
+                String effectiveInput = prompt;
+                if (agentName != null && !agentName.isEmpty()) {
+                    effectiveInput = "@" + agentName + " " + prompt;
+                }
+
+                // 清除上一次捕获的响应
+                synchronized (loopResponseCapture) {
+                    loopResponseCapture.setLength(0);
+                }
+
+                safeChatInput(session, effectiveInput);
+
+                // 返回 AI 响应文本（maker/checker 和 goal 检查依赖此返回值）
+                synchronized (loopResponseCapture) {
+                    return loopResponseCapture.length() > 0 ? loopResponseCapture.toString().trim() : null;
+                }
             });
         }
 
@@ -485,6 +509,13 @@ public class CliShell implements Runnable {
     private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             String delta = clearThink(reason.getContent());
+
+            // 捕获非思考内容作为 loop 响应（用于 maker/checker 和 goal 检查）
+            if (!reason.getMessage().isThinking() && Assert.isNotEmpty(delta)) {
+                synchronized (loopResponseCapture) {
+                    loopResponseCapture.append(delta);
+                }
+            }
 
             if (reason.getMessage().isThinking()) {
                 if (agentProps.isThinkPrinted()) {

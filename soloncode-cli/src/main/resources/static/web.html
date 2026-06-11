@@ -80,6 +80,7 @@
             <div class="attachments-wrap" id="welcomeAttachmentsWrap"></div>
             <div style="position:relative">
                 <div class="cmd-complete" id="welcomeCmdComplete"></div>
+                <div class="loop-panel" id="welcomeLoopPanel" style="display:none"></div>
                 <textarea id="welcomeInput" placeholder="随便问..." rows="1" autofocus style="width: 100%;"></textarea>
             </div>
             <div class="welcome-toolbar">
@@ -107,6 +108,9 @@
                     </button>
                     <button class="attach-btn" id="welcomeAgentBtn" title="子代理">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
+                    </button>
+                    <button class="attach-btn" id="welcomeLoopBtn" title="循环任务">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                     </button>
                 </div>
                 <div class="toolbar-right">
@@ -139,6 +143,7 @@
                 <div style="position:relative;">
                     <div class="cmd-complete" id="chatCmdComplete"></div>
                     <div class="history-panel" id="chatHistoryPanel"></div>
+                    <div class="loop-panel" id="chatLoopPanel" style="display:none"></div>
                     <textarea id="chatInput" placeholder="随便问..." rows="1" style="width:100%"></textarea>
                 </div>
                 <div class="input-toolbar">
@@ -169,6 +174,9 @@
                         </button>
                         <button class="attach-btn" id="chatAgentBtn" title="子代理">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
+                        </button>
+                        <button class="attach-btn" id="chatLoopBtn" title="循环任务">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                         </button>
                     </div>
                     <div class="toolbar-right">
@@ -1117,5 +1125,6 @@
 <script src="/js/app-settings-openapi.js"></script>
 <script src="/js/app-settings-lsp.js"></script>
 <script src="/js/app-settings-skill.js"></script>
+<script src="/js/app-loop.js"></script>
 </body>
 </html>

@@ -18,6 +18,7 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
+import org.noear.solon.ai.harness.channel.Channel;
 import org.noear.solon.scheduling.ScheduledAnno;
 import org.noear.solon.scheduling.scheduled.manager.IJobManager;
 import org.noear.solon.scheduling.simple.JobManager;
@@ -29,7 +30,6 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -56,15 +56,33 @@ public class LoopScheduler {
     // 会话级任务列表：sessionId -> list of LoopTask
     private final ConcurrentHashMap<String, List<LoopTask>> sessionTasks = new ConcurrentHashMap<>();
 
-    // CLI 端任务执行回调：sessionId, prompt -> void（同步阻塞）
+    // CLI 端任务执行回调：sessionId, prompt, agentName -> void（同步阻塞）
     private volatile List<TaskExecutor> taskExecutors = new ArrayList<>();
+
+    // Worktree 管理器（lazy init）
+    private volatile WorktreeManager worktreeManager;
+
+    // IM 通道列表（用于通知）
+    private volatile List<Channel> channels = new ArrayList<>();
 
     /**
      * CLI 端任务执行器（同步阻塞）
+     *
+     * <p>支持指定 agent 名称，用于 maker/checker 分离。
+     * 若 agentName 为 null，则使用默认主 agent。
+     *
+     * <p>返回 AI 的响应文本摘要，用于 maker/checker 编排和 goal 条件检查。
+     * 若无法获取响应（如会话不匹配），返回 null。
      */
     @FunctionalInterface
     public interface TaskExecutor {
-        void execute(String sessionId, String prompt);
+        /**
+         * @param sessionId 会话 ID
+         * @param prompt    提示词
+         * @param agentName 代理名称（可为 null，表示主 agent）
+         * @return AI 响应文本摘要，无法获取时返回 null
+         */
+        String execute(String sessionId, String prompt, String agentName);
     }
 
     public LoopScheduler() {
@@ -73,6 +91,27 @@ public class LoopScheduler {
 
     public void addTaskExecutor(TaskExecutor executor) {
         this.taskExecutors.add(executor);
+    }
+
+    /**
+     * 注入 IM 通道列表（用于 loop 结果通知）
+     */
+    public void setChannels(List<Channel> channels) {
+        this.channels = channels != null ? channels : new ArrayList<>();
+    }
+
+    /**
+     * 获取或创建 WorktreeManager（lazy init）
+     */
+    private WorktreeManager getWorktreeManager() {
+        if (worktreeManager == null) {
+            synchronized (this) {
+                if (worktreeManager == null) {
+                    worktreeManager = new WorktreeManager();
+                }
+            }
+        }
+        return worktreeManager;
     }
 
     // ==================== 任务注册 ====================
@@ -127,6 +166,18 @@ public class LoopScheduler {
                 if (jobManager.jobExists(jobName)) {
                     jobManager.jobRemove(jobName);
                 }
+
+                // P1-fix: 清理 worktree
+                if (t.isWorktreeEnabled() && t.getStateDir() != null) {
+                    String ws = extractWorkspaceFromStateDir(t.getStateDir());
+                    try {
+                        getWorktreeManager().cleanup(ws);
+                        LOG.info("Loop task '{}' worktree cleaned up on remove", t.getId());
+                    } catch (Exception e) {
+                        LOG.warn("Loop task '{}' worktree cleanup failed on remove: {}", t.getId(), e.getMessage());
+                    }
+                }
+
                 return true;
             }
             return false;
@@ -135,12 +186,114 @@ public class LoopScheduler {
         saveToFile(sessionId, workspace, harnessSessions, tasks);
     }
 
+    /**
+     * 启用/停用任务（toggle enabled 字段）
+     */
+    public void toggle(String sessionId, String workspace, String harnessSessions, String taskId) {
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks == null) return;
+
+        for (LoopTask t : tasks) {
+            if (t.getId().equals(taskId)) {
+                boolean newEnabled = !t.isEnabled();
+                t.setEnabled(newEnabled);
+
+                if (newEnabled) {
+                    // 恢复：重新注册 Job
+                    registerJob(sessionId, t);
+                } else {
+                    // 暂停：移除 Job，但不 cancel
+                    String jobName = t.getJobName();
+                    if (jobManager.jobExists(jobName)) {
+                        jobManager.jobRemove(jobName);
+                    }
+                }
+
+                saveToFile(sessionId, workspace, harnessSessions, tasks);
+                return;
+            }
+        }
+    }
+
+    /**
+     * 更新任务定义（重建 Job）
+     */
+    public void update(String sessionId, String workspace, String harnessSessions, String taskId, LoopTask newTask) {
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks == null) return;
+
+        for (int i = 0; i < tasks.size(); i++) {
+            LoopTask t = tasks.get(i);
+            if (t.getId().equals(taskId)) {
+                // 移除旧 Job
+                String jobName = t.getJobName();
+                if (jobManager.jobExists(jobName)) {
+                    jobManager.jobRemove(jobName);
+                }
+
+                // 替换为新任务
+                tasks.set(i, newTask);
+
+                // 如果 enabled 且未取消，注册新 Job
+                if (newTask.isEnabled() && !newTask.isCancelled()) {
+                    registerJob(sessionId, newTask);
+                }
+
+                saveToFile(sessionId, workspace, harnessSessions, tasks);
+                return;
+            }
+        }
+    }
+
+    /**
+     * 手动触发一次执行（不走定时）
+     */
+    public void trigger(String sessionId, String workspace, String harnessSessions, String taskId) {
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks == null) return;
+
+        for (LoopTask t : tasks) {
+            if (t.getId().equals(taskId)) {
+                // 异步执行，避免阻塞 HTTP 请求
+                Thread thread = new Thread(() -> onTrigger(sessionId, t), "loop-trigger-" + taskId);
+                thread.setDaemon(true);
+                thread.start();
+                return;
+            }
+        }
+    }
+
+    /**
+     * 根据 ID 获取任务
+     */
+    public LoopTask getTaskById(String sessionId, String taskId) {
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks == null) return null;
+        for (LoopTask t : tasks) {
+            if (t.getId().equals(taskId)) return t;
+        }
+        return null;
+    }
+
     // ==================== 任务列表 ====================
 
     /**
      * 列出活跃任务（自动清理过期）
      */
     public List<LoopTask> listActive(String sessionId, String workspace, String harnessSessions) {
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks == null) return Collections.emptyList();
+
+        // 清理过期任务
+        cleanExpired(sessionId, workspace, harnessSessions, tasks);
+
+        return new ArrayList<>(tasks);
+    }
+
+    /**
+     * 列出所有任务（含已停用的），自动清理过期
+     */
+    public List<LoopTask> listAll(String sessionId, String workspace, String harnessSessions) {
         List<LoopTask> tasks = sessionTasks.get(sessionId);
         if (tasks == null) return Collections.emptyList();
 
@@ -163,6 +316,11 @@ public class LoopScheduler {
                 String jobName = t.getJobName();
                 if (jobManager.jobExists(jobName)) {
                     jobManager.jobRemove(jobName);
+                }
+                // F6: 清理 worktree
+                if (t.isWorktreeEnabled() && t.getStateDir() != null) {
+                    String wtWorkspace = extractWorkspaceFromStateDir(t.getStateDir());
+                    getWorktreeManager().cleanup(wtWorkspace);
                 }
             });
         }
@@ -245,21 +403,221 @@ public class LoopScheduler {
             return;
         }
 
+        // Goal 模式：达到最大迭代次数则自动取消
+        if (task.isMaxIterationsReached()) {
+            LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
+            removeCurrentTask(sessionId, task);
+            return;
+        }
+
         // 防重入：上一个还没执行完则跳过
         if (!task.tryStart()) {
             return;
         }
 
         try {
-           for(TaskExecutor taskExecutor : taskExecutors){
-                taskExecutor.execute(sessionId, task.getPrompt());
-                task.updateLastExecution("ok");
+            // Phase 4: Worktree 隔离
+            String originalWorkspace = null;
+            String worktreePath = null;
+            if (task.isWorktreeEnabled()) {
+                String workspace = extractWorkspaceFromStateDir(task.getStateDir());
+                worktreePath = getWorktreeManager().create(workspace, task.getId());
+                if (worktreePath != null) {
+                    originalWorkspace = workspace;
+                    LOG.info("Loop task '{}' executing in worktree: {}", task.getId(), worktreePath);
+                } else {
+                    LOG.warn("Loop task '{}' worktree creation failed, falling back to main workspace", task.getId());
+                }
             }
+
+            try {
+                // 构建完整 prompt（注入 skill + state 上下文）
+                String effectivePrompt = buildEffectivePrompt(sessionId, task);
+
+                String executionResult;
+
+                if (task.isMakerCheckerMode()) {
+                    // Phase 2: maker/checker 编排
+                    executionResult = executeMakerChecker(sessionId, task, effectivePrompt);
+                } else {
+                    // 兼容路径：单一 agent 执行
+                    executionResult = null;
+                    for (TaskExecutor taskExecutor : taskExecutors) {
+                        String result = taskExecutor.execute(sessionId, effectivePrompt, null);
+                        if (result != null) {
+                            executionResult = result;
+                        }
+                    }
+                }
+
+                // 更新执行记录
+                task.updateLastExecution(executionResult != null ? executionResult : "ok");
+                int iteration = task.incrementIteration();
+
+                // F3: Goal 条件检查 — 解析 AI 响应中的 [GOAL_ACHIEVED] 标记
+                if (task.isGoalMode() && executionResult != null
+                        && executionResult.contains("[GOAL_ACHIEVED]")) {
+                    LOG.info("Loop task '{}' goal achieved at iteration {}", task.getId(), iteration);
+                    removeCurrentTask(sessionId, task);
+                    notifyChannels(sessionId, task);
+                    return;
+                }
+
+                // 写入执行历史
+                if (task.getStateDir() != null) {
+                    String workspace = extractWorkspaceFromStateDir(task.getStateDir());
+                    LoopStateManager.appendHistory(workspace, task.getId(),
+                            executionResult != null ? executionResult : "ok", iteration);
+                }
+
+            } finally {
+                // Phase 4: 清理 worktree（执行完毕后）
+                if (worktreePath != null) {
+                    getWorktreeManager().remove(worktreePath);
+                    LOG.debug("Loop task '{}' worktree cleaned up", task.getId());
+                }
+            }
+
+            // Phase 5: 通道通知
+            notifyChannels(sessionId, task);
+
         } catch (Exception e) {
             LOG.error("Loop task '{}' failed: {}", task.getId(), e.getMessage());
             task.updateLastExecution("error: " + e.getMessage());
         } finally {
             task.finish();
+        }
+    }
+
+    /**
+     * 构建完整的有效 prompt（skill 解析 + state 上下文注入）
+     */
+    private String buildEffectivePrompt(String sessionId, LoopTask task) {
+        String prompt = task.getPrompt();
+
+        // 1. Skill 引用解析：尝试从 workspace/.soloncode/skills/ 加载 SKILL.md
+        if (task.getSkillRef() != null && !task.getSkillRef().isEmpty()
+                && task.getStateDir() != null) {
+            String ws = extractWorkspaceFromStateDir(task.getStateDir());
+            try {
+                java.nio.file.Path skillFile = java.nio.file.Paths.get(ws, ".soloncode", "skills",
+                        task.getSkillRef(), "SKILL.md");
+                if (java.nio.file.Files.exists(skillFile)) {
+                    String skillContent = new String(java.nio.file.Files.readAllBytes(skillFile),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                    prompt = prompt + "\n\n--- Skill: " + task.getSkillRef() + " ---\n" + skillContent;
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to load skill '{}': {}", task.getSkillRef(), e.getMessage());
+            }
+        }
+
+        // 2. 状态上下文注入
+        if (task.getStateDir() != null) {
+            String workspace = extractWorkspaceFromStateDir(task.getStateDir());
+            String stateContext = LoopStateManager.buildStateContext(workspace, task.getId());
+            if (!stateContext.isEmpty()) {
+                prompt = prompt + stateContext;
+            }
+        }
+
+        // 3. Goal 条件注入
+        if (task.isGoalMode()) {
+            prompt = prompt + "\n\n--- Goal ---\nTarget condition: " + task.getGoalCondition()
+                    + "\nCurrent iteration: " + task.getCurrentIteration()
+                    + "/" + task.getMaxIterations()
+                    + "\nIf the goal is achieved, respond with [GOAL_ACHIEVED].";
+        }
+
+        return prompt;
+    }
+
+    /**
+     * maker/checker 编排执行
+     *
+     * <p>Phase 1: maker agent 执行任务，返回结果。
+     * Phase 2: checker agent 审查 maker 的实际产出，返回 pass/fail。</p>
+     *
+     * @return maker 的执行结果摘要
+     */
+    private String executeMakerChecker(String sessionId, LoopTask task, String effectivePrompt) {
+        // Phase 1: maker 执行
+        String makerResult = null;
+        for (TaskExecutor taskExecutor : taskExecutors) {
+            String result = taskExecutor.execute(sessionId, effectivePrompt, task.getMakerAgent());
+            if (result != null) {
+                makerResult = result;
+            }
+        }
+
+        // Phase 2: checker 审查（基于 maker 的实际执行结果）
+        StringBuilder checkerPrompt = new StringBuilder();
+        checkerPrompt.append("Review the results of the following task and verify quality:\n\n");
+        checkerPrompt.append("Original task: ").append(task.getPrompt()).append("\n\n");
+
+        if (makerResult != null && !makerResult.isEmpty()) {
+            checkerPrompt.append("Maker's execution result:\n").append(makerResult).append("\n\n");
+        } else {
+            checkerPrompt.append("(Maker did not produce a capturable result)\n\n");
+        }
+
+        checkerPrompt.append("Provide a brief assessment: [PASS] or [FAIL] with reasoning.");
+
+        if (task.isGoalMode()) {
+            checkerPrompt.append("\n\nAlso evaluate if this goal condition is met: ").append(task.getGoalCondition());
+            checkerPrompt.append("\nIf met, respond with [GOAL_ACHIEVED].");
+        }
+
+        String checkerResult = null;
+        for (TaskExecutor taskExecutor : taskExecutors) {
+            String result = taskExecutor.execute(sessionId, checkerPrompt.toString(), task.getCheckerAgent());
+            if (result != null) {
+                checkerResult = result;
+            }
+        }
+
+        // 将 checker 的评估结果写入状态
+        if (task.getStateDir() != null && checkerResult != null) {
+            String workspace = extractWorkspaceFromStateDir(task.getStateDir());
+            LoopStateManager.appendDecision(workspace, task.getId(),
+                    "Checker: " + (checkerResult.length() > 200 ? checkerResult.substring(0, 200) + "..." : checkerResult));
+        }
+
+        return makerResult;
+    }
+
+    /**
+     * 从 stateDir 提取 workspace 路径
+     * stateDir 格式: /path/to/workspace/.loop/<loopId>
+     */
+    private String extractWorkspaceFromStateDir(String stateDir) {
+        if (stateDir == null) return ".";
+        int idx = stateDir.indexOf("/.loop/");
+        if (idx > 0) {
+            return stateDir.substring(0, idx);
+        }
+        return ".";
+    }
+
+    /**
+     * 移除当前任务（从 IJobManager 和内存列表中）
+     */
+    private void removeCurrentTask(String sessionId, LoopTask task) {
+        String jobName = task.getJobName();
+        if (jobManager.jobExists(jobName)) {
+            jobManager.jobRemove(jobName);
+        }
+        task.cancel();
+    }
+
+    /**
+     * 供外部移除任务（带持久化）
+     */
+    public void removeWithPersist(String sessionId, String workspace, String harnessSessions, LoopTask task) {
+        removeCurrentTask(sessionId, task);
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks != null) {
+            saveToFile(sessionId, workspace, harnessSessions, tasks);
         }
     }
 
@@ -295,8 +653,63 @@ public class LoopScheduler {
                 }
             }
         }
+
+        // Phase 4: 清理所有 loop worktree
+        if (worktreeManager != null) {
+            for (Map.Entry<String, List<LoopTask>> entry : sessionTasks.entrySet()) {
+                for (LoopTask t : entry.getValue()) {
+                    if (t.isWorktreeEnabled() && t.getStateDir() != null) {
+                        String workspace = extractWorkspaceFromStateDir(t.getStateDir());
+                        worktreeManager.cleanup(workspace);
+                        break; // 每个 workspace 只需 cleanup 一次
+                    }
+                }
+            }
+        }
+
         sessionTasks.clear();
         LOG.info("LoopScheduler shutdown: all tasks cancelled and removed from IJobManager");
+    }
+
+    // ==================== 通道通知 ====================
+
+    /**
+     * 通过 IM 通道通知 loop 执行结果
+     */
+    private void notifyChannels(String sessionId, LoopTask task) {
+        if (task.getChannelNotify() == null || channels.isEmpty()) {
+            return;
+        }
+
+        // 构建通知消息
+        StringBuilder msg = new StringBuilder();
+        msg.append("[Loop #").append(task.getId()).append("] ");
+        msg.append(task.getPrompt());
+        if (task.getLastResult() != null) {
+            msg.append(" → ").append(task.getLastResult());
+        }
+        if (task.isGoalMode()) {
+            msg.append(" (iter: ").append(task.getCurrentIteration()).append("/").append(task.getMaxIterations()).append(")");
+        }
+
+        String message = msg.toString();
+        boolean sent = false;
+
+        for (Channel ch : channels) {
+            if (task.getChannelNotify().equals(ch.getChannelName()) && ch.isBound(sessionId)) {
+                try {
+                    ch.sendReply(sessionId, message, true);
+                    sent = true;
+                    LOG.debug("Loop task '{}' notified via {}", task.getId(), ch.getChannelName());
+                } catch (Exception e) {
+                    LOG.warn("Failed to notify via {}: {}", ch.getChannelName(), e.getMessage());
+                }
+            }
+        }
+
+        if (!sent) {
+            LOG.debug("Loop task '{}' no bound channel found for '{}' (notification skipped)", task.getId(), task.getChannelNotify());
+        }
     }
 
     // ==================== JSON 持久化 ====================

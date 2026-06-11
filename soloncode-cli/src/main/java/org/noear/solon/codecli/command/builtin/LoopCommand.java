@@ -25,16 +25,23 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * /loop 命令 - 定时任务管理
+ * /loop 命令 - 循环任务管理（Loop Engineering 运行时）
  *
  * <pre>
- * /loop 5m check if deployment finished    → fixed interval (5m)
- * /loop check ci status                   → auto interval (5m default)
- * /loop cron:'0 *&#47;5 * * * ?' check status  → cron expression
- * /loop ls                                → list active tasks
- * /loop stop <id>                         → stop a task
- * /loop stop-all                          → stop all tasks
- * /loop                                   → same as /loop ls
+ * 基础用法:
+ *   /loop 5m check if deployment finished    → fixed interval (5m)
+ *   /loop check ci status                   → auto interval (5m default)
+ *   /loop cron:"0 *&#47;5 * * * ?" check status  → cron expression
+ *   /loop ls                                → list active tasks
+ *   /loop stop <id>                         → stop a task
+ *   /loop stop-all                          → stop all tasks
+ *
+ * Loop Engineering 扩展:
+ *   /loop 30m $triage-ci-failures           → 引用 skill
+ *   /loop 5m --maker:coder --checker:reviewer fix auth  → maker/checker
+ *   /loop goal:"all tests pass" fix auth    → goal 模式
+ *   /loop 5m --worktree fix bug #123        → worktree 隔离
+ *   /loop 30m --notify:feishu check CI      → 通道通知
  * </pre>
  *
  * @author noear
@@ -47,6 +54,7 @@ public class LoopCommand implements Command {
     private static final String YELLOW = "\033[33m";
     private static final String RED = "\033[31m";
     private static final String CYAN = "\033[36m";
+    private static final String MAGENTA = "\033[35m";
     private static final String RESET = "\033[0m";
 
     private final LoopScheduler scheduler;
@@ -62,7 +70,7 @@ public class LoopCommand implements Command {
 
     @Override
     public String description() {
-        return "循环任务管理 (ls, stop, stop-all, <interval> <prompt>, cron:<expr> <prompt>)";
+        return "循环任务管理 (ls, stop, stop-all, goal, <interval> <prompt>, cron:<expr> <prompt>)";
     }
 
     @Override
@@ -73,7 +81,7 @@ public class LoopCommand implements Command {
     @Override
     public boolean execute(CommandContext ctx) throws Exception {
         String sessionId = ctx.getSession().getSessionId();
-        HarnessEngine  engine = ctx.getEngine();
+        HarnessEngine engine = ctx.getEngine();
         String workspace = engine.getWorkspace();
         String harnessSessions = engine.getHarnessSessions();
 
@@ -93,70 +101,196 @@ public class LoopCommand implements Command {
             scheduler.stopAll(sessionId, workspace, harnessSessions);
             ctx.println(ctx.color(GREEN + "All loop tasks stopped." + RESET));
         } else {
-            // Schedule a new task: /loop [interval|cron:<expr>] <prompt>
-            int intervalMinutes = 5; // default
-            int promptStartIndex = 0;
-            String cronExpr = null;
-
-            // 检查是否为 cron 模式
-            if (sub.startsWith("cron:")) {
-                cronExpr = sub.substring(5).trim();
-                // 去除可能被引号包裹的 cron 表达式
-                if ((cronExpr.startsWith("\"") && cronExpr.endsWith("\"")) ||
-                        (cronExpr.startsWith("'") && cronExpr.endsWith("'"))) {
-                    cronExpr = cronExpr.substring(1, cronExpr.length() - 1);
-                }
-                if (cronExpr.isEmpty()) {
-                    ctx.println(ctx.color(RED + "Usage: /loop cron:<expr> <prompt>" + RESET));
-                    ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
-                    return true;
-                }
-                promptStartIndex = 1;
-            } else {
-                Integer parsed = parseInterval(sub);
-                if (parsed != null) {
-                    intervalMinutes = parsed;
-                    promptStartIndex = 1;
-                }
-            }
-
-            // Build prompt from remaining args
-            StringBuilder promptBuilder = new StringBuilder();
-            for (int i = promptStartIndex; ; i++) {
-                String arg = ctx.argAt(i);
-                if (arg == null) break;
-                if (promptBuilder.length() > 0) promptBuilder.append(" ");
-                promptBuilder.append(arg);
-            }
-
-            String prompt = promptBuilder.toString().trim();
-            if (prompt.isEmpty()) {
-                ctx.println(ctx.color(RED + "Usage: /loop [interval|cron:<expr>] <prompt>" + RESET));
-                ctx.println(ctx.color(DIM + "  /loop 5m check deployment" + RESET));
-                ctx.println(ctx.color(DIM + "  /loop 30s check CI status" + RESET));
-                ctx.println(ctx.color(DIM + "  /loop check CI status   (auto 5m)" + RESET));
-                ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
-                return true;
-            }
-
-            // Create and schedule
-            LoopTask task = cronExpr != null
-                    ? new LoopTask(prompt, cronExpr)
-                    : new LoopTask(prompt, intervalMinutes);
-            scheduler.schedule(sessionId, workspace, harnessSessions, task);
-
-            ctx.println(ctx.color(GREEN + "Loop task registered:" + RESET));
-            ctx.println(ctx.color("  " + BOLD + "ID:" + RESET + " " + task.getId()));
-            if (task.isCronMode()) {
-                ctx.println(ctx.color("  " + BOLD + "Cron:" + RESET + " " + task.getCron()));
-            } else {
-                ctx.println(ctx.color("  " + BOLD + "Interval:" + RESET + " " + formatInterval(intervalMinutes)));
-            }
-            ctx.println(ctx.color("  " + BOLD + "Prompt:" + RESET + " " + prompt));
-            ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
+            // Schedule a new task
+            doSchedule(ctx, sessionId, workspace, harnessSessions);
         }
 
         return true;
+    }
+
+    /**
+     * 解析并创建新的 loop 任务
+     */
+    private void doSchedule(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
+        int intervalMinutes = 5; // default
+        String cronExpr = null;
+        String skillRef = null;
+        String goalCondition = null;
+        String makerAgent = null;
+        String checkerAgent = null;
+        boolean worktreeEnabled = false;
+        String channelNotify = null;
+        Integer maxIterations = null;
+
+        int promptStartIndex = 0;
+        String first = ctx.argAt(0);
+
+        // 1. 检查是否为 cron 模式
+        if (first != null && first.startsWith("cron:")) {
+            cronExpr = first.substring(5).trim();
+            // 去除可能被引号包裹的 cron 表达式
+            if ((cronExpr.startsWith("\"") && cronExpr.endsWith("\"")) ||
+                    (cronExpr.startsWith("'") && cronExpr.endsWith("'"))) {
+                cronExpr = cronExpr.substring(1, cronExpr.length() - 1);
+            }
+            if (cronExpr.isEmpty()) {
+                ctx.println(ctx.color(RED + "Usage: /loop cron:<expr> <prompt>" + RESET));
+                ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
+                return;
+            }
+            promptStartIndex = 1;
+        } else if (first != null && first.startsWith("goal:")) {
+            // 2. 检查是否为 goal 模式: /loop goal:"..." <prompt>
+            goalCondition = first.substring(5).trim();
+            if ((goalCondition.startsWith("\"") && goalCondition.endsWith("\"")) ||
+                    (goalCondition.startsWith("'") && goalCondition.endsWith("'"))) {
+                goalCondition = goalCondition.substring(1, goalCondition.length() - 1);
+            }
+            if (goalCondition.isEmpty()) {
+                ctx.println(ctx.color(RED + "Usage: /loop goal:\"<condition>\" <prompt>" + RESET));
+                ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix the auth module" + RESET));
+                return;
+            }
+            promptStartIndex = 1;
+        } else {
+            // 3. 检查时间间隔
+            Integer parsed = parseInterval(first);
+            if (parsed != null) {
+                intervalMinutes = parsed;
+                promptStartIndex = 1;
+            }
+        }
+
+        // Build prompt from remaining args, 同时解析 --flag
+        StringBuilder promptBuilder = new StringBuilder();
+        for (int i = promptStartIndex; ; i++) {
+            String arg = ctx.argAt(i);
+            if (arg == null) break;
+
+            // 解析 --flag:value 或 --flag
+            if (arg.startsWith("--")) {
+                String flag = arg.substring(2);
+                int colonIdx = flag.indexOf(':');
+                if (colonIdx > 0) {
+                    String key = flag.substring(0, colonIdx);
+                    String val = flag.substring(colonIdx + 1);
+                    switch (key) {
+                        case "maker":
+                            makerAgent = val;
+                            break;
+                        case "checker":
+                            checkerAgent = val;
+                            break;
+                        case "notify":
+                            channelNotify = val;
+                            break;
+                        case "max-iter":
+                            try {
+                                maxIterations = Integer.parseInt(val);
+                            } catch (NumberFormatException e) {
+                                ctx.println(ctx.color(RED + "Invalid --max-iter value: " + val + RESET));
+                                return;
+                            }
+                            break;
+                        case "goal":
+                            goalCondition = val;
+                            break;
+                        default:
+                            ctx.println(ctx.color(YELLOW + "Unknown flag: --" + key + RESET));
+                            break;
+                    }
+                } else {
+                    // --worktree (boolean flag)
+                    if ("worktree".equals(flag)) {
+                        worktreeEnabled = true;
+                    } else {
+                        ctx.println(ctx.color(YELLOW + "Unknown flag: --" + flag + RESET));
+                    }
+                }
+            } else {
+                // 普通参数拼入 prompt
+                if (promptBuilder.length() > 0) promptBuilder.append(" ");
+                promptBuilder.append(arg);
+            }
+        }
+
+        String prompt = promptBuilder.toString().trim();
+
+        // 检测 skill 引用（prompt 以 $ 开头）
+        if (prompt.startsWith("$")) {
+            skillRef = prompt;
+            // skillRef 保持原样，由上层（CliShell）在执行时解析
+        }
+
+        if (prompt.isEmpty()) {
+            printUsage(ctx);
+            return;
+        }
+
+        // 初始化状态目录
+        String stateDir = LoopStateManager.init(workspace, "pending", prompt);
+        // 用生成的 ID 需要先创建 task 才知道，这里先用临时目录
+        // 实际上 LoopTask 构造中会生成 ID，这里需要在 schedule 之后重命名
+        // 简化方案：先生成 ID，再初始化目录
+        String tempId = java.util.UUID.randomUUID().toString().substring(0, 8);
+        stateDir = LoopStateManager.init(workspace, tempId, prompt);
+
+        // Create and schedule
+        LoopTask task = new LoopTask(
+                prompt, intervalMinutes, cronExpr,
+                skillRef, goalCondition, makerAgent, checkerAgent,
+                worktreeEnabled, channelNotify, maxIterations, stateDir
+        );
+
+        // 如果生成的 ID 与 tempId 不同，重新初始化状态目录
+        if (!task.getId().equals(tempId)) {
+            LoopStateManager.cleanup(workspace, tempId);
+            stateDir = LoopStateManager.init(workspace, task.getId(), prompt);
+        }
+
+        try {
+            scheduler.schedule(sessionId, workspace, harnessSessions, task);
+        } catch (IllegalStateException e) {
+            ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
+            LoopStateManager.cleanup(workspace, task.getId());
+            return;
+        }
+
+        // 打印注册信息
+        ctx.println(ctx.color(GREEN + "Loop task registered:" + RESET));
+        ctx.println(ctx.color("  " + BOLD + "ID:" + RESET + " " + task.getId()));
+        if (task.isCronMode()) {
+            ctx.println(ctx.color("  " + BOLD + "Cron:" + RESET + " " + task.getCron()));
+        } else {
+            ctx.println(ctx.color("  " + BOLD + "Interval:" + RESET + " " + formatInterval(intervalMinutes)));
+        }
+        ctx.println(ctx.color("  " + BOLD + "Prompt:" + RESET + " " + prompt));
+
+        // 打印 Loop Engineering 扩展信息
+        if (skillRef != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Skill:" + RESET + " " + skillRef));
+        }
+        if (goalCondition != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Goal:" + RESET + " " + goalCondition));
+        }
+        if (makerAgent != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Maker:" + RESET + " " + makerAgent));
+        }
+        if (checkerAgent != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Checker:" + RESET + " " + checkerAgent));
+        }
+        if (worktreeEnabled) {
+            ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
+        }
+        if (channelNotify != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Notify:" + RESET + " " + channelNotify));
+        }
+        if (maxIterations != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
+        }
+
+        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + stateDir));
+        ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
     }
 
     private void doList(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
@@ -175,7 +309,37 @@ public class LoopCommand implements Command {
             String lastInfo = t.getLastExecutedAt() != null
                     ? DIM + " (last: " + formatAgo(t.getLastExecutedAt()) + ": " + (t.getLastResult() != null ? t.getLastResult() : "-") + ")" + RESET
                     : "";
-            ctx.println(ctx.color("  " + CYAN + t.getId() + RESET + " " + scheduleInfo + " " + status + " " + DIM + t.getPrompt() + RESET + lastInfo));
+
+            // 基础行
+            StringBuilder line = new StringBuilder();
+            line.append("  ").append(CYAN).append(t.getId()).append(RESET);
+            line.append(" ").append(scheduleInfo);
+            line.append(" ").append(status);
+
+            // 扩展标签
+            if (t.isGoalMode()) {
+                line.append(" ").append(MAGENTA).append("[goal]").append(RESET);
+            }
+            if (t.isMakerCheckerMode()) {
+                line.append(" ").append(MAGENTA).append("[m/c]").append(RESET);
+            }
+            if (t.getSkillRef() != null) {
+                line.append(" ").append(MAGENTA).append("[skill]").append(RESET);
+            }
+            if (t.isWorktreeEnabled()) {
+                line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
+            }
+            if (t.getChannelNotify() != null) {
+                line.append(" ").append(MAGENTA).append("[").append(t.getChannelNotify()).append("]").append(RESET);
+            }
+            if (t.isGoalMode()) {
+                line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
+            }
+
+            line.append(" ").append(DIM).append(t.getPrompt()).append(RESET);
+            line.append(lastInfo);
+
+            ctx.println(ctx.color(line.toString()));
         }
         ctx.println(ctx.color(DIM + "\nUsage: /loop stop <id> | /loop stop-all" + RESET));
     }
@@ -231,6 +395,23 @@ public class LoopCommand implements Command {
 
         // 限制在 1~1440 分钟（即 1 分钟 ~ 24 小时）
         return Math.max(1, Math.min(1440, minutes));
+    }
+
+    private void printUsage(CommandContext ctx) {
+        ctx.println(ctx.color(RED + "Usage: /loop [options] [interval|cron:<expr>] <prompt>" + RESET));
+        ctx.println(ctx.color(DIM + "Basic:" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop 5m check deployment" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop 30s check CI status" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop check CI status   (auto 5m)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
+        ctx.println(ctx.color(DIM + "" + RESET));
+        ctx.println(ctx.color(DIM + "Loop Engineering:" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop 30m $triage-ci-failures              (skill ref)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop 5m --maker:coder --checker:reviewer fix auth" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix auth module" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop 5m --worktree fix bug #123           (git worktree)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop 30m --notify:feishu check CI         (channel notify)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop goal:\"lint clean\" --max-iter:10 fix lint" + RESET));
     }
 
     private String formatInterval(int minutes) {

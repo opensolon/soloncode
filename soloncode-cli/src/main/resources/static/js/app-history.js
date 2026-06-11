@@ -478,6 +478,8 @@ function extractUserMessages() {
 }
 
 function showHistoryPanel() {
+    // 互斥：关闭 loop 面板
+    $('#chatLoopPanel, #welcomeLoopPanel').hide();
     var messages = extractUserMessages();
     if (messages.length === 0) {
         $chatHistoryPanel.html('<div class="history-panel-empty">暂无输入历史</div>');

@@ -26,6 +26,7 @@ import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.command.builtin.LoopTask;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
@@ -104,13 +105,26 @@ public class WebController {
         this.fileService = new FileService(engine.getWorkspace());
 
         // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，通过 WebGate WebSocket 推送到前端
+        //
+        // 注意：WebGate 的 performAgentTask 是异步的（subscribe 后立即返回），
+        // 无法同步等待 AI 响应。因此此执行器返回 null，
+        // 意味着 Web 端 Loop 不支持 maker/checker 审查和 goal 条件终止。
+        // 这些高级功能仅在 CLI 端可用（CliShell 使用 latch.await() 同步等待）。
         if (loopScheduler != null) {
-            loopScheduler.addTaskExecutor((sessionId, prompt) -> {
+            loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (sessionId.startsWith("web-") == false) {
-                    return;
+                    return null;
                 }
 
-                webGate.safeChatInput(sessionId, prompt, "Loop");
+                // P0-fix: 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
+                // WebGate.onChatInput 内部通过 input.startsWith("@") 识别并路由到对应 agent
+                String effectiveInput = prompt;
+                if (agentName != null && !agentName.isEmpty()) {
+                    effectiveInput = "@" + agentName + " " + prompt;
+                }
+
+                webGate.safeChatInput(sessionId, effectiveInput, "Loop");
+                return null; // Web 端异步执行，无法同步捕获 AI 响应
             });
         }
     }
@@ -714,6 +728,206 @@ public class WebController {
         return null;
     }
 
+
+    // ==================== 循环任务管理 ====================
+
+    /**
+     * 获取当前会话的循环任务列表（含已停用的）。
+     */
+    @Get
+    @Mapping("/web/chat/loop/list")
+    public Result<List<Map>> loopList(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+
+        List<LoopTask> tasks = loopScheduler.listAll(sessionId, engine.getWorkspace(), engine.getHarnessSessions());
+        List<Map> data = new ArrayList<>();
+        for (LoopTask t : tasks) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", t.getId());
+            item.put("name", t.getName());
+            item.put("prompt", t.getPrompt());
+            item.put("intervalMinutes", t.getIntervalMinutes());
+            if (t.getCron() != null) item.put("cron", t.getCron());
+            item.put("enabled", t.isEnabled());
+            item.put("cancelled", t.isCancelled());
+            item.put("running", t.isRunning());
+            item.put("currentIteration", t.getCurrentIteration());
+            if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
+            if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
+            if (t.getSkillRef() != null) item.put("skillRef", t.getSkillRef());
+            if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
+            if (t.getMakerAgent() != null) item.put("makerAgent", t.getMakerAgent());
+            if (t.getCheckerAgent() != null) item.put("checkerAgent", t.getCheckerAgent());
+            item.put("worktreeEnabled", t.isWorktreeEnabled());
+            if (t.getChannelNotify() != null) item.put("channelNotify", t.getChannelNotify());
+            item.put("maxIterations", t.getMaxIterations());
+            data.add(item);
+        }
+        return Result.succeed(data);
+    }
+
+    /**
+     * 新增循环任务。
+     */
+    @Post
+    @Mapping("/web/chat/loop/add")
+    public Result loopAdd(@Param("sessionId") String sessionId,
+                          @Param("name") String name,
+                          @Param("prompt") String prompt,
+                          @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
+                          @Param(value = "cron", required = false) String cron,
+                          @Param(value = "skillRef", required = false) String skillRef,
+                          @Param(value = "goalCondition", required = false) String goalCondition,
+                          @Param(value = "makerAgent", required = false) String makerAgent,
+                          @Param(value = "checkerAgent", required = false) String checkerAgent,
+                          @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
+                          @Param(value = "channelNotify", required = false) String channelNotify,
+                          @Param(value = "maxIterations", required = false) Integer maxIterations) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (prompt == null || prompt.trim().isEmpty()) {
+            return Result.failure(400, "prompt is required");
+        }
+
+        String workspace = engine.getWorkspace();
+        String harnessSessions = engine.getHarnessSessions();
+
+        // 初始化状态目录
+        int interval = intervalMinutes != null ? intervalMinutes : 5;
+        LoopTask task = new LoopTask(
+                prompt, interval, cron,
+                skillRef, goalCondition, makerAgent, checkerAgent,
+                worktreeEnabled != null ? worktreeEnabled : false,
+                channelNotify, maxIterations,
+                null
+        );
+
+        // 设置 name 和 enabled
+        if (name != null && !name.trim().isEmpty()) {
+            task.setName(name.trim());
+        }
+
+        try {
+            loopScheduler.schedule(sessionId, workspace, harnessSessions, task);
+        } catch (IllegalStateException e) {
+            return Result.failure(400, e.getMessage());
+        }
+
+        return Result.succeed(task.getId());
+    }
+
+    /**
+     * 更新循环任务定义。
+     */
+    @Post
+    @Mapping("/web/chat/loop/update")
+    public Result loopUpdate(@Param("sessionId") String sessionId,
+                             @Param("taskId") String taskId,
+                             @Param(value = "name", required = false) String name,
+                             @Param(value = "prompt", required = false) String prompt,
+                             @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
+                             @Param(value = "cron", required = false) String cron,
+                             @Param(value = "skillRef", required = false) String skillRef,
+                             @Param(value = "goalCondition", required = false) String goalCondition,
+                             @Param(value = "makerAgent", required = false) String makerAgent,
+                             @Param(value = "checkerAgent", required = false) String checkerAgent,
+                             @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
+                             @Param(value = "channelNotify", required = false) String channelNotify,
+                             @Param(value = "maxIterations", required = false) Integer maxIterations) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        String workspace = engine.getWorkspace();
+        String harnessSessions = engine.getHarnessSessions();
+
+        LoopTask existing = loopScheduler.getTaskById(sessionId, taskId);
+        if (existing == null) {
+            return Result.failure(404, "Task not found");
+        }
+
+        // 基于现有任务构建新任务（保留 id、createdAt、expireAt 等）
+        int interval = intervalMinutes != null ? intervalMinutes : existing.getIntervalMinutes();
+        String effectiveCron = cron != null ? cron : existing.getCron();
+        String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
+
+        LoopTask newTask = new LoopTask(
+                effectivePrompt, interval, effectiveCron,
+                skillRef != null ? skillRef : existing.getSkillRef(),
+                goalCondition != null ? goalCondition : existing.getGoalCondition(),
+                makerAgent != null ? makerAgent : existing.getMakerAgent(),
+                checkerAgent != null ? checkerAgent : existing.getCheckerAgent(),
+                worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
+                channelNotify != null ? channelNotify : existing.getChannelNotify(),
+                maxIterations != null ? maxIterations : existing.getMaxIterations(),
+                existing.getStateDir()
+        );
+
+        // 保留 name 和 enabled
+        String effectiveName = (name != null && !name.trim().isEmpty()) ? name.trim() : existing.getName();
+        newTask.setName(effectiveName);
+        newTask.setEnabled(existing.isEnabled());
+
+        loopScheduler.update(sessionId, workspace, harnessSessions, taskId, newTask);
+        return Result.succeed();
+    }
+
+    /**
+     * 删除循环任务。
+     */
+    @Post
+    @Mapping("/web/chat/loop/remove")
+    public Result loopRemove(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        loopScheduler.remove(sessionId, engine.getWorkspace(), engine.getHarnessSessions(), taskId);
+        return Result.succeed();
+    }
+
+    /**
+     * 启用/停用循环任务（toggle）。
+     */
+    @Post
+    @Mapping("/web/chat/loop/toggle")
+    public Result loopToggle(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        loopScheduler.toggle(sessionId, engine.getWorkspace(), engine.getHarnessSessions(), taskId);
+        return Result.succeed();
+    }
+
+    /**
+     * 手动触发一次循环任务执行。
+     */
+    @Post
+    @Mapping("/web/chat/loop/trigger")
+    public Result loopTrigger(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        loopScheduler.trigger(sessionId, engine.getWorkspace(), engine.getHarnessSessions(), taskId);
+        return Result.succeed();
+    }
 
     // ==================== 工具方法 ====================
 
