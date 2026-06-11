@@ -25,7 +25,9 @@
             for (var i = 0; i < commandList.length; i++) {
                 var c = commandList[i];
                 if (c.type === 'subagent') {
-                    html += '<option value="' + escapeHtml(c.name) + '">@' + escapeHtml(c.name) + '</option>';
+                    var label = '@' + c.name;
+                    if (c.description) label += ' - ' + c.description;
+                    html += '<option value="' + escapeHtml(c.name) + '">' + escapeHtml(label) + '</option>';
                 }
             }
         }
