@@ -10,6 +10,13 @@
     var loopPanelVisible = false;
     var loopEditId = null; // 当前编辑的任务 ID，null 表示新建
 
+    // 使用 layui layer 风格的浮动提示（与设置面板保存成功一致）
+    function showToast(msg, type) {
+        if (typeof layer !== 'undefined' && layer.msg) {
+            layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' });
+        }
+    }
+
     // 获取当前激活的面板和按钮
     function getActivePanel() {
         return inChatMode ? $chatLoopPanel : $welcomeLoopPanel;
