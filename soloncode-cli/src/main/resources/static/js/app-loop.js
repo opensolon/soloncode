@@ -71,6 +71,13 @@
         }
     }
 
+    // Esc 键关闭面板
+    $(document).on('keydown.loopesc', function(e) {
+        if (e.key === 'Escape' && loopPanelVisible) {
+            hideLoopPanel();
+        }
+    });
+
     function hideLoopPanel() {
         $welcomeLoopPanel.hide();
         $chatLoopPanel.hide();
@@ -233,10 +240,16 @@
                 });
             } else if (action === 'trigger') {
                 loopApi('trigger', { taskId: id }, function(res) {
-                    if (res) showToast('已触发执行', 'success');
+                    if (res) {
+                        showToast('已触发执行', 'success');
+                        // 列表项短暂闪烁反馈
+                        var $item = $panel.find('.loop-item[data-id="' + id + '"]');
+                        $item.css('background', 'var(--accent-light)');
+                        setTimeout(function() { $item.css('background', ''); }, 600);
+                    }
                 });
             } else if (action === 'remove') {
-                if (!confirm('确定要删除该循环任务吗？')) return;
+                if (!confirm('确定要删除该循环任务吗？执行历史将被清除。')) return;
                 loopApi('remove', { taskId: id }, function(res) {
                     if (res) { renderLoopList(); showToast('已删除', 'success'); }
                 });
@@ -258,7 +271,7 @@
     function renderLoopForm() {
         var html = '<div class="loop-panel-header">';
         html += '<button class="loop-panel-back-btn" id="loopBackBtn">← 返回列表</button>';
-        html += '<span class="loop-panel-title">' + (loopEditId ? '编辑循环' : '新建循环') + '</span>';
+        html += '<span class="loop-panel-title">' + (loopEditId ? '编辑循环 #' + escapeHtml(loopEditId) : '新建循环') + '</span>';
         html += '</div>';
         html += '<div class="loop-form">';
         html += '<div class="loop-form-group">';
@@ -307,18 +320,39 @@
 
         var $panel = getActivePanel();
         $panel.addClass('mode-form');
+        // 动态计算面板最大高度（不超过可用视口空间）
+        var panelTop = $panel[0].getBoundingClientRect().top;
+        var safeMaxH = Math.max(300, Math.floor(panelTop) - 16);
+        $panel.css('max-height', Math.min(safeMaxH, 560) + 'px');
         $panel.html(html);
         bindFormEvents();
 
-        // 如果是编辑，先加载数据
+        // 如果是编辑，先禁用表单并显示加载状态
         if (loopEditId) {
+            var $inputs = $panel.find('.loop-input, .loop-checkbox input, select');
+            $inputs.prop('disabled', true);
+            $('#loopFormSaveBtn').prop('disabled', true).text('加载中...');
             loopApi('list', null, function(res) {
                 var items = (res && res.data) ? res.data : [];
+                var found = false;
                 for (var i = 0; i < items.length; i++) {
                     if (items[i].id === loopEditId) {
                         fillFormData(items[i]);
+                        found = true;
+                        // 在标题旁显示状态标签
+                        var t = items[i];
+                        var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
+                        var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
+                        var $title = $panel.find('.loop-panel-title');
+                        $title.html('编辑循环 #' + escapeHtml(loopEditId) + ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' + (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : ''));
                         break;
                     }
+                }
+                // 恢复表单
+                $inputs.prop('disabled', false);
+                $('#loopFormSaveBtn').prop('disabled', false).text('保存');
+                if (!found && res !== null) {
+                    showToast('未找到任务数据', 'error');
                 }
             });
         }
@@ -494,10 +528,17 @@
     function renderLoopDetail(taskId) {
         var $panel = getActivePanel();
         $panel.addClass('mode-detail');
+        var panelTop = $panel[0].getBoundingClientRect().top;
+        var safeMaxH = Math.max(300, Math.floor(panelTop) - 16);
+        $panel.css('max-height', Math.min(safeMaxH, 560) + 'px');
 
         var html = '<div class="loop-panel-header">';
         html += '<button class="loop-panel-back-btn" id="loopDetailBack">← 返回列表</button>';
         html += '<span class="loop-panel-title">#' + escapeHtml(taskId) + ' 详情</span>';
+        html += '<div class="loop-detail-actions">';
+        html += '<button class="loop-action-btn loop-trigger-btn" id="loopDetailTriggerBtn" title="手动触发">⟳</button>';
+        html += '<button class="loop-action-btn" id="loopDetailEditBtn" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+        html += '</div>';
         html += '</div>';
         html += '<div class="loop-detail-tabs">';
         html += '<button class="loop-detail-tab active" data-dtab="history">执行历史</button>';
@@ -508,6 +549,20 @@
         html += '</div>';
 
         $panel.html(html);
+
+        // 详情面板操作按钮
+        $('#loopDetailTriggerBtn').on('click', function(e) {
+            e.stopPropagation();
+            loopApi('trigger', { taskId: taskId }, function(res) {
+                if (res) showToast('已触发执行', 'success');
+            });
+        });
+        $('#loopDetailEditBtn').on('click', function(e) {
+            e.stopPropagation();
+            loopEditId = taskId;
+            $panel.removeClass('mode-detail');
+            renderLoopForm();
+        });
 
         // 返回按钮
         $('#loopDetailBack').on('click', function() {
@@ -598,7 +653,9 @@
     // 面板显示时移除详情模式 class
     var _origRenderLoopList = renderLoopList;
     renderLoopList = function() {
-        getActivePanel().removeClass('mode-detail mode-form');
+        var $p = getActivePanel();
+        $p.removeClass('mode-detail mode-form');
+        $p.css('max-height', ''); // 清除手动高度，恢复 CSS 默认值
         _origRenderLoopList();
     };
 })();
