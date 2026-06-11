@@ -87,9 +87,10 @@
         toggleLoopPanel();
     });
 
-    // 面板内所有 mousedown/click 不冒泡到 .input-box 和 document
+    // 面板内 click 不冒泡到 .input-box 和 document
     // 防止 click-to-focus、cmd-complete、model-dropdown 等全局处理器干扰面板交互
-    $welcomeLoopPanel.add($chatLoopPanel).on('mousedown click', function(e) {
+    // 注意：只拦截 click，不拦截 mousedown，避免影响 input/select/label 的原生聚焦行为
+    $welcomeLoopPanel.add($chatLoopPanel).on('click', function(e) {
         e.stopPropagation();
     });
 
@@ -117,6 +118,8 @@
             },
             error: function() {
                 showToast('操作失败', 'error');
+                // 错误时也触发回调（传 null），让调用方有机会恢复 UI 状态
+                if (callback) callback(null);
             }
         });
     }
@@ -156,8 +159,8 @@
                     html += '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>';
                     html += '<div class="loop-item-actions">';
                     if (!t.cancelled) {
-                        html += '<button class="loop-action-btn" data-action="toggle" data-id="' + t.id + '" data-enabled="' + t.enabled + '" title="' + (t.enabled ? '停用' : '启用') + '">' + (t.enabled ? '⏸' : '▶') + '</button>';
-                        html += '<button class="loop-action-btn" data-action="trigger" data-id="' + t.id + '" title="手动触发">▶</button>';
+                        html += '<button class="loop-action-btn loop-toggle-btn" data-action="toggle" data-id="' + t.id + '" data-enabled="' + t.enabled + '" title="' + (t.enabled ? '停用' : '启用') + '">' + (t.enabled ? '停用' : '启用') + '</button>';
+                        html += '<button class="loop-action-btn loop-trigger-btn" data-action="trigger" data-id="' + t.id + '" title="手动触发">⟳</button>';
                         html += '<button class="loop-action-btn" data-action="edit" data-id="' + t.id + '" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
                     }
                     html += '<button class="loop-action-btn danger" data-action="remove" data-id="' + t.id + '" title="删除">✕</button>';
@@ -208,32 +211,34 @@
 
     // ========== 列表事件绑定 ==========
     function bindListEvents() {
+        var $panel = getActivePanel();
+
         $('#loopAddNewBtn').on('click', function(e) {
             e.stopPropagation();
             loopEditId = null;
             renderLoopForm();
         });
-        var $panel = getActivePanel();
+
         // 委托事件绑定在面板自身而非 document（面板已拦截冒泡，document 收不到）
+        // 每次绑定前先 off()，防止重复打开面板导致事件处理器无限叠加
         $(document).off('click.loopaction');
         $panel.off('click.loopaction').on('click.loopaction', '.loop-action-btn', function(e) {
+            e.stopPropagation();
             var action = $(this).data('action');
             var id = $(this).data('id');
 
             if (action === 'toggle') {
-                loopApi('toggle', { taskId: id }, function() {
-                    renderLoopList();
-                    showToast('操作成功', 'success');
+                loopApi('toggle', { taskId: id }, function(res) {
+                    if (res) { renderLoopList(); showToast('操作成功', 'success'); }
                 });
             } else if (action === 'trigger') {
-                loopApi('trigger', { taskId: id }, function() {
-                    showToast('已触发执行', 'success');
+                loopApi('trigger', { taskId: id }, function(res) {
+                    if (res) showToast('已触发执行', 'success');
                 });
             } else if (action === 'remove') {
                 if (!confirm('确定要删除该循环任务吗？')) return;
-                loopApi('remove', { taskId: id }, function() {
-                    renderLoopList();
-                    showToast('已删除', 'success');
+                loopApi('remove', { taskId: id }, function(res) {
+                    if (res) { renderLoopList(); showToast('已删除', 'success'); }
                 });
             } else if (action === 'edit') {
                 loopEditId = id;
@@ -241,8 +246,8 @@
             }
         });
 
-        // 点击任务行进入详情面板
-        $panel.on('click.loopitem', '.loop-item', function(e) {
+        // 点击任务行进入详情面板（先 off 防止叠加）
+        $panel.off('click.loopitem').on('click.loopitem', '.loop-item', function(e) {
             if ($(e.target).closest('.loop-action-btn').length) return;
             var id = $(this).data('id');
             renderLoopDetail(id);
@@ -362,8 +367,8 @@
             }
         });
 
-        // 模板点击填充
-        getActivePanel().on('click', '.loop-template-btn', function() {
+        // 模板点击填充（先 off 防止叠加）
+        getActivePanel().off('click.looptpl').on('click.looptpl', '.loop-template-btn', function() {
             var tpl = LOOP_TEMPLATES[$(this).data('tpl')];
             if (!tpl) return;
             $('#loopFormPrompt').val(tpl.prompt);
@@ -391,13 +396,19 @@
             $('#loopFormCron').prop('disabled', !isCron);
         });
 
-        // 保存
-        $('#loopFormSaveBtn').on('click', function() {
+        // 保存（防重复点击 + loading 状态）
+        var $saveBtn = $('#loopFormSaveBtn');
+        $saveBtn.on('click', function() {
+            if ($saveBtn.prop('disabled')) return; // 防重复
+
             var prompt = $('#loopFormPrompt').val().trim();
             if (!prompt) {
                 showToast('请输入提示词', 'error');
                 return;
             }
+
+            // 进入 loading 状态
+            $saveBtn.prop('disabled', true).text('保存中...');
 
             var isCron = $('input[name=loopScheduleType]:checked').val() === 'cron';
             var cronVal = isCron ? $('#loopFormCron').val().trim() : null;
@@ -420,6 +431,10 @@
                 maxIterations: parseInt($('#loopFormMaxIter').val()) || null
             };
 
+            function restoreBtn() {
+                $saveBtn.prop('disabled', false).text('保存');
+            }
+
             if (loopEditId) {
                 params.taskId = loopEditId;
                 loopApi('update', params, function(res) {
@@ -428,6 +443,7 @@
                         loopEditId = null;
                         renderLoopList();
                     } else {
+                        restoreBtn();
                         showToast((res && res.message) || '更新失败', 'error');
                     }
                 });
@@ -438,6 +454,7 @@
                         loopEditId = null;
                         renderLoopList();
                     } else {
+                        restoreBtn();
                         showToast((res && res.message) || '创建失败', 'error');
                     }
                 });
@@ -498,8 +515,8 @@
             renderLoopList();
         });
 
-        // Tab 切换
-        $panel.on('click.looptab', '.loop-detail-tab', function() {
+        // Tab 切换（先 off 防止叠加）
+        $panel.off('click.looptab').on('click.looptab', '.loop-detail-tab', function() {
             var tab = $(this).data('dtab');
             $panel.find('.loop-detail-tab').removeClass('active');
             $(this).addClass('active');
@@ -516,7 +533,7 @@
 
         // 默认加载历史
         loopApi('history', { taskId: taskId }, function(res) {
-            renderHistoryTab(res);
+            if (res) renderHistoryTab(res);
         });
     }
 
