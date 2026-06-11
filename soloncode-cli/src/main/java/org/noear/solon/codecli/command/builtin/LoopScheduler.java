@@ -356,9 +356,11 @@ public class LoopScheduler {
 
         sessionTasks.put(sessionId, Collections.synchronizedList(alive));
 
-        // 重新注册到 IJobManager
+        // 重新注册到 IJobManager（仅启用的任务）
         for (LoopTask t : alive) {
-            registerJob(sessionId, t);
+            if (t.isEnabled()) {
+                registerJob(sessionId, t);
+            }
         }
 
         // 回写（去掉过期任务）
@@ -395,8 +397,8 @@ public class LoopScheduler {
      * 定时触发 — 执行任务
      */
     private void onTrigger(String sessionId, LoopTask task) {
-        // 过期或已取消则移除
-        if (task.isExpired() || task.isCancelled()) {
+        // 已停用、过期或已取消则跳过
+        if (!task.isEnabled() || task.isExpired() || task.isCancelled()) {
             String jobName = task.getJobName();
             if (jobManager.jobExists(jobName)) {
                 jobManager.jobRemove(jobName);
