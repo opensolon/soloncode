@@ -17,6 +17,21 @@
         }
     }
 
+    // 从全局 commandList 中提取 subagent 类型的条目，构建 <option> 列表
+    // 复用 app-history.js 中通过 GET /web/chat/hints 加载的代理列表数据
+    function buildSubagentOptions() {
+        var html = '<option value="">-- 不指定 --</option>';
+        if (typeof commandList !== 'undefined' && commandList.length) {
+            for (var i = 0; i < commandList.length; i++) {
+                var c = commandList[i];
+                if (c.type === 'subagent') {
+                    html += '<option value="' + escapeHtml(c.name) + '">@' + escapeHtml(c.name) + '</option>';
+                }
+            }
+        }
+        return html;
+    }
+
     // 获取当前激活的面板和按钮
     function getActivePanel() {
         return inChatMode ? $chatLoopPanel : $welcomeLoopPanel;
@@ -367,8 +382,8 @@
         html += '</div>';
         html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略</span></div>';
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
-        html += '<div class="loop-form-group"><label>执行者子代理</label><input type="text" class="loop-input" id="loopFormMaker" placeholder="@coder"/></div>';
-        html += '<div class="loop-form-group"><label>验证者子代理</label><input type="text" class="loop-input" id="loopFormChecker" placeholder="@reviewer"/></div>';
+        html += '<div class="loop-form-group"><label>执行子代理</label><select class="loop-input" id="loopFormMaker">' + buildSubagentOptions() + '</select></div>';
+        html += '<div class="loop-form-group"><label>验证子代理</label><select class="loop-input" id="loopFormChecker">' + buildSubagentOptions() + '</select></div>';
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
         html += '</div>';
