@@ -183,7 +183,6 @@
                     if (t.makerAgent) tags.push('<span class="loop-tag loop-tag-mc">m/c</span>');
                     if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
 
-                    if (t.skillRef) tags.push('<span class="loop-tag loop-tag-skill">' + escapeHtml(t.skillRef) + '</span>');
                     var tagsHtml = tags.length ? '<span class="loop-item-tags">' + tags.join('') + '</span>' : '';
 
                     // 底部信息行：时间 + 迭代 + 标签
@@ -312,7 +311,6 @@
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
         html += '</div>';
-        html += '<div class="loop-form-group"><label>引用技能</label><input type="text" class="loop-input" id="loopFormSkillRef" placeholder="skill-name"/></div>';
         html += '<div class="loop-form-group"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" value="20" min="1"/></div>';
         html += '</div>';
         html += '<div class="loop-form-actions">';
@@ -381,7 +379,6 @@
         if (t.makerAgent) $('#loopFormMaker').val(t.makerAgent);
         if (t.checkerAgent) $('#loopFormChecker').val(t.checkerAgent);
         if (t.worktreeEnabled) $('#loopFormWorktree').prop('checked', true);
-        if (t.skillRef) $('#loopFormSkillRef').val(t.skillRef);
 
         if (t.maxIterations) $('#loopFormMaxIter').val(t.maxIterations);
     }
@@ -464,7 +461,6 @@
                 makerAgent: $('#loopFormMaker').val().trim() || null,
                 checkerAgent: $('#loopFormChecker').val().trim() || null,
                 worktreeEnabled: $('#loopFormWorktree').is(':checked'),
-                skillRef: $('#loopFormSkillRef').val().trim() || null,
                 maxIterations: parseInt($('#loopFormMaxIter').val()) || null
             };
 

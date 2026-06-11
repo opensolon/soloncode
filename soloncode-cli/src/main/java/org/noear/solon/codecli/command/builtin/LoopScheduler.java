@@ -496,27 +496,7 @@ public class LoopScheduler {
     private String buildEffectivePrompt(String sessionId, LoopTask task) {
         String prompt = task.getPrompt();
 
-        // 1. Skill 引用解析：尝试从 workspace/.soloncode/skills/ 加载 SKILL.md
-        if (task.getSkillRef() != null && !task.getSkillRef().isEmpty()
-                && task.getWorkspace() != null) {
-            try {
-                java.nio.file.Path skillFile = java.nio.file.Paths.get(task.getWorkspace(),
-                        ".soloncode", "skills", task.getSkillRef(), "SKILL.md");
-                if (java.nio.file.Files.exists(skillFile)) {
-                    String skillContent = new String(java.nio.file.Files.readAllBytes(skillFile),
-                            java.nio.charset.StandardCharsets.UTF_8);
-                    // 安全截断：最多注入 4000 字符，防止撑爆上下文
-                    if (skillContent.length() > 4000) {
-                        skillContent = skillContent.substring(0, 4000) + "\n... (truncated)";
-                    }
-                    prompt = prompt + "\n\n--- Skill: " + task.getSkillRef() + " ---\n" + skillContent;
-                }
-            } catch (Exception e) {
-                LOG.warn("Failed to load skill '{}': {}", task.getSkillRef(), e.getMessage());
-            }
-        }
-
-        // 2. 状态上下文注入
+        // 1. 状态上下文注入
         if (task.getWorkspace() != null) {
             String workspace = task.getWorkspace();
             String stateContext = LoopStateManager.buildStateContext(workspace, task.getId());
@@ -525,7 +505,7 @@ public class LoopScheduler {
             }
         }
 
-        // 3. Goal 条件注入
+        // 2. Goal 条件注入
         if (task.isGoalMode()) {
             prompt = prompt + "\n\n--- Goal ---\nTarget condition: " + task.getGoalCondition()
                     + "\nCurrent iteration: " + task.getCurrentIteration()

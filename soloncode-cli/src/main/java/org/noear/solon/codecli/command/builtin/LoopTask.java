@@ -56,7 +56,6 @@ public class LoopTask {
     private final boolean autoInterval;
 
     // ---- Loop Engineering 扩展字段 ----
-    private final String skillRef;           // 技能引用
     private final String goalCondition;      // 目标条件，如 "all tests pass"
     private final String makerAgent;         // 执行者代理名
     private final String checkerAgent;       // 验证者代理名
@@ -78,21 +77,21 @@ public class LoopTask {
      * 固定间隔构造
      */
     public LoopTask(String prompt, int intervalMinutes) {
-        this(prompt, intervalMinutes, null, null, null, null, null, false, null, null, null);
+        this(prompt, intervalMinutes, null, null, null, null, false, null, null, null);
     }
 
     /**
      * cron 表达式构造
      */
     public LoopTask(String prompt, String cron) {
-        this(prompt, 0, cron, null, null, null, null, false, null, null, null);
+        this(prompt, 0, cron, null, null, null, false, null, null, null);
     }
 
     /**
      * 自动间隔构造（由 AI 决定间隔）
      */
     public LoopTask(String prompt, boolean autoInterval) {
-        this(prompt, DEFAULT_AUTO_INTERVAL, null, null, null, null, null, false, null, null, null);
+        this(prompt, DEFAULT_AUTO_INTERVAL, null, null, null, null, false, null, null, null);
         // autoInterval 字段需特殊处理
     }
 
@@ -102,7 +101,7 @@ public class LoopTask {
     private LoopTask(String id, String prompt, int intervalMinutes, String cron,
                      Instant createdAt, Instant expireAt, boolean autoInterval,
                      boolean enabled,
-                     String skillRef, String goalCondition, String makerAgent,
+                     String goalCondition, String makerAgent,
                      String checkerAgent, boolean worktreeEnabled, String worktreeBranch,
                      String channelNotify, String workspace, int maxIterations,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
@@ -114,7 +113,6 @@ public class LoopTask {
         this.expireAt = expireAt;
         this.autoInterval = autoInterval;
         this.enabled = enabled;
-        this.skillRef = skillRef;
         this.goalCondition = goalCondition;
         this.makerAgent = makerAgent;
         this.checkerAgent = checkerAgent;
@@ -133,7 +131,7 @@ public class LoopTask {
      * 便捷构造（固定间隔 + 扩展参数）
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
-                    String skillRef, String goalCondition, String makerAgent,
+                    String goalCondition, String makerAgent,
                     String checkerAgent, Boolean worktreeEnabled, String channelNotify,
                     Integer maxIterations, String workspace) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
@@ -143,7 +141,6 @@ public class LoopTask {
         this.createdAt = Instant.now();
         this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
         this.autoInterval = false;
-        this.skillRef = skillRef;
         this.goalCondition = goalCondition;
         this.makerAgent = makerAgent;
         this.checkerAgent = checkerAgent;
@@ -280,7 +277,6 @@ public class LoopTask {
         node.set("currentIteration", currentIteration);
 
         // Loop Engineering 扩展字段
-        if (skillRef != null) node.set("skillRef", skillRef);
         if (goalCondition != null) node.set("goalCondition", goalCondition);
         if (makerAgent != null) node.set("makerAgent", makerAgent);
         if (checkerAgent != null) node.set("checkerAgent", checkerAgent);
@@ -311,8 +307,6 @@ public class LoopTask {
         boolean enabledVal = node.getOrNull("enabled") != null
                 ? node.get("enabled").getBoolean() : true;
 
-        String skillRefVal = node.getOrNull("skillRef") != null
-                ? node.get("skillRef").getString() : null;
         String goalConditionVal = node.getOrNull("goalCondition") != null
                 ? node.get("goalCondition").getString() : null;
         String makerAgentVal = node.getOrNull("makerAgent") != null
@@ -340,7 +334,6 @@ public class LoopTask {
                 Instant.parse(node.get("expireAt").getString()),
                 node.get("autoInterval").getBoolean(),
                 enabledVal,
-                skillRefVal,
                 goalConditionVal,
                 makerAgentVal,
                 checkerAgentVal,

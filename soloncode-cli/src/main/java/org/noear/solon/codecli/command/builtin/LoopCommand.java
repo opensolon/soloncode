@@ -37,7 +37,6 @@ import java.util.List;
  *   /loop stop-all                          → stop all tasks
  *
  * Loop Engineering 扩展:
- *   /loop 30m $triage-ci-failures           → 引用 skill
  *   /loop 5m --maker:coder --checker:reviewer fix auth  → maker/checker
  *   /loop goal:"all tests pass" fix auth    → goal 模式
  *   /loop 5m --worktree fix bug #123        → worktree 隔离
@@ -114,7 +113,6 @@ public class LoopCommand implements Command {
     private void doSchedule(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
         int intervalMinutes = 5; // default
         String cronExpr = null;
-        String skillRef = null;
         String goalCondition = null;
         String makerAgent = null;
         String checkerAgent = null;
@@ -216,8 +214,6 @@ public class LoopCommand implements Command {
 
         String prompt = promptBuilder.toString().trim();
 
-        // 检测 skill 引用已移除：AI 根据 prompt 自动匹配技能
-
         if (prompt.isEmpty()) {
             printUsage(ctx);
             return;
@@ -226,7 +222,7 @@ public class LoopCommand implements Command {
         // Create task (workspace 用于动态拼接 stateDir)
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
-                skillRef, goalCondition, makerAgent, checkerAgent,
+                goalCondition, makerAgent, checkerAgent,
                 worktreeEnabled, channelNotify, maxIterations, workspace
         );
 
@@ -304,9 +300,6 @@ public class LoopCommand implements Command {
             }
             if (t.isMakerCheckerMode()) {
                 line.append(" ").append(MAGENTA).append("[m/c]").append(RESET);
-            }
-            if (t.getSkillRef() != null) {
-                line.append(" ").append(MAGENTA).append("[skill]").append(RESET);
             }
             if (t.isWorktreeEnabled()) {
                 line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
@@ -388,7 +381,6 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
         ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "Loop Engineering:" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop 30m $triage-ci-failures              (skill ref)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 5m --maker:coder --checker:reviewer fix auth" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix auth module" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 5m --worktree fix bug #123           (git worktree)" + RESET));

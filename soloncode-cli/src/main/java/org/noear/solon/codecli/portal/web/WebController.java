@@ -755,7 +755,6 @@ public class WebController {
             item.put("currentIteration", t.getCurrentIteration());
             if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
             if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
-            if (t.getSkillRef() != null) item.put("skillRef", t.getSkillRef());
             if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
             if (t.getMakerAgent() != null) item.put("makerAgent", t.getMakerAgent());
             if (t.getCheckerAgent() != null) item.put("checkerAgent", t.getCheckerAgent());
@@ -776,7 +775,6 @@ public class WebController {
                           @Param("prompt") String prompt,
                           @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                           @Param(value = "cron", required = false) String cron,
-                          @Param(value = "skillRef", required = false) String skillRef,
                           @Param(value = "goalCondition", required = false) String goalCondition,
                           @Param(value = "makerAgent", required = false) String makerAgent,
                           @Param(value = "checkerAgent", required = false) String checkerAgent,
@@ -797,7 +795,7 @@ public class WebController {
         int interval = intervalMinutes != null ? intervalMinutes : 5;
         LoopTask task = new LoopTask(
                 prompt, interval, cron,
-                skillRef, goalCondition, makerAgent, checkerAgent,
+                goalCondition, makerAgent, checkerAgent,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 channelNotify, maxIterations,
                 workspace
@@ -825,7 +823,6 @@ public class WebController {
                              @Param(value = "prompt", required = false) String prompt,
                              @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                              @Param(value = "cron", required = false) String cron,
-                             @Param(value = "skillRef", required = false) String skillRef,
                              @Param(value = "goalCondition", required = false) String goalCondition,
                              @Param(value = "makerAgent", required = false) String makerAgent,
                              @Param(value = "checkerAgent", required = false) String checkerAgent,
@@ -854,7 +851,6 @@ public class WebController {
 
         LoopTask newTask = new LoopTask(
                 effectivePrompt, interval, effectiveCron,
-                skillRef != null ? skillRef : existing.getSkillRef(),
                 goalCondition != null ? goalCondition : existing.getGoalCondition(),
                 makerAgent != null ? makerAgent : existing.getMakerAgent(),
                 checkerAgent != null ? checkerAgent : existing.getCheckerAgent(),
