@@ -49,8 +49,8 @@
         toggleLoopPanel();
     });
 
-    // 点击面板外部关闭
-    $(document).on('click', function(e) {
+    // 点击面板外部关闭（用 mousedown 避免选择文字时误触关闭）
+    $(document).on('mousedown', function(e) {
         if (loopPanelVisible) {
             var $panel = getActivePanel();
             if (!$(e.target).closest('#chatLoopPanel, #welcomeLoopPanel, .loop-panel').length &&
