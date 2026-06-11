@@ -348,6 +348,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .attach-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
 .attach-btn:hover { background: var(--bg-hover); color: var(--accent); }
 .attach-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.attach-btn[disabled] { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .attach-input { display: none; }
 
 /* Drop Overlay (drag & drop file upload) */

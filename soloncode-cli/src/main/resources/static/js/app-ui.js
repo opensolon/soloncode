@@ -316,6 +316,9 @@ function switchToWelcomeMode() {
     $(welcomeView).show();
     $(chatView).removeClass('active');
     welcomeInput.focus();
+    // 新对话时禁用“历史消息”和“循环任务”按钮
+    $('#welcomeHistoryBtn').prop('disabled', true);
+    $('#welcomeLoopBtn').prop('disabled', true);
     // Reset model UI to new session
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) renderModelUI();
 }
