@@ -419,7 +419,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-panel-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border-color); gap: 8px; flex-shrink: 0; }
 .loop-panel-title { font-size: 13px; font-weight: 600; color: var(--text-primary); flex: 1; }
 .loop-panel-add-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-.loop-panel-add-btn:hover { background: var(--bg-hover); color: var(--accent-color); }
+.loop-panel-add-btn:hover { background: var(--bg-hover); color: var(--accent); }
 .loop-panel-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 13px; padding: 2px 8px; border-radius: 4px; }
 .loop-panel-back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .loop-panel-empty { padding: 24px; text-align: center; color: var(--text-secondary); font-size: 13px; }
@@ -428,7 +428,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-item:last-child { border-bottom: none; }
 .loop-item-row { display: flex; align-items: center; gap: 6px; }
 .loop-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.loop-item-dot.ready { background: var(--accent-color); }
+.loop-item-dot.ready { background: var(--accent); }
 .loop-item-dot.running { background: #f0ad4e; animation: pulse 1.5s infinite; }
 .loop-item-dot.disabled { background: var(--text-secondary); opacity: 0.4; }
 .loop-item-dot.cancelled { background: #d9534f; opacity: 0.4; }
@@ -436,7 +436,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-item-id { font-size: 11px; color: var(--text-secondary); opacity: 0.6; margin-left: 2px; }
 .loop-item-schedule { font-size: 11px; color: var(--text-secondary); }
 .loop-item-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
-.loop-item-status.ready { color: var(--accent-color); background: var(--bg-hover); }
+.loop-item-status.ready { color: var(--accent); background: var(--bg-hover); }
 .loop-item-status.running { color: #f0ad4e; background: #fef8e7; }
 .loop-item-status.disabled { color: var(--text-secondary); background: var(--bg-hover); }
 .loop-item-status.cancelled { color: #d9534f; background: #fdf0ef; }
@@ -454,10 +454,10 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-form-group label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
 .loop-required { color: #d9534f; }
 .loop-input { width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; background: var(--bg-primary); color: var(--text-primary); box-sizing: border-box; outline: none; }
-.loop-input:focus { border-color: var(--accent-color); }
+.loop-input:focus { border-color: var(--accent); }
 .loop-input-sm { width: auto; min-width: 70px; display: inline-block; }
 .loop-textarea { width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; background: var(--bg-primary); color: var(--text-primary); box-sizing: border-box; outline: none; resize: vertical; min-height: 50px; }
-.loop-textarea:focus { border-color: var(--accent-color); }
+.loop-textarea:focus { border-color: var(--accent); }
 .loop-interval-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .loop-radio { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
 .loop-radio input { margin: 0; }
@@ -465,7 +465,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-form-advanced-toggle:hover { color: var(--text-primary); }
 .loop-form-advanced { border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 4px; }
 .loop-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.loop-btn-primary { background: var(--accent-color); color: #fff; border: none; cursor: pointer; font-size: 13px; padding: 6px 16px; border-radius: 6px; }
+.loop-btn-primary { background: var(--accent); color: #fff; border: none; cursor: pointer; font-size: 13px; padding: 6px 16px; border-radius: 6px; }
 .loop-btn-primary:hover { opacity: 0.9; }
 .loop-btn-secondary { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-color); cursor: pointer; font-size: 13px; padding: 6px 16px; border-radius: 6px; }
 .loop-btn-secondary:hover { background: var(--border-color); }
