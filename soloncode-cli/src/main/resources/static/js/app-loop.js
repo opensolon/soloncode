@@ -305,9 +305,9 @@
 
         html += '<div class="loop-form-advanced-toggle" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略</span></div>';
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
-        html += '<div class="loop-form-group"><label>目标条件</label><input type="text" class="loop-input" id="loopFormGoal" placeholder="all tests pass"/></div>';
-        html += '<div class="loop-form-group"><label>执行者</label><input type="text" class="loop-input" id="loopFormMaker" placeholder="coder"/></div>';
-        html += '<div class="loop-form-group"><label>验证者</label><input type="text" class="loop-input" id="loopFormChecker" placeholder="reviewer"/></div>';
+        html += '<div class="loop-form-group"><label>目标条件（goal condition）</label><input type="text" class="loop-input" id="loopFormGoal" placeholder="all tests pass"/></div>';
+        html += '<div class="loop-form-group"><label>执行者（subagent）</label><input type="text" class="loop-input" id="loopFormMaker" placeholder="coder"/></div>';
+        html += '<div class="loop-form-group"><label>验证者（subagent）</label><input type="text" class="loop-input" id="loopFormChecker" placeholder="reviewer"/></div>';
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
         html += '</div>';

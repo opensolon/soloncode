@@ -85,7 +85,7 @@ public class ConfigTalent extends AbsTalent {
         engine.addModel(modelDo);
 
         // 2) 同步到 settings（持久化）
-        settings.getModels().add(modelDo);
+        settings.getModels().put(modelDo.getNameOrModel(), modelDo);
         settings.saveToFile();
 
         return "OK: 模型 '" + name + "' 已添加";

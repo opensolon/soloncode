@@ -127,7 +127,7 @@ public class Configurator {
 
 
         engine.setDefaultModel(props.getDefaultModel());
-        for (ModelDo model : agentSettings.getModels()) {
+        for (ModelDo model : agentSettings.getModels().values()) {
             engine.addModel(model);
         }
 

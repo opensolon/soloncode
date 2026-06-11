@@ -207,7 +207,7 @@ public class WebSettingsController {
         Map<String, Object> data = new LinkedHashMap<>();
 
         List<Map> list = new ArrayList<>();
-        for (ModelDo config : settings.getModels()) {
+        for (ModelDo config : settings.getModels().values()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", config.getNameOrModel());
             item.put("model", config.getModel());
@@ -239,7 +239,7 @@ public class WebSettingsController {
         }
 
         ModelDo config = null;
-        for (ModelDo c : settings.getModels()) {
+        for (ModelDo c : settings.getModels().values()) {
             if (name.equals(c.getNameOrModel())) {
                 config = c;
                 break;
@@ -314,8 +314,7 @@ public class WebSettingsController {
             settings.setDefaultModel(config.getNameOrModel());
         }
 
-        settings.getModels().removeIf(c -> c.getNameOrModel().equals(config.getNameOrModel()));
-        settings.getModels().add(config);
+        settings.getModels().put(config.getNameOrModel(), config);
         saveSettings();
 
         LOG.info("[Settings] Model added: {}", config.getNameOrModel());
@@ -334,7 +333,7 @@ public class WebSettingsController {
 
         engine.removeModel(name);
 
-        settings.getModels().removeIf(c -> name.equals(c.getNameOrModel()));
+        settings.getModels().remove(name);
         saveSettings();
 
         LOG.info("[Settings] Model removed: {}", name);
@@ -355,8 +354,8 @@ public class WebSettingsController {
         engine.removeModel(originalName);
         engine.addModel(config);
 
-        settings.getModels().removeIf(c -> originalName.equals(c.getNameOrModel()));
-        settings.getModels().add(config);
+        settings.getModels().remove(originalName);
+        settings.getModels().put(config.getNameOrModel(), config);
         if (isDefaultModel) {
             settings.setDefaultModel(config.getNameOrModel());
         }
@@ -375,7 +374,7 @@ public class WebSettingsController {
         if (Assert.isEmpty(name) || enabled == null) {
             return Result.failure("name and enabled are required");
         }
-        for (ChatConfig config : settings.getModels()) {
+        for (ChatConfig config : settings.getModels().values()) {
             if (name.equals(config.getNameOrModel())) {
                 config.setEnabled(enabled);
                 saveSettings();

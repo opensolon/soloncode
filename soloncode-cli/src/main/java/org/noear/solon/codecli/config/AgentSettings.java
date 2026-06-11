@@ -41,7 +41,7 @@ public class AgentSettings implements Serializable {
     //defaultModel
     private String defaultModel;
     //models
-    private List<ModelDo> models = new ArrayList<>();
+    private Map<String, ModelDo> models = new LinkedHashMap<>();
     //挂载
     private Map<String, MountDo> mountPools = new LinkedHashMap<>();
 
@@ -150,7 +150,7 @@ public class AgentSettings implements Serializable {
 
         //-------------
 
-        if(Assert.isNotEmpty(this.defaultModel)){
+        if (Assert.isNotEmpty(this.defaultModel)) {
             props.setDefaultModel(this.defaultModel);
         } else {
             this.defaultModel = props.getDefaultModel();
@@ -158,9 +158,11 @@ public class AgentSettings implements Serializable {
 
         if (this.models.size() > 0) {
             props.getModels().clear();
-            props.getModels().addAll(this.models);
+            props.getModels().addAll(this.models.values());
         } else {
-            this.models.addAll(props.getModels());
+            for (ModelDo modelDo : props.getModels()) {
+                this.models.put(modelDo.getNameOrModel(), modelDo);
+            }
         }
 
         // 合并完成后统一兜底：如果 defaultModel 未指定，取第一个模型
@@ -216,13 +218,35 @@ public class AgentSettings implements Serializable {
             if (Files.exists(globalFile)) {
                 //全局配置
                 String json = new String(Files.readAllBytes(globalFile), "UTF-8");
-                ONode.ofJson(json).bindTo(agentSettings);
+                ONode oNode = ONode.ofJson(json);
+
+                ONode oModels = oNode.get("models");
+                if (oModels.isArray()) { //旧格式，转成新格式
+                    ONode map = new ONode().asObject();
+                    for (ONode item : oModels.getArrayUnsafe()) {
+                        map.set(item.get("name").getString(), item);
+                    }
+                    oNode.set("models", map);
+                }
+
+                oNode.bindTo(agentSettings);
             }
 
             if (Files.exists(localFile)) {
                 //工作区配置
                 String json = new String(Files.readAllBytes(localFile), "UTF-8");
-                ONode.ofJson(json).bindTo(agentSettings);
+                ONode oNode = ONode.ofJson(json);
+
+                ONode oModels = oNode.get("models");
+                if (oModels.isArray()) { //旧格式，转成新格式
+                    ONode map = new ONode().asObject();
+                    for (ONode item : oModels.getArrayUnsafe()) {
+                        map.set(item.get("name").getString(), item);
+                    }
+                    oNode.set("models", map);
+                }
+
+                oNode.bindTo(agentSettings);
             }
 
             return agentSettings;
@@ -258,13 +282,13 @@ public class AgentSettings implements Serializable {
 
         oNode.set("defaultModel", this.defaultModel);
 
-        oNode.getOrNew("models").asArray().then(ary -> {
-            for (ModelDo entry : models) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getScope())){
+        oNode.getOrNew("models").asObject().then(map -> {
+            for (ModelDo entry : models.values()) {
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getScope())) {
                     continue;
                 }
 
-                ary.addNew().then(item -> {
+                map.getOrNew(entry.getNameOrModel()).then(item -> {
                     item.fill(entry);
                     item.remove("userAgent");
 
@@ -277,7 +301,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("mcpServers").asObject().then(map -> {
             for (Map.Entry<String, McpServerDo> entry : mcpServers.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
@@ -293,7 +317,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("apiServers").asObject().then(map -> {
             for (Map.Entry<String, ApiSourceDo> entry : apiServers.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
@@ -309,7 +333,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("mountPools").asObject().then(map -> {
             for (Map.Entry<String, MountDo> entry : mountPools.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
@@ -319,7 +343,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("lspServers").asObject().then(map -> {
             for (Map.Entry<String, LspServerDo> entry : lspServers.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
                 map.getOrNew(entry.getKey()).fill(entry.getValue());
@@ -332,18 +356,17 @@ public class AgentSettings implements Serializable {
     public String getLocalJson() {
         ONode oNode = new ONode(Options.of(Feature.Write_PrettyFormat));
 
-        oNode.getOrNew("models").asArray().then(ary -> {
-            for (ModelDo entry : models) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getScope()) == false){
+        oNode.getOrNew("mcpServers").asObject().then(map -> {
+            for (Map.Entry<String, McpServerDo> entry : mcpServers.entrySet()) {
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
-                ary.addNew().then(item -> {
-                    item.fill(entry);
-                    item.remove("userAgent");
+                map.getOrNew(entry.getKey()).then(item -> {
+                    item.fill(entry.getValue());
 
-                    if (entry.getTimeout() != null) {
-                        item.set("timeout", entry.getTimeout().getSeconds() + "s");
+                    if (entry.getValue().getTimeout() != null) {
+                        item.set("timeout", entry.getValue().getTimeout().getSeconds() + "s");
                     }
                 });
             }
@@ -351,7 +374,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("mcpServers").asObject().then(map -> {
             for (Map.Entry<String, McpServerDo> entry : mcpServers.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
                     continue;
                 }
 
@@ -367,7 +390,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("apiServers").asObject().then(map -> {
             for (Map.Entry<String, ApiSourceDo> entry : apiServers.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
                     continue;
                 }
 
@@ -383,7 +406,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("mountPools").asObject().then(map -> {
             for (Map.Entry<String, MountDo> entry : mountPools.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
                     continue;
                 }
 
@@ -393,7 +416,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("lspServers").asObject().then(map -> {
             for (Map.Entry<String, LspServerDo> entry : lspServers.entrySet()) {
-                if(AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false){
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
                     continue;
                 }
                 map.getOrNew(entry.getKey()).fill(entry.getValue());
