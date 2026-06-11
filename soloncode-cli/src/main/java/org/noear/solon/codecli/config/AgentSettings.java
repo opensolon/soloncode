@@ -209,8 +209,8 @@ public class AgentSettings implements Serializable {
      */
     public static AgentSettings loadFromFile() {
         try {
-            Path globalFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json");
-            Path localFile = Paths.get(AgentProperties.getUserDir(), ".soloncode", "settings.json");
+            Path globalFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
+            Path localFile = Paths.get(AgentProperties.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
 
             AgentSettings agentSettings = new AgentSettings();
 
@@ -232,21 +232,24 @@ public class AgentSettings implements Serializable {
                 oNode.bindTo(agentSettings);
             }
 
-            if (Files.exists(localFile)) {
-                //工作区配置
-                String json = new String(Files.readAllBytes(localFile), "UTF-8");
-                ONode oNode = ONode.ofJson(json);
+            if (localFile.toString().equals(globalFile.toString()) == false) {
+                //如果本地文件，不同于全局文件
+                if (Files.exists(localFile)) {
+                    //工作区配置
+                    String json = new String(Files.readAllBytes(localFile), "UTF-8");
+                    ONode oNode = ONode.ofJson(json);
 
-                ONode oModels = oNode.get("models");
-                if (oModels.isArray()) { //旧格式，转成新格式
-                    ONode map = new ONode().asObject();
-                    for (ONode item : oModels.getArrayUnsafe()) {
-                        map.set(item.get("name").getString(), item);
+                    ONode oModels = oNode.get("models");
+                    if (oModels.isArray()) { //旧格式，转成新格式
+                        ONode map = new ONode().asObject();
+                        for (ONode item : oModels.getArrayUnsafe()) {
+                            map.set(item.get("name").getString(), item);
+                        }
+                        oNode.set("models", map);
                     }
-                    oNode.set("models", map);
-                }
 
-                oNode.bindTo(agentSettings);
+                    oNode.bindTo(agentSettings);
+                }
             }
 
             return agentSettings;
@@ -261,14 +264,17 @@ public class AgentSettings implements Serializable {
      */
     public void saveToFile() {
         try {
-            Path globalFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json");
-            Path localFile = Paths.get(AgentProperties.getUserDir(), ".soloncode", "settings.json");
+            Path globalFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
+            Path localFile = Paths.get(AgentProperties.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
 
             Files.createDirectories(globalFile.getParent());
             Files.write(globalFile, getGlobalJson().getBytes("UTF-8"));
 
-            Files.createDirectories(localFile.getParent());
-            Files.write(localFile, getLocalJson().getBytes("UTF-8"));
+            if (localFile.toString().equals(globalFile.toString()) == false) {
+                //如果本地文件，不同于全局文件
+                Files.createDirectories(localFile.getParent());
+                Files.write(localFile, getLocalJson().getBytes("UTF-8"));
+            }
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to save settings to file: {}", e.getMessage());
         }
@@ -283,17 +289,17 @@ public class AgentSettings implements Serializable {
         oNode.set("defaultModel", this.defaultModel);
 
         oNode.getOrNew("models").asObject().then(map -> {
-            for (ModelDo entry : models.values()) {
-                if (AgentFlags.SCOPE_LOCAL.equals(entry.getScope())) {
+            for (Map.Entry<String, ModelDo> entry : models.entrySet()) {
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
-                map.getOrNew(entry.getNameOrModel()).then(item -> {
-                    item.fill(entry);
+                map.getOrNew(entry.getValue().getNameOrModel()).then(item -> {
+                    item.fill(entry.getValue());
                     item.remove("userAgent");
 
-                    if (entry.getTimeout() != null) {
-                        item.set("timeout", entry.getTimeout().getSeconds() + "s");
+                    if (entry.getValue().getTimeout() != null) {
+                        item.set("timeout", entry.getValue().getTimeout().getSeconds() + "s");
                     }
                 });
             }
@@ -356,14 +362,15 @@ public class AgentSettings implements Serializable {
     public String getLocalJson() {
         ONode oNode = new ONode(Options.of(Feature.Write_PrettyFormat));
 
-        oNode.getOrNew("mcpServers").asObject().then(map -> {
-            for (Map.Entry<String, McpServerDo> entry : mcpServers.entrySet()) {
-                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
+        oNode.getOrNew("models").asObject().then(map -> {
+            for (Map.Entry<String, ModelDo> entry : models.entrySet()) {
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
                     continue;
                 }
 
-                map.getOrNew(entry.getKey()).then(item -> {
+                map.getOrNew(entry.getValue().getNameOrModel()).then(item -> {
                     item.fill(entry.getValue());
+                    item.remove("userAgent");
 
                     if (entry.getValue().getTimeout() != null) {
                         item.set("timeout", entry.getValue().getTimeout().getSeconds() + "s");
@@ -419,6 +426,7 @@ public class AgentSettings implements Serializable {
                 if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
                     continue;
                 }
+
                 map.getOrNew(entry.getKey()).fill(entry.getValue());
             }
         });

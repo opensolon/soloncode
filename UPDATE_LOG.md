@@ -1,5 +1,10 @@
 
 
+### v2026.6.13
+
+* 修复 soloncode 在用户根目录启动时，配置错乱问题
+* 修复 soloncode web 默认模型禁用后，对话列表没有更新的问题
+
 ### v2026.6.12
 
 * 新增 soloncode Loop Engineering 概念支持
