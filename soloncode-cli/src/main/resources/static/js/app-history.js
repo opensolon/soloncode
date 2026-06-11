@@ -64,6 +64,12 @@ function updateHistoryUI() {
 
         html += '<div class="' + cls + '" data-idx="' + i + '">'
             + '<span class="sidebar-item-label">' + escapeHtml(chatHistory[i].label) + '</span>';
+        // 任务进度 badge
+        var todoInfo = window.sessionTodoMap && window.sessionTodoMap[chatHistory[i].sessionId];
+        if (todoInfo && todoInfo.total > 0) {
+            var doneClass = todoInfo.done === todoInfo.total ? ' done' : '';
+            html += '<span class="sidebar-item-todo' + doneClass + '">' + todoInfo.done + '/' + todoInfo.total + '</span>';
+        }
         if (streaming) {
             html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
         }

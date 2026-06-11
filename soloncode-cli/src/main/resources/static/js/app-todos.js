@@ -39,12 +39,24 @@
             todoEmpty.style.display = '';
             todoEmpty.textContent = data.exists ? '暂无任务' : '当前会话暂无任务清单';
             todoStats.style.display = 'none';
+            // 清理会话级缓存
+            var sid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
+            if (sid) delete (window.sessionTodoMap || {})[sid];
+            if (typeof updateHistoryUI === 'function') updateHistoryUI();
             return;
         }
 
         todoEmpty.style.display = 'none';
         todoStats.style.display = '';
         todoStats.textContent = '(' + stats.done + ' / ' + stats.total + ')';
+
+        // 写入会话级缓存，驱动侧边栏 badge 更新
+        window.sessionTodoMap = window.sessionTodoMap || {};
+        var sid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
+        if (sid) {
+            window.sessionTodoMap[sid] = { done: stats.done || 0, total: stats.total || 0 };
+            if (typeof updateHistoryUI === 'function') updateHistoryUI();
+        }
 
         var html = '';
         var lastGroup = '';
@@ -87,13 +99,42 @@
         todoRefreshBtn.addEventListener('click', loadTodos);
     }
 
-    // 监听 WebSocket action chunk，当 todowrite 完成时自动刷新
+    // 监听 WebSocket action chunk，当 todowrite 完成时直接从返回值提取统计
     if (typeof window._todoChunkHandlers === 'undefined') {
         window._todoChunkHandlers = [];
     }
     window._todoChunkHandlers.push(function(chunk) {
         if (chunk && chunk.toolName === 'todowrite') {
-            loadTodos();
+            // 直接从 chunk.text 提取统计，避免二次请求
+            var match = chunk.text && chunk.text.match(/\(total:\s*(\d+),\s*done:\s*(\d+),\s*in-progress:\s*(\d+),\s*pending:\s*(\d+)\)/);
+            if (match) {
+                var stats = {
+                    total: parseInt(match[1]),
+                    done: parseInt(match[2]),
+                    inProgress: parseInt(match[3]),
+                    pending: parseInt(match[4])
+                };
+                // 更新右侧面板统计
+                if (todoBadge) {
+                    var pending = (stats.pending || 0) + (stats.inProgress || 0);
+                    todoBadge.textContent = pending;
+                    todoBadge.style.display = pending > 0 ? '' : 'none';
+                }
+                if (todoStats && stats.total > 0) {
+                    todoStats.style.display = '';
+                    todoStats.textContent = '(' + stats.done + ' / ' + stats.total + ')';
+                }
+                // 写入会话级缓存，驱动侧边栏 badge 更新
+                window.sessionTodoMap = window.sessionTodoMap || {};
+                var sid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
+                if (sid) {
+                    window.sessionTodoMap[sid] = { done: stats.done, total: stats.total };
+                    if (typeof updateHistoryUI === 'function') updateHistoryUI();
+                }
+            } else {
+                // 兜底：格式不匹配时仍走原路
+                loadTodos();
+            }
         }
     });
 

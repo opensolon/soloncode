@@ -89,6 +89,22 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 /* Streaming indicator for sidebar items */
 .sidebar-item.streaming { border-left: 3px solid var(--accent); padding-left: 9px; }
 .sidebar-item.streaming:hover .sidebar-item-del { display: none; }
+/* Sidebar todo progress badge */
+.sidebar-item-todo {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-tertiary, var(--text-secondary));
+    background: var(--bg-hover);
+    border-radius: 8px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    line-height: 16px;
+    white-space: nowrap;
+}
+.sidebar-item-todo.done {
+    color: #4caf50;
+    background: rgba(76,175,80,0.1);
+}
 .sidebar-item-spinner {
     flex-shrink: 0;
     width: 16px;
