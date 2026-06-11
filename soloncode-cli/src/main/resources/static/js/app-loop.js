@@ -143,7 +143,8 @@
 
     // ========== 列表事件绑定 ==========
     function bindListEvents() {
-        $('#loopAddNewBtn').on('click', function() {
+        $('#loopAddNewBtn').on('click', function(e) {
+            e.stopPropagation();
             loopEditId = null;
             renderLoopForm();
         });
