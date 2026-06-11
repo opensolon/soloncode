@@ -211,6 +211,7 @@ public class AgentSettings implements Serializable {
         try {
             Path globalFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
             Path localFile = Paths.get(AgentProperties.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
+            boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
 
             AgentSettings agentSettings = new AgentSettings();
 
@@ -232,7 +233,7 @@ public class AgentSettings implements Serializable {
                 oNode.bindTo(agentSettings);
             }
 
-            if (localFile.toString().equals(globalFile.toString()) == false) {
+            if (isLocalAsGlobal == false) {
                 //如果本地文件，不同于全局文件
                 if (Files.exists(localFile)) {
                     //工作区配置
@@ -266,11 +267,12 @@ public class AgentSettings implements Serializable {
         try {
             Path globalFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
             Path localFile = Paths.get(AgentProperties.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
+            boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
 
             Files.createDirectories(globalFile.getParent());
-            Files.write(globalFile, getGlobalJson().getBytes("UTF-8"));
+            Files.write(globalFile, getGlobalJson(isLocalAsGlobal).getBytes("UTF-8"));
 
-            if (localFile.toString().equals(globalFile.toString()) == false) {
+            if (isLocalAsGlobal == false) {
                 //如果本地文件，不同于全局文件
                 Files.createDirectories(localFile.getParent());
                 Files.write(localFile, getLocalJson().getBytes("UTF-8"));
@@ -281,7 +283,7 @@ public class AgentSettings implements Serializable {
     }
 
 
-    public String getGlobalJson() {
+    public String getGlobalJson(boolean isLocalAsGlobal) {
         ONode oNode = new ONode(Options.of(Feature.Write_PrettyFormat));
 
         oNode.getOrNew("general").fill(general);
@@ -290,7 +292,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("models").asObject().then(map -> {
             for (Map.Entry<String, ModelDo> entry : models.entrySet()) {
-                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
+                if (isLocalAsGlobal == false && AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
@@ -307,7 +309,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("mcpServers").asObject().then(map -> {
             for (Map.Entry<String, McpServerDo> entry : mcpServers.entrySet()) {
-                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
+                if (isLocalAsGlobal == false && AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
@@ -323,7 +325,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("apiServers").asObject().then(map -> {
             for (Map.Entry<String, ApiSourceDo> entry : apiServers.entrySet()) {
-                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
+                if (isLocalAsGlobal == false && AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
@@ -339,7 +341,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("mountPools").asObject().then(map -> {
             for (Map.Entry<String, MountDo> entry : mountPools.entrySet()) {
-                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
+                if (isLocalAsGlobal == false && AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
 
@@ -349,9 +351,10 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("lspServers").asObject().then(map -> {
             for (Map.Entry<String, LspServerDo> entry : lspServers.entrySet()) {
-                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
+                if (isLocalAsGlobal == false && AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
                     continue;
                 }
+
                 map.getOrNew(entry.getKey()).fill(entry.getValue());
             }
         });
