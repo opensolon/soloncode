@@ -28,18 +28,18 @@
     // ========== 预设模板 ==========
     var LOOP_TEMPLATES = [
         {
-            id: 'ci-monitor',
-            icon: 'CI',
-            name: 'CI 监控',
-            desc: '定时检查构建状态，失败时分析原因',
+            id: 'auto-fix',
+            icon: 'AF',
+            name: '自动修复循环',
+            desc: '反复尝试修复目标直到测试通过',
             data: {
-                prompt: '检查最近的 CI 构建状态，如果有失败的用例则分析失败原因并汇总报告',
-                intervalMinutes: 30,
-                goalCondition: null,
-                makerAgent: null,
-                checkerAgent: null,
-                worktreeEnabled: false,
-                maxIterations: 20
+                prompt: '运行测试套件，如果有失败的测试则分析原因并尝试修复代码',
+                intervalMinutes: 10,
+                goalCondition: 'all tests pass',
+                makerAgent: 'coder',
+                checkerAgent: 'reviewer',
+                worktreeEnabled: true,
+                maxIterations: 10
             }
         },
         {
@@ -58,18 +58,33 @@
             }
         },
         {
-            id: 'issue-triage',
-            icon: 'IS',
-            name: 'Issue 分类',
-            desc: '自动扫描并分类新 issue',
+            id: 'daily-memory',
+            icon: 'MR',
+            name: '每晚记忆整理',
+            desc: '每晚定时整理对话记忆，归纳用户偏好',
             data: {
-                prompt: '扫描新创建的 issue，自动分类标签并分配优先级',
-                intervalMinutes: 15,
-                goalCondition: 'all new issues triaged',
-                makerAgent: 'explorer',
-                checkerAgent: 'reviewer',
-                worktreeEnabled: true,
-                maxIterations: 30
+                prompt: '回顾今天的所有对话记录，提取用户的偏好习惯、技术决策和重要约束，归纳整理后存入长期记忆',
+                cron: '0 22 * * *',
+                goalCondition: null,
+                makerAgent: null,
+                checkerAgent: null,
+                worktreeEnabled: false,
+                maxIterations: 10
+            }
+        },
+        {
+            id: 'ci-monitor',
+            icon: 'CI',
+            name: 'CI 监控',
+            desc: '定时检查构建状态，失败时分析原因',
+            data: {
+                prompt: '检查最近的 CI 构建状态，如果有失败的用例则分析失败原因并汇总报告',
+                intervalMinutes: 30,
+                goalCondition: null,
+                makerAgent: null,
+                checkerAgent: null,
+                worktreeEnabled: false,
+                maxIterations: 20
             }
         },
         {
@@ -85,36 +100,6 @@
                 checkerAgent: null,
                 worktreeEnabled: false,
                 maxIterations: 100
-            }
-        },
-        {
-            id: 'doc-sync',
-            icon: 'DC',
-            name: '文档同步',
-            desc: '定时检查代码与文档的一致性',
-            data: {
-                prompt: '对比代码接口与文档描述的一致性，找出过时或缺失的文档内容并生成更新建议',
-                cron: '0 10 * * 1',
-                goalCondition: null,
-                makerAgent: 'coder',
-                checkerAgent: 'reviewer',
-                worktreeEnabled: false,
-                maxIterations: 20
-            }
-        },
-        {
-            id: 'auto-fix',
-            icon: 'AF',
-            name: '自动修复循环',
-            desc: '反复尝试修复目标直到通过',
-            data: {
-                prompt: '运行测试套件，如果有失败的测试则分析原因并尝试修复代码',
-                intervalMinutes: 10,
-                goalCondition: 'all tests pass',
-                makerAgent: 'coder',
-                checkerAgent: 'reviewer',
-                worktreeEnabled: true,
-                maxIterations: 10
             }
         }
     ];
