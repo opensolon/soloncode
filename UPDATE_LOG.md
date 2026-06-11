@@ -1,4 +1,13 @@
 
+
+### v2026.6.12
+
+* 新增 soloncode Loop Engineering 概念支持
+* 添加 soloncode web loop 管理面板
+* 优化 soloncode web highlight.js 由 cdn 引用，改为本地引用（快多了）
+* 优化 soloncode 启动时文件发现扫描改为异步（快多了）
+* 细节优化
+
 ### v2026.6.11
 
 * 修复 soloncode web 发送消息时，格式被清的问题

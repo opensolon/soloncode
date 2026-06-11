@@ -497,21 +497,24 @@ public class LoopScheduler {
         String prompt = task.getPrompt();
 
         // 1. Skill 引用解析：尝试从 workspace/.soloncode/skills/ 加载 SKILL.md
-//        if (task.getSkillRef() != null && !task.getSkillRef().isEmpty()
-//                && task.getWorkspace() != null) {
-//            String ws = task.getWorkspace();
-//            try {
-//                java.nio.file.Path skillFile = java.nio.file.Paths.get(ws, ".soloncode", "skills",
-//                        task.getSkillRef(), "SKILL.md");
-//                if (java.nio.file.Files.exists(skillFile)) {
-//                    String skillContent = new String(java.nio.file.Files.readAllBytes(skillFile),
-//                            java.nio.charset.StandardCharsets.UTF_8);
-//                    prompt = prompt + "\n\n--- Skill: " + task.getSkillRef() + " ---\n" + skillContent;
-//                }
-//            } catch (Exception e) {
-//                LOG.warn("Failed to load skill '{}': {}", task.getSkillRef(), e.getMessage());
-//            }
-//        }
+        if (task.getSkillRef() != null && !task.getSkillRef().isEmpty()
+                && task.getWorkspace() != null) {
+            try {
+                java.nio.file.Path skillFile = java.nio.file.Paths.get(task.getWorkspace(),
+                        ".soloncode", "skills", task.getSkillRef(), "SKILL.md");
+                if (java.nio.file.Files.exists(skillFile)) {
+                    String skillContent = new String(java.nio.file.Files.readAllBytes(skillFile),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                    // 安全截断：最多注入 4000 字符，防止撑爆上下文
+                    if (skillContent.length() > 4000) {
+                        skillContent = skillContent.substring(0, 4000) + "\n... (truncated)";
+                    }
+                    prompt = prompt + "\n\n--- Skill: " + task.getSkillRef() + " ---\n" + skillContent;
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to load skill '{}': {}", task.getSkillRef(), e.getMessage());
+            }
+        }
 
         // 2. 状态上下文注入
         if (task.getWorkspace() != null) {
@@ -666,7 +669,7 @@ public class LoopScheduler {
      * 通过 IM 通道通知 loop 执行结果
      */
     private void notifyChannels(String sessionId, LoopTask task) {
-        if (task.getChannelNotify() == null || channels.isEmpty()) {
+        if (channels.isEmpty()) {
             return;
         }
 
@@ -684,8 +687,9 @@ public class LoopScheduler {
         String message = msg.toString();
         boolean sent = false;
 
+        // 遍历所有已绑定的 IM 通道，自动推送通知
         for (Channel ch : channels) {
-            if (task.getChannelNotify().equals(ch.getChannelName()) && ch.isBound(sessionId)) {
+            if (ch.isBound(sessionId)) {
                 try {
                     ch.sendReply(sessionId, message, true);
                     sent = true;
@@ -697,7 +701,7 @@ public class LoopScheduler {
         }
 
         if (!sent) {
-            LOG.debug("Loop task '{}' no bound channel found for '{}' (notification skipped)", task.getId(), task.getChannelNotify());
+            LOG.debug("Loop task '{}' no bound channel found (notification skipped)", task.getId());
         }
     }
 

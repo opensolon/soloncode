@@ -25,6 +25,37 @@
         return inChatMode ? $chatLoopBtn : $welcomeLoopBtn;
     }
 
+    // ========== 预设模板 ==========
+    var LOOP_TEMPLATES = {
+        'ci-monitor': {
+            prompt: '检查最近的 CI 构建状态，如果有失败的用例则分析失败原因并汇总报告',
+            intervalMinutes: 30,
+            goalCondition: null,
+            makerAgent: null,
+            checkerAgent: null,
+            worktreeEnabled: false,
+            maxIterations: 20
+        },
+        'daily-review': {
+            prompt: '审查昨天的所有代码提交，总结变更摘要和潜在风险点',
+            cron: '0 9 * * *',
+            goalCondition: null,
+            makerAgent: null,
+            checkerAgent: 'reviewer',
+            worktreeEnabled: false,
+            maxIterations: 20
+        },
+        'issue-triage': {
+            prompt: '扫描新创建的 issue，自动分类标签并分配优先级',
+            intervalMinutes: 15,
+            goalCondition: 'all new issues triaged',
+            makerAgent: 'explorer',
+            checkerAgent: 'reviewer',
+            worktreeEnabled: true,
+            maxIterations: 30
+        }
+    };
+
     // ========== 面板开关 ==========
     function toggleLoopPanel() {
         var $panel = getActivePanel();
@@ -133,8 +164,35 @@
                     html += '</div>';
                     html += '</div>';
                     html += '<div class="loop-item-prompt">' + escapeHtml(t.prompt) + '</div>';
-                    if (lastInfo) {
-                        html += '<div class="loop-item-info">' + lastInfo + '</div>';
+                    // 功能标签（始终显示）
+                    var tags = [];
+                    if (t.goalCondition) tags.push('<span class="loop-tag loop-tag-goal">goal</span>');
+                    if (t.makerAgent) tags.push('<span class="loop-tag loop-tag-mc">m/c</span>');
+                    if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
+
+                    if (t.skillRef) tags.push('<span class="loop-tag loop-tag-skill">' + escapeHtml(t.skillRef) + '</span>');
+                    var tagsHtml = tags.length ? '<span class="loop-item-tags">' + tags.join('') + '</span>' : '';
+
+                    // 底部信息行：时间 + 迭代 + 标签
+                    if (lastInfo || tagsHtml) {
+                        html += '<div class="loop-item-info">';
+                        if (lastInfo) html += lastInfo;
+                        html += tagsHtml;
+                        html += '</div>';
+                    }
+                    // 执行结果摘要
+                    if (t.lastResult) {
+                        var resultShort = t.lastResult.length > 80 ? t.lastResult.substring(0, 80) + '...' : t.lastResult;
+                        var resultClass = t.lastResult.indexOf('[GOAL_ACHIEVED]') >= 0 ? 'achieved' : (t.lastResult.indexOf('error') >= 0 ? 'error' : '');
+                        html += '<div class="loop-item-result ' + resultClass + '">' + escapeHtml(resultShort) + '</div>';
+                    }
+                    // goal 进度条
+                    if (t.goalCondition && t.maxIterations > 0) {
+                        var pct = Math.min(100, Math.round(t.currentIteration / t.maxIterations * 100));
+                        html += '<div class="loop-item-progress">';
+                        html += '<div class="loop-progress-bar" style="width:' + pct + '%"></div>';
+                        html += '<span class="loop-progress-text">' + t.currentIteration + '/' + t.maxIterations + '</span>';
+                        html += '</div>';
                     }
                     html += '</div>';
                 }
@@ -182,6 +240,13 @@
                 renderLoopForm();
             }
         });
+
+        // 点击任务行进入详情面板
+        $panel.on('click.loopitem', '.loop-item', function(e) {
+            if ($(e.target).closest('.loop-action-btn').length) return;
+            var id = $(this).data('id');
+            renderLoopDetail(id);
+        });
     }
 
     // ========== 表单渲染 ==========
@@ -207,12 +272,26 @@
         html += '<input type="text" class="loop-input" id="loopFormCron" placeholder="0 */5 * * * ?"/>';
         html += '</div>';
         html += '</div>';
-        html += '<div class="loop-form-advanced-toggle" id="loopAdvancedToggle">▸ 高级选项</div>';
-        html += '<div class="loop-form-advanced" id="loopAdvanced" style="display:none">';
+        // 预设模板（仅新建模式）
+        if (!loopEditId) {
+            html += '<div class="loop-form-group">';
+            html += '<label>快速开始</label>';
+            html += '<div class="loop-templates">';
+            html += '<button type="button" class="loop-template-btn" data-tpl="ci-monitor"><span class="loop-tpl-icon">CI</span><span class="loop-tpl-info"><span class="loop-tpl-name">CI 监控</span><span class="loop-tpl-desc">每30分钟检查 CI 状态</span></span></button>';
+            html += '<button type="button" class="loop-template-btn" data-tpl="daily-review"><span class="loop-tpl-icon">CR</span><span class="loop-tpl-info"><span class="loop-tpl-name">每日代码审查</span><span class="loop-tpl-desc">每天9点审查提交</span></span></button>';
+            html += '<button type="button" class="loop-template-btn" data-tpl="issue-triage"><span class="loop-tpl-icon">IT</span><span class="loop-tpl-info"><span class="loop-tpl-name">Issue 分诊</span><span class="loop-tpl-desc">每15分钟扫描新 issue</span></span></button>';
+            html += '</div></div>';
+        }
+
+        html += '<div class="loop-form-advanced-toggle" id="loopAdvancedToggle">▾ 执行策略</div>';
+        html += '<div class="loop-form-advanced" id="loopAdvanced">';
         html += '<div class="loop-form-group"><label>目标条件</label><input type="text" class="loop-input" id="loopFormGoal" placeholder="all tests pass"/></div>';
         html += '<div class="loop-form-group"><label>执行者</label><input type="text" class="loop-input" id="loopFormMaker" placeholder="coder"/></div>';
         html += '<div class="loop-form-group"><label>验证者</label><input type="text" class="loop-input" id="loopFormChecker" placeholder="reviewer"/></div>';
-        html += '<div class="loop-form-group"><label>通知通道</label><input type="text" class="loop-input" id="loopFormNotify" placeholder="feishu"/></div>';
+        html += '<div class="loop-form-group loop-form-inline">';
+        html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
+        html += '</div>';
+        html += '<div class="loop-form-group"><label>引用技能</label><input type="text" class="loop-input" id="loopFormSkillRef" placeholder="skill-name"/></div>';
         html += '<div class="loop-form-group"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" value="20" min="1"/></div>';
         html += '</div>';
         html += '<div class="loop-form-actions">';
@@ -222,6 +301,7 @@
         html += '</div>';
 
         var $panel = getActivePanel();
+        $panel.addClass('mode-form');
         $panel.html(html);
         bindFormEvents();
 
@@ -258,7 +338,9 @@
         if (t.goalCondition) $('#loopFormGoal').val(t.goalCondition);
         if (t.makerAgent) $('#loopFormMaker').val(t.makerAgent);
         if (t.checkerAgent) $('#loopFormChecker').val(t.checkerAgent);
-        if (t.channelNotify) $('#loopFormNotify').val(t.channelNotify);
+        if (t.worktreeEnabled) $('#loopFormWorktree').prop('checked', true);
+        if (t.skillRef) $('#loopFormSkillRef').val(t.skillRef);
+
         if (t.maxIterations) $('#loopFormMaxIter').val(t.maxIterations);
     }
 
@@ -273,11 +355,32 @@
             var $adv = $('#loopAdvanced');
             if ($adv.is(':visible')) {
                 $adv.hide();
-                $(this).text('▸ 高级选项');
+                $(this).text('▸ 执行策略');
             } else {
                 $adv.show();
-                $(this).text('▾ 高级选项');
+                $(this).text('▾ 执行策略');
             }
+        });
+
+        // 模板点击填充
+        getActivePanel().on('click', '.loop-template-btn', function() {
+            var tpl = LOOP_TEMPLATES[$(this).data('tpl')];
+            if (!tpl) return;
+            $('#loopFormPrompt').val(tpl.prompt);
+            if (tpl.cron) {
+                $('input[name=loopScheduleType][value=cron]').prop('checked', true).trigger('change');
+                $('#loopFormCron').val(tpl.cron);
+            } else {
+                $('input[name=loopScheduleType][value=interval]').prop('checked', true).trigger('change');
+                $('#loopFormInterval').val(tpl.intervalMinutes || 5);
+                $('#loopFormIntervalUnit').val('m');
+            }
+            if (tpl.goalCondition) $('#loopFormGoal').val(tpl.goalCondition);
+            if (tpl.makerAgent) $('#loopFormMaker').val(tpl.makerAgent);
+            if (tpl.checkerAgent) $('#loopFormChecker').val(tpl.checkerAgent);
+            if (tpl.worktreeEnabled) $('#loopFormWorktree').prop('checked', true);
+            if (tpl.maxIterations) $('#loopFormMaxIter').val(tpl.maxIterations);
+            showToast('已填充模板，可按需修改后保存', 'success');
         });
 
         // 间隔类型切换
@@ -312,7 +415,8 @@
                 goalCondition: $('#loopFormGoal').val().trim() || null,
                 makerAgent: $('#loopFormMaker').val().trim() || null,
                 checkerAgent: $('#loopFormChecker').val().trim() || null,
-                channelNotify: $('#loopFormNotify').val().trim() || null,
+                worktreeEnabled: $('#loopFormWorktree').is(':checked'),
+                skillRef: $('#loopFormSkillRef').val().trim() || null,
                 maxIterations: parseInt($('#loopFormMaxIter').val()) || null
             };
 
@@ -369,8 +473,115 @@
         }
     }
 
+    // ========== 详情面板渲染 ==========
+    function renderLoopDetail(taskId) {
+        var $panel = getActivePanel();
+        $panel.addClass('mode-detail');
+
+        var html = '<div class="loop-panel-header">';
+        html += '<button class="loop-panel-back-btn" id="loopDetailBack">← 返回列表</button>';
+        html += '<span class="loop-panel-title">#' + escapeHtml(taskId) + ' 详情</span>';
+        html += '</div>';
+        html += '<div class="loop-detail-tabs">';
+        html += '<button class="loop-detail-tab active" data-dtab="history">执行历史</button>';
+        html += '<button class="loop-detail-tab" data-dtab="state">状态文件</button>';
+        html += '</div>';
+        html += '<div class="loop-detail-content" id="loopDetailContent">';
+        html += '<div class="loop-detail-loading">加载中...</div>';
+        html += '</div>';
+
+        $panel.html(html);
+
+        // 返回按钮
+        $('#loopDetailBack').on('click', function() {
+            $panel.removeClass('mode-detail');
+            renderLoopList();
+        });
+
+        // Tab 切换
+        $panel.on('click.looptab', '.loop-detail-tab', function() {
+            var tab = $(this).data('dtab');
+            $panel.find('.loop-detail-tab').removeClass('active');
+            $(this).addClass('active');
+            if (tab === 'history') {
+                loopApi('history', { taskId: taskId }, function(res) {
+                    renderHistoryTab(res);
+                });
+            } else {
+                loopApi('state', { taskId: taskId }, function(res) {
+                    renderStateTab(res);
+                });
+            }
+        });
+
+        // 默认加载历史
+        loopApi('history', { taskId: taskId }, function(res) {
+            renderHistoryTab(res);
+        });
+    }
+
+    function renderHistoryTab(res) {
+        var $content = $('#loopDetailContent');
+        if (!$content.length) return;
+        var items = (res && res.data) ? res.data : [];
+        if (items.length === 0) {
+            $content.html('<div class="loop-detail-empty">暂无执行历史</div>');
+            return;
+        }
+        var html = '';
+        // 倒序显示（最新在前）
+        for (var i = items.length - 1; i >= 0; i--) {
+            var h = items[i];
+            var isPass = h.result && (h.result.indexOf('[PASS]') >= 0 || h.result.indexOf('ok') === 0);
+            var isFail = h.result && (h.result.indexOf('[FAIL]') >= 0 || h.result.indexOf('error') === 0);
+            var statusIcon = isPass ? '✓' : (isFail ? '✗' : '·');
+            var statusClass = isPass ? 'pass' : (isFail ? 'fail' : '');
+            html += '<div class="loop-history-item">';
+            html += '<span class="loop-history-status ' + statusClass + '">' + statusIcon + '</span>';
+            html += '<span class="loop-history-iter">#' + (h.iteration || '-') + '</span>';
+            html += '<span class="loop-history-time">' + formatTimeAgo(h.time) + '</span>';
+            var resultText = h.result || '';
+            if (resultText.length > 100) resultText = resultText.substring(0, 100) + '...';
+            html += '<span class="loop-history-result">' + escapeHtml(resultText) + '</span>';
+            html += '</div>';
+        }
+        $content.html(html);
+    }
+
+    function renderStateTab(res) {
+        var $content = $('#loopDetailContent');
+        if (!$content.length) return;
+        var data = (res && res.data) ? res.data : {};
+        var html = '';
+        var sections = [
+            { key: 'NEXT.md', label: '下一步 (NEXT.md)' },
+            { key: 'PROGRESS.md', label: '进度 (PROGRESS.md)' },
+            { key: 'DECISIONS.md', label: '决策 (DECISIONS.md)' }
+        ];
+        for (var i = 0; i < sections.length; i++) {
+            var s = sections[i];
+            var content = data[s.key] || '';
+            html += '<div class="loop-state-section">';
+            html += '<div class="loop-state-section-title">' + s.label + '</div>';
+            if (content) {
+                html += '<pre class="loop-state-pre">' + escapeHtml(content) + '</pre>';
+            } else {
+                html += '<div class="loop-state-empty">暂无内容</div>';
+            }
+            html += '</div>';
+        }
+        $content.html(html || '<div class="loop-detail-empty">暂无状态文件</div>');
+    }
+
     // ========== 公开 API ==========
     window.refreshLoopPanel = function() {
         if (loopPanelVisible) renderLoopList();
+    };
+
+    // 面板显示时移除详情模式 class
+    var _origRenderLoopList = renderLoopList;
+    renderLoopList = function() {
+        getActivePanel().removeClass('mode-detail mode-form');
+        _origRenderLoopList();
     };
 })();

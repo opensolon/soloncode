@@ -416,6 +416,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 
 /* ===== Loop Panel ===== */
 .loop-panel { position: absolute; bottom: 100%; left: 0; right: 0; margin-bottom: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); max-height: 400px; overflow-y: auto; z-index: 100; animation: drop-up 0.15s ease-out; }
+.loop-panel.mode-form { max-height: 520px; }
+.loop-panel.mode-detail { max-height: 520px; }
 .loop-panel-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border-color); gap: 8px; flex-shrink: 0; }
 .loop-panel-title { font-size: 13px; font-weight: 600; color: var(--text-primary); flex: 1; }
 .loop-panel-add-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
@@ -424,7 +426,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-panel-back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .loop-panel-empty { padding: 24px; text-align: center; color: var(--text-secondary); font-size: 13px; }
 .loop-panel-list { padding: 4px 0; }
-.loop-item { padding: 8px 14px; border-bottom: 1px solid var(--border-color); }
+.loop-item { padding: 8px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.12s; }
+.loop-item:hover { background: var(--bg-hover); }
 .loop-item:last-child { border-bottom: none; }
 .loop-item-row { display: flex; align-items: center; gap: 6px; }
 .loop-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -445,8 +448,62 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .loop-action-btn.danger:hover { color: #d9534f; }
 .loop-item-prompt { font-size: 12px; color: var(--text-secondary); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.loop-item-info { margin-top: 2px; display: flex; gap: 8px; }
+.loop-item-info { margin-top: 2px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .loop-item-meta { font-size: 11px; color: var(--text-secondary); opacity: 0.7; }
+
+/* Loop Tags */
+.loop-item-tags { display: inline-flex; gap: 3px; margin-left: 4px; }
+.loop-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; font-weight: 500; line-height: 16px; }
+.loop-tag-goal { color: #8b5cf6; background: #f3f0ff; }
+.loop-tag-mc { color: #0891b2; background: #ecfeff; }
+.loop-tag-wt { color: #059669; background: #ecfdf5; }
+
+.loop-tag-skill { color: #7c3aed; background: #f5f3ff; }
+
+/* Loop Result */
+.loop-item-result { font-size: 11px; color: var(--text-secondary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.8; }
+.loop-item-result.achieved { color: #059669; font-weight: 500; }
+.loop-item-result.error { color: #d9534f; }
+
+/* Loop Progress */
+.loop-item-progress { margin-top: 3px; position: relative; height: 14px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+.loop-progress-bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; opacity: 0.6; }
+.loop-progress-text { position: absolute; right: 4px; top: 0; font-size: 10px; color: var(--text-secondary); line-height: 14px; }
+
+/* Loop Templates */
+.loop-templates { display: flex; gap: 6px; flex-wrap: wrap; }
+.loop-template-btn { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); cursor: pointer; transition: all 0.12s; }
+.loop-template-btn:hover { border-color: var(--accent); background: var(--bg-hover); }
+.loop-tpl-icon { width: 24px; height: 24px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.loop-tpl-info { display: flex; flex-direction: column; gap: 1px; }
+.loop-tpl-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.loop-tpl-desc { font-size: 10px; color: var(--text-secondary); }
+
+/* Loop Checkbox */
+.loop-checkbox { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.loop-checkbox input { margin: 0; }
+
+/* Loop Detail */
+.loop-detail-tabs { display: flex; border-bottom: 1px solid var(--border-color); padding: 0 14px; }
+.loop-detail-tab { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: color 0.15s; }
+.loop-detail-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.loop-detail-tab:hover { color: var(--text-primary); }
+.loop-detail-content { padding: 8px 14px; max-height: 380px; overflow-y: auto; }
+.loop-detail-loading, .loop-detail-empty { padding: 18px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+.loop-history-item { display: flex; align-items: baseline; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 12px; }
+.loop-history-item:last-child { border-bottom: none; }
+.loop-history-status { font-weight: 700; flex-shrink: 0; width: 14px; text-align: center; color: var(--text-secondary); }
+.loop-history-status.pass { color: #059669; }
+.loop-history-status.fail { color: #d9534f; }
+.loop-history-iter { font-weight: 600; color: var(--text-primary); min-width: 24px; }
+.loop-history-time { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+.loop-history-result { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Loop State Browser */
+.loop-state-section { margin-bottom: 12px; }
+.loop-state-section-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.loop-state-pre { font-size: 12px; background: var(--bg-hover); padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow-y: auto; margin: 0; color: var(--text-primary); }
+.loop-state-empty { font-size: 11px; color: var(--text-secondary); opacity: 0.6; }
 
 /* Loop Form */
 .loop-form { padding: 12px 14px; }
