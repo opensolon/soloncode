@@ -277,8 +277,12 @@
         html += '</div>';
         html += '<div class="loop-form">';
         html += '<div class="loop-form-group">';
-        html += '<label>提示词 <span class="loop-required">*</span></label>';
+        html += '<label>任务描述 <span class="loop-required">*</span></label>';
         html += '<input type="text" class="loop-input" id="loopFormPrompt" placeholder="例如: 检查CI状态并汇总失败用例"/>';
+        html += '</div>';
+        html += '<div class="loop-form-group">';
+        html += '<label>目标完成条件</label>';
+        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder="例如：所有测试通过"/>';
         html += '</div>';
         html += '<div class="loop-form-group">';
         html += '<label>间隔</label>';
@@ -305,9 +309,8 @@
 
         html += '<div class="loop-form-advanced-toggle" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略</span></div>';
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
-        html += '<div class="loop-form-group"><label>目标条件（goal condition）</label><input type="text" class="loop-input" id="loopFormGoal" placeholder="all tests pass"/></div>';
-        html += '<div class="loop-form-group"><label>执行者（subagent）</label><input type="text" class="loop-input" id="loopFormMaker" placeholder="coder"/></div>';
-        html += '<div class="loop-form-group"><label>验证者（subagent）</label><input type="text" class="loop-input" id="loopFormChecker" placeholder="reviewer"/></div>';
+        html += '<div class="loop-form-group"><label>执行者子代理</label><input type="text" class="loop-input" id="loopFormMaker" placeholder="@coder"/></div>';
+        html += '<div class="loop-form-group"><label>验证者子代理</label><input type="text" class="loop-input" id="loopFormChecker" placeholder="@reviewer"/></div>';
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
         html += '</div>';
@@ -437,7 +440,7 @@
 
             var prompt = $('#loopFormPrompt').val().trim();
             if (!prompt) {
-                showToast('请输入提示词', 'error');
+                showToast('请输入任务描述', 'error');
                 return;
             }
 
