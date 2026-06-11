@@ -53,8 +53,8 @@
                 prompt: '运行测试套件，如果有失败的测试则分析原因并尝试修复代码',
                 intervalMinutes: 10,
                 goalCondition: 'all tests pass',
-                makerAgent: 'coder',
-                checkerAgent: 'reviewer',
+                makerAgent: 'general',
+                checkerAgent: 'explore',
                 worktreeEnabled: true,
                 maxIterations: 10
             }
@@ -69,7 +69,7 @@
                 cron: '0 9 * * *',
                 goalCondition: null,
                 makerAgent: null,
-                checkerAgent: 'reviewer',
+                checkerAgent: 'explore',
                 worktreeEnabled: false,
                 maxIterations: 20
             }
