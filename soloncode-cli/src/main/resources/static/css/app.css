@@ -1,4 +1,4 @@
-:root { --sidebar-width: 260px; --filer-panel-width: 280px; }
+:root { --sidebar-width: 280px; --filer-panel-width: 280px; }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
