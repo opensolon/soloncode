@@ -16,8 +16,11 @@
 package org.noear.solon.codecli.portal.cli;
 
 import org.jline.reader.EndOfFileException;
+import org.jline.reader.Candidate;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.ParsedLine;
+import org.jline.reader.Parser;
 import org.jline.reader.UserInterruptException;
 import org.jline.reader.Widget;
 import org.jline.reader.impl.LineReaderImpl;
@@ -78,9 +81,11 @@ public class CliShell implements Runnable {
     private Terminal terminal;
     private LineReader reader;
     private final HarnessEngine engine;
+    private final CliCompleter completer;
     private final AgentProperties agentProps;
     private final LoopScheduler loopScheduler;
     private int cliHintStart = -1;
+    private boolean largeHintPrompted;
 
     // ANSI 颜色常量
     private final static String
@@ -99,6 +104,7 @@ public class CliShell implements Runnable {
         this.engine = engine;
         this.agentProps = agentProps;
         this.loopScheduler = loopScheduler;
+        this.completer = new CliCompleter(engine, engine.getWorkspace());
 
         try {
             this.terminal = TerminalBuilder.builder()
@@ -107,8 +113,9 @@ public class CliShell implements Runnable {
                     .build();
 
             this.reader = LineReaderBuilder.builder()
+                    .appName("SolonCode")
                     .terminal(terminal)
-                    .completer(new CliCompleter(engine, agentProps.getWorkspace()))
+                    .completer(completer)
                     .build();
             setupInputHints();
         } catch (Throwable e) {
@@ -139,6 +146,8 @@ public class CliShell implements Runnable {
         reader.setOpt(LineReader.Option.AUTO_MENU_LIST);
         reader.setOpt(LineReader.Option.CASE_INSENSITIVE);
         reader.setVariable(LineReader.MENU_LIST_MAX, 12);
+        reader.setVariable(LineReader.COMPLETION_STYLE_LIST_BACKGROUND, "bg:default");
+        reader.setVariable(LineReader.COMPLETION_STYLE_LIST_STARTING, "fg:default");
 
         if (reader instanceof LineReaderImpl) {
             LineReaderImpl impl = (LineReaderImpl) reader;
@@ -161,12 +170,19 @@ public class CliShell implements Runnable {
 
         impl.getWidgets().put(LineReader.SELF_INSERT, () -> {
             int cursorBefore = impl.getBuffer().cursor();
+            boolean activeBefore = hasActiveHint(impl);
             boolean handled = selfInsert.apply();
             String binding = impl.getLastBinding();
 
             if (handled && isTriggerBinding(binding) && isTokenStart(impl, cursorBefore)) {
                 cliHintStart = cursorBefore;
-                impl.callWidget("." + LineReader.LIST_CHOICES);
+                showInputChoices(impl);
+            } else if (handled && activeBefore) {
+                if (isCompletingActiveHint(impl)) {
+                    showInputChoices(impl);
+                } else {
+                    clearInputChoices(impl);
+                }
             }
             return handled;
         });
@@ -185,7 +201,13 @@ public class CliShell implements Runnable {
             boolean deletesTrigger = deletesTrigger(widgetName, before, cursorBefore);
             boolean handled = deleteWidget.apply();
 
-            if (handled && (deletesTrigger || (activeBefore && hasActiveHint(impl) == false))) {
+            if (handled && activeBefore) {
+                if (deletesTrigger || isCompletingActiveHint(impl) == false) {
+                    clearInputChoices(impl);
+                } else {
+                    showInputChoices(impl);
+                }
+            } else if (handled && deletesTrigger) {
                 clearInputChoices(impl);
             }
             return handled;
@@ -214,13 +236,30 @@ public class CliShell implements Runnable {
         return cliHintStart >= 0 && isTriggerAt(buffer, cliHintStart);
     }
 
-    private boolean isTriggerAt(String buffer, int index) {
+    static boolean isTriggerAt(String buffer, int index) {
         if (index < 0 || index >= buffer.length()) {
             return false;
         }
         char c = buffer.charAt(index);
         return (c == '/' || c == '@' || c == '$' || c == '!') &&
                 (index == 0 || Character.isWhitespace(buffer.charAt(index - 1)));
+    }
+
+    private boolean isCompletingActiveHint(LineReaderImpl impl) {
+        return isCompletingHintToken(impl.getBuffer().toString(), cliHintStart, impl.getBuffer().cursor());
+    }
+
+    static boolean isCompletingHintToken(String buffer, int hintStart, int cursor) {
+        if (isTriggerAt(buffer, hintStart) == false || cursor <= hintStart || cursor > buffer.length()) {
+            return false;
+        }
+
+        for (int i = hintStart + 1; i < cursor; i++) {
+            if (Character.isWhitespace(buffer.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean isTokenStart(LineReaderImpl impl, int cursorBefore) {
@@ -230,15 +269,53 @@ public class CliShell implements Runnable {
         return Character.isWhitespace(impl.getBuffer().atChar(cursorBefore - 1));
     }
 
+    private void showInputChoices(LineReaderImpl impl) {
+        if (isLargeHint(impl)) {
+            if (largeHintPrompted) {
+                clearPost(impl);
+                impl.callWidget("." + LineReader.REDISPLAY);
+                return;
+            }
+            largeHintPrompted = true;
+        }
+        impl.callWidget("." + LineReader.LIST_CHOICES);
+    }
+
+    private boolean isLargeHint(LineReaderImpl impl) {
+        return isLargeHintCandidateCount(countInputChoiceCandidates(impl), terminal.getSize().getRows());
+    }
+
+    static boolean isLargeHintCandidateCount(int candidateCount, int terminalRows) {
+        if (candidateCount <= 0 || terminalRows <= 0) {
+            return false;
+        }
+        return candidateCount >= Math.max(1, terminalRows - 1);
+    }
+
+    private int countInputChoiceCandidates(LineReaderImpl impl) {
+        try {
+            ParsedLine line = reader.getParser().parse(impl.getBuffer().toString(), impl.getBuffer().cursor(), Parser.ParseContext.COMPLETE);
+            List<Candidate> candidates = new ArrayList<>();
+            completer.complete(reader, line, candidates);
+            return candidates.size();
+        } catch (Throwable e) {
+            return 0;
+        }
+    }
+
     private void clearInputChoices(LineReaderImpl impl) {
         cliHintStart = -1;
+        clearPost(impl);
+        impl.callWidget("." + LineReader.REDISPLAY);
+    }
+
+    private void clearPost(LineReaderImpl impl) {
         if (JLINE_POST_FIELD != null) {
             try {
                 JLINE_POST_FIELD.set(impl, null);
             } catch (Throwable ignored) {
             }
         }
-        impl.callWidget("." + LineReader.REDISPLAY);
     }
 
     /**
@@ -838,7 +915,7 @@ public class CliShell implements Runnable {
                 RESET + "(esc)" + DIM + " interrupt | " +
                 RESET + "/(tab)" + DIM + " command | " +
                 RESET + "$(tab)" + DIM + " skill | " +
-                RESET + "@(tab)" + DIM + " file | " +
+                RESET + "@(tab)" + DIM + " agent | " +
                 RESET + "!(tab)" + DIM + " shell" + RESET);
 
         terminal.flush();

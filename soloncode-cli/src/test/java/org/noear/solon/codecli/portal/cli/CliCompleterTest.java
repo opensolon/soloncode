@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
+import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.harness.command.CommandContext;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,7 +39,7 @@ public class CliCompleterTest {
     Path tempDir;
 
     @Test
-    public void atTriggerCompletesAgentsAndFiles() throws Exception {
+    public void atTriggerCompletesAgentsOnly() throws Exception {
         Files.createDirectories(tempDir.resolve("src/main"));
         Files.write(tempDir.resolve("src/main/App.java"), Collections.singletonList("class App {}"));
 
@@ -49,9 +52,9 @@ public class CliCompleterTest {
         completer.complete(null, new TestParsedLine("@"), candidates);
 
         assertTrue(containsValue(candidates, "@reviewer"));
-        assertTrue(containsDisplayPrefix(candidates, "@reviewer  子代理"));
-        assertTrue(containsValue(candidates, "@src/"));
-        assertTrue(containsValue(candidates, "@src/main/App.java"));
+        assertEquals("子代理  Code review specialist", findCandidate(candidates, "@reviewer").descr());
+        assertFalse(containsValue(candidates, "@src/"));
+        assertFalse(containsValue(candidates, "@src/main/App.java"));
     }
 
     @Test
@@ -69,6 +72,52 @@ public class CliCompleterTest {
         assertFalse(containsValue(candidates, "@writer"));
     }
 
+    @Test
+    public void slashTriggerFiltersCommandsByPrefix() {
+        HarnessEngine engine = HarnessEngine.of("test", tempDir.toString()).build();
+        engine.getCommandRegistry().register(createCommand("clear", "清空会话记录"));
+        engine.getCommandRegistry().register(createCommand("exit", "退出进程"));
+
+        CliCompleter completer = new CliCompleter(engine, tempDir.toString());
+        List<Candidate> candidates = new ArrayList<>();
+
+        completer.complete(null, new TestParsedLine("/c"), candidates);
+
+        assertTrue(containsValue(candidates, "/clear"));
+        assertEquals("清空会话记录", findCandidate(candidates, "/clear").descr());
+        assertFalse(containsValue(candidates, "/exit"));
+    }
+
+    @Test
+    public void atTriggerDoesNotCollectFileHints() throws Exception {
+        for (int i = 0; i < 20; i++) {
+            Files.write(tempDir.resolve(String.format("file%02d.txt", i)), Collections.singletonList("text"));
+        }
+
+        HarnessEngine engine = HarnessEngine.of("test", tempDir.toString()).build();
+        CliCompleter completer = new CliCompleter(engine, tempDir.toString());
+        List<Candidate> candidates = new ArrayList<>();
+
+        completer.complete(null, new TestParsedLine("@"), candidates);
+
+        assertEquals(0, countValuePrefix(candidates, "@file"));
+    }
+
+    @Test
+    public void slashTriggerKeepsAllMatchingCommandHints() {
+        HarnessEngine engine = HarnessEngine.of("test", tempDir.toString()).build();
+        for (int i = 0; i < 20; i++) {
+            engine.getCommandRegistry().register(createCommand(String.format("zzcmd%02d", i), "command " + i));
+        }
+
+        CliCompleter completer = new CliCompleter(engine, tempDir.toString());
+        List<Candidate> candidates = new ArrayList<>();
+
+        completer.complete(null, new TestParsedLine("/zzcmd"), candidates);
+
+        assertEquals(20, candidates.size());
+    }
+
     private AgentDefinition createAgent(String name, String description) {
         AgentDefinition.Metadata metadata = new AgentDefinition.Metadata();
         metadata.setName(name);
@@ -80,22 +129,46 @@ public class CliCompleterTest {
         return definition;
     }
 
-    private boolean containsValue(List<Candidate> candidates, String value) {
-        for (Candidate candidate : candidates) {
-            if (value.equals(candidate.value())) {
+    private Command createCommand(String name, String description) {
+        return new Command() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public String description() {
+                return description;
+            }
+
+            @Override
+            public boolean execute(CommandContext ctx) {
                 return true;
             }
-        }
-        return false;
+        };
     }
 
-    private boolean containsDisplayPrefix(List<Candidate> candidates, String displayPrefix) {
+    private boolean containsValue(List<Candidate> candidates, String value) {
+        return findCandidate(candidates, value) != null;
+    }
+
+    private Candidate findCandidate(List<Candidate> candidates, String value) {
         for (Candidate candidate : candidates) {
-            if (candidate.displ() != null && candidate.displ().startsWith(displayPrefix)) {
-                return true;
+            if (value.equals(candidate.value())) {
+                return candidate;
             }
         }
-        return false;
+        return null;
+    }
+
+    private int countValuePrefix(List<Candidate> candidates, String prefix) {
+        int count = 0;
+        for (Candidate candidate : candidates) {
+            if (candidate.value().startsWith(prefix)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static class TestParsedLine implements ParsedLine {

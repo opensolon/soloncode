@@ -25,17 +25,6 @@ import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.mount.SkillDir;
 
-import java.io.IOException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.FileVisitOption;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -48,28 +37,10 @@ import java.util.Set;
  * @since 2026.4.28
  */
 public class CliCompleter implements Completer {
-    private static final int MAX_FILE_CANDIDATES = 80;
-    private static final int MAX_FILE_SCAN = 2_000;
-    private static final Set<String> EXCLUDED_DIRS = new HashSet<>();
-
-    static {
-        EXCLUDED_DIRS.add(".git");
-        EXCLUDED_DIRS.add(".idea");
-        EXCLUDED_DIRS.add(".soloncode");
-        EXCLUDED_DIRS.add("node_modules");
-        EXCLUDED_DIRS.add("target");
-        EXCLUDED_DIRS.add("__pycache__");
-        EXCLUDED_DIRS.add(".gradle");
-        EXCLUDED_DIRS.add(".mvn");
-        EXCLUDED_DIRS.add("build");
-    }
-
     private final HarnessEngine engine;
-    private final Path workspace;
 
     public CliCompleter(HarnessEngine engine, String workspace) {
         this.engine = engine;
-        this.workspace = workspace == null ? null : Paths.get(workspace).toAbsolutePath().normalize();
     }
 
     @Override
@@ -88,7 +59,6 @@ public class CliCompleter implements Completer {
 
         if (word.startsWith("@")) {
             completeAgents(word, candidates);
-            completeFiles(word, candidates);
             return;
         }
 
@@ -98,9 +68,9 @@ public class CliCompleter implements Completer {
         }
 
         if (word.startsWith("!")) {
-            candidates.add(new Candidate("!", "!  进入本地命令模式", null, null, null, null, true));
-            candidates.add(new Candidate("!pwd", "!pwd  执行一次本地命令", null, null, null, null, true));
-            candidates.add(new Candidate("!ls", "!ls  列出当前工作区文件", null, null, null, null, true));
+            candidates.add(new Candidate("!", "!", null, "进入本地命令模式", null, null, true));
+            candidates.add(new Candidate("!pwd", "!pwd", null, "执行一次本地命令", null, null, true));
+            candidates.add(new Candidate("!ls", "!ls", null, "列出当前工作区文件", null, null, true));
         }
     }
 
@@ -109,7 +79,7 @@ public class CliCompleter implements Completer {
         for (String name : engine.getCommandRegistry().names()) {
             if (normalize(name).startsWith(prefix)) {
                 Command cmd = engine.getCommandRegistry().find(name);
-                candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(), null, null, null, null, true));
+                candidates.add(new Candidate("/" + name, "/" + name, null, cmd.description(), null, null, true));
             }
         }
     }
@@ -133,7 +103,7 @@ public class CliCompleter implements Completer {
                 }
 
                 String desc = shorten(skill.getDescription(), 40);
-                candidates.add(new Candidate("$" + skill.getName(), "$" + skill.getName() + "  " + desc, null, null, null, null, true));
+                candidates.add(new Candidate("$" + skill.getName(), "$" + skill.getName(), null, desc, null, null, true));
             }
         }
     }
@@ -146,83 +116,10 @@ public class CliCompleter implements Completer {
             }
 
             if (normalize(agent.getName()).startsWith(prefix)) {
-                String desc = shorten(agent.getDescription(), 40);
-                candidates.add(new Candidate("@" + agent.getName(), "@" + agent.getName() + "  子代理" + formatDescription(desc), null, null, null, null, true));
+                String desc = formatDescription("子代理", shorten(agent.getDescription(), 40));
+                candidates.add(new Candidate("@" + agent.getName(), "@" + agent.getName(), null, desc, null, null, true, 0));
             }
         }
-    }
-
-    private void completeFiles(String word, List<Candidate> candidates) {
-        if (workspace == null || Files.isDirectory(workspace) == false) {
-            return;
-        }
-
-        String query = normalize(word.substring(1));
-        int[] scanned = {0};
-        List<Path> matches = new ArrayList<>();
-
-        try {
-            Files.walkFileTree(workspace, EnumSet.noneOf(FileVisitOption.class), 5, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                    if (workspace.equals(dir) == false && isVisibleWorkspacePath(dir) == false) {
-                        return FileVisitResult.SKIP_SUBTREE;
-                    }
-                    return collectFileCandidate(dir, query, scanned, matches);
-                }
-
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (isVisibleWorkspacePath(file) == false) {
-                        return FileVisitResult.CONTINUE;
-                    }
-                    return collectFileCandidate(file, query, scanned, matches);
-                }
-            });
-
-            matches.sort(Comparator
-                    .comparing((Path path) -> Files.isDirectory(path) ? 0 : 1)
-                    .thenComparing(this::toRelativePath, String.CASE_INSENSITIVE_ORDER));
-
-            for (Path path : matches) {
-                String relative = toRelativePath(path);
-                boolean dir = Files.isDirectory(path);
-                String value = "@" + relative + (dir ? "/" : "");
-                String display = value + "  " + (dir ? "目录" : "文件");
-                candidates.add(new Candidate(value, display, null, null, null, null, true));
-            }
-        } catch (IOException ignored) {
-        }
-    }
-
-    private FileVisitResult collectFileCandidate(Path path, String query, int[] scanned, List<Path> matches) {
-        if (workspace.equals(path)) {
-            return FileVisitResult.CONTINUE;
-        }
-        if (scanned[0]++ >= MAX_FILE_SCAN) {
-            return FileVisitResult.TERMINATE;
-        }
-
-        String relative = toRelativePath(path);
-        if (query.length() == 0 || normalize(relative).contains(query)) {
-            matches.add(path);
-        }
-        return matches.size() >= MAX_FILE_CANDIDATES ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
-    }
-
-    private boolean isVisibleWorkspacePath(Path path) {
-        Path relative = workspace.relativize(path.toAbsolutePath().normalize());
-        for (Path part : relative) {
-            String name = part.toString();
-            if (name.startsWith(".") || EXCLUDED_DIRS.contains(name)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private String toRelativePath(Path path) {
-        return workspace.relativize(path.toAbsolutePath().normalize()).toString().replace('\\', '/');
     }
 
     private String shorten(String desc, int maxLength) {
@@ -240,8 +137,8 @@ public class CliCompleter implements Completer {
         return desc;
     }
 
-    private String formatDescription(String desc) {
-        return desc.length() == 0 ? "" : "  " + desc;
+    private String formatDescription(String type, String desc) {
+        return desc.length() == 0 ? type : type + "  " + desc;
     }
 
     private String normalize(String text) {

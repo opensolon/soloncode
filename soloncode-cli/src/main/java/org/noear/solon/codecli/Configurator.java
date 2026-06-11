@@ -107,7 +107,7 @@ public class Configurator {
                 .maxTurns(props.getMaxTurns())
                 .autoRethink(props.isAutoRethink())
                 .toolsAdd(props.getTools())
-                .disallowedToolsAdd(props.getTools())
+                .disallowedToolsAdd(props.getDisallowedTools())
                 .sessionWindowSize(props.getSessionWindowSize())
                 .sessionProvider(sessionProvider)
                 .compressionThreshold(props.getSummaryWindowSize(), props.getSummaryWindowToken())
