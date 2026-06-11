@@ -49,11 +49,16 @@
         toggleLoopPanel();
     });
 
+    // 面板内所有 mousedown/click 不冒泡到 .input-box 和 document
+    // 防止 click-to-focus、cmd-complete、model-dropdown 等全局处理器干扰面板交互
+    $welcomeLoopPanel.add($chatLoopPanel).on('mousedown click', function(e) {
+        e.stopPropagation();
+    });
+
     // 点击面板外部关闭（用 mousedown 避免选择文字时误触关闭）
     $(document).on('mousedown', function(e) {
         if (loopPanelVisible) {
-            var $panel = getActivePanel();
-            if (!$(e.target).closest('#chatLoopPanel, #welcomeLoopPanel, .loop-panel').length &&
+            if (!$(e.target).closest('#chatLoopPanel, #welcomeLoopPanel').length &&
                 !$(e.target).closest('#chatLoopBtn, #welcomeLoopBtn').length) {
                 hideLoopPanel();
             }
@@ -143,8 +148,10 @@
             loopEditId = null;
             renderLoopForm();
         });
-        $(document).off('click.loopaction').on('click.loopaction', '.loop-action-btn', function(e) {
-            e.stopPropagation();
+        var $panel = getActivePanel();
+        // 委托事件绑定在面板自身而非 document（面板已拦截冒泡，document 收不到）
+        $(document).off('click.loopaction');
+        $panel.off('click.loopaction').on('click.loopaction', '.loop-action-btn', function(e) {
             var action = $(this).data('action');
             var id = $(this).data('id');
 
