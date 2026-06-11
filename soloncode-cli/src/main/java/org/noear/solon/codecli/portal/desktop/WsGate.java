@@ -337,7 +337,7 @@ public class WsGate extends SimpleWebSocketListener {
 
     private String getCommandWorkspace(String cwd) {
         if (Assert.isEmpty(cwd) || ".".equals(cwd)) {
-            return agentPros.getWorkspace();
+            return engine.getWorkspace();
         }
         return cwd;
     }

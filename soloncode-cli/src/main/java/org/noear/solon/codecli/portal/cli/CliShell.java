@@ -461,7 +461,7 @@ public class CliShell implements Runnable {
     }
 
     private void runShellCommand(AgentSession session, String input) throws Exception {
-        ShellCommandSupport.Result result = ShellCommandSupport.executeAndInject(session, agentProps.getWorkspace(), input);
+        ShellCommandSupport.Result result = ShellCommandSupport.executeAndInject(session, engine.getWorkspace(), input);
         terminal.writer().println();
         terminal.writer().println(BOLD + "Shell" + RESET + DIM + " " + getTimeNow() + RESET);
         terminal.writer().println("  " + result.toDisplayText().replace("\n", "\n  "));

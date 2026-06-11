@@ -485,7 +485,7 @@ public class WebGate extends SimpleWebSocketListener {
 
     private String getCommandWorkspace(String sessionCwd) {
         if (Assert.isEmpty(sessionCwd) || ".".equals(sessionCwd)) {
-            return engine.getProps().getWorkspace();
+            return engine.getWorkspace();
         }
         return sessionCwd;
     }
