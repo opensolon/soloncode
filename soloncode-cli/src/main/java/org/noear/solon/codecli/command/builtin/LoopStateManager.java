@@ -21,6 +21,8 @@ import org.noear.snack4.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.noear.solon.codecli.config.AgentProperties;
+
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -30,11 +32,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Loop 状态管理器 — 负责 .loop/&lt;loopId&gt;/ 目录的创建、读写、清理。
+ * Loop 状态管理器 — 负责 .soloncode/loops/&lt;loopId&gt;/ 目录的创建、读写、清理。
  *
  * <p>状态目录结构：
  * <pre>
- * .loop/&lt;loopId&gt;/
+ * .soloncode/loops/&lt;loopId&gt;/
  * ├── NEXT.md              # 下一步要做什么
  * ├── DECISIONS.md         # 已做的关键决策
  * ├── PROGRESS.md          # 进度追踪
@@ -51,20 +53,18 @@ public class LoopStateManager {
     private static final String DECISIONS_FILE = "DECISIONS.md";
     private static final String PROGRESS_FILE = "PROGRESS.md";
     private static final String HISTORY_FILE = "history.json";
-    private static final String LOOP_BASE_DIR = ".loop";
-
     /**
-     * 获取 loop 状态目录的根路径（.loop/）
+     * 获取 loop 状态目录的根路径（.soloncode/loops/）
      */
     public static Path getLoopBaseDir(String workspace) {
-        return Paths.get(workspace, LOOP_BASE_DIR);
+        return Paths.get(workspace, new AgentProperties().getHarnessLoops());
     }
 
     /**
      * 获取指定任务的状态目录路径
      */
     public static Path getStateDir(String workspace, String loopId) {
-        return Paths.get(workspace, LOOP_BASE_DIR, loopId);
+        return Paths.get(workspace, new AgentProperties().getHarnessLoops(), loopId);
     }
 
     /**

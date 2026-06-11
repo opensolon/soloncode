@@ -19,6 +19,7 @@ import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.solon.ai.harness.channel.Channel;
+import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.scheduling.ScheduledAnno;
 import org.noear.solon.scheduling.scheduled.manager.IJobManager;
 import org.noear.solon.scheduling.simple.JobManager;
@@ -588,11 +589,12 @@ public class LoopScheduler {
 
     /**
      * 从 stateDir 提取 workspace 路径
-     * stateDir 格式: /path/to/workspace/.loop/<loopId>
+     * stateDir 格式: /path/to/workspace/.soloncode/loops/<loopId>
      */
     private String extractWorkspaceFromStateDir(String stateDir) {
         if (stateDir == null) return ".";
-        int idx = stateDir.indexOf("/.loop/");
+        String loopsPath = "/" + new AgentProperties().getHarnessLoops();
+        int idx = stateDir.indexOf(loopsPath);
         if (idx > 0) {
             return stateDir.substring(0, idx);
         }

@@ -32,7 +32,7 @@ import java.util.UUID;
  *   <li>Sub-agents — makerAgent / checkerAgent 双角色</li>
  *   <li>Worktrees — worktreeEnabled 在独立分支执行</li>
  *   <li>Connectors — channelNotify 结果通知</li>
- *   <li>State — stateDir 持久状态目录 (.loop/&lt;id&gt;/)</li>
+ *   <li>State — stateDir 持久状态目录 (.soloncode/loops/&lt;id&gt;/)</li>
  * </ul>
  *
  * @author noear

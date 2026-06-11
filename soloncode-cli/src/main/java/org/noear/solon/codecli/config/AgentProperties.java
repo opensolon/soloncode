@@ -308,4 +308,11 @@ public class AgentProperties implements Serializable {
     public final String getHarnessChannels() {
         return getHarnessHome() + "channels/";
     }
+
+    /**
+     * 马具循环任务状态存放区
+     */
+    public final String getHarnessLoops() {
+        return getHarnessHome() + "loops/";
+    }
 }

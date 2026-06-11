@@ -435,6 +435,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-item-dot.disabled { background: var(--text-secondary); opacity: 0.4; }
 .loop-item-dot.cancelled { background: #d9534f; opacity: 0.4; }
 .loop-item-name { font-size: 13px; font-weight: 500; color: var(--text-primary); min-width: 60px; }
+.loop-item-id { font-size: 11px; color: var(--text-secondary); opacity: 0.6; margin-left: 2px; }
 .loop-item-schedule { font-size: 11px; color: var(--text-secondary); }
 .loop-item-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
 .loop-item-status.ready { color: var(--accent-color); background: var(--bg-hover); }

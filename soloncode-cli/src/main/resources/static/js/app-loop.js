@@ -97,7 +97,6 @@
                     var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
                     var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
                     var scheduleText = t.cron ? ('cron: ' + t.cron) : ('每' + t.intervalMinutes + '分钟');
-                    var displayName = t.name || t.id;
                     var lastInfo = '';
                     if (t.lastExecutedAt) {
                         var ago = formatTimeAgo(t.lastExecutedAt);
@@ -110,7 +109,12 @@
                     html += '<div class="loop-item" data-id="' + t.id + '">';
                     html += '<div class="loop-item-row">';
                     html += '<span class="loop-item-dot ' + statusClass + '"></span>';
-                    html += '<span class="loop-item-name">' + escapeHtml(displayName) + '</span>';
+                    if (t.name) {
+                        html += '<span class="loop-item-name">' + escapeHtml(t.name) + '</span>';
+                        html += '<span class="loop-item-id">#' + escapeHtml(t.id) + '</span>';
+                    } else {
+                        html += '<span class="loop-item-name">' + escapeHtml(t.id) + '</span>';
+                    }
                     html += '<span class="loop-item-schedule">' + scheduleText + '</span>';
                     html += '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>';
                     html += '<div class="loop-item-actions">';
