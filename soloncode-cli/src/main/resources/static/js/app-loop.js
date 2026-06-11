@@ -244,6 +244,9 @@
                 loopApi('trigger', { taskId: id }, function(res) {
                     if (res) {
                         showToast('已触发执行', 'success');
+                        // 切换到对话视图，让用户看到 AI 响应
+                        if (typeof switchToChatMode === 'function') switchToChatMode();
+                        hideLoopPanel();
                         // 列表项短暂闪烁反馈
                         var $item = $panel.find('.loop-item[data-id="' + id + '"]');
                         $item.css('background', 'var(--accent-light)');
@@ -476,6 +479,8 @@
             if (loopEditId) {
                 loopApi('trigger', { taskId: loopEditId }, function() {
                     showToast('已触发执行', 'success');
+                    if (typeof switchToChatMode === 'function') switchToChatMode();
+                    hideLoopPanel();
                 });
             }
         });
@@ -530,7 +535,11 @@
         $('#loopDetailTriggerBtn').on('click', function(e) {
             e.stopPropagation();
             loopApi('trigger', { taskId: taskId }, function(res) {
-                if (res) showToast('已触发执行', 'success');
+                if (res) {
+                    showToast('已触发执行', 'success');
+                    if (typeof switchToChatMode === 'function') switchToChatMode();
+                    hideLoopPanel();
+                }
             });
         });
         $('#loopDetailEditBtn').on('click', function(e) {
