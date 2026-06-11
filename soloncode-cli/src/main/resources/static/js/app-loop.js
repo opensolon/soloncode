@@ -307,7 +307,7 @@
             html += '</div></div>';
         }
 
-        html += '<div class="loop-form-advanced-toggle" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略</span></div>';
+        html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略</span></div>';
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
         html += '<div class="loop-form-group"><label>执行者子代理</label><input type="text" class="loop-input" id="loopFormMaker" placeholder="@coder"/></div>';
         html += '<div class="loop-form-group"><label>验证者子代理</label><input type="text" class="loop-input" id="loopFormChecker" placeholder="@reviewer"/></div>';
@@ -384,6 +384,12 @@
         if (t.worktreeEnabled) $('#loopFormWorktree').prop('checked', true);
 
         if (t.maxIterations) $('#loopFormMaxIter').val(t.maxIterations);
+
+        // 编辑已有任务时，如果有高级字段则自动展开执行策略
+        if (t.goalCondition || t.makerAgent || t.checkerAgent || t.worktreeEnabled) {
+            $('#loopAdvanced').show();
+            $('#loopAdvancedToggle').removeClass('collapsed');
+        }
     }
 
     // ========== 表单事件绑定 ==========
@@ -422,6 +428,11 @@
             if (tpl.checkerAgent) $('#loopFormChecker').val(tpl.checkerAgent);
             if (tpl.worktreeEnabled) $('#loopFormWorktree').prop('checked', true);
             if (tpl.maxIterations) $('#loopFormMaxIter').val(tpl.maxIterations);
+            // 模板有高级字段时自动展开执行策略
+            if (tpl.goalCondition || tpl.makerAgent || tpl.checkerAgent || tpl.worktreeEnabled) {
+                $('#loopAdvanced').show();
+                $('#loopAdvancedToggle').removeClass('collapsed');
+            }
             showToast('已填充模板，可按需修改后保存', 'success');
         });
 

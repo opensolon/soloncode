@@ -532,7 +532,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-form-advanced-toggle:hover { color: var(--text-primary); }
 .loop-form-advanced-toggle svg { width: 14px; height: 14px; transition: transform 0.2s ease; flex-shrink: 0; }
 .loop-form-advanced-toggle.collapsed svg { transform: rotate(-90deg); }
-.loop-form-advanced { border-top: 1px solid var(--border-color); padding: 10px 10px 4px; margin-top: 4px; background: var(--bg-hover); border-radius: 6px; }
+.loop-form-advanced { border-top: 1px solid var(--border-color); padding: 10px 10px 4px; margin-top: 4px; background: var(--bg-hover); border-radius: 6px; display: none; }
 .loop-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .loop-btn-primary { background: var(--accent); color: #fff; border: none; cursor: pointer; font-size: 13px; padding: 6px 16px; border-radius: 6px; transition: opacity 0.15s; }
 .loop-btn-primary:hover { opacity: 0.9; }
