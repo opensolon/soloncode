@@ -35,7 +35,6 @@ import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
-import org.noear.solon.codecli.command.ShellCommandSupport;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.ai.agent.react.intercept.HITL;
@@ -227,21 +226,6 @@ public class WsGate extends SimpleWebSocketListener {
                 return;
             }
 
-            if (ShellCommandSupport.isShellCommand(currentInput)) {
-                ShellCommandSupport.Result result = ShellCommandSupport.executeAndInject(
-                        session, getCommandWorkspace(cwd), currentInput);
-                socket.send(new ONode().set("type", "command")
-                        .set("sessionId", sessionId)
-                        .set("text", result.toDisplayText())
-                        .toJson());
-                socket.send(new ONode().set("type", "done")
-                        .set("sessionId", sessionId)
-                        .set("modelName", chatModel.getConfig().getNameOrModel())
-                        .set("totalTokens", 0)
-                        .set("elapsedMs", 0).toJson());
-                return;
-            }
-
             // 流式处理
             final String finalSessionId = sessionId;
 
@@ -333,13 +317,6 @@ public class WsGate extends SimpleWebSocketListener {
             socket.send(new ONode().set("type", "error")
                     .set("text", errorMsg).toJson());
         }
-    }
-
-    private String getCommandWorkspace(String cwd) {
-        if (Assert.isEmpty(cwd) || ".".equals(cwd)) {
-            return engine.getWorkspace();
-        }
-        return cwd;
     }
 
     private void onReActChunk(ReActChunk chunk, String finalSessionId, WebSocket socket) {
