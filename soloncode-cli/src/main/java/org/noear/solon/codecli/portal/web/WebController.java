@@ -764,7 +764,6 @@ public class WebController {
             if (t.getMakerAgent() != null) item.put("makerAgent", t.getMakerAgent());
             if (t.getCheckerAgent() != null) item.put("checkerAgent", t.getCheckerAgent());
             item.put("worktreeEnabled", t.isWorktreeEnabled());
-            if (t.getChannelNotify() != null) item.put("channelNotify", t.getChannelNotify());
             item.put("maxIterations", t.getMaxIterations());
             data.add(item);
         }
@@ -803,7 +802,6 @@ public class WebController {
                 if (t.getMakerAgent() != null) item.put("makerAgent", t.getMakerAgent());
                 if (t.getCheckerAgent() != null) item.put("checkerAgent", t.getCheckerAgent());
                 item.put("worktreeEnabled", t.isWorktreeEnabled());
-                if (t.getChannelNotify() != null) item.put("channelNotify", t.getChannelNotify());
                 item.put("maxIterations", t.getMaxIterations());
                 return Result.succeed(item);
             }
@@ -824,7 +822,6 @@ public class WebController {
                           @Param(value = "makerAgent", required = false) String makerAgent,
                           @Param(value = "checkerAgent", required = false) String checkerAgent,
                           @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
-                          @Param(value = "channelNotify", required = false) String channelNotify,
                           @Param(value = "maxIterations", required = false) Integer maxIterations) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure(400, "Invalid sessionId");
@@ -842,7 +839,7 @@ public class WebController {
                 prompt, interval, cron,
                 goalCondition, makerAgent, checkerAgent,
                 worktreeEnabled != null ? worktreeEnabled : false,
-                channelNotify, maxIterations,
+                maxIterations,
                 workspace
         );
 
@@ -901,7 +898,6 @@ public class WebController {
                 makerAgent != null ? makerAgent : existing.getMakerAgent(),
                 checkerAgent != null ? checkerAgent : existing.getCheckerAgent(),
                 worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
-                channelNotify != null ? channelNotify : existing.getChannelNotify(),
                 maxIterations != null ? maxIterations : existing.getMaxIterations(),
                 existing.getWorkspace()
         );

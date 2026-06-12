@@ -122,7 +122,6 @@ public class LoopCommand implements Command {
         String makerAgent = null;
         String checkerAgent = null;
         boolean worktreeEnabled = false;
-        String channelNotify = null;
         Integer maxIterations = null;
 
         int promptStartIndex = 0;
@@ -184,9 +183,6 @@ public class LoopCommand implements Command {
                         case "checker":
                             checkerAgent = val;
                             break;
-                        case "notify":
-                            channelNotify = val;
-                            break;
                         case "max-iter":
                             try {
                                 maxIterations = Integer.parseInt(val);
@@ -228,7 +224,7 @@ public class LoopCommand implements Command {
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
                 goalCondition, makerAgent, checkerAgent,
-                worktreeEnabled, channelNotify, maxIterations, workspace
+                worktreeEnabled, maxIterations, workspace
         );
 
         // 初始化状态目录（用 task 生成的 ID）
@@ -264,9 +260,6 @@ public class LoopCommand implements Command {
         }
         if (worktreeEnabled) {
             ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
-        }
-        if (channelNotify != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Notify:" + RESET + " " + channelNotify));
         }
         if (maxIterations != null) {
             ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
@@ -309,9 +302,7 @@ public class LoopCommand implements Command {
             if (t.isWorktreeEnabled()) {
                 line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
             }
-            if (t.getChannelNotify() != null) {
-                line.append(" ").append(MAGENTA).append("[").append(t.getChannelNotify()).append("]").append(RESET);
-            }
+
             if (t.isGoalMode()) {
                 line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
             }

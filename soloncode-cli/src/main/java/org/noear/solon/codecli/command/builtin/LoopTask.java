@@ -62,7 +62,6 @@ public class LoopTask {
     private final String checkerAgent;       // 验证者代理名
     private final boolean worktreeEnabled;   // 是否在独立 worktree 中执行
     private final String worktreeBranch;     // worktree 分支名（运行时分配）
-    private final String channelNotify;      // 通知通道，如 "feishu"
     private final String workspace;         // 工作空间路径（用于动态拼接 stateDir）
     private final int maxIterations;         // 最大迭代次数
 
@@ -82,21 +81,21 @@ public class LoopTask {
      * 固定间隔构造
      */
     public LoopTask(String prompt, int intervalMinutes) {
-        this(prompt, intervalMinutes, null, null, null, null, false, null, null, null);
+        this(prompt, intervalMinutes, null, null, null, null, false, null, null);
     }
 
     /**
      * cron 表达式构造
      */
     public LoopTask(String prompt, String cron) {
-        this(prompt, 0, cron, null, null, null, false, null, null, null);
+        this(prompt, 0, cron, null, null, null, false, null,  null);
     }
 
     /**
      * 自动间隔构造（由 AI 决定间隔）
      */
     public LoopTask(String prompt, boolean autoInterval) {
-        this(prompt, DEFAULT_AUTO_INTERVAL, null, null, null, null, false, null, null, null);
+        this(prompt, DEFAULT_AUTO_INTERVAL, null, null, null, null, false, null,  null);
         // autoInterval 字段需特殊处理
     }
 
@@ -108,7 +107,7 @@ public class LoopTask {
                      boolean enabled,
                      String goalCondition, String makerAgent,
                      String checkerAgent, boolean worktreeEnabled, String worktreeBranch,
-                     String channelNotify, String workspace, int maxIterations,
+                     String workspace, int maxIterations,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
         this.id = id;
         this.prompt = prompt;
@@ -123,7 +122,6 @@ public class LoopTask {
         this.checkerAgent = checkerAgent;
         this.worktreeEnabled = worktreeEnabled;
         this.worktreeBranch = worktreeBranch;
-        this.channelNotify = channelNotify;
         this.workspace = workspace;
         this.maxIterations = maxIterations;
         this.cancelled = cancelled;
@@ -137,7 +135,7 @@ public class LoopTask {
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
                     String goalCondition, String makerAgent,
-                    String checkerAgent, Boolean worktreeEnabled, String channelNotify,
+                    String checkerAgent, Boolean worktreeEnabled,
                     Integer maxIterations, String workspace) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
@@ -152,7 +150,6 @@ public class LoopTask {
         this.checkerAgent = checkerAgent;
         this.worktreeEnabled = worktreeEnabled != null ? worktreeEnabled : false;
         this.worktreeBranch = null; // 运行时分配
-        this.channelNotify = channelNotify;
         this.workspace = workspace;
         this.maxIterations = maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS;
         this.currentIteration = 0;
@@ -164,7 +161,7 @@ public class LoopTask {
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
                                    String goalCondition, String makerAgent,
-                                   String checkerAgent, Boolean worktreeEnabled, String channelNotify,
+                                   String checkerAgent, Boolean worktreeEnabled,
                                    Integer maxIterations, String workspace) {
         LoopTask task = new LoopTask(
                 this.id,
@@ -180,7 +177,6 @@ public class LoopTask {
                 checkerAgent,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 this.worktreeBranch,
-                channelNotify,
                 workspace,
                 maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
                 this.cancelled,
@@ -342,7 +338,7 @@ public class LoopTask {
         if (checkerAgent != null) node.set("checkerAgent", checkerAgent);
         if (worktreeEnabled) node.set("worktreeEnabled", worktreeEnabled);
         if (worktreeBranch != null) node.set("worktreeBranch", worktreeBranch);
-        if (channelNotify != null) node.set("channelNotify", channelNotify);
+
         node.set("workspace", workspace);
         if (maxIterations != DEFAULT_MAX_ITERATIONS) node.set("maxIterations", maxIterations);
 
@@ -377,8 +373,6 @@ public class LoopTask {
                 && node.get("worktreeEnabled").getBoolean();
         String worktreeBranchVal = node.getOrNull("worktreeBranch") != null
                 ? node.get("worktreeBranch").getString() : null;
-        String channelNotifyVal = node.getOrNull("channelNotify") != null
-                ? node.get("channelNotify").getString() : null;
         String workspaceVal = node.get("workspace").getString();
         int maxIterationsVal = node.getOrNull("maxIterations") != null
                 ? node.get("maxIterations").getInt() : DEFAULT_MAX_ITERATIONS;
@@ -399,7 +393,6 @@ public class LoopTask {
                 checkerAgentVal,
                 worktreeEnabledVal,
                 worktreeBranchVal,
-                channelNotifyVal,
                 workspaceVal,
                 maxIterationsVal,
                 node.getOrNull("cancelled") != null
