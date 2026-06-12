@@ -368,7 +368,7 @@
         html += '</div>';
         html += '<div class="loop-form-group">';
         html += '<label>目标完成检测描述（goal）</label>';
-        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder="例如：所有测试通过"/>';
+        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder="例如：所有单元测试通过"/>';
         html += '</div>';
         html += '<div class="loop-form-group">';
         html += '<label>间隔</label>';
