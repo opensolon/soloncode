@@ -179,7 +179,7 @@ public class WebController {
     @Get
     @Mapping("/web/chat/sessions")
     public Result<List<Map>> sessions() throws Exception {
-        Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions").toAbsolutePath().normalize();
+        Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions()).toAbsolutePath().normalize();
         File sessionsDir = sessionsPath.toFile();
         List<Map> data = new ArrayList<>();
 
@@ -237,7 +237,7 @@ public class WebController {
             return Result.failure();
         }
 
-        Path sessionPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File sessionDir = sessionPath.toFile();
 
         if (sessionDir.exists() && sessionDir.isDirectory()) {
@@ -270,7 +270,7 @@ public class WebController {
             label = label.substring(0, 50);
         }
 
-        Path sessionPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File labelFile = new File(sessionPath.toFile(), "label.txt");
 
         if (!sessionPath.toFile().exists() || !sessionPath.toFile().isDirectory()) {
@@ -370,7 +370,7 @@ public class WebController {
     @Mapping("/web/chat/messages")
     public Result<List<Map>> messages(@Param("sessionId") String sessionId) throws Exception {
         List<Map> data = new ArrayList<>();
-        Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File msgFile = new File(sessionsPath.toFile(), sessionId + ".messages.ndjson");
 
         if (msgFile.exists()) {
@@ -439,7 +439,7 @@ public class WebController {
 
         try {
             // 只操作 ndjson 文件（内存中的 AgentSession 在重新生成时会通过新的 prompt 重建上下文）
-            Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+            Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
             File msgFile = new File(sessionsPath.toFile(), sessionId + ".messages.ndjson");
             if (msgFile.exists()) {
                 // 读取现有消息

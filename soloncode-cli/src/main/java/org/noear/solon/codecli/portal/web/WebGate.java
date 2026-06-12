@@ -41,7 +41,10 @@ import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -239,8 +242,10 @@ public class WebGate extends SimpleWebSocketListener {
                             String input, String selectedModel,
                             UploadedFile[] attachments, String[] attachmentTypes,
                             String hitlAction) {
+        AgentSession session = null;
         try {
-            AgentSession session = engine.getSession(sessionId);
+            session = engine.getSession(sessionId);
+
             String agentName = null;
             String currentInput = input;
 
@@ -348,6 +353,26 @@ public class WebGate extends SimpleWebSocketListener {
             LOG.error("Task fail: {}", e.getMessage(), e);
             emitToClient(sessionId, WebChunk.ofError(e));
             emitToClient(sessionId, WebChunk.ofDone());
+        } finally {
+            if (session != null) {
+                if (session.isEmpty() && Assert.isNotEmpty(input)) {
+                    //如果是空，可能发的是 command（还没有对话记录）
+                    try {
+                        Path sessionPath = Paths.get(engine.getWorkspace(), AgentProperties.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
+                        File labelFile = new File(sessionPath.toFile(), "label.txt");
+                        if (labelFile.exists() == false) {
+                            // 从用户输入生成 label（空会话场景，如纯命令输入）
+                            String label = input.trim();
+                            if (label.length() > 50) {
+                                label = label.substring(0, 50);
+                            }
+                            java.nio.file.Files.write(labelFile.toPath(), label.getBytes("UTF-8"));
+                        }
+                    } catch (Throwable e) {
+                        LOG.warn("[WebGate] Failed to generate label for session {}: {}", sessionId, e.getMessage());
+                    }
+                }
+            }
         }
     }
 
