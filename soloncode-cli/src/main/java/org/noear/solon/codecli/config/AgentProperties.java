@@ -91,7 +91,7 @@ public class AgentProperties implements Serializable {
     private boolean openApiEnabled = true;
     private boolean lspEnabled = true;
 
-    private String userAgent;
+    private String userAgent = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0 like claude-code; +https://solon.noear.org/)";
     //defaultModel
     private String defaultModel;
 
@@ -155,29 +155,17 @@ public class AgentProperties implements Serializable {
     }
 
     public URL getConfigUrl() throws MalformedURLException {
-        //1. 资源文件（一般开发时）
-        URL tmp = ResourceUtil.getResource(NAME_CONFIG_YML);
-        if (tmp != null) {
-            return tmp;
-        }
-
-        //2. 工作区配置
+        //1. 工作区配置
         Path path = Paths.get(getUserDir(), getHarnessHome(), NAME_CONFIG_YML);
         if (Files.exists(path)) {
             return path.toUri().toURL();
         }
 
-        //3. 用户目录区配置
+        //2. 用户目录区配置
         path = Paths.get(getUserHome(), getHarnessHome(), NAME_CONFIG_YML);
 
         if (Files.exists(path)) {
             return path.toUri().toURL();
-        }
-
-        //4. 程序边上的配置文件
-        tmp = ResourceUtil.getResourceByFile(NAME_CONFIG_YML);
-        if (tmp != null) {
-            return tmp;
         }
 
         return null;
@@ -195,12 +183,6 @@ public class AgentProperties implements Serializable {
 
         if (Files.exists(path)) {
             return path.toUri().toURL();
-        }
-
-        //3. 程序边上的配置文件
-        URL tmp = ResourceUtil.getResourceByFile(NAME_AGENTS_MD);
-        if (tmp != null) {
-            return tmp;
         }
 
         return null;
@@ -314,5 +296,12 @@ public class AgentProperties implements Serializable {
      */
     public final String getHarnessLoops() {
         return getHarnessHome() + "loops/";
+    }
+
+    /**
+     * 马具循环任务 worktree 存放区
+     */
+    public final String getHarnessLoopWorktrees() {
+        return getHarnessHome() + "loop-worktrees/";
     }
 }

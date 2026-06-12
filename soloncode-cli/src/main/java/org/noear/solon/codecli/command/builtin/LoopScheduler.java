@@ -63,6 +63,9 @@ public class LoopScheduler {
     // Worktree 管理器（lazy init）
     private volatile WorktreeManager worktreeManager;
 
+    // Worktree 目录名
+    private final String worktreeDir;
+
     // IM 通道列表（用于通知）
     private volatile List<Channel> channels = new ArrayList<>();
 
@@ -87,7 +90,15 @@ public class LoopScheduler {
     }
 
     public LoopScheduler() {
+        this(null);
+    }
+
+    /**
+     * @param worktreeDir worktree 目录名（如 ".soloncode/loop-worktrees"），null 时使用默认值
+     */
+    public LoopScheduler(String worktreeDir) {
         this.jobManager = JobManager.getInstance();
+        this.worktreeDir = worktreeDir;
     }
 
     public void addTaskExecutor(TaskExecutor executor) {
@@ -108,7 +119,9 @@ public class LoopScheduler {
         if (worktreeManager == null) {
             synchronized (this) {
                 if (worktreeManager == null) {
-                    worktreeManager = new WorktreeManager();
+                    worktreeManager = worktreeDir != null
+                            ? new WorktreeManager(worktreeDir)
+                            : new WorktreeManager();
                 }
             }
         }

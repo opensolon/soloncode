@@ -35,8 +35,26 @@ import java.util.concurrent.TimeUnit;
 public class WorktreeManager {
     private static final Logger log = LoggerFactory.getLogger(WorktreeManager.class);
     private static final String LOOP_PREFIX = "loop/";
-    private static final String WORKTREE_DIR = ".loop-worktrees";
+    private static final String DEFAULT_WORKTREE_DIR = ".loop-worktrees";
     private static final int TIMEOUT_SECONDS = 30;
+
+    private final String worktreeDir;
+
+    /**
+     * 使用默认 worktree 目录名（.loop-worktrees）
+     */
+    public WorktreeManager() {
+        this(DEFAULT_WORKTREE_DIR);
+    }
+
+    /**
+     * 使用指定 worktree 目录名
+     *
+     * @param worktreeDir worktree 目录名（如 ".soloncode/loop-worktrees"）
+     */
+    public WorktreeManager(String worktreeDir) {
+        this.worktreeDir = worktreeDir;
+    }
 
     /**
      * 创建 worktree，返回 worktree 路径
@@ -51,7 +69,7 @@ public class WorktreeManager {
         }
 
         File baseDir = new File(basePath);
-        String worktreePath = new File(baseDir, WORKTREE_DIR + "/" + branchName).getAbsolutePath();
+        String worktreePath = new File(baseDir, worktreeDir + "/" + branchName).getAbsolutePath();
         String fullBranch = LOOP_PREFIX + branchName;
 
         // 先尝试创建新分支

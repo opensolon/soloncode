@@ -192,7 +192,7 @@ public class Configurator {
         engine.getLspTalent().setEnabled(props.isLspEnabled());
 
         // loop scheduler
-        this.loopScheduler = new LoopScheduler();
+        this.loopScheduler = new LoopScheduler(props.getHarnessLoopWorktrees());
         engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
 
 
