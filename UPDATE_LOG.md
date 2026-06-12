@@ -3,6 +3,7 @@
 ### v2026.6.13
 
 * 添加 soloncode web 左侧面板拖动大小的功能（同时取消展开与收起的动画）
+* 添加 soloncode goal 命令
 * 修复 soloncode 在用户根目录启动时，配置错乱问题
 * 修复 soloncode web 默认模型禁用后，对话列表没有更新的问题
 
