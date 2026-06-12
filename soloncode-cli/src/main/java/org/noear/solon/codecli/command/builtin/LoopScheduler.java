@@ -554,7 +554,11 @@ public class LoopScheduler {
                 }
 
                 // Goal 条件检查 — 解析 AI 响应中的 [GOAL_ACHIEVED] 标记
-                if (task.isGoalMode() && executionResult != null && executionResult.isGoalAchieved()) {
+                // maker/checker 模式下，checker 的 [PASS] 也视为 goal 达成（AI 常漏输出 [GOAL_ACHIEVED]）
+                boolean goalMet = executionResult != null &&
+                        (executionResult.isGoalAchieved() ||
+                         (task.isMakerCheckerMode() && executionResult.isCheckerPassed()));
+                if (task.isGoalMode() && goalMet) {
                     LOG.info("Loop task '{}' goal achieved at iteration {}", task.getId(), iteration);
                     if (task.getWorkspace() != null) {
                         LoopStateManager.appendHistory(task.getWorkspace(), task.getId(), executionResult, iteration, "GOAL_ACHIEVED");
