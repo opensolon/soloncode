@@ -194,6 +194,7 @@ public class Configurator {
         // loop scheduler
         this.loopScheduler = new LoopScheduler(props.getHarnessLoopWorktrees());
         engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
+        engine.getCommandRegistry().register(new GoalCommand(loopScheduler));
 
 
         engine.addExtension(new ConfigExtension(engine, agentSettings));

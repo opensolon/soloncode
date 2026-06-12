@@ -40,7 +40,7 @@ import java.util.UUID;
  */
 @Getter
 public class LoopTask {
-    private static final int MIN_INTERVAL = 1;
+    private static final int MIN_INTERVAL = 0; // 0 = 即时模式（goal 专用）
     private static final int MAX_INTERVAL = 1440; // 24h
     private static final int DEFAULT_AUTO_INTERVAL = 5;
     private static final int EXPIRE_DAYS = 7;
@@ -96,9 +96,9 @@ public class LoopTask {
     }
 
     /**
-     * 全参数构造（由 Builder 调用）
+     * 全参数构造（由 Builder、GoalCommand、copyWithUpdate 调用）
      */
-    private LoopTask(String id, String prompt, int intervalMinutes, String cron,
+    LoopTask(String id, String prompt, int intervalMinutes, String cron,
                      Instant createdAt, Instant expireAt, boolean autoInterval,
                      boolean enabled,
                      String goalCondition, String makerAgent,
@@ -136,6 +136,7 @@ public class LoopTask {
                     Integer maxIterations, String workspace) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
+        // intervalMinutes=0 表示即时模式（goal 专用），不注册到 IJobManager 定时器，而是执行完立即 re-trigger
         this.intervalMinutes = Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, intervalMinutes));
         this.cron = cron;
         this.createdAt = Instant.now();
@@ -270,6 +271,15 @@ public class LoopTask {
      */
     public boolean isGoalMode() {
         return goalCondition != null && !goalCondition.isEmpty();
+    }
+
+    /**
+     * 是否为即时模式（intervalMinutes == 0，执行完立即 re-trigger，不经过 IJobManager 定时器）
+     *
+     * <p>goal 命令创建的任务使用此模式。
+     */
+    public boolean isImmediateMode() {
+        return intervalMinutes == 0;
     }
 
     /**

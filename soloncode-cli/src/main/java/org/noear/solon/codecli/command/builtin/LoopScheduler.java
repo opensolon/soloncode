@@ -133,7 +133,9 @@ public class LoopScheduler {
     /**
      * 注册循环任务
      *
-     * <p>流程：创建 LoopTask -> 注册到 IJobManager -> 加入内存列表 -> 持久化到 JSON
+     * <p>流程：创建 LoopTask -> 注册到 IJobManager（定时模式）-> 加入内存列表 -> 持久化到 JSON
+     *
+     * <p>即时模式（intervalMinutes=0）不注册到 IJobManager，由 scheduleNow 触发首次执行后自动 re-trigger。
      *
      * @param sessionId      会话 ID
      * @param workspace      工作空间路径
@@ -152,14 +154,39 @@ public class LoopScheduler {
         // 2. 清理过期任务
         cleanExpired(sessionId, workspace, harnessSessions, tasks);
 
-        // 3. 注册到 IJobManager
-        registerJob(sessionId, workspace, harnessSessions, task);
+        // 3. 定时模式才注册到 IJobManager；即时模式由 scheduleNow 管理
+        if (!task.isImmediateMode()) {
+            registerJob(sessionId, workspace, harnessSessions, task);
+        }
 
         // 4. 加入内存列表
         tasks.add(task);
 
         // 5. 持久化到 JSON
         saveToFile(sessionId, workspace, harnessSessions, tasks);
+
+        return task;
+    }
+
+    /**
+     * 注册并立即执行即时模式任务（intervalMinutes=0）
+     *
+     * <p>等价于 schedule() + trigger()，但执行完一轮后会自动 re-trigger 直到 goal 达成或迭代耗尽。
+     * 一个 session 中只能有一个 id="goal" 的即时任务（如有旧的会先移除）。
+     *
+     * @return 已注册的任务
+     */
+    public LoopTask scheduleNow(String sessionId, String workspace, String harnessSessions, LoopTask task) {
+        // 0. 如果已有 id 相同的即时任务，先移除
+        remove(sessionId, workspace, harnessSessions, task.getId());
+
+        // 1. 走 schedule 注册（内部会跳过 IJobManager 注册）
+        schedule(sessionId, workspace, harnessSessions, task);
+
+        // 2. 立即异步触发首次执行
+        Thread thread = new Thread(() -> onTrigger(sessionId, workspace, harnessSessions, task), "loop-goal-" + task.getId());
+        thread.setDaemon(true);
+        thread.start();
 
         return task;
     }
@@ -213,8 +240,14 @@ public class LoopScheduler {
                 t.setEnabled(newEnabled);
 
                 if (newEnabled) {
-                    // 恢复：重新注册 Job
+                    // 恢复：重新注册 Job（即时模式会被 registerJob 内部跳过）
                     registerJob(sessionId, workspace, harnessSessions, t);
+                    // 即时模式恢复后立即 re-trigger
+                    if (t.isImmediateMode() && !t.isMaxIterationsReached()) {
+                        Thread thread = new Thread(() -> onTrigger(sessionId, workspace, harnessSessions, t), "loop-goal-resume-" + t.getId());
+                        thread.setDaemon(true);
+                        thread.start();
+                    }
                 } else {
                     // 暂停：移除 Job，但不 cancel
                     String jobName = t.getJobName();
@@ -369,9 +402,18 @@ public class LoopScheduler {
 
         sessionTasks.put(sessionId, Collections.synchronizedList(alive));
 
-        // 重新注册到 IJobManager
+        // 重新注册到 IJobManager（即时模式会被 registerJob 内部跳过）
         for (LoopTask t : alive) {
             registerJob(sessionId, workspace, harnessSessions, t);
+        }
+
+        // 即时模式任务恢复后立即 re-trigger
+        for (LoopTask t : alive) {
+            if (t.isImmediateMode() && !t.isMaxIterationsReached()) {
+                Thread thread = new Thread(() -> onTrigger(sessionId, workspace, harnessSessions, t), "loop-goal-restore-" + t.getId());
+                thread.setDaemon(true);
+                thread.start();
+            }
         }
 
         // 回写（去掉过期任务）
@@ -383,8 +425,15 @@ public class LoopScheduler {
 
     /**
      * 注册任务到 IJobManager（cron 模式使用 cron 表达式，否则使用 fixedDelay 串行策略）
+     *
+     * <p>即时模式（intervalMinutes=0）不应调用此方法。
      */
     private void registerJob(String sessionId, String workspace, String harnessSessions, LoopTask task) {
+        if (task.isImmediateMode()) {
+            // 即时模式不注册定时器，由 onTrigger 尾部 re-trigger
+            return;
+        }
+
         String jobName = task.getJobName();
 
         ScheduledAnno scheduled;
@@ -519,6 +568,18 @@ public class LoopScheduler {
             task.updateLastExecution("error: " + e.getMessage());
         } finally {
             task.finish();
+        }
+
+        // 即时模式 re-trigger：如果任务未被取消、未过期、未达最大迭代、且上一轮有实质进展，则立即触发下一轮
+        if (task.isImmediateMode() && task.isActive() && !task.isMaxIterationsReached()) {
+            // 仅在上一轮完成了执行时才继续（避免 session busy 时空转）
+            if (task.getLastResult() != null && !task.getLastResult().startsWith("error:")) {
+                Thread reTrigger = new Thread(
+                        () -> onTrigger(sessionId, workspace, harnessSessions, task),
+                        "loop-goal-" + task.getId());
+                reTrigger.setDaemon(true);
+                reTrigger.start();
+            }
         }
     }
 
