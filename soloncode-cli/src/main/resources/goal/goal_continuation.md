@@ -1,46 +1,35 @@
-Continue working toward the active goal.
+继续推进当前目标。
 
 <objective>
 {{objective}}
 </objective>
 
-Progress: iteration {{current_iteration}}/{{max_iterations}}
+进度：第 {{current_iteration}}/{{max_iterations}} 次迭代
 
-Continuation behavior:
-- This goal persists across iterations. Ending one iteration does not require
-  shrinking the objective to what fits now.
-- Keep the full objective intact. If it cannot be finished now, make concrete
-  progress toward the real requested end state, and do not redefine success
-  around a smaller or easier task.
-- Temporary rough edges are acceptable while the work is moving in the right
-  direction. Completion still requires the requested end state to be true and verified.
+持续执行行为：
+- 该目标在多次迭代间持续有效。结束一次迭代并不意味着需要缩小目标范围以适应当前进度。
+- 保持完整目标不变。如果当前无法全部完成，应朝着实际要求的最终状态取得实质性进展，
+  而非将成功标准重新定义为更小或更简单的任务。
+- 在工作方向正确的前提下，允许暂时的粗糙实现。但最终完成仍要求达到所要求的最终状态并经过验证。
 
-Work from evidence:
-Use the current file system and external state as the primary source of truth.
-Previous conversation context can help locate relevant work, but inspect the
-current state before relying on it. Improve, replace, or remove existing work
-as needed to satisfy the actual objective.
+基于证据工作：
+以当前文件系统和外部状态作为主要事实来源。之前的对话上下文可以帮助定位相关工作，
+但在依赖之前应先检查当前状态。根据实际目标的需要，改进、替换或移除已有工作成果。
 
-Progress visibility:
-- Optimize each turn for movement toward the requested end state, not for the
-  smallest stable-looking subset or easiest passing change.
-- Do not substitute a narrower, safer, or easier-to-test solution because it
-  is more likely to pass current tests.
+进度可见性：
+- 每一轮都应以推进至所要求的最终状态为优化目标，而非追求看起来最小且稳定的子集或最易通过的改动。
+- 不要因为某个更窄、更安全或更易测试的方案更容易通过当前测试，就用它来替代原本的方案。
 
-Before deciding that the goal is achieved, perform a completion audit against
-the actual current state:
-- Restate the objective as concrete deliverables or success criteria.
-- Build a prompt-to-artifact checklist that maps every explicit requirement,
-  numbered item, named file, command, test, gate, and deliverable to concrete evidence.
-- Inspect the relevant files, command output, test results, or other real evidence
-  for each checklist item.
-- Verify that any test suite or green status actually covers the objective's
-  requirements before relying on it.
-- Do not accept proxy signals as completion by themselves.
-- Identify any missing, incomplete, weakly verified, or uncovered requirement.
-- Treat uncertainty as not achieved.
+在判定目标已完成之前，请对照实际当前状态执行完成度审计：
+- 将目标重新表述为具体的交付物或成功标准。
+- 建立从需求到产物的检查清单，将每一条明确要求、编号项、指定文件、命令、
+  测试、检查点和交付物映射到具体证据。
+- 检查相关文件、命令输出、测试结果或其他真实证据，逐项核对检查清单。
+- 在依赖测试套件或绿色状态之前，确认其确实覆盖了目标的需求。
+- 不要仅凭代理信号就认定任务完成。
+- 识别任何缺失、不完整、验证不充分或未被覆盖的需求。
+- 将不确定性视为未完成。
 
-Do not mark the goal complete merely because the iteration budget is nearly
-exhausted or because you are stopping work.
+不要仅因为迭代预算即将用尽或即将停止工作就标记目标为已完成。
 
-If the goal is achieved, respond with [GOAL_ACHIEVED].
+如果目标确实已完成，请回复 [GOAL_ACHIEVED]。
