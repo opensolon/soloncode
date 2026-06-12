@@ -30,7 +30,7 @@ soloncode:
   memoryEnabled: true # 是否启用心智记忆
   memoryIsolation: true # 心智记忆是否工作区隔离（如果隔离，每个工作区一份长记忆）
 
-  userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)"
+  userAgent: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0 like claude-code; +https://solon.noear.org/)"
 
   modelRetries: 5
 #  models: # llm 配置（参考 solon ai chatmodel 配置）
