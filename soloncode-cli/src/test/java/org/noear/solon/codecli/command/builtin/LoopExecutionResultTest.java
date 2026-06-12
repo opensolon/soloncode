@@ -101,4 +101,38 @@ class LoopExecutionResultTest {
         assertTrue(root.get(0).get("goalAchieved").getBoolean());
         assertEquals("maker", root.get(0).get("makerResult").getString());
     }
+
+    @Test
+    void submittedOnlyShouldNotBeGoalAchieved() {
+        LoopExecutionResult result = LoopExecutionResult.submittedOnly();
+
+        assertTrue(result.isSubmitted());
+        assertFalse(result.isCompleted());
+        assertFalse(result.isGoalAchieved());
+        assertNull(result.getFinalResult());
+    }
+
+    @Test
+    void fromTextWithoutGoalMarkerShouldNotBeGoalAchieved() {
+        LoopExecutionResult result = LoopExecutionResult.fromText("normal response");
+
+        assertTrue(result.isCompleted());
+        assertFalse(result.isGoalAchieved());
+        assertEquals("normal response", result.getFinalResult());
+    }
+
+    @Test
+    void makerCheckerShouldPrioritizeCheckerGoal() {
+        // maker 没有 goal 标记，checker 有 → 整体 goalAchieved
+        LoopExecutionResult result = LoopExecutionResult.makerChecker("work done", "[PASS]\n[GOAL_ACHIEVED]");
+        assertTrue(result.isGoalAchieved());
+
+        // maker 有 goal 标记，checker 没有 → 整体也 goalAchieved
+        LoopExecutionResult result2 = LoopExecutionResult.makerChecker("done [GOAL_ACHIEVED]", "[FAIL]");
+        assertTrue(result2.isGoalAchieved());
+
+        // 都没有 → 不算达成
+        LoopExecutionResult result3 = LoopExecutionResult.makerChecker("work", "[PENDING]");
+        assertFalse(result3.isGoalAchieved());
+    }
 }
