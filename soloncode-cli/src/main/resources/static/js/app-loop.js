@@ -401,7 +401,7 @@
         $panel.addClass('mode-form');
         // 动态计算面板最大高度（不超过可用视口空间）
         var panelTop = $panel[0].getBoundingClientRect().top;
-        var safeMaxH = Math.max(300, Math.floor(panelTop) - 16);
+        var safeMaxH = Math.max(370, Math.floor(panelTop) - 16);
         $panel.css('max-height', Math.min(safeMaxH, 560) + 'px');
         $panel.html(html);
         bindFormEvents();
@@ -621,7 +621,7 @@
         var $panel = getActivePanel();
         $panel.addClass('mode-detail');
         var panelTop = $panel[0].getBoundingClientRect().top;
-        var safeMaxH = Math.max(300, Math.floor(panelTop) - 16);
+        var safeMaxH = Math.max(370, Math.floor(panelTop) - 16);
         $panel.css('max-height', Math.min(safeMaxH, 560) + 'px');
 
         var html = '<div class="loop-panel-header">';
