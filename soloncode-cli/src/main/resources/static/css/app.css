@@ -495,10 +495,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-item-result.achieved { color: #059669; font-weight: 500; }
 .loop-item-result.error { color: #d9534f; }
 
-/* Loop Progress */
-.loop-item-progress { margin-top: 3px; position: relative; height: 14px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; max-width: 200px; }
-.loop-progress-bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; opacity: 0.6; }
-.loop-progress-text { position: absolute; right: 4px; top: 0; font-size: 10px; color: var(--text-secondary); line-height: 14px; }
+/* Loop Progress (unused — progress now shown inline as goal x/y tag) */
 
 /* Loop Templates */
 .loop-templates { display: flex; gap: 6px; flex-wrap: wrap; background: var(--bg-hover); padding: 8px; border-radius: 8px; }

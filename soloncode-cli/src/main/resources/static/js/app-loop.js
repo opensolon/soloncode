@@ -224,11 +224,28 @@
                     }
 
                     html += '<div class="loop-item" data-id="' + t.id + '">';
+                    // 功能标签（移到状态位置，替代"就绪"等文字）
+                    var tags = [];
+                    if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
+                    if (t.makerAgent) tags.push('<span class="loop-tag loop-tag-mc">m/c</span>');
+                    if (t.goalCondition) {
+                        var goalLabel = 'goal';
+                        if (t.maxIterations > 0) {
+                            goalLabel += ' ' + t.currentIteration + '/' + t.maxIterations;
+                        }
+                        tags.push('<span class="loop-tag loop-tag-goal">' + goalLabel + '</span>');
+                    }
+                    // running 状态保留显示
+                    var statusHtml = (statusClass === 'running' || statusClass === 'cancelled')
+                        ? '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>'
+                        : '';
+
                     html += '<div class="loop-item-row">';
                     html += '<span class="loop-item-dot ' + statusClass + '"></span>';
                     html += '<span class="loop-item-name">#' + escapeHtml(t.id) + '</span>';
                     html += '<span class="loop-item-schedule">' + scheduleText + '</span>';
-                    html += '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>';
+                    html += statusHtml;
+                    if (tags.length) html += '<span class="loop-item-tags">' + tags.join('') + '</span>';
                     html += '<div class="loop-item-actions">';
                     var toggleIcon = t.enabled
                         ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
@@ -242,33 +259,10 @@
                     html += '</div>';
                     html += '</div>';
                     html += '<div class="loop-item-prompt">' + escapeHtml(t.prompt) + '</div>';
-                    // 功能标签（始终显示）
-                    var tags = [];
-                    if (t.goalCondition) tags.push('<span class="loop-tag loop-tag-goal">goal</span>');
-                    if (t.makerAgent) tags.push('<span class="loop-tag loop-tag-mc">m/c</span>');
-                    if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
-
-                    var tagsHtml = tags.length ? '<span class="loop-item-tags">' + tags.join('') + '</span>' : '';
-
-                    // 底部信息行：时间 + 迭代 + 标签
-                    if (lastInfo || tagsHtml) {
+                    // 底部信息行：时间 + 迭代
+                    if (lastInfo) {
                         html += '<div class="loop-item-info">';
-                        if (lastInfo) html += lastInfo;
-                        html += tagsHtml;
-                        html += '</div>';
-                    }
-                    // 执行结果摘要
-                    if (t.lastResult) {
-                        var resultShort = t.lastResult.length > 80 ? t.lastResult.substring(0, 80) + '...' : t.lastResult;
-                        var resultClass = t.lastResult.indexOf('[GOAL_ACHIEVED]') >= 0 ? 'achieved' : (t.lastResult.indexOf('error') >= 0 ? 'error' : '');
-                        html += '<div class="loop-item-result ' + resultClass + '">' + escapeHtml(resultShort) + '</div>';
-                    }
-                    // goal 进度条
-                    if (t.goalCondition && t.maxIterations > 0) {
-                        var pct = Math.min(100, Math.round(t.currentIteration / t.maxIterations * 100));
-                        html += '<div class="loop-item-progress">';
-                        html += '<div class="loop-progress-bar" style="width:' + pct + '%"></div>';
-                        html += '<span class="loop-progress-text">' + t.currentIteration + '/' + t.maxIterations + '</span>';
+                        html += lastInfo;
                         html += '</div>';
                     }
                     html += '</div>';
