@@ -4,27 +4,30 @@ import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
 
 /**
  *
  * @author noear 2026/6/8 created
  *
  */
-public class ConfigExtension implements HarnessExtension {
+public class ManagerExtension implements HarnessExtension {
     private final HarnessEngine engine;
     private final AgentSettings settings;
-    private final ConfigTalent configTalent;
+    private final LoopScheduler loopScheduler;
+    private final ManagerTalent managerTalent;
 
-    public ConfigExtension(HarnessEngine engine, AgentSettings settings) {
+    public ManagerExtension(HarnessEngine engine, AgentSettings settings, LoopScheduler loopScheduler) {
         this.engine = engine;
         this.settings = settings;
-        this.configTalent = new ConfigTalent(engine, settings);
+        this.loopScheduler = loopScheduler;
+        this.managerTalent = new ManagerTalent(engine, settings, loopScheduler);
     }
 
     @Override
     public void configure(String agentName, ReActAgent.Builder agentBuilder) {
         if (AgentDefinition.AGENT_MAIN.equals(agentName)) {
-            agentBuilder.defaultTalentAdd(configTalent);
+            agentBuilder.defaultTalentAdd(managerTalent);
         }
     }
 }

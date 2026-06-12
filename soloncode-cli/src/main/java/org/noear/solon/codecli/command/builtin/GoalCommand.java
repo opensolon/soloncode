@@ -189,6 +189,14 @@ public class GoalCommand implements Command {
             return;
         }
 
+        // 基本合理性检查：过短的目标大概率不是有效目标
+        if (prompt.length() < 5) {
+            ctx.println(ctx.color(YELLOW + "Goal description is too short. A goal should describe a concrete, verifiable outcome." + RESET));
+            ctx.println(ctx.color(DIM + "  Example: /goal fix all failing tests" + RESET));
+            ctx.println(ctx.color(DIM + "  Example: /goal refactor the auth module to use JWT" + RESET));
+            return;
+        }
+
         // 替换确认：如果已有活跃 goal 且未加 --force，提示用户
         LoopTask existing = scheduler.getTaskById(sessionId, GOAL_TASK_ID);
         if (existing != null && !existing.isCancelled() && !force) {
@@ -204,7 +212,7 @@ public class GoalCommand implements Command {
         String goalCondition = prompt;
 
         // 创建即时模式任务：id=goal, intervalMinutes=0
-        LoopTask goalTask = createGoalTask(prompt, goalCondition, maxIterations, workspace);
+        LoopTask goalTask = GoalCommand.createGoalTask(prompt, goalCondition, maxIterations, workspace);
 
         // 初始化状态目录
         LoopStateManager.init(workspace, goalTask.getId(), prompt);
@@ -330,11 +338,11 @@ public class GoalCommand implements Command {
     }
 
     /**
-     * 创建 id="goal" 的即时模式 LoopTask
+     * 创建 id="goal" 的即时模式 LoopTask（公开，供 ManagerTalent 复用）
      *
      * <p>绕过便捷构造器（自动生成 UUID），使用全参数构造器强制 id="goal"。
      */
-    private LoopTask createGoalTask(String prompt, String goalCondition, int maxIterations, String workspace) {
+    public static LoopTask createGoalTask(String prompt, String goalCondition, int maxIterations, String workspace) {
         Instant now = Instant.now();
         return new LoopTask(
                 GOAL_TASK_ID,                         // id = "goal"
@@ -358,6 +366,13 @@ public class GoalCommand implements Command {
                 null,                                  // lastExecutedAt
                 0                                      // currentIteration
         );
+    }
+
+    /**
+     * 目标任务的固定 ID
+     */
+    public static String getGoalTaskId() {
+        return GOAL_TASK_ID;
     }
 
     /**
