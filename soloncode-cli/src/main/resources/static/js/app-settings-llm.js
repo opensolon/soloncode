@@ -76,7 +76,8 @@
                     metaLine = escapeHtml(model);
                 }
                 if (item.contextLength) {
-                    metaLine += ' / ' + String(item.contextLength).replace(/\B(?=(\d{3})+(?!\d))/g, '_');
+                    var cl = item.contextLength;
+                    metaLine += ' / ' + (cl >= 1000 ? (cl % 1000 === 0 ? (cl / 1000) + 'k' : (cl / 1000).toFixed(1).replace(/\.0$/, '') + 'k') : cl);
                 }
 
                 var isDefault = name === selected;
@@ -134,7 +135,10 @@
         if (item.name) $('#llmName').val(item.name);
         if (item.scope) setScopeValue('llmScope', item.scope);
         if (item.timeout) $('#llmTimeout').val(item.timeout);
-        if (item.contextLength) $('#llmContextLength').val(String(item.contextLength).replace(/\B(?=(\d{3})+(?!\d))/g, '_'));
+        if (item.contextLength) {
+            var cl2 = item.contextLength;
+            $('#llmContextLength').val(cl2 >= 1000 ? (cl2 % 1000 === 0 ? (cl2 / 1000) + 'k' : (cl2 / 1000).toFixed(1).replace(/\.0$/, '') + 'k') : cl2);
+        }
         if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
         // 回显“设为默认模型”勾选状态
         $("#llmIsDefaultModel").prop("checked", !!item.isDefault);
@@ -151,8 +155,13 @@
         var bodyObj = { apiUrl: apiUrl, model: model, name: alias, standard: standard, scope: $('#llmScope').val() || 'user' };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
-        var contextLength = $('#llmContextLength').val().trim().replace(/[, _]/g, '');
-        if (contextLength) bodyObj.contextLength = parseInt(contextLength, 10);
+        var contextLengthRaw = $('#llmContextLength').val().trim().replace(/[, _]/g, '');
+        var contextLength = contextLengthRaw;
+        if (contextLengthRaw) {
+            var match = contextLengthRaw.match(/^(\d+\.?\d*)k$/i);
+            contextLength = match ? Math.round(parseFloat(match[1]) * 1000) : parseInt(contextLengthRaw, 10);
+        }
+        if (contextLength) bodyObj.contextLength = contextLength;
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {
             try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { showToast('默认选项 JSON 格式无效', 'error'); return null; }
