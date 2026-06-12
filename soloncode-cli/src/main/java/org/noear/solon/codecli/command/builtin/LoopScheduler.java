@@ -250,6 +250,7 @@ public class LoopScheduler {
 
         tasks.removeIf(t -> {
             if (t.getId().equals(taskId)) {
+                t.setEnabled(false);
                 t.cancel();
                 String jobName = t.getJobName();
                 if (jobManager.jobExists(jobName)) {
