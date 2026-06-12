@@ -408,7 +408,7 @@ public class LoopScheduler {
             return;
         }
 
-        // Goal 模式：达到最大迭代次数则自动取消
+        // 达到最大迭代次数则自动取消
         if (task.isMaxIterationsReached()) {
             LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
             removeCurrentTask(sessionId, task);
@@ -439,30 +439,38 @@ public class LoopScheduler {
                 // 构建完整 prompt（注入 skill + state 上下文）
                 String effectivePrompt = buildEffectivePrompt(sessionId, task);
 
-                String executionResult;
+                LoopExecutionResult executionResult;
 
                 if (task.isMakerCheckerMode()) {
                     // Phase 2: maker/checker 编排
                     executionResult = executeMakerChecker(sessionId, task, effectivePrompt);
                 } else {
                     // 兼容路径：单一 agent 执行
-                    executionResult = null;
-                    for (TaskExecutor taskExecutor : taskExecutors) {
-                        String result = taskExecutor.execute(sessionId, effectivePrompt, null);
-                        if (result != null) {
-                            executionResult = result;
-                        }
-                    }
+                    executionResult = executeSingle(sessionId, effectivePrompt, null);
                 }
 
+                String finalResult = executionResult != null ? executionResult.getFinalResult() : null;
+
                 // 更新执行记录
-                task.updateLastExecution(executionResult != null ? executionResult : "ok");
+                task.updateLastExecution(finalResult != null ? finalResult : "ok");
                 int iteration = task.incrementIteration();
 
-                // F3: Goal 条件检查 — 解析 AI 响应中的 [GOAL_ACHIEVED] 标记
-                if (task.isGoalMode() && executionResult != null
-                        && executionResult.contains("[GOAL_ACHIEVED]")) {
+                // Goal 条件检查 — 解析 AI 响应中的 [GOAL_ACHIEVED] 标记
+                if (task.isGoalMode() && executionResult != null && executionResult.isGoalAchieved()) {
                     LOG.info("Loop task '{}' goal achieved at iteration {}", task.getId(), iteration);
+                    if (task.getWorkspace() != null) {
+                        LoopStateManager.appendHistory(task.getWorkspace(), task.getId(), executionResult, iteration, "GOAL_ACHIEVED");
+                    }
+                    removeCurrentTask(sessionId, task);
+                    notifyChannels(sessionId, task);
+                    return;
+                }
+
+                if (task.isMaxIterationsReached()) {
+                    LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
+                    if (task.getWorkspace() != null) {
+                        LoopStateManager.appendHistory(task.getWorkspace(), task.getId(), executionResult, iteration, "MAX_ITERATIONS_REACHED");
+                    }
                     removeCurrentTask(sessionId, task);
                     notifyChannels(sessionId, task);
                     return;
@@ -470,9 +478,7 @@ public class LoopScheduler {
 
                 // 写入执行历史
                 if (task.getWorkspace() != null) {
-                    String workspace = task.getWorkspace();
-                    LoopStateManager.appendHistory(workspace, task.getId(),
-                            executionResult != null ? executionResult : "ok", iteration);
+                    LoopStateManager.appendHistory(task.getWorkspace(), task.getId(), executionResult, iteration, "NONE");
                 }
 
             } finally {
@@ -520,15 +526,26 @@ public class LoopScheduler {
         return prompt;
     }
 
+    private LoopExecutionResult executeSingle(String sessionId, String effectivePrompt, String agentName) {
+        String executionResult = null;
+        for (TaskExecutor taskExecutor : taskExecutors) {
+            String result = taskExecutor.execute(sessionId, effectivePrompt, agentName);
+            if (result != null) {
+                executionResult = result;
+            }
+        }
+        return executionResult != null ? LoopExecutionResult.fromText(executionResult) : LoopExecutionResult.submittedOnly();
+    }
+
     /**
      * maker/checker 编排执行
      *
      * <p>Phase 1: maker agent 执行任务，返回结果。
      * Phase 2: checker agent 审查 maker 的实际产出，返回 pass/fail。</p>
      *
-     * @return maker 的执行结果摘要
+     * @return maker/checker 的结构化执行结果
      */
-    private String executeMakerChecker(String sessionId, LoopTask task, String effectivePrompt) {
+    private LoopExecutionResult executeMakerChecker(String sessionId, LoopTask task, String effectivePrompt) {
         // Phase 1: maker 执行
         String makerResult = null;
         for (TaskExecutor taskExecutor : taskExecutors) {
@@ -553,7 +570,8 @@ public class LoopScheduler {
 
         if (task.isGoalMode()) {
             checkerPrompt.append("\n\nAlso evaluate if this goal condition is met: ").append(task.getGoalCondition());
-            checkerPrompt.append("\nIf met, respond with [GOAL_ACHIEVED].");
+            checkerPrompt.append("\nIf met, output a standalone line: [GOAL_ACHIEVED].");
+            checkerPrompt.append("\nIf not met, output a standalone line: [GOAL_PENDING].");
         }
 
         String checkerResult = null;
@@ -571,7 +589,7 @@ public class LoopScheduler {
                     "Checker: " + (checkerResult.length() > 200 ? checkerResult.substring(0, 200) + "..." : checkerResult));
         }
 
-        return makerResult;
+        return LoopExecutionResult.makerChecker(makerResult, checkerResult);
     }
 
 

@@ -143,6 +143,20 @@ public class LoopStateManager {
      * 追加一条执行历史
      */
     public static void appendHistory(String workspace, String loopId, String result, int iteration) {
+        appendHistory(workspace, loopId, result, iteration, "NONE");
+    }
+
+    /**
+     * 追加一条执行历史
+     */
+    public static void appendHistory(String workspace, String loopId, String result, int iteration, String stopReason) {
+        appendHistory(workspace, loopId, LoopExecutionResult.fromText(result), iteration, stopReason);
+    }
+
+    /**
+     * 追加一条结构化执行历史
+     */
+    public static void appendHistory(String workspace, String loopId, LoopExecutionResult result, int iteration, String stopReason) {
         try {
             Path historyFile = getStateDir(workspace, loopId).resolve(HISTORY_FILE);
             if (!Files.exists(historyFile)) {
@@ -158,7 +172,17 @@ public class LoopStateManager {
             ONode entry = new ONode(Options.of(Feature.Write_PrettyFormat));
             entry.set("iteration", iteration);
             entry.set("time", Instant.now().toString());
-            entry.set("result", result != null ? result : "ok");
+            entry.set("result", result != null && result.getFinalResult() != null ? result.getFinalResult() : "ok");
+            if (result != null) {
+                entry.set("submitted", result.isSubmitted());
+                entry.set("completed", result.isCompleted());
+                entry.set("goalAchieved", result.isGoalAchieved());
+                entry.set("checkerPassed", result.isCheckerPassed());
+                if (result.getMakerResult() != null) entry.set("makerResult", result.getMakerResult());
+                if (result.getCheckerResult() != null) entry.set("checkerResult", result.getCheckerResult());
+                if (result.getErrorMessage() != null) entry.set("error", result.getErrorMessage());
+            }
+            entry.set("stopReason", stopReason != null ? stopReason : "NONE");
             root.add(entry);
 
             writeFile(historyFile, root.toJson());

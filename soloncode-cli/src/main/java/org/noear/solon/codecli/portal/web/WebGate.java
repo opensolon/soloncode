@@ -44,6 +44,9 @@ import reactor.core.scheduler.Schedulers;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * WebGate - 前端统一 WebSocket 网关
@@ -386,6 +389,63 @@ public class WebGate extends SimpleWebSocketListener {
         session.attrs().put("disposable", disposable);
     }
 
+    private String performAgentTaskAndCapture(AgentSession session, String sessionCwd, Prompt prompt,
+                                              String selectedModel, String agentName, long timeoutMs) {
+        String sessionId = session.getSessionId();
+        ChatModel chatModel = engine.getModelOrMain(selectedModel);
+        ReActAgent agent = engine.getAgentOrMain(agentName);
+        CountDownLatch latch = new CountDownLatch(1);
+        StringBuilder capture = new StringBuilder();
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+
+        Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        line -> {
+                            emitToClient(sessionId, line);
+                            if ("text".equals(line.getType()) && line.getText() != null) {
+                                capture.append(line.getText());
+                            } else if ("error".equals(line.getType()) && line.getText() != null) {
+                                errorRef.set(new RuntimeException(line.getText()));
+                            }
+                        },
+                        e -> {
+                            LOG.error("Task fail: {}", e.getMessage(), e);
+                            errorRef.set(e);
+                            session.attrs().remove("disposable");
+                            emitToClient(sessionId, WebChunk.ofError(e));
+                            emitToClient(sessionId, WebChunk.ofDone());
+                            latch.countDown();
+                        },
+                        () -> {
+                            session.attrs().remove("disposable");
+                            latch.countDown();
+                        }
+                );
+
+        session.attrs().put("disposable", disposable);
+
+        try {
+            boolean completed = latch.await(Math.max(timeoutMs, 1_000L), TimeUnit.MILLISECONDS);
+            if (!completed) {
+                disposable.dispose();
+                session.attrs().remove("disposable");
+                LOG.warn("[WebGate] Loop capture timeout for session {}", sessionId);
+                return null;
+            }
+            if (errorRef.get() != null) {
+                return "error: " + errorRef.get().getMessage();
+            }
+            String text = capture.toString().trim();
+            return text.isEmpty() ? null : text;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            disposable.dispose();
+            session.attrs().remove("disposable");
+            return null;
+        }
+    }
+
     /**
      * 尝试将用户输入解析为斜杠命令并执行。
      *
@@ -514,6 +574,47 @@ public class WebGate extends SimpleWebSocketListener {
         emitToClient(sessionId, WebChunk.ofUserInput(input, source));
 
         onChatInput(sessionId, null, input, null, null, null, null);
+    }
+    /**
+     * 安全聊天输入入口，并同步捕获本轮响应文本。
+     *
+     * <p>用于 Loop 调度器的 goal 检测和 maker/checker 编排。该方法仍会向前端推送完整流式消息，
+     * 同时等待响应流结束并返回普通文本 chunk 的拼接结果。</p>
+     *
+     * @param sessionId  会话标识
+     * @param input      用户输入文本
+     * @param source     调用来源标识
+     * @param timeoutMs  最大等待时间
+     * @return 捕获到的 AI 文本；会话繁忙、超时或无文本时返回 null
+     */
+    public String safeChatInputAndCapture(String sessionId, String input, String source, long timeoutMs) {
+        AgentSession session;
+        try {
+            session = engine.getSession(sessionId);
+            if (isSessionBusy(session)) {
+                LOG.warn("[WebGate] {} event skipped for session {}: task in progress", source, sessionId);
+                return null;
+            }
+        } catch (Exception e) {
+            LOG.warn("[WebGate] {} event check failed for session {}: {}", source, sessionId, e.getMessage());
+            return null;
+        }
+
+        emitToClient(sessionId, WebChunk.ofUserInput(input, source));
+
+        String agentName = null;
+        String currentInput = input;
+        if (currentInput != null && currentInput.startsWith("@")) {
+            int agentNameIdx = currentInput.indexOf(" ");
+            if (agentNameIdx > 0) {
+                agentName = currentInput.substring(1, agentNameIdx);
+                if (engine.getAgentManager().hasAgent(agentName)) {
+                    currentInput = currentInput.substring(agentNameIdx + 1);
+                }
+            }
+        }
+
+        return performAgentTaskAndCapture(session, null, Prompt.of(currentInput), null, agentName, timeoutMs);
     }
 
 

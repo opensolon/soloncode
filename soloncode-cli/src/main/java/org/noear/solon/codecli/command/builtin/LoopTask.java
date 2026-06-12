@@ -154,6 +154,39 @@ public class LoopTask {
     }
 
     /**
+     * 基于当前任务复制出一份更新后的任务定义，保留任务身份和运行时状态。
+     */
+    public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
+                                   String goalCondition, String makerAgent,
+                                   String checkerAgent, Boolean worktreeEnabled, String channelNotify,
+                                   Integer maxIterations, String workspace) {
+        LoopTask task = new LoopTask(
+                this.id,
+                prompt,
+                Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, intervalMinutes)),
+                cron,
+                this.createdAt,
+                this.expireAt,
+                this.autoInterval,
+                this.enabled,
+                goalCondition,
+                makerAgent,
+                checkerAgent,
+                worktreeEnabled != null ? worktreeEnabled : false,
+                this.worktreeBranch,
+                channelNotify,
+                workspace,
+                maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
+                this.cancelled,
+                this.lastResult,
+                this.lastExecutedAt,
+                this.currentIteration
+        );
+        task.running = false;
+        return task;
+    }
+
+    /**
      * 是否已过期
      */
     public boolean isExpired() {
@@ -229,7 +262,7 @@ public class LoopTask {
      * 是否已达到最大迭代次数
      */
     public boolean isMaxIterationsReached() {
-        return goalCondition != null && currentIteration >= maxIterations;
+        return maxIterations > 0 && currentIteration >= maxIterations;
     }
 
     /**

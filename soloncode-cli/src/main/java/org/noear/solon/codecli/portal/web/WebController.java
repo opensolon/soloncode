@@ -26,6 +26,7 @@ import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.command.builtin.LoopStateManager;
 import org.noear.solon.codecli.command.builtin.LoopTask;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -104,27 +105,21 @@ public class WebController {
         this.gitService = new GitService(engine.getWorkspace(), engine);
         this.fileService = new FileService(engine.getWorkspace());
 
-        // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，通过 WebGate WebSocket 推送到前端
-        //
-        // 注意：WebGate 的 performAgentTask 是异步的（subscribe 后立即返回），
-        // 无法同步等待 AI 响应。因此此执行器返回 null，
-        // 意味着 Web 端 Loop 不支持 maker/checker 审查和 goal 条件终止。
-        // 这些高级功能仅在 CLI 端可用（CliShell 使用 latch.await() 同步等待）。
+        // 注入 Web 端 Loop 任务执行器：同步等待本轮 AI 响应结束，捕获文本结果用于 goal 检测。
         if (loopScheduler != null) {
             loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (sessionId.startsWith("web-") == false) {
                     return null;
                 }
 
-                // P0-fix: 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
+                // 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
                 // WebGate.onChatInput 内部通过 input.startsWith("@") 识别并路由到对应 agent
                 String effectiveInput = prompt;
                 if (agentName != null && !agentName.isEmpty()) {
                     effectiveInput = "@" + agentName + " " + prompt;
                 }
 
-                webGate.safeChatInput(sessionId, effectiveInput, "Loop");
-                return null; // Web 端异步执行，无法同步捕获 AI 响应
+                return webGate.safeChatInputAndCapture(sessionId, effectiveInput, "Loop", 300_000L);
             });
         }
     }
@@ -850,6 +845,7 @@ public class WebController {
         // (name removed: use id for display)
 
         try {
+            LoopStateManager.init(workspace, task.getId(), prompt);
             loopScheduler.schedule(sessionId, workspace, harnessSessions, task);
         } catch (IllegalStateException e) {
             return Result.failure(400, e.getMessage());
@@ -894,7 +890,7 @@ public class WebController {
         String effectiveCron = cron != null ? cron : existing.getCron();
         String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
 
-        LoopTask newTask = new LoopTask(
+        LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
                 goalCondition != null ? goalCondition : existing.getGoalCondition(),
                 makerAgent != null ? makerAgent : existing.getMakerAgent(),
@@ -992,6 +988,12 @@ public class WebController {
                     if (node.getOrNull("iteration") != null) item.put("iteration", node.get("iteration").getInt());
                     if (node.getOrNull("time") != null) item.put("time", node.get("time").getString());
                     if (node.getOrNull("result") != null) item.put("result", node.get("result").getString());
+                    if (node.getOrNull("makerResult") != null) item.put("makerResult", node.get("makerResult").getString());
+                    if (node.getOrNull("checkerResult") != null) item.put("checkerResult", node.get("checkerResult").getString());
+                    if (node.getOrNull("goalAchieved") != null) item.put("goalAchieved", node.get("goalAchieved").getBoolean());
+                    if (node.getOrNull("checkerPassed") != null) item.put("checkerPassed", node.get("checkerPassed").getBoolean());
+                    if (node.getOrNull("stopReason") != null) item.put("stopReason", node.get("stopReason").getString());
+                    if (node.getOrNull("error") != null) item.put("error", node.get("error").getString());
                     data.add(item);
                 }
             }
