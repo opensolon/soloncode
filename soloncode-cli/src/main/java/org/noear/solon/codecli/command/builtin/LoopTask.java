@@ -21,6 +21,7 @@ import org.noear.snack4.ONode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 定时循环任务模型，用于 /loop 命令
@@ -72,6 +73,10 @@ public class LoopTask {
     private volatile Instant lastExecutedAt;
     private volatile int currentIteration;
     private volatile boolean enabled = true; // 启用/停用
+    private volatile boolean wrapUpPending = false; // 即将收尾（最后一次 wrap-up turn）
+
+    // re-trigger 并发保护：防止多个 re-trigger 线程同时启动
+    private final AtomicBoolean continuationPending = new AtomicBoolean(false);
 
     /**
      * 固定间隔构造
@@ -218,6 +223,7 @@ public class LoopTask {
             return false;
         }
         running = true;
+        clearContinuationPending();
         return true;
     }
 
@@ -226,6 +232,22 @@ public class LoopTask {
      */
     public synchronized void finish() {
         running = false;
+    }
+
+    /**
+     * 尝试预约 re-trigger（CAS 语义）
+     *
+     * @return true 表示成功预约，false 表示已有 re-trigger 在等待
+     */
+    public boolean tryScheduleContinuation() {
+        return continuationPending.compareAndSet(false, true);
+    }
+
+    /**
+     * 清除 re-trigger 预约标记
+     */
+    public void clearContinuationPending() {
+        continuationPending.set(false);
     }
 
     /**
@@ -290,6 +312,10 @@ public class LoopTask {
     }
 
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+    public void setWrapUpPending(boolean wrapUpPending) { this.wrapUpPending = wrapUpPending; }
+
+    public boolean isWrapUpPending() { return wrapUpPending; }
 
     /**
      * 序列化为 ONode

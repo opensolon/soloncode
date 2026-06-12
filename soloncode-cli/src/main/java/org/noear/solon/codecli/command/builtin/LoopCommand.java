@@ -396,9 +396,6 @@ public class LoopCommand implements Command {
     }
 
     private String formatAgo(Instant instant) {
-        long seconds = Duration.between(instant, Instant.now()).getSeconds();
-        if (seconds < 60) return seconds + "s ago";
-        if (seconds < 3600) return (seconds / 60) + "m ago";
-        return (seconds / 3600) + "h ago";
+        return GoalCommand.formatAgo(instant);
     }
 }

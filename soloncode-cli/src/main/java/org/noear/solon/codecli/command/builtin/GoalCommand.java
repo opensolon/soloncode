@@ -31,6 +31,7 @@ import java.time.Instant;
  * <pre>
  * /goal fix all failing tests              → 设置目标并立即开始工作
  * /goal                                    → 查看当前目标状态
+ * /goal edit <new description>             → 修改目标文本（保留进度）
  * /goal pause                              → 暂停目标
  * /goal resume                             → 恢复目标
  * /goal clear                              → 清除目标
@@ -65,7 +66,7 @@ public class GoalCommand implements Command {
 
     @Override
     public String description() {
-        return "即时目标模式 (set, pause, resume, clear)";
+        return "即时目标模式 (set, edit, pause, resume, clear)";
     }
 
     @Override
@@ -91,6 +92,8 @@ public class GoalCommand implements Command {
             doResume(ctx, sessionId, workspace, harnessSessions);
         } else if ("clear".equals(sub)) {
             doClear(ctx, sessionId, workspace, harnessSessions);
+        } else if ("edit".equals(sub)) {
+            doEdit(ctx, sessionId, workspace, harnessSessions);
         } else {
             // /goal <prompt> — 设置新目标并立即执行
             doSet(ctx, sessionId, workspace, harnessSessions);
@@ -132,19 +135,31 @@ public class GoalCommand implements Command {
         // Prompt
         ctx.println(ctx.color(DIM + "  " + goalTask.getPrompt() + RESET));
 
+        // 耗时
+        if (goalTask.getCreatedAt() != null) {
+            ctx.println(ctx.color(DIM + "  Elapsed: " + formatElapsed(goalTask.getCreatedAt()) + RESET));
+        }
+
         // 上次执行
         if (goalTask.getLastExecutedAt() != null) {
             String lastResult = goalTask.getLastResult() != null ? goalTask.getLastResult() : "-";
-            ctx.println(ctx.color(DIM + "  last: " + formatAgo(goalTask.getLastExecutedAt()) + ": " + lastResult + RESET));
+            ctx.println(ctx.color(DIM + "  Last: " + formatAgo(goalTask.getLastExecutedAt()) + ": " + lastResult + RESET));
         }
+
+        // 可用命令提示
+        ctx.println(ctx.color(DIM + "  Commands: /goal edit, /goal pause, /goal clear" + RESET));
     }
 
     /**
      * 设置新目标并立即执行
+     *
+     * <p>如果已有活跃 goal，会输出警告提示，需加 --force 强制替换。
+     * 这防止用户误触 /goal 清掉长时间运行的 goal 进度。
      */
     private void doSet(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
-        // 解析参数：--max-iter:N 和剩余文本作为 prompt + goalCondition
+        // 解析参数：--max-iter:N, --force 和剩余文本作为 prompt + goalCondition
         int maxIterations = DEFAULT_MAX_ITERATIONS;
+        boolean force = false;
         StringBuilder promptBuilder = new StringBuilder();
 
         for (int i = 0; ; i++) {
@@ -158,6 +173,8 @@ public class GoalCommand implements Command {
                     ctx.println(ctx.color(RED + "Invalid --max-iter value" + RESET));
                     return;
                 }
+            } else if ("--force".equals(arg) || "-f".equals(arg)) {
+                force = true;
             } else {
                 if (promptBuilder.length() > 0) promptBuilder.append(" ");
                 promptBuilder.append(arg);
@@ -169,6 +186,17 @@ public class GoalCommand implements Command {
             ctx.println(ctx.color(RED + "Usage: /goal <description>" + RESET));
             ctx.println(ctx.color(DIM + "  /goal fix all failing tests" + RESET));
             ctx.println(ctx.color(DIM + "  /goal --max-iter:50 refactor the auth module" + RESET));
+            return;
+        }
+
+        // 替换确认：如果已有活跃 goal 且未加 --force，提示用户
+        LoopTask existing = scheduler.getTaskById(sessionId, GOAL_TASK_ID);
+        if (existing != null && !existing.isCancelled() && !force) {
+            ctx.println(ctx.color(YELLOW + "A goal is already active:" + RESET));
+            ctx.println(ctx.color(DIM + "  " + existing.getGoalCondition()
+                      + " (" + existing.getCurrentIteration()
+                      + "/" + existing.getMaxIterations() + ")" + RESET));
+            ctx.println(ctx.color(YELLOW + "Use --force to replace it: /goal --force " + prompt + RESET));
             return;
         }
 
@@ -195,7 +223,63 @@ public class GoalCommand implements Command {
         ctx.println(ctx.color("  " + MAGENTA + "Goal:" + RESET + " " + goalCondition));
         ctx.println(ctx.color("  " + BOLD + "Prompt:" + RESET + " " + prompt));
         ctx.println(ctx.color("  " + DIM + "Max Iterations: " + maxIterations + RESET));
-        ctx.println(ctx.color(DIM + "  Use /goal to check status, /goal pause to pause, /goal clear to stop." + RESET));
+        ctx.println(ctx.color(DIM + "  Use /goal to check status, /goal pause to pause, /goal edit to adjust." + RESET));
+    }
+
+    /**
+     * 编辑目标文本（保留当前进度和迭代计数）
+     *
+     * <p>对标 Codex 的 /goal edit：修改目标文本但不清除进度。
+     * 通过 LoopTask.copyWithUpdate 创建新任务实例替换旧的。
+     */
+    private void doEdit(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
+        LoopTask goalTask = scheduler.getTaskById(sessionId, GOAL_TASK_ID);
+        if (goalTask == null || goalTask.isCancelled()) {
+            ctx.println(ctx.color(YELLOW + "No active goal to edit. Use /goal <description> to set one." + RESET));
+            return;
+        }
+
+        // 收集 edit 后面的所有文本作为新的目标描述
+        StringBuilder newDescBuilder = new StringBuilder();
+        for (int i = 1; ; i++) {
+            String arg = ctx.argAt(i);
+            if (arg == null) break;
+            if (newDescBuilder.length() > 0) newDescBuilder.append(" ");
+            newDescBuilder.append(arg);
+        }
+
+        String newDesc = newDescBuilder.toString().trim();
+        if (newDesc.isEmpty()) {
+            ctx.println(ctx.color(YELLOW + "Usage: /goal edit <new description>" + RESET));
+            ctx.println(ctx.color(DIM + "  Current: " + goalTask.getGoalCondition() + RESET));
+            return;
+        }
+
+        // 使用 copyWithUpdate 创建新任务实例（保留 id、迭代计数、状态等）
+        LoopTask updated = goalTask.copyWithUpdate(
+                newDesc, goalTask.getIntervalMinutes(), goalTask.getCron(),
+                newDesc, goalTask.getMakerAgent(), goalTask.getCheckerAgent(),
+                goalTask.isWorktreeEnabled(), goalTask.getChannelNotify(),
+                goalTask.getMaxIterations(), goalTask.getWorkspace()
+        );
+
+        // 更新调度器中的任务（保留 enabled 状态，不重置迭代）
+        scheduler.update(sessionId, workspace, harnessSessions, GOAL_TASK_ID, updated);
+
+        // 如果任务正在运行，注入 objective_updated steering 让模型知道目标已变更
+        if (updated.isRunning()) {
+            String steering = LoopScheduler.buildObjectiveUpdatedSteering(newDesc);
+            boolean injected = scheduler.injectSteering(sessionId, workspace, harnessSessions, GOAL_TASK_ID, steering);
+            if (injected) {
+                ctx.println(ctx.color(CYAN + "  Steering injected: AI will adjust to the new objective." + RESET));
+            }
+        }
+
+        ctx.println(ctx.color(GREEN + "Goal updated:" + RESET));
+        ctx.println(ctx.color("  " + DIM + "Old: " + goalTask.getGoalCondition() + RESET));
+        ctx.println(ctx.color("  " + MAGENTA + "New: " + newDesc + RESET));
+        ctx.println(ctx.color("  " + DIM + "Progress: " + updated.getCurrentIteration()
+                  + "/" + updated.getMaxIterations() + " (preserved)" + RESET));
     }
 
     /**
@@ -276,10 +360,27 @@ public class GoalCommand implements Command {
         );
     }
 
-    private String formatAgo(Instant instant) {
+    /**
+     * 格式化时间间隔（"3s ago", "5m ago", "2h ago"）
+     */
+    static String formatAgo(Instant instant) {
         long seconds = Duration.between(instant, Instant.now()).getSeconds();
         if (seconds < 60) return seconds + "s ago";
         if (seconds < 3600) return (seconds / 60) + "m ago";
         return (seconds / 3600) + "h ago";
+    }
+
+    /**
+     * 格式化已耗时（"3s", "5m", "2h 3m"）
+     */
+    static String formatElapsed(Instant since) {
+        long seconds = Duration.between(since, Instant.now()).getSeconds();
+        if (seconds < 60) return seconds + "s";
+        long h = seconds / 3600;
+        long m = (seconds % 3600) / 60;
+        if (h > 0) {
+            return m > 0 ? h + "h " + m + "m" : h + "h";
+        }
+        return m + "m";
     }
 }
