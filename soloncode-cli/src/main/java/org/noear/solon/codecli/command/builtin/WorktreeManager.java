@@ -22,6 +22,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -68,22 +70,23 @@ public class WorktreeManager {
             return null;
         }
 
-        File baseDir = new File(basePath);
-        String worktreePath = new File(baseDir, worktreeDir + "/" + branchName).getAbsolutePath();
+        Path baseDir = Paths.get(basePath);
+        Path worktreePath = baseDir.resolve(worktreeDir).resolve(branchName).toAbsolutePath();
         String fullBranch = LOOP_PREFIX + branchName;
+        String worktreePathStr = worktreePath.toString();
 
         // 先尝试创建新分支
-        String output = execGit(baseDir, "worktree", "add", worktreePath, "-b", fullBranch);
+        String output = execGit(baseDir.toFile(), "worktree", "add", worktreePathStr, "-b", fullBranch);
         if (output != null) {
-            log.info("Created worktree with new branch '{}' at: {}", fullBranch, worktreePath);
-            return worktreePath;
+            log.info("Created worktree with new branch '{}' at: {}", fullBranch, worktreePathStr);
+            return worktreePathStr;
         }
 
         // 分支已存在，直接用已有分支
-        output = execGit(baseDir, "worktree", "add", worktreePath, fullBranch);
+        output = execGit(baseDir.toFile(), "worktree", "add", worktreePathStr, fullBranch);
         if (output != null) {
-            log.info("Created worktree with existing branch '{}' at: {}", fullBranch, worktreePath);
-            return worktreePath;
+            log.info("Created worktree with existing branch '{}' at: {}", fullBranch, worktreePathStr);
+            return worktreePathStr;
         }
 
         log.warn("Failed to create worktree for branch '{}'", branchName);
@@ -100,8 +103,8 @@ public class WorktreeManager {
             return;
         }
 
-        File worktreeDir = new File(worktreePath);
-        File gitRoot = findGitRoot(worktreeDir);
+        Path worktree = Paths.get(worktreePath);
+        File gitRoot = findGitRoot(worktree.toFile());
         if (gitRoot == null) {
             log.warn("Cannot find git root for worktree: {}", worktreePath);
             return;
@@ -111,7 +114,7 @@ public class WorktreeManager {
         execGit(gitRoot, "worktree", "remove", worktreePath, "--force");
 
         // 尝试推导分支名并删除分支
-        String dirName = worktreeDir.getName();
+        String dirName = worktree.getFileName().toString();
         String branchName = LOOP_PREFIX + dirName;
         execGit(gitRoot, "branch", "-D", branchName);
 
@@ -143,12 +146,13 @@ public class WorktreeManager {
             return;
         }
 
-        File baseDir = new File(basePath);
-        String output = execGit(baseDir, "worktree", "list", "--porcelain");
+        Path baseDir = Paths.get(basePath);
+        String output = execGit(baseDir.toFile(), "worktree", "list", "--porcelain");
         if (output == null) {
             return;
         }
 
+        // 用 porcelain 格式解析：只收集 branch 以 loop/ 开头的 worktree
         List<String> loopWorktrees = new ArrayList<>();
         String currentWorktree = null;
 

@@ -52,10 +52,6 @@ public class AgentProperties implements Serializable {
     public final static String X_SESSION_ID = "X-Session-Id";
     public final static String X_SESSION_CWD = "X-Session-Cwd";
 
-
-    //马具目录
-    private final String harnessHome;
-
     //主代理工具权限
     private List<String> tools = new CopyOnWriteArrayList<>();
 
@@ -132,85 +128,6 @@ public class AgentProperties implements Serializable {
     private String wsEndpoint = "/ws";
 
 
-    public AgentProperties() {
-        this.harnessHome =".soloncode/";
-    }
-
-    /**
-     * 当前目录
-     */
-    public static String getUserDir() {
-        return System.getProperty("user.dir");
-    }
-
-    /**
-     * 用户主目录
-     */
-    public static String getUserHome() {
-        return System.getProperty("user.home");
-    }
-
-    public  String getUserExtensions(){
-       return Paths.get(getUserHome(), getHarnessHome(), "extensions").toString();
-    }
-
-    public URL getConfigUrl() throws MalformedURLException {
-        //1. 工作区配置
-        Path path = Paths.get(getUserDir(), getHarnessHome(), NAME_CONFIG_YML);
-        if (Files.exists(path)) {
-            return path.toUri().toURL();
-        }
-
-        //2. 用户目录区配置
-        path = Paths.get(getUserHome(), getHarnessHome(), NAME_CONFIG_YML);
-
-        if (Files.exists(path)) {
-            return path.toUri().toURL();
-        }
-
-        return null;
-    }
-
-    public URL getAgentsUrl() throws MalformedURLException {
-        //1. 工作区配置
-        Path path = Paths.get(getUserDir(), getHarnessHome(), NAME_AGENTS_MD);
-        if (Files.exists(path)) {
-            return path.toUri().toURL();
-        }
-
-        //2. 用户目录区配置
-        path = Paths.get(getUserHome(), getHarnessHome(), NAME_AGENTS_MD);
-
-        if (Files.exists(path)) {
-            return path.toUri().toURL();
-        }
-
-        return null;
-    }
-
-    public String getAgentsMd() {
-        try {
-            URL agentsUrl = getAgentsUrl();
-
-            if (agentsUrl != null) {
-                try (InputStream is = agentsUrl.openStream()) {
-                    String content = IoUtil.transferToString(is, "utf-8").trim();
-
-                    if (content.length() > 10000) { // 例如限制在 1万字符以内
-                        LOG.warn("AGENTS.md is too large, truncating...");
-                        return content.substring(0, 10000);
-                    }
-                    return content;
-                }
-            }
-        } catch (Throwable e) {
-            LOG.warn("AGENTS.md load failure: {}", e.getMessage(), e);
-        }
-
-        return null;
-    }
-
-
     //---------------
 
     /**
@@ -235,73 +152,151 @@ public class AgentProperties implements Serializable {
 
     //--------------------------
 
+
+    //马具目录
+    private static final String harnessHome = ".soloncode/";
+
+    /**
+     * 当前目录
+     */
+    public static String getUserDir() {
+        return System.getProperty("user.dir");
+    }
+
+    /**
+     * 用户主目录
+     */
+    public static String getUserHome() {
+        return System.getProperty("user.home");
+    }
+
+    public static String getUserExtensions() {
+        return Paths.get(getUserHome(), getHarnessHome(), "extensions").toString();
+    }
+
+    public static URL getConfigUrl() throws MalformedURLException {
+        //1. 工作区配置
+        Path path = Paths.get(getUserDir(), getHarnessHome(), NAME_CONFIG_YML);
+        if (Files.exists(path)) {
+            return path.toUri().toURL();
+        }
+
+        //2. 用户目录区配置
+        path = Paths.get(getUserHome(), getHarnessHome(), NAME_CONFIG_YML);
+
+        if (Files.exists(path)) {
+            return path.toUri().toURL();
+        }
+
+        return null;
+    }
+
+    public static URL getAgentsUrl() throws MalformedURLException {
+        //1. 工作区配置
+        Path path = Paths.get(getUserDir(), getHarnessHome(), NAME_AGENTS_MD);
+        if (Files.exists(path)) {
+            return path.toUri().toURL();
+        }
+
+        //2. 用户目录区配置
+        path = Paths.get(getUserHome(), getHarnessHome(), NAME_AGENTS_MD);
+
+        if (Files.exists(path)) {
+            return path.toUri().toURL();
+        }
+
+        return null;
+    }
+
+    public static String getAgentsMd() {
+        try {
+            URL agentsUrl = getAgentsUrl();
+
+            if (agentsUrl != null) {
+                try (InputStream is = agentsUrl.openStream()) {
+                    String content = IoUtil.transferToString(is, "utf-8").trim();
+
+                    if (content.length() > 10000) { // 例如限制在 1万字符以内
+                        LOG.warn("AGENTS.md is too large, truncating...");
+                        return content.substring(0, 10000);
+                    }
+                    return content;
+                }
+            }
+        } catch (Throwable e) {
+            LOG.warn("AGENTS.md load failure: {}", e.getMessage(), e);
+        }
+
+        return null;
+    }
+
     /**
      * 马具主目录
      */
-    public final String getHarnessHome() {
+    public static final String getHarnessHome() {
         return harnessHome;
     }
 
     /**
      * 马具会话存放区
      */
-    public final String getHarnessSessions() {
+    public static final String getHarnessSessions() {
         return getHarnessHome() + "sessions/";
     }
 
     /**
      * 马具技能存放区
      */
-    public final String getHarnessSkills() {
+    public static final String getHarnessSkills() {
         return getHarnessHome() + "skills/";
     }
 
     /**
      * 马具子代理描述存放区
      */
-    public final String getHarnessAgents() {
+    public static final String getHarnessAgents() {
         return getHarnessHome() + "agents/";
     }
 
     /**
      * 马具命令描述存放区
      */
-    public final String getHarnessCommands() {
+    public static final String getHarnessCommands() {
         return getHarnessHome() + "commands/";
     }
 
     /**
      * 马具记忆存放区
      */
-    public final String getHarnessMemory() {
+    public static final String getHarnessMemory() {
         return getHarnessHome() + "memory/";
     }
 
     /**
      * 马具下载存放区
      */
-    public final String getHarnessDownload() {
+    public static final String getHarnessDownload() {
         return getHarnessHome() + "download/";
     }
 
     /**
      * 马具连接通道存放区
      */
-    public final String getHarnessChannels() {
+    public static final String getHarnessChannels() {
         return getHarnessHome() + "channels/";
     }
 
     /**
      * 马具循环任务状态存放区
      */
-    public final String getHarnessLoops() {
+    public static final String getHarnessLoops() {
         return getHarnessHome() + "loops/";
     }
 
     /**
      * 马具循环任务 worktree 存放区
      */
-    public final String getHarnessLoopWorktrees() {
+    public static final String getHarnessLoopWorktrees() {
         return getHarnessHome() + "loop-worktrees/";
     }
 }

@@ -45,7 +45,7 @@ public class App {
         AgentProperties agentProps = new AgentProperties();
 
         //配置用户扩展目录
-        System.setProperty("solon.extend", "!" + agentProps.getUserExtensions());
+        System.setProperty("solon.extend", "!" + AgentProperties.getUserExtensions());
 
         Solon.start(App.class, args, app -> {
             initAgentProperties(app, agentProps);
@@ -55,7 +55,7 @@ public class App {
     private static void initAgentProperties(SolonApp app, AgentProperties c) throws Exception {
         //加载配置文件
 
-        URL configUrl = c.getConfigUrl();
+        URL configUrl = AgentProperties.getConfigUrl();
 
         app.cfg().loadAdd(configUrl);
 

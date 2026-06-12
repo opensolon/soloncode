@@ -57,14 +57,14 @@ public class LoopStateManager {
      * 获取 loop 状态目录的根路径（.soloncode/loops/）
      */
     public static Path getLoopBaseDir(String workspace) {
-        return Paths.get(workspace, new AgentProperties().getHarnessLoops());
+        return Paths.get(workspace, AgentProperties.getHarnessLoops());
     }
 
     /**
      * 获取指定任务的状态目录路径
      */
     public static Path getStateDir(String workspace, String loopId) {
-        return Paths.get(workspace, new AgentProperties().getHarnessLoops(), loopId);
+        return Paths.get(workspace, AgentProperties.getHarnessLoops(), loopId);
     }
 
     /**
