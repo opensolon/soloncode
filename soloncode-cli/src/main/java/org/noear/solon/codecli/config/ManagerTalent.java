@@ -19,10 +19,7 @@ import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.talent.AbsTalent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.Param;
-import org.noear.solon.codecli.command.builtin.GoalCommand;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
-import org.noear.solon.codecli.command.builtin.LoopTask;
-import org.noear.solon.codecli.command.builtin.LoopStateManager;
+
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
@@ -41,12 +38,9 @@ import java.util.Map;
 public class ManagerTalent extends AbsTalent {
     private final HarnessEngine engine;
     private final AgentSettings settings;
-    private final LoopScheduler loopScheduler;
-
-    public ManagerTalent(HarnessEngine engine, AgentSettings settings, LoopScheduler loopScheduler) {
+    public ManagerTalent(HarnessEngine engine, AgentSettings settings) {
         this.engine = engine;
         this.settings = settings;
-        this.loopScheduler = loopScheduler;
     }
 
 
@@ -176,83 +170,4 @@ public class ManagerTalent extends AbsTalent {
         return "OK: API 源 '" + docUrl + "' 已添加";
     }
 
-    // ==================== create_goal ====================
-
-    @ToolMapping(name = "create_goal",
-            description = "创建自主目标让 AI 持续迭代执行，直到目标达成或迭代耗尽。" +
-                    "创建后 AI 会自动反复执行、自我评估进度，无需人工干预。" +
-                    "适用于多轮迭代的复杂任务：修复测试、重构模块、排查问题等。" +
-                    "描述务必具体可验证，例如 'fix all failing tests' 而非 'improve code quality'。")
-    public String createGoal(
-            @Param(name = "description", description = "目标描述，务必具体可验证（如 'fix all failing tests in auth module'）") String description,
-            @Param(name = "maxIterations", description = "最大迭代次数，默认 30（可选）", required = false) Integer maxIterations,
-            String __sessionId) {
-
-        // 基本合理性校验
-        if (description == null || description.trim().isEmpty()) {
-            return "ERROR: 目标描述不能为空。请提供具体、可验证的目标描述。";
-        }
-        if (description.trim().length() < 5) {
-            return "ERROR: 目标描述过短（至少 5 个字符）。目标应描述具体、可验证的结果。\n" +
-                   "  示例: fix all failing tests\n" +
-                   "  示例: refactor the auth module to use JWT";
-        }
-
-        String goalCondition = description.trim();
-        int maxIter = maxIterations != null ? maxIterations : 30;
-        String workspace = engine.getWorkspace();
-        String harnessSessions = engine.getHarnessSessions();
-
-        // 检查是否已有活跃 goal
-        LoopTask existing = loopScheduler.getTaskById(__sessionId, GoalCommand.getGoalTaskId());
-        if (existing != null && !existing.isCancelled()) {
-            return "ERROR: 已有活跃目标: '" + existing.getGoalCondition() +
-                   "' (进度: " + existing.getCurrentIteration() + "/" + existing.getMaxIterations() + ")\n" +
-                   "请先通过 /goal clear 清除当前目标，或通过 /goal edit 修改。";
-        }
-
-        // 创建即时模式任务
-        LoopTask goalTask = GoalCommand.createGoalTask(goalCondition, goalCondition, maxIter, workspace);
-
-        // 初始化状态目录
-        LoopStateManager.init(workspace, goalTask.getId(), goalCondition);
-
-        // 注册并立即执行
-        try {
-            loopScheduler.scheduleNow(__sessionId, workspace, harnessSessions, goalTask);
-        } catch (IllegalStateException e) {
-            LoopStateManager.cleanup(workspace, goalTask.getId());
-            return "ERROR: 创建目标失败: " + e.getMessage();
-        }
-
-        return "OK: 目标已创建并开始执行\n" +
-               "  目标: " + goalCondition + "\n" +
-               "  最大迭代: " + maxIter + "\n" +
-               "  控制命令: /goal (查看状态), /goal pause (暂停), /goal edit (修改), /goal clear (清除)";
-    }
-
-    // ==================== goal_status ====================
-
-    @ToolMapping(name = "goal_status", description = "查询当前活跃目标的进度、状态和最近结果。无活跃目标时返回提示信息。")
-    public String goalStatus(String __sessionId) {
-
-        LoopTask goalTask = loopScheduler.getTaskById(__sessionId, GoalCommand.getGoalTaskId());
-        if (goalTask == null || goalTask.isCancelled()) {
-            return "当前没有活跃目标。可使用 create_goal 创建新目标。";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("目标: ").append(goalTask.getGoalCondition()).append("\n");
-        sb.append("状态: ");
-        if (goalTask.isRunning()) sb.append("running");
-        else if (!goalTask.isEnabled()) sb.append("paused");
-        else sb.append("ready");
-        sb.append("\n");
-        sb.append("进度: ").append(goalTask.getCurrentIteration())
-          .append("/").append(goalTask.getMaxIterations());
-        if (goalTask.getLastResult() != null) {
-            sb.append("\n最近结果: ").append(goalTask.getLastResult());
-        }
-        return sb.toString();
-    }
 }

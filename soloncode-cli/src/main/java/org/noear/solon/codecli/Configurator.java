@@ -197,7 +197,7 @@ public class Configurator {
         engine.getCommandRegistry().register(new GoalCommand(loopScheduler));
 
 
-        engine.addExtension(new ManagerExtension(engine, agentSettings, loopScheduler));
+        engine.addExtension(new ManagerExtension(engine, agentSettings));
 
         return engine;
     }

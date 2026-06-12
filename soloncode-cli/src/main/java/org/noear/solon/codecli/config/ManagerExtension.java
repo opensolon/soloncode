@@ -4,7 +4,7 @@ import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
+
 
 /**
  *
@@ -14,14 +14,12 @@ import org.noear.solon.codecli.command.builtin.LoopScheduler;
 public class ManagerExtension implements HarnessExtension {
     private final HarnessEngine engine;
     private final AgentSettings settings;
-    private final LoopScheduler loopScheduler;
     private final ManagerTalent managerTalent;
 
-    public ManagerExtension(HarnessEngine engine, AgentSettings settings, LoopScheduler loopScheduler) {
+    public ManagerExtension(HarnessEngine engine, AgentSettings settings) {
         this.engine = engine;
         this.settings = settings;
-        this.loopScheduler = loopScheduler;
-        this.managerTalent = new ManagerTalent(engine, settings, loopScheduler);
+        this.managerTalent = new ManagerTalent(engine, settings);
     }
 
     @Override
