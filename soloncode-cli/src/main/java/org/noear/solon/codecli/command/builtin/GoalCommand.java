@@ -38,7 +38,7 @@ import java.time.Instant;
  * </pre>
  *
  * @author noear
- * @since 2026.6.12
+ * @since 2026.6.13
  */
 public class GoalCommand implements Command {
     private static final String GOAL_TASK_ID = "goal";
