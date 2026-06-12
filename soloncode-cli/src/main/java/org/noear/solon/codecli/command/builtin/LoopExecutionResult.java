@@ -29,11 +29,14 @@ import lombok.Getter;
 @Getter
 public class LoopExecutionResult {
     public static final String GOAL_ACHIEVED = "[GOAL_ACHIEVED]";
+    public static final String PASS = "[PASS]";
 
     private final boolean submitted;
     private final boolean completed;
+
     private final boolean goalAchieved;
     private final boolean checkerPassed;
+
     private final String makerResult;
     private final String checkerResult;
     private final String finalResult;
@@ -86,11 +89,11 @@ public class LoopExecutionResult {
                 null);
     }
 
-    public static boolean containsGoalAchieved(String text) {
+    private static boolean containsGoalAchieved(String text) {
         return text != null && text.contains(GOAL_ACHIEVED);
     }
 
     private static boolean containsPass(String text) {
-        return text != null && text.contains("[PASS]");
+        return text != null && text.contains(PASS);
     }
 }

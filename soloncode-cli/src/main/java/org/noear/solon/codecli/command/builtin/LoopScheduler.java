@@ -68,9 +68,6 @@ public class LoopScheduler {
     // Worktree 目录名
     private final String worktreeDir;
 
-    // IM 通道列表（用于通知）
-    private volatile List<Channel> channels = new ArrayList<>();
-
     /**
      * CLI 端任务执行器（同步阻塞）
      *
@@ -168,11 +165,6 @@ public class LoopScheduler {
      */
     public void remove(String sessionId, String workspace, String harnessSessions, LoopTask task) {
         LOG.info("Removing loop task '{}' from session '{}'", task.getId(), sessionId);
-        List<LoopTask> tasks = sessionTasks.get(sessionId);
-        if (tasks == null) {
-            LOG.warn("Loop task '{}' remove failed: no tasks found for session '{}'", task.getId(), sessionId);
-            return;
-        }
 
         task.cancel();
         String jobName = task.getJobName();
@@ -190,6 +182,14 @@ public class LoopScheduler {
                 LOG.warn("Loop task '{}' worktree cleanup failed on remove: {}", task.getId(), e.getMessage());
             }
         }
+
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks == null) {
+            LOG.warn("Loop task '{}' remove failed: no tasks found for session '{}'", task.getId(), sessionId);
+            return;
+        }
+
+        tasks.removeIf(t -> t.getId().equals(task.getId()));
 
         saveToFile(sessionId, workspace, harnessSessions, tasks);
     }
@@ -477,8 +477,7 @@ public class LoopScheduler {
                 // Goal 条件检查 — 解析 AI 响应中的 [GOAL_ACHIEVED] 标记
                 // maker/checker 模式下，checker 的 [PASS] 也视为 goal 达成（AI 常漏输出 [GOAL_ACHIEVED]）
                 boolean goalMet = executionResult != null &&
-                        (executionResult.isGoalAchieved() ||
-                         (task.isMakerCheckerMode() && executionResult.isCheckerPassed()));
+                        (executionResult.isGoalAchieved() || executionResult.isCheckerPassed());
                 if (goalMet) {
                     LOG.info("Loop task '{}' goal achieved at iteration {}", task.getId(), iteration);
                     if (task.getWorkspace() != null) {
@@ -486,7 +485,6 @@ public class LoopScheduler {
                         LoopStateManager.cleanup(task.getWorkspace(), task.getId());
                     }
                     remove(sessionId, workspace, harnessSessions, task);
-                    notifyChannels(sessionId, task);
                     return;
                 }
 
@@ -499,7 +497,6 @@ public class LoopScheduler {
                     }
 
                     remove(sessionId, workspace, harnessSessions, task);
-                    notifyChannels(sessionId, task);
                     return;
                 }
 
@@ -515,9 +512,6 @@ public class LoopScheduler {
                     LOG.debug("Loop task '{}' worktree cleaned up", task.getId());
                 }
             }
-
-            // Phase 5: 通道通知
-            notifyChannels(sessionId, task);
 
         } catch (Exception e) {
             LOG.error("Loop task '{}' failed: {}", task.getId(), e.getMessage());
@@ -551,8 +545,7 @@ public class LoopScheduler {
             goalPrompt.append("<objective>\n");
             goalPrompt.append(task.getGoalCondition()).append("\n");
             goalPrompt.append("</objective>\n\n");
-            goalPrompt.append("Progress: iteration ").append(task.getCurrentIteration())
-                    .append("/").append(task.getMaxIterations()).append("\n");
+            goalPrompt.append("Progress: iteration ").append(task.getCurrentIteration()).append("/").append(task.getMaxIterations()).append("\n");
             goalPrompt.append("\nIf the goal is achieved, respond with [GOAL_ACHIEVED].");
 
             prompt = prompt + goalPrompt;
@@ -676,48 +669,6 @@ public class LoopScheduler {
 
         sessionTasks.clear();
         LOG.info("LoopScheduler shutdown: all tasks cancelled and removed from IJobManager");
-    }
-
-    // ==================== 通道通知 ====================
-
-    /**
-     * 通过 IM 通道通知 loop 执行结果
-     */
-    private void notifyChannels(String sessionId, LoopTask task) {
-        if (channels.isEmpty()) {
-            return;
-        }
-
-        // 构建通知消息
-        StringBuilder msg = new StringBuilder();
-        msg.append("[Loop #").append(task.getId()).append("] ");
-        msg.append(task.getPrompt());
-        if (task.getLastResult() != null) {
-            msg.append(" → ").append(task.getLastResult());
-        }
-        if (task.isGoalMode()) {
-            msg.append(" (iter: ").append(task.getCurrentIteration()).append("/").append(task.getMaxIterations()).append(")");
-        }
-
-        String message = msg.toString();
-        boolean sent = false;
-
-        // 遍历所有已绑定的 IM 通道，自动推送通知
-        for (Channel ch : channels) {
-            if (ch.isBound(sessionId)) {
-                try {
-                    ch.sendReply(sessionId, message, true);
-                    sent = true;
-                    LOG.debug("Loop task '{}' notified via {}", task.getId(), ch.getChannelName());
-                } catch (Exception e) {
-                    LOG.warn("Failed to notify via {}: {}", ch.getChannelName(), e.getMessage());
-                }
-            }
-        }
-
-        if (!sent) {
-            LOG.debug("Loop task '{}' no bound channel found (notification skipped)", task.getId());
-        }
     }
 
     // ==================== JSON 持久化 ====================

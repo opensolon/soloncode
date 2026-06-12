@@ -43,7 +43,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class LoopTask {
     private static final int MIN_INTERVAL = 0; // 0 = 即时模式（goal 专用）
     private static final int MAX_INTERVAL = 1440; // 24h
-    private static final int DEFAULT_AUTO_INTERVAL = 5;
     private static final int EXPIRE_DAYS = 7;
     private static final int DEFAULT_MAX_ITERATIONS = 20;
 
@@ -91,13 +90,6 @@ public class LoopTask {
         this(prompt, 0, cron, null, null, null, false, null,  null);
     }
 
-    /**
-     * 自动间隔构造（由 AI 决定间隔）
-     */
-    public LoopTask(String prompt, boolean autoInterval) {
-        this(prompt, DEFAULT_AUTO_INTERVAL, null, null, null, null, false, null,  null);
-        // autoInterval 字段需特殊处理
-    }
 
     /**
      * 全参数构造（由 Builder、copyWithUpdate 调用）
