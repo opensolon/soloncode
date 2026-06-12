@@ -218,10 +218,7 @@ public class CliShell implements Runnable {
 
                     input = reader.readLine(CYAN + "❯ " + RESET).trim();
                 } catch (UserInterruptException e) {
-                    // Ctrl+C 退出（与 /exit 行为一致）
-                    terminal.writer().println(DIM + "Bye!" + RESET);
-                    terminal.flush();
-                    break;
+                    continue;
                 } catch (EndOfFileException e) {
                     terminal.writer().println("\nBye!");
                     terminal.flush();
