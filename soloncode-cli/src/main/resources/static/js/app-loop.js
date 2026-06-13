@@ -182,7 +182,7 @@
         data.sessionId = SESSION_ID;
         $.ajax({
             url: '/web/chat/loop/' + action,
-            method: (action === 'list' || action === 'get' || action === 'history' || action === 'state') ? 'GET' : 'POST',
+            method: (action === 'list' || action === 'get') ? 'GET' : 'POST',
             data: data,
             dataType: 'json',
             success: function(res) {
@@ -313,7 +313,7 @@
                     }
                 });
             } else if (action === 'remove') {
-                if (!confirm('确定要删除该循环任务吗？执行历史将被清除。')) return;
+                if (!confirm('确定要删除该循环任务吗？')) return;
                 loopApi('remove', { taskId: id }, function(res) {
                     if (res) { renderLoopList(); showToast('已删除', 'success'); }
                 });
@@ -323,12 +323,7 @@
             }
         });
 
-        // 点击任务行进入详情面板（先 off 防止叠加）
-        $panel.off('click.loopitem').on('click.loopitem', '.loop-item', function(e) {
-            if ($(e.target).closest('.loop-action-btn').length) return;
-            var id = $(this).data('id');
-            renderLoopDetail(id);
-        });
+
     }
 
     // ========== 表单渲染 ==========
@@ -610,141 +605,19 @@
         }
     }
 
-    // ========== 详情面板渲染 ==========
-    function renderLoopDetail(taskId) {
-        var $panel = getActivePanel();
-        $panel.addClass('mode-detail');
-        var panelTop = $panel[0].getBoundingClientRect().top;
-        var safeMaxH = Math.max(370, Math.floor(panelTop) - 16);
-        $panel.css('max-height', Math.min(safeMaxH, 560) + 'px');
 
-        var html = '<div class="loop-panel-header">';
-        html += '<button class="loop-panel-back-btn" id="loopDetailBack"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>';
-        html += '<span class="loop-panel-title">#' + escapeHtml(taskId) + ' 详情</span>';
-        html += '<div class="loop-detail-actions">';
-        html += '<button class="loop-action-btn" id="loopDetailTriggerBtn" title="手动触发"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>';
-        html += '<button class="loop-action-btn" id="loopDetailEditBtn" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
-        html += '</div>';
-        html += '</div>';
-        html += '<div class="loop-detail-tabs">';
-        html += '<button class="loop-detail-tab active" data-dtab="history">执行历史</button>';
-        html += '<button class="loop-detail-tab" data-dtab="state">状态文件</button>';
-        html += '</div>';
-        html += '<div class="loop-detail-content" id="loopDetailContent">';
-        html += '<div class="loop-detail-loading">加载中...</div>';
-        html += '</div>';
 
-        $panel.html(html);
-
-        // 详情面板操作按钮
-        $panel.find('#loopDetailTriggerBtn').on('click', function(e) {
-            e.stopPropagation();
-            loopApi('trigger', { taskId: taskId }, function(res) {
-                if (res) {
-                    showToast('已触发执行', 'success');
-                    if (typeof switchToChatMode === 'function') switchToChatMode();
-                    hideLoopPanel();
-                }
-            });
-        });
-        $panel.find('#loopDetailEditBtn').on('click', function(e) {
-            e.stopPropagation();
-            loopEditId = taskId;
-            $panel.removeClass('mode-detail');
-            renderLoopForm();
-        });
-
-        // 返回按钮
-        $panel.find('#loopDetailBack').on('click', function() {
-            $panel.removeClass('mode-detail');
-            renderLoopList();
-        });
-
-        // Tab 切换（先 off 防止叠加）
-        $panel.off('click.looptab').on('click.looptab', '.loop-detail-tab', function() {
-            var tab = $(this).data('dtab');
-            $panel.find('.loop-detail-tab').removeClass('active');
-            $(this).addClass('active');
-            if (tab === 'history') {
-                loopApi('history', { taskId: taskId }, function(res) {
-                    renderHistoryTab(res);
-                });
-            } else {
-                loopApi('state', { taskId: taskId }, function(res) {
-                    renderStateTab(res);
-                });
-            }
-        });
-
-        // 默认加载历史
-        loopApi('history', { taskId: taskId }, function(res) {
-            if (res) renderHistoryTab(res);
-        });
-    }
-
-    function renderHistoryTab(res) {
-        var $content = getActivePanel().find('#loopDetailContent');
-        if (!$content.length) return;
-        var items = (res && res.data) ? res.data : [];
-        if (items.length === 0) {
-            $content.html('<div class="loop-detail-empty">暂无执行历史</div>');
-            return;
-        }
-        var html = '';
-        // 倒序显示（最新在前）
-        for (var i = items.length - 1; i >= 0; i--) {
-            var h = items[i];
-            var isPass = h.result && (h.result.indexOf('[PASS]') >= 0 || h.result.indexOf('ok') === 0);
-            var isFail = h.result && (h.result.indexOf('[FAIL]') >= 0 || h.result.indexOf('error') === 0);
-            var statusIcon = isPass ? '✓' : (isFail ? '✗' : '·');
-            var statusClass = isPass ? 'pass' : (isFail ? 'fail' : '');
-            html += '<div class="loop-history-item">';
-            html += '<span class="loop-history-status ' + statusClass + '">' + statusIcon + '</span>';
-            html += '<span class="loop-history-iter">#' + (h.iteration || '-') + '</span>';
-            html += '<span class="loop-history-time">' + formatTimeAgo(h.time) + '</span>';
-            var resultText = h.result || '';
-            if (resultText.length > 100) resultText = resultText.substring(0, 100) + '...';
-            html += '<span class="loop-history-result">' + escapeHtml(resultText) + '</span>';
-            html += '</div>';
-        }
-        $content.html(html);
-    }
-
-    function renderStateTab(res) {
-        var $content = getActivePanel().find('#loopDetailContent');
-        if (!$content.length) return;
-        var data = (res && res.data) ? res.data : {};
-        var html = '';
-        var sections = [
-            { key: 'NEXT.md', label: '下一步 (NEXT.md)' },
-            { key: 'PROGRESS.md', label: '进度 (PROGRESS.md)' },
-            { key: 'DECISIONS.md', label: '决策 (DECISIONS.md)' }
-        ];
-        for (var i = 0; i < sections.length; i++) {
-            var s = sections[i];
-            var content = data[s.key] || '';
-            html += '<div class="loop-state-section">';
-            html += '<div class="loop-state-section-title">' + s.label + '</div>';
-            if (content) {
-                html += '<pre class="loop-state-pre">' + escapeHtml(content) + '</pre>';
-            } else {
-                html += '<div class="loop-state-empty">暂无内容</div>';
-            }
-            html += '</div>';
-        }
-        $content.html(html || '<div class="loop-detail-empty">暂无状态文件</div>');
-    }
 
     // ========== 公开 API ==========
     window.refreshLoopPanel = function() {
         if (loopPanelVisible) renderLoopList();
     };
 
-    // 面板显示时移除详情模式 class
+    // 面板显示时移除表单模式 class
     var _origRenderLoopList = renderLoopList;
     renderLoopList = function() {
         var $p = getActivePanel();
-        $p.removeClass('mode-detail mode-form');
+        $p.removeClass('mode-form');
         $p.css('max-height', ''); // 清除手动高度，恢复 CSS 默认值
         _origRenderLoopList();
     };
