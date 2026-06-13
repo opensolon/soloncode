@@ -38,6 +38,11 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
     if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(span);
     if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(span);
 
+    // 长消息或含代码块时放宽气泡宽度，避免被挤成窄高条
+    var hasCodeBlock = $(span).find('pre').length > 0;
+    var isLongUserText = text && text.length > 100;
+    if (hasCodeBlock || isLongUserText) $(row).addClass('wide-user');
+
     var copyBtn = $(row).find('.user-copy-btn')[0];
     $(copyBtn).on('click', function() {
         var txtEl = $(bubble).find('.user-msg-text')[0];
