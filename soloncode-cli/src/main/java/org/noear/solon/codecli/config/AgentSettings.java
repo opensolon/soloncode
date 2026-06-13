@@ -2,16 +2,12 @@ package org.noear.solon.codecli.config;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.noear.solon.codecli.config.entity.*;
 import org.noear.solon.core.util.Assert;
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.codecli.config.entity.ApiSourceDo;
-import org.noear.solon.codecli.config.entity.McpServerDo;
-import org.noear.solon.codecli.config.entity.ModelDo;
-import org.noear.solon.codecli.config.entity.LspServerDo;
-import org.noear.solon.codecli.config.entity.MountDo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,9 +15,7 @@ import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,9 +30,9 @@ public class AgentSettings implements Serializable {
     private static final Logger LOG = LoggerFactory.getLogger(AgentSettings.class);
 
     //general 常规
-    private final GeneralSettings general = new GeneralSettings();
+    private final GeneralGroupDo general = new GeneralGroupDo();
     //permission 权限
-    private final PermissionSettings permission = new PermissionSettings();
+    private final PermissionGroupDo permission = new PermissionGroupDo();
 
     //defaultModel
     private String defaultModel;

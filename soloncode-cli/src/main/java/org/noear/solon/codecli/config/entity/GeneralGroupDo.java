@@ -1,11 +1,9 @@
-package org.noear.solon.codecli.config;
+package org.noear.solon.codecli.config.entity;
 
 import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  *
@@ -14,7 +12,7 @@ import java.util.List;
  */
 @Getter
 @Setter
-public class GeneralSettings implements Serializable {
+public class GeneralGroupDo implements Serializable {
     //会话历史窗口大小（即，新指令时使用几条历史消息）
     private Integer sessionWindowSize;
     //上下文压缩触发消息数（达到这个数，就开始触发）

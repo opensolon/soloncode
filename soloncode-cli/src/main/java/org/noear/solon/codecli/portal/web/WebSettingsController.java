@@ -36,7 +36,7 @@ import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.config.GeneralSettings;
+import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
 import org.noear.solon.codecli.config.entity.LspServerDo;
@@ -143,7 +143,7 @@ public class WebSettingsController {
      */
     @Get
     @Mapping("/web/settings/general")
-    public Result<GeneralSettings> generalGet() {
+    public Result<GeneralGroupDo> generalGet() {
         return Result.succeed(settings.getGeneral());
     }
 
