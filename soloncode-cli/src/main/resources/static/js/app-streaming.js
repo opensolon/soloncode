@@ -205,7 +205,6 @@ function finishStream(sess) {
         scrollToBottom(true);
         chatInput.focus();
     }
-    loadSessionHistory();
 
     // 刷新任务面板
     if (window.loadTodos) window.loadTodos();

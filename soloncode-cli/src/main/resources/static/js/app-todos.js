@@ -126,7 +126,7 @@
                 }
                 // 写入会话级缓存，驱动侧边栏 badge 更新
                 window.sessionTodoMap = window.sessionTodoMap || {};
-                var sid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
+                var sid = chunk.sessionId;
                 if (sid) {
                     window.sessionTodoMap[sid] = { done: stats.done, total: stats.total };
                     if (typeof updateHistoryUI === 'function') updateHistoryUI();
