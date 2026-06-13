@@ -293,6 +293,7 @@ public class AgentSettings implements Serializable {
 
     public String getGlobalJson(boolean isLocalAsGlobal) {
         ONode oNode = new ONode(Options.of(Feature.Write_PrettyFormat));
+        oNode.set("$schema", "https://solon.noear.org/soloncode/settings.schema.json");
 
         oNode.getOrNew("general").fill(general);
 
@@ -372,6 +373,7 @@ public class AgentSettings implements Serializable {
 
     public String getLocalJson() {
         ONode oNode = new ONode(Options.of(Feature.Write_PrettyFormat));
+        oNode.set("$schema", "https://solon.noear.org/soloncode/settings.schema.json");
 
         oNode.getOrNew("models").asObject().then(map -> {
             for (Map.Entry<String, ModelDo> entry : models.entrySet()) {
