@@ -1,4 +1,11 @@
 
+### v2026.6.15
+
+* 添加 soloncode web edit 工具（gitdiff 显示）
+* 添加 soloncode web write 工具语法亮显显示
+* 调整 soloncode loop 任务列表与编辑简化
+* 修复 soloncode web 左侧面板 todo 进度（非当前对话）不更新的问题
+* 细节优化
 
 ### v2026.6.14
 
