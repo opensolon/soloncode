@@ -344,6 +344,49 @@ public class WebStreamBuilder {
                         webChunk.setText(content);
                     }
                 }
+
+                if (TerminalTalent.TOOL_EDIT.equals(chunk.getToolName())) {
+                    List<Map<String, Object>> edits = (List<Map<String, Object>>) chunk.getArgs().get(TerminalTalent.PARAM_EDITS);
+
+                    if (edits != null && !edits.isEmpty()) {
+                        StringBuilder diffText = new StringBuilder();
+                        String filePath = (String) chunk.getArgs().get("file_path");
+
+                        if (Assert.isNotEmpty(filePath)) {
+                            diffText.append("--- a/").append(filePath).append("\n");
+                            diffText.append("+++ b/").append(filePath).append("\n");
+                        }
+
+                        int oldLine = 0, newLine = 0;
+
+                        for (Map<String, Object> edit : edits) {
+                            String oldStr = (String) edit.get("old_str");
+                            String newStr = (String) edit.get("new_str");
+
+                            if (oldStr == null) {
+                                continue;
+                            }
+
+                            String[] oldLines = oldStr.split("\n", -1);
+                            String[] newLines = (newStr != null ? newStr.split("\n", -1) : new String[0]);
+
+                            diffText.append("@@ -").append(oldLine + 1).append(",").append(oldLines.length)
+                                    .append(" +").append(newLine + 1).append(",").append(newLines.length).append(" @@\n");
+
+                            for (String line : oldLines) {
+                                diffText.append("-").append(line).append("\n");
+                                oldLine++;
+                            }
+
+                            for (String line : newLines) {
+                                diffText.append("+").append(line).append("\n");
+                                newLine++;
+                            }
+                        }
+
+                        webChunk.setText(diffText.toString());
+                    }
+                }
             }
 
             return webChunk;

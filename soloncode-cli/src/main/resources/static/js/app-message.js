@@ -233,7 +233,62 @@ function appendActionEndChunk(sess, toolName, text, args) {
         + '</div>'
         + '<div class="tool-card-body"></div>';
 
-    $(card).find('.tool-card-body').text(text || '');
+    // edit 工具且文本为 diff 格式时，以 git-diff 风格渲染
+    if (toolName === 'edit' && text && text.startsWith('---')) {
+        var body = $(card).find('.tool-card-body')[0];
+        body.style.padding = '0';
+        body.style.maxHeight = '400px';
+        body.style.overflow = 'auto';
+        body.style.fontFamily = 'var(--font-mono)';
+        body.style.fontSize = '12px';
+        body.style.lineHeight = '1.5';
+
+        var lines = text.split('\n');
+        var html = '';
+        var oldLineNo = 0, newLineNo = 0;
+        var hunkRe = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
+
+        for (var i = 0; i < lines.length; i++) {
+            var rawLine = lines[i];
+            var line = escapeHtml(rawLine);
+
+            if (rawLine.startsWith('+++') || rawLine.startsWith('---')) {
+                html += '<div class="git-diff-line git-line-head">'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-text">' + line + '</span></div>';
+            } else if (rawLine.startsWith('@@')) {
+                var m = rawLine.match(hunkRe);
+                if (m) {
+                    oldLineNo = parseInt(m[1], 10);
+                    newLineNo = parseInt(m[2], 10);
+                }
+                html += '<div class="git-diff-line git-line-hunk">'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-text">' + line + '</span></div>';
+            } else if (rawLine.startsWith('+')) {
+                html += '<div class="git-diff-line git-line-add">'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                    + '<span class="git-line-text">' + line + '</span></div>';
+            } else if (rawLine.startsWith('-')) {
+                html += '<div class="git-diff-line git-line-del">'
+                    + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                    + '<span class="git-line-num"></span>'
+                    + '<span class="git-line-text">' + line + '</span></div>';
+            } else {
+                html += '<div class="git-diff-line git-line-ctx">'
+                    + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                    + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                    + '<span class="git-line-text">' + line + '</span></div>';
+            }
+        }
+        body.innerHTML = html;
+    } else {
+        $(card).find('.tool-card-body').text(text || '');
+    }
+
     $(card).find('.tool-card-header').on('click', function() {
         $(card).toggleClass('expanded');
     });
