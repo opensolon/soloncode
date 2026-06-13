@@ -5,6 +5,7 @@
 * 调整 soloncode 向去 config.yml 过度（当产生 setting.json 后移除 config.yml）
 * 修复 soloncode web 新对话发送 command 对话记录没名字的问题
 * 修复 soloncode loop maker/checker 模式下无法停止的问题
+* 细节优化
 
 ### v2026.6.13
 
