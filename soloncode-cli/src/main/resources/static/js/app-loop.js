@@ -361,10 +361,6 @@
         html += '<input type="text" class="loop-input" id="loopFormPrompt" placeholder=""/>';
         html += '</div>';
         html += '<div class="loop-form-group">';
-        html += '<label>目标完成检测描述（goal）</label>';
-        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder=""/>';
-        html += '</div>';
-        html += '<div class="loop-form-group">';
         html += '<label>间隔</label>';
         html += '<div class="loop-interval-row">';
         html += '<label class="loop-radio"><input type="radio" name="loopScheduleType" value="interval" checked/> 固定间隔</label>';
@@ -378,6 +374,10 @@
         html += '</div>';
         html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略</span></div>';
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
+        html += '<div class="loop-form-group">';
+        html += '<label>目标完成检测描述（goal）</label>';
+        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder=""/>';
+        html += '</div>';
         html += '<div class="loop-form-group"><label>执行子代理</label><select class="loop-input" id="loopFormMaker">' + buildSubagentOptions() + '</select></div>';
         html += '<div class="loop-form-group"><label>验证子代理</label><select class="loop-input" id="loopFormChecker">' + buildSubagentOptions() + '</select></div>';
         html += '<div class="loop-form-group loop-form-inline">';

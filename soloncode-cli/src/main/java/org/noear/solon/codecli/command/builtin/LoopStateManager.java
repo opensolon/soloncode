@@ -79,19 +79,19 @@ public class LoopStateManager {
             // 创建 NEXT.md（初始内容为用户的 prompt）
             if (!Files.exists(stateDir.resolve(NEXT_FILE))) {
                 writeFile(stateDir.resolve(NEXT_FILE),
-                        "# Next Steps\n\n" + prompt + "\n");
+                        "# 下一步\n\n" + prompt + "\n");
             }
 
             // 创建空的 DECISIONS.md
             if (!Files.exists(stateDir.resolve(DECISIONS_FILE))) {
                 writeFile(stateDir.resolve(DECISIONS_FILE),
-                        "# Decisions\n\n");
+                        "# 决策\n\n");
             }
 
             // 创建空的 PROGRESS.md
             if (!Files.exists(stateDir.resolve(PROGRESS_FILE))) {
                 writeFile(stateDir.resolve(PROGRESS_FILE),
-                        "# Progress\n\n- Status: pending\n");
+                        "# 进展\n\n- 状态: pending\n");
             }
 
             // 创建空的 history.json
@@ -118,7 +118,7 @@ public class LoopStateManager {
      */
     public static void updateNext(String workspace, String loopId, String content) {
         writeMarkdown(workspace, loopId, NEXT_FILE,
-                "# Next Steps\n\n" + content + "\n");
+                "# 下一步\n\n" + content + "\n");
     }
 
     /**
@@ -135,7 +135,7 @@ public class LoopStateManager {
      */
     public static void updateProgress(String workspace, String loopId, String content) {
         writeMarkdown(workspace, loopId, PROGRESS_FILE,
-                "# Progress\n\n" + content + "\n");
+                "# 进展\n\n" + content + "\n");
     }
 
     /**
@@ -199,11 +199,11 @@ public class LoopStateManager {
         StringBuilder sb = new StringBuilder();
         String next = readNext(workspace, loopId);
         if (next != null && !next.isEmpty()) {
-            sb.append("\n\n--- Loop State: NEXT ---\n").append(next);
+            sb.append("\n\n--- 循环状态：下一步 ---\n").append(next);
         }
         String progress = readMarkdown(workspace, loopId, PROGRESS_FILE);
         if (progress != null && progress.length() > 20) { // 超过默认模板长度
-            sb.append("\n\n--- Loop State: PROGRESS ---\n").append(progress);
+            sb.append("\n\n--- 循环状态：进展 ---\n").append(progress);
         }
         return sb.toString();
     }

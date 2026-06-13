@@ -521,14 +521,14 @@ public class LoopScheduler {
         // 2. Goal 条件注入（从 goal_continuation.md 模板加载）
         if (task.isGoalMode()) {
             StringBuilder goalPrompt = new StringBuilder();
-            goalPrompt.append("\n\n--- Goal (persistent objective) ---\n");
+            goalPrompt.append("\n\n--- 目标（持久目标） ---\n");
 
             // 定时模式 或 模板加载失败时的回退：简短提示
             goalPrompt.append("<objective>\n");
             goalPrompt.append(task.getGoalCondition()).append("\n");
             goalPrompt.append("</objective>\n\n");
             goalPrompt.append("Progress: iteration ").append(task.getCurrentIteration()).append("/").append(task.getMaxIterations()).append("\n");
-            goalPrompt.append("\nIf the goal is achieved, respond with [GOAL_ACHIEVED].");
+            goalPrompt.append("\n如果目标已达成，请回复 [GOAL_ACHIEVED]。");
 
             prompt = prompt + goalPrompt;
         }
@@ -567,21 +567,21 @@ public class LoopScheduler {
 
         // Phase 2: checker 审查（基于 maker 的实际执行结果）
         StringBuilder checkerPrompt = new StringBuilder();
-        checkerPrompt.append("Review the results of the following task and verify quality:\n\n");
-        checkerPrompt.append("Original task: ").append(task.getPrompt()).append("\n\n");
+        checkerPrompt.append("审查以下任务的执行结果，验证质量：\n\n");
+        checkerPrompt.append("原始任务：").append(task.getPrompt()).append("\n\n");
 
         if (makerResult != null && !makerResult.isEmpty()) {
-            checkerPrompt.append("Maker's execution result:\n").append(makerResult).append("\n\n");
+            checkerPrompt.append("执行者的执行结果：\n").append(makerResult).append("\n\n");
         } else {
-            checkerPrompt.append("(Maker did not produce a capturable result)\n\n");
+            checkerPrompt.append("（执行者未产生可捕获的结果）\n\n");
         }
 
-        checkerPrompt.append("Provide a brief assessment: [PASS] or [FAIL] with reasoning.");
+        checkerPrompt.append("提供简要评估：[PASS] 或 [FAIL]，并附上理由。");
 
         if (task.isGoalMode()) {
-            checkerPrompt.append("\n\nAlso evaluate if this goal condition is met: ").append(task.getGoalCondition());
-            checkerPrompt.append("\nIf met, output a standalone line: [GOAL_ACHIEVED].");
-            checkerPrompt.append("\nIf not met, output a standalone line: [GOAL_PENDING].");
+            checkerPrompt.append("\n\n同时评估以下目标条件是否满足：").append(task.getGoalCondition());
+            checkerPrompt.append("\n如果满足，输出单独一行：[GOAL_ACHIEVED]。");
+            checkerPrompt.append("\n如果不满足，输出单独一行：[GOAL_PENDING]。");
         }
 
         String checkerResult = null;
@@ -596,7 +596,7 @@ public class LoopScheduler {
         // 将 checker 的评估结果写入状态
         if (checkerResult != null) {
             LoopStateManager.appendDecision(engine.getWorkspace(), task.getId(),
-                    "Checker: " + (checkerResult.length() > 200 ? checkerResult.substring(0, 200) + "..." : checkerResult));
+                    "审查者：" + (checkerResult.length() > 200 ? checkerResult.substring(0, 200) + "..." : checkerResult));
         }
 
         return LoopExecutionResult.makerChecker(makerResult, checkerResult);
