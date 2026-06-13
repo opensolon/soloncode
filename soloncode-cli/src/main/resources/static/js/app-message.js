@@ -286,7 +286,24 @@ function appendActionEndChunk(sess, toolName, text, args) {
         }
         body.innerHTML = html;
     } else {
-        $(card).find('.tool-card-body').text(text || '');
+        var toolBody = $(card).find('.tool-card-body')[0];
+        // write 工具：根据 file_path 推断语言，hljs 语法高亮（类似右侧文件详情）
+        if ((toolName === 'write' || toolName === 'read') && text) {
+            var filePath = (args && args.file_path) || '';
+            var lang = (typeof window.guessLang === 'function') ? window.guessLang(filePath) : '';
+            if (lang && typeof hljs !== 'undefined') {
+                try {
+                    var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
+                    toolBody.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;background:var(--bg-code, #f5f5f5);line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
+                } catch(e) {
+                    toolBody.textContent = text || '';
+                }
+            } else {
+                toolBody.textContent = text || '';
+            }
+        } else {
+            toolBody.textContent = text || '';
+        }
     }
 
     $(card).find('.tool-card-header').on('click', function() {

@@ -132,8 +132,36 @@
                     if (typeof updateHistoryUI === 'function') updateHistoryUI();
                 }
             } else {
-                // 兜底：格式不匹配时仍走原路
-                loadTodos();
+                // 兜底：格式不匹配时从 raw markdown 直接解析 checkbox 统计
+                var rawText = chunk.text || '';
+                var total = 0, done = 0, inProgress = 0;
+                var lines = rawText.split('\n');
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i];
+                    if (/\- \[[ x/]\]/.test(line)) {
+                        total++;
+                        if (/\- \[x\]/i.test(line)) done++;
+                        else if (/\- \[\/\]/.test(line)) inProgress++;
+                    }
+                }
+                var pending = total - done - inProgress;
+                // 更新右侧面板统计
+                if (todoBadge) {
+                    var badgeVal = pending + inProgress;
+                    todoBadge.textContent = badgeVal;
+                    todoBadge.style.display = badgeVal > 0 ? '' : 'none';
+                }
+                if (todoStats && total > 0) {
+                    todoStats.style.display = '';
+                    todoStats.textContent = '(' + done + ' / ' + total + ')';
+                }
+                // 写入会话级缓存，驱动侧边栏 badge 更新（使用 chunk.sessionId 而非 SESSION_ID）
+                window.sessionTodoMap = window.sessionTodoMap || {};
+                var sid = chunk.sessionId;
+                if (sid) {
+                    window.sessionTodoMap[sid] = { done: done, total: total };
+                    if (typeof updateHistoryUI === 'function') updateHistoryUI();
+                }
             }
         }
     });

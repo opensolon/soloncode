@@ -855,8 +855,9 @@
     // 每60秒兜底刷新
     setInterval(loadGitStatus, 60000);
 
-    // 暴露全局（供 app-filer.js 调用）
+    // 暴露全局（供 app-filer.js / app-message.js 调用）
     window.loadGitStatus = loadGitStatus;
     window.openFileViewer = openFileViewer;
     window.closeDiffViewer = closeDiffViewer;
+    window.guessLang = guessLang;
 })();
