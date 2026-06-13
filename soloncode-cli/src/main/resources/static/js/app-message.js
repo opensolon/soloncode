@@ -283,6 +283,10 @@ function appendTraceBadge(sess, chunk) {
     if (chunk.model) parts.push(chunk.model);
     if (chunk.totalTokens != null) parts.push(fmtK(chunk.totalTokens));
     if (chunk.elapsedSeconds != null) parts.push(chunk.elapsedSeconds + 's');
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, '0');
+    var mm = String(now.getMinutes()).padStart(2, '0');
+    parts.push(hh + ':' + mm);
     if (parts.length === 0) return;
     var badge = $('<div>').addClass('msg-trace').text(parts.join(' \u00b7 '));
     insertBeforeActions(sess, badge[0]);
