@@ -512,10 +512,12 @@ public class LoopScheduler {
     private String buildEffectivePrompt(String sessionId, LoopTask task) {
         String prompt = task.getPrompt();
 
-        // 1. 状态上下文注入
-        String stateContext = LoopStateManager.buildStateContext(engine.getWorkspace(), task.getId());
-        if (!stateContext.isEmpty()) {
-            prompt = prompt + stateContext;
+        // 1. 状态上下文注入（仅高级策略需要 — goal/maker-checker/cron）
+        if (task.hasAdvancedStrategy()) {
+            String stateContext = LoopStateManager.buildStateContext(engine.getWorkspace(), task.getId());
+            if (!stateContext.isEmpty()) {
+                prompt = prompt + stateContext;
+            }
         }
 
         // 2. Goal 条件注入（从 goal_continuation.md 模板加载）
