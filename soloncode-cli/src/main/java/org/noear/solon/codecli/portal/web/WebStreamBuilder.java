@@ -164,6 +164,8 @@ public class WebStreamBuilder {
                         return onReasonChunk((ReasonChunk) chunk);
                     } else if (chunk instanceof ThoughtChunk) {
                         return onThoughtChunk(session, (ThoughtChunk) chunk);
+                    } else if (chunk instanceof ActionChunk) {
+                        return onActionStartChunk((ActionChunk) chunk);
                     } else if (chunk instanceof ObservationChunk) {
                         return onObservationChunk((ObservationChunk) chunk);
                     } else if (chunk instanceof ReActChunk) {
@@ -286,6 +288,47 @@ public class WebStreamBuilder {
         }
 
         return WebChunk.EMPTY;
+    }
+
+
+    /**
+     * 处理工具调用开始阶段的 chunk（来源引擎 ActionChunk）
+     *
+     * <p>在工具实际执行前发送 action_start，让前端提前渲染 loading 状态的工具卡片骨架，
+     * 待后续 {@link #onObservationChunk} 的结果到达时复用同一卡片填充并转完成态。
+     * 过滤规则与 {@link #onObservationChunk} 保持一致，避免建卡后无对应结果填充。</p>
+     *
+     * @param chunk 工具调用开始的 chunk 数据
+     * @return 映射后的 WebChunk（含工具名与参数），或 {@link WebChunk#EMPTY}（内部工具或无名称时）
+     */
+    private WebChunk onActionStartChunk(ActionChunk chunk) {
+        if (Assert.isEmpty(chunk.getToolName())) {
+            return WebChunk.EMPTY;
+        }
+
+        if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
+                TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||
+                MemoryTalent.isMemoryTool(chunk.getToolName())) {
+            return WebChunk.EMPTY;
+        }
+
+        // todowrite 的展示走专用通道，由 ObservationChunk 携带完整 todos 渲染，开始阶段不提前建卡
+        if (TodoTalent.TOOL_TODOWRITE.equals(chunk.getToolName())) {
+            return WebChunk.EMPTY;
+        }
+
+        String toolName;
+        if (engine.getName().equals(chunk.getAgentName())) {
+            toolName = chunk.getToolName();
+        } else {
+            toolName = chunk.getAgentName() + "/" + chunk.getToolName();
+        }
+
+        Map<String, Object> args = chunk.getArgs() != null
+                ? new LinkedHashMap<>(chunk.getArgs())
+                : null;
+
+        return WebChunk.ofActionStart(toolName, args);
     }
 
 
