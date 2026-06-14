@@ -178,6 +178,15 @@ public class CliShell implements Runnable {
             // 恢复上次未过期的 loop 定时任务（如果有）
             loopScheduler.restore(session.getSessionId());
 
+            // 会话繁忙守卫：CLI 为单线程模型，仅当主线程在等待用户输入（reader.isReading）时才空闲。
+            // 若不在等待输入，说明 agent 任务正在执行，loop 触发应跳过本次。
+            loopScheduler.setBusyChecker(sessionId -> {
+                if (SESSION_ID_CLI.equals(sessionId) == false) {
+                    return false;
+                }
+                return reader == null || !reader.isReading();
+            });
+
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
             loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {

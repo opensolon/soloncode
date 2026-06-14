@@ -17,17 +17,29 @@ function loadSessionHistory() {
 }
 
 function saveChatToHistory(firstMsg) {
-    var label = firstMsg.length > 30 ? firstMsg.substring(0, 30) + '...' : firstMsg;
+    ensureChatInHistory(SESSION_ID, firstMsg, true);
+}
+
+function ensureChatInHistory(sessionId, firstMsg, makeCurrent) {
+    if (!sessionId) return;
+    var label = (firstMsg || '新对话').toString();
+    label = label.length > 30 ? label.substring(0, 30) + '...' : label;
+    var shouldMakeCurrent = (makeCurrent !== false) && (sessionId === SESSION_ID || sessionId === activeSessionId || currentChatIndex === -1);
     for (var i = 0; i < chatHistory.length; i++) {
-        if (chatHistory[i].sessionId === SESSION_ID) {
-            currentChatIndex = i;
+        if (chatHistory[i].sessionId === sessionId) {
+            if (shouldMakeCurrent) currentChatIndex = i;
             updateHistoryUI();
             return;
         }
     }
-    chatHistory.unshift({ label: label, sessionId: SESSION_ID });
+    chatHistory.unshift({ label: label, sessionId: sessionId });
     if (chatHistory.length > 50) chatHistory.pop();
-    currentChatIndex = 0;
+    if (shouldMakeCurrent) {
+        currentChatIndex = 0;
+    } else if (currentChatIndex >= 0) {
+        currentChatIndex++;
+        if (currentChatIndex >= chatHistory.length) currentChatIndex = chatHistory.length - 1;
+    }
     updateHistoryUI();
 }
 

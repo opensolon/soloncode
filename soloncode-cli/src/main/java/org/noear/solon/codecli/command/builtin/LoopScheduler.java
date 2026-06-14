@@ -61,6 +61,9 @@ public class LoopScheduler {
     // CLI 端任务执行回调：sessionId, prompt, agentName -> void（同步阻塞）
     private volatile List<TaskExecutor> taskExecutors = new ArrayList<>();
 
+    // 会话繁忙检查器：用于在定时触发时判断会话是否正在执行任务（由各端口注入）
+    private volatile BusyChecker busyChecker;
+
     // Worktree 管理器（lazy init）
     private volatile WorktreeManager worktreeManager;
 
@@ -87,6 +90,21 @@ public class LoopScheduler {
         String execute(String sessionId, String prompt, String agentName);
     }
 
+    /**
+     * 会话繁忙检查器
+     *
+     * <p>用于在 loop 定时触发时判断目标会话是否有任务正在执行。
+     * 若会话繁忙，则跳过本次触发，避免与前台任务并发冲突、向前端推送多余消息。
+     */
+    @FunctionalInterface
+    public interface BusyChecker {
+        /**
+         * @param sessionId 会话 ID
+         * @return true 表示会话正在执行任务
+         */
+        boolean isBusy(String sessionId);
+    }
+
 
     /**
      * @param worktreeDir worktree 目录名（如 ".soloncode/loop-worktrees"），null 时使用默认值
@@ -99,6 +117,13 @@ public class LoopScheduler {
 
     public void addTaskExecutor(TaskExecutor executor) {
         this.taskExecutors.add(executor);
+    }
+
+    /**
+     * 设置会话繁忙检查器（由 WebController / CliShell 注入）
+     */
+    public void setBusyChecker(BusyChecker busyChecker) {
+        this.busyChecker = busyChecker;
     }
 
     /**
@@ -407,6 +432,12 @@ public class LoopScheduler {
             if (jobManager.jobExists(jobName)) {
                 jobManager.jobRemove(jobName);
             }
+            return;
+        }
+
+        // 会话正在执行任务时跳过本次触发：不消耗迭代、不创建 worktree、不向前端推送消息
+        if (busyChecker != null && busyChecker.isBusy(sessionId)) {
+            LOG.info("Loop task '{}' skipped: session '{}' is busy", task.getId(), sessionId);
             return;
         }
 

@@ -569,6 +569,24 @@ public class WebGate extends SimpleWebSocketListener {
     }
 
     /**
+     * 判断指定会话是否有 AI 任务正在执行（按 sessionId 查询）。
+     *
+     * <p>供 LoopScheduler 等外部组件在定时触发前判断会话是否繁忙，繁忙则跳过本次执行。
+     * 会话不存在或查询异常时按非繁忙处理。</p>
+     *
+     * @param sessionId 会话标识
+     * @return true 表示会话有正在执行的 AI 任务
+     */
+    public boolean isSessionBusy(String sessionId) {
+        try {
+            return isSessionBusy(engine.getSession(sessionId));
+        } catch (Exception e) {
+            LOG.warn("[WebGate] busy check failed for session {}: {}", sessionId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * 安全聊天输入入口。
      *
      * <p>在调用 {@link #onChatInput} 之前先检查会话是否繁忙（有 AI 任务正在执行），

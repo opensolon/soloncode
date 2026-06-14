@@ -285,14 +285,13 @@ function connectWebGate() {
                 }
             }
 
-            var sess2 = sessionMap[sid];
-            if (!sess2) return; // 未知 session
-
             // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡
             if (chunk.type === 'user_input') {
                 if (!sid) return;
-                var userSess = sessionMap[sid];
-                if (!userSess) return;
+                var userSess = getOrCreateSession(sid);
+                if (typeof ensureChatInHistory === 'function') {
+                    ensureChatInHistory(sid, chunk.text, true);
+                }
                 appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt);
                 if (userSess.sessionId === activeSessionId) {
                     if (!inChatMode) switchToChatMode();
@@ -301,7 +300,7 @@ function connectWebGate() {
                 return;
             }
 
-            // Loop/微信 等后端推送触发流式状态
+            var sess2 = getOrCreateSession(sid);
             if (!sess2.isStreaming) {
                 sess2.isStreaming = true;
                 if (!sess2.messageStartTime) sess2.messageStartTime = Date.now();
