@@ -90,11 +90,39 @@ function ensureAssistantBubble(sess) {
         $(sess.container).append(row);
         sess.currentBubbleEl = $(row).find('.md-content')[0];
         var copyBtn = $(row).find('.copy-btn')[0];
-        var mdRef = sess.currentBubbleEl;
+        // 复制目标为「最终答案」：统一从 .md-content 的 data-md-raw 读取。
+        // 历史消息与流式结束后后端写入的最终答案都带该属性；流式接收过程中不写，故复制不到中间片段。
+        // 无 data-md-raw 时（旧数据/异常）回退到尾部首个非空块的 innerText。
+        var bubbleEl = $(row).find('.msg-bubble')[0];
         $(copyBtn).on('click', function() {
-            var md = mdRef.getAttribute('data-md-raw') || mdRef.innerText || '';
-            if (navigator.clipboard) { navigator.clipboard.writeText(md); }
+            var md = '';
+            var blocks = $(bubbleEl).children('.md-content');
+            for (var bi = blocks.length - 1; bi >= 0; bi--) {
+                var raw = blocks[bi].getAttribute('data-md-raw');
+                if (raw != null && raw.trim()) { md = raw; break; }
+            }
+            if (!md) {
+                for (var bj = blocks.length - 1; bj >= 0; bj--) {
+                    var t = blocks[bj].innerText || '';
+                    if (t.trim()) { md = t; break; }
+                }
+            }
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(md).then(function() {
+                    $(copyBtn).addClass('copied');
+                    copyBtn.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:14px"></i> 已复制';
+                    setTimeout(function() {
+                        $(copyBtn).removeClass('copied');
+                        copyBtn.innerHTML = '<i class="layui-icon layui-icon-file"></i> 复制';
+                    }, 1500);
+                });
+            }
         });
+        // 流式输出过程中隐藏复制按钮，待 finishStream 收尾后再显示；
+        // 非流式（历史加载）保持原有显示逻辑。
+        if (sess.isStreaming) {
+            $(row).find('.msg-actions').hide();
+        }
     }
     return sess.currentBubbleEl;
 }
@@ -567,6 +595,8 @@ function appendContentChunk(sess, text, append) {
     if (!sess.contentRafId) {
         sess.contentRafId = requestAnimationFrame(function() {
             var el = ensureAssistantBubble(sess);
+            // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
+            // 避免复制到被工具调用切开的中间片段。
             el.innerHTML = renderMd(sess.reasonBuffer);
             addCodeBlockButtons(el);
             if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
@@ -588,6 +618,10 @@ function appendErrorChunk(sess, text) {
 /* ===== Trace Badge ===== */
 function appendTraceBadge(sess, chunk) {
     ensureAssistantBubble(sess);
+    // 后端携带的最终答案为权威复制源，写到当前 .md-content 的 data-md-raw（与历史消息统一属性名），供复制按钮读取。
+    if (chunk.finalAnswer != null && sess.currentBubbleEl) {
+        sess.currentBubbleEl.setAttribute('data-md-raw', chunk.finalAnswer);
+    }
     function fmtK(n) {
         if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1).replace(/\.0$/, '') + 'k';
         return n.toString();

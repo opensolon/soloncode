@@ -199,44 +199,6 @@ public class WebStreamBuilder {
                 }));
     }
 
-    /**
-     * 构建追踪信息字符串
-     *
-     * <p>将一次 ReAct 推理轮次的元信息格式化为紧凑的后缀标记，
-     * 格式示例：{@code `(gpt-4o, 1523tk, 12s)`}。</p>
-     *
-     * @param trace ReAct 推理追踪对象，包含模型名称、token 指标和开始时间
-     * @return 包含模型名称、总 token 数和耗时的 StringBuilder
-     */
-    private StringBuilder getTraceInfo(ReActTrace trace) {
-        long start_time = trace.getBeginTimeMs();
-
-        StringBuilder buf = new StringBuilder();
-        buf.append(" `(");
-
-        buf.append(trace.getOptions().getChatModel().getNameOrModel());
-
-        if (trace.getMetrics() != null) {
-            if (buf.length() > 2) {
-                buf.append(", ");
-            }
-
-            buf.append(trace.getMetrics().getTotalTokens()).append("tk");
-        }
-
-        if (start_time > 0) {
-            if (buf.length() > 2) {
-                buf.append(", ");
-            }
-
-            long seconds = Duration.ofMillis(System.currentTimeMillis() - start_time).getSeconds();
-            buf.append(seconds).append("s");
-        }
-
-        buf.append(")`");
-
-        return buf;
-    }
 
     public WebChunk onContextSizeChunk(ChatModel chatModel, ContextSizeChunk chunk){
         WebChunk wc = new WebChunk();
@@ -558,7 +520,13 @@ public class WebStreamBuilder {
         long startMs = trace.getBeginTimeMs();
         Long elapsedSeconds = startMs > 0 ? Duration.ofMillis(System.currentTimeMillis() - startMs).getSeconds() : null;
 
-        return WebChunk.ofTrace(model, totalTokens, elapsedSeconds);
+        // 最终答案全量文本（去除 think 标签，与正文输出保持一致），供前端复制使用
+        String finalAnswer = chunk.getContent();
+        if (finalAnswer != null) {
+            finalAnswer = finalAnswer.replaceAll("(?s)<\\s*/?think\\s*>", "");
+        }
+
+        return WebChunk.ofTrace(model, totalTokens, elapsedSeconds, finalAnswer);
     }
 
     /**

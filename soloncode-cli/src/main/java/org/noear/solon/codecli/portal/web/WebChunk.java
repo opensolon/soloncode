@@ -84,6 +84,9 @@ public class WebChunk {
     /** 推理耗时秒数，仅在 type 为 {@code trace} 时使用，记录从 ReAct 开始到结束的耗时。 */
     private Long elapsedSeconds;
 
+    /** 最终答案正文，仅在 type 为 {@code trace} 时使用，携带 ReAct 完成时的全量最终答复，供前端复制使用。 */
+    private String finalAnswer;
+
     /** 消息块创建时间戳（ epoch 毫秒），由工厂方法自动填充。 */
     private Long createdAt;
 
@@ -285,14 +288,16 @@ public class WebChunk {
      * @param model          模型名称（如 "gpt-4o"）
      * @param totalTokens    总 token 消耗数，可为 null（无指标时）
      * @param elapsedSeconds 推理耗时（秒），可为 null（无开始时间时）
+     * @param finalAnswer    ReAct 完成时的全量最终答复，供前端复制使用，可为 null
      * @return 携带追踪元数据的消息块
      */
-    public static WebChunk ofTrace(String model, Long totalTokens, Long elapsedSeconds) {
+    public static WebChunk ofTrace(String model, Long totalTokens, Long elapsedSeconds, String finalAnswer) {
         WebChunk tmp = new WebChunk();
         tmp.type = "trace";
         tmp.model = model;
         tmp.totalTokens = totalTokens;
         tmp.elapsedSeconds = elapsedSeconds;
+        tmp.finalAnswer = finalAnswer;
         tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;

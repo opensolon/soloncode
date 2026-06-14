@@ -192,6 +192,12 @@ function finishStream(sess) {
     setAssistantTime(sess, sess._lastCreatedAt || Date.now());
     sess._lastCreatedAt = null;
 
+    // 流式结束，显示复制按钮（流式过程中被隐藏）
+    if (sess.currentBubbleEl) {
+        var doneRow = $(sess.currentBubbleEl).closest('.msg-row')[0];
+        if (doneRow) $(doneRow).find('.msg-actions').show();
+    }
+
     // 清除客户端计时（已由 trace 类型的服务端耗时替代）
     if (sess.messageStartTime) {
         sess.messageStartTime = null;
