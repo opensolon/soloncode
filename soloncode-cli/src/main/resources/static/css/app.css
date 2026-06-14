@@ -231,7 +231,9 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .md-content pre { background: var(--bg-code-block); padding: 16px 18px; border-radius: 10px; overflow-x: auto; margin: 10px 0; }
 .md-content pre code { background: none; padding: 0; color: var(--text-code); font-size: 13px; }
 .md-content ul, .md-content ol { padding-left: 22px; margin: 7px 0; }
-.md-content li { margin: 4px 0; }
+.md-content ul { list-style: disc; }
+.md-content ol { list-style: decimal; }
+.md-content li { margin: 4px 0; list-style: inherit; }
 .md-content blockquote { border-left: 3px solid var(--accent); padding-left: 14px; color: var(--text-secondary); margin: 10px 0; }
 .md-content a { color: var(--accent); text-decoration: none; } .md-content a:hover { text-decoration: underline; }
 .msg-row.user .md-content a { color: var(--text-user-msg-link, #fff); text-decoration: underline; } .msg-row.user .md-content a:hover { color: var(--text-user-msg-link-hover, #e0e8ff); }
