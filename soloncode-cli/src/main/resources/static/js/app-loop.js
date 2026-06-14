@@ -17,23 +17,6 @@
         }
     }
 
-    // 从全局 commandList 中提取 subagent 类型的条目，构建 <option> 列表
-    // 复用 app-history.js 中通过 GET /web/chat/hints 加载的代理列表数据
-    function buildSubagentOptions() {
-        var html = '<option value="">-- 不指定 --</option>';
-        if (typeof commandList !== 'undefined' && commandList.length) {
-            for (var i = 0; i < commandList.length; i++) {
-                var c = commandList[i];
-                if (c.type === 'subagent') {
-                    var label = '@' + c.name;
-                    if (c.description) label += ' - ' + c.description;
-                    html += '<option value="' + escapeHtml(c.name) + '">' + escapeHtml(label) + '</option>';
-                }
-            }
-        }
-        return html;
-    }
-
     // 获取当前激活的面板和按钮
     function getActivePanel() {
         return inChatMode ? $chatLoopPanel : $welcomeLoopPanel;
@@ -53,8 +36,6 @@
                 prompt: '运行测试套件，如果有失败的测试则分析原因并尝试修复代码',
                 intervalMinutes: 10,
                 goalCondition: 'all tests pass',
-                makerAgent: 'general',
-                checkerAgent: 'explore',
                 worktreeEnabled: true,
                 maxIterations: 10
             }
@@ -68,8 +49,6 @@
                 prompt: '审查昨天的所有代码提交，总结变更摘要和潜在风险点',
                 cron: '0 9 * * *',
                 goalCondition: null,
-                makerAgent: null,
-                checkerAgent: 'explore',
                 worktreeEnabled: false,
                 maxIterations: 20
             }
@@ -83,8 +62,6 @@
                 prompt: '回顾今天的所有对话记录，提取用户的偏好习惯、技术决策和重要约束，归纳整理后存入长期记忆',
                 cron: '0 22 * * *',
                 goalCondition: null,
-                makerAgent: null,
-                checkerAgent: null,
                 worktreeEnabled: false,
                 maxIterations: 10
             }
@@ -98,8 +75,6 @@
                 prompt: '检查最近的 CI 构建状态，如果有失败的用例则分析失败原因并汇总报告',
                 intervalMinutes: 30,
                 goalCondition: null,
-                makerAgent: null,
-                checkerAgent: null,
                 worktreeEnabled: false,
                 maxIterations: 20
             }
@@ -113,8 +88,6 @@
                 prompt: '检查所有核心服务的健康状态（HTTP 端点），如果有异常则汇总告警信息',
                 intervalMinutes: 5,
                 goalCondition: 'all services healthy',
-                makerAgent: null,
-                checkerAgent: null,
                 worktreeEnabled: false,
                 maxIterations: 100
             }
@@ -227,7 +200,6 @@
                     // 功能标签（移到状态位置，替代"就绪"等文字）
                     var tags = [];
                     if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
-                    if (t.makerAgent) tags.push('<span class="loop-tag loop-tag-mc">m/c</span>');
                     if (t.goalCondition) {
                         var goalLabel = 'goal';
                         if (t.maxIterations > 0) {
@@ -373,8 +345,6 @@
         html += '<label>目标完成检测描述（goal）</label>';
         html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder=""/>';
         html += '</div>';
-        html += '<div class="loop-form-group"><label>执行子代理</label><select class="loop-input" id="loopFormMaker">' + buildSubagentOptions() + '</select></div>';
-        html += '<div class="loop-form-group"><label>验证子代理</label><select class="loop-input" id="loopFormChecker">' + buildSubagentOptions() + '</select></div>';
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
         html += '</div>';
@@ -440,13 +410,11 @@
         }
         // 所有字段无条件赋值，null/undefined 时清空为默认值，避免模板切换残留
         $panel.find('#loopFormGoal').val(t.goalCondition || '');
-        $panel.find('#loopFormMaker').val(t.makerAgent || '');
-        $panel.find('#loopFormChecker').val(t.checkerAgent || '');
         $panel.find('#loopFormWorktree').prop('checked', !!t.worktreeEnabled);
         $panel.find('#loopFormMaxIter').val(t.maxIterations || '');
 
         // 有高级字段时自动展开，否则折叠
-        if (t.goalCondition || t.makerAgent || t.checkerAgent || t.worktreeEnabled) {
+        if (t.goalCondition || t.worktreeEnabled) {
             $panel.find('#loopAdvanced').show();
             $panel.find('#loopAdvancedToggle').removeClass('collapsed');
         } else {
@@ -538,8 +506,6 @@
                 intervalMinutes: intervalVal,
                 cron: cronVal,
                 goalCondition: $panel.find('#loopFormGoal').val().trim() || null,
-                makerAgent: $panel.find('#loopFormMaker').val().trim() || null,
-                checkerAgent: $panel.find('#loopFormChecker').val().trim() || null,
                 worktreeEnabled: $panel.find('#loopFormWorktree').is(':checked'),
                 maxIterations: parseInt($panel.find('#loopFormMaxIter').val()) || null
             };

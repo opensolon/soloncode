@@ -769,8 +769,6 @@ public class WebController {
             if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
             if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
             if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
-            if (t.getMakerAgent() != null) item.put("makerAgent", t.getMakerAgent());
-            if (t.getCheckerAgent() != null) item.put("checkerAgent", t.getCheckerAgent());
             item.put("worktreeEnabled", t.isWorktreeEnabled());
             item.put("maxIterations", t.getMaxIterations());
             data.add(item);
@@ -807,8 +805,6 @@ public class WebController {
                 if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
                 if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
                 if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
-                if (t.getMakerAgent() != null) item.put("makerAgent", t.getMakerAgent());
-                if (t.getCheckerAgent() != null) item.put("checkerAgent", t.getCheckerAgent());
                 item.put("worktreeEnabled", t.isWorktreeEnabled());
                 item.put("maxIterations", t.getMaxIterations());
                 return Result.succeed(item);
@@ -827,8 +823,6 @@ public class WebController {
                           @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                           @Param(value = "cron", required = false) String cron,
                           @Param(value = "goalCondition", required = false) String goalCondition,
-                          @Param(value = "makerAgent", required = false) String makerAgent,
-                          @Param(value = "checkerAgent", required = false) String checkerAgent,
                           @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                           @Param(value = "maxIterations", required = false) Integer maxIterations) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
@@ -845,7 +839,7 @@ public class WebController {
         int interval = intervalMinutes != null ? intervalMinutes : 5;
         LoopTask task = new LoopTask(
                 prompt, interval, cron,
-                goalCondition, makerAgent, checkerAgent,
+                goalCondition,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 maxIterations
         );
@@ -874,8 +868,6 @@ public class WebController {
                              @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                              @Param(value = "cron", required = false) String cron,
                              @Param(value = "goalCondition", required = false) String goalCondition,
-                             @Param(value = "makerAgent", required = false) String makerAgent,
-                             @Param(value = "checkerAgent", required = false) String checkerAgent,
                              @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                              @Param(value = "channelNotify", required = false) String channelNotify,
                              @Param(value = "maxIterations", required = false) Integer maxIterations) {
@@ -902,8 +894,6 @@ public class WebController {
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
                 goalCondition != null ? goalCondition : existing.getGoalCondition(),
-                makerAgent != null ? makerAgent : existing.getMakerAgent(),
-                checkerAgent != null ? checkerAgent : existing.getCheckerAgent(),
                 worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
                 maxIterations != null ? maxIterations : existing.getMaxIterations()
         );

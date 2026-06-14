@@ -30,7 +30,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <ul>
  *   <li>Automations — 定时/cron 触发（intervalMinutes / cron）</li>
  *   <li>Skills — AI 根据 prompt 自动匹配可用技能</li>
- *   <li>Sub-agents — makerAgent / checkerAgent 双角色</li>
  *   <li>Worktrees — worktreeEnabled 在独立分支执行</li>
  *   <li>Connectors — channelNotify 结果通知</li>
  *   <li>State — stateDir 持久状态目录 (.soloncode/loops/&lt;id&gt;/)</li>
@@ -57,8 +56,6 @@ public class LoopTask {
 
     // ---- Loop Engineering 扩展字段 ----
     private final String goalCondition;      // 目标条件，如 "all tests pass"
-    private final String makerAgent;         // 执行者代理名
-    private final String checkerAgent;       // 验证者代理名
     private final boolean worktreeEnabled;   // 是否在独立 worktree 中执行
     private final String worktreeBranch;     // worktree 分支名（运行时分配）
     private final int maxIterations;         // 最大迭代次数
@@ -79,14 +76,14 @@ public class LoopTask {
      * 固定间隔构造
      */
     public LoopTask(String prompt, int intervalMinutes) {
-        this(prompt, intervalMinutes, null, null, null, null, false, null);
+        this(prompt, intervalMinutes, null, null, false, null);
     }
 
     /**
      * cron 表达式构造
      */
     public LoopTask(String prompt, String cron) {
-        this(prompt, 0, cron, null, null, null, false, null);
+        this(prompt, 0, cron, null, false, null);
     }
 
 
@@ -96,8 +93,7 @@ public class LoopTask {
     LoopTask(String id, String prompt, int intervalMinutes, String cron,
                      Instant createdAt, Instant expireAt, boolean autoInterval,
                      boolean enabled,
-                     String goalCondition, String makerAgent,
-                     String checkerAgent, boolean worktreeEnabled, String worktreeBranch,
+                     String goalCondition, boolean worktreeEnabled, String worktreeBranch,
                      int maxIterations,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
         this.id = id;
@@ -109,8 +105,6 @@ public class LoopTask {
         this.autoInterval = autoInterval;
         this.enabled = enabled;
         this.goalCondition = goalCondition;
-        this.makerAgent = makerAgent;
-        this.checkerAgent = checkerAgent;
         this.worktreeEnabled = worktreeEnabled;
         this.worktreeBranch = worktreeBranch;
         this.maxIterations = maxIterations;
@@ -124,8 +118,7 @@ public class LoopTask {
      * 便捷构造（固定间隔 + 扩展参数）
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
-                    String goalCondition, String makerAgent,
-                    String checkerAgent, Boolean worktreeEnabled,
+                    String goalCondition, Boolean worktreeEnabled,
                     Integer maxIterations) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
@@ -136,8 +129,6 @@ public class LoopTask {
         this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
         this.autoInterval = false;
         this.goalCondition = goalCondition;
-        this.makerAgent = makerAgent;
-        this.checkerAgent = checkerAgent;
         this.worktreeEnabled = worktreeEnabled != null ? worktreeEnabled : false;
         this.worktreeBranch = null; // 运行时分配
         this.maxIterations = maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS;
@@ -149,8 +140,7 @@ public class LoopTask {
      * 基于当前任务复制出一份更新后的任务定义，保留任务身份和运行时状态。
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
-                                    String goalCondition, String makerAgent,
-                                    String checkerAgent, Boolean worktreeEnabled,
+                                    String goalCondition, Boolean worktreeEnabled,
                                     Integer maxIterations) {
         LoopTask task = new LoopTask(
                 this.id,
@@ -162,8 +152,6 @@ public class LoopTask {
                 this.autoInterval,
                 this.enabled,
                 goalCondition,
-                makerAgent,
-                checkerAgent,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 this.worktreeBranch,
                 maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
@@ -280,26 +268,17 @@ public class LoopTask {
     }
 
     /**
-     * 是否为 maker/checker 模式
-     */
-    public boolean isMakerCheckerMode() {
-        return makerAgent != null && !makerAgent.isEmpty();
-    }
-
-    /**
      * 是否有高级策略（需要注入状态上下文）
      *
      * <p>普通循环任务每次 prompt 不变，注入 NEXT.md 只是重复原文，徒增 token 消耗。<br>
      * 仅当以下任一高级策略启用时，状态上下文才有意义：
      * <ul>
      *   <li>goal 模式 — NEXT.md 随迭代被 AI 更新</li>
-     *   <li>maker/checker 模式 — 多代理间需要共享决策上下文</li>
      *   <li>cron 定时模式 — 跨天执行需要状态恢复</li>
      * </ul>
      */
     public boolean hasAdvancedStrategy() {
         return isGoalMode()
-                || isMakerCheckerMode()
                 || isCronMode();
     }
 
@@ -339,8 +318,6 @@ public class LoopTask {
 
         // Loop Engineering 扩展字段
         if (goalCondition != null) node.set("goalCondition", goalCondition);
-        if (makerAgent != null) node.set("makerAgent", makerAgent);
-        if (checkerAgent != null) node.set("checkerAgent", checkerAgent);
         if (worktreeEnabled) node.set("worktreeEnabled", worktreeEnabled);
         if (worktreeBranch != null) node.set("worktreeBranch", worktreeBranch);
 
@@ -369,10 +346,6 @@ public class LoopTask {
 
         String goalConditionVal = node.getOrNull("goalCondition") != null
                 ? node.get("goalCondition").getString() : null;
-        String makerAgentVal = node.getOrNull("makerAgent") != null
-                ? node.get("makerAgent").getString() : null;
-        String checkerAgentVal = node.getOrNull("checkerAgent") != null
-                ? node.get("checkerAgent").getString() : null;
         boolean worktreeEnabledVal = node.getOrNull("worktreeEnabled") != null
                 && node.get("worktreeEnabled").getBoolean();
         String worktreeBranchVal = node.getOrNull("worktreeBranch") != null
@@ -392,8 +365,6 @@ public class LoopTask {
                 node.get("autoInterval").getBoolean(),
                 enabledVal,
                 goalConditionVal,
-                makerAgentVal,
-                checkerAgentVal,
                 worktreeEnabledVal,
                 worktreeBranchVal,
                 maxIterationsVal,

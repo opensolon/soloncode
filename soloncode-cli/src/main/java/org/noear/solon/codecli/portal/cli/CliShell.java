@@ -207,7 +207,7 @@ public class CliShell implements Runnable {
 
                 safeChatInput(session, effectiveInput);
 
-                // 返回 AI 响应文本（maker/checker 和 goal 检查依赖此返回值）
+                // 返回 AI 响应文本（goal 检查依赖此返回值）
                 synchronized (loopResponseCapture) {
                     return loopResponseCapture.length() > 0 ? loopResponseCapture.toString().trim() : null;
                 }
@@ -519,7 +519,7 @@ public class CliShell implements Runnable {
         if (!reason.isToolCalls() && reason.hasContent()) {
             String delta = clearThink(reason.getContent());
 
-            // 捕获非思考内容作为 loop 响应（用于 maker/checker 和 goal 检查）
+            // 捕获非思考内容作为 loop 响应（用于 goal 检查）
             if (!reason.getMessage().isThinking() && Assert.isNotEmpty(delta)) {
                 synchronized (loopResponseCapture) {
                     loopResponseCapture.append(delta);

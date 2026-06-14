@@ -38,23 +38,12 @@ class LoopExecutionResultTest {
     }
 
     @Test
-    void makerCheckerShouldDetectCheckerGoalAchieved() {
-        LoopExecutionResult result = LoopExecutionResult.makerChecker("maker done", "[PASS]\n[GOAL_ACHIEVED]");
-
-        assertTrue(result.isGoalAchieved());
-        assertTrue(result.isCheckerPassed());
-        assertEquals("maker done", result.getMakerResult());
-        assertEquals("[PASS]\n[GOAL_ACHIEVED]", result.getCheckerResult());
-        assertEquals("[PASS]\n[GOAL_ACHIEVED]", result.getFinalResult());
-    }
-
-    @Test
     void copyWithUpdateShouldKeepIdentityAndRuntimeState() {
-        LoopTask task = new LoopTask("old prompt", 1, null, null, "general", null, false, 2);
+        LoopTask task = new LoopTask("old prompt", 1, null, null, false, 2);
         task.updateLastExecution("last");
         task.incrementIteration();
 
-        LoopTask updated = task.copyWithUpdate("new prompt", 5, null, "goal", "general", "explore", true, 3);
+        LoopTask updated = task.copyWithUpdate("new prompt", 5, null, "goal", true, 3);
 
         assertEquals(task.getId(), updated.getId());
         assertEquals(task.getCreatedAt(), updated.getCreatedAt());
@@ -68,7 +57,7 @@ class LoopExecutionResultTest {
 
     @Test
     void maxIterationsShouldWorkWithoutGoal() {
-        LoopTask task = new LoopTask("prompt", 1, null, null, null, null, false, 2);
+        LoopTask task = new LoopTask("prompt", 1, null, null, false, 2);
 
         assertFalse(task.isMaxIterationsReached());
         task.incrementIteration();
@@ -80,11 +69,11 @@ class LoopExecutionResultTest {
     @Test
     void appendHistoryShouldWriteStructuredResult() throws Exception {
         Path workspace = Files.createTempDirectory("loop-state-test-");
-        LoopTask task = new LoopTask("prompt", 1, null, "goal", "general", "explore", false, 2);
+        LoopTask task = new LoopTask("prompt", 1, null, "goal", false, 2);
 
         LoopStateManager.init(workspace.toString(), task.getId(), task.getPrompt());
         LoopStateManager.appendHistory(workspace.toString(), task.getId(),
-                LoopExecutionResult.makerChecker("maker", "[PASS]\n[GOAL_ACHIEVED]"),
+                LoopExecutionResult.fromText("done\n[GOAL_ACHIEVED]"),
                 1, "GOAL_ACHIEVED");
 
         String json = new String(Files.readAllBytes(workspace.resolve(".soloncode").resolve("loops")
@@ -99,7 +88,6 @@ class LoopExecutionResultTest {
         assertEquals(1, count);
         assertEquals("GOAL_ACHIEVED", root.get(0).get("stopReason").getString());
         assertTrue(root.get(0).get("goalAchieved").getBoolean());
-        assertEquals("maker", root.get(0).get("makerResult").getString());
     }
 
     @Test
@@ -119,20 +107,5 @@ class LoopExecutionResultTest {
         assertTrue(result.isCompleted());
         assertFalse(result.isGoalAchieved());
         assertEquals("normal response", result.getFinalResult());
-    }
-
-    @Test
-    void makerCheckerShouldPrioritizeCheckerGoal() {
-        // maker 没有 goal 标记，checker 有 → 整体 goalAchieved
-        LoopExecutionResult result = LoopExecutionResult.makerChecker("work done", "[PASS]\n[GOAL_ACHIEVED]");
-        assertTrue(result.isGoalAchieved());
-
-        // maker 有 goal 标记，checker 没有 → 整体也 goalAchieved
-        LoopExecutionResult result2 = LoopExecutionResult.makerChecker("done [GOAL_ACHIEVED]", "[FAIL]");
-        assertTrue(result2.isGoalAchieved());
-
-        // 都没有 → 不算达成
-        LoopExecutionResult result3 = LoopExecutionResult.makerChecker("work", "[PENDING]");
-        assertFalse(result3.isGoalAchieved());
     }
 }

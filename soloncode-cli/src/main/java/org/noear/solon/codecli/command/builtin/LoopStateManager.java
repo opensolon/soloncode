@@ -176,9 +176,6 @@ public class LoopStateManager {
                 entry.set("submitted", result.isSubmitted());
                 entry.set("completed", result.isCompleted());
                 entry.set("goalAchieved", result.isGoalAchieved());
-                entry.set("checkerPassed", result.isCheckerPassed());
-                if (result.getMakerResult() != null) entry.set("makerResult", result.getMakerResult());
-                if (result.getCheckerResult() != null) entry.set("checkerResult", result.getCheckerResult());
                 if (result.getErrorMessage() != null) entry.set("error", result.getErrorMessage());
             }
             entry.set("stopReason", stopReason != null ? stopReason : "NONE");

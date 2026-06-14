@@ -38,7 +38,6 @@ import java.util.List;
  *   /loop stop-all                          → stop all tasks
  *
  * Loop Engineering 扩展:
- *   /loop 5m --maker:coder --checker:reviewer fix auth  → maker/checker
  *   /loop goal:"all tests pass" fix auth    → goal 模式
  *   /loop 5m --worktree fix bug #123        → worktree 隔离
  *   /loop 30m --notify:feishu check CI      → 通道通知
@@ -119,8 +118,6 @@ public class LoopCommand implements Command {
         int intervalMinutes = 5; // default
         String cronExpr = null;
         String goalCondition = null;
-        String makerAgent = null;
-        String checkerAgent = null;
         boolean worktreeEnabled = false;
         Integer maxIterations = null;
 
@@ -177,12 +174,6 @@ public class LoopCommand implements Command {
                     String key = flag.substring(0, colonIdx);
                     String val = flag.substring(colonIdx + 1);
                     switch (key) {
-                        case "maker":
-                            makerAgent = val;
-                            break;
-                        case "checker":
-                            checkerAgent = val;
-                            break;
                         case "max-iter":
                             try {
                                 maxIterations = Integer.parseInt(val);
@@ -223,8 +214,7 @@ public class LoopCommand implements Command {
         // Create task
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
-                goalCondition, makerAgent, checkerAgent,
-                worktreeEnabled, maxIterations
+                goalCondition, worktreeEnabled, maxIterations
         );
 
         // 初始化状态目录（用 task 生成的 ID）
@@ -251,12 +241,6 @@ public class LoopCommand implements Command {
         // 打印 Loop Engineering 扩展信息
         if (goalCondition != null) {
             ctx.println(ctx.color("  " + MAGENTA + "Goal:" + RESET + " " + goalCondition));
-        }
-        if (makerAgent != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Maker:" + RESET + " " + makerAgent));
-        }
-        if (checkerAgent != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Checker:" + RESET + " " + checkerAgent));
         }
         if (worktreeEnabled) {
             ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
@@ -295,9 +279,6 @@ public class LoopCommand implements Command {
             // 扩展标签
             if (t.isGoalMode()) {
                 line.append(" ").append(MAGENTA).append("[goal]").append(RESET);
-            }
-            if (t.isMakerCheckerMode()) {
-                line.append(" ").append(MAGENTA).append("[m/c]").append(RESET);
             }
             if (t.isWorktreeEnabled()) {
                 line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
@@ -377,7 +358,6 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
         ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "Loop Engineering:" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop 5m --maker:coder --checker:reviewer fix auth" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix auth module" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 5m --worktree fix bug #123           (git worktree)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 30m --notify:feishu check CI         (channel notify)" + RESET));

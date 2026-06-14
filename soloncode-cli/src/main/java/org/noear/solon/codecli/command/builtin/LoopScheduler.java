@@ -73,10 +73,10 @@ public class LoopScheduler {
     /**
      * CLI 端任务执行器（同步阻塞）
      *
-     * <p>支持指定 agent 名称，用于 maker/checker 分离。
+     * <p>支持指定 agent 名称。
      * 若 agentName 为 null，则使用默认主 agent。
      *
-     * <p>返回 AI 的响应文本摘要，用于 maker/checker 编排和 goal 条件检查。
+     * <p>返回 AI 的响应文本摘要，用于 goal 条件检查。
      * 若无法获取响应（如会话不匹配），返回 null。
      */
     @FunctionalInterface
@@ -471,13 +471,8 @@ public class LoopScheduler {
 
                 LoopExecutionResult executionResult;
 
-                if (task.isMakerCheckerMode()) {
-                    // Phase 2: maker/checker 编排
-                    executionResult = executeMakerChecker(sessionId, task, effectivePrompt);
-                } else {
-                    // 兼容路径：单一 agent 执行
-                    executionResult = executeSingle(sessionId, effectivePrompt, null);
-                }
+                // 单一 agent 执行
+                executionResult = executeSingle(sessionId, effectivePrompt, null);
 
                 String finalResult = executionResult != null ? executionResult.getFinalResult() : null;
 
@@ -493,9 +488,7 @@ public class LoopScheduler {
                 }
 
                 // Goal 条件检查 — 解析 AI 响应中的 [GOAL_ACHIEVED] 标记
-                // maker/checker 模式下，checker 的 [PASS] 也视为 goal 达成（AI 常漏输出 [GOAL_ACHIEVED]）
-                boolean goalMet = executionResult != null &&
-                        (executionResult.isGoalAchieved() || executionResult.isCheckerPassed());
+                boolean goalMet = executionResult != null && executionResult.isGoalAchieved();
                 if (goalMet) {
                     LOG.info("Loop task '{}' goal achieved at iteration {}", task.getId(), iteration);
 
@@ -543,7 +536,7 @@ public class LoopScheduler {
     private String buildEffectivePrompt(String sessionId, LoopTask task) {
         String prompt = task.getPrompt();
 
-        // 1. 状态上下文注入（仅高级策略需要 — goal/maker-checker/cron）
+        // 1. 状态上下文注入（仅高级策略需要 — goal/cron）
         if (task.hasAdvancedStrategy()) {
             String stateContext = LoopStateManager.buildStateContext(engine.getWorkspace(), task.getId());
             if (!stateContext.isEmpty()) {
@@ -577,62 +570,6 @@ public class LoopScheduler {
             }
         }
         return LoopExecutionResult.submittedOnly();
-    }
-
-    /**
-     * maker/checker 编排执行
-     *
-     * <p>Phase 1: maker agent 执行任务，返回结果。
-     * Phase 2: checker agent 审查 maker 的实际产出，返回 pass/fail。</p>
-     *
-     * @return maker/checker 的结构化执行结果
-     */
-    private LoopExecutionResult executeMakerChecker(String sessionId, LoopTask task, String effectivePrompt) {
-        // Phase 1: maker 执行
-        String makerResult = null;
-        for (TaskExecutor taskExecutor : taskExecutors) {
-            String result = taskExecutor.execute(sessionId, effectivePrompt, task.getMakerAgent());
-            if (result != null) {
-                makerResult = result;
-                break;
-            }
-        }
-
-        // Phase 2: checker 审查（基于 maker 的实际执行结果）
-        StringBuilder checkerPrompt = new StringBuilder();
-        checkerPrompt.append("审查以下任务的执行结果，验证质量：\n\n");
-        checkerPrompt.append("原始任务：").append(task.getPrompt()).append("\n\n");
-
-        if (makerResult != null && !makerResult.isEmpty()) {
-            checkerPrompt.append("执行者的执行结果：\n").append(makerResult).append("\n\n");
-        } else {
-            checkerPrompt.append("（执行者未产生可捕获的结果）\n\n");
-        }
-
-        checkerPrompt.append("提供简要评估：[PASS] 或 [FAIL]，并附上理由。");
-
-        if (task.isGoalMode()) {
-            checkerPrompt.append("\n\n同时评估以下目标条件是否满足：").append(task.getGoalCondition());
-            checkerPrompt.append("\n如果满足，输出单独一行：[GOAL_ACHIEVED]。");
-            checkerPrompt.append("\n如果不满足，输出单独一行：[GOAL_PENDING]。");
-        }
-
-        String checkerResult = null;
-        for (TaskExecutor taskExecutor : taskExecutors) {
-            String result = taskExecutor.execute(sessionId, checkerPrompt.toString(), task.getCheckerAgent());
-            if (result != null) {
-                checkerResult = result;
-                break;
-            }
-        }
-
-        // 将 checker 的评估结果写入状态
-        if (checkerResult != null) {
-            LoopStateManager.appendDecision(engine.getWorkspace(), task.getId(),
-                    "审查者：" + (checkerResult.length() > 200 ? checkerResult.substring(0, 200) + "..." : checkerResult));
-        }
-
-        return LoopExecutionResult.makerChecker(makerResult, checkerResult);
     }
 
     // ==================== 清理过期任务 ====================

@@ -616,7 +616,7 @@ public class WebGate extends SimpleWebSocketListener {
     /**
      * 安全聊天输入入口，并同步捕获本轮响应文本。
      *
-     * <p>用于 Loop 调度器的 goal 检测和 maker/checker 编排。该方法仍会向前端推送完整流式消息，
+     * <p>用于 Loop 调度器的 goal 检测。该方法仍会向前端推送完整流式消息，
      * 同时等待响应流结束并返回普通文本 chunk 的拼接结果。</p>
      *
      * @param sessionId  会话标识

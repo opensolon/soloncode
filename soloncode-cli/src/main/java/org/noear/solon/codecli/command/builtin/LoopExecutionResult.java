@@ -20,7 +20,7 @@ import lombok.Getter;
 /**
  * Loop 任务单轮执行结果。
  *
- * <p>用于同时承载单代理、maker/checker、多端执行的结构化结果，避免仅依赖字符串判断
+ * <p>用于承载单代理执行的结构化结果，避免仅依赖字符串判断
  * goal 完成状态。</p>
  *
  * @author noear
@@ -29,28 +29,20 @@ import lombok.Getter;
 @Getter
 public class LoopExecutionResult {
     public static final String GOAL_ACHIEVED = "[GOAL_ACHIEVED]";
-    public static final String PASS = "[PASS]";
 
     private final boolean submitted;
     private final boolean completed;
 
     private final boolean goalAchieved;
-    private final boolean checkerPassed;
 
-    private final String makerResult;
-    private final String checkerResult;
     private final String finalResult;
     private final String errorMessage;
 
     private LoopExecutionResult(boolean submitted, boolean completed, boolean goalAchieved,
-                                boolean checkerPassed, String makerResult, String checkerResult,
                                 String finalResult, String errorMessage) {
         this.submitted = submitted;
         this.completed = completed;
         this.goalAchieved = goalAchieved;
-        this.checkerPassed = checkerPassed;
-        this.makerResult = makerResult;
-        this.checkerResult = checkerResult;
         this.finalResult = finalResult;
         this.errorMessage = errorMessage;
     }
@@ -60,40 +52,20 @@ public class LoopExecutionResult {
                 true,
                 text != null,
                 containsGoalAchieved(text),
-                containsPass(text),
-                text,
-                null,
                 text,
                 null);
     }
 
     public static LoopExecutionResult submittedOnly() {
-        return new LoopExecutionResult(true, false, false, false, null, null, null, null);
+        return new LoopExecutionResult(true, false, false, null, null);
     }
 
     public static LoopExecutionResult error(String errorMessage) {
-        return new LoopExecutionResult(true, true, false, false, null, null,
+        return new LoopExecutionResult(true, true, false,
                 errorMessage != null ? "error: " + errorMessage : "error", errorMessage);
-    }
-
-    public static LoopExecutionResult makerChecker(String makerResult, String checkerResult) {
-        String finalResult = checkerResult != null ? checkerResult : makerResult;
-        return new LoopExecutionResult(
-                true,
-                makerResult != null || checkerResult != null,
-                containsGoalAchieved(makerResult) || containsGoalAchieved(checkerResult),
-                containsPass(checkerResult),
-                makerResult,
-                checkerResult,
-                finalResult,
-                null);
     }
 
     private static boolean containsGoalAchieved(String text) {
         return text != null && text.contains(GOAL_ACHIEVED);
-    }
-
-    private static boolean containsPass(String text) {
-        return text != null && text.contains(PASS);
     }
 }
