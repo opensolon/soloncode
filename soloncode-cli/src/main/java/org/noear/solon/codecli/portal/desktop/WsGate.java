@@ -20,6 +20,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ObservationChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
@@ -288,6 +289,8 @@ public class WsGate extends SimpleWebSocketListener {
                             return;
                         } else if (chunk instanceof ReasonChunk) {
                             msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ActionChunk) {
+                            msg = onActionStartChunk((ActionChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ObservationChunk) {
                             msg = onObservationChunk((ObservationChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ThoughtChunk) {
@@ -354,6 +357,41 @@ public class WsGate extends SimpleWebSocketListener {
         return null;
     }
 
+    /**
+     * 处理 ActionChunk（工具调用前发送）：在工具实际执行前推送 action_start，
+     * 让前端提前渲染 loading 状态的工具卡片骨架，提升流式实时感。
+     * 过滤规则与 onObservationChunk 保持一致，避免卡片创建后却无对应结果填充。
+     */
+    private String onActionStartChunk(ActionChunk chunk, String finalSessionId) {
+        if (Assert.isEmpty(chunk.getToolName())) {
+            return null;
+        }
+
+        if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
+                TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||
+                MemoryTalent.isMemoryTool(chunk.getToolName())) {
+            return null;
+        }
+
+        // todowrite 的展示走专用通道，由 ObservationChunk 携带完整 todos 渲染，开始阶段不提前建卡
+        if ("todowrite".equals(chunk.getToolName())) {
+            return null;
+        }
+
+        ONode node = new ONode().set("type", "action_start")
+                .set("sessionId", finalSessionId);
+
+        if (engine.getName().equals(chunk.getAgentName())) {
+            node.set("toolName", chunk.getToolName());
+        } else {
+            node.set("toolName", chunk.getAgentName() + "/" + chunk.getToolName());
+        }
+
+        if (chunk.getArgs() != null) node.set("args", chunk.getArgs());
+
+        return node.toJson();
+    }
+
     private String onObservationChunk(ObservationChunk chunk, String finalSessionId) {
         if (chunk.getError() != null) {
             return null;
@@ -369,7 +407,7 @@ public class WsGate extends SimpleWebSocketListener {
             return null;
         }
 
-        ONode node = new ONode().set("type", "action")
+        ONode node = new ONode().set("type", "action_end")
                 .set("sessionId", finalSessionId);
 
         if (engine.getName().equals(chunk.getAgentName())) {
@@ -445,6 +483,8 @@ public class WsGate extends SimpleWebSocketListener {
                         String msg = null;
                         if (chunk instanceof ReasonChunk) {
                             msg = onReasonChunk((ReasonChunk) chunk, sessionId);
+                        } else if (chunk instanceof ActionChunk) {
+                            msg = onActionStartChunk((ActionChunk) chunk, sessionId);
                         } else if (chunk instanceof ObservationChunk) {
                             msg = onObservationChunk((ObservationChunk) chunk, sessionId);
                         } else if (chunk instanceof ThoughtChunk) {
@@ -664,6 +704,8 @@ public class WsGate extends SimpleWebSocketListener {
                     String msg = null;
                     if (chunk instanceof ReasonChunk) {
                         msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                    } else if (chunk instanceof ActionChunk) {
+                        msg = onActionStartChunk((ActionChunk) chunk, finalSessionId);
                     } else if (chunk instanceof ObservationChunk) {
                         msg = onObservationChunk((ObservationChunk) chunk, finalSessionId);
                     } else if (chunk instanceof ThoughtChunk) {

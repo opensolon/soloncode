@@ -316,7 +316,7 @@ public class WebStreamBuilder {
                 return WebChunk.EMPTY;
             }
 
-            WebChunk webChunk = WebChunk.ofAction(chunk.getContent());
+            WebChunk webChunk = WebChunk.ofActionEnd(chunk.getContent());
 
             if (Assert.isNotEmpty(chunk.getToolName())) {
                 webChunk.setArgs(new LinkedHashMap<>(chunk.getArgs()));

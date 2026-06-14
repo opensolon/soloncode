@@ -196,7 +196,268 @@ function finishPendingTool(sess) {
     }
 }
 
+/* ===== Tool Body Renderer Registry =====
+   工具结果渲染注册表：按 toolName 注册专用渲染器，解耦硬编码的 if-else。
+   renderer(bodyEl, text, args) 渲染成功返回 true；返回 falsy 则由调用方做纯文本兜底。
+   新增工具的专用展示只需 window._toolRenderers[name] = fn，无需改动主流程。 */
+window._toolRenderers = window._toolRenderers || {};
+
+/* edit：git-diff 风格逐行着色 + 行号 */
+window._toolRenderers.edit = function(bodyEl, text, args) {
+    if (!text || !text.startsWith('---')) return false;
+    bodyEl.style.padding = '0';
+    bodyEl.style.maxHeight = '400px';
+    bodyEl.style.overflow = 'auto';
+    bodyEl.style.fontFamily = 'var(--font-mono)';
+    bodyEl.style.fontSize = '12px';
+    bodyEl.style.lineHeight = '1.5';
+
+    var lines = text.split('\n');
+    var html = '';
+    var oldLineNo = 0, newLineNo = 0;
+    var hunkRe = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
+
+    for (var i = 0; i < lines.length; i++) {
+        var rawLine = lines[i];
+        var line = escapeHtml(rawLine);
+
+        if (rawLine.startsWith('+++') || rawLine.startsWith('---')) {
+            html += '<div class="git-diff-line git-line-head">'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else if (rawLine.startsWith('@@')) {
+            var m = rawLine.match(hunkRe);
+            if (m) {
+                oldLineNo = parseInt(m[1], 10);
+                newLineNo = parseInt(m[2], 10);
+            }
+            html += '<div class="git-diff-line git-line-hunk">'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else if (rawLine.startsWith('+')) {
+            html += '<div class="git-diff-line git-line-add">'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else if (rawLine.startsWith('-')) {
+            html += '<div class="git-diff-line git-line-del">'
+                + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else {
+            html += '<div class="git-diff-line git-line-ctx">'
+                + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        }
+    }
+    bodyEl.innerHTML = html;
+    return true;
+};
+
+/* write / read：按 file_path 推断语言，hljs 语法高亮 */
+function renderHighlightedFile(bodyEl, text, args) {
+    if (!text) return false;
+    var filePath = (args && args.file_path) || '';
+    var lang = (typeof window.guessLang === 'function') ? window.guessLang(filePath) : '';
+    if (lang && typeof hljs !== 'undefined') {
+        try {
+            var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
+            bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;background:var(--bg-code, #f5f5f5);line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
+            return true;
+        } catch(e) {
+            return false;
+        }
+    }
+    return false;
+}
+window._toolRenderers.write = renderHighlightedFile;
+window._toolRenderers.read = renderHighlightedFile;
+
+/* grep：按 '路径:行号: 内容' 逐行解析，同一文件归组，行号高亮、内容等宽。
+   命中"未找到结果。"等非结果文本则交还兜底。 */
+window._toolRenderers.grep = function(bodyEl, text, args) {
+    if (!text) return false;
+    var lineRe = /^(.*?):(\d+):\s?(.*)$/;
+    var lines = text.split('\n');
+    var groups = [];
+    var index = {};
+    var matched = 0;
+    for (var i = 0; i < lines.length; i++) {
+        var raw = lines[i];
+        if (!raw) continue;
+        var m = raw.match(lineRe);
+        if (!m) {
+            if (groups.length && (raw.indexOf('\u672a\u5b8c') >= 0 || raw.indexOf('\u8b66\u544a') >= 0 || raw.indexOf('\u622a\u65ad') >= 0)) {
+                groups[groups.length - 1].note = (groups[groups.length - 1].note || '') + raw + ' ';
+            }
+            continue;
+        }
+        matched++;
+        var p = m[1];
+        if (!(p in index)) { index[p] = groups.length; groups.push({ path: p, hits: [] }); }
+        groups[index[p]].hits.push({ ln: m[2], content: m[3] });
+    }
+    if (matched === 0) return false;
+    var html = '<div class="grep-result">';
+    var totalHits = 0;
+    groups.forEach(function(g) { totalHits += g.hits.length; });
+    html += '<div class="grep-summary">' + groups.length + ' \u4e2a\u6587\u4ef6 / ' + totalHits + ' \u5904\u5339\u914d</div>';
+    groups.forEach(function(g) {
+        html += '<div class="grep-file"><span class="grep-file-icon">\u{1F4C4}</span>' + escapeHtml(g.path) + '</div>';
+        g.hits.forEach(function(h) {
+            html += '<div class="grep-hit"><span class="grep-ln">' + escapeHtml(h.ln) + '</span>'
+                + '<span class="grep-code">' + escapeHtml(h.content) + '</span></div>';
+        });
+        if (g.note) html += '<div class="grep-note">' + escapeHtml(g.note.trim()) + '</div>';
+    });
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    return true;
+};
+
+/* glob / ls：按 '[FILE] path' / '[DIR] path/' 解析为带图标的文件列表；
+   ls 递归 tree（缩进 + 树形字符）走兜底等宽展示，避免破坏对齐。 */
+function renderFileListing(bodyEl, text, args) {
+    if (!text) return false;
+    if (text.indexOf('\u672a\u627e\u5230') >= 0 && text.indexOf('[') < 0) return false;
+    var lines = text.split('\n');
+    var entryRe = /^\[(FILE|DIR)\]\s+(.*)$/;
+    var items = [];
+    var hasTree = false;
+    for (var i = 0; i < lines.length; i++) {
+        var raw = lines[i];
+        if (!raw) continue;
+        var m = raw.match(entryRe);
+        if (m) { items.push({ dir: m[1] === 'DIR', path: m[2] }); }
+        else if (/[\u2502\u251c\u2514]/.test(raw)) { hasTree = true; break; }
+    }
+    if (hasTree || items.length === 0) return false;
+    var html = '<div class="file-listing"><div class="grep-summary">' + items.length + ' \u9879</div>';
+    items.forEach(function(it) {
+        var icon = it.dir ? '\u{1F4C1}' : '\u{1F4C4}';
+        html += '<div class="file-entry' + (it.dir ? ' is-dir' : '') + '">'
+            + '<span class="file-entry-icon">' + icon + '</span>'
+            + '<span class="file-entry-path">' + escapeHtml(it.path) + '</span></div>';
+    });
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    return true;
+}
+window._toolRenderers.glob = renderFileListing;
+window._toolRenderers.ls = renderFileListing;
+
+/* bash：终端风格输出块，等宽、深色、保留换行 */
+window._toolRenderers.bash = function(bodyEl, text, args) {
+    bodyEl.style.padding = '0';
+    var cmd = (args && args.command) ? args.command : '';
+    var html = '<div class="bash-output">';
+    if (cmd) html += '<div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(cmd) + '</div>';
+    html += '<pre class="bash-stdout">' + escapeHtml(text || '(\u65e0\u8f93\u51fa)') + '</pre>';
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    return true;
+};
+
+/* 分发：命中专用 renderer 且渲染成功返回 true，否则交由调用方做纯文本兜底 */
+function renderToolBody(bodyEl, toolName, text, args) {
+    var renderer = window._toolRenderers[toolName];
+    if (typeof renderer === 'function') {
+        try {
+            if (renderer(bodyEl, text, args)) return true;
+        } catch(e) {}
+    }
+    return false;
+}
+
+/* 抽取：把 args 对象格式化为短字符串（供卡片头部 tool-args 展示）。
+   与 appendActionEndChunk 内的实现保持一致，供 action_start 复用。 */
+function formatToolArgsStr(args) {
+    function formatArgValue(v) {
+        if (v === null) return 'null';
+        if (v === undefined) return 'undefined';
+        if (typeof v === 'string') return v.replace(/\n/g, ' ');
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (Array.isArray(v)) return '[' + v.length + '\u9879]';
+        if (typeof v === 'object') {
+            var keys = Object.keys(v);
+            if (keys.length === 0) return '{}';
+            if (keys.length > 3) return '{' + keys.slice(0, 2).join(',') + ',...}';
+            var inner = [];
+            keys.forEach(function(k) { inner.push(k + ':' + formatArgValue(v[k])); });
+            var s = '{' + inner.join(',') + '}';
+            return s.length > 30 ? '{' + keys.join(',') + '}' : s;
+        }
+        return String(v);
+    }
+    if (!args || typeof args !== 'object') return '';
+    var parts = [];
+    Object.keys(args).forEach(function(k) { parts.push(k + '=' + formatArgValue(args[k])); });
+    var argsStr = parts.join(' ');
+    if (argsStr.length > 80) argsStr = argsStr.substring(0, 77) + '...';
+    return argsStr;
+}
+
+/* action_start：工具调用前（来源引擎 ActionChunk）提前渲染 loading 卡片骨架。
+   存为 sess.pendingToolCard，待 action（ObservationChunk 结果）到达时由
+   appendActionEndChunk 复用此卡片填充结果体并转完成态。 */
+function appendActionStartChunk(sess, toolName, args) {
+    // 若已有未完成的 pending 卡（异常时序/重复 start），先收尾避免悬挂
+    finishPendingTool(sess);
+    ensureAssistantBubble(sess);
+
+    var argsStr = formatToolArgsStr(args);
+    var argsHtml = argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '';
+
+    var card = $('<div>').addClass('tool-card')[0];
+    card.innerHTML = '<div class="tool-card-header">'
+        + '<span class="tool-status-icon loading"></span>'
+        + '<span class="tool-name">' + escapeHtml(toolName || 'tool') + '</span>'
+        + argsHtml
+        + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
+        + '</div>'
+        + '<div class="tool-card-body"></div>';
+
+    $(card).find('.tool-card-header').on('click', function() {
+        $(card).toggleClass('expanded');
+    });
+
+    insertBeforeActions(sess, card);
+    sess.pendingToolCard = card;
+    // 标记该卡由 action_start 提前创建，等待结果填充
+    sess.pendingToolStarted = true;
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
 function appendActionEndChunk(sess, toolName, text, args) {
+    // 复用分支：若该工具卡由 action_start 提前创建（loading 中），直接填充结果体并转完成态，避免重复建卡
+    if (sess.pendingToolStarted && sess.pendingToolCard) {
+        var pc = sess.pendingToolCard;
+        sess.pendingToolStarted = false;
+        var pcArgsStr = formatToolArgsStr(args);
+        $(pc).find('.tool-name').text(toolName || 'tool');
+        var pcArgsEl = $(pc).find('.tool-args')[0];
+        if (pcArgsStr) {
+            if (pcArgsEl) { pcArgsEl.textContent = pcArgsStr; }
+            else { $('<span>').addClass('tool-args').text(pcArgsStr).insertAfter($(pc).find('.tool-name')); }
+        }
+        var pcBody = $(pc).find('.tool-card-body')[0];
+        if (pcBody) {
+            pcBody.removeAttribute('style');
+            pcBody.innerHTML = '';
+            if (!renderToolBody(pcBody, toolName, text, args)) { pcBody.textContent = text || ''; }
+        }
+        finishPendingTool(sess);
+        if (window._todoChunkHandlers) { /* todo 由 streaming 层单独处理，这里不重复 */ }
+        sess.reasonBuffer = '';
+        var pcMd = $('<div>').addClass('md-content')[0];
+        insertBeforeActions(sess, pcMd);
+        sess.currentBubbleEl = pcMd;
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+        return;
+    }
     finishPendingTool(sess);
     ensureAssistantBubble(sess);
 
@@ -229,6 +490,32 @@ function appendActionEndChunk(sess, toolName, text, args) {
         if (argsStr) argsHtml = '<span class="tool-args">' + escapeHtml(argsStr) + '</span>';
     }
 
+    // 复用分支：若刚批准过 HITL，结果渲染进同一张审批卡片，避免出现两张卡
+    if (sess.approvedToolCard) {
+        var rc = sess.approvedToolCard;
+        sess.approvedToolCard = null;
+        $(rc).find('.tool-name').text(toolName || 'tool');
+        var rcArgsEl = $(rc).find('.tool-args')[0];
+        if (argsStr) {
+            if (rcArgsEl) { rcArgsEl.textContent = argsStr; }
+            else { $('<span>').addClass('tool-args').text(argsStr).insertAfter($(rc).find('.tool-name')); }
+        }
+        var rcBody = $(rc).find('.tool-card-body')[0];
+        if (rcBody) {
+            rcBody.removeAttribute('style');
+            rcBody.innerHTML = '';
+            if (!renderToolBody(rcBody, toolName, text, args)) { rcBody.textContent = text || ''; }
+        }
+        $(rc).removeClass('expanded');
+        sess.pendingToolCard = rc;
+        sess.reasonBuffer = '';
+        var rcMd = $('<div>').addClass('md-content')[0];
+        insertBeforeActions(sess, rcMd);
+        sess.currentBubbleEl = rcMd;
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+        return;
+    }
+
     var card = $('<div>').addClass('tool-card')[0];
     card.innerHTML = '<div class="tool-card-header">'
         + '<span class="tool-status-icon loading"></span>'
@@ -238,77 +525,10 @@ function appendActionEndChunk(sess, toolName, text, args) {
         + '</div>'
         + '<div class="tool-card-body"></div>';
 
-    // edit 工具且文本为 diff 格式时，以 git-diff 风格渲染
-    if (toolName === 'edit' && text && text.startsWith('---')) {
-        var body = $(card).find('.tool-card-body')[0];
-        body.style.padding = '0';
-        body.style.maxHeight = '400px';
-        body.style.overflow = 'auto';
-        body.style.fontFamily = 'var(--font-mono)';
-        body.style.fontSize = '12px';
-        body.style.lineHeight = '1.5';
-
-        var lines = text.split('\n');
-        var html = '';
-        var oldLineNo = 0, newLineNo = 0;
-        var hunkRe = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
-
-        for (var i = 0; i < lines.length; i++) {
-            var rawLine = lines[i];
-            var line = escapeHtml(rawLine);
-
-            if (rawLine.startsWith('+++') || rawLine.startsWith('---')) {
-                html += '<div class="git-diff-line git-line-head">'
-                    + '<span class="git-line-num"></span>'
-                    + '<span class="git-line-num"></span>'
-                    + '<span class="git-line-text">' + line + '</span></div>';
-            } else if (rawLine.startsWith('@@')) {
-                var m = rawLine.match(hunkRe);
-                if (m) {
-                    oldLineNo = parseInt(m[1], 10);
-                    newLineNo = parseInt(m[2], 10);
-                }
-                html += '<div class="git-diff-line git-line-hunk">'
-                    + '<span class="git-line-num"></span>'
-                    + '<span class="git-line-num"></span>'
-                    + '<span class="git-line-text">' + line + '</span></div>';
-            } else if (rawLine.startsWith('+')) {
-                html += '<div class="git-diff-line git-line-add">'
-                    + '<span class="git-line-num"></span>'
-                    + '<span class="git-line-num">' + (newLineNo++) + '</span>'
-                    + '<span class="git-line-text">' + line + '</span></div>';
-            } else if (rawLine.startsWith('-')) {
-                html += '<div class="git-diff-line git-line-del">'
-                    + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
-                    + '<span class="git-line-num"></span>'
-                    + '<span class="git-line-text">' + line + '</span></div>';
-            } else {
-                html += '<div class="git-diff-line git-line-ctx">'
-                    + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
-                    + '<span class="git-line-num">' + (newLineNo++) + '</span>'
-                    + '<span class="git-line-text">' + line + '</span></div>';
-            }
-        }
-        body.innerHTML = html;
-    } else {
-        var toolBody = $(card).find('.tool-card-body')[0];
-        // write 工具：根据 file_path 推断语言，hljs 语法高亮（类似右侧文件详情）
-        if ((toolName === 'write' || toolName === 'read') && text) {
-            var filePath = (args && args.file_path) || '';
-            var lang = (typeof window.guessLang === 'function') ? window.guessLang(filePath) : '';
-            if (lang && typeof hljs !== 'undefined') {
-                try {
-                    var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
-                    toolBody.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;background:var(--bg-code, #f5f5f5);line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
-                } catch(e) {
-                    toolBody.textContent = text || '';
-                }
-            } else {
-                toolBody.textContent = text || '';
-            }
-        } else {
-            toolBody.textContent = text || '';
-        }
+    // 工具结果渲染：委托注册表分发，未命中专用 renderer 则纯文本兜底
+    var toolBody = $(card).find('.tool-card-body')[0];
+    if (!renderToolBody(toolBody, toolName, text, args)) {
+        toolBody.textContent = text || '';
     }
 
     $(card).find('.tool-card-header').on('click', function() {
@@ -429,18 +649,24 @@ function removeInlineThinking(sess) {
 function appendHitlCard(sess, toolName, command) {
     ensureAssistantBubble(sess);
 
-    var card = $('<div>').addClass('hitl-card')[0];
-    card.innerHTML = '<div class="hitl-card-header">'
-        + '<i class="layui-icon layui-icon-tips"></i> \u9700\u8981\u6388\u6743'
+    // 采用 tool-card 视觉体系：审批通过后原地复用为工具结果卡片
+    var argsHtml = command ? '<span class="tool-args">' + escapeHtml(command) + '</span>' : '';
+    var card = $('<div>').addClass('tool-card hitl-pending expanded')[0];
+    card.innerHTML = '<div class="tool-card-header">'
+        + '<span class="tool-status-icon warn"><i class="layui-icon layui-icon-tips" style="font-size:13px"></i></span>'
+        + '<span class="tool-name">\u9700\u8981\u6388\u6743\uff1a' + escapeHtml(toolName || 'unknown') + '</span>'
+        + argsHtml
+        + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
         + '</div>'
-        + '<div class="hitl-card-body">'
-        + '<div class="hitl-tool">\u5de5\u5177: <strong>' + escapeHtml(toolName || 'unknown') + '</strong></div>'
-        + (command ? '<div class="hitl-command">' + escapeHtml(command) + '</div>' : '')
-        + '</div>'
+        + '<div class="tool-card-body">' + (command ? escapeHtml(command) : '\u7b49\u5f85\u6388\u6743\u4ee5\u6267\u884c\u8be5\u5de5\u5177') + '</div>'
         + '<div class="hitl-card-actions">'
         + '<button class="hitl-btn hitl-btn-approve">\u6279\u51c6</button>'
         + '<button class="hitl-btn hitl-btn-reject">\u62d2\u7edd</button>'
         + '</div>';
+
+    $(card).find('.tool-card-header').on('click', function() {
+        $(card).toggleClass('expanded');
+    });
 
     insertBeforeActions(sess, card);
 
@@ -450,18 +676,24 @@ function appendHitlCard(sess, toolName, command) {
     $(approveBtn).on('click', function() {
         approveBtn.disabled = true;
         rejectBtn.disabled = true;
-        $(approveBtn).text('\u5df2\u6279\u51c6');
-        $(rejectBtn).hide();
-        card.style.borderColor = 'var(--color-success)';
+        // 转为"执行中"，标记后续 action 结果复用此卡片
+        var icon = $(card).find('.tool-status-icon')[0];
+        if (icon) { icon.className = 'tool-status-icon loading'; icon.innerHTML = ''; }
+        $(card).find('.hitl-card-actions').remove();
+        $(card).removeClass('hitl-pending');
+        sess.approvedToolCard = card;
         handleHitlResponse(sess, 'approve');
     });
 
     $(rejectBtn).on('click', function() {
         approveBtn.disabled = true;
         rejectBtn.disabled = true;
-        $(rejectBtn).text('\u5df2\u62d2\u7edd');
-        $(approveBtn).hide();
-        card.style.borderColor = 'var(--color-danger)';
+        var icon = $(card).find('.tool-status-icon')[0];
+        if (icon) { icon.className = 'tool-status-icon reject'; icon.innerHTML = '<i class="layui-icon layui-icon-close" style="font-size:12px"></i>'; }
+        $(card).find('.tool-name').text('\u5df2\u62d2\u7edd\uff1a' + (toolName || 'unknown'));
+        $(card).find('.hitl-card-actions').remove();
+        $(card).removeClass('hitl-pending expanded');
+        sess.approvedToolCard = null;
         handleHitlResponse(sess, 'reject');
     });
 

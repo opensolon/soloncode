@@ -138,7 +138,8 @@ function onWebChunk(sess, chunk) {
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
             case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
             case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
-            case 'action': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
+            case 'action_end': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
+            case 'action_start': finishThinkingBlock(sess); appendActionStartChunk(sess, chunk.toolName, chunk.args); break;
             case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, false); break;
             case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
             case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
@@ -183,6 +184,7 @@ function finishStream(sess) {
     removeInlineThinking(sess);
     finishThinkingBlock(sess);
     finishPendingTool(sess);
+    sess.approvedToolCard = null;
 
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
 
@@ -271,7 +273,7 @@ function connectWebGate() {
             if (!sid) return; // 无 sessionId 的消息丢弃
 
             // 即使 sess2 不存在，也优先处理 todowrite 动作（用于更新左侧 Sidebar 的 todo 进度）
-            if (chunk.type === 'action' && chunk.toolName === 'todowrite') {
+            if (chunk.type === 'action_end' && chunk.toolName === 'todowrite') {
                 if (window._todoChunkHandlers) {
                     window._todoChunkHandlers.forEach(function(h) { h(chunk); });
                 }

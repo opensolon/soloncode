@@ -248,6 +248,10 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .tool-status-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; transition: all 0.3s; }
 .tool-status-icon.loading { border: 2px solid var(--border-color); border-top-color: var(--accent); animation: blob-spin 0.8s linear infinite; }
 .tool-status-icon.done { background: var(--color-success); color: #fff; border: none; animation: none; }
+.tool-status-icon.warn { background: var(--color-warning); color: #fff; border: none; animation: none; }
+.tool-status-icon.reject { background: var(--color-danger); color: #fff; border: none; animation: none; }
+.tool-card.hitl-pending { border-color: var(--color-warning); }
+.tool-card .hitl-card-actions { display: flex; gap: 10px; padding: 0 14px 14px; }
 .tool-name { font-weight: 600; color: var(--text-primary); white-space: nowrap; flex-shrink: 0; }
 .tool-args { color: var(--text-tertiary); font-size: 12px; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tool-label { color: var(--text-secondary); font-size: 12px; }
@@ -1154,6 +1158,73 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .git-line-text {
     flex: 1;
     min-width: 0;
+}
+
+/* ===== 工具结果专用渲染：grep / glob / ls / bash ===== */
+.grep-summary {
+    padding: 6px 14px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--bg-code, #f5f5f5);
+}
+.grep-result, .file-listing { padding: 0; }
+.grep-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px 2px;
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-all;
+}
+.grep-file-icon { opacity: 0.7; }
+.grep-hit {
+    display: flex;
+    padding: 1px 14px 1px 28px;
+    line-height: 1.6;
+}
+.grep-ln {
+    min-width: 44px;
+    text-align: right;
+    padding-right: 12px;
+    color: var(--text-secondary);
+    opacity: 0.55;
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+}
+.grep-code { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-all; }
+.grep-note { padding: 4px 14px; color: var(--color-danger, #cb2431); font-size: 11px; }
+.file-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 14px;
+    line-height: 1.6;
+    word-break: break-all;
+}
+.file-entry-icon { opacity: 0.7; flex-shrink: 0; }
+.file-entry.is-dir .file-entry-path { color: var(--text-primary); font-weight: 500; }
+.bash-output { background: #1e1e1e; border-radius: 0; }
+.bash-cmd {
+    padding: 8px 14px;
+    color: #d4d4d4;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.bash-prompt { color: #4ec9b0; font-weight: 600; user-select: none; }
+.bash-stdout {
+    margin: 0;
+    padding: 10px 14px;
+    color: #cccccc;
+    background: #1e1e1e;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+    line-height: 1.5;
 }
 
 /* Git 提交按钮 */

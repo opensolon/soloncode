@@ -35,6 +35,8 @@ function SessionState(sessionId) {
     this.thinkingBodyWrapEl = null;
     this.thinkingBuffer = '';
     this.pendingToolCard = null;
+    this.pendingToolStarted = false;
+    this.approvedToolCard = null;
     this.thinkingEl = null;
     this.inlineThinkingEl = null;
     this.silenceTimer = null;
@@ -117,6 +119,7 @@ function scrollToBottom(force) {
 
 function resetStreamState(sess) {
     sess.currentBubbleEl = null;
+    sess.pendingToolStarted = false;
     sess.reasonBuffer = '';
     sess.thinkingBlockEl = null;
     sess.thinkingBodyMdEl = null;

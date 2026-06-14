@@ -169,17 +169,38 @@ public class WebChunk {
 
 
     /**
-     * 创建「动作说明」消息块。
-     * <p>type 为 {@code action}，描述当前正在执行的操作（如调用工具前的简要说明），
-     * 用于向前端指示 Agent 的行为意图。</p>
+     * 创建「动作结束」消息块。
+     * <p>type 为 {@code action_end}，在工具执行完成后发送（来源于引擎的 ObservationChunk），
+     * 携带工具执行结果。与 {@code action_start} 成对：前者标记调用开始并渲染 loading 骨架，
+     * 本块到达时填充结果并将工具卡转为完成态。</p>
      *
-     * @param text 动作描述文本
-     * @return 携带动作说明的消息块
+     * @param text 工具执行结果文本
+     * @return 携带执行结果的动作结束消息块
      */
-    public static WebChunk ofAction(String text) {
+    public static WebChunk ofActionEnd(String text) {
         WebChunk tmp = new WebChunk();
-        tmp.type = "action";
+        tmp.type = "action_end";
         tmp.text = text;
+        tmp.createdAt = Instant.now().toEpochMilli();
+
+        return tmp;
+    }
+
+    /**
+     * 创建「动作开始」消息块。
+     * <p>type 为 {@code action_start}，在工具实际执行前发送（来源于引擎的 ActionChunk），
+     * 携带工具名与调用参数但不含结果。前端据此提前渲染一张 loading 状态的工具卡片骨架，
+     * 待后续 {@code action}（来源于 ObservationChunk）到达时填充结果并转为完成态。</p>
+     *
+     * @param toolName 工具名称
+     * @param args     工具调用参数
+     * @return 携带工具名与参数的动作开始消息块
+     */
+    public static WebChunk ofActionStart(String toolName, Map<String, Object> args) {
+        WebChunk tmp = new WebChunk();
+        tmp.type = "action_start";
+        tmp.toolName = toolName;
+        tmp.args = args;
         tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
