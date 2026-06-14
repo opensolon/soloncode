@@ -328,6 +328,9 @@ public class WebStreamBuilder {
                 ? new LinkedHashMap<>(chunk.getArgs())
                 : null;
 
+        // edit 开始阶段即重建 diff，让 loading 骨架卡也能预览改动
+        fillEditDiff(args);
+
         return WebChunk.ofActionStart(toolName, args);
     }
 
@@ -388,14 +391,97 @@ public class WebStreamBuilder {
                     }
                 }
 
-                // edit：diff 作为「输入」保留在 args.diff，text 保留工具真实返回（成功提示/错误信息）作为「输出」，
-                // 由前端 edit 渲染器两段式展示。不再用 diff 覆盖 text，避免丢弃结果。
+                // edit：入参为结构化 edits 列表（无 diff 字段），在此由结构化参数重建 git diff 文本写入 args.diff，
+                // text 保留工具真实返回（成功提示/错误信息）作为「输出」，由前端 edit 渲染器两段式展示。
+                fillEditDiff(webChunk.getArgs());
             }
 
             return webChunk;
         }
 
         return WebChunk.EMPTY;
+    }
+
+    /**
+     * 将 edit 工具的结构化 edits 列表转换为标准 git diff 文本，写入 {@code args.diff}，供前端 edit 渲染器着色展示。
+     *
+     * <p>edit 工具入参为 edits 列表（每项含 old_str / old_StrStartLine / new_str / replace_all），本身不含 diff 文本。
+     * 前端渲染器依赖 {@code args.diff} 渲染，故在此由结构化参数重建 git diff：每个编辑操作生成一个 hunk，
+     * old_str 各行打 {@code -}、new_str 各行打 {@code +}，old_StrStartLine 提供 {@code @@} 行号锚点（缺失时退化为 0）。
+     * 转换后移除原始 edits，避免工具卡头部回显冗余结构。</p>
+     *
+     * @param args 工具参数（可为 null）
+     */
+    @SuppressWarnings("unchecked")
+    private void fillEditDiff(Map<String, Object> args) {
+        if (args == null || !(args.get(TerminalTalent.PARAM_EDITS) instanceof List)) {
+            return;
+        }
+
+        List<?> edits = (List<?>) args.get(TerminalTalent.PARAM_EDITS);
+        if (edits.isEmpty()) {
+            return;
+        }
+
+        StringBuilder diff = new StringBuilder();
+        for (Object item : edits) {
+            if (!(item instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> edit = (Map<String, Object>) item;
+
+            int startLine = asInt(edit.get("old_StrStartLine"), 0);
+            List<String> oldLines = splitLines(asString(edit.get("old_str")));
+            List<String> newLines = splitLines(asString(edit.get("new_str")));
+
+            diff.append("@@ -").append(startLine).append(',').append(oldLines.size())
+                    .append(" +").append(startLine).append(',').append(newLines.size())
+                    .append(" @@\n");
+
+            for (String line : oldLines) {
+                diff.append('-').append(line).append('\n');
+            }
+            for (String line : newLines) {
+                diff.append('+').append(line).append('\n');
+            }
+        }
+
+        if (diff.length() > 0) {
+            args.put("diff", diff.toString());
+            args.remove(TerminalTalent.PARAM_EDITS);
+        }
+    }
+
+    private static String asString(Object o) {
+        return o == null ? "" : o.toString();
+    }
+
+    private static int asInt(Object o, int def) {
+        if (o instanceof Number) {
+            return ((Number) o).intValue();
+        }
+        if (o instanceof String) {
+            try {
+                return Integer.parseInt(((String) o).trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return def;
+    }
+
+    private static List<String> splitLines(String s) {
+        if (s == null || s.isEmpty()) {
+            return Collections.emptyList();
+        }
+        // 统一换行符并去掉末尾换行，避免 split 产生多余空元素
+        String normalized = s.replace("\r\n", "\n").replace('\r', '\n');
+        while (normalized.endsWith("\n")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        if (normalized.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Arrays.asList(normalized.split("\n", -1));
     }
 
     /**
