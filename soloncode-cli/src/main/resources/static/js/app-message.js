@@ -2,11 +2,15 @@
 /* 消息渲染：消息气泡 + 思考动画 + 命令输出 + HITL + 回退 */
 /* 依赖：app-base.js */
 
+/* 复制图标（icon-only，用户与 AI 消息共用） */
+var COPY_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+var OK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
 /* ===== Message Rendering (Session-Aware) ===== */
 function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt) {
     var row = $('<div>').addClass('msg-row user')[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
-    row.innerHTML = '<button class="user-copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i></button><div class="msg-bubble"></div>';
+    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button></div>';
     var bubble = $(row).find('.msg-bubble')[0];
 
     // Multiple images
@@ -50,10 +54,10 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         if (navigator.clipboard) {
             navigator.clipboard.writeText(md).then(function() {
                 $(copyBtn).addClass('copied');
-                copyBtn.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:14px"></i>';
+                copyBtn.innerHTML = OK_SVG;
                 setTimeout(function() {
                     $(copyBtn).removeClass('copied');
-                    copyBtn.innerHTML = '<i class="layui-icon layui-icon-file"></i>';
+                    copyBtn.innerHTML = COPY_SVG;
                 }, 1500);
             });
         }
@@ -85,7 +89,7 @@ function ensureAssistantBubble(sess) {
         row.innerHTML = '<div class="msg-bubble"><div class="md-content"></div>'
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
-            + '<button class="msg-action-btn copy-btn" title="复制"><i class="layui-icon layui-icon-file"></i> 复制</button>'
+            + '<button class="user-copy-btn copy-btn" title="复制">' + COPY_SVG + '</button>'
             + '</div></div>';
         $(sess.container).append(row);
         sess.currentBubbleEl = $(row).find('.md-content')[0];
@@ -110,10 +114,10 @@ function ensureAssistantBubble(sess) {
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(md).then(function() {
                     $(copyBtn).addClass('copied');
-                    copyBtn.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:14px"></i> 已复制';
+                    copyBtn.innerHTML = OK_SVG;
                     setTimeout(function() {
                         $(copyBtn).removeClass('copied');
-                        copyBtn.innerHTML = '<i class="layui-icon layui-icon-file"></i> 复制';
+                        copyBtn.innerHTML = COPY_SVG;
                     }, 1500);
                 });
             }

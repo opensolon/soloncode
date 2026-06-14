@@ -295,17 +295,14 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 }
 .msg-trace { font-size: 11px; color: var(--text-secondary); opacity: 0.5; text-align: right; margin-top: 2px; line-height: 1; pointer-events: none; }
 /* Msg Actions */
-.msg-actions { display: flex; gap: 6px; margin-top: 10px; opacity: 0; transition: opacity 0.2s; }
-.msg-row.assistant:hover .msg-actions { opacity: 1; }
-.msg-action-btn { background: none; border: 1px solid var(--border-color); border-radius: 8px; padding: 5px 10px; cursor: pointer; color: var(--text-secondary); font-size: 12px; transition: all 0.15s; display: flex; align-items: center; gap: 4px; }
-.msg-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent); }
+.msg-actions { display: flex; gap: 6px; margin-top: 8px; }
 
 /* User Message Copy */
 .msg-row.user { gap: 0; }
-.user-copy-btn { background: none; border: none; border-radius: 8px; padding: 4px; cursor: pointer; color: var(--text-secondary); font-size: 14px; line-height: 1; opacity: 0; transition: opacity 0.2s, background 0.15s, color 0.15s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.msg-row.user:hover .user-copy-btn { opacity: 0.6; }
-.user-copy-btn:hover { opacity: 1 !important; background: var(--bg-hover); color: var(--text-primary); }
-.user-copy-btn.copied { color: var(--color-success); opacity: 1 !important; }
+.user-msg-col { display: flex; flex-direction: column; align-items: flex-end; max-width: 100%; min-width: 0; }
+.user-copy-btn { background: none; border: none; border-radius: 8px; padding: 4px; margin-top: 4px; cursor: pointer; color: var(--text-secondary); font-size: 14px; line-height: 1; opacity: 0.6; transition: background 0.15s, color 0.15s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.user-copy-btn:hover { opacity: 1; background: var(--bg-hover); color: var(--text-primary); }
+.user-copy-btn.copied { color: var(--color-success); opacity: 1; }
 
 /* Thinking */
 .inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); font-size: 13px; }
@@ -1678,9 +1675,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 @media (max-width: 768px) {
     .messages-inner { padding: 16px 12px 8px; }
     .msg-row.user .msg-bubble, .msg-row.assistant .msg-bubble { max-width: 92% !important; min-width: unset !important; }
-    /* 触屏无 hover：复制/操作按钮常驻可见 */
+    /* 触屏无 hover：复制按钮常驻可见 */
     .user-copy-btn { opacity: 0.6; }
-    .msg-actions { opacity: 1; }
     .welcome-input-box { max-width: 100%; }
     .input-wrap { padding: 8px 12px 16px; }
     .welcome-title { font-size: 22px; }
