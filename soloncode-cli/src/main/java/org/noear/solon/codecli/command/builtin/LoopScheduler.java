@@ -529,7 +529,7 @@ public class LoopScheduler {
             goalPrompt.append("<objective>\n");
             goalPrompt.append(task.getGoalCondition()).append("\n");
             goalPrompt.append("</objective>\n\n");
-            goalPrompt.append("Progress: iteration ").append(task.getCurrentIteration()).append("/").append(task.getMaxIterations()).append("\n");
+            goalPrompt.append("进度：第 ").append(task.getCurrentIteration()).append("/").append(task.getMaxIterations()).append(" 次迭代\n");
             goalPrompt.append("\n如果目标已达成，请回复 [GOAL_ACHIEVED]。");
 
             prompt = prompt + goalPrompt;
