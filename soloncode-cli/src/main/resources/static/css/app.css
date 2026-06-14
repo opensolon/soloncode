@@ -2011,7 +2011,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 }
 .context-thinking {
     position: absolute;
-    right: 0;
+    left: 0;
     top: 50%;
     transform: translateY(-50%);
     display: inline-flex;
