@@ -180,7 +180,7 @@ public class CliShell implements Runnable {
 
             // 会话繁忙守卫：CLI 为单线程模型，仅当主线程在等待用户输入（reader.isReading）时才空闲。
             // 若不在等待输入，说明 agent 任务正在执行，loop 触发应跳过本次。
-            loopScheduler.setBusyChecker(sessionId -> {
+            loopScheduler.addBusyChecker(sessionId -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return false;
                 }

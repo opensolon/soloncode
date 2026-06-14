@@ -61,8 +61,10 @@ public class LoopScheduler {
     // CLI 端任务执行回调：sessionId, prompt, agentName -> void（同步阻塞）
     private volatile List<TaskExecutor> taskExecutors = new ArrayList<>();
 
-    // 会话繁忙检查器：用于在定时触发时判断会话是否正在执行任务（由各端口注入）
-    private volatile BusyChecker busyChecker;
+    // 会话繁忙检查器：用于在定时触发时判断会话是否正在执行任务（由各端口注入）。
+    // 用列表而非单值：Web 与 CLI 两端口会各自注入一个，单值会被后注入者覆盖，
+    // 导致先注入端口的繁忙守卫失效。各 checker 已按 sessionId 前缀自过滤，OR 合并即可。
+    private volatile List<BusyChecker> busyCheckers = new ArrayList<>();
 
     // Worktree 管理器（lazy init）
     private volatile WorktreeManager worktreeManager;
@@ -120,10 +122,14 @@ public class LoopScheduler {
     }
 
     /**
-     * 设置会话繁忙检查器（由 WebController / CliShell 注入）
+     * 注册会话繁忙检查器（由 WebController / CliShell 各自注入）。
+     *
+     * <p>采用追加语义而非覆盖：多个端口的 checker 共存，任一报告繁忙即视为繁忙。</p>
      */
-    public void setBusyChecker(BusyChecker busyChecker) {
-        this.busyChecker = busyChecker;
+    public void addBusyChecker(BusyChecker busyChecker) {
+        if (busyChecker != null) {
+            this.busyCheckers.add(busyChecker);
+        }
     }
 
     /**
@@ -435,10 +441,13 @@ public class LoopScheduler {
             return;
         }
 
-        // 会话正在执行任务时跳过本次触发：不消耗迭代、不创建 worktree、不向前端推送消息
-        if (busyChecker != null && busyChecker.isBusy(sessionId)) {
-            LOG.info("Loop task '{}' skipped: session '{}' is busy", task.getId(), sessionId);
-            return;
+        // 会话正在执行任务时跳过本次触发：不消耗迭代、不创建 worktree、不向前端推送消息。
+        // 任一端口的 checker 报告繁忙即跳过（OR 合并）。
+        for (BusyChecker checker : busyCheckers) {
+            if (checker.isBusy(sessionId)) {
+                LOG.info("Loop task '{}' skipped: session '{}' is busy", task.getId(), sessionId);
+                return;
+            }
         }
 
         // 达到最大迭代次数则自动移除

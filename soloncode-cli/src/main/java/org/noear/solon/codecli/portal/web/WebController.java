@@ -108,7 +108,7 @@ public class WebController {
         // 注入 Web 端 Loop 任务执行器：同步等待本轮 AI 响应结束，捕获文本结果用于 goal 检测。
         if (loopScheduler != null) {
             // 会话繁忙守卫：session 正在执行任务时，loop 定时触发跳过本次执行
-            loopScheduler.setBusyChecker(sessionId -> {
+            loopScheduler.addBusyChecker(sessionId -> {
                 if (sessionId == null || !sessionId.startsWith("web-")) {
                     return false;
                 }
