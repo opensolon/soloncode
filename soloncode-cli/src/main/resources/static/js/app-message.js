@@ -204,7 +204,10 @@ window._toolRenderers = window._toolRenderers || {};
 
 /* edit：git-diff 风格逐行着色 + 行号 */
 window._toolRenderers.edit = function(bodyEl, text, args) {
-    if (!text || !text.startsWith('---')) return false;
+    var diff = (args && typeof args.diff === 'string') ? args.diff : null;
+    var result = (typeof text === 'string') ? text : null;
+    if (!diff && result && result.startsWith('---')) { diff = result; result = null; }
+    if (!diff && !result) return false;
     bodyEl.style.padding = '0';
     bodyEl.style.maxHeight = '400px';
     bodyEl.style.overflow = 'auto';
@@ -212,12 +215,12 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
     bodyEl.style.fontSize = '12px';
     bodyEl.style.lineHeight = '1.5';
 
-    var lines = text.split('\n');
+    var lines = (diff || '').split('\n');
     var html = '';
     var oldLineNo = 0, newLineNo = 0;
     var hunkRe = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
 
-    for (var i = 0; i < lines.length; i++) {
+    for (var i = 0; diff && i < lines.length; i++) {
         var rawLine = lines[i];
         var line = escapeHtml(rawLine);
 
@@ -252,6 +255,14 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
                 + '<span class="git-line-num">' + (newLineNo++) + '</span>'
                 + '<span class="git-line-text">' + line + '</span></div>';
         }
+    }
+    // 输出段：工具真实返回（成功提示或错误信息）。仅当结果存在且不等于 diff（避免回显重复）时渲染
+    if (result && result !== diff) {
+        var isErr = /(\u5931\u8d25|\u9519\u8bef|\u65e0\u6743|\u4e0d\u5b58\u5728|\u672a\u627e\u5230|\u62d2\u7edd|\u56de\u6eda|error|fail|exception|denied|not\s*found|no\s*such)/i.test(result);
+        if (diff) html += '<div class="edit-result-sep"></div>';
+        html += '<div class="edit-result ' + (isErr ? 'is-error' : 'is-ok') + '">'
+            + '<span class="edit-result-label">' + (isErr ? '\u26a0 \u5931\u8d25' : '\u2713 \u7ed3\u679c') + '</span>'
+            + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
     }
     bodyEl.innerHTML = html;
     return true;
@@ -394,7 +405,9 @@ function formatToolArgsStr(args) {
     }
     if (!args || typeof args !== 'object') return '';
     var parts = [];
-    Object.keys(args).forEach(function(k) { parts.push(k + '=' + formatArgValue(args[k])); });
+    // 跳过大体积字段（由 body 渲染器专门展示），避免头部塞入整段 diff/内容
+    var skip = { diff: 1, content: 1, todos: 1 };
+    Object.keys(args).forEach(function(k) { if (skip[k]) return; parts.push(k + '=' + formatArgValue(args[k])); });
     var argsStr = parts.join(' ');
     if (argsStr.length > 80) argsStr = argsStr.substring(0, 77) + '...';
     return argsStr;
@@ -482,8 +495,9 @@ function appendActionEndChunk(sess, toolName, text, args) {
     var argsHtml = '';
     if (args && typeof args === 'object') {
         var parts = [];
+        var skipArgs = { diff: 1, content: 1, todos: 1 };
         Object.keys(args).forEach(function(k) {
-            parts.push(k + '=' + formatArgValue(args[k]));
+            if (skipArgs[k]) return; parts.push(k + '=' + formatArgValue(args[k]));
         });
         var argsStr = parts.join(' ');
         if (argsStr.length > 80) argsStr = argsStr.substring(0, 77) + '...';

@@ -345,14 +345,8 @@ public class WebStreamBuilder {
                     }
                 }
 
-                if (TerminalTalent.TOOL_EDIT.equals(chunk.getToolName())) {
-                    String diff = (String) chunk.getArgs().get(TerminalTalent.PARAM_DIFF);
-
-                    if (Assert.isNotEmpty(diff)) {
-                        webChunk.setText(diff);
-                        webChunk.getArgs().remove(TerminalTalent.PARAM_DIFF);
-                    }
-                }
+                // edit：diff 作为「输入」保留在 args.diff，text 保留工具真实返回（成功提示/错误信息）作为「输出」，
+                // 由前端 edit 渲染器两段式展示。不再用 diff 覆盖 text，避免丢弃结果。
             }
 
             return webChunk;

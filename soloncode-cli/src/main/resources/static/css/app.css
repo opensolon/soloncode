@@ -1227,6 +1227,33 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     line-height: 1.5;
 }
 
+/* edit 两段式：输入(diff) 与 输出(result) 之间的分隔与结果样式 */
+.edit-result-sep {
+    border-top: 1px dashed var(--border-color);
+    margin: 0;
+}
+.edit-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.edit-result-label {
+    flex-shrink: 0;
+    font-weight: 600;
+    user-select: none;
+}
+.edit-result.is-ok { background: var(--git-line-add-bg, rgba(46,160,67,0.08)); }
+.edit-result.is-ok .edit-result-label { color: var(--git-line-add-text, #2ea043); }
+.edit-result.is-error { background: var(--git-line-del-bg, rgba(248,81,73,0.08)); }
+.edit-result.is-error .edit-result-label { color: var(--git-line-del-text, #f85149); }
+.edit-result-text { color: var(--text-primary); }
+
 /* Git 提交按钮 */
 .git-commit-bar {
     display: flex;
