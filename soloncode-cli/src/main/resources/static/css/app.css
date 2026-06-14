@@ -2000,6 +2000,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 
 /* ===== Context Status (above textarea) ===== */
 .context-status {
+    position: relative;
     text-align: center;
     font-size: 11px;
     color: var(--text-secondary);
@@ -2007,6 +2008,21 @@ pre:hover .code-copy-btn { opacity: 1; }
     padding: 2px 0;
     user-select: none;
     white-space: nowrap;
+}
+.context-thinking {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.context-thinking .thinking-timer {
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    opacity: 0.9;
+    margin-left: 0;
 }
 
 

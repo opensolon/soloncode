@@ -668,33 +668,23 @@ function stopThinkingTimer(sess, timerKey, startTimeKey) {
 }
 
 function showThinking(sess) {
-    console.log('[showThinking] isStreaming=%s', sess.isStreaming, new Error().stack.split('\n').slice(1,4).join('\n'));
-    removeThinking(sess);
-    sess.thinkingEl = $('<div>').addClass('thinking-row')[0];
-    sess.thinkingEl.innerHTML = '<div class="thinking-bubble">思考中' + DOTS_HTML + '<span class="thinking-timer">0s</span></div>';
-    $(sess.container).append(sess.thinkingEl);
-    var timerSpan = $(sess.thinkingEl).find('.thinking-timer')[0];
-    startThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime', timerSpan);
-    if (sess.sessionId === activeSessionId) scrollToBottom(true);
+    // 等待指示器统一显示在 context 行右侧，仅活动会话更新
+    if (sess.sessionId !== activeSessionId) return;
+    showContextThinking(sess.messageStartTime);
 }
 function removeThinking(sess) {
-    stopThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime');
-    if (sess.thinkingEl) { $(sess.thinkingEl).remove(); sess.thinkingEl = null; }
+    if (sess.sessionId !== activeSessionId) return;
+    hideContextThinking();
 }
 
 function showInlineThinking(sess) {
-    if (sess.inlineThinkingEl || !sess.currentBubbleEl) return;
-    sess.inlineThinkingEl = $('<div>').addClass('inline-thinking')[0];
-    sess.inlineThinkingEl.innerHTML = '思考中 ' + DOTS_HTML + '<span class="thinking-timer">0s</span>';
-    insertBeforeActions(sess, sess.inlineThinkingEl);
-    var timerSpan = $(sess.inlineThinkingEl).find('.thinking-timer')[0];
-    startThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', timerSpan);
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    // 输出间隙的"思考中"同样收敛到 context 行右侧
+    if (sess.sessionId !== activeSessionId) return;
+    showContextThinking(sess.messageStartTime);
 }
 function removeInlineThinking(sess) {
-    stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
-    if (sess.inlineThinkingEl) { $(sess.inlineThinkingEl).remove(); }
-    sess.inlineThinkingEl = null;
+    if (sess.sessionId !== activeSessionId) return;
+    hideContextThinking();
 }
 
 /* ===== HITL ===== */
