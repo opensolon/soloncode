@@ -6,6 +6,7 @@
 * 优化 soloncode 上下文压缩算法
 * 优化 soloncode web tool 调用显示效果
 * 优化 soloncode web edit（git diff） 和 bash（terminal） 显示效果
+* 优化 soloncode web 消息列表的复制按钮效果
 * 细节优化
 
 ### v2026.6.15

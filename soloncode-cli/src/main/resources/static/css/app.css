@@ -307,6 +307,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 
 /* Thinking */
 .inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); font-size: 13px; }
+.inline-thinking.hidden-reserve { visibility: hidden; }
 .thinking-timer { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
 .thinking-row { display: flex; gap: 0; margin-bottom: 28px; animation: msg-in 0.25s ease-out; }
 .thinking-bubble { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 14px; padding: 10px 0; }
@@ -2002,7 +2003,6 @@ pre:hover .code-copy-btn { opacity: 1; }
 
 /* ===== Context Status (above textarea) ===== */
 .context-status {
-    position: relative;
     text-align: center;
     font-size: 11px;
     color: var(--text-secondary);
@@ -2010,21 +2010,6 @@ pre:hover .code-copy-btn { opacity: 1; }
     padding: 2px 0;
     user-select: none;
     white-space: nowrap;
-}
-.context-thinking {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.context-thinking .thinking-timer {
-    font-variant-numeric: tabular-nums;
-    font-size: 11px;
-    opacity: 0.9;
-    margin-left: 0;
 }
 
 

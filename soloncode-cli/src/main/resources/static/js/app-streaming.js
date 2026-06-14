@@ -181,7 +181,7 @@ function finishStream(sess) {
     // ---------------------------------------------------
 
     removeThinking(sess);
-    removeInlineThinking(sess);
+    purgeInlineThinking(sess);
     finishThinkingBlock(sess);
     finishPendingTool(sess);
     sess.approvedToolCard = null;

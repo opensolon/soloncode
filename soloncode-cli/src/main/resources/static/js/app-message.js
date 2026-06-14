@@ -82,7 +82,6 @@ function appendSystemNotice(sess, text) {
 
 function ensureAssistantBubble(sess) {
     if (!sess.currentBubbleEl) {
-        console.log('[ensureAssistantBubble] 新建 AI bubble, isStreaming=%s', sess.isStreaming, new Error().stack.split('\n').slice(1,4).join('\n'));
         removeThinking(sess);
         var row = $('<div>').addClass('msg-row assistant')[0];
         row.innerHTML = '<div class="msg-bubble"><div class="md-content"></div>'
@@ -125,6 +124,8 @@ function ensureAssistantBubble(sess) {
         // 非流式（历史加载）保持原有显示逻辑。
         if (sess.isStreaming) {
             $(row).find('.msg-actions').hide();
+            // 流式中提前创建常驻的内联等待指示器（默认不可见但占位），避免后续显隐造成跳动。
+            ensureInlineThinking(sess);
         }
     }
     return sess.currentBubbleEl;
@@ -166,6 +167,9 @@ function setAssistantTime(sess, ts) {
 }
 
 function insertBeforeActions(sess, el) {
+    // 若存在常驻的内联等待指示器，新内容应插在其上方，保证指示器始终在气泡底部。
+    var anchor = (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) ? sess.inlineThinkingEl : null;
+    if (anchor) { $(anchor).before(el); return; }
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
 }
 
@@ -651,14 +655,18 @@ function appendCommandOutput(sess, text) {
 }
 
 /* ===== Thinking Indicators ===== */
-function startThinkingTimer(sess, timerKey, startTimeKey, labelEl) {
-    sess[startTimeKey] = Date.now();
+function startThinkingTimer(sess, timerKey, startTimeKey, labelEl, anchorTime) {
+    // anchorTime 用于让计时锚定整段响应起点（sess.messageStartTime），
+    // 这样指示器反复显隐时秒数保持连续，不会从 0 重来。
+    sess[startTimeKey] = anchorTime || Date.now();
     if (sess[timerKey]) clearInterval(sess[timerKey]);
-    sess[timerKey] = setInterval(function() {
+    function tick() {
         if (!labelEl || !labelEl.parentNode) { clearInterval(sess[timerKey]); sess[timerKey] = null; return; }
         var elapsed = Math.floor((Date.now() - sess[startTimeKey]) / 1000);
         $(labelEl).text(elapsed + 's');
-    }, 1000);
+    }
+    tick();
+    sess[timerKey] = setInterval(tick, 1000);
 }
 
 function stopThinkingTimer(sess, timerKey, startTimeKey) {
@@ -666,24 +674,48 @@ function stopThinkingTimer(sess, timerKey, startTimeKey) {
     sess[startTimeKey] = null;
 }
 
+// 启动等待指示器：尚无气泡时，在消息区独立显示一行「圆点 + Ns」（无文字）
 function showThinking(sess) {
-    // 等待指示器统一显示在 context 行右侧，仅活动会话更新
-    if (sess.sessionId !== activeSessionId) return;
-    showContextThinking(sess.messageStartTime);
+    removeThinking(sess);
+    sess.thinkingEl = $('<div>').addClass('thinking-row')[0];
+    sess.thinkingEl.innerHTML = '<div class="thinking-bubble">' + DOTS_HTML + '<span class="thinking-timer">0s</span></div>';
+    $(sess.container).append(sess.thinkingEl);
+    var timerSpan = $(sess.thinkingEl).find('.thinking-timer')[0];
+    startThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime', timerSpan, sess.messageStartTime);
+    if (sess.sessionId === activeSessionId) scrollToBottom(true);
 }
 function removeThinking(sess) {
-    if (sess.sessionId !== activeSessionId) return;
-    hideContextThinking();
+    stopThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime');
+    if (sess.thinkingEl) { $(sess.thinkingEl).remove(); sess.thinkingEl = null; }
 }
 
+// 气泡内的间隙等待指示器（「圆点 + Ns」，无文字）。
+// 关键：元素一旦创建便常驻气泡底部（actions 之前），不可见时用 visibility:hidden 占位，
+// 避免显隐导致的高度跳动；流式结束时再由 purgeInlineThinking 彻底移除。
+function ensureInlineThinking(sess) {
+    if (!sess.currentBubbleEl) return null;
+    if (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) return sess.inlineThinkingEl;
+    var el = $('<div>').addClass('inline-thinking hidden-reserve')[0];
+    el.innerHTML = DOTS_HTML + '<span class="thinking-timer">0s</span>';
+    sess.inlineThinkingEl = el;
+    $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
+    return el;
+}
 function showInlineThinking(sess) {
-    // 输出间隙的"思考中"同样收敛到 context 行右侧
-    if (sess.sessionId !== activeSessionId) return;
-    showContextThinking(sess.messageStartTime);
+    var el = ensureInlineThinking(sess);
+    if (!el) return;
+    $(el).removeClass('hidden-reserve');
+    var timerSpan = $(el).find('.thinking-timer')[0];
+    startThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', timerSpan, sess.messageStartTime);
+    if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 function removeInlineThinking(sess) {
-    if (sess.sessionId !== activeSessionId) return;
-    hideContextThinking();
+    stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
+    if (sess.inlineThinkingEl) { $(sess.inlineThinkingEl).addClass('hidden-reserve'); }
+}
+function purgeInlineThinking(sess) {
+    stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
+    if (sess.inlineThinkingEl) { $(sess.inlineThinkingEl).remove(); sess.inlineThinkingEl = null; }
 }
 
 /* ===== HITL ===== */
