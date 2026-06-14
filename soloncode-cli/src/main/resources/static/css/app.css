@@ -1180,7 +1180,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     font-weight: 500;
     word-break: break-all;
 }
-.grep-file-icon { opacity: 0.7; }
+.grep-file-icon { opacity: 0.7; display: inline-flex; align-items: center; flex-shrink: 0; }
 .grep-hit {
     display: flex;
     padding: 1px 14px 1px 28px;
@@ -1205,7 +1205,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     line-height: 1.6;
     word-break: break-all;
 }
-.file-entry-icon { opacity: 0.7; flex-shrink: 0; }
+.file-entry-icon { opacity: 0.7; flex-shrink: 0; display: inline-flex; align-items: center; }
 .file-entry.is-dir .file-entry-path { color: var(--text-primary); font-weight: 500; }
 .bash-output { background: var(--bg-code-block); border-radius: 0; }
 .bash-cmd {
