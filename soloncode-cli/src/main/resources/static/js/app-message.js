@@ -63,11 +63,10 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         }
     });
 
-    // 时间戳
-    if (createdAt) {
-        var timeEl = $('<div>').addClass('msg-time').text(formatMsgTime(createdAt))[0];
-        $(bubble).append(timeEl);
-    }
+    // 时间戳（实时发送不传 createdAt 时兜底为当前时间，与历史加载行为一致）
+    var msgTime = createdAt || Date.now();
+    var timeEl = $('<div>').addClass('msg-time').text(formatMsgTime(msgTime))[0];
+    $(bubble).append(timeEl);
 
     addImageLightbox(bubble);
     $(sess.container).append(row);
