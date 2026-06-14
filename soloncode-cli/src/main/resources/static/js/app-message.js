@@ -291,13 +291,16 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
                 + '<span class="git-line-text">' + line + '</span></div>';
         }
     }
-    // 输出段：工具真实返回（成功提示或错误信息）。仅当结果存在且不等于 diff（避免回显重复）时渲染
+    // 输出段：成功时仅展示 diff（结果提示与改动重复，显示冗余，已隐藏）；
+    // 仅在出错时渲染错误信息，避免编辑失败时卡片体空白。
     if (result && result !== diff) {
         var isErr = /(\u5931\u8d25|\u9519\u8bef|\u65e0\u6743|\u4e0d\u5b58\u5728|\u672a\u627e\u5230|\u62d2\u7edd|\u56de\u6eda|error|fail|exception|denied|not\s*found|no\s*such)/i.test(result);
-        if (diff) html += '<div class="edit-result-sep"></div>';
-        html += '<div class="edit-result ' + (isErr ? 'is-error' : 'is-ok') + '">'
-            + '<span class="edit-result-label">' + (isErr ? '\u26a0 \u5931\u8d25' : '\u2713 \u7ed3\u679c') + '</span>'
-            + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
+        if (isErr) {
+            if (diff) html += '<div class="edit-result-sep"></div>';
+            html += '<div class="edit-result is-error">'
+                + '<span class="edit-result-label">\u26a0 \u5931\u8d25</span>'
+                + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
+        }
     }
     bodyEl.innerHTML = html;
     return true;
