@@ -214,10 +214,11 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 /* msg-avatar removed */
 
 .msg-bubble { max-width: 75%; line-height: 1.75; word-break: break-word; }
-.msg-row.user .msg-bubble { background: var(--bg-user-msg); color: var(--text-user-msg); padding: 12px 18px; border-radius: 20px 20px 4px 20px; font-size: 14px; }
+.msg-row.user .msg-bubble { max-width: 100%; background: var(--bg-user-msg); color: var(--text-user-msg); padding: 12px 18px; border-radius: 20px 20px 4px 20px; font-size: 14px; }
 .msg-row.assistant .msg-bubble { max-width: 92%; min-width: 92%; }
-/* 长消息/含代码块的用户气泡放宽，避免被挤成窄高条 */
-.msg-row.user.wide-user .msg-bubble { max-width: 92%; }
+/* 宽度约束放在列容器上，避免气泡百分比相对塌缩列计算导致被挤成窄高条 */
+.msg-row.user .user-msg-col { max-width: 75%; }
+.msg-row.user.wide-user .user-msg-col { max-width: 92%; }
 
 /* Markdown */
 .md-content { padding: 2px 0; color: var(--text-ai-msg); font-size: 14px; }
@@ -299,7 +300,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 
 /* User Message Copy */
 .msg-row.user { gap: 0; }
-.user-msg-col { display: flex; flex-direction: column; align-items: flex-end; max-width: 100%; min-width: 0; }
+.user-msg-col { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
 .user-copy-btn { background: none; border: none; border-radius: 8px; padding: 4px; margin-top: 4px; cursor: pointer; color: var(--text-secondary); font-size: 14px; line-height: 1; opacity: 0.6; transition: background 0.15s, color 0.15s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .user-copy-btn:hover { opacity: 1; background: var(--bg-hover); color: var(--text-primary); }
 .user-copy-btn.copied { color: var(--color-success); opacity: 1; }
@@ -1674,7 +1675,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 /* ===== Mobile Responsive Enhancement ===== */
 @media (max-width: 768px) {
     .messages-inner { padding: 16px 12px 8px; }
-    .msg-row.user .msg-bubble, .msg-row.assistant .msg-bubble { max-width: 92% !important; min-width: unset !important; }
+    .msg-row.user .user-msg-col { max-width: 92% !important; }
+    .msg-row.user .msg-bubble, .msg-row.assistant .msg-bubble { max-width: 100% !important; min-width: unset !important; }
     /* 触屏无 hover：复制按钮常驻可见 */
     .user-copy-btn { opacity: 0.6; }
     .welcome-input-box { max-width: 100%; }
