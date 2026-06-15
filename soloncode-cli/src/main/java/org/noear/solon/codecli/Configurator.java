@@ -1,9 +1,7 @@
 package org.noear.solon.codecli;
 
 import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
-import com.agentclientprotocol.sdk.agent.transport.WebSocketSolonAcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
-import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
@@ -18,7 +16,6 @@ import org.noear.solon.annotation.Init;
 import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -28,7 +25,7 @@ import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.LspServerDo;
 import org.noear.solon.codecli.config.entity.MountDo;
-import org.noear.solon.codecli.memory.MemoryFactory;
+import org.noear.solon.codecli.memory.MemoryProvider;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.portal.acp.AcpLink;
 import org.noear.solon.codecli.portal.cli.CliShell;
@@ -98,7 +95,7 @@ public class Configurator {
                 .compressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getSummaryWindowToken())
                 .compressionModel(settings.getGeneral().getSummaryModel())
                 .memoryEnabled(settings.getGeneral().getMemoryEnabled())
-                .memorySolution(new MemoryFactory(agentSettings))
+                .memoryProvider(new MemoryProvider(agentSettings))
                 .sandboxEnabled(settings.getGeneral().getSandboxMode())
                 .sandboxAllowUserHome(settings.getGeneral().getSandboxAllowUserHome())
                 .sandboxSystemRestrict(settings.getGeneral().getSandboxSystemRestrict())

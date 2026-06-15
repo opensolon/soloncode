@@ -509,9 +509,8 @@ public class WebStreamBuilder {
         ReActTrace trace = chunk.getTrace();
 
         if (chunk.isAbnormal()) {
-            // IM 通道仍使用字符串格式的追踪信息
-            //StringBuilder traceInfo = getTraceInfo(trace);
-            replyToBoundChannel(session.getSessionId(), chunk.getContent(), true); //+ traceInfo, true);
+            // 通知 IM 任务完成了
+            replyToBoundChannel(session.getSessionId(), chunk.getContent(), true);
         }
 
         // 结构化 trace 数据，供前端独立渲染

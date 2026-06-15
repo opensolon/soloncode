@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.memory;
 
 import org.noear.solon.ai.talents.memory.MemorySolution;
+import org.noear.solon.ai.talents.memory.MemorySolutionProvider;
 import org.noear.solon.ai.talents.memory.md.MemorySolutionMdImpl;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -9,11 +10,11 @@ import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MemoryFactory implements MemorySolution.Factory {
+public class MemoryProvider implements MemorySolutionProvider {
     private Map<String, MemorySolution> cached = new ConcurrentHashMap<>();
     private AgentSettings agentSettings;
 
-    public MemoryFactory(AgentSettings agentSettings) {
+    public MemoryProvider(AgentSettings agentSettings) {
         this.agentSettings = agentSettings;
     }
 
