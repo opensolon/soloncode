@@ -47,6 +47,7 @@
                 $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
                 $('#generalLspEnabled').prop('checked', !!d.lspEnabled);
                 $('#generalCliPrintSimplified').prop('checked', d.cliPrintSimplified !== false);
+                window.cliPrintSimplified = d.cliPrintSimplified !== false;
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
     }
@@ -75,8 +76,10 @@
         $generalSaveBtn.prop('disabled', true);
         $.ajax({ url: '/web/settings/general/save', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) showToast('保存成功');
-                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+                if (resp.code === 200) {
+                    window.cliPrintSimplified = bodyObj.cliPrintSimplified;
+                    showToast('保存成功');
+                } else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
             })
             .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $generalSaveBtn.prop('disabled', false); });

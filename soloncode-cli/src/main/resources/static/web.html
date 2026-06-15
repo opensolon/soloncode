@@ -1133,6 +1133,13 @@
         var titleEl = document.getElementById('welcomeTitle');
         if (titleEl && meta.appTitle) titleEl.textContent = '你好，我是 ' + meta.appTitle + ' ！';
     }).catch(function () { /* ignore */ });
+
+    // 启动时拉取通用设置，回填控制台打印简化开关（决定流式工具卡默认收起/展开）
+    fetch('/web/settings/general').then(function (r) { return r.json(); }).then(function (resp) {
+        if (resp && resp.code === 200 && resp.data) {
+            window.cliPrintSimplified = resp.data.cliPrintSimplified !== false;
+        }
+    }).catch(function () { /* ignore */ });
 </script>
 
 <script src="/js/app-base.js"></script>

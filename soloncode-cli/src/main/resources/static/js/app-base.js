@@ -67,6 +67,10 @@ var userScrolledUp = false;
 
 var onFinishStream = null;
 
+/* 控制台打印简化开关（与后端 cliPrintSimplified 对齐）。
+   true：流式工具卡默认收起；false：默认展开。启动时由 /web/settings/general 回填。 */
+var cliPrintSimplified = true;
+
 /* ===== Session Helpers ===== */
 function getOrCreateSession(sessionId) {
     if (!sessionMap[sessionId]) {

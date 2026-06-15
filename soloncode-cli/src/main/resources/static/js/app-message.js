@@ -465,6 +465,7 @@ function appendActionStartChunk(sess, toolName, args) {
     var argsHtml = argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '';
 
     var card = $('<div>').addClass('tool-card')[0];
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
     card.innerHTML = '<div class="tool-card-header">'
         + '<span class="tool-status-icon loading"></span>'
         + '<span class="tool-name">' + escapeHtml(toolName || 'tool') + '</span>'
@@ -560,7 +561,8 @@ function appendActionEndChunk(sess, toolName, text, args) {
             rcBody.innerHTML = '';
             if (!renderToolBody(rcBody, toolName, text, args)) { rcBody.textContent = text || ''; }
         }
-        $(rc).removeClass('expanded');
+        if (window.cliPrintSimplified === false) $(rc).addClass('expanded');
+        else $(rc).removeClass('expanded');
         sess.pendingToolCard = rc;
         sess.reasonBuffer = '';
         var rcMd = $('<div>').addClass('md-content')[0];
@@ -571,6 +573,7 @@ function appendActionEndChunk(sess, toolName, text, args) {
     }
 
     var card = $('<div>').addClass('tool-card')[0];
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
     card.innerHTML = '<div class="tool-card-header">'
         + '<span class="tool-status-icon loading"></span>'
         + '<span class="tool-name">' + escapeHtml(toolName || 'tool') + '</span>'
