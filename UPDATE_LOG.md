@@ -3,7 +3,7 @@
 ### v2026.6.16
 
 * 添加 soloncode bash 输出大小限制机制
-* 添加 soloncode web 界面效果设置块
+* 添加 soloncode web 界面效果设置块（支持工具显示展开或收起）
 * 优化 soloncode 上下文压缩算法
 * 优化 soloncode edit 匹配算法
 * 优化 soloncode web tool 调用显示效果
