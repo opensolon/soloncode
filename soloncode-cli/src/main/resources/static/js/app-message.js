@@ -412,13 +412,17 @@ window._toolRenderers.bash = function(bodyEl, text, args) {
     return true;
 };
 
-/* todowrite / todoread：内容为 markdown 任务清单，按 markdown 渲染 + 代码块高亮。
+/* todowrite / todoread：内容为 markdown 任务清单，按 markdown 语法高亮展示原文（不做 HTML 渲染，保留 #、-、[ ] 等原始符号）。
    todowrite 优先取入参 todos（提交的清单原文），todoread 取返回值 text。 */
 function renderTodoMarkdown(bodyEl, text, args) {
     var md = (args && typeof args.todos === 'string' && args.todos.trim()) ? args.todos : text;
     if (!md || typeof md !== 'string' || !md.trim()) return false;
-    bodyEl.innerHTML = '<div class="md-content tool-md" style="padding:10px">' + renderMd(md) + '</div>';
-    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(bodyEl);
+    var inner;
+    if (typeof hljs !== 'undefined') {
+        try { inner = hljs.highlight(md, { language: 'markdown' }).value; } catch(e) {}
+    }
+    if (!inner) inner = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    bodyEl.innerHTML = '<pre style="margin:0;padding:10px"><code class="hljs language-markdown">' + inner + '</code></pre>';
     return true;
 }
 window._toolRenderers.todowrite = renderTodoMarkdown;
