@@ -267,21 +267,6 @@ public class LoopTask {
         return goalCondition != null && !goalCondition.isEmpty();
     }
 
-    /**
-     * 是否有高级策略（需要注入状态上下文）
-     *
-     * <p>普通循环任务每次 prompt 不变，注入 NEXT.md 只是重复原文，徒增 token 消耗。<br>
-     * 仅当以下任一高级策略启用时，状态上下文才有意义：
-     * <ul>
-     *   <li>goal 模式 — NEXT.md 随迭代被 AI 更新</li>
-     *   <li>cron 定时模式 — 跨天执行需要状态恢复</li>
-     * </ul>
-     */
-    public boolean hasAdvancedStrategy() {
-        return isGoalMode()
-                || isCronMode();
-    }
-
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
     public void setWrapUpPending(boolean wrapUpPending) { this.wrapUpPending = wrapUpPending; }

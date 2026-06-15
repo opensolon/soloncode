@@ -540,20 +540,12 @@ public class LoopScheduler {
     }
 
     /**
-     * 构建完整的有效 prompt（skill 解析 + state 上下文注入）
+     * 构建完整的有效 prompt（skill 解析 + goal 条件注入）
      */
     private String buildEffectivePrompt(String sessionId, LoopTask task) {
         String prompt = task.getPrompt();
 
-        // 1. 状态上下文注入（仅高级策略需要 — goal/cron）
-        if (task.hasAdvancedStrategy()) {
-            String stateContext = LoopStateManager.buildStateContext(engine.getWorkspace(), task.getId());
-            if (!stateContext.isEmpty()) {
-                prompt = prompt + stateContext;
-            }
-        }
-
-        // 2. Goal 条件注入（从 goal_continuation.md 模板加载）
+        // Goal 条件注入（持久目标 + [GOAL_ACHIEVED] 终止标记）
         if (task.isGoalMode()) {
             StringBuilder goalPrompt = new StringBuilder();
             goalPrompt.append("\n\n--- 目标（持久目标） ---\n");

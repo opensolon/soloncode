@@ -27,8 +27,6 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Loop 状态管理器 — 负责 .soloncode/loops/&lt;loopId&gt;/ 目录的创建、读写、清理。
@@ -36,9 +34,6 @@ import java.util.List;
  * <p>状态目录结构：
  * <pre>
  * .soloncode/loops/&lt;loopId&gt;/
- * ├── NEXT.md              # 下一步要做什么
- * ├── DECISIONS.md         # 已做的关键决策
- * ├── PROGRESS.md          # 进度追踪
  * └── history.json         # 结构化执行历史
  * </pre>
  *
@@ -48,9 +43,6 @@ import java.util.List;
 public class LoopStateManager {
     private static final Logger LOG = LoggerFactory.getLogger(LoopStateManager.class);
 
-    private static final String NEXT_FILE = "NEXT.md";
-    private static final String DECISIONS_FILE = "DECISIONS.md";
-    private static final String PROGRESS_FILE = "PROGRESS.md";
     private static final String HISTORY_FILE = "history.json";
     /**
      * 获取 loop 状态目录的根路径（.soloncode/loops/）
@@ -67,7 +59,7 @@ public class LoopStateManager {
     }
 
     /**
-     * 初始化状态目录（创建目录和初始文件）
+     * 初始化状态目录（创建目录和 history.json）
      *
      * @return 状态目录路径
      */
@@ -75,24 +67,6 @@ public class LoopStateManager {
         Path stateDir = getStateDir(workspace, loopId);
         try {
             Files.createDirectories(stateDir);
-
-            // 创建 NEXT.md（初始内容为用户的 prompt）
-            if (!Files.exists(stateDir.resolve(NEXT_FILE))) {
-                writeFile(stateDir.resolve(NEXT_FILE),
-                        "# 下一步\n\n" + prompt + "\n");
-            }
-
-            // 创建空的 DECISIONS.md
-            if (!Files.exists(stateDir.resolve(DECISIONS_FILE))) {
-                writeFile(stateDir.resolve(DECISIONS_FILE),
-                        "# 决策\n\n");
-            }
-
-            // 创建空的 PROGRESS.md
-            if (!Files.exists(stateDir.resolve(PROGRESS_FILE))) {
-                writeFile(stateDir.resolve(PROGRESS_FILE),
-                        "# 进展\n\n- 状态: pending\n");
-            }
 
             // 创建空的 history.json
             if (!Files.exists(stateDir.resolve(HISTORY_FILE))) {
@@ -104,38 +78,6 @@ public class LoopStateManager {
             LOG.warn("Failed to init loop state dir '{}': {}", stateDir, e.getMessage());
             return stateDir.toString();
         }
-    }
-
-    /**
-     * 读取 NEXT.md 内容（用于注入 prompt 上下文）
-     */
-    public static String readNext(String workspace, String loopId) {
-        return readMarkdown(workspace, loopId, NEXT_FILE);
-    }
-
-    /**
-     * 更新 NEXT.md（由 AI 在每轮执行后更新）
-     */
-    public static void updateNext(String workspace, String loopId, String content) {
-        writeMarkdown(workspace, loopId, NEXT_FILE,
-                "# 下一步\n\n" + content + "\n");
-    }
-
-    /**
-     * 追加决策到 DECISIONS.md
-     */
-    public static void appendDecision(String workspace, String loopId, String decision) {
-        String existing = readMarkdown(workspace, loopId, DECISIONS_FILE);
-        String entry = "- [" + Instant.now() + "] " + decision + "\n";
-        writeMarkdown(workspace, loopId, DECISIONS_FILE, existing + entry);
-    }
-
-    /**
-     * 更新 PROGRESS.md
-     */
-    public static void updateProgress(String workspace, String loopId, String content) {
-        writeMarkdown(workspace, loopId, PROGRESS_FILE,
-                "# 进展\n\n" + content + "\n");
     }
 
     /**
@@ -188,24 +130,6 @@ public class LoopStateManager {
     }
 
     /**
-     * 构建状态上下文（用于注入到 prompt 中）
-     *
-     * @return 拼接好的状态上下文文本，或空字符串
-     */
-    public static String buildStateContext(String workspace, String loopId) {
-        StringBuilder sb = new StringBuilder();
-        String next = readNext(workspace, loopId);
-        if (next != null && !next.isEmpty()) {
-            sb.append("\n\n--- 循环状态：下一步 ---\n").append(next);
-        }
-        String progress = readMarkdown(workspace, loopId, PROGRESS_FILE);
-        if (progress != null && progress.length() > 20) { // 超过默认模板长度
-            sb.append("\n\n--- 循环状态：进展 ---\n").append(progress);
-        }
-        return sb.toString();
-    }
-
-    /**
      * 清理状态目录
      */
     public static void cleanup(String workspace, String loopId) {
@@ -227,26 +151,6 @@ public class LoopStateManager {
     }
 
     // ==================== 内部工具方法 ====================
-
-    private static String readMarkdown(String workspace, String loopId, String fileName) {
-        try {
-            Path file = getStateDir(workspace, loopId).resolve(fileName);
-            if (!Files.exists(file)) return "";
-            return new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private static void writeMarkdown(String workspace, String loopId, String fileName, String content) {
-        try {
-            Path file = getStateDir(workspace, loopId).resolve(fileName);
-            Files.createDirectories(file.getParent());
-            writeFile(file, content);
-        } catch (Exception e) {
-            LOG.warn("Failed to write {}: {}", fileName, e.getMessage());
-        }
-    }
 
     private static void writeFile(Path file, String content) throws Exception {
         Path tempFile = file.resolveSibling(file.getFileName() + ".tmp");
