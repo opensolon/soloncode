@@ -59,6 +59,7 @@ public class LoopTask {
     private final boolean worktreeEnabled;   // 是否在独立 worktree 中执行
     private final String worktreeBranch;     // worktree 分支名（运行时分配）
     private final int maxIterations;         // 最大迭代次数
+    private final boolean runNow;            // 注册后立即执行首次（initialDelay=0）
 
     // ---- 运行时状态 ----
     private volatile boolean running;
@@ -94,7 +95,7 @@ public class LoopTask {
                      Instant createdAt, Instant expireAt, boolean autoInterval,
                      boolean enabled,
                      String goalCondition, boolean worktreeEnabled, String worktreeBranch,
-                     int maxIterations,
+                     int maxIterations, boolean runNow,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
         this.id = id;
         this.prompt = prompt;
@@ -108,6 +109,7 @@ public class LoopTask {
         this.worktreeEnabled = worktreeEnabled;
         this.worktreeBranch = worktreeBranch;
         this.maxIterations = maxIterations;
+        this.runNow = runNow;
         this.cancelled = cancelled;
         this.lastResult = lastResult;
         this.lastExecutedAt = lastExecutedAt;
@@ -120,6 +122,15 @@ public class LoopTask {
     public LoopTask(String prompt, int intervalMinutes, String cron,
                     String goalCondition, Boolean worktreeEnabled,
                     Integer maxIterations) {
+        this(prompt, intervalMinutes, cron, goalCondition, worktreeEnabled, maxIterations, false);
+    }
+
+    /**
+     * 便捷构造（固定间隔 + 扩展参数 + runNow）
+     */
+    public LoopTask(String prompt, int intervalMinutes, String cron,
+                    String goalCondition, Boolean worktreeEnabled,
+                    Integer maxIterations, boolean runNow) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
         // intervalMinutes=0 表示即时模式（goal 专用），不注册到 IJobManager 定时器，而是执行完立即 re-trigger
@@ -132,6 +143,7 @@ public class LoopTask {
         this.worktreeEnabled = worktreeEnabled != null ? worktreeEnabled : false;
         this.worktreeBranch = null; // 运行时分配
         this.maxIterations = maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS;
+        this.runNow = runNow;
         this.currentIteration = 0;
         this.enabled = true;
     }
@@ -141,7 +153,7 @@ public class LoopTask {
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
                                     String goalCondition, Boolean worktreeEnabled,
-                                    Integer maxIterations) {
+                                    Integer maxIterations, Boolean runNow) {
         LoopTask task = new LoopTask(
                 this.id,
                 prompt,
@@ -155,6 +167,7 @@ public class LoopTask {
                 worktreeEnabled != null ? worktreeEnabled : false,
                 this.worktreeBranch,
                 maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
+                runNow != null ? runNow : this.runNow,
                 this.cancelled,
                 this.lastResult,
                 this.lastExecutedAt,
@@ -307,6 +320,7 @@ public class LoopTask {
         if (worktreeBranch != null) node.set("worktreeBranch", worktreeBranch);
 
         if (maxIterations != DEFAULT_MAX_ITERATIONS) node.set("maxIterations", maxIterations);
+        if (runNow) node.set("runNow", true);
 
         return node;
     }
@@ -340,6 +354,9 @@ public class LoopTask {
         int currentIterationVal = node.getOrNull("currentIteration") != null
                 ? node.get("currentIteration").getInt() : 0;
 
+        boolean runNowVal = node.getOrNull("runNow") != null
+                && node.get("runNow").getBoolean();
+
         return new LoopTask(
                 node.get("id").getString(),
                 node.get("prompt").getString(),
@@ -353,6 +370,7 @@ public class LoopTask {
                 worktreeEnabledVal,
                 worktreeBranchVal,
                 maxIterationsVal,
+                runNowVal,
                 node.getOrNull("cancelled") != null
                         ? node.get("cancelled").getBoolean() : false,
                 lastResultVal,

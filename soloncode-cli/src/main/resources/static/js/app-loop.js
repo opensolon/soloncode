@@ -37,7 +37,8 @@
                 intervalMinutes: 10,
                 goalCondition: 'all tests pass',
                 worktreeEnabled: true,
-                maxIterations: 10
+                maxIterations: 10,
+                runNow: true
             }
         },
         {
@@ -50,7 +51,8 @@
                 cron: '0 9 * * *',
                 goalCondition: null,
                 worktreeEnabled: false,
-                maxIterations: 20
+                maxIterations: 20,
+                runNow: false
             }
         },
         {
@@ -63,7 +65,8 @@
                 cron: '0 22 * * *',
                 goalCondition: null,
                 worktreeEnabled: false,
-                maxIterations: 10
+                maxIterations: 10,
+                runNow: false
             }
         },
         {
@@ -76,7 +79,8 @@
                 intervalMinutes: 30,
                 goalCondition: null,
                 worktreeEnabled: false,
-                maxIterations: 20
+                maxIterations: 20,
+                runNow: false
             }
         },
         {
@@ -89,7 +93,8 @@
                 intervalMinutes: 5,
                 goalCondition: 'all services healthy',
                 worktreeEnabled: false,
-                maxIterations: 100
+                maxIterations: 100,
+                runNow: true
             }
         }
     ];
@@ -200,6 +205,7 @@
                     // 功能标签（移到状态位置，替代"就绪"等文字）
                     var tags = [];
                     if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
+                    if (t.runNow) tags.push('<span class="loop-tag loop-tag-now">now</span>');
                     if (t.goalCondition) {
                         var goalLabel = 'goal';
                         if (t.maxIterations > 0) {
@@ -347,6 +353,7 @@
         html += '</div>';
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
+        html += '<div class="loop-form-inline-item"><label>首次立即执行</label><label class="loop-checkbox"><input type="checkbox" id="loopFormRunNow"/> 保存后立即执行一次</label></div>';
         html += '</div>';
         html += '<div class="loop-form-group"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" value="20" min="1"/></div>';
         html += '</div>';
@@ -411,10 +418,11 @@
         // 所有字段无条件赋值，null/undefined 时清空为默认值，避免模板切换残留
         $panel.find('#loopFormGoal').val(t.goalCondition || '');
         $panel.find('#loopFormWorktree').prop('checked', !!t.worktreeEnabled);
+        $panel.find('#loopFormRunNow').prop('checked', !!t.runNow);
         $panel.find('#loopFormMaxIter').val(t.maxIterations || '');
 
         // 有高级字段时自动展开，否则折叠
-        if (t.goalCondition || t.worktreeEnabled) {
+        if (t.goalCondition || t.worktreeEnabled || t.runNow) {
             $panel.find('#loopAdvanced').show();
             $panel.find('#loopAdvancedToggle').removeClass('collapsed');
         } else {
@@ -507,6 +515,7 @@
                 cron: cronVal,
                 goalCondition: $panel.find('#loopFormGoal').val().trim() || null,
                 worktreeEnabled: $panel.find('#loopFormWorktree').is(':checked'),
+                runNow: $panel.find('#loopFormRunNow').is(':checked'),
                 maxIterations: parseInt($panel.find('#loopFormMaxIter').val()) || null
             };
 

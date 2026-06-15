@@ -412,9 +412,10 @@ public class LoopScheduler {
             scheduled = new ScheduledAnno().cron(task.getCron());
         } else {
             long intervalMs = (long) task.getIntervalMinutes() * 60_000L;
+            long initialDelay = task.isRunNow() ? 0 : intervalMs;
             scheduled = new ScheduledAnno()
                     .fixedDelay(intervalMs)
-                    .initialDelay(intervalMs);
+                    .initialDelay(initialDelay);
         }
 
         jobManager.jobAdd(jobName, scheduled, ctx -> {

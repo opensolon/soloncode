@@ -771,6 +771,7 @@ public class WebController {
             if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
             item.put("worktreeEnabled", t.isWorktreeEnabled());
             item.put("maxIterations", t.getMaxIterations());
+            item.put("runNow", t.isRunNow());
             data.add(item);
         }
         return Result.succeed(data);
@@ -807,6 +808,7 @@ public class WebController {
                 if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
                 item.put("worktreeEnabled", t.isWorktreeEnabled());
                 item.put("maxIterations", t.getMaxIterations());
+                item.put("runNow", t.isRunNow());
                 return Result.succeed(item);
             }
         }
@@ -824,7 +826,8 @@ public class WebController {
                           @Param(value = "cron", required = false) String cron,
                           @Param(value = "goalCondition", required = false) String goalCondition,
                           @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
-                          @Param(value = "maxIterations", required = false) Integer maxIterations) {
+                          @Param(value = "maxIterations", required = false) Integer maxIterations,
+                          @Param(value = "runNow", required = false) Boolean runNow) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -841,7 +844,8 @@ public class WebController {
                 prompt, interval, cron,
                 goalCondition,
                 worktreeEnabled != null ? worktreeEnabled : false,
-                maxIterations
+                maxIterations,
+                runNow != null && runNow
         );
 
         // 设置 enabled
@@ -870,7 +874,8 @@ public class WebController {
                              @Param(value = "goalCondition", required = false) String goalCondition,
                              @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                              @Param(value = "channelNotify", required = false) String channelNotify,
-                             @Param(value = "maxIterations", required = false) Integer maxIterations) {
+                             @Param(value = "maxIterations", required = false) Integer maxIterations,
+                             @Param(value = "runNow", required = false) Boolean runNow) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -895,7 +900,8 @@ public class WebController {
                 effectivePrompt, interval, effectiveCron,
                 goalCondition != null ? goalCondition : existing.getGoalCondition(),
                 worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
-                maxIterations != null ? maxIterations : existing.getMaxIterations()
+                maxIterations != null ? maxIterations : existing.getMaxIterations(),
+                runNow != null ? runNow : existing.isRunNow()
         );
 
         // 保留 enabled

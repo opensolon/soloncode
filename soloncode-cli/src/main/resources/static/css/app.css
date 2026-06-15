@@ -494,6 +494,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-tag-goal { color: #8b5cf6; background: #f3f0ff; }
 .loop-tag-mc { color: #0891b2; background: #ecfeff; }
 .loop-tag-wt { color: #059669; background: #ecfdf5; }
+.loop-tag-now { color: #ea580c; background: #fff7ed; }
 
 .loop-tag-skill { color: #7c3aed; background: #f5f3ff; }
 

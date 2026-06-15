@@ -119,6 +119,7 @@ public class LoopCommand implements Command {
         String cronExpr = null;
         String goalCondition = null;
         boolean worktreeEnabled = false;
+        boolean runNow = false;
         Integer maxIterations = null;
 
         int promptStartIndex = 0;
@@ -193,6 +194,8 @@ public class LoopCommand implements Command {
                     // --worktree (boolean flag)
                     if ("worktree".equals(flag)) {
                         worktreeEnabled = true;
+                    } else if ("now".equals(flag)) {
+                        runNow = true;
                     } else {
                         ctx.println(ctx.color(YELLOW + "Unknown flag: --" + flag + RESET));
                     }
@@ -214,7 +217,7 @@ public class LoopCommand implements Command {
         // Create task
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
-                goalCondition, worktreeEnabled, maxIterations
+                goalCondition, worktreeEnabled, maxIterations, runNow
         );
 
         // 初始化状态目录（用 task 生成的 ID）
@@ -244,6 +247,9 @@ public class LoopCommand implements Command {
         }
         if (worktreeEnabled) {
             ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
+        }
+        if (runNow) {
+            ctx.println(ctx.color("  " + MAGENTA + "Run Now:" + RESET + " first execution immediately"));
         }
         if (maxIterations != null) {
             ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
@@ -282,6 +288,9 @@ public class LoopCommand implements Command {
             }
             if (t.isWorktreeEnabled()) {
                 line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
+            }
+            if (t.isRunNow()) {
+                line.append(" ").append(MAGENTA).append("[now]").append(RESET);
             }
 
             if (t.isGoalMode()) {
@@ -360,6 +369,7 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "Loop Engineering:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix auth module" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 5m --worktree fix bug #123           (git worktree)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop 5m --now check CI                   (run first time immediately)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 30m --notify:feishu check CI         (channel notify)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal:\"lint clean\" --max-iter:10 fix lint" + RESET));
     }
