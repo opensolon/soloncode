@@ -11,7 +11,7 @@
 * 优化 soloncode web 消息列表的复制按钮效果
 * 细节优化
 
-### v2026.6.16
+### v2026.6.15
 
 * 添加 soloncode web edit 工具（gitdiff 显示）
 * 添加 soloncode web write 工具语法亮显显示
