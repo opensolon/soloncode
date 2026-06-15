@@ -3,13 +3,15 @@
 ### v2026.6.16
 
 * 添加 soloncode bash 输出大小限制机制
+* 添加 soloncode web 界面效果设置块
 * 优化 soloncode 上下文压缩算法
+* 优化 soloncode edit 匹配算法
 * 优化 soloncode web tool 调用显示效果
 * 优化 soloncode web edit（git diff） 和 bash（terminal） 显示效果
 * 优化 soloncode web 消息列表的复制按钮效果
 * 细节优化
 
-### v2026.6.15
+### v2026.6.16
 
 * 添加 soloncode web edit 工具（gitdiff 显示）
 * 添加 soloncode web write 工具语法亮显显示
