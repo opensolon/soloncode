@@ -412,6 +412,18 @@ window._toolRenderers.bash = function(bodyEl, text, args) {
     return true;
 };
 
+/* todowrite / todoread：内容为 markdown 任务清单，按 markdown 渲染 + 代码块高亮。
+   todowrite 优先取入参 todos（提交的清单原文），todoread 取返回值 text。 */
+function renderTodoMarkdown(bodyEl, text, args) {
+    var md = (args && typeof args.todos === 'string' && args.todos.trim()) ? args.todos : text;
+    if (!md || typeof md !== 'string' || !md.trim()) return false;
+    bodyEl.innerHTML = '<div class="md-content tool-md" style="padding:10px">' + renderMd(md) + '</div>';
+    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(bodyEl);
+    return true;
+}
+window._toolRenderers.todowrite = renderTodoMarkdown;
+window._toolRenderers.todoread = renderTodoMarkdown;
+
 /* 分发：命中专用 renderer 且渲染成功返回 true，否则交由调用方做纯文本兜底 */
 function renderToolBody(bodyEl, toolName, text, args) {
     var renderer = window._toolRenderers[toolName];
