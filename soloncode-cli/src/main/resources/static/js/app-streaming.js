@@ -138,8 +138,8 @@ function onWebChunk(sess, chunk) {
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
             case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
             case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
-            case 'action_end': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
-            case 'action_start': finishThinkingBlock(sess); appendActionStartChunk(sess, chunk.toolName, chunk.args); break;
+            case 'action_end': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
+            case 'action_start': finishThinkingBlock(sess); appendActionStartChunk(sess, chunk.toolName, chunk.args, chunk.toolTitle); break;
             case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, false); break;
             case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
             case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;

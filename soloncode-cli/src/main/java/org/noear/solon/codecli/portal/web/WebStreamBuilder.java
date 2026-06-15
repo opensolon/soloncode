@@ -279,11 +279,13 @@ public class WebStreamBuilder {
             return WebChunk.EMPTY;
         }
 
-        String toolName;
+        // toolName 恒为裸名（供前端识别/查表）；toolTitle 为显示名（子代理时加 agentName 前缀）
+        String toolName = chunk.getToolName();
+        String toolTitle;
         if (engine.getName().equals(chunk.getAgentName())) {
-            toolName = chunk.getToolName();
+            toolTitle = toolName;
         } else {
-            toolName = chunk.getAgentName() + "/" + chunk.getToolName();
+            toolTitle = chunk.getAgentName() + "/" + toolName;
         }
 
         Map<String, Object> args = chunk.getArgs() != null
@@ -293,7 +295,7 @@ public class WebStreamBuilder {
         // edit 开始阶段即重建 diff，让 loading 骨架卡也能预览改动
         fillEditDiff(args);
 
-        return WebChunk.ofActionStart(toolName, args);
+        return WebChunk.ofActionStart(toolName, toolTitle, args);
     }
 
 
@@ -329,10 +331,12 @@ public class WebStreamBuilder {
             if (Assert.isNotEmpty(chunk.getToolName())) {
                 webChunk.setArgs(new LinkedHashMap<>(chunk.getArgs()));
 
+                // toolName 恒为裸名（供前端识别/查表）；toolTitle 为显示名（子代理时加 agentName 前缀）
+                webChunk.setToolName(chunk.getToolName());
                 if (engine.getName().equals(chunk.getAgentName())) {
-                    webChunk.setToolName(chunk.getToolName());
+                    webChunk.setToolTitle(chunk.getToolName());
                 } else {
-                    webChunk.setToolName(chunk.getAgentName() + "/" + chunk.getToolName());
+                    webChunk.setToolTitle(chunk.getAgentName() + "/" + chunk.getToolName());
                 }
 
                 if (TodoTalent.TOOL_TODOWRITE.equals(chunk.getToolName())) {

@@ -456,7 +456,7 @@ function formatToolArgsStr(args) {
 /* action_start：工具调用前（来源引擎 ActionChunk）提前渲染 loading 卡片骨架。
    存为 sess.pendingToolCard，待 action（ObservationChunk 结果）到达时由
    appendActionEndChunk 复用此卡片填充结果体并转完成态。 */
-function appendActionStartChunk(sess, toolName, args) {
+function appendActionStartChunk(sess, toolName, args, toolTitle) {
     // 若已有未完成的 pending 卡（异常时序/重复 start），先收尾避免悬挂
     finishPendingTool(sess);
     ensureAssistantBubble(sess);
@@ -468,7 +468,7 @@ function appendActionStartChunk(sess, toolName, args) {
     if (window.cliPrintSimplified === false) $(card).addClass('expanded');
     card.innerHTML = '<div class="tool-card-header">'
         + '<span class="tool-status-icon loading"></span>'
-        + '<span class="tool-name">' + escapeHtml(toolName || 'tool') + '</span>'
+        + '<span class="tool-name">' + escapeHtml(toolTitle || toolName || 'tool') + '</span>'
         + argsHtml
         + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
         + '</div>'
@@ -485,13 +485,13 @@ function appendActionStartChunk(sess, toolName, args) {
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
-function appendActionEndChunk(sess, toolName, text, args) {
+function appendActionEndChunk(sess, toolName, text, args, toolTitle) {
     // 复用分支：若该工具卡由 action_start 提前创建（loading 中），直接填充结果体并转完成态，避免重复建卡
     if (sess.pendingToolStarted && sess.pendingToolCard) {
         var pc = sess.pendingToolCard;
         sess.pendingToolStarted = false;
         var pcArgsStr = formatToolArgsStr(args);
-        $(pc).find('.tool-name').text(toolName || 'tool');
+        $(pc).find('.tool-name').text(toolTitle || toolName || 'tool');
         var pcArgsEl = $(pc).find('.tool-args')[0];
         if (pcArgsStr) {
             if (pcArgsEl) { pcArgsEl.textContent = pcArgsStr; }
@@ -549,7 +549,7 @@ function appendActionEndChunk(sess, toolName, text, args) {
     if (sess.approvedToolCard) {
         var rc = sess.approvedToolCard;
         sess.approvedToolCard = null;
-        $(rc).find('.tool-name').text(toolName || 'tool');
+        $(rc).find('.tool-name').text(toolTitle || toolName || 'tool');
         var rcArgsEl = $(rc).find('.tool-args')[0];
         if (argsStr) {
             if (rcArgsEl) { rcArgsEl.textContent = argsStr; }
@@ -576,7 +576,7 @@ function appendActionEndChunk(sess, toolName, text, args) {
     if (window.cliPrintSimplified === false) $(card).addClass('expanded');
     card.innerHTML = '<div class="tool-card-header">'
         + '<span class="tool-status-icon loading"></span>'
-        + '<span class="tool-name">' + escapeHtml(toolName || 'tool') + '</span>'
+        + '<span class="tool-name">' + escapeHtml(toolTitle || toolName || 'tool') + '</span>'
         + argsHtml
         + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
         + '</div>'

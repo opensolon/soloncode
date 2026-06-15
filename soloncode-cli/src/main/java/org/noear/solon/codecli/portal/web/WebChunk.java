@@ -66,8 +66,18 @@ public class WebChunk {
     /** 消息块的文本内容，具体含义由 type 决定（如正文、推理过程、命令、错误描述等）。 */
     private String text;
 
-    /** 工具名称，仅在 type 为 {@code hitl} 时使用，表示需要人工审批的工具标识。 */
+    /**
+     * 工具原名（裸名，不含 agentName 前缀）。
+     * <p>供前端做工具识别、专用渲染器匹配、特判逻辑（如 todowrite 刷新任务面板）。
+     * 注意：前端显示请用 {@link #toolTitle}，识别请用本字段。</p>
+     */
     private String toolName;
+
+    /**
+     * 工具显示名，仅供前端展示。
+     * <p>本引擎工具时与 {@link #toolName} 相同；子代理工具时为 {@code agentName + "/" + toolName}。</p>
+     */
+    private String toolTitle;
 
     /** 工具调用参数映射，保留字段，可用于携带结构化的工具调用参数。 */
     private Map<String, Object> args;
@@ -195,14 +205,16 @@ public class WebChunk {
      * 携带工具名与调用参数但不含结果。前端据此提前渲染一张 loading 状态的工具卡片骨架，
      * 待后续 {@code action}（来源于 ObservationChunk）到达时填充结果并转为完成态。</p>
      *
-     * @param toolName 工具名称
-     * @param args     工具调用参数
+     * @param toolName  工具原名（裸名，供前端识别）
+     * @param toolTitle 工具显示名（供前端展示，可含 agentName 前缀）
+     * @param args      工具调用参数
      * @return 携带工具名与参数的动作开始消息块
      */
-    public static WebChunk ofActionStart(String toolName, Map<String, Object> args) {
+    public static WebChunk ofActionStart(String toolName, String toolTitle, Map<String, Object> args) {
         WebChunk tmp = new WebChunk();
         tmp.type = "action_start";
         tmp.toolName = toolName;
+        tmp.toolTitle = toolTitle;
         tmp.args = args;
         tmp.createdAt = Instant.now().toEpochMilli();
 
