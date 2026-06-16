@@ -105,12 +105,12 @@ public class LoopStateManager {
             }
 
             String json = new String(Files.readAllBytes(historyFile), StandardCharsets.UTF_8);
-            ONode root = ONode.ofJson(json);
+            ONode root = ONode.ofJson(json,Feature.Write_PrettyFormat);
             if (!root.isArray()) {
-                root = ONode.ofJson("[]");
+                root = ONode.ofJson("[]",Feature.Write_PrettyFormat);
             }
 
-            ONode entry = new ONode(Options.of(Feature.Write_PrettyFormat));
+            ONode entry = new ONode();
             entry.set("iteration", iteration);
             entry.set("time", Instant.now().toString());
             entry.set("result", result != null && result.getFinalResult() != null ? result.getFinalResult() : "ok");
