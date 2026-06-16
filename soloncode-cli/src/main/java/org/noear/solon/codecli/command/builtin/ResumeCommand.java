@@ -21,6 +21,8 @@ import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -50,17 +52,21 @@ public class ResumeCommand implements Command {
         AgentSession session = ctx.getSession();
 
         //优化 "/resume"
-        ReActTrace trace = ReActTrace.getCurrent(session.getContext());
+        ReActTrace trace = session.getContext().getAs("__main");
         if (trace != null) {
-            if (trace.getFinalAnswer() != null && Agent.ID_END.equals(trace.getRoute())) {
+            if (Agent.ID_END.equals(trace.getRoute())) {
                 //说明有结束节点，重新回到思考点点
                 trace.setRoute(ReActAgent.ID_REASON);
                 trace.setFinalAnswer(null, false);
-                trace.getWorkingMemory().removeLastMessage();
+
+                ChatMessage workMessage = trace.getWorkingMemory().getLastMessage();
+                if (workMessage instanceof AssistantMessage) {
+                    trace.getWorkingMemory().removeLastMessage();
+                }
 
                 //回退一条 ai 消息（要生新生成）
-                List<ChatMessage> messageList = session.getLatestMessages(1);
-                if (Assert.isNotEmpty(messageList) && messageList.get(0) instanceof AssistantMessage) {
+                List<ChatMessage> messageList = session.getMessages();
+                if (Assert.isNotEmpty(messageList) && messageList.get(messageList.size() - 1) instanceof AssistantMessage) {
                     session.removeLatestMessage(1);
                 }
             }
