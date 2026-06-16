@@ -1,6 +1,6 @@
 # Spring → Solon 注解对照表
 
-> 基于 Solon 3.10.x / Spring Boot 2.7 / 3.x | 官方来源: https://solon.noear.org/article/compare-springboot
+> 基于 Solon 4.0.x / Spring Boot 2.7 / 3.x | 官方来源: https://solon.noear.org/article/compare-springboot
 
 ---
 
@@ -861,7 +861,7 @@ public class App {
 
 ## 十三、完整注解速查表
 
-| 分类 | Spring Boot | Solon 3.10.x | 简要说明 |
+| 分类 | Spring Boot | Solon 4.0.x | 简要说明 |
 |---|---|---|---|
 | **DI** | `@Autowired` | `@Inject` | 按类型注入 |
 | **DI** | `@Qualifier`+`@Autowired` | `@Inject("name")` | 按名称注入 |

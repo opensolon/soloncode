@@ -1,6 +1,6 @@
 # 数据源与 ORM 迁移参考
 
-> Spring Boot → Solon 数据访问层迁移指南（目标版本：Solon 3.10.x）
+> Spring Boot → Solon 数据访问层迁移指南（目标版本：Solon 4.0.x）
 >
 > 本文档聚焦数据源配置、MyBatis、MyBatis Plus、JPA 及多数据源五大主题，提供代码对照与差异陷阱标注。
 

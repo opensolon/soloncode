@@ -1,6 +1,6 @@
 # Filter / Interceptor / 异常处理迁移参考
 
-> Spring Boot → Solon Web Filter、拦截器、全局异常处理及 CORS 迁移指南（目标版本：Solon 3.10.x）
+> Spring Boot → Solon Web Filter、拦截器、全局异常处理及 CORS 迁移指南（目标版本：Solon 4.0.x）
 
 ## 3. Filter / Interceptor 迁移
 

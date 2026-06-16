@@ -1,6 +1,6 @@
 # Maven 依赖替换对照表
 
-> Spring Boot → Solon 迁移参考手册（目标版本：Solon 3.10.x）
+> Spring Boot → Solon 迁移参考手册（目标版本：Solon 4.0.x）
 
 本文档提供 Spring Boot 项目迁移至 Solon 框架时所需的全部 Maven 依赖替换映射。按功能模块分类整理，每项均包含替换前后的 XML 片段。
 
@@ -48,7 +48,7 @@
 <parent>
     <groupId>org.noear</groupId>
     <artifactId>solon-parent</artifactId>
-    <version>3.10.3</version>
+    <version>4.0.2</version>
     <relativePath/> <!-- 从仓库查找 -->
 </parent>
 ```
@@ -978,7 +978,7 @@ org.springframework.cloud   →  org.noear
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solon-parent</artifactId>
-        <version>3.10.3</version>
+        <version>4.0.2</version>
         <relativePath/>
     </parent>
 
@@ -1107,7 +1107,7 @@ org.springframework.cloud   →  org.noear
 ### 6.4 版本管理
 
 - 使用 `solon-parent` 作为 Parent POM 后，大部分 Solon 依赖无需指定版本号（由 Parent 统一管理）。
-- 当前目标版本为 **Solon 3.10.3**，请确保所有 Solon 插件使用相同版本。
+- 当前目标版本为 **Solon 4.0.2**，请确保所有 Solon 插件使用相同版本。
 
 ### 6.5 快速对照速查表
 

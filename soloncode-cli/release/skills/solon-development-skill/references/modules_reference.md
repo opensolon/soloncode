@@ -2,7 +2,7 @@
 
 > 适用场景：选择服务器实现、序列化方式、视图引擎、数据访问、ORM 集成。
 >
-> Solon 官方坐标 groupId 为 `org.noear`，版本号 `3.10.4`。部分第三方适配插件的 groupId 不同，见各表标注。
+> Solon 官方坐标 groupId 为 `org.noear`，版本号 `4.0.2`。部分第三方适配插件的 groupId 不同，见各表标注。
 
 ## Shortcut Dependencies（快捷组合包）
 
@@ -135,7 +135,7 @@ public class OrderService {
     @Inject
     private UserService userService;
 
-    @Tran  // 声明式事务（传播机制默认 REQUIRED）
+    @Transaction  // 声明式事务（传播机制默认 REQUIRED）
     public void createOrder(Order order) {
         userService.updateUser(order.getUser());
         // ... 其他业务操作

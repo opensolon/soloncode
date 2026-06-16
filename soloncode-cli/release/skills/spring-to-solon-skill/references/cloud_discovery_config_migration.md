@@ -1,6 +1,6 @@
 # Cloud 注册发现与配置中心迁移参考
 
-> Spring Cloud → Solon Cloud 迁移指南（目标版本：Solon 3.10.x）
+> Spring Cloud → Solon Cloud 迁移指南（目标版本：Solon 4.0.x）
 > 参考文档：[solon.noear.org/article/compare-springcloud](https://solon.noear.org/article/compare-springcloud)
 
 ## 1. 组件对照总览
@@ -271,7 +271,7 @@ public class ConfigListener {
 
 ### 4.3 版本兼容性
 
-- Solon 3.10.x 要求 Java 17+。
+- Solon 4.0.x 要求 Java 17+。
 - 各 Cloud 插件版本与 Solon 框架版本保持一致。
 - 引入插件时使用 BOM 管理版本，避免版本不一致。
 
@@ -281,7 +281,7 @@ public class ConfigListener {
         <dependency>
             <groupId>org.noear</groupId>
             <artifactId>solon-parent</artifactId>
-            <version>3.10.0</version>
+            <version>4.0.2</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
