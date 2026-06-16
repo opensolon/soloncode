@@ -4,6 +4,7 @@
 
 * 修复 soloncode 安装时，会清掉 `~/.soloncode/skills/` 技能的问题
 * 添加 soloncode `/resume` 命令实现，可恢复任何任务（手动中断，异常结束）
+* 细节优化
 
 ### v2026.6.16
 
