@@ -15,8 +15,18 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
+import org.noear.solon.ai.agent.Agent;
+import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.chat.message.AssistantMessage;
+import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.core.util.Assert;
+
+import java.util.List;
 
 /**
  * /resume 命令
@@ -37,6 +47,25 @@ public class ResumeCommand implements Command {
 
     @Override
     public boolean execute(CommandContext ctx) throws Exception {
+        AgentSession session = ctx.getSession();
+
+        //优化 "/resume"
+        ReActTrace trace = ReActTrace.getCurrent(session.getContext());
+        if (trace != null) {
+            if (trace.getFinalAnswer() != null && Agent.ID_END.equals(trace.getRoute())) {
+                //说明有结束节点，重新回到思考点点
+                trace.setRoute(ReActAgent.ID_REASON);
+                trace.setFinalAnswer(null, false);
+                trace.getWorkingMemory().removeLastMessage();
+
+                //回退一条 ai 消息（要生新生成）
+                List<ChatMessage> messageList = session.getLatestMessages(1);
+                if (Assert.isNotEmpty(messageList) && messageList.get(0) instanceof AssistantMessage) {
+                    session.removeLatestMessage(1);
+                }
+            }
+        }
+
         ctx.runAgentTask(null, null);
         return true;
     }
