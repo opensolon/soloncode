@@ -168,7 +168,7 @@ public class Configurator {
 
         engine.getCommandRegistry().register(new ExitCommand());
         engine.getCommandRegistry().register(new ClearCommand());
-        engine.getCommandRegistry().register(new ResumeCommand());
+        engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new RewindCommand());
         engine.getCommandRegistry().register(new ModelCommand());
 

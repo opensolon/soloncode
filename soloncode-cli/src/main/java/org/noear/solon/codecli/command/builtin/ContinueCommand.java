@@ -21,37 +21,33 @@ import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
-import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.util.Assert;
 
 import java.util.List;
 
 /**
- * /resume 命令
+ * /continue 命令
  *
  * @author noear
  * @since 2026.4.28
  */
-public class ResumeCommand implements Command {
+public class ContinueCommand implements Command {
     @Override
     public String name() {
-        return "resume";
+        return "continue";
     }
 
     @Override
     public String description() {
-        return "恢复最后一个未完成的任务";
+        return "继续最后一个未完成的任务";
     }
 
     @Override
     public boolean execute(CommandContext ctx) throws Exception {
         AgentSession session = ctx.getSession();
 
-        //优化 "/resume"
         ReActTrace trace = session.getContext().getAs("__main");
         if (trace != null) {
             if (Agent.ID_END.equals(trace.getRoute())) {
