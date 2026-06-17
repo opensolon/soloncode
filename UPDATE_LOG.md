@@ -2,9 +2,14 @@
 
 ### v2026.6.18
 
+* 添加 soloncode web 设置/通用/子代理开发
+* 添加 soloncode web 设置/工具权限
+* 添加 soloncode 命令 `/rerun`
 * 优化 soloncode 心智记忆处理
 * 优化 soloncode 任务闭合管理
 * 优化 soloncode 代码环境版本识别
+* 调整 soloncode `/resume` 命令更名为 `/continue`
+* 修复 soloncode `/loop goal` 可能重复执行、不能停止等问题
 * 细节优化
 
 
