@@ -21,7 +21,6 @@ import org.noear.snack4.ONode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 定时循环任务模型，用于 /loop 命令
@@ -69,9 +68,6 @@ public class LoopTask {
     private volatile int currentIteration;
     private volatile boolean enabled = true; // 启用/停用
     private volatile boolean wrapUpPending = false; // 即将收尾（最后一次 wrap-up turn）
-
-    // re-trigger 并发保护：防止多个 re-trigger 线程同时启动
-    private final AtomicBoolean continuationPending = new AtomicBoolean(false);
 
     /**
      * 固定间隔构造
@@ -133,7 +129,7 @@ public class LoopTask {
                     Integer maxIterations, boolean runNow) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
-        // intervalMinutes=0 表示即时模式（goal 专用），不注册到 IJobManager 定时器，而是执行完立即 re-trigger
+        // 间隔钒在 [MIN_INTERVAL, MAX_INTERVAL]，不存在 0 间隔；goal 模式通过 fixedDelay 串行调度逐轮触发
         this.intervalMinutes = Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, intervalMinutes));
         this.cron = cron;
         this.createdAt = Instant.now();
@@ -208,7 +204,6 @@ public class LoopTask {
             return false;
         }
         running = true;
-        clearContinuationPending();
         return true;
     }
 
@@ -217,22 +212,6 @@ public class LoopTask {
      */
     public synchronized void finish() {
         running = false;
-    }
-
-    /**
-     * 尝试预约 re-trigger（CAS 语义）
-     *
-     * @return true 表示成功预约，false 表示已有 re-trigger 在等待
-     */
-    public boolean tryScheduleContinuation() {
-        return continuationPending.compareAndSet(false, true);
-    }
-
-    /**
-     * 清除 re-trigger 预约标记
-     */
-    public void clearContinuationPending() {
-        continuationPending.set(false);
     }
 
     /**

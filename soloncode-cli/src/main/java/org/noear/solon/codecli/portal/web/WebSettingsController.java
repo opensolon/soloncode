@@ -37,6 +37,7 @@ import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
+import org.noear.solon.codecli.config.entity.PermissionGroupDo;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
 import org.noear.solon.codecli.config.entity.LspServerDo;
@@ -178,6 +179,71 @@ public class WebSettingsController {
         }
 
         saveSettings();
+        return Result.succeed();
+    }
+
+    // ==================== 设置：Permission 工具权限配置 ====================
+
+    /**
+     * 获取全局工具权限配置（白名单 tools / 黑名单 disallowedTools）
+     */
+    @Get
+    @Mapping("/web/settings/permission")
+    public Result<PermissionGroupDo> permissionGet() {
+        return Result.succeed(settings.getPermission());
+    }
+
+    /**
+     * 保存全局工具权限配置。
+     * <p>tools 为允许白名单（支持通配，如 {@code **}、{@code mcp__*}），留空等价于放开全部；
+     * disallowedTools 为禁用黑名单。保存后通过 engine.allowToolReset / disallowToolReset 热更新，
+     * 引擎会重建主 Agent 即时生效，无需重启。</p>
+     */
+    @Post
+    @Mapping("/web/settings/permission/save")
+    public Result permissionSave(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        if (root.isObject() == false) {
+            return Result.failure("invalid body");
+        }
+
+        List<String> tools = new ArrayList<>();
+        if (root.hasKey("tools") && root.get("tools").isArray()) {
+            for (ONode item : root.get("tools").getArray()) {
+                String v = item.getString();
+                if (Assert.isNotEmpty(v) && tools.contains(v) == false) {
+                    tools.add(v.trim());
+                }
+            }
+        }
+
+        List<String> disallowedTools = new ArrayList<>();
+        if (root.hasKey("disallowedTools") && root.get("disallowedTools").isArray()) {
+            for (ONode item : root.get("disallowedTools").getArray()) {
+                String v = item.getString();
+                if (Assert.isNotEmpty(v) && disallowedTools.contains(v) == false) {
+                    disallowedTools.add(v.trim());
+                }
+            }
+        }
+
+        // 白名单留空兜底为放开全部，避免误配置导致全部工具不可用
+        if (tools.isEmpty()) {
+            tools.add("**");
+        }
+
+        // 先清空再写入，避免 final List 叠加导致重复
+        settings.getPermission().getTools().clear();
+        settings.getPermission().getTools().addAll(tools);
+        settings.getPermission().getDisallowedTools().clear();
+        settings.getPermission().getDisallowedTools().addAll(disallowedTools);
+
+        // 热更新到引擎（会重建主 Agent 即时生效）
+        engine.allowToolReset(settings.getPermission().getTools());
+        engine.disallowToolReset(settings.getPermission().getDisallowedTools());
+
+        saveSettings();
+        LOG.info("[Settings] Permission updated: tools={}, disallowedTools={}", tools, disallowedTools);
         return Result.succeed();
     }
 

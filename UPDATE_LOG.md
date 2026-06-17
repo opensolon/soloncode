@@ -1,5 +1,13 @@
 
 
+### v2026.6.18
+
+* 优化 soloncode 心智记忆处理
+* 优化 soloncode 任务闭合管理
+* 优化 soloncode 代码环境版本识别
+* 细节优化
+
+
 ### v2026.6.17
 
 * 修复 soloncode 安装时，会清掉 `~/.soloncode/skills/` 技能的问题

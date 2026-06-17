@@ -290,6 +290,7 @@ public class AgentSettings implements Serializable {
         oNode.set("$schema", "https://solon.noear.org/soloncode/settings.schema.json");
 
         oNode.getOrNew("general").fill(general);
+        oNode.getOrNew("permission").fill(permission);
 
         oNode.set("defaultModel", this.defaultModel);
 

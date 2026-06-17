@@ -348,6 +348,7 @@
             <div class="settings-tabs">
                 <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">设置</div>
                 <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 通用</button>
+                <button class="settings-tab" data-tab="permission"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> 工具权限</button>
                 <button class="settings-tab" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> 大语言模型</button>
                 <button class="settings-tab" data-tab="mounts"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 挂载</button>
                 <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 技能市场</button>
@@ -565,6 +566,53 @@
 
                         <div class="form-actions form-actions-end settings-actions-spacious">
                             <button class="btn-primary" id="generalSaveBtn">保存</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Permission Tab -->
+                <div class="settings-tab-content" id="settingsTabPermission">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div>
+                                <span class="settings-section-title">工具权限</span>
+                                <div class="settings-section-desc">全局工具调用白名单与黑名单，保存后即时生效</div>
+                            </div>
+                        </div>
+
+                        <div class="general-card-group">
+                            <!-- 允许名单 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">允许工具（白名单）</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field">
+                                        <textarea class="general-input" id="permissionTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="每行一个匹配模式，支持通配：&#10;**&#10;mcp__*"></textarea>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm">只有匹配白名单的工具才会被加载；支持 <code>**</code> 等通配。<b>留空等价于放开全部工具</b>。</div>
+                                </div>
+                            </div>
+
+                            <!-- 禁用名单 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">禁用工具（黑名单）</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field">
+                                        <textarea class="general-input" id="permissionDisallowedTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="每行一个匹配模式，支持通配：&#10;bash&#10;write"></textarea>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm">黑名单优先级高于白名单；被禁用的工具即使在白名单内也不会加载。</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions form-actions-end settings-actions-spacious">
+                            <button class="btn-primary" id="permissionSaveBtn">保存</button>
                         </div>
                     </div>
                 </div>
@@ -1153,6 +1201,7 @@
 <script src="/js/app-context.js"></script>
 <script src="/js/app-settings.js"></script>
 <script src="/js/app-settings-general.js"></script>
+<script src="/js/app-settings-permission.js"></script>
 <script src="/js/app-settings-llm.js"></script>
 <script src="/js/app-settings-mounts.js"></script>
 <script src="/js/app-settings-mcp.js"></script>

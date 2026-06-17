@@ -153,9 +153,7 @@ public class LoopScheduler {
     /**
      * 注册循环任务
      *
-     * <p>流程：创建 LoopTask -> 注册到 IJobManager（定时模式）-> 加入内存列表 -> 持久化到 JSON
-     *
-     * <p>即时模式（intervalMinutes=0）不注册到 IJobManager，由 scheduleNow 触发首次执行后自动 re-trigger。
+     * <p>流程：创建 LoopTask -> 注册到 IJobManager（cron / fixedDelay）-> 加入内存列表 -> 持久化到 JSON
      *
      * @param sessionId      会话 ID
      * @param task           待注册的任务
@@ -172,7 +170,7 @@ public class LoopScheduler {
         // 2. 清理过期任务
         cleanExpired(sessionId, tasks);
 
-        // 3. 定时模式才注册到 IJobManager；即时模式由 scheduleNow 管理
+        // 3. 注册到 IJobManager（cron 模式用 cron 表达式，否则 fixedDelay 串行）
         registerJob(sessionId, task);
 
         // 4. 加入内存列表
@@ -387,7 +385,7 @@ public class LoopScheduler {
 
         sessionTasks.put(sessionId, Collections.synchronizedList(alive));
 
-        // 重新注册到 IJobManager（即时模式会被 registerJob 内部跳过）
+        // 重新注册到 IJobManager
         for (LoopTask t : alive) {
             registerJob(sessionId, t);
         }
@@ -401,8 +399,6 @@ public class LoopScheduler {
 
     /**
      * 注册任务到 IJobManager（cron 模式使用 cron 表达式，否则使用 fixedDelay 串行策略）
-     *
-     * <p>即时模式（intervalMinutes=0）不应调用此方法。
      */
     private void registerJob(String sessionId, LoopTask task) {
         String jobName = task.getJobName();

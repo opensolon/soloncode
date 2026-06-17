@@ -416,6 +416,9 @@ public class WebGate extends SimpleWebSocketListener {
         ReActAgent agent = engine.getAgentOrMain(agentName);
         CountDownLatch latch = new CountDownLatch(1);
         StringBuilder capture = new StringBuilder();
+        // 最终答案全量文本（来自 trace chunk）。思考型模型正文走 reason 通道、不产生 text chunk，
+        // 此时 capture 为空，必须依赖 trace 的 finalAnswer 才能拿到含 [GOAL_ACHIEVED] 的权威全文。
+        AtomicReference<String> finalAnswerRef = new AtomicReference<>();
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
 
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
@@ -425,6 +428,8 @@ public class WebGate extends SimpleWebSocketListener {
                             emitToClient(sessionId, line);
                             if ("text".equals(line.getType()) && line.getText() != null) {
                                 capture.append(line.getText());
+                            } else if ("trace".equals(line.getType()) && line.getFinalAnswer() != null) {
+                                finalAnswerRef.set(line.getFinalAnswer());
                             } else if ("error".equals(line.getType()) && line.getText() != null) {
                                 errorRef.set(new RuntimeException(line.getText()));
                             }
@@ -456,7 +461,12 @@ public class WebGate extends SimpleWebSocketListener {
             if (errorRef.get() != null) {
                 return "error: " + errorRef.get().getMessage();
             }
-            String text = capture.toString().trim();
+            // 优先采用 trace 的最终答案全量文本（覆盖思考型模型场景）；
+            // 缺失时回退到增量 text chunk 的拼接结果。
+            String finalAnswer = finalAnswerRef.get();
+            String text = (finalAnswer != null && !finalAnswer.trim().isEmpty())
+                    ? finalAnswer.trim()
+                    : capture.toString().trim();
             return text.isEmpty() ? null : text;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
