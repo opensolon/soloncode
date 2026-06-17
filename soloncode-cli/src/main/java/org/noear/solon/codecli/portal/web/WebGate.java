@@ -31,9 +31,9 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
-import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
 import org.slf4j.Logger;
@@ -48,7 +48,6 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -255,12 +254,6 @@ public class WebGate extends SimpleWebSocketListener {
                 }
             }
 
-            if (selectedModel != null) {
-                session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
-            } else {
-                selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
-            }
-
 
             // HITL approve/reject handling
             if (Assert.isNotEmpty(hitlAction)) {
@@ -273,7 +266,7 @@ public class WebGate extends SimpleWebSocketListener {
                     }
                 }
                 // Resume streaming after HITL decision
-                performAgentTask(session, sessionCwd, null, selectedModel, agentName);
+                performAgentTaskAsync(session, sessionCwd, null, selectedModel, agentName);
                 return;
             }
 
@@ -342,7 +335,7 @@ public class WebGate extends SimpleWebSocketListener {
                 }
 
                 // 流式处理：输出通过 WebSocket 推送
-                performAgentTask(session, sessionCwd, prompt, selectedModel, agentName);
+                performAgentTaskAsync(session, sessionCwd, prompt, selectedModel, agentName);
             }
         } catch (Exception e) {
             LOG.error("Task fail: {}", e.getMessage(), e);
@@ -384,8 +377,14 @@ public class WebGate extends SimpleWebSocketListener {
      * @param selectedModel 用户选择的 AI 模型标识
      * @param agentName    指定 Agent 名称（可为 null，表示使用默认 Agent）
      */
-    private void performAgentTask(AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName) {
+    private void performAgentTaskAsync(AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName) {
         String sessionId = session.getSessionId();
+
+        if (selectedModel != null) {
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
+        } else {
+            selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+        }
 
         ChatModel chatModel = engine.getModelOrMain(selectedModel);
         ReActAgent agent = engine.getAgentOrMain(agentName);
@@ -407,73 +406,62 @@ public class WebGate extends SimpleWebSocketListener {
                 );
 
         session.attrs().put("disposable", disposable);
+
     }
 
-    private String performAgentTaskAndCapture(AgentSession session, String sessionCwd, Prompt prompt,
-                                              String selectedModel, String agentName, long timeoutMs) {
+    /**
+     * 执行 Agent 流式任务。
+     *
+     * <p>通过 {@link WebStreamBuilder} 构建 ReAct Agent 的响应流，
+     * 订阅流数据并通过 {@link #emitToClient} 逐条推送至前端。
+     * 同时将 RxJava {@link Disposable} 保存到会话属性中，以支持 {@link #interruptSession} 中断。</p>
+     *
+     * @param session      Agent 会话实例
+     * @param sessionCwd   会话当前工作目录
+     * @param prompt       用户输入的 Prompt（为 null 时表示 HITL 恢复等无需新 Prompt 的场景）
+     * @param selectedModel 用户选择的 AI 模型标识
+     * @param agentName    指定 Agent 名称（可为 null，表示使用默认 Agent）
+     */
+    private String performAgentTaskSync(AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName) {
         String sessionId = session.getSessionId();
+
+        if (selectedModel != null) {
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
+        } else {
+            selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+        }
+
         ChatModel chatModel = engine.getModelOrMain(selectedModel);
         ReActAgent agent = engine.getAgentOrMain(agentName);
-        CountDownLatch latch = new CountDownLatch(1);
-        StringBuilder capture = new StringBuilder();
-        // 最终答案全量文本（来自 trace chunk）。思考型模型正文走 reason 通道、不产生 text chunk，
-        // 此时 capture 为空，必须依赖 trace 的 finalAnswer 才能拿到含 [GOAL_ACHIEVED] 的权威全文。
-        AtomicReference<String> finalAnswerRef = new AtomicReference<>();
-        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+        CountDownLatch countDownLatch = new CountDownLatch(1);
+        AtomicReference<String> finalAnswerRef = new AtomicReference<>("");
 
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                         line -> {
                             emitToClient(sessionId, line);
-                            if ("text".equals(line.getType()) && line.getText() != null) {
-                                capture.append(line.getText());
-                            } else if ("trace".equals(line.getType()) && line.getFinalAnswer() != null) {
+
+                            if ("trace".equals(line.getType())) {
                                 finalAnswerRef.set(line.getFinalAnswer());
-                            } else if ("error".equals(line.getType()) && line.getText() != null) {
-                                errorRef.set(new RuntimeException(line.getText()));
                             }
                         },
                         e -> {
                             LOG.error("Task fail: {}", e.getMessage(), e);
-                            errorRef.set(e);
                             session.attrs().remove("disposable");
+
                             emitToClient(sessionId, WebChunk.ofError(e));
                             emitToClient(sessionId, WebChunk.ofDone());
-                            latch.countDown();
                         },
                         () -> {
-                            session.attrs().remove("disposable");
-                            latch.countDown();
+                            countDownLatch.countDown();
+                            session.attrs().remove("disposable");  // 正常完成时清理
                         }
                 );
 
         session.attrs().put("disposable", disposable);
-
-        try {
-            boolean completed = latch.await(Math.max(timeoutMs, 1_000L), TimeUnit.MILLISECONDS);
-            if (!completed) {
-                disposable.dispose();
-                session.attrs().remove("disposable");
-                LOG.warn("[WebGate] Loop capture timeout for session {}", sessionId);
-                return null;
-            }
-            if (errorRef.get() != null) {
-                return "error: " + errorRef.get().getMessage();
-            }
-            // 优先采用 trace 的最终答案全量文本（覆盖思考型模型场景）；
-            // 缺失时回退到增量 text chunk 的拼接结果。
-            String finalAnswer = finalAnswerRef.get();
-            String text = (finalAnswer != null && !finalAnswer.trim().isEmpty())
-                    ? finalAnswer.trim()
-                    : capture.toString().trim();
-            return text.isEmpty() ? null : text;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            disposable.dispose();
-            session.attrs().remove("disposable");
-            return null;
-        }
+        RunUtil.runAndTry(countDownLatch::await);
+        return finalAnswerRef.get();
     }
 
     /**
@@ -517,7 +505,7 @@ public class WebGate extends SimpleWebSocketListener {
                             model = selectedModel;
                         }
 
-                        performAgentTask(session, sessionCwd, Prompt.of(prompt), model, agentName);
+                        performAgentTaskAsync(session, sessionCwd, Prompt.of(prompt), model, agentName);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -623,19 +611,21 @@ public class WebGate extends SimpleWebSocketListener {
 
         onChatInput(sessionId, null, input, null, null, null, null);
     }
+
+
     /**
-     * 安全聊天输入入口，并同步捕获本轮响应文本。
+     * Loop 专用：安全聊天输入入口，无限等待捕获本轮响应文本。
      *
-     * <p>用于 Loop 调度器的 goal 检测。该方法仍会向前端推送完整流式消息，
-     * 同时等待响应流结束并返回普通文本 chunk 的拼接结果。</p>
+     * <p>
+     * 适用于可能长时间执行的 Loop goal 任务。
+     * 该方法仍会向前端推送完整流式消息，同时等待响应流结束。
      *
      * @param sessionId  会话标识
      * @param input      用户输入文本
      * @param source     调用来源标识
-     * @param timeoutMs  最大等待时间
-     * @return 捕获到的 AI 文本；会话繁忙、超时或无文本时返回 null
+     * @return 捕获到的 AI 文本；会话繁忙或无文本时返回 null
      */
-    public String safeChatInputAndCapture(String sessionId, String input, String source, long timeoutMs) {
+    public String safeChatInputAndCaptureLoop(String sessionId, String input, String source) {
         AgentSession session;
         try {
             session = engine.getSession(sessionId);
@@ -662,7 +652,7 @@ public class WebGate extends SimpleWebSocketListener {
             }
         }
 
-        return performAgentTaskAndCapture(session, null, Prompt.of(currentInput), null, agentName, timeoutMs);
+        return performAgentTaskSync(session, null, Prompt.of(currentInput), null, agentName);
     }
 
 

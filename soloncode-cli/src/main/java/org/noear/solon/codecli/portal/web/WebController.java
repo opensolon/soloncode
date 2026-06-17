@@ -127,7 +127,8 @@ public class WebController {
                     effectiveInput = "@" + agentName + " " + prompt;
                 }
 
-                return webGate.safeChatInputAndCapture(sessionId, effectiveInput, "Loop", 300_000L);
+                // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本
+                return webGate.safeChatInputAndCaptureLoop(sessionId, effectiveInput, "Loop");
             });
         }
     }
