@@ -41,7 +41,7 @@ public class ContinueCommand implements Command {
 
     @Override
     public String description() {
-        return "继续最后一个未完成的任务";
+        return "继续运行最后一个未完成的任务";
     }
 
     @Override
