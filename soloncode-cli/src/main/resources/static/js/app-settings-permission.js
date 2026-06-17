@@ -6,36 +6,35 @@
 (function () {
     'use strict';
 
-    // 工具定义列表
-    var TOOLS_LIST = [
-        // 公域工具
-        { id: 'bash', name: 'bash', desc: 'Shell 命令执行', category: 'builtin', risk: 'high' },
-        { id: 'read', name: 'read', desc: '读取文件内容', category: 'builtin', risk: 'low' },
-        { id: 'write', name: 'write', desc: '写入文件内容', category: 'builtin', risk: 'high' },
-        { id: 'edit', name: 'edit', desc: '文件编辑', category: 'builtin', risk: 'medium' },
-        { id: 'grep', name: 'grep', desc: '递归内容搜索', category: 'builtin', risk: 'low' },
-        { id: 'glob', name: 'glob', desc: '通配符文件搜索', category: 'builtin', risk: 'low' },
-        { id: 'ls', name: 'ls', desc: '列出目录内容', category: 'builtin', risk: 'low' },
-        { id: 'codesearch', name: 'codesearch', desc: '网络代码搜索', category: 'builtin', risk: 'low' },
-        { id: 'websearch', name: 'websearch', desc: '网络搜索', category: 'builtin', risk: 'low' },
-        { id: 'webfetch', name: 'webfetch', desc: '网页内容抓取', category: 'builtin', risk: 'low' },
-        { id: 'todo', name: 'todo', desc: '任务清单管理', category: 'builtin', risk: 'low' },
-        { id: 'skill', name: 'skill', desc: '专家技能调用', category: 'builtin', risk: 'low' },
-        { id: 'task', name: 'task', desc: '子代理任务委派', category: 'builtin', risk: 'medium' },
-        
-        // 私域工具
-        { id: 'hitl', name: 'hitl', desc: '人工介入审核', category: 'private', risk: 'low' },
-        { id: 'generate', name: 'generate', desc: '动态生成子代理', category: 'private', risk: 'high' },
-        { id: 'restapi', name: 'restapi', desc: 'Web 服务 API 接入', category: 'private', risk: 'medium' },
-        { id: 'mcp', name: 'mcp', desc: 'MCP 服务接入', category: 'private', risk: 'medium' },
-        { id: 'lsp', name: 'lsp', desc: 'LSP 代码理解服务', category: 'private', risk: 'low' },
-        
+    // 工具定义列表 - 按列分组
+    var TOOLS_COLUMNS = [
+        // 第一列：文件操作
+        [
+            { id: 'bash', name: 'bash', desc: 'Shell 命令执行', risk: 'low' },
+            { id: 'read', name: 'read', desc: '读取文件内容', risk: 'low' },
+            { id: 'write', name: 'write', desc: '写入文件内容', risk: 'low' },
+            { id: 'edit', name: 'edit', desc: '文件编辑', risk: 'low' },
+            { id: 'grep', name: 'grep', desc: '递归内容搜索', risk: 'low' },
+            { id: 'glob', name: 'glob', desc: '通配符文件搜索', risk: 'low' },
+            { id: 'ls', name: 'ls', desc: '列出目录内容', risk: 'low' }
+        ],
+        // 第二列：网络搜索
+        [
+            { id: 'codesearch', name: 'codesearch', desc: '网络代码搜索', risk: 'low' },
+            { id: 'websearch', name: 'websearch', desc: '网络搜索', risk: 'low' },
+            { id: 'webfetch', name: 'webfetch', desc: '网页内容抓取', risk: 'low' }
+        ],
+        // 第三列：任务管理
+        [
+            { id: 'code', name: 'code', desc: '编码指导模块', risk: 'low' },
+            { id: 'todo', name: 'todo', desc: '任务清单管理', risk: 'low' },
+            { id: 'skill', name: 'skill', desc: '专家技能调用', risk: 'low' }
+        ]
     ];
 
     // 分类显示名称
     var CATEGORY_NAMES = {
-        'builtin': '公域工具',
-        'private': '私域工具'
+        'builtin': '工具列表'
     };
 
     // 风险等级显示
@@ -73,34 +72,20 @@
         return out;
     }
 
-    // 渲染工具列表
+    // 渲染工具列表 - 网格布局
     function renderToolsList(disallowedTools) {
         var disallowedMap = {};
         disallowedTools.forEach(function (t) { disallowedMap[t] = true; });
 
         var $list = $('#permissionToolsList');
         
-        // 按分类分组
-        var groups = {};
-        TOOLS_LIST.forEach(function (tool) {
-            if (!groups[tool.category]) groups[tool.category] = [];
-            groups[tool.category].push(tool);
-        });
-
-        var html = '';
-        Object.keys(groups).forEach(function (category) {
-            var tools = groups[category];
-            var enabledCount = tools.filter(function (t) { return !disallowedMap[t.id]; }).length;
+        var html = '<div class="permission-tools-grid">';
+        
+        // 渲染三列
+        TOOLS_COLUMNS.forEach(function (column, colIndex) {
+            html += '<div class="permission-tools-column">';
             
-            html += '<div class="permission-category">';
-            html += '<div class="permission-category-header">';
-            html += '<span class="permission-category-title">' + CATEGORY_NAMES[category] + ' (' + tools.length + ')</span>';
-            html += '<span class="permission-category-count">' + enabledCount + '/' + tools.length + ' 已启用</span>';
-            html += '<button class="permission-category-toggle btn-link" data-category="' + category + '">全选/取消</button>';
-            html += '</div>';
-            html += '<div class="permission-category-tools">';
-            
-            tools.forEach(function (tool) {
+            column.forEach(function (tool) {
                 var isEnabled = !disallowedMap[tool.id];
                 html += '<div class="permission-tool-item">';
                 html += '<label class="permission-tool-checkbox" title="' + (isEnabled ? '禁用' : '启用') + '">';
@@ -115,8 +100,9 @@
             });
             
             html += '</div>';
-            html += '</div>';
         });
+        
+        html += '</div>';
 
         if (html === '') {
             html = '<div class="permission-empty-state">没有找到匹配的工具</div>';
@@ -126,12 +112,9 @@
         updatePermissionCount(disallowedTools);
     }
 
-    // 更新计数
+    // 更新计数（已移除计数显示）
     function updatePermissionCount(disallowedTools) {
-        var total = TOOLS_LIST.length;
-        var disabled = disallowedTools.length;
-        var enabled = total - disabled;
-        $('#permissionCount').text(enabled + '/' + total + ' 已启用');
+        // 计数显示已移除，保留函数避免调用错误
     }
 
     // 加载权限设置
@@ -213,26 +196,9 @@
             updatePermissionCount(disallowedTools);
         });
 
-        // 全选按钮
-        $('#permissionSelectAllBtn').on('click', function () {
-            $('#permissionToolsList .permission-tool-toggle').prop('checked', true);
-            updatePermissionCount(getDisallowedTools());
-        });
 
-        // 取消全选按钮
-        $('#permissionDeselectAllBtn').on('click', function () {
-            $('#permissionToolsList .permission-tool-toggle').prop('checked', false);
-            updatePermissionCount(getDisallowedTools());
-        });
 
-        // 分类全选/取消
-        $('#permissionToolsList').on('click', '.permission-category-toggle', function () {
-            var category = $(this).data('category');
-            var $tools = $(this).closest('.permission-category').find('.permission-tool-toggle');
-            var allChecked = $tools.filter(':checked').length === $tools.length;
-            $tools.prop('checked', !allChecked);
-            updatePermissionCount(getDisallowedTools());
-        });
+
 
         // 高级模式切换
         $('#permissionAdvancedBtn').on('click', function () {
@@ -244,7 +210,6 @@
                 // 切换到可视化模式
                 $advanced.hide();
                 $list.show();
-                $toolbar.find('.btn-secondary').not('#permissionAdvancedBtn').show();
                 $(this).text('高级模式');
                 // 同步数据：从文本框更新到复选框
                 var disallowedTools = toList($('#permissionDisallowedTools').val());
@@ -253,7 +218,6 @@
                 // 切换到高级模式
                 $advanced.show();
                 $list.hide();
-                $toolbar.find('.btn-secondary').not('#permissionAdvancedBtn').hide();
                 $(this).text('简易模式');
                 // 同步数据：从复选框更新到文本框
                 var disallowedTools = getDisallowedTools();

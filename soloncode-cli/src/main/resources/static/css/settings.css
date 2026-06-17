@@ -691,6 +691,10 @@ select[disabled] {
 .permission-toolbar-actions { display: flex; align-items: center; gap: 8px; }
 .permission-count { font-size: 12px; color: var(--text-secondary); margin-right: 8px; }
 .permission-tools-list { max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); }
+.permission-tools-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+.permission-tools-column { border-right: 1px solid var(--border-color); }
+.permission-tools-column:last-child { border-right: none; }
+.permission-tools-column .permission-tool-item { padding: 8px 12px; }
 .permission-category { border-bottom: 1px solid var(--border-color); }
 .permission-category:last-child { border-bottom: none; }
 .permission-category-header { display: flex; align-items: center; padding: 10px 12px; background: var(--bg-hover); border-bottom: 1px solid var(--border-color); }

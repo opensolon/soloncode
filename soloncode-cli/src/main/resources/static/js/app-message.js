@@ -159,8 +159,10 @@ function ensureThinkingBlock(sess) {
         var parent = sess.currentBubbleEl.parentNode;
         var block = $('<div>').addClass('thinking-block streaming expanded')[0];
         block.innerHTML = '<div class="thinking-block-header">'
-            + '<span class="thinking-block-label">思考中...</span>'
-            + '<span class="thinking-timer" style="margin-left:4px">0s</span>'
+            + '<span class="thinking-block-label">思考中</span>'
+            + '<span class="thinking-timer-wrap" style="margin-left:4px">'
+            + '<span class="thinking-current-timer">0s</span>'
+            + '</span>'
             + '<span class="thinking-block-dots"><span></span><span></span><span></span></span>'
             + '<i class="layui-icon layui-icon-right thinking-block-toggle"></i>'
             + '</div>'
@@ -173,8 +175,8 @@ function ensureThinkingBlock(sess) {
         sess.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
         sess.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
         sess.thinkingBuffer = '';
-        var timerSpan = $(block).find('.thinking-timer')[0];
-        startThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', timerSpan);
+        var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
+        startThinkingTimerDual(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan, null);
     }
     return sess.thinkingBlockEl;
 }
@@ -216,7 +218,7 @@ function finishThinkingBlock(sess) {
         var label = $(sess.thinkingBlockEl).find('.thinking-block-label')[0];
         if (label) $(label).text('思考结束' + elapsed);
         $(sess.thinkingBlockEl).find('.thinking-block-dots').remove();
-        $(sess.thinkingBlockEl).find('.thinking-timer').remove();
+        $(sess.thinkingBlockEl).find('.thinking-timer-wrap').remove();
         sess.thinkingBlockEl = null;
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
@@ -721,14 +723,39 @@ function stopThinkingTimer(sess, timerKey, startTimeKey) {
     sess[startTimeKey] = null;
 }
 
+// 双计时器版本：同时更新当前思考计时和总时间计时
+// currentTimerSpan: 显示当前思考阶段的时间
+// totalTimerSpan: 显示从消息开始到现在的总时间
+function startThinkingTimerDual(sess, timerKey, startTimeKey, currentTimerSpan, totalTimerSpan) {
+    sess[startTimeKey] = Date.now();
+    if (sess[timerKey]) clearInterval(sess[timerKey]);
+    function tick() {
+        if (!currentTimerSpan || !currentTimerSpan.parentNode) { clearInterval(sess[timerKey]); sess[timerKey] = null; return; }
+        var now = Date.now();
+        // 当前思考阶段时间
+        var currentElapsed = Math.floor((now - sess[startTimeKey]) / 1000);
+        $(currentTimerSpan).text(currentElapsed + 's');
+        // 总时间（从消息发送开始）
+        if (totalTimerSpan && sess.messageStartTime) {
+            var totalElapsed = Math.floor((now - sess.messageStartTime) / 1000);
+            $(totalTimerSpan).text(totalElapsed + 's');
+        }
+    }
+    tick();
+    sess[timerKey] = setInterval(tick, 1000);
+}
+
 // 启动等待指示器：尚无气泡时，在消息区独立显示一行「圆点 + Ns」（无文字）
 function showThinking(sess) {
     removeThinking(sess);
     sess.thinkingEl = $('<div>').addClass('thinking-row')[0];
-    sess.thinkingEl.innerHTML = '<div class="thinking-bubble">' + DOTS_HTML + '<span class="thinking-timer">0s</span></div>';
+    sess.thinkingEl.innerHTML = '<div class="thinking-bubble">' + DOTS_HTML 
+        + '<span class="thinking-timer-wrap">'
+        + '<span class="thinking-current-timer">0s</span>'
+        + '</span></div>';
     $(sess.container).append(sess.thinkingEl);
-    var timerSpan = $(sess.thinkingEl).find('.thinking-timer')[0];
-    startThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime', timerSpan, sess.messageStartTime);
+    var currentTimerSpan = $(sess.thinkingEl).find('.thinking-current-timer')[0];
+    startThinkingTimerDual(sess, 'thinkingTimerId', 'thinkingStartTime', currentTimerSpan, null);
     if (sess.sessionId === activeSessionId) scrollToBottom(true);
 }
 function removeThinking(sess) {
@@ -743,7 +770,9 @@ function ensureInlineThinking(sess) {
     if (!sess.currentBubbleEl) return null;
     if (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) return sess.inlineThinkingEl;
     var el = $('<div>').addClass('inline-thinking hidden-reserve')[0];
-    el.innerHTML = DOTS_HTML + '<span class="thinking-timer">0s</span>';
+    el.innerHTML = DOTS_HTML + '<span class="thinking-timer-wrap">'
+        + '<span class="thinking-current-timer">0s</span>'
+        + '</span>';
     sess.inlineThinkingEl = el;
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
     return el;
@@ -752,8 +781,8 @@ function showInlineThinking(sess) {
     var el = ensureInlineThinking(sess);
     if (!el) return;
     $(el).removeClass('hidden-reserve');
-    var timerSpan = $(el).find('.thinking-timer')[0];
-    startThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', timerSpan, sess.messageStartTime);
+    var currentTimerSpan = $(el).find('.thinking-current-timer')[0];
+    startThinkingTimerDual(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', currentTimerSpan, null);
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 function removeInlineThinking(sess) {

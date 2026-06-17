@@ -532,6 +532,16 @@
                                     </div>
                                     <div class="general-toggle-row settings-gap-top-md">
                                         <div class="general-toggle-info">
+                                            <span class="general-toggle-name">Subagent 子代理机制</span>
+                                            <span class="general-toggle-desc">开启后可支持 Subagent 子代理机制，允许委派任务给专项子代理；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSubagentEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
                                             <span class="general-toggle-name">MCP 工具网关</span>
                                             <span class="general-toggle-desc">开启后可连接外部 MCP 服务，扩展 AI 的工具调用能力；关闭可减少上下文消耗</span>
                                         </div>
@@ -577,18 +587,10 @@
                                 <span class="settings-section-title">工具权限</span>
                                 <div class="settings-section-desc">管理全局工具访问权限，默认启用所有工具，可勾选禁用特定工具</div>
                             </div>
+                            <button class="btn-secondary" id="permissionAdvancedBtn">高级模式</button>
                         </div>
 
                         <div class="permission-container">
-                            <!-- 批量操作 -->
-                            <div class="permission-toolbar">
-                                <div class="permission-toolbar-actions">
-                                    <span class="permission-count" id="permissionCount"></span>
-                                    <button class="btn-secondary" id="permissionSelectAllBtn">全选</button>
-                                    <button class="btn-secondary" id="permissionDeselectAllBtn">取消全选</button>
-                                    <button class="btn-secondary" id="permissionAdvancedBtn">高级模式</button>
-                                </div>
-                            </div>
 
                             <!-- 工具列表 -->
                             <div class="permission-tools-list" id="permissionToolsList"></div>
@@ -603,9 +605,9 @@
                                     </div>
                                     <div class="general-card-body">
                                         <div class="general-field">
-                                            <textarea class="general-input" id="permissionDisallowedTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="每行一个匹配模式，支持通配：&#10;bash&#10;write"></textarea>
+                                            <textarea class="general-input" id="permissionDisallowedTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="bash&#10;write"></textarea>
                                         </div>
-                                        <div class="general-toggle-desc settings-gap-top-sm">支持通配符：<code>*</code> 匹配单层路径，<code>**</code> 匹配多层路径。例如 <code>mcp__*</code> 禁用所有 MCP 工具。</div>
+                                        <div class="general-toggle-desc settings-gap-top-sm">每行一个匹配模式，不支持通配符</div>
                                     </div>
                                 </div>
                             </div>
