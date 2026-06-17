@@ -393,22 +393,20 @@ public class WebGate extends SimpleWebSocketListener {
 
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
-                .doOnCancel(()->{
+                .doOnNext(line -> {
+                    emitToClient(sessionId, line);
+                })
+                .doOnError(e -> {
+                    LOG.error("Task fail: {}", e.getMessage(), e);
+                    session.attrs().remove("disposable");
+
+                    emitToClient(sessionId, WebChunk.ofError(e));
+                    emitToClient(sessionId, WebChunk.ofDone());
+                })
+                .doFinally(s -> {
                     session.attrs().remove("disposable");  // 正常完成时清理
                 })
-                .subscribe(
-                        line -> emitToClient(sessionId, line),
-                        e -> {
-                            LOG.error("Task fail: {}", e.getMessage(), e);
-                            session.attrs().remove("disposable");
-
-                            emitToClient(sessionId, WebChunk.ofError(e));
-                            emitToClient(sessionId, WebChunk.ofDone());
-                        },
-                        () -> {
-                            session.attrs().remove("disposable");  // 正常完成时清理
-                        }
-                );
+                .subscribe();
 
         session.attrs().put("disposable", disposable);
 
@@ -443,32 +441,24 @@ public class WebGate extends SimpleWebSocketListener {
 
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
-                .doOnCancel(()->{
+                .doOnNext(line -> {
+                    emitToClient(sessionId, line);
+
+                    if ("trace".equals(line.getType())) {
+                        finalAnswerRef.set(line.getFinalAnswer());
+                    }
+                })
+                .doOnError(e -> {
+                    LOG.error("Task fail: {}", e.getMessage(), e);
+
+                    emitToClient(sessionId, WebChunk.ofError(e));
+                    emitToClient(sessionId, WebChunk.ofDone());
+                })
+                .doFinally(s -> {
                     session.attrs().remove("disposable");
                     countDownLatch.countDown();
                 })
-                .subscribe(
-                        line -> {
-                            emitToClient(sessionId, line);
-
-                            if ("trace".equals(line.getType())) {
-                                finalAnswerRef.set(line.getFinalAnswer());
-                            }
-                        },
-                        e -> {
-                            LOG.error("Task fail: {}", e.getMessage(), e);
-                            
-                            session.attrs().remove("disposable");
-                            countDownLatch.countDown();
-
-                            emitToClient(sessionId, WebChunk.ofError(e));
-                            emitToClient(sessionId, WebChunk.ofDone());
-                        },
-                        () -> {
-                            session.attrs().remove("disposable");  // 正常完成时清理
-                            countDownLatch.countDown();
-                        }
-                );
+                .subscribe();
 
         session.attrs().put("disposable", disposable);
         RunUtil.runAndTry(countDownLatch::await);
