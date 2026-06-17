@@ -57,7 +57,9 @@ public class RerunCommand implements Command {
             session.removeLatestMessage(1);
         }
 
-        ctx.runAgentTask(lastUserInput, null);
+        if (lastUserInput != null) {
+            ctx.runAgentTask(lastUserInput, null);
+        }
         return true;
     }
 }

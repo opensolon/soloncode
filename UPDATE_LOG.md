@@ -12,6 +12,7 @@
 
 * 修复 soloncode 安装时，会清掉 `~/.soloncode/skills/` 技能的问题
 * 添加 soloncode `/resume` 命令实现，可恢复任何任务（手动中断，异常结束）
+* 添加 soloncode web 对话的最后一条消息：重新运行、继续运行按钮
 * 细节优化
 
 ### v2026.6.16
