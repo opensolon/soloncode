@@ -393,6 +393,9 @@ public class WebGate extends SimpleWebSocketListener {
 
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
+                .doOnCancel(()->{
+                    session.attrs().remove("disposable");  // 正常完成时清理
+                })
                 .subscribe(
                         line -> emitToClient(sessionId, line),
                         e -> {
@@ -440,6 +443,10 @@ public class WebGate extends SimpleWebSocketListener {
 
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
+                .doOnCancel(()->{
+                    session.attrs().remove("disposable");
+                    countDownLatch.countDown();
+                })
                 .subscribe(
                         line -> {
                             emitToClient(sessionId, line);
