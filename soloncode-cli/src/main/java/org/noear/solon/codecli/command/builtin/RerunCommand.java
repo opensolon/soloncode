@@ -20,7 +20,6 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.core.util.Assert;
 
 import java.util.List;
 

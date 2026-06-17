@@ -88,6 +88,34 @@ function sendWithFormData(sess, text, filesToSend) {
     sendWithFormDataGrouped(sess, text, filesToSend);
 }
 
+/* ===== 静默发送斜杠命令 =====
+   与 sendMessage 不同：不渲染用户气泡（避免出现 "/rerun" 这样的丑斜杠文本），
+   只进入流式等待态并发起命令。供最后一条 AI 消息的“重新运行/继续运行”按钮使用。
+   onBeforeSend：发起前的同步回调（如清理旧 DOM）。 */
+function sendCommandSilent(cmdText, onBeforeSend) {
+    if (!activeSessionId || !sessionMap[activeSessionId]) return;
+    var sess = sessionMap[activeSessionId];
+    /* 流式进行中禁止重复触发 */
+    if (sess.isStreaming) return;
+
+    if (typeof onBeforeSend === 'function') {
+        try { onBeforeSend(sess); } catch (e) {}
+    }
+
+    if (!inChatMode) switchToChatMode();
+    setActiveSession(sess.sessionId);
+
+    sess.isStreaming = true;
+    isStreaming = true;
+    sess.messageStartTime = Date.now();
+    setBtnStopMode();
+    resetStreamState(sess);
+    showThinking(sess);
+
+    sendWithFormDataGrouped(sess, cmdText, []);
+}
+window.sendCommandSilent = sendCommandSilent;
+
 function sendWithFormDataGrouped(sess, text, filesToSend) {
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
     var model = getSelectedModel();

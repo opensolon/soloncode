@@ -305,6 +305,13 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .user-copy-btn:hover { opacity: 1; background: var(--bg-hover); color: var(--text-primary); }
 .user-copy-btn.copied { color: var(--color-success); opacity: 1; }
 
+/* 重新运行 / 继续运行：仅在最后一条 AI 消息显示（该语义只针对最近一轮）。
+   用 :last-child 零维护：发送新消息后新 AI 气泡自动成为末尾，旧气泡按钮自动隐藏。 */
+.msg-row.assistant .rerun-btn,
+.msg-row.assistant .continue-btn { display: none; }
+.messages-inner > .msg-row.assistant:last-child .rerun-btn,
+.messages-inner > .msg-row.assistant:last-child .continue-btn { display: flex; }
+
 /* Thinking */
 .inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); font-size: 13px; }
 .inline-thinking.hidden-reserve { visibility: hidden; }

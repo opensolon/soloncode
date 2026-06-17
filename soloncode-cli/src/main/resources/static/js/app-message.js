@@ -5,6 +5,9 @@
 /* 复制图标（icon-only，用户与 AI 消息共用） */
 var COPY_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 var OK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+/* 重新运行（循环箭头）与继续运行（快进）图标 */
+var RERUN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+var CONTINUE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>';
 
 /* ===== Message Rendering (Session-Aware) ===== */
 function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt) {
@@ -88,6 +91,8 @@ function ensureAssistantBubble(sess) {
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
             + '<button class="user-copy-btn copy-btn" title="复制">' + COPY_SVG + '</button>'
+            + '<button class="user-copy-btn rerun-btn" title="重新运行">' + RERUN_SVG + '</button>'
+            + '<button class="user-copy-btn continue-btn" title="继续运行">' + CONTINUE_SVG + '</button>'
             + '</div></div>';
         $(sess.container).append(row);
         sess.currentBubbleEl = $(row).find('.md-content')[0];
@@ -120,6 +125,21 @@ function ensureAssistantBubble(sess) {
                 });
             }
         });
+        // 重新运行 / 继续运行：复用后端已有的 /rerun、/continue 命令。
+        // 点击时同步删除当前这条 AI 消息行（旧回复），再静默发命令，
+        // 新回复会通过 WebSocket 流式渲染到新气泡。
+        var rerunBtn = $(row).find('.rerun-btn')[0];
+        var continueBtn = $(row).find('.continue-btn')[0];
+        function triggerCommand(cmd) {
+            if (sess.isStreaming) return;
+            if (typeof sendCommandSilent !== 'function') return;
+            sendCommandSilent(cmd, function() {
+                // 同步删除当前 AI 消息行，与后端回退保持一致
+                $(row).remove();
+            });
+        }
+        if (rerunBtn) $(rerunBtn).on('click', function() { triggerCommand('/rerun'); });
+        if (continueBtn) $(continueBtn).on('click', function() { triggerCommand('/continue'); });
         // 流式输出过程中隐藏复制按钮，待 finishStream 收尾后再显示；
         // 非流式（历史加载）保持原有显示逻辑。
         if (sess.isStreaming) {
