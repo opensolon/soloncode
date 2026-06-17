@@ -163,7 +163,6 @@ function ensureThinkingBlock(sess) {
             + '<span class="thinking-timer-wrap" style="margin-left:4px">'
             + '<span class="thinking-current-timer">0s</span>'
             + '</span>'
-            + '<span class="thinking-block-dots"><span></span><span></span><span></span></span>'
             + '<i class="layui-icon layui-icon-right thinking-block-toggle"></i>'
             + '</div>'
             + '<div class="thinking-block-body"><div class="md-content"></div></div>';
