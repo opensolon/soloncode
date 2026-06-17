@@ -60,6 +60,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Code CLI 终端
@@ -75,13 +76,6 @@ public class CliShell implements Runnable {
     private final HarnessEngine engine;
     private final AgentSettings agentProps;
     private final LoopScheduler loopScheduler;
-
-    /**
-     * Loop 执行时的 AI 响应捕获缓冲区。
-     * 在 performAgentTask 的流式处理中由 ReasonChunk 写入，
-     * 在 taskExecutor lambda 中读取并返回给 LoopScheduler。
-     */
-    private final StringBuilder loopResponseCapture = new StringBuilder();
 
     // ANSI 颜色常量
     private final static String
@@ -200,17 +194,9 @@ public class CliShell implements Runnable {
                     effectiveInput = "@" + agentName + " " + prompt;
                 }
 
-                // 清除上一次捕获的响应
-                synchronized (loopResponseCapture) {
-                    loopResponseCapture.setLength(0);
-                }
-
-                safeChatInput(session, effectiveInput);
-
-                // 返回 AI 响应文本（goal 检查依赖此返回值）
-                synchronized (loopResponseCapture) {
-                    return loopResponseCapture.length() > 0 ? loopResponseCapture.toString().trim() : null;
-                }
+                // 直接返回 ReAct 完成时的权威全文（goal 检查依赖此返回值）。
+                // 含 [GOAL_ACHIEVED] 的全文来自 ReActChunk，必须以此为准。
+                return safeChatInput(session, effectiveInput);
             });
         }
 
@@ -248,10 +234,10 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void safeChatInput(AgentSession session, String prompt) {
+    private String safeChatInput(AgentSession session, String prompt) {
         if (reader != null && reader.isReading()) {
             try {
-                performAgentTask(session, prompt, null);
+                return performAgentTask(session, prompt, null);
             } catch (Exception e) {
                 LOG.error("Loop task execution failed: {}", e.getMessage(), e);
             } finally {
@@ -259,6 +245,7 @@ public class CliShell implements Runnable {
                 terminal.raise(Terminal.Signal.INT);
             }
         }
+        return null;
     }
 
     private boolean isCommand(AgentSession session, String input) throws Exception {
@@ -305,13 +292,15 @@ public class CliShell implements Runnable {
         return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
     }
 
-    private void performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
+    private String performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
         terminal.writer().println("\n" + BOLD + "Assistant" + RESET + DIM + " " + getTimeNow() + RESET);
 
         String agentName = null;
         String currentInput = input;
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
+        // ReAct 完成时的权威全文（含 [GOAL_ACHIEVED]），多轮 HITL 时以最后一轮为准。
+        final AtomicReference<String> finalAnswer = new AtomicReference<>();
 
         if (modelSelected == null) {
             modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
@@ -366,7 +355,10 @@ public class CliShell implements Runnable {
                             onObservationChunk((ObservationChunk) chunk, isFirstReasonDeltaChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            onFinalChunk((ReActChunk) chunk);
+                            String answer = onFinalChunk((ReActChunk) chunk);
+                            if (Assert.isNotEmpty(answer)) {
+                                finalAnswer.set(answer);
+                            }
                         }
                     })
                     .doOnError(e -> {
@@ -385,7 +377,7 @@ public class CliShell implements Runnable {
             // 监听回车中断
             if (disposable == null || disposable.isDisposed()) {
                 // 处理订阅失败的情况
-                return;
+                return finalAnswer.get();
             }
 
             waitForTask(latch, disposable, session, isInterrupted);
@@ -395,7 +387,7 @@ public class CliShell implements Runnable {
                 terminal.flush();
                 session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
                 LOG.info("用户已取消任务.");
-                return;
+                return finalAnswer.get();
             }
 
             // HITL 处理 (授权交互)
@@ -404,14 +396,14 @@ public class CliShell implements Runnable {
                     currentInput = null;
                     continue;
                 } else {
-                    return;
+                    return finalAnswer.get();
                 }
             }
 
             if (isTaskCompleted.get()) {
                 terminal.writer().println();
                 terminal.flush();
-                return;
+                return finalAnswer.get();
             }
 
             currentInput = null;
@@ -507,24 +499,20 @@ public class CliShell implements Runnable {
         return buf;
     }
 
-    private void onFinalChunk(ReActChunk react) {
+    private String onFinalChunk(ReActChunk react) {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
         if (traceInfo.length() > 4) {
             terminal.writer().println(DIM + traceInfo + RESET);
         }
+
+        // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。
+        return clearThink(react.getContent());
     }
 
     private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             String delta = clearThink(reason.getContent());
-
-            // 捕获非思考内容作为 loop 响应（用于 goal 检查）
-            if (!reason.getMessage().isThinking() && Assert.isNotEmpty(delta)) {
-                synchronized (loopResponseCapture) {
-                    loopResponseCapture.append(delta);
-                }
-            }
 
             if (reason.getMessage().isThinking()) {
                 if (agentProps.getGeneral().getCliThinkPrinted()) {
@@ -689,6 +677,9 @@ public class CliShell implements Runnable {
     }
 
     private String clearThink(String chunk) {
+        if (chunk == null) {
+            return null;
+        }
         return chunk.replaceAll("(?s)<\\s*/?think\\s*>", "");
     }
 
