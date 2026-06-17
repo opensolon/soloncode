@@ -575,38 +575,38 @@
                         <div class="settings-section-header">
                             <div>
                                 <span class="settings-section-title">工具权限</span>
-                                <div class="settings-section-desc">全局工具调用白名单与黑名单，保存后即时生效</div>
+                                <div class="settings-section-desc">管理全局工具访问权限，默认启用所有工具，可勾选禁用特定工具</div>
                             </div>
                         </div>
 
-                        <div class="general-card-group">
-                            <!-- 允许名单 -->
-                            <div class="general-card">
-                                <div class="general-card-header">
-                                    <div class="general-card-text">
-                                        <div class="general-card-title">允许工具（白名单）</div>
-                                    </div>
-                                </div>
-                                <div class="general-card-body">
-                                    <div class="general-field">
-                                        <textarea class="general-input" id="permissionTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="每行一个匹配模式，支持通配：&#10;**&#10;mcp__*"></textarea>
-                                    </div>
-                                    <div class="general-toggle-desc settings-gap-top-sm">只有匹配白名单的工具才会被加载；支持 <code>**</code> 等通配。<b>留空等价于放开全部工具</b>。</div>
+                        <div class="permission-container">
+                            <!-- 批量操作 -->
+                            <div class="permission-toolbar">
+                                <div class="permission-toolbar-actions">
+                                    <span class="permission-count" id="permissionCount"></span>
+                                    <button class="btn-secondary" id="permissionSelectAllBtn">全选</button>
+                                    <button class="btn-secondary" id="permissionDeselectAllBtn">取消全选</button>
+                                    <button class="btn-secondary" id="permissionAdvancedBtn">高级模式</button>
                                 </div>
                             </div>
 
-                            <!-- 禁用名单 -->
-                            <div class="general-card">
-                                <div class="general-card-header">
-                                    <div class="general-card-text">
-                                        <div class="general-card-title">禁用工具（黑名单）</div>
+                            <!-- 工具列表 -->
+                            <div class="permission-tools-list" id="permissionToolsList"></div>
+
+                            <!-- 高级模式（文本输入） -->
+                            <div class="permission-advanced" id="permissionAdvanced" style="display:none">
+                                <div class="general-card">
+                                    <div class="general-card-header">
+                                        <div class="general-card-text">
+                                            <div class="general-card-title">禁用工具（黑名单）</div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="general-card-body">
-                                    <div class="general-field">
-                                        <textarea class="general-input" id="permissionDisallowedTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="每行一个匹配模式，支持通配：&#10;bash&#10;write"></textarea>
+                                    <div class="general-card-body">
+                                        <div class="general-field">
+                                            <textarea class="general-input" id="permissionDisallowedTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="每行一个匹配模式，支持通配：&#10;bash&#10;write"></textarea>
+                                        </div>
+                                        <div class="general-toggle-desc settings-gap-top-sm">支持通配符：<code>*</code> 匹配单层路径，<code>**</code> 匹配多层路径。例如 <code>mcp__*</code> 禁用所有 MCP 工具。</div>
                                     </div>
-                                    <div class="general-toggle-desc settings-gap-top-sm">黑名单优先级高于白名单；被禁用的工具即使在白名单内也不会加载。</div>
                                 </div>
                             </div>
                         </div>
