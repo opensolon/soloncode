@@ -263,7 +263,14 @@
         <div class="filer-tab-content" id="tabContentGitdiff">
             <!-- 状态1：Git 不可用 -->
             <div class="git-unavailable" id="gitUnavailable" style="display:none">
-                <div class="git-empty-icon">&#x26A0;</div>
+                <div class="git-empty-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </div>
                 <div class="git-empty-title">Git 不可用</div>
                 <div class="git-empty-desc">系统未安装 Git 或 Git 不在 PATH 中</div>
             </div>
@@ -273,11 +280,14 @@
                 <div class="git-empty-icon">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
                          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3"/>
-                        <line x1="3" y1="12" x2="9" y2="12"/>
-                        <line x1="15" y1="12" x2="21" y2="12"/>
-                        <line x1="12" y1="3" x2="12" y2="9"/>
-                        <line x1="12" y1="15" x2="12" y2="21"/>
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M15 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                        <path d="M11 8a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                        <path d="M11 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                        <path d="M12 15v-6" />
+                        <path d="M15 11l-2 -2" />
+                        <path d="M11 7l-1.9 -1.9" />
+                        <path d="M13.446 2.6l7.955 7.954a2.045 2.045 0 0 1 0 2.892l-7.955 7.955a2.045 2.045 0 0 1 -2.892 0l-7.955 -7.955a2.045 2.045 0 0 1 0 -2.892l7.955 -7.955a2.045 2.045 0 0 1 2.892 0" />
                     </svg>
                 </div>
                 <div class="git-empty-title">当前工作区不是 Git 仓库</div>

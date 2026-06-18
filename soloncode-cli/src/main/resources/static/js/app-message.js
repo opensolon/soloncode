@@ -339,11 +339,11 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
     // 输出段：成功时仅展示 diff（结果提示与改动重复，显示冗余，已隐藏）；
     // 仅在出错时渲染错误信息，避免编辑失败时卡片体空白。
     if (result && result !== diff) {
-        var isErr = /(\u5931\u8d25|\u9519\u8bef|\u65e0\u6743|\u4e0d\u5b58\u5728|\u672a\u627e\u5230|\u62d2\u7edd|\u56de\u6eda|error|fail|exception|denied|not\s*found|no\s*such)/i.test(result);
+        var isErr = result.indexOf("成功完成") < 0;
         if (isErr) {
             if (diff) html += '<div class="edit-result-sep"></div>';
             html += '<div class="edit-result is-error">'
-                + '<span class="edit-result-label">\u26a0 \u5931\u8d25</span>'
+                + '<span class="edit-result-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> \u5931\u8d25</span>'
                 + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
         }
     }

@@ -1954,7 +1954,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 .todo-item {
     display: flex;
     gap: 8px;
-    align-items: flex-start;
+    align-items: center;
     padding: 6px 8px;
     border-radius: 6px;
     font-size: 12px;
@@ -1976,8 +1976,13 @@ pre:hover .code-copy-btn { opacity: 1; }
 .todo-check {
     flex-shrink: 0;
     width: 16px;
+    height: 18px;
     text-align: center;
     font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
 }
 
 .todo-pending .todo-check {

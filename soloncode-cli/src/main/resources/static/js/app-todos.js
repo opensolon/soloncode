@@ -62,9 +62,9 @@
     }
 
     function statusIcon(status) {
-        if (status === 'done') return '\u2713';
-        if (status === 'in_progress') return '\u25B6';
-        return '\u25CB';
+        if (status === 'done') return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><polyline points="20 6 9 17 4 12"/></svg>';
+        if (status === 'in_progress') return '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align: middle;"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><circle cx="12" cy="12" r="10"/></svg>';
     }
 
     function escapeHtml(s) {
