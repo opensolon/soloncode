@@ -158,21 +158,27 @@ public class WebStreamBuilder {
                 })
                 .stream()
                 .map(chunk -> {
+                    WebChunk webChunk = null;
                     if (chunk instanceof ContextSizeChunk) {
-                        return onContextSizeChunk(chatModel, (ContextSizeChunk) chunk);
+                        webChunk = onContextSizeChunk(chatModel, (ContextSizeChunk) chunk);
                     } else if (chunk instanceof ReasonChunk) {
-                        return onReasonChunk((ReasonChunk) chunk);
+                        webChunk = onReasonChunk((ReasonChunk) chunk);
                     } else if (chunk instanceof ThoughtChunk) {
-                        return onThoughtChunk(session, (ThoughtChunk) chunk);
+                        webChunk = onThoughtChunk(session, (ThoughtChunk) chunk);
                     } else if (chunk instanceof ActionChunk) {
-                        return onActionStartChunk((ActionChunk) chunk);
+                        webChunk = onActionStartChunk((ActionChunk) chunk);
                     } else if (chunk instanceof ObservationChunk) {
-                        return onObservationChunk((ObservationChunk) chunk);
+                        webChunk = onObservationChunk((ObservationChunk) chunk);
                     } else if (chunk instanceof ReActChunk) {
-                        return onFinalChunk(session, (ReActChunk) chunk);
+                        webChunk = onFinalChunk(session, (ReActChunk) chunk);
                     }
 
-                    return WebChunk.EMPTY;
+                    if(webChunk == null || webChunk == WebChunk.EMPTY) {
+                        return WebChunk.EMPTY;
+                    } else {
+                        webChunk.setRunId(chunk.getRunId());
+                        return webChunk;
+                    }
                 })
                 .filter(WebChunk::isNotEmpty)
                 .onErrorResume(e -> {

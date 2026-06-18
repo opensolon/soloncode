@@ -26,7 +26,7 @@
         ],
         // 第三列：任务管理
         [
-            { id: 'code', name: 'code', desc: '编码指导模块', risk: 'low' },
+            { id: 'code', name: 'code', desc: '编码环境识别与引导', risk: 'low' },
             { id: 'todo', name: 'todo', desc: '任务清单管理', risk: 'low' },
             { id: 'skill', name: 'skill', desc: '专家技能调用', risk: 'low' }
         ]

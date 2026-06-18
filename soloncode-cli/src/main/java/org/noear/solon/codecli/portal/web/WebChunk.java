@@ -57,6 +57,9 @@ public class WebChunk {
     /** 会话标识，关联到具体的用户会话上下文。 */
     private String sessionId;
 
+    /** 运行 id（一次任务运行，一个 runId） */
+    private String runId;
+
     /**
      * 消息块类型标识。
      * 取值范围见类级文档中的 type 类型枚举表（text / reason / action / command / hitl / rewind / done / error）。
