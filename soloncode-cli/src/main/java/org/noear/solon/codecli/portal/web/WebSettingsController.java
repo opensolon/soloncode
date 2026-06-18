@@ -171,6 +171,7 @@ public class WebSettingsController {
 
             engine.setBashAsyncEnabled(settings.getGeneral().getBashAsyncEnabled());
             engine.setMemoryEnabled(settings.getGeneral().getMemoryEnabled());
+            engine.setSubagentEnabled(settings.getGeneral().getSubagentEnabled());
 
 
             engine.getMcpGatewayTalent().setEnabled(settings.getGeneral().getMcpEnabled());
@@ -207,16 +208,6 @@ public class WebSettingsController {
             return Result.failure("invalid body");
         }
 
-        List<String> tools = new ArrayList<>();
-        if (root.hasKey("tools") && root.get("tools").isArray()) {
-            for (ONode item : root.get("tools").getArray()) {
-                String v = item.getString();
-                if (Assert.isNotEmpty(v) && tools.contains(v) == false) {
-                    tools.add(v.trim());
-                }
-            }
-        }
-
         List<String> disallowedTools = new ArrayList<>();
         if (root.hasKey("disallowedTools") && root.get("disallowedTools").isArray()) {
             for (ONode item : root.get("disallowedTools").getArray()) {
@@ -227,23 +218,15 @@ public class WebSettingsController {
             }
         }
 
-        // 白名单留空兜底为放开全部，避免误配置导致全部工具不可用
-        if (tools.isEmpty()) {
-            tools.add("**");
-        }
-
         // 先清空再写入，避免 final List 叠加导致重复
-        settings.getPermission().getTools().clear();
-        settings.getPermission().getTools().addAll(tools);
         settings.getPermission().getDisallowedTools().clear();
         settings.getPermission().getDisallowedTools().addAll(disallowedTools);
 
         // 热更新到引擎（会重建主 Agent 即时生效）
-        engine.allowToolReset(settings.getPermission().getTools());
         engine.disallowToolReset(settings.getPermission().getDisallowedTools());
 
         saveSettings();
-        LOG.info("[Settings] Permission updated: tools={}, disallowedTools={}", tools, disallowedTools);
+        LOG.info("[Settings] Permission updated: disallowedTools={}", disallowedTools);
         return Result.succeed();
     }
 
