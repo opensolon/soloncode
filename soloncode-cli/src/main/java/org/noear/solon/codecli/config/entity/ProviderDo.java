@@ -53,6 +53,8 @@ public class ProviderDo implements Serializable {
 
     /**
      * 模型列表项
+     *
+     * ProviderDo.name - ModelDo.provider, ModelItem.id <->  ModelDo.model
      */
     @Getter
     @Setter
@@ -61,10 +63,5 @@ public class ProviderDo implements Serializable {
          * 模型 ID（如 deepseek-chat）
          */
         private String id;
-
-        /**
-         * 是否启用
-         */
-        private boolean enabled = true;
     }
 }

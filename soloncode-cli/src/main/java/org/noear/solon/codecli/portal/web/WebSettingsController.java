@@ -1508,7 +1508,6 @@ public class WebSettingsController {
             for (ONode modelNode : root.get("models").getArray()) {
                 ProviderDo.ModelItem modelItem = new ProviderDo.ModelItem();
                 modelItem.setId(modelNode.get("id").getString());
-                modelItem.setEnabled(modelNode.get("enabled").getBoolean(true));
                 models.add(modelItem);
             }
             provider.setModels(models);
@@ -1559,7 +1558,6 @@ public class WebSettingsController {
             for (ONode modelNode : root.get("models").getArray()) {
                 ProviderDo.ModelItem modelItem = new ProviderDo.ModelItem();
                 modelItem.setId(modelNode.get("id").getString());
-                modelItem.setEnabled(modelNode.get("enabled").getBoolean(true));
                 models.add(modelItem);
             }
             provider.setModels(models);
@@ -1702,19 +1700,17 @@ public class WebSettingsController {
                 modelDo.setApiKey(provider.getApiKey());
                 modelDo.setScope(provider.getScope());
                 modelDo.setProvider(providerName);
-                modelDo.setEnabled(modelItem.isEnabled() && provider.isEnabled());
+                modelDo.setVisibled(provider.isEnabled());
                 
                 settings.getModels().put(modelName, modelDo);
                 engine.addModel(modelDo);
                 syncCount++;
             } else {
-                // 模型已存在，检查是否需要同步禁用状态
+                // 模型已存在，检查是否需要同步状态
                 ModelDo existingModel = (ModelDo) settings.getModels().get(modelName);
                 if (providerName.equals(existingModel.getProvider())) {
-                    // 供应商模型禁用时，同步禁用
-                    boolean shouldBeEnabled = modelItem.isEnabled() && provider.isEnabled();
-                    if (existingModel.isEnabled() != shouldBeEnabled) {
-                        existingModel.setEnabled(shouldBeEnabled);
+                    if (existingModel.isVisibled() != provider.isEnabled()) {
+                        existingModel.setVisibled(provider.isEnabled());
                         syncCount++;
                     }
                 }

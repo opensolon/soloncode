@@ -122,7 +122,6 @@
 
     function renderProviderItem(provider) {
         var modelsCount = (provider.models || []).length;
-        var enabledModelsCount = (provider.models || []).filter(function (m) { return m.enabled; }).length;
         
         return '<div class="mcp-server-item" data-name="' + provider.name + '">' +
             '<div class="mcp-server-icon">P</div>' +
@@ -131,7 +130,7 @@
                 '<div class="mcp-server-detail">' + (provider.apiUrl || '未配置') + '</div>' +
             '</div>' +
             '<div class="mcp-server-actions">' +
-                '<span class="mcp-server-detail">' + enabledModelsCount + '/' + modelsCount + ' 模型</span>' +
+                '<span class="mcp-server-detail">' + modelsCount + ' 模型</span>' +
                 '<label class="toggle-switch" title="' + (provider.enabled ? '停用' : '启用') + '">' +
                     '<input type="checkbox" ' + (provider.enabled ? 'checked' : '') + ' data-name="' + provider.name + '" class="provider-toggle"/>' +
                     '<span class="toggle-slider"></span>' +
@@ -211,8 +210,7 @@
                         var models = data.data || data.models || data || [];
                         fetchedModels = models.map(function (m) {
                             return {
-                                id: m.id || m.name || m,
-                                enabled: true
+                                id: m.id || m.name || m
                             };
                         });
                         // 加载 LLM 模型列表缓存，用于判断同步状态
@@ -263,16 +261,17 @@
         $modelsList.show();
 
         var providerName = $('#providerName').val() || '';
+        var providerEnabled = $('#providerEnabled').val() === 'true' || currentProvider && currentProvider.enabled !== false;
         var html = '';
         fetchedModels.forEach(function (model) {
-            var enabled = model.enabled !== false;
             // 检查是否已同步到 LLM
             var llmName = providerName ? providerName + '-' + model.id : model.id;
             var syncedModel = llmModelsCache[llmName];
             var isSynced = !!syncedModel;
-            var llmEnabled = syncedModel ? syncedModel.enabled !== false : true;
+            // 使用 LLM 缓存的启用状态，如果未同步则使用供应商的启用状态
+            var enabled = isSynced ? (syncedModel.enabled !== false && syncedModel.visibled !== false) : providerEnabled;
 
-            html += '<div class="provider-model-item' + (!enabled || (isSynced && !llmEnabled) ? ' disabled' : '') + '" data-model-id="' + model.id + '">' +
+            html += '<div class="provider-model-item' + (!enabled ? ' disabled' : '') + '" data-model-id="' + model.id + '">' +
                 '<div class="provider-model-info">' +
                     '<div class="provider-model-name">' + model.id + (isSynced ? ' <span class="provider-model-synced">已同步</span>' : '') + '</div>' +
                 '</div>' +
@@ -288,13 +287,6 @@
     }
 
     function toggleProviderModel(modelId, enabled, llmName, isSynced) {
-        // 在本地状态中更新
-        fetchedModels.forEach(function (m) {
-            if (m.id === modelId) {
-                m.enabled = enabled;
-            }
-        });
-
         // 如果已同步到 LLM，直接调用 LLM 接口更新
         if (isSynced && llmName) {
             postJson('/web/settings/llm/models/toggle', { name: llmName, enabled: enabled }, function (resp) {
@@ -310,7 +302,7 @@
                 } else {
                     layui.layer.msg('操作失败: ' + (resp.message || '未知错误'), { icon: 2 });
                     // 回滚状态
-                    loadProvidersList();
+                    renderModelsList();
                 }
             });
         }
@@ -342,7 +334,7 @@
         var apiKey = $('#providerApiKey').val();
         var scope = $('#providerScope').val();
         var models = fetchedModels.map(function (m) {
-            return { id: m.id, enabled: m.enabled !== false };
+            return { id: m.id };
         });
 
         if (!name) {
