@@ -264,17 +264,19 @@ public class WebSettingsController {
 
         List<Map> list = new ArrayList<>();
         for (ModelDo config : settings.getModels().values()) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("name", config.getNameOrModel());
-            item.put("model", config.getModel());
-            item.put("standard", config.getStandardOrProvider());
-            item.put("apiUrl", config.getApiUrl());
-            item.put("apiKey", config.getApiKey());
-            item.put("contextLength", config.getContextLength());
-            item.put("enabled", config.isEnabled());
-            item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
-            item.put("provider", config.getProvider());  // 所属供应商
-            list.add(item);
+            if (config.isVisibled()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", config.getNameOrModel());
+                item.put("model", config.getModel());
+                item.put("standard", config.getStandardOrProvider());
+                item.put("apiUrl", config.getApiUrl());
+                item.put("apiKey", config.getApiKey());
+                item.put("contextLength", config.getContextLength());
+                item.put("enabled", config.isEnabled());
+                item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
+                item.put("provider", config.getProvider());  // 所属供应商
+                list.add(item);
+            }
         }
 
         sortByName(list, "name");
@@ -1607,7 +1609,7 @@ public class WebSettingsController {
         // 同步关联模型的启用状态
         for (ModelDo model : settings.getModels().values()) {
             if (name.equals(model.getProvider())) {
-                model.setEnabled(enabled);
+                model.setVisibled(enabled);
             }
         }
         

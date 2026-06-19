@@ -9,6 +9,8 @@ import org.noear.solon.codecli.config.AgentFlags;
  *
  */
 public class ModelDo extends ChatConfig {
+    private boolean visibled = true;
+
     //作用域（全局或本地）
     private String scope = AgentFlags.SCOPE_GLOBAL;
 
@@ -29,5 +31,18 @@ public class ModelDo extends ChatConfig {
 
     public String getProvider() {
         return provider;
+    }
+
+    public boolean isVisibled() {
+        return visibled;
+    }
+
+    public void setVisibled(boolean visibled) {
+        this.visibled = visibled;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return visibled && enabled;
     }
 }

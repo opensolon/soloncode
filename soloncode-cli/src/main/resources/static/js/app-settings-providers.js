@@ -6,6 +6,9 @@
 ;(function () {
     'use strict';
 
+    var core = window._settingsCore;
+    var postJson = core.postJson;
+
     // ==================== 状态管理 ====================
     var providers = [];
     var currentProvider = null; // 当前编辑的供应商（null 表示新增）
@@ -68,26 +71,13 @@
             toggleProvider(name, enabled);
         });
 
-        // 模型列表 - 编辑按钮
-        $modelsList.on('click', '.provider-model-edit', function (e) {
-            e.stopPropagation();
-            var modelId = $(this).closest('.provider-model-item').data('model-id');
-            if (modelId) {
-                // 切换到 LLM 模型编辑界面
-                if (window._settingsLlm) {
-                    window._settingsLlm.showList();
-                    setTimeout(function () {
-                        window._settingsLlm.editModel(modelId);
-                    }, 300);
-                }
-            }
-        });
-
         // 模型列表 - 启用/禁用开关
         $modelsList.on('change', '.provider-model-toggle', function () {
             var modelId = $(this).closest('.provider-model-item').data('model-id');
             var enabled = $(this).prop('checked');
-            toggleProviderModel(modelId, enabled);
+            var llmName = $(this).data('llm-name');
+            var isSynced = $(this).data('synced') === true || $(this).data('synced') === 'true';
+            toggleProviderModel(modelId, enabled, llmName, isSynced);
         });
 
         // 作用域切换
@@ -175,8 +165,10 @@
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn').removeClass('active');
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn[data-scope="' + scope + '"]').addClass('active');
 
-        // 渲染模型列表
-        renderModelsList();
+        // 加载 LLM 模型缓存后渲染模型列表
+        loadLlmModelsCache(function () {
+            renderModelsList();
+        });
     }
 
     function showList() {
@@ -188,6 +180,8 @@
     }
 
     // ==================== 模型列表 ====================
+    var llmModelsCache = {}; // 缓存 LLM 模型列表，用于判断是否已同步
+
     function fetchModels() {
         var apiUrl = $('#providerApiUrl').val();
         var apiKey = $('#providerApiKey').val();
@@ -199,7 +193,7 @@
         }
 
         var $btn = $('#providerFetchModelsBtn');
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 拉取中...');
+        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>');
 
         $.ajax({
             url: '/web/settings/providers/fetch',
@@ -221,7 +215,10 @@
                                 enabled: true
                             };
                         });
-                        renderModelsList();
+                        // 加载 LLM 模型列表缓存，用于判断同步状态
+                        loadLlmModelsCache(function () {
+                            renderModelsList();
+                        });
                         layui.layer.msg('成功拉取 ' + fetchedModels.length + ' 个模型', { icon: 1 });
                     } catch (e) {
                         layui.layer.msg('解析模型列表失败', { icon: 2 });
@@ -237,6 +234,24 @@
         });
     }
 
+    // 加载 LLM 模型列表缓存
+    function loadLlmModelsCache(callback) {
+        $.get('/web/settings/llm/models', function (res) {
+            if (res.code === 200 && res.data) {
+                var list = res.data.list || (Array.isArray(res.data) ? res.data : []);
+                llmModelsCache = {};
+                list.forEach(function (item) {
+                    if (item.name) {
+                        llmModelsCache[item.name] = item;
+                    }
+                });
+            }
+            if (callback) callback();
+        }).fail(function () {
+            if (callback) callback();
+        });
+    }
+
     function renderModelsList() {
         if (fetchedModels.length === 0) {
             $modelsEmpty.show();
@@ -247,17 +262,23 @@
         $modelsEmpty.hide();
         $modelsList.show();
 
+        var providerName = $('#providerName').val() || '';
         var html = '';
         fetchedModels.forEach(function (model) {
             var enabled = model.enabled !== false;
-            html += '<div class="provider-model-item' + (!enabled ? ' disabled' : '') + '" data-model-id="' + model.id + '">' +
+            // 检查是否已同步到 LLM
+            var llmName = providerName ? providerName + '-' + model.id : model.id;
+            var syncedModel = llmModelsCache[llmName];
+            var isSynced = !!syncedModel;
+            var llmEnabled = syncedModel ? syncedModel.enabled !== false : true;
+
+            html += '<div class="provider-model-item' + (!enabled || (isSynced && !llmEnabled) ? ' disabled' : '') + '" data-model-id="' + model.id + '">' +
                 '<div class="provider-model-info">' +
-                    '<div class="provider-model-name">' + model.id + '</div>' +
+                    '<div class="provider-model-name">' + model.id + (isSynced ? ' <span class="provider-model-synced">已同步</span>' : '') + '</div>' +
                 '</div>' +
                 '<div class="provider-model-actions">' +
-                    '<button class="provider-model-edit" title="编辑模型配置"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
                     '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">' +
-                        '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' class="provider-model-toggle"/>' +
+                        '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' class="provider-model-toggle" data-synced="' + isSynced + '" data-llm-name="' + llmName + '"/>' +
                         '<span class="toggle-slider"></span>' +
                     '</label>' +
                 '</div>' +
@@ -266,13 +287,33 @@
         $modelsList.html(html);
     }
 
-    function toggleProviderModel(modelId, enabled) {
+    function toggleProviderModel(modelId, enabled, llmName, isSynced) {
         // 在本地状态中更新
         fetchedModels.forEach(function (m) {
             if (m.id === modelId) {
                 m.enabled = enabled;
             }
         });
+
+        // 如果已同步到 LLM，直接调用 LLM 接口更新
+        if (isSynced && llmName) {
+            postJson('/web/settings/llm/models/toggle', { name: llmName, enabled: enabled }, function (resp) {
+                if (resp.code === 200) {
+                    // 更新缓存
+                    if (llmModelsCache[llmName]) {
+                        llmModelsCache[llmName].enabled = enabled;
+                    }
+                    // 刷新 LLM 模型列表
+                    if (window._settingsLlm) {
+                        window._settingsLlm.load();
+                    }
+                } else {
+                    layui.layer.msg('操作失败: ' + (resp.message || '未知错误'), { icon: 2 });
+                    // 回滚状态
+                    loadProvidersList();
+                }
+            });
+        }
     }
 
     // ==================== CRUD 操作 ====================

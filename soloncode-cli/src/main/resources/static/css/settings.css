@@ -853,19 +853,13 @@ select[disabled] {
     flex-shrink: 0;
 }
 
-.provider-model-edit {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-secondary);
-    padding: 4px;
-    border-radius: 4px;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-}
-
-.provider-model-edit:hover {
-    background: rgba(59,130,246,0.08);
-    color: #3b82f6;
+.provider-model-synced {
+    display: inline-block;
+    font-size: 10px;
+    color: #22c55e;
+    background: rgba(34,197,94,0.1);
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 4px;
+    vertical-align: middle;
 }
