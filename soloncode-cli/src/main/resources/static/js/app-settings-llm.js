@@ -354,5 +354,5 @@
         }
     });
 
-    window._settingsLlm = { load: loadLlmList, reset: resetLlmForm, showList: showLlmListView };
+    window._settingsLlm = { load: loadLlmList, reset: resetLlmForm, showList: showLlmListView, editModel: llmEditNameFunc };
 })();

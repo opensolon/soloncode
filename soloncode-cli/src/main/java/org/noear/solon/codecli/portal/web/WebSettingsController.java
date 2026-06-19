@@ -1603,6 +1603,14 @@ public class WebSettingsController {
         }
 
         provider.setEnabled(enabled);
+        
+        // 同步关联模型的启用状态
+        for (ModelDo model : settings.getModels().values()) {
+            if (name.equals(model.getProvider())) {
+                model.setEnabled(enabled);
+            }
+        }
+        
         saveSettings();
         LOG.info("[Settings] Provider {} {}", name, enabled ? "enabled" : "disabled");
         return Result.succeed();
@@ -1640,11 +1648,83 @@ public class WebSettingsController {
                 modelList.add(item);
             }
             
-            return Result.succeed(modelList);
+        return Result.succeed(modelList);
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to fetch models: {}", e.getMessage());
             return Result.failure("拉取模型列表失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 同步供应商模型到 LLM 模型配置
+     */
+    @Post
+    @Mapping("/web/settings/providers/sync-models")
+    public Result providersSyncModels(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String providerName = root.get("providerName").getString();
+        
+        if (Assert.isEmpty(providerName)) {
+            return Result.failure("providerName is required");
+        }
+        
+        ProviderDo provider = settings.getProviders().get(providerName);
+        if (provider == null) {
+            return Result.failure("Provider not found: " + providerName);
+        }
+        
+        // 获取供应商的模型列表
+        List<ProviderDo.ModelItem> providerModels = provider.getModels();
+        if (providerModels == null || providerModels.isEmpty()) {
+            return Result.succeed(0);
+        }
+        
+        int syncCount = 0;
+        String prefix = providerName + "-";
+        
+        for (ProviderDo.ModelItem modelItem : providerModels) {
+            String modelId = modelItem.getId();
+            if (Assert.isEmpty(modelId)) {
+                continue;
+            }
+            
+            String modelName = prefix + modelId;
+            
+            // 如果模型不存在，创建新模型配置
+            if (!settings.getModels().containsKey(modelName)) {
+                ModelDo modelDo = new ModelDo();
+                modelDo.setName(modelName);
+                modelDo.setModel(modelId);
+                modelDo.setStandard(provider.getStandard());
+                modelDo.setApiUrl(provider.getApiUrl());
+                modelDo.setApiKey(provider.getApiKey());
+                modelDo.setScope(provider.getScope());
+                modelDo.setProvider(providerName);
+                modelDo.setEnabled(modelItem.isEnabled() && provider.isEnabled());
+                
+                settings.getModels().put(modelName, modelDo);
+                engine.addModel(modelDo);
+                syncCount++;
+            } else {
+                // 模型已存在，检查是否需要同步禁用状态
+                ModelDo existingModel = (ModelDo) settings.getModels().get(modelName);
+                if (providerName.equals(existingModel.getProvider())) {
+                    // 供应商模型禁用时，同步禁用
+                    boolean shouldBeEnabled = modelItem.isEnabled() && provider.isEnabled();
+                    if (existingModel.isEnabled() != shouldBeEnabled) {
+                        existingModel.setEnabled(shouldBeEnabled);
+                        syncCount++;
+                    }
+                }
+            }
+        }
+        
+        if (syncCount > 0) {
+            saveSettings();
+        }
+        
+        LOG.info("[Settings] Synced {} models from provider: {}", syncCount, providerName);
+        return Result.succeed(syncCount);
     }
 
     /**

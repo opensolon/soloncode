@@ -1240,19 +1240,13 @@
                                 <div class="form-group">
                                     <div class="form-group-header">
                                         <label>模型列表</label>
-                                        <div style="display: flex; gap: 8px; align-items: center;">
-                                            <button class="btn-secondary btn-sm" id="providerFetchModelsBtn">拉取模型列表</button>
-                                            <button class="btn-secondary btn-sm" id="providerSelectAllBtn" style="display:none" title="点击全选，再点取消全选">全选</button>
-                                        </div>
+                                        <button class="settings-mini-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                            拉取
+                                        </button>
                                     </div>
-                                    <div class="provider-models-container" id="providerModelsContainer">
-                                        <div class="provider-models-empty" id="providerModelsEmpty">点击"拉取模型列表"获取可用模型</div>
-                                        <div class="provider-models-grid" id="providerModelsGrid" style="display:none"></div>
-                                    </div>
-                                    <div id="providerGenerateBar" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border-color);">
-                                        <button class="btn-primary btn-sm" id="providerGenerateBtn">生成选中模型配置</button>
-                                        <span id="providerGenerateStatus" class="form-hint" style="margin-left:8px;"></span>
-                                    </div>
+                                    <div class="provider-models-list" id="providerModelsList"></div>
+                                    <div class="provider-models-empty" id="providerModelsEmpty">点击"拉取"获取可用模型</div>
                                 </div>
                                 
                                 <div class="form-actions form-actions-end">

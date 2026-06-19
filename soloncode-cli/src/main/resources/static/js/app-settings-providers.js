@@ -17,7 +17,7 @@
     var $providerList = $('#providerList');
     var $formTitle = $('#providerFormTitle');
     var $formActions = $('#providerFormActions');
-    var $modelsGrid = $('#providerModelsGrid');
+    var $modelsList = $('#providerModelsList');
     var $modelsEmpty = $('#providerModelsEmpty');
 
     // ==================== 初始化 ====================
@@ -68,29 +68,26 @@
             toggleProvider(name, enabled);
         });
 
-        // 模型选择
-        $modelsGrid.on('click', '.provider-model-chip', function () {
-            $(this).toggleClass('selected');
-            updateGenerateBarVisibility();
-        });
-        
-        // 全选/取消全选按钮
-        var selectAllState = false;
-        $('#providerSelectAllBtn').on('click', function () {
-            selectAllState = !selectAllState;
-            if (selectAllState) {
-                $modelsGrid.find('.provider-model-chip').addClass('selected');
-                $(this).text('取消全选');
-            } else {
-                $modelsGrid.find('.provider-model-chip').removeClass('selected');
-                $(this).text('全选');
+        // 模型列表 - 编辑按钮
+        $modelsList.on('click', '.provider-model-edit', function (e) {
+            e.stopPropagation();
+            var modelId = $(this).closest('.provider-model-item').data('model-id');
+            if (modelId) {
+                // 切换到 LLM 模型编辑界面
+                if (window._settingsLlm) {
+                    window._settingsLlm.showList();
+                    setTimeout(function () {
+                        window._settingsLlm.editModel(modelId);
+                    }, 300);
+                }
             }
-            updateGenerateBarVisibility();
         });
-        
-        // 生成模型配置按钮
-        $('#providerGenerateBtn').on('click', function () {
-            generateModelsFromProvider();
+
+        // 模型列表 - 启用/禁用开关
+        $modelsList.on('change', '.provider-model-toggle', function () {
+            var modelId = $(this).closest('.provider-model-item').data('model-id');
+            var enabled = $(this).prop('checked');
+            toggleProviderModel(modelId, enabled);
         });
 
         // 作用域切换
@@ -173,10 +170,6 @@
         $('#providerApiKey').val(provider ? provider.apiKey : '');
         $('#providerScope').val(provider ? (provider.scope || 'global') : 'global');
         
-        // 初始化生成区域
-        $('#providerGenerateBar').hide();
-        $('#providerGenerateStatus').text('');
-
         // 设置作用域按钮状态
         var scope = provider ? (provider.scope || 'global') : 'global';
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn').removeClass('active');
@@ -206,7 +199,7 @@
         }
 
         var $btn = $('#providerFetchModelsBtn');
-        $btn.prop('disabled', true).text('拉取中...');
+        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 拉取中...');
 
         $.ajax({
             url: '/web/settings/providers/fetch',
@@ -217,7 +210,7 @@
                 standard: standard
             },
             success: function (res) {
-                $btn.prop('disabled', false).text('拉取模型列表');
+                $btn.prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 拉取');
                 if (res.code === 200) {
                     try {
                         var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
@@ -238,7 +231,7 @@
                 }
             },
             error: function (xhr) {
-                $btn.prop('disabled', false).text('拉取模型列表');
+                $btn.prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 拉取');
                 layui.layer.msg('拉取模型列表失败: ' + (xhr.responseText || '网络错误'), { icon: 2 });
             }
         });
@@ -247,118 +240,37 @@
     function renderModelsList() {
         if (fetchedModels.length === 0) {
             $modelsEmpty.show();
-            $modelsGrid.hide();
-            $('#providerSelectAllBtn').hide();
-            $('#providerGenerateBar').hide();
+            $modelsList.hide();
             return;
         }
 
         $modelsEmpty.hide();
-        $modelsGrid.show();
-        
-        // 显示全选按钮
-        var selectAllBtn = $('#providerSelectAllBtn');
-        selectAllBtn.show().text('全选');
+        $modelsList.show();
 
         var html = '';
         fetchedModels.forEach(function (model) {
-            var selected = model.enabled ? ' selected' : '';
-            html += '<div class="provider-model-chip' + selected + '" data-id="' + model.id + '">' +
-                '<span class="provider-model-name">' + model.id + '</span>' +
-                '<span class="provider-model-check">✓</span>' +
+            var enabled = model.enabled !== false;
+            html += '<div class="provider-model-item' + (!enabled ? ' disabled' : '') + '" data-model-id="' + model.id + '">' +
+                '<div class="provider-model-info">' +
+                    '<div class="provider-model-name">' + model.id + '</div>' +
+                '</div>' +
+                '<div class="provider-model-actions">' +
+                    '<button class="provider-model-edit" title="编辑模型配置"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+                    '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">' +
+                        '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' class="provider-model-toggle"/>' +
+                        '<span class="toggle-slider"></span>' +
+                    '</label>' +
+                '</div>' +
             '</div>';
         });
-        $modelsGrid.html(html);
-        
-        // 更新生成区域可见性
-        updateGenerateBarVisibility();
+        $modelsList.html(html);
     }
 
-    function getSelectedModels() {
-        var models = [];
-        $modelsGrid.find('.provider-model-chip.selected').each(function () {
-            models.push({
-                id: $(this).data('id'),
-                enabled: true
-            });
-        });
-        return models;
-    }
-    
-    function updateGenerateBarVisibility() {
-        var selectedCount = $modelsGrid.find('.provider-model-chip.selected').length;
-        var hasModels = fetchedModels.length > 0;
-        
-        // 显示/隐藏生成区域
-        $('#providerGenerateBar').toggle(selectedCount > 0);
-        
-        // 更新状态提示
-        if (selectedCount > 0) {
-            $('#providerGenerateStatus').text('已选 ' + selectedCount + ' 个模型');
-        }
-    }
-    
-    function generateModelsFromProvider() {
-        var selectedModels = getSelectedModels();
-        if (selectedModels.length === 0) {
-            layui.layer.msg('请先选择要生成的模型', { icon: 0 });
-            return;
-        }
-        
-        var name = $('#providerName').val();
-        var standard = $('#providerStandard').val();
-        var apiUrl = $('#providerApiUrl').val();
-        var apiKey = $('#providerApiKey').val();
-        var scope = $('#providerScope').val();
-        
-        if (!name) {
-            layui.layer.msg('请填写供应商名称', { icon: 0 });
-            return;
-        }
-        
-        if (!apiUrl) {
-            layui.layer.msg('请填写 API 地址', { icon: 0 });
-            return;
-        }
-        
-        // 构建生成请求数据（使用默认值，不显示选项）
-        var generateData = {
-            providerName: name,
-            standard: standard,
-            apiUrl: apiUrl,
-            apiKey: apiKey,
-            scope: scope,
-            models: selectedModels,
-            options: {
-                prefix: name + '-',
-                timeout: 120,
-                setDefault: false
-            }
-        };
-        
-        var $btn = $('#providerGenerateBtn');
-        var $status = $('#providerGenerateStatus');
-        $btn.prop('disabled', true).text('生成中...');
-        
-        $.ajax({
-            url: '/web/settings/providers/generate',
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify(generateData),
-            success: function (res) {
-                $btn.prop('disabled', false).text('生成选中模型配置');
-                if (res.code === 200) {
-                    var count = res.data ? res.data.length : selectedModels.length;
-                    var names = (res.data || []).map(function(m) { return m.name; }).join('、');
-                    layui.layer.msg('已生成 ' + count + ' 个模型配置', { icon: 1, time: 3000 });
-                    $status.text('已生成: ' + names);
-                } else {
-                    layui.layer.msg(res.msg || '生成失败', { icon: 2 });
-                }
-            },
-            error: function (xhr) {
-                $btn.prop('disabled', false).text('生成选中模型配置');
-                layui.layer.msg('生成模型配置失败: ' + (xhr.responseText || '网络错误'), { icon: 2 });
+    function toggleProviderModel(modelId, enabled) {
+        // 在本地状态中更新
+        fetchedModels.forEach(function (m) {
+            if (m.id === modelId) {
+                m.enabled = enabled;
             }
         });
     }
@@ -388,7 +300,9 @@
         var apiUrl = $('#providerApiUrl').val();
         var apiKey = $('#providerApiKey').val();
         var scope = $('#providerScope').val();
-        var models = getSelectedModels();
+        var models = fetchedModels.map(function (m) {
+            return { id: m.id, enabled: m.enabled !== false };
+        });
 
         if (!name) {
             layui.layer.msg('请填写供应商名称', { icon: 0 });
@@ -424,6 +338,8 @@
             success: function (res) {
                 if (res.code === 200) {
                     layui.layer.msg(currentProvider ? '供应商已更新' : '供应商已添加', { icon: 1 });
+                    // 同步模型到 LLM 模型列表
+                    syncModelsToLlm(data);
                     showList();
                 } else {
                     layui.layer.msg(res.msg || '保存失败', { icon: 2 });
@@ -431,6 +347,28 @@
             },
             error: function () {
                 layui.layer.msg('保存失败', { icon: 2 });
+            }
+        });
+    }
+
+    function syncModelsToLlm(providerData) {
+        // 调用后端接口同步模型
+        $.ajax({
+            url: '/web/settings/providers/sync-models',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                providerName: providerData.name,
+                models: providerData.models || []
+            }),
+            success: function (res) {
+                if (res.code === 200 && res.data > 0) {
+                    layui.layer.msg('已同步 ' + res.data + ' 个模型到模型列表', { icon: 1 });
+                    // 刷新 LLM 模型列表
+                    if (window._settingsLlm) {
+                        window._settingsLlm.load();
+                    }
+                }
             }
         });
     }
@@ -470,6 +408,10 @@
             success: function (res) {
                 if (res.code === 200) {
                     layui.layer.msg(enabled ? '供应商已启用' : '供应商已禁用', { icon: 1 });
+                    // 刷新 LLM 模型列表（供应商禁用时关联模型会禁用）
+                    if (window._settingsLlm) {
+                        window._settingsLlm.load();
+                    }
                 } else {
                     layui.layer.msg(res.msg || '操作失败', { icon: 2 });
                     loadProvidersList();
