@@ -718,3 +718,79 @@ select[disabled] {
 .permission-risk-medium { font-size: 10px; color: #f39c12; background: rgba(243, 156, 18, 0.1); padding: 1px 6px; border-radius: 4px; font-weight: 500; }
 .permission-advanced { margin-top: 8px; }
 .permission-empty-state { padding: 40px 20px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+
+/* ===== Providers 供应商设置 ===== */
+.provider-models-container {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-input-box);
+    padding: 12px;
+    min-height: 60px;
+}
+
+.provider-models-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 8px;
+}
+
+.provider-models-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.provider-model-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.provider-model-chip:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.provider-model-chip.selected {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.provider-model-chip .provider-model-check {
+    display: none;
+    font-size: 10px;
+}
+
+.provider-model-chip.selected .provider-model-check {
+    display: inline;
+}
+
+.provider-model-name {
+    font-weight: 500;
+}
+
+/* 供应商表单 header */
+.form-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.form-group-header label {
+    margin-bottom: 0;
+}
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 11px;
+}

@@ -107,6 +107,7 @@
         else if (targetTab === 'mcp' && mod('_settingsMcp')) { mod('_settingsMcp').showList(); mod('_settingsMcp').reset(); $('#mcpToolsToolbar').hide(); }
         else if (targetTab === 'openapi' && mod('_settingsOpenapi')) { mod('_settingsOpenapi').showList(); mod('_settingsOpenapi').reset(); }
         else if (targetTab === 'lsp' && mod('_settingsLsp')) { mod('_settingsLsp').showList(); mod('_settingsLsp').reset(); }
+        else if (targetTab === 'providers' && window.settingsProviders) { window.settingsProviders.showList(); }
     }
 
     function openSettings() {
@@ -121,8 +122,9 @@
         if (mod('_settingsOpenapi')) mod('_settingsOpenapi').showList();
         if (mod('_settingsLsp')) mod('_settingsLsp').showList();
         if (mod('_settingsMounts')) mod('_settingsMounts').showList();
+        if (window.settingsProviders) window.settingsProviders.showList();
         $('#llmCheckResult').hide();
-        $('#llmFormActions, #mcpFormActions, #openapiFormActions, #lspFormActions').hide();
+        $('#llmFormActions, #mcpFormActions, #openapiFormActions, #lspFormActions, #providerFormActions').hide();
         if ($('#skillsSearchInput').length) {
             $('#skillsSearchInput').val('');
             $('#skillsSearchClear').hide();
@@ -174,6 +176,9 @@
         } else if (targetTab === 'lsp') {
             $('#settingsTabLsp').addClass('active');
             if (mod('_settingsLsp')) mod('_settingsLsp').load();
+        } else if (targetTab === 'providers') {
+            $('#settingsTabProviders').addClass('active');
+            if (window.settingsProviders) window.settingsProviders.loadList();
         }
     });
 
@@ -189,5 +194,6 @@
         else if (targetTab === 'mcp') { if (mod('_settingsMcp')) mod('_settingsMcp').load(); }
         else if (targetTab === 'openapi') { if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load(); }
         else if (targetTab === 'lsp') { if (mod('_settingsLsp')) mod('_settingsLsp').load(); }
+        else if (targetTab === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
     }
 })();

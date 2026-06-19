@@ -44,6 +44,10 @@ import org.noear.solon.codecli.config.entity.LspServerDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.MountDo;
+import org.noear.solon.codecli.config.entity.ProviderDo;
+import org.noear.solon.codecli.portal.web.ModelInfo;
+import org.noear.solon.codecli.portal.web.ModelProvider;
+import org.noear.solon.codecli.portal.web.ModelProviderFactory;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -101,6 +105,11 @@ public class WebSettingsController {
     private final MarketManager marketManager;
 
     /**
+     * 模型提供商工厂，用于拉取模型列表
+     */
+    private final ModelProviderFactory modelProviderFactory;
+
+    /**
      * 统一配置管理器，管理 LLM 模型、MCP 服务器、OpenApi 服务器的持久化数据
      */
     private final AgentSettings settings;
@@ -112,7 +121,7 @@ public class WebSettingsController {
      * @param settings 统一配置管理器（由 App.initAgentSettings 创建并注册到容器）
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings) {
-        this(engine, settings, new MarketManager());
+        this(engine, settings, new MarketManager(), new ModelProviderFactory());
     }
 
     /**
@@ -123,9 +132,22 @@ public class WebSettingsController {
      * @param marketManager 技能市场管理器
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager) {
+        this(engine, settings, marketManager, new ModelProviderFactory());
+    }
+
+    /**
+     * 构造函数：支持自定义 MarketManager 和 ModelProviderFactory。
+     *
+     * @param engine              AI Agent 执行引擎
+     * @param settings            统一配置管理器
+     * @param marketManager       技能市场管理器
+     * @param modelProviderFactory 模型提供商工厂
+     */
+    public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager, ModelProviderFactory modelProviderFactory) {
         this.engine = engine;
         this.settings = settings;
         this.marketManager = marketManager;
+        this.modelProviderFactory = modelProviderFactory;
     }
 
     // ==================== 配置持久化 ====================
@@ -1395,6 +1417,245 @@ public class WebSettingsController {
         saveSettings();
         LOG.info("[Settings] LSP server toggled: {} -> {}", name, enabled);
         return Result.succeed();
+    }
+
+    // ==================== 设置：供应商管理 ====================
+
+    /**
+     * 获取所有供应商列表
+     */
+    @Get
+    @Mapping("/web/settings/providers")
+    public Result<List<Map>> providersList() {
+        List<Map> list = new ArrayList<>();
+        for (Map.Entry<String, ProviderDo> entry : settings.getProviders().entrySet()) {
+            String name = entry.getKey();
+            ProviderDo provider = entry.getValue();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", name);
+            item.put("standard", provider.getStandard());
+            item.put("apiUrl", provider.getApiUrl());
+            item.put("apiKey", maskApiKey(provider.getApiKey()));
+            item.put("enabled", provider.isEnabled());
+            item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_GLOBAL);
+            item.put("models", provider.getModels());
+            list.add(item);
+        }
+
+        sortByName(list, "name");
+        return Result.succeed(list);
+    }
+
+    /**
+     * 获取单个供应商详情
+     */
+    @Get
+    @Mapping("/web/settings/providers/get")
+    public Result<Map> providersGet(@Param("name") String name) {
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        ProviderDo provider = settings.getProviders().get(name);
+        if (provider == null) {
+            return Result.failure("Provider not found: " + name);
+        }
+
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("name", name);
+        item.put("standard", provider.getStandard());
+        item.put("apiUrl", provider.getApiUrl());
+        item.put("apiKey", provider.getApiKey());
+        item.put("enabled", provider.isEnabled());
+        item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_GLOBAL);
+        item.put("models", provider.getModels());
+        return Result.succeed(item);
+    }
+
+    /**
+     * 添加供应商
+     */
+    @Post
+    @Mapping("/web/settings/providers/add")
+    public Result providersAdd(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String name = root.get("name").getString();
+
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        // 检查重名
+        if (settings.getProviders().containsKey(name)) {
+            return Result.failure("Provider name already exists: " + name);
+        }
+
+        ProviderDo provider = new ProviderDo();
+        provider.setName(name);
+        provider.setStandard(root.get("standard").getString("openai"));
+        provider.setApiUrl(root.get("apiUrl").getString());
+        provider.setApiKey(root.get("apiKey").getString());
+        provider.setEnabled(root.get("enabled").getBoolean(true));
+        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL);
+
+        // 解析模型列表
+        if (root.hasKey("models") && root.get("models").isArray()) {
+            List<ProviderDo.ModelItem> models = new ArrayList<>();
+            for (ONode modelNode : root.get("models").getArray()) {
+                ProviderDo.ModelItem modelItem = new ProviderDo.ModelItem();
+                modelItem.setId(modelNode.get("id").getString());
+                modelItem.setEnabled(modelNode.get("enabled").getBoolean(true));
+                models.add(modelItem);
+            }
+            provider.setModels(models);
+        }
+
+        settings.getProviders().put(name, provider);
+        saveSettings();
+        LOG.info("[Settings] Provider added: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 更新供应商
+     */
+    @Post
+    @Mapping("/web/settings/providers/update")
+    public Result providersUpdate(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String name = root.get("name").getString();
+        String originalName = root.get("originalName").getString();
+
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
+        ProviderDo existing = settings.getProviders().get(lookupName);
+        if (existing == null) {
+            return Result.failure("Provider not found: " + lookupName);
+        }
+
+        // 如果名称变更，移除旧 key
+        if (!lookupName.equals(name)) {
+            settings.getProviders().remove(lookupName);
+        }
+
+        ProviderDo provider = new ProviderDo();
+        provider.setName(name);
+        provider.setStandard(root.hasKey("standard") ? root.get("standard").getString() : existing.getStandard());
+        provider.setApiUrl(root.hasKey("apiUrl") ? root.get("apiUrl").getString() : existing.getApiUrl());
+        provider.setApiKey(root.hasKey("apiKey") ? root.get("apiKey").getString() : existing.getApiKey());
+        provider.setEnabled(root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : existing.isEnabled());
+        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL));
+
+        // 解析模型列表
+        if (root.hasKey("models") && root.get("models").isArray()) {
+            List<ProviderDo.ModelItem> models = new ArrayList<>();
+            for (ONode modelNode : root.get("models").getArray()) {
+                ProviderDo.ModelItem modelItem = new ProviderDo.ModelItem();
+                modelItem.setId(modelNode.get("id").getString());
+                modelItem.setEnabled(modelNode.get("enabled").getBoolean(true));
+                models.add(modelItem);
+            }
+            provider.setModels(models);
+        } else {
+            provider.setModels(existing.getModels());
+        }
+
+        settings.getProviders().put(name, provider);
+        saveSettings();
+        LOG.info("[Settings] Provider updated: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 删除供应商
+     */
+    @Post
+    @Mapping("/web/settings/providers/remove")
+    public Result providersRemove(@Param("name") String name) throws Exception {
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        settings.getProviders().remove(name);
+        saveSettings();
+        LOG.info("[Settings] Provider removed: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 切换供应商启用/禁用状态
+     */
+    @Post
+    @Mapping("/web/settings/providers/toggle")
+    public Result providersToggle(@Param("name") String name, @Param("enabled") Boolean enabled) throws Exception {
+        if (Assert.isEmpty(name) || enabled == null) {
+            return Result.failure("name and enabled are required");
+        }
+
+        ProviderDo provider = settings.getProviders().get(name);
+        if (provider == null) {
+            return Result.failure("Provider not found: " + name);
+        }
+
+        provider.setEnabled(enabled);
+        saveSettings();
+        LOG.info("[Settings] Provider {} {}", name, enabled ? "enabled" : "disabled");
+        return Result.succeed();
+    }
+
+    /**
+     * 拉取供应商模型列表
+     */
+    @Post
+    @Mapping("/web/settings/providers/fetch")
+    public Result providersFetch(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("standard") String standard) {
+        if (Assert.isEmpty(apiUrl)) {
+            return Result.failure("apiUrl is required");
+        }
+
+        try {
+            // 使用 ModelProviderFactory 获取对应的提供商
+            ModelProvider provider = modelProviderFactory.getProvider(standard);
+            
+            // 构建请求头
+            Map<String, String> headers = new HashMap<>();
+            if (apiKey != null && !apiKey.isEmpty()) {
+                headers.put("Authorization", "Bearer " + apiKey);
+            }
+            
+            // 调用提供商获取模型列表
+            List<ModelInfo> models = provider.fetchModels(apiUrl, headers, apiKey);
+            
+            // 转换为前端需要的格式
+            List<Map<String, Object>> modelList = new ArrayList<>();
+            for (ModelInfo model : models) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", model.getId());
+                item.put("owned_by", model.getOwnedBy());
+                modelList.add(item);
+            }
+            
+            return Result.succeed(modelList);
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to fetch models: {}", e.getMessage());
+            return Result.failure("拉取模型列表失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * API 密钥脱敏处理
+     */
+    private String maskApiKey(String apiKey) {
+        if (apiKey == null || apiKey.isEmpty()) {
+            return "";
+        }
+        if (apiKey.length() <= 8) {
+            return "****";
+        }
+        return apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4);
     }
 
     // ==================== 设置：Skills 市场（委派给 Market 接口） ====================

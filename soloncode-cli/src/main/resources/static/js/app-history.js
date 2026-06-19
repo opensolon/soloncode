@@ -343,10 +343,44 @@ function applyCmdSelection(inputEl, completeEl) {
     if (cmdActiveIndex >= 0 && cmdActiveIndex < cmdVisibleItems.length) {
         var cmd = cmdVisibleItems[cmdActiveIndex];
         var trigger = cmdTrigger || '/';
-        var parts = inputEl.value.trim().split(/\s+/);
-        // Keep existing args after command name
-        var argsStr = parts.length > 1 ? parts.slice(1).join(' ') : '';
-        inputEl.value = trigger + cmd.name + (argsStr ? ' ' + argsStr : ' ');
+        
+        // 找到当前输入框中的命令前缀位置
+        var val = inputEl.value;
+        var prefixPos = -1;
+        
+        // 查找最近的命令前缀（/、@ 或 $）
+        for (var i = val.length - 1; i >= 0; i--) {
+            var ch = val.charAt(i);
+            if (ch === '/' || ch === '@' || ch === '$') {
+                prefixPos = i;
+                break;
+            }
+        }
+        
+        if (prefixPos >= 0) {
+            // 替换前缀及其后面的内容
+            var textBefore = val.substring(0, prefixPos);
+            var textAfter = val.substring(prefixPos);
+            
+            // 找到前缀后面的空格位置（如果有）
+            var spaceIndex = textAfter.indexOf(' ');
+            var argsStr = '';
+            if (spaceIndex >= 0) {
+                argsStr = textAfter.substring(spaceIndex);
+            }
+            
+            // 构建新的值
+            inputEl.value = textBefore + trigger + cmd.name + argsStr;
+            
+            // 更新光标位置到命令后面
+            var newCursorPos = textBefore.length + trigger.length + cmd.name.length;
+            inputEl.setSelectionRange(newCursorPos, newCursorPos);
+        } else {
+            // 如果没有找到前缀，直接在开头插入
+            inputEl.value = trigger + cmd.name + ' ' + val;
+            inputEl.setSelectionRange(trigger.length + cmd.name.length + 1, trigger.length + cmd.name.length + 1);
+        }
+        
         autoResize(inputEl);
     }
     hideCmdComplete();
@@ -428,7 +462,18 @@ $('#chatHistoryBtn').on('click', function(e) {
 
 // Command & Agent button handlers
 function triggerCmdComplete(inputEl, completeEl, prefix) {
-    inputEl.value = prefix;
+    // 保存当前光标位置
+    var cursorPos = inputEl.selectionStart;
+    var textBefore = inputEl.value.substring(0, cursorPos);
+    var textAfter = inputEl.value.substring(cursorPos);
+    
+    // 在光标位置插入前缀
+    inputEl.value = textBefore + prefix + textAfter;
+    
+    // 更新光标位置到前缀后面
+    var newCursorPos = cursorPos + prefix.length;
+    inputEl.setSelectionRange(newCursorPos, newCursorPos);
+    
     inputEl.focus();
     showCmdComplete(inputEl, completeEl, prefix);
 }

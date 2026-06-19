@@ -47,6 +47,8 @@ public class AgentSettings implements Serializable {
     private Map<String, ApiSourceDo> apiServers = new LinkedHashMap<>();
     //lsp集
     private Map<String, LspServerDo> lspServers = new LinkedHashMap<>();
+    //供应商集
+    private Map<String, ProviderDo> providers = new LinkedHashMap<>();
 
     /**
      * 与 HarnessProperties（即 AgentProperties）双向合并。
@@ -363,6 +365,16 @@ public class AgentSettings implements Serializable {
             }
         });
 
+        oNode.getOrNew("providers").asObject().then(map -> {
+            for (Map.Entry<String, ProviderDo> entry : providers.entrySet()) {
+                if (isLocalAsGlobal == false && AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope())) {
+                    continue;
+                }
+
+                map.getOrNew(entry.getKey()).fill(entry.getValue());
+            }
+        });
+
         return oNode.toJson();
     }
 
@@ -431,6 +443,16 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("lspServers").asObject().then(map -> {
             for (Map.Entry<String, LspServerDo> entry : lspServers.entrySet()) {
+                if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
+                    continue;
+                }
+
+                map.getOrNew(entry.getKey()).fill(entry.getValue());
+            }
+        });
+
+        oNode.getOrNew("providers").asObject().then(map -> {
+            for (Map.Entry<String, ProviderDo> entry : providers.entrySet()) {
                 if (AgentFlags.SCOPE_LOCAL.equals(entry.getValue().getScope()) == false) {
                     continue;
                 }

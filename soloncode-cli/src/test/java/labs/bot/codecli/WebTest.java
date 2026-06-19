@@ -15,9 +15,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
+ * 启动 soloncode web 测试界面
  *
  * @author noear 2026/4/18 created
- *
  */
 public class WebTest {
     public static void main(String[] args) throws Exception {

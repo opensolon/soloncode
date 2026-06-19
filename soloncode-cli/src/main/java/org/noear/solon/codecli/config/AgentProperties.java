@@ -69,7 +69,7 @@ public class AgentProperties implements Serializable {
 
     private boolean sandboxMode = true;
     private boolean sandboxAllowUserHome = true;
-    private boolean sandboxSystemRestrict = true;
+    private boolean sandboxSystemRestrict = false;
 
     private boolean hitlEnabled = false;
     private boolean subagentEnabled = true;
