@@ -1502,13 +1502,22 @@ public class WebSettingsController {
         provider.setEnabled(root.get("enabled").getBoolean(true));
         provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL);
 
-        // 解析模型列表
+        // 解析模型列表（直接存储 ModelInfo）
         if (root.hasKey("models") && root.get("models").isArray()) {
-            List<ProviderDo.ModelItem> models = new ArrayList<>();
+            List<ModelInfo> models = new ArrayList<>();
             for (ONode modelNode : root.get("models").getArray()) {
-                ProviderDo.ModelItem modelItem = new ProviderDo.ModelItem();
-                modelItem.setId(modelNode.get("id").getString());
-                models.add(modelItem);
+                ModelInfo modelInfo = new ModelInfo();
+                modelInfo.setId(modelNode.get("id").getString());
+                if (modelNode.hasKey("displayName")) {
+                    modelInfo.setDisplayName(modelNode.get("displayName").getString());
+                }
+                if (modelNode.hasKey("maxTokens")) {
+                    modelInfo.setMaxTokens(modelNode.get("maxTokens").getLong());
+                }
+                if (modelNode.hasKey("maxInputTokens")) {
+                    modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
+                }
+                models.add(modelInfo);
             }
             provider.setModels(models);
         }
@@ -1552,13 +1561,22 @@ public class WebSettingsController {
         provider.setEnabled(root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : existing.isEnabled());
         provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL));
 
-        // 解析模型列表
+        // 解析模型列表（直接存储 ModelInfo）
         if (root.hasKey("models") && root.get("models").isArray()) {
-            List<ProviderDo.ModelItem> models = new ArrayList<>();
+            List<ModelInfo> models = new ArrayList<>();
             for (ONode modelNode : root.get("models").getArray()) {
-                ProviderDo.ModelItem modelItem = new ProviderDo.ModelItem();
-                modelItem.setId(modelNode.get("id").getString());
-                models.add(modelItem);
+                ModelInfo modelInfo = new ModelInfo();
+                modelInfo.setId(modelNode.get("id").getString());
+                if (modelNode.hasKey("displayName")) {
+                    modelInfo.setDisplayName(modelNode.get("displayName").getString());
+                }
+                if (modelNode.hasKey("maxTokens")) {
+                    modelInfo.setMaxTokens(modelNode.get("maxTokens").getLong());
+                }
+                if (modelNode.hasKey("maxInputTokens")) {
+                    modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
+                }
+                models.add(modelInfo);
             }
             provider.setModels(models);
         } else {
@@ -1673,8 +1691,8 @@ public class WebSettingsController {
             return Result.failure("Provider not found: " + providerName);
         }
         
-        // 获取供应商的模型列表
-        List<ProviderDo.ModelItem> providerModels = provider.getModels();
+        // 获取供应商的模型列表（现在是 ModelInfo 类型）
+        List<ModelInfo> providerModels = provider.getModels();
         if (providerModels == null || providerModels.isEmpty()) {
             return Result.succeed(0);
         }
@@ -1682,8 +1700,8 @@ public class WebSettingsController {
         int syncCount = 0;
         String prefix = providerName + "-";
         
-        for (ProviderDo.ModelItem modelItem : providerModels) {
-            String modelId = modelItem.getId();
+        for (ModelInfo modelInfo : providerModels) {
+            String modelId = modelInfo.getId();
             if (Assert.isEmpty(modelId)) {
                 continue;
             }
@@ -1702,6 +1720,13 @@ public class WebSettingsController {
                 modelDo.setProvider(providerName);
                 modelDo.setVisibled(provider.isEnabled());
                 
+                // 设置 contextLength：优先 maxInputTokens，其次 maxTokens
+                if (modelInfo.getMaxInputTokens() != null && modelInfo.getMaxInputTokens() > 0) {
+                    modelDo.setContextLength(modelInfo.getMaxInputTokens());
+                } else if (modelInfo.getMaxTokens() != null && modelInfo.getMaxTokens() > 0) {
+                    modelDo.setContextLength(modelInfo.getMaxTokens());
+                }
+                
                 settings.getModels().put(modelName, modelDo);
                 engine.addModel(modelDo);
                 syncCount++;
@@ -1711,6 +1736,17 @@ public class WebSettingsController {
                 if (providerName.equals(existingModel.getProvider())) {
                     if (existingModel.isVisibled() != provider.isEnabled()) {
                         existingModel.setVisibled(provider.isEnabled());
+                        syncCount++;
+                    }
+                    // 更新 contextLength
+                    long newContextLength = 0;
+                    if (modelInfo.getMaxInputTokens() != null && modelInfo.getMaxInputTokens() > 0) {
+                        newContextLength = modelInfo.getMaxInputTokens();
+                    } else if (modelInfo.getMaxTokens() != null && modelInfo.getMaxTokens() > 0) {
+                        newContextLength = modelInfo.getMaxTokens();
+                    }
+                    if (newContextLength > 0 && existingModel.getContextLength() != newContextLength) {
+                        existingModel.setContextLength(newContextLength);
                         syncCount++;
                     }
                 }

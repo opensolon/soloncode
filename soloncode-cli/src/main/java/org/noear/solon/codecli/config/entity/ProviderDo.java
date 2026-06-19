@@ -3,6 +3,7 @@ package org.noear.solon.codecli.config.entity;
 import lombok.Getter;
 import lombok.Setter;
 import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.codecli.portal.web.model.ModelInfo;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -47,21 +48,9 @@ public class ProviderDo implements Serializable {
     private String scope = AgentFlags.SCOPE_GLOBAL;
 
     /**
-     * 该供应商下的模型列表
-     */
-    private List<ModelItem> models = new ArrayList<>();
-
-    /**
-     * 模型列表项
+     * 该供应商下的模型列表（使用 ModelInfo 存储完整模型信息）
      *
-     * ProviderDo.name - ModelDo.provider, ModelItem.id <->  ModelDo.model
+     * ProviderDo.name - ModelDo.provider, ModelInfo.id <-> ModelDo.model
      */
-    @Getter
-    @Setter
-    public static class ModelItem implements Serializable {
-        /**
-         * 模型 ID（如 deepseek-chat）
-         */
-        private String id;
-    }
+    private List<ModelInfo> models = new ArrayList<>();
 }
