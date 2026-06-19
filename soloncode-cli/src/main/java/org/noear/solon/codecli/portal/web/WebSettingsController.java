@@ -46,8 +46,8 @@ import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.config.entity.ProviderDo;
 import org.noear.solon.codecli.portal.web.model.ModelInfo;
-import org.noear.solon.codecli.portal.web.model.ModelProvider;
-import org.noear.solon.codecli.portal.web.model.ModelProviderFactory;
+import org.noear.solon.codecli.portal.web.model.ModelsAdapter;
+import org.noear.solon.codecli.portal.web.model.ModelsAdapterManager;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -107,7 +107,7 @@ public class WebSettingsController {
     /**
      * 模型提供商工厂，用于拉取模型列表
      */
-    private final ModelProviderFactory modelProviderFactory;
+    private final ModelsAdapterManager modelProviderFactory;
 
     /**
      * 统一配置管理器，管理 LLM 模型、MCP 服务器、OpenApi 服务器的持久化数据
@@ -121,7 +121,7 @@ public class WebSettingsController {
      * @param settings 统一配置管理器（由 App.initAgentSettings 创建并注册到容器）
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings) {
-        this(engine, settings, new MarketManager(), new ModelProviderFactory());
+        this(engine, settings, new MarketManager(), new ModelsAdapterManager());
     }
 
     /**
@@ -132,7 +132,7 @@ public class WebSettingsController {
      * @param marketManager 技能市场管理器
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager) {
-        this(engine, settings, marketManager, new ModelProviderFactory());
+        this(engine, settings, marketManager, new ModelsAdapterManager());
     }
 
     /**
@@ -143,7 +143,7 @@ public class WebSettingsController {
      * @param marketManager       技能市场管理器
      * @param modelProviderFactory 模型提供商工厂
      */
-    public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager, ModelProviderFactory modelProviderFactory) {
+    public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager, ModelsAdapterManager modelProviderFactory) {
         this.engine = engine;
         this.settings = settings;
         this.marketManager = marketManager;
@@ -1618,7 +1618,7 @@ public class WebSettingsController {
 
         try {
             // 使用 ModelProviderFactory 获取对应的提供商
-            ModelProvider provider = modelProviderFactory.getProvider(standard);
+            ModelsAdapter provider = modelProviderFactory.getProvider(standard);
             
             // 构建请求头
             Map<String, String> headers = new HashMap<>();

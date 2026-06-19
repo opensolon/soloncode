@@ -13,10 +13,10 @@ import java.util.Map;
  * 接口：GET {baseUrl}/models
  */
 @Slf4j
-public class OpenAIModelProvider implements ModelProvider {
+public class OpenAIModelsAdapter implements ModelsAdapter {
 
-    @Override
-    public String getProviderName() {
+@Override
+    public String getStandard() {
         return "openai";
     }
 
