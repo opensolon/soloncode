@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.portal.web;
+package org.noear.solon.codecli.portal.web.model;
 
 import lombok.extern.slf4j.Slf4j;
 import org.noear.snack4.ONode;

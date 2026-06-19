@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.portal.web;
+package org.noear.solon.codecli.portal.web.model;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -1292,6 +1292,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     resize: none;
     overflow-y: auto;
     font-family: inherit;
+    box-sizing: border-box;
 }
 .git-commit-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
 .git-commit-input:focus { border-color: var(--accent); }

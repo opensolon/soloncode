@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.portal.web;
+package org.noear.solon.codecli.portal.web.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
