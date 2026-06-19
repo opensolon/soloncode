@@ -1240,13 +1240,21 @@
                                 <div class="form-group">
                                     <div class="form-group-header">
                                         <label>模型列表</label>
-                                        <button class="btn-secondary btn-sm" id="providerFetchModelsBtn">拉取模型列表</button>
+                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                            <button class="btn-secondary btn-sm" id="providerFetchModelsBtn">拉取模型列表</button>
+                                            <button class="btn-secondary btn-sm" id="providerSelectAllBtn" style="display:none" title="点击全选，再点取消全选">全选</button>
+                                        </div>
                                     </div>
                                     <div class="provider-models-container" id="providerModelsContainer">
                                         <div class="provider-models-empty" id="providerModelsEmpty">点击"拉取模型列表"获取可用模型</div>
                                         <div class="provider-models-grid" id="providerModelsGrid" style="display:none"></div>
                                     </div>
+                                    <div id="providerGenerateBar" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border-color);">
+                                        <button class="btn-primary btn-sm" id="providerGenerateBtn">生成选中模型配置</button>
+                                        <span id="providerGenerateStatus" class="form-hint" style="margin-left:8px;"></span>
+                                    </div>
                                 </div>
+                                
                                 <div class="form-actions form-actions-end">
                                     <button class="btn-primary" id="providerSaveBtn">保存</button>
                                 </div>

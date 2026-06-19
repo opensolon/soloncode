@@ -22,7 +22,7 @@ public class ProviderDo implements Serializable {
     private String name;
 
     /**
-     * 接口规范：openai / ollama / anthropic / zhiPu
+     * 接口规范：openai / ollama / anthropic
      */
     private String standard = "openai";
 

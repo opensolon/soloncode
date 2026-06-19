@@ -794,3 +794,28 @@ select[disabled] {
     padding: 4px 10px;
     font-size: 11px;
 }
+
+/* 全选/取消全选按钮 */
+#providerSelectAllBtn {
+    margin-left: 8px;
+}
+
+/* 生成状态栏 */
+#providerGenerateBar {
+    display: flex;
+    align-items: center;
+}
+
+#providerGenerateBtn {
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+#providerGenerateStatus {
+    font-size: 12px;
+    color: var(--text-secondary);
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

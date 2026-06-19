@@ -71,6 +71,26 @@
         // 模型选择
         $modelsGrid.on('click', '.provider-model-chip', function () {
             $(this).toggleClass('selected');
+            updateGenerateBarVisibility();
+        });
+        
+        // 全选/取消全选按钮
+        var selectAllState = false;
+        $('#providerSelectAllBtn').on('click', function () {
+            selectAllState = !selectAllState;
+            if (selectAllState) {
+                $modelsGrid.find('.provider-model-chip').addClass('selected');
+                $(this).text('取消全选');
+            } else {
+                $modelsGrid.find('.provider-model-chip').removeClass('selected');
+                $(this).text('全选');
+            }
+            updateGenerateBarVisibility();
+        });
+        
+        // 生成模型配置按钮
+        $('#providerGenerateBtn').on('click', function () {
+            generateModelsFromProvider();
         });
 
         // 作用域切换
@@ -152,6 +172,10 @@
         $('#providerApiUrl').val(provider ? provider.apiUrl : '');
         $('#providerApiKey').val(provider ? provider.apiKey : '');
         $('#providerScope').val(provider ? (provider.scope || 'global') : 'global');
+        
+        // 初始化生成区域
+        $('#providerGenerateBar').hide();
+        $('#providerGenerateStatus').text('');
 
         // 设置作用域按钮状态
         var scope = provider ? (provider.scope || 'global') : 'global';
@@ -224,11 +248,17 @@
         if (fetchedModels.length === 0) {
             $modelsEmpty.show();
             $modelsGrid.hide();
+            $('#providerSelectAllBtn').hide();
+            $('#providerGenerateBar').hide();
             return;
         }
 
         $modelsEmpty.hide();
         $modelsGrid.show();
+        
+        // 显示全选按钮
+        var selectAllBtn = $('#providerSelectAllBtn');
+        selectAllBtn.show().text('全选');
 
         var html = '';
         fetchedModels.forEach(function (model) {
@@ -239,6 +269,9 @@
             '</div>';
         });
         $modelsGrid.html(html);
+        
+        // 更新生成区域可见性
+        updateGenerateBarVisibility();
     }
 
     function getSelectedModels() {
@@ -250,6 +283,84 @@
             });
         });
         return models;
+    }
+    
+    function updateGenerateBarVisibility() {
+        var selectedCount = $modelsGrid.find('.provider-model-chip.selected').length;
+        var hasModels = fetchedModels.length > 0;
+        
+        // 显示/隐藏生成区域
+        $('#providerGenerateBar').toggle(selectedCount > 0);
+        
+        // 更新状态提示
+        if (selectedCount > 0) {
+            $('#providerGenerateStatus').text('已选 ' + selectedCount + ' 个模型');
+        }
+    }
+    
+    function generateModelsFromProvider() {
+        var selectedModels = getSelectedModels();
+        if (selectedModels.length === 0) {
+            layui.layer.msg('请先选择要生成的模型', { icon: 0 });
+            return;
+        }
+        
+        var name = $('#providerName').val();
+        var standard = $('#providerStandard').val();
+        var apiUrl = $('#providerApiUrl').val();
+        var apiKey = $('#providerApiKey').val();
+        var scope = $('#providerScope').val();
+        
+        if (!name) {
+            layui.layer.msg('请填写供应商名称', { icon: 0 });
+            return;
+        }
+        
+        if (!apiUrl) {
+            layui.layer.msg('请填写 API 地址', { icon: 0 });
+            return;
+        }
+        
+        // 构建生成请求数据（使用默认值，不显示选项）
+        var generateData = {
+            providerName: name,
+            standard: standard,
+            apiUrl: apiUrl,
+            apiKey: apiKey,
+            scope: scope,
+            models: selectedModels,
+            options: {
+                prefix: name + '-',
+                timeout: 120,
+                setDefault: false
+            }
+        };
+        
+        var $btn = $('#providerGenerateBtn');
+        var $status = $('#providerGenerateStatus');
+        $btn.prop('disabled', true).text('生成中...');
+        
+        $.ajax({
+            url: '/web/settings/providers/generate',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(generateData),
+            success: function (res) {
+                $btn.prop('disabled', false).text('生成选中模型配置');
+                if (res.code === 200) {
+                    var count = res.data ? res.data.length : selectedModels.length;
+                    var names = (res.data || []).map(function(m) { return m.name; }).join('、');
+                    layui.layer.msg('已生成 ' + count + ' 个模型配置', { icon: 1, time: 3000 });
+                    $status.text('已生成: ' + names);
+                } else {
+                    layui.layer.msg(res.msg || '生成失败', { icon: 2 });
+                }
+            },
+            error: function (xhr) {
+                $btn.prop('disabled', false).text('生成选中模型配置');
+                layui.layer.msg('生成模型配置失败: ' + (xhr.responseText || '网络错误'), { icon: 2 });
+            }
+        });
     }
 
     // ==================== CRUD 操作 ====================

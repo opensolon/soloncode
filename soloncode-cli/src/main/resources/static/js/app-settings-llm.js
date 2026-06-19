@@ -68,12 +68,15 @@
 
                 var displayName = name || model;
                 var metaLine = '';
+                if (item.provider) {
+                    metaLine = escapeHtml(item.provider);
+                }
                 if (apiUrlShort && model) {
-                    metaLine = escapeHtml(apiUrlShort) + ' / ' + escapeHtml(model);
+                    metaLine += (metaLine ? ' · ' : '') + escapeHtml(apiUrlShort) + ' / ' + escapeHtml(model);
                 } else if (apiUrlShort) {
-                    metaLine = escapeHtml(apiUrlShort);
+                    metaLine += (metaLine ? ' · ' : '') + escapeHtml(apiUrlShort);
                 } else if (model) {
-                    metaLine = escapeHtml(model);
+                    metaLine += (metaLine ? ' · ' : '') + escapeHtml(model);
                 }
                 if (item.contextLength) {
                     var cl = item.contextLength;

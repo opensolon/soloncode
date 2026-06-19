@@ -12,11 +12,22 @@ public class ModelDo extends ChatConfig {
     //作用域（全局或本地）
     private String scope = AgentFlags.SCOPE_GLOBAL;
 
+    //所属供应商（通过 ProviderDo.name 关联）
+    private String provider;
+
     public void setScope(String scope) {
         this.scope = scope;
     }
 
     public String getScope() {
         return scope;
+    }
+
+    public void setProvider(String provider) {
+        this.provider = provider;
+    }
+
+    public String getProvider() {
+        return provider;
     }
 }

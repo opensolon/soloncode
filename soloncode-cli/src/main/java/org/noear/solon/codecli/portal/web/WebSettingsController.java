@@ -273,6 +273,7 @@ public class WebSettingsController {
             item.put("contextLength", config.getContextLength());
             item.put("enabled", config.isEnabled());
             item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
+            item.put("provider", config.getProvider());  // 所属供应商
             list.add(item);
         }
 
@@ -313,6 +314,7 @@ public class WebSettingsController {
         item.put("apiKey", config.getApiKey());
         item.put("standard", config.getStandardOrProvider());
         item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
+        item.put("provider", config.getProvider());  // 所属供应商
         if (config.getTimeout() != null) {
             item.put("timeout", config.getTimeout().getSeconds() + "s");
         }
@@ -2006,6 +2008,93 @@ public class WebSettingsController {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());
             return Result.failure("删除失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 从供应商生成模型配置
+     */
+    @Post
+    @Mapping("/web/settings/providers/generate")
+    public Result providersGenerate(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String providerName = root.get("providerName").getString();
+        String standard = root.get("standard").getString("openai");
+        String apiUrl = root.get("apiUrl").getString();
+        String apiKey = root.get("apiKey").getString();
+        String scope = root.get("scope").getString(AgentFlags.SCOPE_GLOBAL);
+        
+        // 解析模型列表
+        ONode modelsNode = root.get("models");
+        if (!modelsNode.isArray() || modelsNode.getArrayUnsafe().isEmpty()) {
+            return Result.failure("请选择要生成的模型");
+        }
+        
+        // 解析生成选项
+        ONode optionsNode = root.get("options");
+        String prefix = optionsNode.get("prefix").getString(providerName + "-");
+        int timeout = optionsNode.get("timeout").getInt(120);
+        boolean setDefault = optionsNode.get("setDefault").getBoolean(false);
+        
+        // 生成模型配置
+        List<Map<String, Object>> generatedModels = new ArrayList<>();
+        for (ONode modelNode : modelsNode.getArray()) {
+            String modelId = modelNode.get("id").getString();
+            if (Assert.isEmpty(modelId)) {
+                continue;
+            }
+            
+            // 生成模型名称
+            String modelName = prefix + modelId;
+            
+            // 检查是否已存在同名模型
+            if (settings.getModels().containsKey(modelName)) {
+                LOG.warn("[Settings] Model already exists, skipping: {}", modelName);
+                continue;
+            }
+            
+            // 创建模型配置
+            ModelDo modelDo = new ModelDo();
+            modelDo.setName(modelName);
+            modelDo.setModel(modelId);
+            modelDo.setStandard(standard);
+            modelDo.setApiUrl(apiUrl);
+            modelDo.setApiKey(apiKey);
+            modelDo.setScope(scope);
+            modelDo.setProvider(providerName);  // 设置所属供应商
+            
+            // 设置超时时间
+            if (timeout > 0) {
+                modelDo.setTimeout(java.time.Duration.ofSeconds(timeout));
+            }
+            
+            // 保存模型配置
+            settings.getModels().put(modelName, modelDo);
+            
+            // 注入运行时引擎（即时生效，无需重启）
+            engine.addModel(modelDo);
+            
+            // 记录生成的模型信息
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", modelName);
+            item.put("model", modelId);
+            item.put("standard", standard);
+            item.put("scope", scope);
+            generatedModels.add(item);
+            
+            LOG.info("[Settings] Model generated: {} (from provider: {})", modelName, providerName);
+        }
+        
+        // 如果设置了默认模型，更新默认模型
+        if (setDefault && !generatedModels.isEmpty()) {
+            String firstModelName = (String) generatedModels.get(0).get("name");
+            settings.setDefaultModel(firstModelName);
+            LOG.info("[Settings] Default model set to: {}", firstModelName);
+        }
+        
+        // 保存配置
+        saveSettings();
+        
+        return Result.succeed(generatedModels);
     }
 
     /**
