@@ -1975,8 +1975,8 @@ pre:hover .code-copy-btn { opacity: 1; }
 
 .todo-check {
     flex-shrink: 0;
-    width: 8px;
-    height: 9px;
+    width: 11px;
+    height: 12px;
     text-align: center;
     font-size: 12px;
     display: inline-flex;
