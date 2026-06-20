@@ -134,6 +134,32 @@ public class Configurator {
         engine.addMount(MountDir.builder().alias("@global-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
         engine.addMount(MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path("./" + engine.getHarnessAgents()).primary(true).build());
 
+
+        engine.getCommandRegistry().load(Paths.get(AgentFlags.getUserHome(), engine.getHarnessCommands()));
+        engine.getCommandRegistry().load(Paths.get(workspace, engine.getHarnessCommands()));
+
+        engine.getCommandRegistry().register(new ExitCommand());
+        engine.getCommandRegistry().register(new ClearCommand());
+        engine.getCommandRegistry().register(new ContinueCommand());
+        engine.getCommandRegistry().register(new RerunCommand());
+        engine.getCommandRegistry().register(new RewindCommand());
+        engine.getCommandRegistry().register(new ModelCommand());
+
+        engine.getLspTalent().setEnabled(settings.getGeneral().getLspEnabled());
+
+        RunUtil.async(() -> addServers(engine));
+
+        // loop scheduler
+        this.loopScheduler = new LoopScheduler(engine, AgentFlags.getHarnessLoopWorktrees());
+        engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
+
+
+        engine.addExtension(new ManagerExtension(engine, agentSettings));
+
+        return engine;
+    }
+
+    private void addServers(HarnessEngine engine){
         for (Map.Entry<String, McpServerDo> entry : agentSettings.getMcpServers().entrySet()) {
             engine.addMcpServer(entry.getKey(), entry.getValue());
         }
@@ -163,26 +189,6 @@ public class Configurator {
         addSystemLspServer(engine, agentSettings, "kotlin", Arrays.asList("kotlin-language-server"), Arrays.asList(".kt", ".kts"));
         addSystemLspServer(engine, agentSettings, "yaml", Arrays.asList("yaml-language-server", "--stdio"), Arrays.asList(".yaml", ".yml"));
 
-        engine.getCommandRegistry().load(Paths.get(AgentFlags.getUserHome(), engine.getHarnessCommands()));
-        engine.getCommandRegistry().load(Paths.get(workspace, engine.getHarnessCommands()));
-
-        engine.getCommandRegistry().register(new ExitCommand());
-        engine.getCommandRegistry().register(new ClearCommand());
-        engine.getCommandRegistry().register(new ContinueCommand());
-        engine.getCommandRegistry().register(new RerunCommand());
-        engine.getCommandRegistry().register(new RewindCommand());
-        engine.getCommandRegistry().register(new ModelCommand());
-
-        engine.getLspTalent().setEnabled(settings.getGeneral().getLspEnabled());
-
-        // loop scheduler
-        this.loopScheduler = new LoopScheduler(engine, AgentFlags.getHarnessLoopWorktrees());
-        engine.getCommandRegistry().register(new LoopCommand(loopScheduler));
-
-
-        engine.addExtension(new ManagerExtension(engine, agentSettings));
-
-        return engine;
     }
 
     @Init
