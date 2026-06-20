@@ -17,6 +17,9 @@ package org.noear.solon.codecli.portal.web;
 
 import org.noear.snack4.ONode;
 import org.noear.snack4.codec.TypeRef;
+import org.noear.solon.core.handle.UploadedFile;
+
+import java.nio.charset.StandardCharsets;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -804,6 +807,209 @@ public class WebSettingsController {
         }
     }
 
+    // ==================== 设置：MCP 导入解析（后端解析） ====================
+
+    /**
+     * 解析 MCP 导入配置文件
+     *
+     * <p>接受上传的 JSON 文件，使用 ONode 解析后检测格式，返回结构化数据给前端预览。
+     * 支持 OpenCode 格式（{@code $schema} 识别）和通用 {@code mcpServers} 格式。</p>
+     *
+     * @param ctx Solon 上下文，通过 {@code ctx.file("file")} 获取上传文件
+     * @return 包含格式类型与服务器列表的结构化数据
+     */
+    @Post
+    @Mapping("/web/settings/mcp/import/parse")
+    public Result mcpImportParse(Context ctx) throws Exception {
+        // 获取上传文件
+        UploadedFile file = ctx.file("file");
+        if (file == null) {
+            return Result.failure("请上传文件");
+        }
+
+        // 读取文件内容（InputStream 转 byte[]）
+        java.io.InputStream inStream = file.getContent();
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        int n;
+        while ((n = inStream.read(buf)) != -1) {
+            buffer.write(buf, 0, n);
+        }
+        String content = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+
+        // 使用 ONode 解析 JSON（ONode 原生支持标准 JSON 解析）
+        ONode root;
+        try {
+            root = ONode.ofJson(content);
+        } catch (Exception e) {
+            return Result.failure("文件解析失败: " + e.getMessage());
+        }
+
+        if (root.isObject() == false) {
+            return Result.failure("文件内容不是有效的 JSON 对象");
+        }
+
+        // 检测格式
+        ONode mcpServersNode = null;
+        String format = null;
+
+        // 1. OpenCode 格式（$schema + mcp 字段）
+        if (root.hasKey("$schema")
+                && root.get("$schema").getString() != null
+                && root.get("$schema").getString().contains("opencode.ai/config")
+                && root.hasKey("mcp")
+                && root.get("mcp").isObject()) {
+            mcpServersNode = root.get("mcp");
+            format = "OpenCode";
+        }
+        // 2. 通用 mcpServers 格式（Claude Desktop, Cursor 等）
+        else if (root.hasKey("mcpServers") && root.get("mcpServers").isObject()) {
+            mcpServersNode = root.get("mcpServers");
+            format = "mcpServers";
+        }
+        // 3. 显式格式声明
+        else if ("mcp".equals(root.get("format").getString())
+                && root.hasKey("servers")
+                && root.get("servers").isObject()) {
+            mcpServersNode = root.get("servers");
+            format = "explicit";
+        }
+
+        if (mcpServersNode == null) {
+            return Result.failure("无法识别的配置文件格式: 期望 OpenCode 或 mcpServers 格式");
+        }
+
+        // 转换为统一结构返回
+        List<Map<String, Object>> servers = new ArrayList<>();
+        for (Map.Entry<String, ONode> entry : mcpServersNode.getObject().entrySet()) {
+            String name = entry.getKey();
+            ONode cfg = entry.getValue();
+
+            if (!cfg.isObject()) {
+                continue;
+            }
+
+            Map<String, Object> server = new LinkedHashMap<>();
+            server.put("name", name);
+
+            // 检测服务器类型
+            String type = cfg.get("type").getString();
+            String serverType;
+            if (type == null || type.isEmpty()) {
+                // 根据 command/url 推断
+                if (cfg.hasKey("command")) {
+                    serverType = "stdio";
+                } else if (cfg.hasKey("url")) {
+                    serverType = "sse";
+                } else {
+                    // 无法推断类型
+                    server.put("error", "无法识别服务器类型，缺少 command 或 url");
+                    servers.add(server);
+                    continue;
+                }
+            } else if ("local".equals(type)) {
+                serverType = "stdio";
+            } else if ("remote".equals(type)) {
+                serverType = "streamable";
+            } else {
+                serverType = type;
+            }
+            server.put("type", serverType);
+
+            if ("stdio".equals(serverType)) {
+                // 处理 command（可能为字符串或数组）
+                ONode cmdNode = cfg.get("command");
+                if (cmdNode.isArray()) {
+                    List<String> cmdParts = new ArrayList<>();
+                    for (ONode c : cmdNode.getArray()) {
+                        cmdParts.add(c.getString());
+                    }
+                    if (!cmdParts.isEmpty()) {
+                        server.put("command", cmdParts.get(0));
+                        if (cmdParts.size() > 1) {
+                            server.put("args", new ArrayList<>(cmdParts.subList(1, cmdParts.size())));
+                        }
+                    }
+                    server.put("detail", String.join(" ", cmdParts));
+                } else {
+                    String cmdStr = cmdNode.getString();
+                    server.put("command", cmdStr);
+                    server.put("detail", cmdStr);
+                }
+
+                // args（显式声明）
+                if (cfg.hasKey("args")) {
+                    List<String> args = new ArrayList<>();
+                    for (ONode a : cfg.get("args").getArray()) {
+                        args.add(a.getString());
+                    }
+                    server.put("args", args);
+                    // 更新 detail 包含完整 command + args
+                    StringBuilder detail = new StringBuilder();
+                    if (server.containsKey("command")) {
+                        detail.append(server.get("command"));
+                    }
+                    for (String a : args) {
+                        detail.append(" ").append(a);
+                    }
+                    server.put("detail", detail.toString());
+                }
+
+                // 环境变量：兼容多种命名
+                Map<String, String> env = null;
+                if (cfg.hasKey("env")) {
+                    env = oNodeToStringMap(cfg.get("env"));
+                } else if (cfg.hasKey("environment")) {
+                    env = oNodeToStringMap(cfg.get("environment"));
+                } else if (cfg.hasKey("envVars")) {
+                    env = oNodeToStringMap(cfg.get("envVars"));
+                } else if (cfg.hasKey("environmentVariables")) {
+                    env = oNodeToStringMap(cfg.get("environmentVariables"));
+                }
+                if (env != null && !env.isEmpty()) {
+                    server.put("env", env);
+                }
+            } else {
+                // sse / streamable
+                server.put("url", cfg.get("url").getString());
+                server.put("detail", cfg.get("url").getString());
+
+                if (cfg.hasKey("headers")) {
+                    server.put("headers", oNodeToStringMap(cfg.get("headers")));
+                }
+                if (cfg.hasKey("timeout")) {
+                    ONode timeoutNode = cfg.get("timeout");
+                    if (timeoutNode.isNumber()) {
+                        server.put("timeout", timeoutNode.getLong());
+                    } else {
+                        server.put("timeout", timeoutNode.getString());
+                    }
+                }
+            }
+
+            servers.add(server);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("format", format);
+        data.put("servers", servers);
+
+        return Result.succeed(data);
+    }
+
+    /**
+     * 将 ONode 对象转为 Map<String, String>
+     */
+    private Map<String, String> oNodeToStringMap(ONode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        for (Map.Entry<String, ONode> entry : node.getObject().entrySet()) {
+            map.put(entry.getKey(), entry.getValue().getString());
+        }
+        return map;
+    }
 
     // ==================== 设置：MCP 工具权限管理 ====================
 

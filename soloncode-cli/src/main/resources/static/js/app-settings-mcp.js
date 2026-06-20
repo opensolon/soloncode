@@ -460,53 +460,48 @@
     }
     
     /**
-     * 创建导入预览对话框
-     * @param {{format:string, mcpServers:Object}} detection - 格式检测结果
+     * 创建导入预览对话框（适配后端返回的结构化数据）
+     * @param {{format:string, servers:Array}} data - 后端返回的解析结果
      * @param {Function} onConfirm - 确认回调，接收选中的服务器名列表
      */
-    function showImportPreview(detection, onConfirm) {
-        var serverNames = Object.keys(detection.mcpServers);
-        if (serverNames.length === 0) {
+    function showImportPreview(data, onConfirm) {
+        var servers = data.servers || [];
+        if (servers.length === 0) {
             showToast('未找到有效的 MCP 服务器配置', 'error');
             return;
         }
         
         // 构建各服务器的预览信息
         var previewItems = '';
-        var allNew = true;
-        serverNames.forEach(function(name) {
-            var cfg = detection.mcpServers[name];
-            var typeLabel = 'stdio';
-            if (cfg.type === 'remote' || cfg.type === 'sse') typeLabel = 'sse';
-            else if (cfg.type === 'streamable') typeLabel = 'streamable';
-            else if (cfg.type === 'local' || cfg.command) typeLabel = 'stdio';
-            else if (cfg.url) typeLabel = 'sse';
-            
-            var detail = typeLabel === 'stdio'
-                ? (Array.isArray(cfg.command) ? cfg.command.join(' ') : (cfg.command || ''))
-                : (cfg.url || '');
+        servers.forEach(function(srv) {
+            var name = srv.name || '';
+            var typeLabel = srv.type || 'stdio';
+            var detail = srv.detail || '';
             
             var exists = mcpCachedList.some(function(s) { return s.name === name; });
-            if (!exists) allNew = false;
             var statusBadge = exists
                 ? '<span class="import-preview-badge badge-exists" title="已存在同名服务器，导入将跳过">已存在</span>'
                 : '<span class="import-preview-badge badge-new">新导入</span>';
             var disabled = exists ? ' disabled' : '';
             
+            var errorBadge = srv.error
+                ? '<span class="import-preview-badge badge-error" title="' + escapeAttr(srv.error) + '">格式错误</span>'
+                : '';
+            
             previewItems += '<div class="import-preview-item">'
                 + '<label class="import-preview-checkbox' + disabled + '">'
                 + '<input type="checkbox" class="import-server-checkbox" value="' + escapeAttr(name) + '"'
-                + (exists ? '' : ' checked') + disabled + '/>'
+                + (exists || srv.error ? '' : ' checked') + disabled + '/>'
                 + '<span class="mcp-tool-checkmark"></span>'
                 + '</label>'
                 + '<div class="import-preview-info">'
-                + '<div class="import-preview-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(typeLabel) + ']</span>' + statusBadge + '</div>'
-                + '<div class="import-preview-detail">' + escapeHtml(detail) + '</div>'
+                + '<div class="import-preview-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(typeLabel) + ']</span>' + statusBadge + errorBadge + '</div>'
+                + '<div class="import-preview-detail">' + escapeHtml(detail || srv.error || '') + '</div>'
                 + '</div></div>';
         });
         
         // 检测来源格式标签
-        var formatLabel = detection.format || '自动检测';
+        var formatLabel = data.format || '自动检测';
         var formatTag = '<span class="import-format-tag">' + escapeHtml(formatLabel) + '</span>';
         
         var dialogHtml = '<div class="import-overlay" id="importPreviewOverlay">'
@@ -517,14 +512,14 @@
             + '</div>'
             + '<div class="import-dialog-body">'
             + '<div class="import-summary">'
-            + '检测到 <strong>' + serverNames.length + '</strong> 个 MCP 服务器配置 ' + formatTag
-            + '<br/><span class="import-hint">请勾选需要导入的服务器，已存在的服务器将自动跳过</span>'
+            + '检测到 <strong>' + servers.length + '</strong> 个 MCP 服务器配置 ' + formatTag
+            + '<br/><span class="import-hint">请勾选需要导入的服务器，已存在或格式错误的将自动跳过</span>'
             + '</div>'
             + '<div class="import-preview-list">' + previewItems + '</div>'
             + '</div>'
             + '<div class="import-dialog-footer">'
             + '<button class="btn-secondary" id="importPreviewCancel">取消</button>'
-            + '<button class="btn-primary" id="importPreviewConfirm">导入所选 (<span id="importSelectedCount">' + (serverNames.length - (allNew ? 0 : serverNames.filter(function(n){return mcpCachedList.some(function(s){return s.name===n;})}).length)) + '</span>)</button>'
+            + '<button class="btn-primary" id="importPreviewConfirm">导入所选 (<span id="importSelectedCount">' + servers.filter(function(s){return !mcpCachedList.some(function(c){return c.name===s.name;}) && !s.error;}).length + ')</span>)</button>'
             + '</div>'
             + '</div>'
             + '</div>';
@@ -742,49 +737,68 @@
         $('#mcpImportFileInput').trigger('click');
     });
     
-    // 文件选择变化事件
+    /**
+     * 文件选择变化事件 — 将文件上传到后端解析
+     * 后端使用 ONode 解析，检测格式后返回结构化数据
+     */
     $('#mcpImportFileInput').on('change', function (e) {
         var file = e.target.files[0];
         if (!file) return;
         
-        var reader = new FileReader();
-        reader.onload = function (e) {
-            try {
-                var text = e.target.result;
-                // 支持带注释的 JSON（JSON5）
-                var config = parseJsonWithComments(text);
-                // 检测格式
-                var detection = detectFormat(config);
-                if (!detection) {
-                    showToast('无法识别的配置文件格式: 期望 OpenCode 或 mcpServers 格式', 'error');
-                    return;
+        var formData = new FormData();
+        formData.append('file', file);
+        
+        // 上传到后端解析
+        $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 解析中...');
+        
+        $.ajax({
+            url: '/web/settings/mcp/import/parse',
+            method: 'POST',
+            data: formData,
+            contentType: false,
+            processData: false,
+            dataType: 'json',
+            success: function(resp) {
+                if (resp.code === 200 && resp.data && resp.data.servers) {
+                    // 显示预览对话框，传入后端返回的结构化数据
+                    showImportPreview(resp.data, function(selectedNames) {
+                        executeImport(selectedNames, resp.data.servers);
+                    });
+                } else {
+                    showToast('解析失败: ' + (resp.message || '未知错误'), 'error');
                 }
-                // 显示预览对话框
-                showImportPreview(detection, function(selectedNames) {
-                    // 用户确认后开始导入
-                    executeImport(selectedNames, detection.mcpServers);
-                });
-            } catch (error) {
-                showToast('文件解析失败: ' + error.message, 'error');
+            },
+            error: function() {
+                showToast('上传解析失败，请检查文件格式后重试', 'error');
+            },
+            complete: function() {
+                $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导入');
             }
-        };
-        reader.readAsText(file);
+        });
+        
         // 重置文件输入，允许再次选择同一文件
         e.target.value = '';
     });
     
+    
     /**
      * 执行导入（含进度反馈）
      * @param {string[]} names - 要导入的服务器名称列表
-     * @param {Object} mcpServers - 完整的 MCP 配置对象
+     * @param {Array} servers - 后端返回的结构化服务器数据数组
      */
-    function executeImport(names, mcpServers) {
+    function executeImport(names, servers) {
         var result = {
             total: names.length,
             imported: [],
             skipped: [],
             errors: []
         };
+        
+        // 构建名称 -> 服务器配置的快速查找表
+        var serverMap = {};
+        servers.forEach(function(s) {
+            serverMap[s.name] = s;
+        });
         
         createProgressDialog();
         appendProgressLog('开始导入 ' + names.length + ' 个 MCP 服务器...');
@@ -799,7 +813,7 @@
             }
             
             var name = names[index];
-            var serverConfig = mcpServers[name];
+            var serverConfig = serverMap[name];
             
             updateProgress(index + 1, names.length, '正在导入 ' + (index + 1) + '/' + names.length + ': ' + name);
             
@@ -812,11 +826,19 @@
                 return;
             }
             
-            // 转换配置格式
-            var mcpBody = convertToMcpBodyWithNames(name, serverConfig);
+            // 检查是否有格式错误
+            if (serverConfig.error) {
+                result.errors.push({ name: name, reason: serverConfig.error });
+                appendProgressLog('✗ ' + name + ': ' + serverConfig.error, true);
+                processNext(index + 1);
+                return;
+            }
+            
+            // 用后端结构化数据构建请求体
+            var mcpBody = buildAddBodyFromParsed(serverConfig);
             if (!mcpBody) {
-                result.errors.push({ name: name, reason: '无法识别的配置格式' });
-                appendProgressLog('✗ ' + name + ': 无法识别配置格式', true);
+                result.errors.push({ name: name, reason: '配置数据不完整' });
+                appendProgressLog('✗ ' + name + ': 配置数据不完整', true);
                 processNext(index + 1);
                 return;
             }
@@ -851,70 +873,46 @@
     }
     
     /**
-     * 将单个 MCP 服务器配置转换为标准格式（增强版：含名称校验 + timeout 统一解析）
-     * @param {string} name - 服务器名称
-     * @param {Object} config - 原始配置
-     * @returns {Object|null} 转换后的配置对象
+     * 将后端解析后的结构化数据构建为 /mcp/servers/add 的请求体
+     * @param {Object} srv - 后端返回的单个服务器结构化数据
+     * @returns {Object|null} 请求体对象
      */
-    function convertToMcpBodyWithNames(name, config) {
-        // 名称校验（与手动添加规则一致）
-        if (!/^[a-zA-Z0-9_\-]+$/.test(name)) {
-            return null;
-        }
+    function buildAddBodyFromParsed(srv) {
+        if (!srv || !srv.name || !srv.type) return null;
         
         var bodyObj = {
-            name: name,
-            enabled: config.enabled !== false,
+            name: srv.name,
+            type: srv.type,
+            enabled: true,
             scope: 'user'
         };
         
-        // OpenCode 格式: type: 'local' -> stdio, type: 'remote' -> sse/streamable
-        if (config.type === 'local' || (!config.type && config.command)) {
-            bodyObj.type = 'stdio';
-            bodyObj.command = Array.isArray(config.command) ? config.command.join(' ') : config.command;
-            if (config.args) {
-                bodyObj.args = config.args;
-            } else if (Array.isArray(config.command) && config.command.length > 1) {
-                bodyObj.args = config.command.slice(1);
-                bodyObj.command = config.command[0];
+        if (srv.type === 'stdio') {
+            if (!srv.command) return null;
+            bodyObj.command = srv.command;
+            if (srv.args && srv.args.length > 0) {
+                bodyObj.args = srv.args;
             }
-            // 支持 environment / env / envVars / environmentVariables 等常见命名
-            var env = config.environment || config.env || config.envVars || config.environmentVariables;
-            if (env) {
-                bodyObj.env = env;
+            if (srv.env && Object.keys(srv.env).length > 0) {
+                bodyObj.env = srv.env;
             }
-        } else if (config.type === 'remote' || config.type === 'sse' || config.type === 'streamable') {
-            bodyObj.type = config.type === 'remote' ? 'streamable' : config.type;
-            bodyObj.url = config.url;
-            if (config.headers) {
-                bodyObj.headers = config.headers;
+        } else if (srv.type === 'sse' || srv.type === 'streamable') {
+            if (!srv.url) return null;
+            bodyObj.url = srv.url;
+            if (srv.headers && Object.keys(srv.headers).length > 0) {
+                bodyObj.headers = srv.headers;
             }
-            if (config.timeout) {
-                bodyObj.timeout = parseTimeout(config.timeout);
+            if (srv.timeout) {
+                bodyObj.timeout = parseTimeout(srv.timeout);
             }
         } else {
-            // 尝试自动检测类型
-            if (config.command) {
-                bodyObj.type = 'stdio';
-                bodyObj.command = Array.isArray(config.command) ? config.command.join(' ') : config.command;
-                if (config.args) bodyObj.args = config.args;
-                var env2 = config.environment || config.env || config.envVars || config.environmentVariables;
-                if (env2) bodyObj.env = env2;
-            } else if (config.url) {
-                bodyObj.type = 'sse';
-                bodyObj.url = config.url;
-                if (config.headers) bodyObj.headers = config.headers;
-                if (config.timeout) bodyObj.timeout = parseTimeout(config.timeout);
-            } else {
-                return null;
-            }
+            return null;
         }
         
         return bodyObj;
     }
     
-    // 保持旧函数名兼容（可删除）
-    var convertToMcpBody = convertToMcpBodyWithNames;
+    window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
     
     window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
 })();
