@@ -44,6 +44,10 @@
         } else if (typeof modelsLoaded !== 'undefined') {
             modelsLoaded = false;
         }
+        // Also reload the global default model so new sessions pick it up
+        if (typeof window.loadModels === 'function') {
+            window.loadModels(null);
+        }
     }
 
     function renderLlmList(list, selected) {

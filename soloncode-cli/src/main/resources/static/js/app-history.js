@@ -886,6 +886,7 @@ initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
 initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
 
 window.reloadModels = reloadModels;
+window.loadModels = loadModels;
 
 // Initial load (no specific session, get default selected)
 loadModels(null);

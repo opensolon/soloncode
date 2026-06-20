@@ -435,6 +435,7 @@ public class WebSettingsController {
         settings.getModels().put(config.getNameOrModel(), config);
         if (isDefaultModel) {
             settings.setDefaultModel(config.getNameOrModel());
+            engine.setDefaultModel(config.getNameOrModel());
         }
         saveSettings();
 
