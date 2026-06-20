@@ -450,11 +450,30 @@
         var importedCount = 0;
         var skippedCount = 0;
         var errorCount = 0;
-        var errors = [];
+        var total = 0;
         
-        for (var name in mcpServers) {
-            if (!mcpServers.hasOwnProperty(name)) continue;
+        var names = Object.keys(mcpServers);
+        if (names.length === 0) {
+            showToast('未找到有效的 MCP 服务器配置', 'error');
+            return;
+        }
+        
+        function processNext(index) {
+            if (index >= names.length) {
+                // 全部处理完成
+                var message = '导入完成: ' + importedCount + ' 个服务器';
+                if (skippedCount > 0) {
+                    message += ', ' + skippedCount + ' 个已存在跳过';
+                }
+                if (errorCount > 0) {
+                    message += ', ' + errorCount + ' 个导入失败';
+                }
+                showToast(message);
+                loadMcpList();
+                return;
+            }
             
+            var name = names[index];
             var serverConfig = mcpServers[name];
             var serverName = name;
             
@@ -462,39 +481,30 @@
             var exists = mcpCachedList.some(function(s) { return s.name === serverName; });
             if (exists) {
                 skippedCount++;
-                continue;
+                processNext(index + 1);
+                return;
             }
             
             // 转换配置格式
             var mcpBody = convertToMcpBody(serverName, serverConfig);
             if (!mcpBody) {
                 errorCount++;
-                errors.push(serverName + ': 配置格式不支持');
-                continue;
+                processNext(index + 1);
+                return;
             }
             
             // 调用保存 API
-            importSingleMcpServer(mcpBody, function(success) {
+            importSingleMcpServerAsync(mcpBody, function(success) {
                 if (success) {
                     importedCount++;
                 } else {
                     errorCount++;
                 }
+                processNext(index + 1);
             });
         }
         
-        // 显示导入结果
-        setTimeout(function() {
-            var message = '导入完成: ' + importedCount + ' 个服务器';
-            if (skippedCount > 0) {
-                message += ', ' + skippedCount + ' 个已存在跳过';
-            }
-            if (errorCount > 0) {
-                message += ', ' + errorCount + ' 个导入失败';
-            }
-            showToast(message);
-            loadMcpList();
-        }, 500);
+        processNext(0);
     }
     
     /**
@@ -554,18 +564,17 @@
     }
     
     /**
-     * 导入单个 MCP 服务器
+     * 导入单个 MCP 服务器（异步版本）
      * @param {Object} bodyObj - 格式化后的服务器配置
-     * @param {Function} callback - 回调函数
+     * @param {Function} callback - 回调函数(success: bool)
      */
-    function importSingleMcpServer(bodyObj, callback) {
+    function importSingleMcpServerAsync(bodyObj, callback) {
         $.ajax({
             url: '/web/settings/mcp/servers/add',
             method: 'POST',
             data: JSON.stringify(bodyObj),
             contentType: 'application/json',
             dataType: 'json',
-            async: false,
             success: function(resp) {
                 callback(resp.code === 200);
             },
