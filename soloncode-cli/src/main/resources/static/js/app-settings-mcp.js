@@ -415,51 +415,6 @@
     }
     
     /**
-     * 解析可能包含注释的 JSON（JSON5 兼容）
-     * 支持去除单行注释(//) 和多行注释(斜杠+星号...星号+斜杠)，以及尾逗号
-     * @param {string} text - 原始文本
-     * @returns {Object} 解析后的配置对象
-     */
-    function parseJsonWithComments(text) {
-        // 先尝试标准解析（标准 JSON 直接通过，避免误伤 URL 中的 //）
-        try {
-            return JSON.parse(text);
-        } catch (e) {
-            // 标准解析失败，再走去注释逻辑处理
-        }
-        // 去除注释，使用负向后顾避开 https:// http:// 等 URL 中的 //
-        var cleaned = text.replace(/(?<!:)//.*$/gm, '')   // 单行注释
-                          .replace(/\/\*[\s\S]*?\*\//g, ''); // 多行注释
-        // 再去掉尾逗号（最后一个属性后的逗号）
-        cleaned = cleaned.replace(/,([\t\r\n ]+[}\]])/g, '$1');
-        return JSON.parse(cleaned);
-    }
-    
-    /**
-     * 检测并解析配置文件的格式
-     * @param {Object} config - 解析后的 JSON 对象
-     * @returns {{format: string, mcpServers: Object, name: string}} 检测结果
-     */
-    function detectFormat(config) {
-        // 1. OpenCode 格式 ($schema 字段)
-        if (config.$schema && typeof config.$schema === 'string' &&
-            config.$schema.indexOf('opencode.ai/config') !== -1 &&
-            config.mcp) {
-            return { format: 'OpenCode', mcpServers: config.mcp };
-        }
-        // 2. Claude/Cursor 等通用 mcpServers 格式
-        if (config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)) {
-            return { format: 'mcpServers', mcpServers: config.mcpServers };
-        }
-        // 3. 显式格式声明
-        if (config.format === 'mcp' && config.servers) {
-            return { format: 'explicit', mcpServers: config.servers };
-        }
-        // 未识别
-        return null;
-    }
-    
-    /**
      * 创建导入预览对话框（适配后端返回的结构化数据）
      * @param {{format:string, servers:Array}} data - 后端返回的解析结果
      * @param {Function} onConfirm - 确认回调，接收选中的服务器名列表
@@ -507,13 +462,12 @@
         var dialogHtml = '<div class="import-overlay" id="importPreviewOverlay">'
             + '<div class="import-dialog">'
             + '<div class="import-dialog-header">'
-            + '<span class="import-dialog-title">导入 MCP 服务器</span>'
+            + '<span class="import-dialog-title">导入 MCP 服务器（测试）</span>'
             + '<button class="import-dialog-close" id="importPreviewClose">&times;</button>'
             + '</div>'
             + '<div class="import-dialog-body">'
             + '<div class="import-summary">'
             + '检测到 <strong>' + servers.length + '</strong> 个 MCP 服务器配置 ' + formatTag
-            + '<br/><span class="import-hint">请勾选需要导入的服务器，已存在或格式错误的将自动跳过</span>'
             + '</div>'
             + '<div class="import-preview-list">' + previewItems + '</div>'
             + '</div>'
@@ -911,8 +865,6 @@
         
         return bodyObj;
     }
-    
-    window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
     
     window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
 })();
