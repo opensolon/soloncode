@@ -345,7 +345,7 @@
         html += '<input type="text" class="loop-input" id="loopFormCron" placeholder="0 */5 * * * ?"/>';
         html += '</div>';
         html += '</div>';
-        html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略</span></div>';
+        html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略（测试）</span></div>';
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
         html += '<div class="loop-form-group">';
         html += '<label>目标完成检测描述（goal）</label>';
