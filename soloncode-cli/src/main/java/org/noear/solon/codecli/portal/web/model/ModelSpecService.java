@@ -1,8 +1,7 @@
 package org.noear.solon.codecli.portal.web.model;
 
-import org.noear.solon.annotation.Component;
-import org.noear.solon.core.util.ResourceUtil;
 import org.noear.snack4.ONode;
+import org.noear.solon.net.http.HttpUtils;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,7 +20,7 @@ public class ModelSpecService {
     
     private void loadSpecs() {
         try {
-            String json = ResourceUtil.getResourceAsString("models.json", "UTF-8");
+            String json = HttpUtils.http("https://models.dev/models.json").get();
             if (json != null) {
                 ONode root = ONode.ofJson(json);
                 // 转换为 Map<String, ONode> 遍历
@@ -46,7 +45,7 @@ public class ModelSpecService {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             // 忽略加载失败
         }
     }
@@ -59,37 +58,19 @@ public class ModelSpecService {
         if (modelId == null || modelId.isEmpty()) {
             return null;
         }
-        
+
         // 尝试直接匹配
         ModelSpec spec = specs.get(modelId);
         if (spec != null && spec.getContext() > 0) {
             return spec.getContext();
         }
-        
-        // 尝试添加 openai/ 前缀
-        spec = specs.get("openai/" + modelId);
-        if (spec != null && spec.getContext() > 0) {
-            return spec.getContext();
+
+        for (ModelSpec spec1 : specs.values()) {
+            if (spec1.getName().equalsIgnoreCase(modelId)) {
+                return spec1.context;
+            }
         }
-        
-        // 尝试添加 anthropic/ 前缀
-        spec = specs.get("anthropic/" + modelId);
-        if (spec != null && spec.getContext() > 0) {
-            return spec.getContext();
-        }
-        
-        // 尝试添加 deepseek/ 前缀
-        spec = specs.get("deepseek/" + modelId);
-        if (spec != null && spec.getContext() > 0) {
-            return spec.getContext();
-        }
-        
-        // 尝试添加 google/ 前缀
-        spec = specs.get("google/" + modelId);
-        if (spec != null && spec.getContext() > 0) {
-            return spec.getContext();
-        }
-        
+
         return null;
     }
     
