@@ -378,6 +378,202 @@
     });
 
     // MCP 导入导出
-
+    
+    // 导入按钮点击事件
+    $('#mcpImportBtn').on('click', function () {
+        $('#mcpImportFileInput').trigger('click');
+    });
+    
+    // 文件选择变化事件
+    $('#mcpImportFileInput').on('change', function (e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                var json = e.target.result;
+                var config = JSON.parse(json);
+                importMcpServers(config);
+            } catch (error) {
+                showToast('文件解析失败: ' + error.message, 'error');
+            }
+        };
+        reader.readAsText(file);
+        // 重置文件输入，允许再次选择同一文件
+        e.target.value = '';
+    });
+    
+    /**
+     * 解析并导入 MCP 服务器配置
+     * @param {Object} config - 解析后的 JSON 配置对象
+     */
+    function importMcpServers(config) {
+        var mcpServers = {};
+        
+        // 检测 OpenCode 格式 (通过 $schema 字段)
+        if (config.$schema === 'https://opencode.ai/config.json' && config.mcp) {
+            mcpServers = config.mcp;
+        }
+        // 检查通用 MCP 格式 (mcpServers 字段)
+        else if (config.mcpServers) {
+            mcpServers = config.mcpServers;
+        }
+        // 尝试在顶层查找 MCP 配置 (ONode 模式)
+        else {
+            // 遍历顶层键，查找可能包含 MCP 服务器配置的对象
+            for (var key in config) {
+                if (config.hasOwnProperty(key) && typeof config[key] === 'object' && config[key] !== null) {
+                    var value = config[key];
+                    // 检查是否是 MCP 服务器配置对象
+                    if (value.command || value.url || value.type === 'stdio' || value.type === 'sse' || value.type === 'streamable') {
+                        mcpServers[key] = value;
+                    }
+                }
+            }
+        }
+        
+        if (Object.keys(mcpServers).length === 0) {
+            showToast('未找到有效的 MCP 服务器配置', 'error');
+            return;
+        }
+        
+        // 转换为标准格式并导入
+        importMcpServersFromConfig(mcpServers);
+    }
+    
+    /**
+     * 将 MCP 服务器配置导入到系统
+     * @param {Object} mcpServers - MCP 服务器配置对象
+     */
+    function importMcpServersFromConfig(mcpServers) {
+        var importedCount = 0;
+        var skippedCount = 0;
+        var errorCount = 0;
+        var errors = [];
+        
+        for (var name in mcpServers) {
+            if (!mcpServers.hasOwnProperty(name)) continue;
+            
+            var serverConfig = mcpServers[name];
+            var serverName = name;
+            
+            // 检查是否已存在同名服务器
+            var exists = mcpCachedList.some(function(s) { return s.name === serverName; });
+            if (exists) {
+                skippedCount++;
+                continue;
+            }
+            
+            // 转换配置格式
+            var mcpBody = convertToMcpBody(serverName, serverConfig);
+            if (!mcpBody) {
+                errorCount++;
+                errors.push(serverName + ': 配置格式不支持');
+                continue;
+            }
+            
+            // 调用保存 API
+            importSingleMcpServer(mcpBody, function(success) {
+                if (success) {
+                    importedCount++;
+                } else {
+                    errorCount++;
+                }
+            });
+        }
+        
+        // 显示导入结果
+        setTimeout(function() {
+            var message = '导入完成: ' + importedCount + ' 个服务器';
+            if (skippedCount > 0) {
+                message += ', ' + skippedCount + ' 个已存在跳过';
+            }
+            if (errorCount > 0) {
+                message += ', ' + errorCount + ' 个导入失败';
+            }
+            showToast(message);
+            loadMcpList();
+        }, 500);
+    }
+    
+    /**
+     * 将单个 MCP 服务器配置转换为标准格式
+     * @param {string} name - 服务器名称
+     * @param {Object} config - 原始配置
+     * @returns {Object|null} 转换后的配置对象
+     */
+    function convertToMcpBody(name, config) {
+        var bodyObj = {
+            name: name,
+            enabled: config.enabled !== false,
+            scope: 'user'
+        };
+        
+        // OpenCode 格式: type: 'local' -> stdio, type: 'remote' -> sse/streamable
+        if (config.type === 'local' || (!config.type && config.command)) {
+            bodyObj.type = 'stdio';
+            bodyObj.command = Array.isArray(config.command) ? config.command.join(' ') : config.command;
+            if (config.args) {
+                bodyObj.args = config.args;
+            } else if (Array.isArray(config.command) && config.command.length > 1) {
+                // 从 command 数组中提取参数
+                bodyObj.args = config.command.slice(1);
+                bodyObj.command = config.command[0];
+            }
+            if (config.environment || config.env) {
+                bodyObj.env = config.environment || config.env;
+            }
+        } else if (config.type === 'remote' || config.type === 'sse' || config.type === 'streamable') {
+            bodyObj.type = config.type === 'remote' ? 'streamable' : config.type;
+            bodyObj.url = config.url;
+            if (config.headers) {
+                bodyObj.headers = config.headers;
+            }
+            if (config.timeout) {
+                bodyObj.timeout = config.timeout;
+            }
+        } else {
+            // 尝试自动检测类型
+            if (config.command) {
+                bodyObj.type = 'stdio';
+                bodyObj.command = Array.isArray(config.command) ? config.command.join(' ') : config.command;
+                if (config.args) bodyObj.args = config.args;
+                if (config.environment || config.env) bodyObj.env = config.environment || config.env;
+            } else if (config.url) {
+                bodyObj.type = 'sse';
+                bodyObj.url = config.url;
+                if (config.headers) bodyObj.headers = config.headers;
+                if (config.timeout) bodyObj.timeout = config.timeout;
+            } else {
+                return null;
+            }
+        }
+        
+        return bodyObj;
+    }
+    
+    /**
+     * 导入单个 MCP 服务器
+     * @param {Object} bodyObj - 格式化后的服务器配置
+     * @param {Function} callback - 回调函数
+     */
+    function importSingleMcpServer(bodyObj, callback) {
+        $.ajax({
+            url: '/web/settings/mcp/servers/add',
+            method: 'POST',
+            data: JSON.stringify(bodyObj),
+            contentType: 'application/json',
+            dataType: 'json',
+            async: false,
+            success: function(resp) {
+                callback(resp.code === 200);
+            },
+            error: function() {
+                callback(false);
+            }
+        });
+    }
+    
     window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
 })();
