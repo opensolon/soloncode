@@ -428,15 +428,23 @@ updateWechatUI();
 updateFeishuUI();
 updateDingTalkUI();
 var origSetActiveSession = setActiveSession;
+var _sessionSwitchTimer = null;
 setActiveSession = function(sid) {
     origSetActiveSession(sid);
-    updateWechatUI();
-    updateFeishuUI();
-    updateDingTalkUI();
-    // 切换会话时刷新任务面板
-    if (window.loadTodos) window.loadTodos();
-    // 切换会话时重置上下文指示器
-    if (typeof resetContextIndicator === 'function') resetContextIndicator();
+    if (_sessionSwitchTimer) {
+        clearTimeout(_sessionSwitchTimer);
+    }
+    // 将非关键请求延迟到下一帧执行，让 UI 先完成切换
+    _sessionSwitchTimer = setTimeout(function() {
+        _sessionSwitchTimer = null;
+        updateWechatUI();
+        updateFeishuUI();
+        updateDingTalkUI();
+        // 切换会话时刷新任务面板
+        if (window.loadTodos) window.loadTodos();
+        // 切换会话时重置上下文指示器
+        if (typeof resetContextIndicator === 'function') resetContextIndicator();
+    }, 0);
 };
 
 wechatHeaderBtn.on('click', function() {

@@ -96,29 +96,39 @@ $(historyList).on('click', function(e) {
     }
 });
 
+var _updateHistoryUIPending = false;
 function updateHistoryUI() {
-    var html = '';
-    for (var i = 0; i < chatHistory.length; i++) {
-        var sess = sessionMap[chatHistory[i].sessionId];
-        var streaming = sess && sess.isStreaming;
-        var cls = 'sidebar-item' + (i === currentChatIndex ? ' active' : '') + (streaming ? ' streaming' : '');
+    if (_updateHistoryUIPending) return;
+    _updateHistoryUIPending = true;
+    requestAnimationFrame(function() {
+        _updateHistoryUIPending = false;
+        var html = '';
+        for (var i = 0; i < chatHistory.length; i++) {
+            var sess = sessionMap[chatHistory[i].sessionId];
+            var streaming = sess && sess.isStreaming;
+            var cls = 'sidebar-item' + (i === currentChatIndex ? ' active' : '') + (streaming ? ' streaming' : '');
 
-        html += '<div class="' + cls + '" data-idx="' + i + '">'
-            + '<span class="sidebar-item-label">' + escapeHtml(chatHistory[i].label) + '</span>';
-        // 任务进度 badge
-        var todoInfo = window.sessionTodoMap && window.sessionTodoMap[chatHistory[i].sessionId];
-        if (todoInfo && todoInfo.total > 0) {
-            var doneClass = todoInfo.done === todoInfo.total ? ' done' : '';
-            html += '<span class="sidebar-item-todo' + doneClass + '">' + todoInfo.done + '/' + todoInfo.total + '</span>';
+            html += '<div class="' + cls + '" data-idx="' + i + '">'
+                + '<span class="sidebar-item-label">' + escapeHtml(chatHistory[i].label) + '</span>';
+            // 任务进度 badge
+            var todoInfo = window.sessionTodoMap && window.sessionTodoMap[chatHistory[i].sessionId];
+            if (todoInfo && todoInfo.total > 0) {
+                var doneClass = todoInfo.done === todoInfo.total ? ' done' : '';
+                html += '<span class="sidebar-item-todo' + doneClass + '">' + todoInfo.done + '/' + todoInfo.total + '</span>';
+            }
+            if (streaming) {
+                html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
+            }
+            html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
+                + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
+                + '</div>';
         }
-        if (streaming) {
-            html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
+        var $list = $(historyList);
+        // 仅当 HTML 真正变化时才写入 DOM，避免无效重排
+        if ($list.html() !== html) {
+            $list.html(html);
         }
-        html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
-            + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
-            + '</div>';
-    }
-    $(historyList).html(html);
+    });
 }
 
 function startRename(idx) {
@@ -228,7 +238,10 @@ function loadMessages(sess) {
     $.get('/web/chat/messages?sessionId=' + encodeURIComponent(sess.sessionId), function(resp) {
         try {
             var msgs = resp.data;
-            $(sess.container).html('');
+            var realContainer = sess.container;
+            // 用临时容器批量构建 DOM，避免逐条 append 触发多次 layout
+            var tempDiv = document.createElement('div');
+            sess.container = tempDiv;
             resetStreamState(sess);
             for (var i = 0; i < msgs.length; i++) {
                 var m = msgs[i];
@@ -243,14 +256,27 @@ function loadMessages(sess) {
                     el.setAttribute('data-md-raw', sess.reasonBuffer);
                     $(el).html(renderMd(sess.reasonBuffer));
                     if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
-                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
+                    // 不在此处逐条调用 highlightCodeBlocks；循环结束后统一对真实容器调用一次
                     // 显示时间戳（连续助手消息取最后一条的时间）
                     setAssistantTime(sess, m.createdAt);
                 }
             }
+            // 恢复真实容器，一次性移入所有子节点
+            sess.container = realContainer;
+            $(realContainer).html('');
+            var fragment = document.createDocumentFragment();
+            while (tempDiv.firstChild) {
+                fragment.appendChild(tempDiv.firstChild);
+            }
+            realContainer.appendChild(fragment);
+            // 统一高亮所有代码块（user 消息的代码块已被 appendUserMessage 标记收集，不会重复）
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(realContainer);
             resetStreamState(sess);
             if (sess.sessionId === activeSessionId) scrollToBottom(true);
-        } catch (e) {}
+        } catch (e) {
+            // 异常时确保容器恢复
+            if (realContainer) sess.container = realContainer;
+        }
     });
 }
 

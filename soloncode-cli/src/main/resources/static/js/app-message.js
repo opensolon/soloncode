@@ -73,7 +73,8 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
 
     addImageLightbox(bubble);
     $(sess.container).append(row);
-    if (sess.sessionId === activeSessionId) scrollToBottom(true);
+    // 容器不在 DOM 树中（如 loadMessages 的临时容器阶段）时跳过滚动，避免无效回流
+    if (sess.sessionId === activeSessionId && document.contains(sess.container)) scrollToBottom(true);
 }
 
 function appendSystemNotice(sess, text) {

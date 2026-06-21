@@ -252,19 +252,45 @@ $('#chatImageInput').on('change', function(e) {
 
 /* ===== Marked ===== */
 if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true }); }
+var _mdCache = new Map();
+var _MD_CACHE_MAX = 100;
 function renderMd(text) {
-    if (typeof marked !== 'undefined') return marked.parse(text);
+    if (typeof marked !== 'undefined') {
+        if (!text) return '';
+        if (text.length < 5000) {
+            var cached = _mdCache.get(text);
+            if (cached) return cached;
+            var html = marked.parse(text);
+            _mdCache.set(text, html);
+            if (_mdCache.size > _MD_CACHE_MAX) {
+                var firstKey = _mdCache.keys().next().value;
+                _mdCache.delete(firstKey);
+            }
+            return html;
+        }
+        return marked.parse(text);
+    }
     return text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 }
 
 /* ===== Highlight.js ===== */
 function highlightCodeBlocks(container) {
     if (!container || typeof hljs === 'undefined') return;
-    var blocks = $(container).find('pre code');
-    for (var i = 0; i < blocks.length; i++) {
-        if (blocks[i].dataset.hljsHighlighted) continue;
-        blocks[i].dataset.hljsHighlighted = 'true';
-        try { hljs.highlightElement(blocks[i]); } catch(e) {}
+    var blocks = $(container).find('pre code:not([data-hljs-collected])');
+    if (blocks.length === 0) return;
+    blocks.each(function() { this.dataset.hljsCollected = 'true'; });
+    function doHighlight() {
+        blocks.each(function() {
+            if (!this.dataset.hljsHighlighted) {
+                this.dataset.hljsHighlighted = 'true';
+                try { hljs.highlightElement(this); } catch(e) {}
+            }
+        });
+    }
+    if (window.requestIdleCallback) {
+        requestIdleCallback(doHighlight, { timeout: 300 });
+    } else {
+        setTimeout(doHighlight, 50);
     }
 }
 
