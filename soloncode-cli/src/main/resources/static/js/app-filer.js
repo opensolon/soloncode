@@ -13,13 +13,13 @@
     var FILER_DEFAULT_WIDTH = 280;
 
     // ---- 同步 toggle 按钮位置 ----
-    function syncToggleBtnPosition() {
+    function syncToggleBtnPosition(knownWidth) {
         if (!$toggleBtn.length || !$panel.length) return;
         var collapsed = $panel.hasClass('collapsed');
         if (collapsed) {
             $toggleBtn.css('right', '4px');
         } else {
-            var w = $panel[0].offsetWidth;
+            var w = knownWidth || $panel[0].offsetWidth;
             $toggleBtn.css('right', (w - 14) + 'px');
         }
     }
@@ -31,6 +31,8 @@
         var isDragging = false;
         var startX = 0;
         var startWidth = 0;
+        var rafId = null;
+        var latestClientX = 0;
 
         $resizeHandle.on('mousedown', function(e) {
             if ($panel.hasClass('collapsed')) return;
@@ -44,18 +46,28 @@
 
         $(document).on('mousemove', function(e) {
             if (!isDragging) return;
-            var dx = startX - e.clientX; // 拖向左边 dx > 0
-            var newWidth = Math.max(FILER_MIN_WIDTH, Math.min(FILER_MAX_WIDTH, startWidth + dx));
-            $panel.css('width', newWidth + 'px');
-            localStorage.setItem('filer-width', newWidth);
-            syncToggleBtnPosition();
+            latestClientX = e.clientX;
+            if (rafId) return;
+            rafId = requestAnimationFrame(function() {
+                rafId = null;
+                var dx = startX - latestClientX;
+                var newWidth = Math.max(FILER_MIN_WIDTH, Math.min(FILER_MAX_WIDTH, startWidth + dx));
+                $panel.css('width', newWidth + 'px');
+                syncToggleBtnPosition(newWidth);
+            });
         });
 
         $(document).on('mouseup', function() {
             if (!isDragging) return;
             isDragging = false;
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
             $resizeHandle.removeClass('dragging');
             $(document.body).css({ cursor: '', userSelect: '' });
+            // 拖拽结束后一次性保存宽度，避免拖拽过程中反复写入 localStorage 阻塞主线程
+            var finalWidth = $panel[0].offsetWidth;
+            if (finalWidth >= FILER_MIN_WIDTH && finalWidth <= FILER_MAX_WIDTH) {
+                localStorage.setItem('filer-width', finalWidth);
+            }
         });
     }
 

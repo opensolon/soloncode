@@ -201,7 +201,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 /* ===== Chat View ===== */
 .chat-view { flex: 1; display: none; flex-direction: column; min-height: 0; }
 .chat-view.active { display: flex; }
-.messages-wrap { flex: 1; overflow-y: auto; }
+.messages-wrap { flex: 1; overflow-y: auto; contain: layout paint; }
 .messages-inner { max-width: 820px; margin: 0 auto; padding: 28px 24px 12px; }
 
 /* Message */
@@ -597,6 +597,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     flex-direction: column;
     flex-shrink: 0;
     height: 100vh;
+    contain: layout paint;
     transition: background 0.3s;
 }
 .filer-panel.collapsed {

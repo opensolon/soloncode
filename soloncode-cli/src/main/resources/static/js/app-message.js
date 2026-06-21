@@ -680,9 +680,9 @@ function appendContentChunk(sess, text, append) {
             var el = ensureAssistantBubble(sess);
             // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
             // 避免复制到被工具调用切开的中间片段。
+            // 流式过程中仅渲染 Markdown，跳过代码高亮和复制按钮以避免每帧全量重建 DOM；
+            // 这两项在 finishStream 中会做最终的完整处理。
             el.innerHTML = renderMd(sess.reasonBuffer);
-            addCodeBlockButtons(el);
-            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
 
             sess.contentRafId = null;
 
