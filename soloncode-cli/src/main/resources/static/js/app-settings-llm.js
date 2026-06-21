@@ -84,7 +84,13 @@
                 }
                 if (item.contextLength) {
                     var cl = item.contextLength;
-                    metaLine += ' / ' + (cl >= 1000 ? (cl % 1000 === 0 ? (cl / 1000) + 'k' : (cl / 1000).toFixed(1).replace(/\.0$/, '') + 'k') : cl);
+                    if (cl >= 1000000 && cl % 1000000 === 0) {
+                        metaLine += ' / ' + (cl / 1000000) + 'm';
+                    } else if (cl >= 1000) {
+                        metaLine += ' / ' + (cl % 1000 === 0 ? (cl / 1000) + 'k' : (cl / 1000).toFixed(1).replace(/\.0$/, '') + 'k');
+                    } else {
+                        metaLine += ' / ' + cl;
+                    }
                 }
 
                 var isDefault = name === selected;
@@ -144,7 +150,13 @@
         if (item.timeout) $('#llmTimeout').val(item.timeout);
         if (item.contextLength) {
             var cl2 = item.contextLength;
-            $('#llmContextLength').val(cl2 >= 1000 ? (cl2 % 1000 === 0 ? (cl2 / 1000) + 'k' : (cl2 / 1000).toFixed(1).replace(/\.0$/, '') + 'k') : cl2);
+            if (cl2 >= 1000000 && cl2 % 1000000 === 0) {
+                $('#llmContextLength').val((cl2 / 1000000) + 'm');
+            } else if (cl2 >= 1000) {
+                $('#llmContextLength').val(cl2 % 1000 === 0 ? (cl2 / 1000) + 'k' : (cl2 / 1000).toFixed(1).replace(/\.0$/, '') + 'k');
+            } else {
+                $('#llmContextLength').val(cl2);
+            }
         }
         if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
         // 回显“设为默认模型”勾选状态
@@ -165,8 +177,9 @@
         var contextLengthRaw = $('#llmContextLength').val().trim().replace(/[, _]/g, '');
         var contextLength = contextLengthRaw;
         if (contextLengthRaw) {
-            var match = contextLengthRaw.match(/^(\d+\.?\d*)k$/i);
-            contextLength = match ? Math.round(parseFloat(match[1]) * 1000) : parseInt(contextLengthRaw, 10);
+            var matchK = contextLengthRaw.match(/^(\d+\.?\d*)k$/i);
+            var matchM = contextLengthRaw.match(/^(\d+\.?\d*)m$/i);
+            contextLength = matchK ? Math.round(parseFloat(matchK[1]) * 1000) : matchM ? Math.round(parseFloat(matchM[1]) * 1000000) : parseInt(contextLengthRaw, 10);
         }
         if (contextLength) bodyObj.contextLength = contextLength;
         var optionsText = $('#llmDefaultOptions').val().trim();

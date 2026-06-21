@@ -16,6 +16,7 @@ function updateContextIndicator(chunk) {
     var percent = contextLength > 0 ? Math.round(tokens / contextLength * 100) : 0;
 
     function fmtK(n) {
+        if (n >= 1000000 && n % 1000000 === 0) return (n / 1000000) + 'm';
         if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1).replace(/\.0$/, '') + 'k';
         return n.toString();
     }

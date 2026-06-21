@@ -211,7 +211,7 @@
             + '<option value="128k">'
             + '<option value="256k">'
             + '<option value="512k">'
-            + '<option value="1024k">'
++ '<option value="1m">'
             + '</datalist>'
             + '</div>'
             + '</div>'
@@ -244,8 +244,17 @@
             }
 
             var newModel = { id: modelId, manual: true };
-            if (maxTokens && parseInt(maxTokens) > 0) {
-                newModel.maxInputTokens = parseInt(maxTokens);
+            if (maxTokens) {
+                var trimmed = maxTokens.replace(/[, _]/g, '');
+                var matchK = trimmed.match(/^(\d+\.?\d*)k$/i);
+                var matchM = trimmed.match(/^(\d+\.?\d*)m$/i);
+                if (matchK) {
+                    newModel.maxInputTokens = Math.round(parseFloat(matchK[1]) * 1000);
+                } else if (matchM) {
+                    newModel.maxInputTokens = Math.round(parseFloat(matchM[1]) * 1000000);
+                } else if (parseInt(trimmed) > 0) {
+                    newModel.maxInputTokens = parseInt(trimmed);
+                }
             }
             fetchedModels.push(newModel);
             renderModelsList();
