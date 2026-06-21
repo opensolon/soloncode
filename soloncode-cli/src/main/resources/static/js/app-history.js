@@ -372,8 +372,8 @@ function applyCmdSelection(inputEl, completeEl) {
             // 构建新的值（命令/技能/子代理名称后追加空格）
             inputEl.value = textBefore + trigger + cmd.name + ' ' + argsStr;
             
-            // 更新光标位置到命令后面
-            var newCursorPos = textBefore.length + trigger.length + cmd.name.length;
+            // 更新光标位置到命令和空格后面
+            var newCursorPos = textBefore.length + trigger.length + cmd.name.length + 1;
             inputEl.setSelectionRange(newCursorPos, newCursorPos);
         } else {
             // 如果没有找到前缀，直接在开头插入
