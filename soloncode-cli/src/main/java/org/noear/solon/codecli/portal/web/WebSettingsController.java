@@ -290,7 +290,7 @@ public class WebSettingsController {
                 item.put("apiKey", config.getApiKey());
                 item.put("contextLength", config.getContextLength());
                 item.put("enabled", config.isEnabled());
-                item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
+                item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_USER);
                 item.put("provider", config.getProvider());  // 所属供应商
                 list.add(item);
             }
@@ -332,7 +332,7 @@ public class WebSettingsController {
         item.put("name", config.getNameOrModel());
         item.put("apiKey", config.getApiKey());
         item.put("standard", config.getStandardOrProvider());
-        item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_GLOBAL);
+        item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_USER);
         item.put("provider", config.getProvider());  // 所属供应商
         if (config.getTimeout() != null) {
             item.put("timeout", config.getTimeout().getSeconds() + "s");
@@ -479,7 +479,7 @@ public class WebSettingsController {
             item.put("name", name);
             item.put("type", params.getTypeOrTransport() != null ? params.getTypeOrTransport() : "stdio");
             item.put("enabled", params.isEnabled());
-            item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_GLOBAL);
+            item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_USER);
             if ("stdio".equals(params.getTypeOrTransport())) {
                 item.put("command", params.getCommand());
                 if (params.getArgs() != null) {
@@ -526,9 +526,9 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
-        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL;
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER;
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
-            scope = AgentFlags.SCOPE_GLOBAL;
+            scope = AgentFlags.SCOPE_USER;
         }
 
         McpServerDo params = new McpServerDo();
@@ -633,9 +633,9 @@ public class WebSettingsController {
         // 构建新参数
         String type = root.hasKey("type") ? root.get("type").getString() : existing.getTypeOrTransport();
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
-        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL);
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER);
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
-            scope = AgentFlags.SCOPE_GLOBAL;
+            scope = AgentFlags.SCOPE_USER;
         }
 
         McpServerDo params = new McpServerDo();
@@ -1098,7 +1098,7 @@ public class WebSettingsController {
             item.put("apiBaseUrl", source.getApiBaseUrl());
             item.put("docUrl", source.getDocUrl());
             item.put("enabled", source.isEnabled());
-            item.put("scope", source.getScope() != null ? source.getScope() : AgentFlags.SCOPE_GLOBAL);
+            item.put("scope", source.getScope() != null ? source.getScope() : AgentFlags.SCOPE_USER);
             if (source.getHeaders() != null) {
                 item.put("headers", source.getHeaders());
             }
@@ -1130,9 +1130,9 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
-        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL;
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER;
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
-            scope = AgentFlags.SCOPE_GLOBAL;
+            scope = AgentFlags.SCOPE_USER;
         }
 
         ApiSourceDo source = new ApiSourceDo();
@@ -1192,9 +1192,9 @@ public class WebSettingsController {
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
 
         // 构建新配置
-        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL);
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER);
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
-            scope = AgentFlags.SCOPE_GLOBAL;
+            scope = AgentFlags.SCOPE_USER;
         }
         ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(root.hasKey("apiBaseUrl") ? root.get("apiBaseUrl").getString() : existing.getApiBaseUrl());
@@ -1462,9 +1462,9 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
-        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL;
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER;
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
-            scope = AgentFlags.SCOPE_GLOBAL;
+            scope = AgentFlags.SCOPE_USER;
         }
 
         LspServerDo params = new LspServerDo();
@@ -1540,9 +1540,9 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
-        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL);
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER);
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
-            scope = AgentFlags.SCOPE_GLOBAL;
+            scope = AgentFlags.SCOPE_USER;
         }
 
         LspServerDo params = new LspServerDo();
@@ -1662,7 +1662,7 @@ public class WebSettingsController {
             item.put("apiUrl", provider.getApiUrl());
             item.put("apiKey", maskApiKey(provider.getApiKey()));
             item.put("enabled", provider.isEnabled());
-            item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_GLOBAL);
+            item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_USER);
             item.put("models", provider.getModels());
             list.add(item);
         }
@@ -1692,7 +1692,7 @@ public class WebSettingsController {
         item.put("apiUrl", provider.getApiUrl());
         item.put("apiKey", provider.getApiKey());
         item.put("enabled", provider.isEnabled());
-        item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_GLOBAL);
+        item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_USER);
         item.put("models", provider.getModels());
         return Result.succeed(item);
     }
@@ -1721,7 +1721,7 @@ public class WebSettingsController {
         provider.setApiUrl(root.get("apiUrl").getString());
         provider.setApiKey(root.get("apiKey").getString());
         provider.setEnabled(root.get("enabled").getBoolean(true));
-        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_GLOBAL);
+        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER);
 
         // 解析模型列表（直接存储 ModelInfo）
         if (root.hasKey("models") && root.get("models").isArray()) {
@@ -1783,7 +1783,7 @@ public class WebSettingsController {
         provider.setApiUrl(root.hasKey("apiUrl") ? root.get("apiUrl").getString() : existing.getApiUrl());
         provider.setApiKey(root.hasKey("apiKey") ? root.get("apiKey").getString() : existing.getApiKey());
         provider.setEnabled(root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : existing.isEnabled());
-        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_GLOBAL));
+        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER));
 
         // 解析模型列表（直接存储 ModelInfo）
         if (root.hasKey("models") && root.get("models").isArray()) {
@@ -2125,7 +2125,7 @@ public class WebSettingsController {
 
             MountDo mountDo = settings.getMountPools().get(entry.getAlias());
             if (mountDo == null) {
-                item.put("scope", AgentFlags.SCOPE_GLOBAL);
+                item.put("scope", AgentFlags.SCOPE_USER);
             } else {
                 item.put("scope", mountDo.getScope());
             }
@@ -2158,7 +2158,7 @@ public class WebSettingsController {
         }
 
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
-            scope = AgentFlags.SCOPE_GLOBAL;
+            scope = AgentFlags.SCOPE_USER;
         }
 
         MountDo mountDo = new MountDo(
@@ -2386,7 +2386,7 @@ public class WebSettingsController {
         String standard = root.get("standard").getString("openai");
         String apiUrl = root.get("apiUrl").getString();
         String apiKey = root.get("apiKey").getString();
-        String scope = root.get("scope").getString(AgentFlags.SCOPE_GLOBAL);
+        String scope = root.get("scope").getString(AgentFlags.SCOPE_USER);
         
         // 解析模型列表
         ONode modelsNode = root.get("models");

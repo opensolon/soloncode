@@ -45,7 +45,7 @@ public class ProviderDo implements Serializable {
     /**
      * 作用域：global（全局）/ local（工作区）
      */
-    private String scope = AgentFlags.SCOPE_GLOBAL;
+    private String scope = AgentFlags.SCOPE_USER;
 
     /**
      * 该供应商下的模型列表（使用 ModelInfo 存储完整模型信息）

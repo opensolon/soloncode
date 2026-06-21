@@ -14,7 +14,7 @@ public class ModelDo extends ChatConfig {
     private boolean visibled = true;
 
     //作用域（全局或本地）
-    private String scope = AgentFlags.SCOPE_GLOBAL;
+    private String scope = AgentFlags.SCOPE_USER;
     private Map<String, Object> capabilities;
 
 

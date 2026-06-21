@@ -36,7 +36,7 @@ public class AgentFlags {
     public final static String FLAG_ACP = "acp";
     public final static String FLAG_WEB = "web";
 
-    public final static String SCOPE_GLOBAL = "user"; //作用域：全局
+    public final static String SCOPE_USER = "user"; //作用域：用户（用局）
     public final static String SCOPE_LOCAL = "workspace"; //作用域：本地
 
     public static String getVersion() {

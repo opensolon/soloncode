@@ -20,7 +20,7 @@ import java.io.Serializable;
 @Setter
 public class MountDo implements Serializable {
     //作用域（全局或本地）
-    private String scope = AgentFlags.SCOPE_GLOBAL;
+    private String scope = AgentFlags.SCOPE_USER;
 
     //描述
     private String description;

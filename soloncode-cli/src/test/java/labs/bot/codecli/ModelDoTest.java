@@ -14,14 +14,14 @@ public class ModelDoTest {
         model.setStandard("openai");
         model.setApiUrl("https://api.test.com");
         model.setApiKey("test-key");
-        model.setScope("global");
+        model.setScope("user");
         
         assertEquals("test-name", model.getNameOrModel());
         assertEquals("test-model", model.getModel());
         assertEquals("openai", model.getStandardOrProvider());
         assertEquals("https://api.test.com", model.getApiUrl());
         assertEquals("test-key", model.getApiKey());
-        assertEquals("global", model.getScope());
+        assertEquals("user", model.getScope());
         
         System.out.println("ModelDo creation test passed");
     }

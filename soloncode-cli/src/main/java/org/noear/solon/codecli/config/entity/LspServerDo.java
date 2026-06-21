@@ -10,7 +10,7 @@ import org.noear.solon.codecli.config.AgentFlags;
  */
 public class LspServerDo extends LspServerParameters {
     //作用域（全局或本地）
-    private String scope = AgentFlags.SCOPE_GLOBAL;
+    private String scope = AgentFlags.SCOPE_USER;
 
     public void setScope(String scope) {
         this.scope = scope;
