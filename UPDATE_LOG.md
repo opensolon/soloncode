@@ -1,5 +1,5 @@
 
-### v2026.6.22
+### v2026.6.21
 
 * 修复 soloncode web 设置/默认模型后没有马上生效的问题
 * 添加 soloncode web 设置/供应商管理面板
@@ -8,7 +8,7 @@
 * 优化 soloncode web 关闭浏览器密码填充提示
 * 细节优化
 
-### v2026.6.22
+### v2026.6.20
 
 * 添加 soloncode web 设置 mcp 导入功能
 * 添加 soloncode web 设置 供应商功能
