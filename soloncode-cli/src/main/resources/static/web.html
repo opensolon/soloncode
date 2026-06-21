@@ -697,11 +697,11 @@
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>接口地址 <span class="required">*</span></label>
+                                    <label>API 地址 <span class="required">*</span></label>
                                     <input type="text" id="llmApiUrl" placeholder="https://api.deepseek.com/v1/chat/completions"/>
                                 </div>
                                 <div class="form-group">
-                                    <label>接口密钥</label>
+                                    <label>API 密钥</label>
                                     <div class="password-input-group">
                                         <input type="password" id="llmApiKey"/>
                                         <button class="password-toggle" id="llmApiKeyToggle" title="显示/隐藏">
@@ -1219,6 +1219,14 @@
                                     <input type="text" id="providerName" placeholder="deepseek"/>
                                 </div>
                                 <div class="form-group">
+                                    <label>作用域</label>
+                                    <input type="hidden" id="providerScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="providerScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="local" type="button">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
                                     <label>接口规范</label>
                                     <select id="providerStandard">
                                         <option value="openai">OpenAI Chat Completions BaseUrl / 兼容接口</option>
@@ -1235,16 +1243,8 @@
                                     <input type="password" id="providerApiKey" placeholder="sk-xxx"/>
                                 </div>
                                 <div class="form-group">
-                                    <label>作用域</label>
-                                    <input type="hidden" id="providerScope" value="user"/>
-                                    <div class="settings-scope-toggle" data-target="providerScope">
-                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
-                                        <button class="settings-scope-btn" data-scope="local" type="button">工作区（本地）</button>
-                                    </div>
-                                </div>
-                                <div class="form-group">
                                     <div class="form-group-header">
-                                        <label>模型列表</label>
+                                        <label>模型管理</label>
                                         <div class="provider-model-header-actions">
                                             <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1255,7 +1255,7 @@
                                         </div>
                                     </div>
                                     <div class="provider-models-list" id="providerModelsList"></div>
-                                    <div class="provider-models-empty" id="providerModelsEmpty">点击右侧 + 添加模型，或 ⟳ 从 API 拉取</div>
+                                    <div class="provider-models-empty" id="providerModelsEmpty">点击右侧 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加模型，或 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 从 API 拉取</div>
                                 </div>
                                 
                                 <div class="form-actions form-actions-end">
