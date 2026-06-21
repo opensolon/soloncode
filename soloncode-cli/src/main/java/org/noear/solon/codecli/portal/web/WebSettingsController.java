@@ -1738,6 +1738,9 @@ public class WebSettingsController {
                 if (modelNode.hasKey("maxInputTokens")) {
                     modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
                 }
+                if (modelNode.hasKey("manual")) {
+                    modelInfo.setManual(modelNode.get("manual").getBoolean());
+                }
                 models.add(modelInfo);
             }
             provider.setModels(models);
@@ -1797,7 +1800,22 @@ public class WebSettingsController {
                 if (modelNode.hasKey("maxInputTokens")) {
                     modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
                 }
+                if (modelNode.hasKey("manual")) {
+                    modelInfo.setManual(modelNode.get("manual").getBoolean());
+                }
                 models.add(modelInfo);
+            }
+            // 防御性：补回前端可能遗漏的手动模型
+            if (existing.getModels() != null) {
+                java.util.Set<String> newModelIds = new java.util.HashSet<>();
+                for (ModelInfo mi : models) {
+                    newModelIds.add(mi.getId());
+                }
+                for (ModelInfo oldModel : existing.getModels()) {
+                    if (oldModel.isManual() && !newModelIds.contains(oldModel.getId())) {
+                        models.add(oldModel);
+                    }
+                }
             }
             provider.setModels(models);
         } else {

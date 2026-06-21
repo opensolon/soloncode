@@ -864,6 +864,77 @@ select[disabled] {
     vertical-align: middle;
 }
 
+/* 模型列表标题栏操作按钮 */
+.provider-model-header-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.provider-model-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.provider-model-icon-btn:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    background: var(--bg-hover);
+}
+
+.provider-model-icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 手动添加模型对话框 */
+.provider-dialog-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.provider-dialog-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* 手动模型标签 */
+.provider-model-manual-tag {
+    display: inline-block;
+    font-size: 10px;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* 手动模型的删除按钮 */
+.provider-model-remove-btn {
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 2px;
+    border: none;
+    background: none;
+    display: flex;
+    align-items: center;
+}
+
+.provider-model-remove-btn:hover {
+    color: #ef4444;
+}
+
 /* ==================== MCP 导入对话框 ==================== */
 .import-overlay {
     position: fixed;

@@ -28,4 +28,8 @@ public class ModelInfo {
     private Long maxInputTokens;
     private Long maxTokens;
     private Map<String, Object> capabilities;
+
+    /** 是否为手动添加的模型（动态刷新时不被清除） */
+    @Builder.Default
+    private boolean manual = false;
 }

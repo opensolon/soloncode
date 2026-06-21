@@ -1245,13 +1245,17 @@
                                 <div class="form-group">
                                     <div class="form-group-header">
                                         <label>模型列表</label>
-                                        <button class="settings-mini-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                                            拉取
-                                        </button>
+                                        <div class="provider-model-header-actions">
+                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                            </button>
+                                            <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="provider-models-list" id="providerModelsList"></div>
-                                    <div class="provider-models-empty" id="providerModelsEmpty">点击"拉取"获取可用模型</div>
+                                    <div class="provider-models-empty" id="providerModelsEmpty">点击右侧 + 添加模型，或 ⟳ 从 API 拉取</div>
                                 </div>
                                 
                                 <div class="form-actions form-actions-end">

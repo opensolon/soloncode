@@ -45,6 +45,17 @@
             fetchModels();
         });
 
+        // 手动添加模型
+        $('#providerAddModelBtn').on('click', function () {
+            addManualModel();
+        });
+
+        // 模型列表 - 删除手动模型
+        $modelsList.on('click', '.provider-model-remove-btn', function () {
+            var modelId = $(this).closest('.provider-model-item').data('model-id');
+            removeManualModel(modelId);
+        });
+
         // 保存按钮
         $('#providerSaveBtn').on('click', function () {
             saveProvider();
@@ -181,6 +192,59 @@
     // ==================== 模型列表 ====================
     var llmModelsCache = {}; // 缓存 LLM 模型列表，用于判断是否已同步
 
+    function addManualModel() {
+        var dialogHtml = '<div style="padding:4px 0;">' +
+            '<div class="provider-dialog-field">' +
+                '<label class="provider-dialog-label">模型名称 <span style="color:var(--danger-color)">*</span></label>' +
+                '<input type="text" id="manualModelName" class="settings-input" placeholder="例如 gpt-4o-mini" style="width:100%;box-sizing:border-box;">' +
+            '</div>' +
+            '<div class="provider-dialog-field" style="margin-top:14px;">' +
+                '<label class="provider-dialog-label">上下文大小 (token)</label>' +
+                '<input type="number" id="manualModelTokens" class="settings-input" placeholder="例如 128000" value="4096" style="width:100%;box-sizing:border-box;">' +
+            '</div>' +
+        '</div>';
+
+        layui.layer.open({
+            type: 1,
+            title: '手动添加模型',
+            area: ['420px', '250px'],
+            content: dialogHtml,
+            btn: ['确认添加', '取消'],
+            yes: function(index, layero) {
+                var modelId = $(layero).find('#manualModelName').val().trim();
+                var maxTokens = $(layero).find('#manualModelTokens').val().trim();
+
+                if (!modelId) {
+                    layui.layer.msg('请输入模型名称', { icon: 0 });
+                    return;
+                }
+
+                var exists = fetchedModels.some(function (m) {
+                    return m.id === modelId;
+                });
+                if (exists) {
+                    layui.layer.msg('模型 "' + modelId + '" 已存在', { icon: 0 });
+                    return;
+                }
+
+                var newModel = { id: modelId, manual: true };
+                if (maxTokens && parseInt(maxTokens) > 0) {
+                    newModel.maxInputTokens = parseInt(maxTokens);
+                }
+                fetchedModels.push(newModel);
+                renderModelsList();
+                layui.layer.close(index);
+            }
+        });
+    }
+
+    function removeManualModel(modelId) {
+        fetchedModels = fetchedModels.filter(function (m) {
+            return m.id !== modelId;
+        });
+        renderModelsList();
+    }
+
     function fetchModels() {
         var apiUrl = $('#providerApiUrl').val();
         var apiKey = $('#providerApiKey').val();
@@ -203,16 +267,32 @@
                 standard: standard
             },
             success: function (res) {
-                $btn.prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 拉取');
+                $btn.prop('disabled', false).html('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>');
                 if (res.code === 200) {
                     try {
                         var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
                         var models = data.data || data.models || data || [];
-                        fetchedModels = models.map(function (m) {
-                            return {
-                                id: m.id || m.name || m
-                            };
+                        // 保留手动添加的模型，合并拉取的模型
+                        var manualModels = fetchedModels.filter(function (m) {
+                            return m.manual === true;
                         });
+                        var fetchedMapped = models.map(function (m) {
+                            return { id: m.id || m.name || m, manual: false };
+                        });
+                        // 手动模型去重：如果手动模型 id 已在拉取列表中，保留手动标记
+                        var fetchedIds = {};
+                        fetchedMapped.forEach(function (m) { fetchedIds[m.id] = m; });
+                        manualModels.forEach(function (mm) {
+                            if (fetchedIds[mm.id]) {
+                                fetchedIds[mm.id].manual = true;
+                                if (mm.maxInputTokens) {
+                                    fetchedIds[mm.id].maxInputTokens = mm.maxInputTokens;
+                                }
+                            } else {
+                                fetchedMapped.push(mm);
+                            }
+                        });
+                        fetchedModels = fetchedMapped;
                         // 加载 LLM 模型列表缓存，用于判断同步状态
                         loadLlmModelsCache(function () {
                             renderModelsList();
@@ -226,7 +306,7 @@
                 }
             },
             error: function (xhr) {
-                $btn.prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 拉取');
+                $btn.prop('disabled', false).html('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>');
                 layui.layer.msg('拉取模型列表失败: ' + (xhr.responseText || '网络错误'), { icon: 2 });
             }
         });
@@ -271,11 +351,16 @@
             // 使用 LLM 缓存的启用状态，如果未同步则使用供应商的启用状态
             var enabled = isSynced ? (syncedModel.enabled !== false && syncedModel.visibled !== false) : providerEnabled;
 
+            var manualTag = model.manual ? ' <span class="provider-model-manual-tag">手动</span>' : '';
+            var removeBtn = model.manual
+                ? '<button class="provider-model-remove-btn" title="移除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+                : '';
             html += '<div class="provider-model-item' + (!enabled ? ' disabled' : '') + '" data-model-id="' + model.id + '">' +
                 '<div class="provider-model-info">' +
-                    '<div class="provider-model-name">' + model.id + (isSynced ? ' <span class="provider-model-synced">已同步</span>' : '') + '</div>' +
+                    '<div class="provider-model-name">' + model.id + manualTag + (isSynced ? ' <span class="provider-model-synced">已同步</span>' : '') + '</div>' +
                 '</div>' +
                 '<div class="provider-model-actions">' +
+                    removeBtn +
                     '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">' +
                         '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' class="provider-model-toggle" data-synced="' + isSynced + '" data-llm-name="' + llmName + '"/>' +
                         '<span class="toggle-slider"></span>' +
@@ -334,7 +419,11 @@
         var apiKey = $('#providerApiKey').val();
         var scope = $('#providerScope').val();
         var models = fetchedModels.map(function (m) {
-            return { id: m.id };
+            var model = { id: m.id, manual: m.manual || false };
+            if (m.maxInputTokens) {
+                model.maxInputTokens = m.maxInputTokens;
+            }
+            return model;
         });
 
         if (!name) {
