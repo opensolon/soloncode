@@ -6,6 +6,7 @@ import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.session.FileAgentSession;
+import org.noear.solon.ai.chat.CacheControl;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.talents.mount.MountDir;
@@ -107,6 +108,7 @@ public class Configurator {
                 .mcpRetries(settings.getGeneral().getModelRetries())
                 .toolsAdd(settings.getPermission().getTools())
                 .disallowedToolsAdd(settings.getPermission().getDisallowedTools())
+                .cacheControl(CacheControl.ofEphemeral())
                 .build();
 
 
