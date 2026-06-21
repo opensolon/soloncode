@@ -473,7 +473,7 @@
             + '</div>'
             + '<div class="import-dialog-footer">'
             + '<button class="btn-secondary" id="importPreviewCancel">取消</button>'
-            + '<button class="btn-primary" id="importPreviewConfirm">导入所选 (<span id="importSelectedCount">' + servers.filter(function(s){return !mcpCachedList.some(function(c){return c.name===s.name;}) && !s.error;}).length + ')</span>)</button>'
+            + '<button class="btn-primary" id="importPreviewConfirm">导入所选 (<span id="importSelectedCount">' + servers.filter(function(s){return !mcpCachedList.some(function(c){return c.name===s.name;}) && !s.error;}).length + '</span>)</button>'
             + '</div>'
             + '</div>'
             + '</div>';

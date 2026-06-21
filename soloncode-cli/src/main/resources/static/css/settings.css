@@ -895,19 +895,6 @@ select[disabled] {
     cursor: not-allowed;
 }
 
-/* 手动添加模型对话框 */
-.provider-dialog-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.provider-dialog-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
 /* 手动模型标签 */
 .provider-model-manual-tag {
     display: inline-block;
@@ -1187,4 +1174,68 @@ select[disabled] {
     font-size: 12px;
     color: var(--text-tertiary);
     text-align: center;
+}
+
+/* ==================== 手动添加模型对话框 ==================== */
+.model-add-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: settings-fade-in 0.2s ease-out;
+}
+
+.model-add-dialog {
+    background: var(--bg-primary);
+    border-radius: 12px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+    width: 420px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    animation: settings-slide-up 0.25s ease-out;
+}
+
+.model-add-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.model-add-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.model-add-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+.model-add-close:hover {
+    color: var(--text-primary);
+}
+
+.model-add-body {
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.model-add-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color);
 }

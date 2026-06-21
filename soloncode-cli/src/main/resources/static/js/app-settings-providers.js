@@ -193,49 +193,72 @@
     var llmModelsCache = {}; // 缓存 LLM 模型列表，用于判断是否已同步
 
     function addManualModel() {
-        var dialogHtml = '<div style="padding:4px 0;">' +
-            '<div class="provider-dialog-field">' +
-                '<label class="provider-dialog-label">模型名称 <span style="color:var(--danger-color)">*</span></label>' +
-                '<input type="text" id="manualModelName" class="settings-input" placeholder="例如 gpt-4o-mini" style="width:100%;box-sizing:border-box;">' +
-            '</div>' +
-            '<div class="provider-dialog-field" style="margin-top:14px;">' +
-                '<label class="provider-dialog-label">上下文大小 (token)</label>' +
-                '<input type="number" id="manualModelTokens" class="settings-input" placeholder="例如 128000" value="4096" style="width:100%;box-sizing:border-box;">' +
-            '</div>' +
-        '</div>';
+        var dialogHtml = '<div class="model-add-overlay" id="modelAddOverlay">'
+            + '<div class="model-add-dialog">'
+            + '<div class="model-add-header">'
+            + '<span class="model-add-title">手动添加模型</span>'
+            + '<button class="model-add-close" id="modelAddClose">&times;</button>'
+            + '</div>'
+            + '<div class="model-add-body">'
+            + '<div class="form-group">'
+            + '<label>模型名称 <span class="required">*</span></label>'
+            + '<input type="text" id="manualModelName" placeholder="例如 gpt-4o-mini">'
+            + '</div>'
+            + '<div class="form-group">'
+            + '<label>上下文长度（可选）</label>'
+            + '<input type="text" id="manualModelTokens" inputmode="numeric" placeholder="1000k（模型上下文长度）">'
+            + '</div>'
+            + '</div>'
+            + '<div class="model-add-footer">'
+            + '<button class="btn-secondary" id="modelAddCancel">取消</button>'
+            + '<button class="btn-primary" id="modelAddConfirm">确认添加</button>'
+            + '</div>'
+            + '</div>'
+            + '</div>';
 
-        layui.layer.open({
-            type: 1,
-            title: '手动添加模型',
-            area: ['420px', '250px'],
-            content: dialogHtml,
-            btn: ['确认添加', '取消'],
-            yes: function(index, layero) {
-                var modelId = $(layero).find('#manualModelName').val().trim();
-                var maxTokens = $(layero).find('#manualModelTokens').val().trim();
+        $('body').append(dialogHtml);
 
-                if (!modelId) {
-                    layui.layer.msg('请输入模型名称', { icon: 0 });
-                    return;
-                }
+        var $overlay = $('#modelAddOverlay');
 
-                var exists = fetchedModels.some(function (m) {
-                    return m.id === modelId;
-                });
-                if (exists) {
-                    layui.layer.msg('模型 "' + modelId + '" 已存在', { icon: 0 });
-                    return;
-                }
+        function doAdd() {
+            var modelId = $overlay.find('#manualModelName').val().trim();
+            var maxTokens = $overlay.find('#manualModelTokens').val().trim();
 
-                var newModel = { id: modelId, manual: true };
-                if (maxTokens && parseInt(maxTokens) > 0) {
-                    newModel.maxInputTokens = parseInt(maxTokens);
-                }
-                fetchedModels.push(newModel);
-                renderModelsList();
-                layui.layer.close(index);
+            if (!modelId) {
+                layui.layer.msg('请输入模型名称', { icon: 0 });
+                return;
             }
+
+            var exists = fetchedModels.some(function (m) {
+                return m.id === modelId;
+            });
+            if (exists) {
+                layui.layer.msg('模型 "' + modelId + '" 已存在', { icon: 0 });
+                return;
+            }
+
+            var newModel = { id: modelId, manual: true };
+            if (maxTokens && parseInt(maxTokens) > 0) {
+                newModel.maxInputTokens = parseInt(maxTokens);
+            }
+            fetchedModels.push(newModel);
+            renderModelsList();
+            $overlay.remove();
+        }
+
+        $('#modelAddConfirm').on('click', doAdd);
+        $('#modelAddCancel, #modelAddClose').on('click', function() {
+            $overlay.remove();
         });
+        $overlay.on('click', function(e) {
+            if (e.target === this) $overlay.remove();
+        });
+        $overlay.on('keypress', 'input', function(e) {
+            if (e.which === 13) doAdd();
+        });
+        setTimeout(function() {
+            $overlay.find('#manualModelName').focus();
+        }, 100);
     }
 
     function removeManualModel(modelId) {
