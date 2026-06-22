@@ -1,4 +1,12 @@
 
+### v2026.6.22
+
+* 新增 soloncode /interpret 命令（支持跨会话中断）
+* 添加 soloncode /continue 命令 sessionId 参数支持（支持跨会话继续）
+* 优化 soloncode WebGate 允许中断命令通过忙碌检查
+* 优化 soloncode web 面板拖拽性能；延迟消息流代码高亮；为滚动区域和面板添加contain布局
+* 细节优化
+
 ### v2026.6.21
 
 * 修复 soloncode web 设置/默认模型后没有马上生效的问题
