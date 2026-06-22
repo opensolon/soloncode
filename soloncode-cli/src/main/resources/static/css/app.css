@@ -570,6 +570,49 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-btn-secondary { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-color); cursor: pointer; font-size: 13px; padding: 6px 16px; border-radius: 6px; }
 .loop-btn-secondary:hover { background: var(--border-color); }
 
+/* ===== Goal 状态样式 ===== */
+.loop-goal-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; line-height: 18px; cursor: default; }
+.loop-goal-badge svg { width: 11px; height: 11px; flex-shrink: 0; }
+.loop-goal-badge.pursuing { color: #8b5cf6; background: #f3f0ff; }
+.loop-goal-badge.paused { color: #6b7280; background: #f3f4f6; }
+.loop-goal-badge.achieved { color: #059669; background: #ecfdf5; }
+.loop-goal-badge.unmet { color: #d9534f; background: #fdf0ef; }
+.loop-goal-badge.budget_limited { color: #ea580c; background: #fff7ed; }
+.loop-goal-badge.terminated { color: #9ca3af; background: #f9fafb; }
+
+/* Goal 行内标签（列表中的轻量状态指示） */
+.loop-item-goal-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    line-height: 16px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.loop-item-goal-inline.pursuing { color: #8b5cf6; background: #f3f0ff; }
+.loop-item-goal-inline.paused { color: #6b7280; background: #f3f4f6; }
+.loop-item-goal-inline.achieved { color: #059669; background: #ecfdf5; }
+.loop-item-goal-inline.unmet { color: #d9534f; background: #fdf0ef; }
+.loop-item-goal-inline.budget_limited { color: #ea580c; background: #fff7ed; }
+.loop-item-goal-inline.terminated { color: #9ca3af; background: #f9fafb; }
+.loop-item-goal-inline.creating { color: #6366f1; background: #eef2ff; }
+.loop-item-goal-inline.blocked { color: #f59e0b; background: #fffbeb; }
+
+/* 表单中 Goal 字段高亮 */
+.loop-form-goal-row { display: flex; gap: 8px; align-items: center; }
+.loop-form-goal-row .loop-input { flex: 1; }
+.loop-form-goal-hint { font-size: 11px; color: var(--text-secondary); margin-top: 2px; opacity: 0.8; }
+
+/* 预算字段行 */
+.loop-budget-row { display: flex; gap: 12px; }
+.loop-budget-row .loop-form-group { flex: 1; margin-bottom: 0; }
+
+
+
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 @media (max-width: 768px) { .sidebar { display: none; } }

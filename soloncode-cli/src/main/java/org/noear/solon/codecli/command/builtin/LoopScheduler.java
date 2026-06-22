@@ -29,8 +29,12 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static org.noear.solon.codecli.command.builtin.GoalStatus.*;
 
 /**
  * 定时循环任务调度管理器
@@ -61,9 +65,7 @@ public class LoopScheduler {
     // CLI 端任务执行回调：sessionId, prompt, agentName -> void（同步阻塞）
     private volatile List<TaskExecutor> taskExecutors = new ArrayList<>();
 
-    // 会话繁忙检查器：用于在定时触发时判断会话是否正在执行任务（由各端口注入）。
-    // 用列表而非单值：Web 与 CLI 两端口会各自注入一个，单值会被后注入者覆盖，
-    // 导致先注入端口的繁忙守卫失效。各 checker 已按 sessionId 前缀自过滤，OR 合并即可。
+    // 会话繁忙检查器
     private volatile List<BusyChecker> busyCheckers = new ArrayList<>();
 
     // Worktree 管理器（lazy init）
@@ -71,6 +73,9 @@ public class LoopScheduler {
 
     // Worktree 目录名
     private final String worktreeDir;
+
+    // ★ P1: Goal 评估器（默认为字符串匹配，可注入替换）
+    private GoalEvaluator goalEvaluator = new StringMatchEvaluator();
 
     /**
      * CLI 端任务执行器（同步阻塞）
@@ -130,6 +135,22 @@ public class LoopScheduler {
         if (busyChecker != null) {
             this.busyCheckers.add(busyChecker);
         }
+    }
+
+    /**
+     * 设置 Goal 评估器（可注入替换，默认为 StringMatchEvaluator）
+     */
+    public void setGoalEvaluator(GoalEvaluator goalEvaluator) {
+        if (goalEvaluator != null) {
+            this.goalEvaluator = goalEvaluator;
+        }
+    }
+
+    /**
+     * 获取当前 Goal 评估器
+     */
+    public GoalEvaluator getGoalEvaluator() {
+        return goalEvaluator;
     }
 
     /**
@@ -216,6 +237,91 @@ public class LoopScheduler {
         tasks.removeIf(t -> t.getId().equals(task.getId()));
 
         saveToFile(sessionId, tasks);
+    }
+
+    // ==================== Goal 生命周期管理 (P0) ====================
+
+    /**
+     * 暂停 goal（PURSUING → PAUSED），移除调度但保留任务
+     */
+    public void pauseGoal(String sessionId, String taskId) {
+        LoopTask task = getTaskById(sessionId, taskId);
+        if (task == null || !task.isGoalMode()) {
+            LOG.warn("pauseGoal: task '{}' not found or not goal mode", taskId);
+            return;
+        }
+
+        GoalState gs = task.getGoalState();
+        if (!gs.pause()) {
+            LOG.warn("pauseGoal: task '{}' cannot be paused (status={})", taskId, gs.getStatus());
+            return;
+        }
+
+        // 移除调度
+        String jobName = task.getJobName();
+        if (jobManager.jobExists(jobName)) {
+            jobManager.jobRemove(jobName);
+        }
+
+        saveToFile(sessionId, sessionTasks.get(sessionId));
+        LOG.info("Goal paused for task '{}'", taskId);
+    }
+
+    /**
+     * 恢复 goal（PAUSED → PURSUING），重新注册调度
+     */
+    public void resumeGoal(String sessionId, String taskId) {
+        LoopTask task = getTaskById(sessionId, taskId);
+        if (task == null || !task.isGoalMode()) {
+            LOG.warn("resumeGoal: task '{}' not found or not goal mode", taskId);
+            return;
+        }
+
+        GoalState gs = task.getGoalState();
+        if (!gs.resume()) {
+            LOG.warn("resumeGoal: task '{}' cannot be resumed (status={})", taskId, gs.getStatus());
+            return;
+        }
+
+        // 重新注册调度
+        registerJob(sessionId, task);
+
+        saveToFile(sessionId, sessionTasks.get(sessionId));
+        LOG.info("Goal resumed for task '{}'", taskId);
+    }
+
+    /**
+     * 清除 goal（状态 → TERMINATED），任务保留，调度停止
+     */
+    public void clearGoal(String sessionId, String taskId) {
+        LoopTask task = getTaskById(sessionId, taskId);
+        if (task == null || !task.isGoalMode()) {
+            LOG.warn("clearGoal: task '{}' not found or not goal mode", taskId);
+            return;
+        }
+
+        GoalState gs = task.getGoalState();
+        gs.terminate();
+
+        // 移除调度
+        String jobName = task.getJobName();
+        if (jobManager.jobExists(jobName)) {
+            jobManager.jobRemove(jobName);
+        }
+
+        saveToFile(sessionId, sessionTasks.get(sessionId));
+        LOG.info("Goal cleared for task '{}'", taskId);
+    }
+
+    /**
+     * 禁用 goal 调度（goal 达成/预算耗尽后使用，保留任务和 goal 状态）
+     */
+    private void disableGoalScheduling(String sessionId, LoopTask task) {
+        String jobName = task.getJobName();
+        if (jobManager.jobExists(jobName)) {
+            jobManager.jobRemove(jobName);
+        }
+        saveToFile(sessionId, sessionTasks.get(sessionId));
     }
 
     /**
@@ -458,11 +564,29 @@ public class LoopScheduler {
             }
         }
 
-        // 达到最大迭代次数则自动移除
-        if (task.isMaxIterationsReached()) {
-            LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
-            remove(sessionId, task);
-            return;
+        // Goal 模式下的预算检查（状态机处理）
+        if (task.isGoalMode()) {
+            GoalState gs = task.getGoalState();
+            if (gs.isBudgetExceeded()) {
+                LOG.info("Loop task '{}' goal budget exceeded at iteration {}/{}",
+                        task.getId(), gs.getCurrentIteration(), gs.getMaxIterations());
+                gs.markBudgetLimited();
+                LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                        (String) null, gs.getCurrentIteration(), "BUDGET_LIMITED");
+                disableGoalScheduling(sessionId, task);
+                return;
+            }
+            // 非活跃状态（ACHIEVED/UNMET/PAUSED 等）跳过
+            if (!gs.getStatus().isActive()) {
+                return;
+            }
+        } else {
+            // 非 Goal 模式：原有最大迭代次数检查
+            if (task.isMaxIterationsReached()) {
+                LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
+                remove(sessionId, task);
+                return;
+            }
         }
 
         // 防重入：上一个还没执行完则跳过
@@ -504,31 +628,68 @@ public class LoopScheduler {
                     iteration = task.getCurrentIteration();
                 }
 
-                // Goal 条件检查 — 解析 AI 响应中的 [GOAL_ACHIEVED] 标记
-                boolean goalMet = executionResult != null && executionResult.isGoalAchieved();
-                if (goalMet) {
-                    LOG.info("Loop task '{}' goal achieved at iteration {}", task.getId(), iteration);
+                // ★ P0/P1: Goal 状态机评估（使用 GoalEvaluator 获得结构化结果）
+                if (task.isGoalMode()) {
+                    GoalState gs = task.getGoalState();
+                    gs.setCurrentIteration(iteration);
 
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(), executionResult, iteration, "GOAL_ACHIEVED");
+                    // 使用评估器获得结构化评估结果
+                    String transcript = executionResult != null ? executionResult.getFinalResult() : "";
+                    GoalEvaluation eval = goalEvaluator.evaluate(
+                            gs.getCondition(),
+                            transcript != null ? transcript : "",
+                            gs.getHistory());
 
-                    remove(sessionId, task);
-                    return;
-                }
+                    // 记录评估结果
+                    gs.addEvaluation(eval);
 
-                if (task.isMaxIterationsReached()) {
-                    LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
+                    if (eval.isAchieved()) {
+                        LOG.info("Loop task '{}' goal ACHIEVED at iteration {}", task.getId(), iteration);
+                        gs.achieve();
+                        gs.setLastEvaluationReason(eval.getReason());
+                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                executionResult, iteration, "GOAL_ACHIEVED");
+                        disableGoalScheduling(sessionId, task);
+                        return;
+                    }
 
+                    // ★ P1: 检查 BLOCKED 状态（模型声明阻塞）
+                    String evalReason = eval.getReason();
+                    if (evalReason != null && evalReason.startsWith("[GOAL_BLOCKED]")) {
+                        LOG.info("Loop task '{}' goal BLOCKED at iteration {}: {}",
+                                task.getId(), iteration, evalReason);
+                        gs.block(evalReason);
+                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                executionResult, iteration, "GOAL_BLOCKED");
+                        disableGoalScheduling(sessionId, task);
+                        return;
+                    }
 
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(), executionResult, iteration, "MAX_ITERATIONS_REACHED");
+                    // 评估 reason 注入（buildEffectivePrompt 中已通过 GoalState.lastEvaluationReason 读取）
+                    gs.setLastEvaluationReason(evalReason);
 
-
-                    remove(sessionId, task);
-                    return;
+                    // Goal 模式下的迭代边界检查
+                    if (task.isMaxIterationsReached()) {
+                        LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
+                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                executionResult, iteration, "MAX_ITERATIONS_REACHED");
+                        disableGoalScheduling(sessionId, task);
+                        return;
+                    }
+                } else {
+                    // 非 goal 模式：原有逻辑
+                    if (task.isMaxIterationsReached()) {
+                        LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
+                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                executionResult, iteration, "MAX_ITERATIONS_REACHED");
+                        remove(sessionId, task);
+                        return;
+                    }
                 }
 
                 // 写入执行历史
-
-                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(), executionResult, iteration, "NONE");
+                String stopReason = task.isGoalMode() ? "NONE" : "NONE";
+                LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(), executionResult, iteration, stopReason);
 
 
             } finally {
@@ -555,15 +716,38 @@ public class LoopScheduler {
 
         // Goal 条件注入（持久目标 + [GOAL_ACHIEVED] 终止标记）
         if (task.isGoalMode()) {
+            GoalState gs = task.getGoalState();
             StringBuilder goalPrompt = new StringBuilder();
             goalPrompt.append("\n\n--- 目标（持久目标） ---\n");
 
             // 定时模式 或 模板加载失败时的回退：简短提示
             goalPrompt.append("<objective>\n");
-            goalPrompt.append(task.getGoalCondition()).append("\n");
+            goalPrompt.append(gs.getCondition()).append("\n");
             goalPrompt.append("</objective>\n\n");
-            goalPrompt.append("进度：第 ").append(task.getCurrentIteration()).append("/").append(task.getMaxIterations()).append(" 次迭代\n");
+            goalPrompt.append("进度：第 ").append(gs.getCurrentIteration())
+                    .append("/").append(gs.getMaxIterations()).append(" 次迭代\n");
+
+            // P1: 注入上一轮评估 reason
+            if (gs.getLastEvaluationReason() != null) {
+                goalPrompt.append("\n<previous-evaluation>\n");
+                goalPrompt.append(gs.getLastEvaluationReason()).append("\n");
+                goalPrompt.append("</previous-evaluation>\n\n");
+                goalPrompt.append("请参考以上反馈继续改进。\n");
+            }
+
+            // P1: 预算临界提示
+            if (gs.isBudgetCritical()) {
+                goalPrompt.append("\n⚠️ 注意：剩余迭代/预算有限，请优先完成最关键的目标。\n");
+            }
+
+            // ★ P1: 三态协议指令
             goalPrompt.append("\n如果目标已达成，请回复 [GOAL_ACHIEVED]。");
+            goalPrompt.append("\n");
+            goalPrompt.append("\n请在每个回复末尾声明当前状态：");
+            goalPrompt.append("\n- 目标已达成 → [GOAL_ACHIEVED] <达成原因>");
+            goalPrompt.append("\n- 遇到阻塞 → [GOAL_BLOCKED] <阻塞原因，包括需要用户提供的具体信息>");
+            goalPrompt.append("\n- 仍需继续 → [GOAL_CONTINUE] <当前进展 + 下一步计划>");
+            goalPrompt.append("\n\n如果没有声明，默认视为继续执行。");
 
             prompt = prompt + goalPrompt;
         }

@@ -43,7 +43,7 @@ class LoopExecutionResultTest {
         task.updateLastExecution("last");
         task.incrementIteration();
 
-        LoopTask updated = task.copyWithUpdate("new prompt", 5, null, "goal", true, 3, false);
+        LoopTask updated = task.copyWithUpdate("new prompt", 5, null, "goal", true, 3, false, null, null);
 
         assertEquals(task.getId(), updated.getId());
         assertEquals(task.getCreatedAt(), updated.getCreatedAt());

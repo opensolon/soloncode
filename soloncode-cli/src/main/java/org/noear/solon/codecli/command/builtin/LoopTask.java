@@ -22,6 +22,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
+import static org.noear.solon.codecli.command.builtin.GoalStatus.*;
+
 /**
  * 定时循环任务模型，用于 /loop 命令
  *
@@ -54,11 +56,14 @@ public class LoopTask {
     private final boolean autoInterval;
 
     // ---- Loop Engineering 扩展字段 ----
-    private final String goalCondition;      // 目标条件，如 "all tests pass"
+    private final String goalCondition;      // 目标条件，如 "all tests pass"（保留向后兼容）
+    private GoalState goalState;             // 新增：Goal 状态模型（P0）
     private final boolean worktreeEnabled;   // 是否在独立 worktree 中执行
     private final String worktreeBranch;     // worktree 分支名（运行时分配）
     private final int maxIterations;         // 最大迭代次数
     private final boolean runNow;            // 注册后立即执行首次（initialDelay=0）
+    private Long maxTokens;            // Token 预算（null = 不限制）
+    private Long maxDurationMs;        // 时间预算毫秒（null = 不限制）
 
     // ---- 运行时状态 ----
     private volatile boolean running;
@@ -91,7 +96,7 @@ public class LoopTask {
                      Instant createdAt, Instant expireAt, boolean autoInterval,
                      boolean enabled,
                      String goalCondition, boolean worktreeEnabled, String worktreeBranch,
-                     int maxIterations, boolean runNow,
+                     int maxIterations, boolean runNow, Long maxTokens, Long maxDurationMs,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
         this.id = id;
         this.prompt = prompt;
@@ -106,10 +111,17 @@ public class LoopTask {
         this.worktreeBranch = worktreeBranch;
         this.maxIterations = maxIterations;
         this.runNow = runNow;
+        this.maxTokens = maxTokens;
+        this.maxDurationMs = maxDurationMs;
         this.cancelled = cancelled;
         this.lastResult = lastResult;
         this.lastExecutedAt = lastExecutedAt;
         this.currentIteration = currentIteration;
+
+        // Goal 状态初始化：如果存在 goalCondition 但无 goalState，自动构造
+        if (goalCondition != null && !goalCondition.isEmpty()) {
+            this.goalState = new GoalState(goalCondition, PURSUING, maxIterations);
+        }
     }
 
     /**
@@ -142,6 +154,11 @@ public class LoopTask {
         this.runNow = runNow;
         this.currentIteration = 0;
         this.enabled = true;
+
+        // Goal 状态初始化
+        if (goalCondition != null && !goalCondition.isEmpty()) {
+            this.goalState = new GoalState(goalCondition, PURSUING, this.maxIterations);
+        }
     }
 
     /**
@@ -149,7 +166,8 @@ public class LoopTask {
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
                                     String goalCondition, Boolean worktreeEnabled,
-                                    Integer maxIterations, Boolean runNow) {
+                                    Integer maxIterations, Boolean runNow,
+                                    Long maxTokens, Long maxDurationMs) {
         LoopTask task = new LoopTask(
                 this.id,
                 prompt,
@@ -164,6 +182,8 @@ public class LoopTask {
                 this.worktreeBranch,
                 maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
                 runNow != null ? runNow : this.runNow,
+                maxTokens != null ? maxTokens : this.maxTokens,
+                maxDurationMs != null ? maxDurationMs : this.maxDurationMs,
                 this.cancelled,
                 this.lastResult,
                 this.lastExecutedAt,
@@ -256,14 +276,34 @@ public class LoopTask {
      * 是否为 goal 模式（有目标条件定义）
      */
     public boolean isGoalMode() {
-        return goalCondition != null && !goalCondition.isEmpty();
+        return goalState != null;
     }
 
+    /**
+     * 获取 GoalState（可能为 null）
+     */
+    public GoalState getGoalState() {
+        return goalState;
+    }
+
+    /**
+     * 设置 GoalState（用于恢复/测试）
+     */
+    public void setGoalState(GoalState goalState) {
+        this.goalState = goalState;
+    }
+
+    public void setMaxTokens(Long maxTokens) { this.maxTokens = maxTokens; }
+    public void setMaxDurationMs(Long maxDurationMs) { this.maxDurationMs = maxDurationMs; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
     public void setWrapUpPending(boolean wrapUpPending) { this.wrapUpPending = wrapUpPending; }
 
     public boolean isWrapUpPending() { return wrapUpPending; }
+
+    public void setLastResult(String lastResult) { this.lastResult = lastResult; }
+
+    public void setCurrentIteration(int currentIteration) { this.currentIteration = currentIteration; }
 
     /**
      * 序列化为 ONode
@@ -301,6 +341,15 @@ public class LoopTask {
         if (maxIterations != DEFAULT_MAX_ITERATIONS) node.set("maxIterations", maxIterations);
         if (runNow) node.set("runNow", true);
 
+        // ★ P0: 写入 GoalState
+        if (goalState != null) {
+            node.set("goalState", goalState.toONode());
+        }
+
+        // ★ P1: 预算字段
+        if (maxTokens != null) node.set("maxTokens", maxTokens);
+        if (maxDurationMs != null) node.set("maxDurationMs", maxDurationMs);
+
         return node;
     }
 
@@ -336,7 +385,23 @@ public class LoopTask {
         boolean runNowVal = node.getOrNull("runNow") != null
                 && node.get("runNow").getBoolean();
 
-        return new LoopTask(
+        // ★ P1: 读取预算字段
+        Long maxTokensVal = node.getOrNull("maxTokens") != null
+                ? (long) node.get("maxTokens").getInt() : null;
+        Long maxDurationMsVal = node.getOrNull("maxDurationMs") != null
+                ? (long) node.get("maxDurationMs").getInt() : null;
+
+        // 读取 GoalState（新格式）
+        GoalState goalStateVal = null;
+        if (node.getOrNull("goalState") != null) {
+            goalStateVal = GoalState.fromONode(node.get("goalState"));
+        } else if (goalConditionVal != null) {
+            // 向后兼容：只有 goalCondition 字符串，自动构造 GoalState
+            goalStateVal = new GoalState(goalConditionVal, GoalStatus.PURSUING, maxIterationsVal);
+            goalStateVal.setCurrentIteration(currentIterationVal);
+        }
+
+        LoopTask task = new LoopTask(
                 node.get("id").getString(),
                 node.get("prompt").getString(),
                 node.get("intervalMinutes").getInt(),
@@ -350,11 +415,20 @@ public class LoopTask {
                 worktreeBranchVal,
                 maxIterationsVal,
                 runNowVal,
+                maxTokensVal,
+                maxDurationMsVal,
                 node.getOrNull("cancelled") != null
                         ? node.get("cancelled").getBoolean() : false,
                 lastResultVal,
                 lastExecutedAtVal,
                 currentIterationVal
         );
+
+        // 覆盖构造函数中自动创建的 GoalState（保留 JSON 中的完整状态）
+        if (goalStateVal != null) {
+            task.goalState = goalStateVal;
+        }
+
+        return task;
     }
 }

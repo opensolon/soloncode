@@ -25,9 +25,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
-import org.noear.solon.codecli.command.builtin.LoopStateManager;
-import org.noear.solon.codecli.command.builtin.LoopTask;
+import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
@@ -758,24 +756,76 @@ public class WebController {
         List<LoopTask> tasks = loopScheduler.listAll(sessionId);
         List<Map> data = new ArrayList<>();
         for (LoopTask t : tasks) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", t.getId());
-            item.put("prompt", t.getPrompt());
-            item.put("intervalMinutes", t.getIntervalMinutes());
-            if (t.getCron() != null) item.put("cron", t.getCron());
-            item.put("enabled", t.isEnabled());
-            item.put("cancelled", t.isCancelled());
-            item.put("running", t.isRunning());
-            item.put("currentIteration", t.getCurrentIteration());
-            if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
-            if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
-            if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
-            item.put("worktreeEnabled", t.isWorktreeEnabled());
-            item.put("maxIterations", t.getMaxIterations());
-            item.put("runNow", t.isRunNow());
+            Map<String, Object> item = buildTaskMap(t);
             data.add(item);
         }
         return Result.succeed(data);
+    }
+
+    /**
+     * 构建任务 Map（通用方法，供 list/get 复用）
+     */
+    private Map<String, Object> buildTaskMap(LoopTask t) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", t.getId());
+        item.put("prompt", t.getPrompt());
+        item.put("intervalMinutes", t.getIntervalMinutes());
+        if (t.getCron() != null) item.put("cron", t.getCron());
+        item.put("enabled", t.isEnabled());
+        item.put("cancelled", t.isCancelled());
+        item.put("running", t.isRunning());
+        item.put("currentIteration", t.getCurrentIteration());
+        if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
+        if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
+        if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
+        item.put("worktreeEnabled", t.isWorktreeEnabled());
+        item.put("maxIterations", t.getMaxIterations());
+        item.put("runNow", t.isRunNow());
+
+        // ★ P1: 预算字段
+        if (t.getMaxTokens() != null) item.put("maxTokens", t.getMaxTokens());
+        if (t.getMaxDurationMs() != null) item.put("maxDurationMs", t.getMaxDurationMs());
+
+        // ★ P0: Goal 状态信息
+        if (t.isGoalMode()) {
+            GoalState gs = t.getGoalState();
+            Map<String, Object> goalMap = new LinkedHashMap<>();
+            goalMap.put("condition", gs.getCondition());
+            goalMap.put("status", gs.getStatus().name());
+            goalMap.put("currentIteration", gs.getCurrentIteration());
+            goalMap.put("maxIterations", gs.getMaxIterations());
+            if (gs.getLastEvaluationReason() != null) {
+                goalMap.put("lastEvaluationReason", gs.getLastEvaluationReason());
+            }
+            if (gs.getStartedAt() != null) {
+                goalMap.put("startedAt", gs.getStartedAt().toString());
+            }
+            if (gs.getLastEvaluatedAt() != null) {
+                goalMap.put("lastEvaluatedAt", gs.getLastEvaluatedAt().toString());
+            }
+
+            // 评估历史（最近 5 条）
+            List<GoalEvaluation> history = gs.getHistory();
+            if (!history.isEmpty()) {
+                List<Map<String, Object>> historyList = new ArrayList<>();
+                int start = Math.max(0, history.size() - 5);
+                for (int i = start; i < history.size(); i++) {
+                    GoalEvaluation eval = history.get(i);
+                    Map<String, Object> evalMap = new LinkedHashMap<>();
+                    evalMap.put("iteration", eval.getIteration());
+                    evalMap.put("achieved", eval.isAchieved());
+                    if (eval.getReason() != null) evalMap.put("reason", eval.getReason());
+                    if (eval.getEvaluatedAt() != null) evalMap.put("evaluatedAt", eval.getEvaluatedAt().toString());
+                    evalMap.put("evaluatorType", eval.getEvaluatorType());
+                    historyList.add(evalMap);
+                }
+                goalMap.put("history", historyList);
+            }
+
+            item.put("goal", goalMap);
+        }
+
+        return item;
     }
 
     /**
@@ -795,22 +845,7 @@ public class WebController {
         List<LoopTask> tasks = loopScheduler.listAll(sessionId);
         for (LoopTask t : tasks) {
             if (t.getId().equals(taskId)) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("id", t.getId());
-                item.put("prompt", t.getPrompt());
-                item.put("intervalMinutes", t.getIntervalMinutes());
-                if (t.getCron() != null) item.put("cron", t.getCron());
-                item.put("enabled", t.isEnabled());
-                item.put("cancelled", t.isCancelled());
-                item.put("running", t.isRunning());
-                item.put("currentIteration", t.getCurrentIteration());
-                if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
-                if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
-                if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
-                item.put("worktreeEnabled", t.isWorktreeEnabled());
-                item.put("maxIterations", t.getMaxIterations());
-                item.put("runNow", t.isRunNow());
-                return Result.succeed(item);
+                return Result.succeed(buildTaskMap(t));
             }
         }
         return Result.failure(404, "Task not found");
@@ -828,7 +863,9 @@ public class WebController {
                           @Param(value = "goalCondition", required = false) String goalCondition,
                           @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                           @Param(value = "maxIterations", required = false) Integer maxIterations,
-                          @Param(value = "runNow", required = false) Boolean runNow) {
+                          @Param(value = "runNow", required = false) Boolean runNow,
+                          @Param(value = "maxTokens", required = false) Long maxTokens,
+                          @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -848,9 +885,9 @@ public class WebController {
                 maxIterations,
                 runNow != null && runNow
         );
-
-        // 设置 enabled
-        // (name removed: use id for display)
+        // ★ P1: 预算字段
+        if (maxTokens != null) task.setMaxTokens(maxTokens);
+        if (maxDurationMs != null) task.setMaxDurationMs(maxDurationMs);
 
         try {
             LoopStateManager.init(workspace, task.getId(), prompt);
@@ -876,7 +913,9 @@ public class WebController {
                              @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                              @Param(value = "channelNotify", required = false) String channelNotify,
                              @Param(value = "maxIterations", required = false) Integer maxIterations,
-                             @Param(value = "runNow", required = false) Boolean runNow) {
+                             @Param(value = "runNow", required = false) Boolean runNow,
+                             @Param(value = "maxTokens", required = false) Long maxTokens,
+                             @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -902,7 +941,9 @@ public class WebController {
                 goalCondition != null ? goalCondition : existing.getGoalCondition(),
                 worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
                 maxIterations != null ? maxIterations : existing.getMaxIterations(),
-                runNow != null ? runNow : existing.isRunNow()
+                runNow != null ? runNow : existing.isRunNow(),
+                maxTokens,
+                maxDurationMs
         );
 
         // 保留 enabled
@@ -910,6 +951,155 @@ public class WebController {
 
         loopScheduler.update(sessionId, taskId, newTask);
         return Result.succeed();
+    }
+
+    // ==================== Goal 管理端点 (P0) ====================
+
+    /**
+     * 暂停 goal 调度
+     */
+    @Post
+    @Mapping("/web/chat/loop/goal-pause")
+    public Result loopGoalPause(@Param("sessionId") String sessionId,
+                                @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
+        if (task == null) {
+            return Result.failure(404, "Task not found");
+        }
+        if (!task.isGoalMode()) {
+            return Result.failure(400, "Task has no goal");
+        }
+
+        GoalState gs = task.getGoalState();
+        if (!gs.getStatus().isPausable()) {
+            return Result.failure(400, "Goal cannot be paused in state: " + gs.getStatus());
+        }
+
+        loopScheduler.pauseGoal(sessionId, taskId);
+        return Result.succeed();
+    }
+
+    /**
+     * 恢复 goal 调度
+     */
+    @Post
+    @Mapping("/web/chat/loop/goal-resume")
+    public Result loopGoalResume(@Param("sessionId") String sessionId,
+                                 @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
+        if (task == null) {
+            return Result.failure(404, "Task not found");
+        }
+        if (!task.isGoalMode()) {
+            return Result.failure(400, "Task has no goal");
+        }
+
+        GoalState gs = task.getGoalState();
+        // BLOCKED 状态也可恢复（模型声明阻塞后用户解除阻塞时）
+        if (!gs.getStatus().isResumable()) {
+            return Result.failure(400, "Goal cannot be resumed in state: " + gs.getStatus()
+                    + " (only PAUSED or BLOCKED can be resumed)");
+        }
+
+        loopScheduler.resumeGoal(sessionId, taskId);
+        return Result.succeed();
+    }
+
+    /**
+     * 清除 goal（任务保留，仅清除 goal 标记）
+     */
+    @Post
+    @Mapping("/web/chat/loop/goal-clear")
+    public Result loopGoalClear(@Param("sessionId") String sessionId,
+                                @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
+        if (task == null) {
+            return Result.failure(404, "Task not found");
+        }
+        if (!task.isGoalMode()) {
+            return Result.failure(400, "Task has no goal");
+        }
+
+        loopScheduler.clearGoal(sessionId, taskId);
+        return Result.succeed();
+    }
+
+    /**
+     * 获取 goal 详细状态（含完整评估历史）
+     */
+    @Post
+    @Mapping("/web/chat/loop/goal-status")
+    public Result<Map> loopGoalStatus(@Param("sessionId") String sessionId,
+                                      @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
+        if (task == null) {
+            return Result.failure(404, "Task not found");
+        }
+        if (!task.isGoalMode()) {
+            return Result.failure(400, "Task has no goal");
+        }
+
+        GoalState gs = task.getGoalState();
+        Map<String, Object> goalMap = new LinkedHashMap<>();
+        goalMap.put("condition", gs.getCondition());
+        goalMap.put("status", gs.getStatus().name());
+        goalMap.put("currentIteration", gs.getCurrentIteration());
+        goalMap.put("maxIterations", gs.getMaxIterations());
+        if (gs.getLastEvaluationReason() != null) {
+            goalMap.put("lastEvaluationReason", gs.getLastEvaluationReason());
+        }
+        if (gs.getStartedAt() != null) {
+            goalMap.put("startedAt", gs.getStartedAt().toString());
+        }
+        if (gs.getLastEvaluatedAt() != null) {
+            goalMap.put("lastEvaluatedAt", gs.getLastEvaluatedAt().toString());
+        }
+
+        // 完整评估历史
+        List<GoalEvaluation> history = gs.getHistory();
+        List<Map<String, Object>> historyList = new ArrayList<>();
+        for (GoalEvaluation eval : history) {
+            Map<String, Object> evalMap = new LinkedHashMap<>();
+            evalMap.put("iteration", eval.getIteration());
+            evalMap.put("achieved", eval.isAchieved());
+            if (eval.getReason() != null) evalMap.put("reason", eval.getReason());
+            if (eval.getSummary() != null) evalMap.put("summary", eval.getSummary());
+            if (eval.getEvaluatedAt() != null) evalMap.put("evaluatedAt", eval.getEvaluatedAt().toString());
+            evalMap.put("evaluatorType", eval.getEvaluatorType());
+            historyList.add(evalMap);
+        }
+        goalMap.put("history", historyList);
+        goalMap.put("historyCount", history.size());
+
+        return Result.succeed(goalMap);
     }
 
     /**

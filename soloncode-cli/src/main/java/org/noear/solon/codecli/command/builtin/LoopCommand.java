@@ -282,27 +282,110 @@ public class LoopCommand implements Command {
             line.append(" ").append(scheduleInfo);
             line.append(" ").append(status);
 
-            // 扩展标签
+            // ★ P0: Goal 增强显示
             if (t.isGoalMode()) {
-                line.append(" ").append(MAGENTA).append("[goal]").append(RESET);
-            }
-            if (t.isWorktreeEnabled()) {
-                line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
-            }
-            if (t.isRunNow()) {
-                line.append(" ").append(MAGENTA).append("[now]").append(RESET);
+                GoalState gs = t.getGoalState();
+                String goalIcon = goalStatusIcon(gs.getStatus());
+                String goalColor = goalStatusColor(gs.getStatus());
+
+                line.append(" ").append(goalColor).append(goalIcon).append("goal").append(RESET);
+                line.append(" ").append(DIM)
+                        .append("iter:").append(gs.getCurrentIteration())
+                        .append("/").append(gs.getMaxIterations())
+                        .append(RESET);
+
+                // 状态标签
+                if (gs.getStatus() == GoalStatus.PAUSED) {
+                    line.append(" ").append(YELLOW).append("[paused]").append(RESET);
+                } else if (gs.getStatus() == GoalStatus.ACHIEVED) {
+                    line.append(" ").append(GREEN).append("[achieved]").append(RESET);
+                } else if (gs.getStatus() == GoalStatus.UNMET) {
+                    line.append(" ").append(RED).append("[unmet]").append(RESET);
+                } else if (gs.getStatus() == GoalStatus.BUDGET_LIMITED) {
+                    line.append(" ").append(YELLOW).append("[budget]").append(RESET);
+                }
+
+                // 运行时长
+                if (gs.getStartedAt() != null && gs.getStatus().isActive()) {
+                    line.append(" ").append(DIM)
+                            .append("(").append(formatElapsed(gs.getStartedAt())).append(")")
+                            .append(RESET);
+                }
+            } else {
+                if (t.isWorktreeEnabled()) {
+                    line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
+                }
+                if (t.isRunNow()) {
+                    line.append(" ").append(MAGENTA).append("[now]").append(RESET);
+                }
+                line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
             }
 
-            if (t.isGoalMode()) {
-                line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
+            if (t.isWorktreeEnabled() && !t.isGoalMode()) {
+                line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
+            }
+            if (t.isRunNow() && !t.isGoalMode()) {
+                line.append(" ").append(MAGENTA).append("[now]").append(RESET);
             }
 
             line.append(" ").append(DIM).append(t.getPrompt()).append(RESET);
             line.append(lastInfo);
 
+            // ★ P0: Goal 任务展示最近评估 reason
+            if (t.isGoalMode()) {
+                GoalState gs = t.getGoalState();
+                if (gs.getLastEvaluationReason() != null && gs.getStatus().isActive()) {
+                    line.append("\n    ").append(DIM)
+                            .append("  reason: ").append(abbreviate(gs.getLastEvaluationReason(), 80))
+                            .append(RESET);
+                }
+            }
+
             ctx.println(ctx.color(line.toString()));
         }
-        ctx.println(ctx.color(DIM + "\nUsage: /loop stop <id> | /loop stop-all" + RESET));
+        ctx.println(ctx.color(DIM + "\nUsage: /loop stop <id> | /loop stop-all | /goal status" + RESET));
+    }
+
+    // ★ P0: Goal 辅助方法
+
+    private String goalStatusIcon(GoalStatus status) {
+        switch (status) {
+            case PURSUING: return "●";
+            case PAUSED: return "◌";
+            case ACHIEVED: return "✓";
+            case UNMET: return "✗";
+            case BUDGET_LIMITED: return "⚠";
+            case TERMINATED: return "○";
+            case CREATING: return "○";
+            default: return "?";
+        }
+    }
+
+    private String goalStatusColor(GoalStatus status) {
+        switch (status) {
+            case PURSUING: return MAGENTA;
+            case PAUSED: return YELLOW;
+            case ACHIEVED: return GREEN;
+            case UNMET: return RED;
+            case BUDGET_LIMITED: return YELLOW;
+            case TERMINATED: return DIM;
+            case CREATING: return DIM;
+            default: return RESET;
+        }
+    }
+
+    private String formatElapsed(Instant start) {
+        if (start == null) return "-";
+        long seconds = Duration.between(start, Instant.now()).getSeconds();
+        if (seconds < 60) return seconds + "s";
+        if (seconds < 3600) return (seconds / 60) + "m " + (seconds % 60) + "s";
+        return (seconds / 3600) + "h " + ((seconds % 3600) / 60) + "m";
+    }
+
+    private String abbreviate(String text, int maxLen) {
+        if (text == null) return "";
+        if (text.length() <= maxLen) return text;
+        return text.substring(0, maxLen) + "...";
     }
 
     /**

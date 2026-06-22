@@ -1,5 +1,5 @@
 /* ===== app-loop.js ===== */
-/* 循环任务面板交互 */
+/* 循环任务面板交互 — v2 Goal 增强版 */
 /* 依赖: app-base.js */
 
 (function() {
@@ -8,16 +8,15 @@
     var $welcomeLoopPanel = $('#welcomeLoopPanel');
     var $chatLoopPanel = $('#chatLoopPanel');
     var loopPanelVisible = false;
-    var loopEditId = null; // 当前编辑的任务 ID，null 表示新建
+    var loopEditId = null;
 
-    // 使用 layui layer 风格的浮动提示（与设置面板保存成功一致）
+    // 使用 layui layer 风格的浮动提示
     function showToast(msg, type) {
         if (typeof layer !== 'undefined' && layer.msg) {
             layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' });
         }
     }
 
-    // 获取当前激活的面板和按钮
     function getActivePanel() {
         return inChatMode ? $chatLoopPanel : $welcomeLoopPanel;
     }
@@ -99,6 +98,72 @@
         }
     ];
 
+    // ========== 工具函数 ==========
+    function formatTimeAgo(isoStr) {
+        if (!isoStr) return '';
+        try {
+            var date = new Date(isoStr);
+            var now = new Date();
+            var diffMs = now - date;
+            var diffSec = Math.floor(diffMs / 1000);
+            if (diffSec < 60) return diffSec + '秒前';
+            var diffMin = Math.floor(diffSec / 60);
+            if (diffMin < 60) return diffMin + '分钟前';
+            var diffHour = Math.floor(diffMin / 60);
+            if (diffHour < 24) return diffHour + '小时前';
+            return Math.floor(diffHour / 24) + '天前';
+        } catch (e) {
+            return isoStr;
+        }
+    }
+
+    function formatDuration(startedAt) {
+        if (!startedAt) return '';
+        try {
+            var diffMs = Date.now() - new Date(startedAt).getTime();
+            if (diffMs < 0) return '';
+            var totalSec = Math.floor(diffMs / 1000);
+            var m = Math.floor(totalSec / 60);
+            var s = totalSec % 60;
+            if (m >= 60) {
+                var h = Math.floor(m / 60);
+                m = m % 60;
+                return h + 'h ' + m + 'm';
+            }
+            return m + 'm ' + s + 's';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // Goal 状态中文映射
+    var GOAL_STATUS_LABEL = {
+        CREATING: '创建中',
+        PURSUING: '执行中',
+        PAUSED: '已暂停',
+        ACHIEVED: '已达成',
+        UNMET: '未达成',
+        BUDGET_LIMITED: '预算耗尽',
+        BLOCKED: '已阻塞',
+        TERMINATED: '已结束'
+    };
+
+    // Goal 状态 CSS class 映射（转为小写）
+    function goalStatusClass(status) {
+        return (status || '').toLowerCase();
+    }
+
+    // 生成 goal 状态徽章 HTML
+    function renderGoalBadge(g) {
+        if (!g) return '';
+        var cls = goalStatusClass(g.status);
+        var label = GOAL_STATUS_LABEL[g.status] || g.status;
+        var iterInfo = ' (' + (g.currentIteration || 0) + '/' + (g.maxIterations || '∞') + ')';
+        return '<span class="loop-goal-badge ' + cls + '">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
+            label + iterInfo + '</span>';
+    }
+
     // ========== 面板开关 ==========
     function toggleLoopPanel() {
         var $panel = getActivePanel();
@@ -114,7 +179,6 @@
         }
     }
 
-    // Esc 键关闭面板
     $(document).on('keydown.loopesc', function(e) {
         if (e.key === 'Escape' && loopPanelVisible) {
             hideLoopPanel();
@@ -137,14 +201,10 @@
         toggleLoopPanel();
     });
 
-    // 面板内 click 不冒泡到 .input-box 和 document
-    // 防止 click-to-focus、cmd-complete、model-dropdown 等全局处理器干扰面板交互
-    // 注意：只拦截 click，不拦截 mousedown，避免影响 input/select/label 的原生聚焦行为
     $welcomeLoopPanel.add($chatLoopPanel).on('click', function(e) {
         e.stopPropagation();
     });
 
-    // 点击面板外部关闭（用 mousedown 避免选择文字时误触关闭）
     $(document).on('mousedown', function(e) {
         if (loopPanelVisible) {
             if (!$(e.target).closest('#chatLoopPanel, #welcomeLoopPanel').length &&
@@ -168,7 +228,6 @@
             },
             error: function() {
                 showToast('操作失败', 'error');
-                // 错误时也触发回调（传 null），让调用方有机会恢复 UI 状态
                 if (callback) callback(null);
             }
         });
@@ -178,72 +237,14 @@
     function renderLoopList() {
         loopApi('list', null, function(res) {
             var items = (res && res.data) ? res.data : [];
-            var html = '<div class="loop-panel-header">';
-            html += '<span class="loop-panel-title">循环任务 (' + items.length + ')</span>';
-            html += '<button class="loop-panel-add-btn" id="loopAddNewBtn" title="新建任务"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>';
-            html += '</div>';
+            var html = buildListHeader(items.length);
             html += '<div class="loop-panel-list">';
 
             if (items.length === 0) {
                 html += '<div class="loop-panel-empty">暂无循环任务</div>';
             } else {
                 for (var i = 0; i < items.length; i++) {
-                    var t = items[i];
-                    var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
-                    var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
-                    var scheduleText = t.cron ? ('cron: ' + t.cron) : ('每' + t.intervalMinutes + '分钟');
-                    var lastInfo = '';
-                    if (t.lastExecutedAt) {
-                        var ago = formatTimeAgo(t.lastExecutedAt);
-                        lastInfo = '<span class="loop-item-meta">上次: ' + ago + '</span>';
-                    }
-                    if (t.currentIteration > 0) {
-                        lastInfo += '<span class="loop-item-meta">第' + t.currentIteration + '次</span>';
-                    }
-
-                    html += '<div class="loop-item" data-id="' + t.id + '">';
-                    // 功能标签（移到状态位置，替代"就绪"等文字）
-                    var tags = [];
-                    if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
-                    if (t.runNow) tags.push('<span class="loop-tag loop-tag-now">now</span>');
-                    if (t.goalCondition) {
-                        var goalLabel = 'goal';
-                        if (t.maxIterations > 0) {
-                            goalLabel += ' ' + t.currentIteration + '/' + t.maxIterations;
-                        }
-                        tags.push('<span class="loop-tag loop-tag-goal">' + goalLabel + '</span>');
-                    }
-                    // running 状态保留显示
-                    var statusHtml = (statusClass === 'running' || statusClass === 'cancelled')
-                        ? '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>'
-                        : '';
-
-                    html += '<div class="loop-item-row">';
-                    html += '<span class="loop-item-dot ' + statusClass + '"></span>';
-                    html += '<span class="loop-item-name">#' + escapeHtml(t.id) + '</span>';
-                    html += '<span class="loop-item-schedule">' + scheduleText + '</span>';
-                    html += statusHtml;
-                    if (tags.length) html += '<span class="loop-item-tags">' + tags.join('') + '</span>';
-                    html += '<div class="loop-item-actions">';
-                    var toggleIcon = t.enabled
-                        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
-                        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
-                    if (!t.cancelled) {
-                        html += '<button class="loop-action-btn" data-action="toggle" data-id="' + t.id + '" data-enabled="' + t.enabled + '" title="' + (t.enabled ? '停用' : '启用') + '">' + toggleIcon + '</button>';
-                        html += '<button class="loop-action-btn" data-action="trigger" data-id="' + t.id + '" title="手动触发"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>';
-                        html += '<button class="loop-action-btn" data-action="edit" data-id="' + t.id + '" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
-                    }
-                    html += '<button class="loop-action-btn danger" data-action="remove" data-id="' + t.id + '" title="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>';
-                    html += '</div>';
-                    html += '</div>';
-                    html += '<div class="loop-item-prompt">' + escapeHtml(t.prompt) + '</div>';
-                    // 底部信息行：时间 + 迭代
-                    if (lastInfo) {
-                        html += '<div class="loop-item-info">';
-                        html += lastInfo;
-                        html += '</div>';
-                    }
-                    html += '</div>';
+                    html += buildListItem(items[i]);
                 }
             }
 
@@ -252,7 +253,107 @@
             var $panel = getActivePanel();
             $panel.html(html);
             bindListEvents();
+
+            // 定时器刷新时长（仅在有活跃 goal 的列表页）
+            scheduleElapsedUpdater();
         });
+    }
+
+    function buildListHeader(count) {
+        var html = '<div class="loop-panel-header">';
+        html += '<span class="loop-panel-title">循环任务 (' + count + ')</span>';
+        html += '<button class="loop-panel-add-btn" id="loopAddNewBtn" title="新建任务">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>';
+        html += '</div>';
+        return html;
+    }
+
+    function buildListItem(t) {
+        var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
+        var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
+        var scheduleText = t.cron ? ('cron: ' + t.cron) : ('每' + t.intervalMinutes + '分钟');
+
+        // 标签
+        var tags = [];
+        if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
+        if (t.runNow) tags.push('<span class="loop-tag loop-tag-now">now</span>');
+
+        // 底部信息
+        var lastInfo = '';
+        if (t.lastExecutedAt) {
+            lastInfo += '<span class="loop-item-meta">上次: ' + formatTimeAgo(t.lastExecutedAt) + '</span>';
+        }
+        if (t.currentIteration > 0) {
+            lastInfo += '<span class="loop-item-meta">第' + t.currentIteration + '次</span>';
+        }
+
+        // ★ Goal 行内标签（替代原卡片）
+        var goalInlineHtml = '';
+        var g = t.goal;
+        if (g) {
+            var cls = goalStatusClass(g.status);
+            var label = GOAL_STATUS_LABEL[g.status] || g.status;
+            var iterInfo = ' (' + (g.currentIteration || 0) + '/' + (g.maxIterations || '∞') + ')';
+            var elapsed = formatDuration(g.startedAt);
+            var elapsedHtml = elapsed ? '⏱' + elapsed : '';
+            // 终态图标后缀
+            var suffix = '';
+            if (g.status === 'ACHIEVED') suffix = '✓';
+            else if (g.status === 'UNMET') suffix = '✗';
+            else if (g.status === 'BUDGET_LIMITED') suffix = '⚠';
+            else if (g.status === 'BLOCKED') suffix = '⊘';
+            goalInlineHtml = '<span class="loop-item-goal-inline ' + cls + '">' +
+                '🎯' + label + iterInfo +
+                (suffix ? suffix : '') +
+                (elapsedHtml ? ' ' + elapsedHtml : '') + '</span>';
+        }
+
+        // 拼装完整 item
+        var runningStatusHtml = (statusClass === 'running' || statusClass === 'cancelled')
+            ? '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>'
+            : '';
+
+        var html = '<div class="loop-item" data-id="' + t.id + '">';
+        html += '<div class="loop-item-row">';
+        html += '<span class="loop-item-dot ' + statusClass + '"></span>';
+        html += goalInlineHtml;
+        html += '<span class="loop-item-name">#' + escapeHtml(t.id) + '</span>';
+        html += '<span class="loop-item-schedule">' + scheduleText + '</span>';
+        html += runningStatusHtml;
+        if (tags.length) html += '<span class="loop-item-tags">' + tags.join('') + '</span>';
+        html += '<div class="loop-item-actions">';
+        if (!t.cancelled) {
+            html += '<button class="loop-action-btn" data-action="toggle" data-id="' + t.id + '" data-enabled="' + t.enabled + '" title="' + (t.enabled ? '停用' : '启用') + '">' +
+                (t.enabled
+                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>') +
+                '</button>';
+            html += '<button class="loop-action-btn" data-action="trigger" data-id="' + t.id + '" title="手动触发">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>';
+            html += '<button class="loop-action-btn" data-action="edit" data-id="' + t.id + '" title="编辑">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+        }
+        html += '<button class="loop-action-btn danger" data-action="remove" data-id="' + t.id + '" title="删除">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div class="loop-item-prompt">' + escapeHtml(t.prompt) + '</div>';
+
+        if (lastInfo) {
+            html += '<div class="loop-item-info">' + lastInfo + '</div>';
+        }
+        html += '</div>';
+
+        return html;
+    }
+
+    // ========== 时长定时刷新 ==========
+    var elapsedTimerId = null;
+
+    function scheduleElapsedUpdater() {
+        if (elapsedTimerId) clearInterval(elapsedTimerId);
+        // 行内标签时长固定，无需定时刷新（每次列表渲染时重新计算）
     }
 
     // ========== 列表事件绑定 ==========
@@ -265,8 +366,6 @@
             renderLoopForm();
         });
 
-        // 委托事件绑定在面板自身而非 document（面板已拦截冒泡，document 收不到）
-        // 每次绑定前先 off()，防止重复打开面板导致事件处理器无限叠加
         $(document).off('click.loopaction');
         $panel.off('click.loopaction').on('click.loopaction', '.loop-action-btn', function(e) {
             e.stopPropagation();
@@ -281,10 +380,8 @@
                 loopApi('trigger', { taskId: id }, function(res) {
                     if (res) {
                         showToast('已触发执行', 'success');
-                        // 切换到对话视图，让用户看到 AI 响应
                         if (typeof switchToChatMode === 'function') switchToChatMode();
                         hideLoopPanel();
-                        // 列表项短暂闪烁反馈
                         var $item = $panel.find('.loop-item[data-id="' + id + '"]');
                         $item.css('background', 'var(--accent-light)');
                         setTimeout(function() { $item.css('background', ''); }, 600);
@@ -301,18 +398,19 @@
             }
         });
 
-
     }
 
     // ========== 表单渲染 ==========
     function renderLoopForm() {
         var html = '<div class="loop-panel-header">';
-        html += '<button class="loop-panel-back-btn" id="loopBackBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>';
+        html += '<button class="loop-panel-back-btn" id="loopBackBtn">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>';
         html += '<span class="loop-panel-title">' + (loopEditId ? '编辑循环 #' + escapeHtml(loopEditId) : '新建循环') + '</span>';
         // 模板按钮（仅新建时显示）
         if (!loopEditId) {
             html += '<div class="loop-tpl-dropdown" id="loopTplDropdown">';
-            html += '<button class="loop-tpl-trigger" id="loopTplBtn" title="填充模板"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>';
+            html += '<button class="loop-tpl-trigger" id="loopTplBtn" title="填充模板">' +
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>';
             html += '<div class="loop-tpl-menu" id="loopTplMenu">';
             for (var i = 0; i < LOOP_TEMPLATES.length; i++) {
                 var tpl = LOOP_TEMPLATES[i];
@@ -328,13 +426,27 @@
             html += '</div>';
         }
         html += '</div>';
+
+        // ★ 表单：Goal 从折叠面板提升到主表单
         html += '<div class="loop-form">';
+
+        // 任务描述
         html += '<div class="loop-form-group">';
         html += '<label>任务描述 <span class="loop-required">*</span></label>';
         html += '<input type="text" class="loop-input" id="loopFormPrompt" placeholder=""/>';
         html += '</div>';
+
+        // ★ Goal 条件（直接在主表单中，不再隐藏）
         html += '<div class="loop-form-group">';
-        html += '<label>间隔</label>';
+        html += '<label>Goal <span style="font-weight:400;color:var(--text-secondary);font-size:11px;">（可选，满足条件后自动停止）</span></label>';
+        html += '<div class="loop-form-goal-row">';
+        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder="例如: all tests pass"/>';
+        html += '</div>';
+        html += '</div>';
+
+        // 间隔
+        html += '<div class="loop-form-group">';
+        html += '<label>调度方式</label>';
         html += '<div class="loop-interval-row">';
         html += '<label class="loop-radio"><input type="radio" name="loopScheduleType" value="interval" checked/> 固定间隔</label>';
         html += '<input type="number" class="loop-input loop-input-sm" id="loopFormInterval" value="5" min="1" max="1440"/>';
@@ -345,18 +457,29 @@
         html += '<input type="text" class="loop-input" id="loopFormCron" placeholder="0 */5 * * * ?"/>';
         html += '</div>';
         html += '</div>';
-        html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg><span>执行策略（测试）</span></div>';
+
+        // 高级选项（折叠：Worktree / RunNow / MaxIter / 预算）
+        html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle">' +
+            '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>' +
+            '<span>高级选项</span></div>';
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
-        html += '<div class="loop-form-group">';
-        html += '<label>目标完成检测描述（goal）</label>';
-        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder=""/>';
-        html += '</div>';
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
         html += '<div class="loop-form-inline-item"><label>首次立即执行</label><label class="loop-checkbox"><input type="checkbox" id="loopFormRunNow"/> 保存后立即执行一次</label></div>';
         html += '<div class="loop-form-inline-item"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" value="20" min="1"/></div>';
         html += '</div>';
+
+        // 预算控制
+        html += '<div class="loop-form-group">';
+        html += '<div class="loop-budget-row">';
+        html += '<div class="loop-form-group"><label style="font-size:11px;">Token 预算</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
+        html += '<div class="loop-form-group"><label style="font-size:11px;">时间预算（分钟）</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
         html += '</div>';
+        html += '</div>';
+
+        html += '</div>';
+
+        // 操作按钮
         html += '<div class="loop-form-actions">';
         html += '<button class="loop-btn-secondary" id="loopFormTriggerBtn" style="display:' + (loopEditId ? 'inline-block' : 'none') + '">测试运行</button>';
         html += '<button class="loop-btn-primary" id="loopFormSaveBtn">保存</button>';
@@ -365,14 +488,13 @@
 
         var $panel = getActivePanel();
         $panel.addClass('mode-form');
-        // 动态计算面板最大高度（不超过可用视口空间）
         var panelTop = $panel[0].getBoundingClientRect().top;
-        var safeMaxH = Math.max(370, Math.floor(panelTop) - 16);
-        $panel.css('max-height', Math.min(safeMaxH, 560) + 'px');
+        var safeMaxH = Math.max(460, Math.floor(panelTop) - 16);
+        $panel.css('max-height', Math.min(safeMaxH, 640) + 'px');
         $panel.html(html);
         bindFormEvents();
 
-        // 如果是编辑，先禁用表单并显示加载状态
+        // 编辑模式：加载数据
         if (loopEditId) {
             var $inputs = $panel.find('.loop-input, .loop-checkbox input, select');
             $inputs.prop('disabled', true);
@@ -381,15 +503,21 @@
                 var t = (res && res.data) ? res.data : null;
                 if (t) {
                     fillFormData(t);
-                    // 在标题旁显示状态标签
                     var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
                     var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
                     var $title = $panel.find('.loop-panel-title');
-                    $title.html('编辑循环 #' + escapeHtml(loopEditId) + ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' + (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : ''));
+                    $title.html('编辑循环 #' + escapeHtml(loopEditId) +
+                        ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' +
+                        (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : ''));
+                    // 如果有 goal 且非初始态，显示当前状态
+                    var g = t.goal;
+                    if (g) {
+                        var badge = renderGoalBadge(g);
+                        $title.append(' ' + badge);
+                    }
                 } else if (res !== null) {
                     showToast('未找到任务数据', 'error');
                 }
-                // 恢复表单
                 $inputs.prop('disabled', false);
                 $panel.find('#loopFormSaveBtn').prop('disabled', false).text('保存');
             });
@@ -412,17 +540,22 @@
                 $panel.find('#loopFormInterval').val(mins);
                 $panel.find('#loopFormIntervalUnit').val('m');
             }
-            // 切换回间隔模式时清空 cron
             $panel.find('#loopFormCron').val('');
         }
-        // 所有字段无条件赋值，null/undefined 时清空为默认值，避免模板切换残留
-        $panel.find('#loopFormGoal').val(t.goalCondition || '');
+        // ★ goal 条件（从 goal 对象或旧字段读取）
+        var g = t.goal;
+        var goalVal = g ? g.condition : (t.goalCondition || '');
+        $panel.find('#loopFormGoal').val(goalVal);
         $panel.find('#loopFormWorktree').prop('checked', !!t.worktreeEnabled);
         $panel.find('#loopFormRunNow').prop('checked', !!t.runNow);
         $panel.find('#loopFormMaxIter').val(t.maxIterations || '');
 
-        // 有高级字段时自动展开，否则折叠
-        if (t.goalCondition || t.worktreeEnabled || t.runNow) {
+        // ★ 预算字段
+        if (t.maxTokens) $panel.find('#loopFormMaxTokens').val(t.maxTokens);
+        if (t.maxDurationMs) $panel.find('#loopFormMaxDuration').val(Math.floor(t.maxDurationMs / 60000));
+
+        // 有高级字段时自动展开
+        if (t.goalCondition || t.worktreeEnabled || t.runNow || t.maxTokens || t.maxDurationMs) {
             $panel.find('#loopAdvanced').show();
             $panel.find('#loopAdvancedToggle').removeClass('collapsed');
         } else {
@@ -448,7 +581,6 @@
                 e.stopPropagation();
                 $tplMenu.toggleClass('show');
             });
-            // 点击模板项，填充表单
             $tplMenu.on('click', '.loop-tpl-item', function(e) {
                 e.stopPropagation();
                 var tplId = $(this).data('tpl');
@@ -459,7 +591,6 @@
                 if (tpl && tpl.data) fillFormData(tpl.data);
                 $tplMenu.removeClass('show');
             });
-            // 点击其他地方关闭
             $(document).off('mousedown.looptpl').on('mousedown.looptpl', function(e) {
                 if (!$(e.target).closest('#loopTplDropdown').length) {
                     $tplMenu.removeClass('show');
@@ -478,7 +609,6 @@
             }
         });
 
-        // 间隔类型切换
         $panel.find('input[name=loopScheduleType]').on('change', function() {
             var isCron = $(this).val() === 'cron';
             $panel.find('#loopFormInterval').prop('disabled', isCron);
@@ -486,10 +616,10 @@
             $panel.find('#loopFormCron').prop('disabled', !isCron);
         });
 
-        // 保存（防重复点击 + loading 状态）
+        // 保存
         var $saveBtn = $panel.find('#loopFormSaveBtn');
         $saveBtn.on('click', function() {
-            if ($saveBtn.prop('disabled')) return; // 防重复
+            if ($saveBtn.prop('disabled')) return;
 
             var prompt = $panel.find('#loopFormPrompt').val().trim();
             if (!prompt) {
@@ -497,7 +627,6 @@
                 return;
             }
 
-            // 进入 loading 状态
             $saveBtn.prop('disabled', true).text('保存中...');
 
             var isCron = $panel.find('input[name=loopScheduleType]:checked').val() === 'cron';
@@ -509,6 +638,10 @@
                 intervalVal = unit === 'h' ? num * 60 : num;
             }
 
+            // ★ 收集预算字段
+            var maxTokensVal = $panel.find('#loopFormMaxTokens').val().trim();
+            var maxDurationVal = $panel.find('#loopFormMaxDuration').val().trim();
+
             var params = {
                 prompt: prompt,
                 intervalMinutes: intervalVal,
@@ -516,7 +649,9 @@
                 goalCondition: $panel.find('#loopFormGoal').val().trim() || null,
                 worktreeEnabled: $panel.find('#loopFormWorktree').is(':checked'),
                 runNow: $panel.find('#loopFormRunNow').is(':checked'),
-                maxIterations: parseInt($panel.find('#loopFormMaxIter').val()) || null
+                maxIterations: parseInt($panel.find('#loopFormMaxIter').val()) || null,
+                maxTokens: maxTokensVal ? parseInt(maxTokensVal) : null,
+                maxDurationMs: maxDurationVal ? parseInt(maxDurationVal) * 60000 : null
             };
 
             function restoreBtn() {
@@ -561,28 +696,6 @@
         });
     }
 
-    // ========== 工具函数 ==========
-    function formatTimeAgo(isoStr) {
-        if (!isoStr) return '';
-        try {
-            var date = new Date(isoStr);
-            var now = new Date();
-            var diffMs = now - date;
-            var diffSec = Math.floor(diffMs / 1000);
-            if (diffSec < 60) return diffSec + '秒前';
-            var diffMin = Math.floor(diffSec / 60);
-            if (diffMin < 60) return diffMin + '分钟前';
-            var diffHour = Math.floor(diffMin / 60);
-            if (diffHour < 24) return diffHour + '小时前';
-            return Math.floor(diffHour / 24) + '天前';
-        } catch (e) {
-            return isoStr;
-        }
-    }
-
-
-
-
     // ========== 公开 API ==========
     window.refreshLoopPanel = function() {
         if (loopPanelVisible) renderLoopList();
@@ -593,7 +706,8 @@
     renderLoopList = function() {
         var $p = getActivePanel();
         $p.removeClass('mode-form');
-        $p.css('max-height', ''); // 清除手动高度，恢复 CSS 默认值
+        $p.css('max-height', '');
+        if (elapsedTimerId) clearInterval(elapsedTimerId);
         _origRenderLoopList();
     };
 })();

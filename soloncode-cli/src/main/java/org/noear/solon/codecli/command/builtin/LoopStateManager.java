@@ -95,7 +95,7 @@ public class LoopStateManager {
     }
 
     /**
-     * 追加一条结构化执行历史
+     * 追加一条结构化执行历史（含 Goal 状态）
      */
     public static void appendHistory(String workspace, String loopId, LoopExecutionResult result, int iteration, String stopReason) {
         try {
@@ -121,6 +121,11 @@ public class LoopStateManager {
                 if (result.getErrorMessage() != null) entry.set("error", result.getErrorMessage());
             }
             entry.set("stopReason", stopReason != null ? stopReason : "NONE");
+
+            // ★ P0: 记录 goal 状态（如果有）
+            // 由于这里没有 LoopTask 引用，goal 状态由调用方在 stopReason 中体现
+            // 例如："GOAL_ACHIEVED", "BUDGET_LIMITED", "MAX_ITERATIONS_REACHED"
+
             root.add(entry);
 
             writeFile(historyFile, root.toJson());
