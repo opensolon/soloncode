@@ -726,28 +726,18 @@ public class LoopScheduler {
         GoalState gs = task.getGoalState();
         int iter = gs.getCurrentIteration();
         int maxIter = gs.getMaxIterations();
-        String eval = gs.getLastEvaluationReason();
         boolean isFirstIter = iter == 0;
         boolean isCritical = gs.isBudgetCritical();
 
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n【目标】").append(gs.getCondition())
-          .append("  [").append(iter).append("/").append(maxIter);
-
-        if (isCritical) {
-            sb.append(" 临界");
-        }
-        sb.append("]");
-
-        // 上一轮评估反馈（Steady / Critical 阶段均有）
-        if (eval != null) {
-            sb.append("\n【上轮】").append(eval);
-        }
+          .append("  [").append(iter).append("/").append(maxIter)
+          .append("]");
 
         // 协议指令：仅 Warmup 阶段（首轮）注入
         if (isFirstIter) {
-            sb.append("\n【声明】每次回复末尾标注状态 → ")
-              .append("[GOAL_ACHIEVED]/[GOAL_BLOCKED]/[GOAL_CONTINUE]");
+            sb.append("\n【协议】每次回复末尾标注状态 → ")
+              .append("[GOAL_ACHIEVED] / [GOAL_BLOCKED] / [GOAL_CONTINUE]");
         }
 
         // 预算临界提示：具体化，不笼统
