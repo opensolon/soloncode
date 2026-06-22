@@ -296,16 +296,11 @@
             var label = GOAL_STATUS_LABEL[g.status] || g.status;
             var iterInfo = ' (' + (g.currentIteration || 0) + '/' + (g.maxIterations || '∞') + ')';
             var elapsed = formatDuration(g.startedAt);
-            var elapsedHtml = elapsed ? '⏱' + elapsed : '';
-            // 终态图标后缀
-            var suffix = '';
-            if (g.status === 'ACHIEVED') suffix = '✓';
-            else if (g.status === 'UNMET') suffix = '✗';
-            else if (g.status === 'BUDGET_LIMITED') suffix = '⚠';
-            else if (g.status === 'BLOCKED') suffix = '⊘';
+            var elapsedHtml = elapsed ?
+                '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:1px;flex-shrink:0;vertical-align:-1px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+                elapsed : '';
             goalInlineHtml = '<span class="loop-item-goal-inline ' + cls + '">' +
-                '🎯' + label + iterInfo +
-                (suffix ? suffix : '') +
+                label + iterInfo +
                 (elapsedHtml ? ' ' + elapsedHtml : '') + '</span>';
         }
 
@@ -317,8 +312,8 @@
         var html = '<div class="loop-item" data-id="' + t.id + '">';
         html += '<div class="loop-item-row">';
         html += '<span class="loop-item-dot ' + statusClass + '"></span>';
-        html += goalInlineHtml;
         html += '<span class="loop-item-name">#' + escapeHtml(t.id) + '</span>';
+        html += goalInlineHtml;
         html += '<span class="loop-item-schedule">' + scheduleText + '</span>';
         html += runningStatusHtml;
         if (tags.length) html += '<span class="loop-item-tags">' + tags.join('') + '</span>';
