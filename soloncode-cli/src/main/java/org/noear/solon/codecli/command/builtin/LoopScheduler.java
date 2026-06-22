@@ -710,49 +710,54 @@ public class LoopScheduler {
 
     /**
      * 构建完整的有效 prompt（skill 解析 + goal 条件注入）
+     *
+     * 三阶段自适应模板：
+     *   Warmup (iter==0)  — 首次注入协议指令
+     *   Steady (1~n)      — 精简反馈，模型已学会协议
+     *   Critical (<20%)   — 注入紧迫感 + 具体剩余次数
      */
     private String buildEffectivePrompt(String sessionId, LoopTask task) {
         String prompt = task.getPrompt();
 
-        // Goal 条件注入（持久目标 + [GOAL_ACHIEVED] 终止标记）
-        if (task.isGoalMode()) {
-            GoalState gs = task.getGoalState();
-            StringBuilder goalPrompt = new StringBuilder();
-            goalPrompt.append("\n\n--- 目标（持久目标） ---\n");
-
-            // 定时模式 或 模板加载失败时的回退：简短提示
-            goalPrompt.append("<objective>\n");
-            goalPrompt.append(gs.getCondition()).append("\n");
-            goalPrompt.append("</objective>\n\n");
-            goalPrompt.append("进度：第 ").append(gs.getCurrentIteration())
-                    .append("/").append(gs.getMaxIterations()).append(" 次迭代\n");
-
-            // P1: 注入上一轮评估 reason
-            if (gs.getLastEvaluationReason() != null) {
-                goalPrompt.append("\n<previous-evaluation>\n");
-                goalPrompt.append(gs.getLastEvaluationReason()).append("\n");
-                goalPrompt.append("</previous-evaluation>\n\n");
-                goalPrompt.append("请参考以上反馈继续改进。\n");
-            }
-
-            // P1: 预算临界提示
-            if (gs.isBudgetCritical()) {
-                goalPrompt.append("\n⚠️ 注意：剩余迭代/预算有限，请优先完成最关键的目标。\n");
-            }
-
-            // ★ P1: 三态协议指令
-            goalPrompt.append("\n如果目标已达成，请回复 [GOAL_ACHIEVED]。");
-            goalPrompt.append("\n");
-            goalPrompt.append("\n请在每个回复末尾声明当前状态：");
-            goalPrompt.append("\n- 目标已达成 → [GOAL_ACHIEVED] <达成原因>");
-            goalPrompt.append("\n- 遇到阻塞 → [GOAL_BLOCKED] <阻塞原因，包括需要用户提供的具体信息>");
-            goalPrompt.append("\n- 仍需继续 → [GOAL_CONTINUE] <当前进展 + 下一步计划>");
-            goalPrompt.append("\n\n如果没有声明，默认视为继续执行。");
-
-            prompt = prompt + goalPrompt;
+        if (!task.isGoalMode()) {
+            return prompt;
         }
 
-        return prompt;
+        GoalState gs = task.getGoalState();
+        int iter = gs.getCurrentIteration();
+        int maxIter = gs.getMaxIterations();
+        String eval = gs.getLastEvaluationReason();
+        boolean isFirstIter = iter == 0;
+        boolean isCritical = gs.isBudgetCritical();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n【目标】").append(gs.getCondition())
+          .append("  [").append(iter).append("/").append(maxIter);
+
+        if (isCritical) {
+            sb.append(" 临界");
+        }
+        sb.append("]");
+
+        // 上一轮评估反馈（Steady / Critical 阶段均有）
+        if (eval != null) {
+            sb.append("\n【上轮】").append(eval);
+        }
+
+        // 协议指令：仅 Warmup 阶段（首轮）注入
+        if (isFirstIter) {
+            sb.append("\n【声明】每次回复末尾标注状态 → ")
+              .append("[GOAL_ACHIEVED]/[GOAL_BLOCKED]/[GOAL_CONTINUE]");
+        }
+
+        // 预算临界提示：具体化，不笼统
+        if (isCritical && maxIter > 0) {
+            int remaining = maxIter - iter;
+            sb.append("\n【注意】仅剩 ").append(remaining)
+              .append(" 次迭代，优先完成核心目标，可放弃非关键细节。");
+        }
+
+        return prompt + sb;
     }
 
     private LoopExecutionResult executeSingle(String sessionId, String effectivePrompt, String agentName) {
