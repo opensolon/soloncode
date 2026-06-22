@@ -45,6 +45,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -282,13 +283,13 @@ public class WebGate extends SimpleWebSocketListener {
                     String fileName = attachment.getName();
                     if (fileName != null && !fileName.contains("..") && !fileName.contains("/") && !fileName.contains("\\")) {
                         String ext = "." + attachment.getExtension();
-                        java.nio.file.Path savePath = java.nio.file.Paths.get(engine.getWorkspace(), fileName).toAbsolutePath().normalize();
+                        Path savePath = Paths.get(engine.getWorkspace(), fileName).toAbsolutePath().normalize();
 
-                        if (savePath.startsWith(java.nio.file.Paths.get(engine.getWorkspace()).toAbsolutePath().normalize())) {
-                            java.nio.file.Files.copy(attachment.getContent(), savePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        if (savePath.startsWith(Paths.get(engine.getWorkspace()).toAbsolutePath().normalize())) {
+                            Files.copy(attachment.getContent(), savePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
                             if (isImageAttachment(ext, attachmentTypes != null && i < attachmentTypes.length ? attachmentTypes[i] : null)) {
-                                byte[] bytes = java.nio.file.Files.readAllBytes(savePath);
+                                byte[] bytes = Files.readAllBytes(savePath);
                                 String base64 = Base64.getEncoder().encodeToString(bytes);
                                 String mime = extensionToMime(ext);
                                 imageBlocks.add(ImageBlock.ofBase64(base64, mime));
@@ -599,7 +600,7 @@ public class WebGate extends SimpleWebSocketListener {
                 if (input != null && input.startsWith("/")) {
                     List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
                     String cmdName = parts.get(0).toLowerCase();
-                    if ("interrupt".equals(cmdName) || "stop".equals(cmdName)) {
+                    if ("interrupt".equals(cmdName) || "exit".equals(cmdName)) {
                         emitToClient(sessionId, WebChunk.ofUserInput(input, source));
                         onChatInput(sessionId, null, input, null, null, null, null);
                         return;
