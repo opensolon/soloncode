@@ -599,6 +599,18 @@ public class WebGate extends SimpleWebSocketListener {
         try {
             AgentSession session = engine.getSession(sessionId);
             if (isSessionBusy(session)) {
+                // 检查是否为暂停/中断命令：允许在任务执行中穿过忙碌检查
+                if (input != null && input.startsWith("/")) {
+                    List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
+                    String cmdName = parts.get(0).toLowerCase();
+                    if ("interrupt".equals(cmdName) || "stop".equals(cmdName)) {
+                        emitToClient(sessionId, WebChunk.ofUserInput(input, source));
+                        onChatInput(sessionId, null, input, null, null, null, null);
+streamBuilder.replyToBoundChannel(sessionId, "✅ 任务已中断", true);
+                        return;
+                    }
+                }
+
                 LOG.warn("[WebGate] {} event skipped for session {}: task in progress", source, sessionId);
                 return;
             }

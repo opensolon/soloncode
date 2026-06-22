@@ -541,7 +541,7 @@ public class WebStreamBuilder {
     /**
      * 向所有已绑定的 IM 通道发送回复
      */
-    private void replyToBoundChannel(String sessionId, String text, boolean isFinal) {
+    public void replyToBoundChannel(String sessionId, String text, boolean isFinal) {
         for (Channel link : imLinks) {
             if (link.isBound(sessionId)) {
                 link.sendReply(sessionId, text, isFinal);
