@@ -537,14 +537,10 @@ public class WebGate extends SimpleWebSocketListener {
                     text = "命令执行完成";
                 }
 
-                if (streamBuilder.getWeChatLink() != null) {
-                    //命令执行后也通知给微信
-                    if (streamBuilder.getWeChatLink().isBound(session.getSessionId())) {
-                        streamBuilder.getWeChatLink().sendReply(session.getSessionId(), text, true);
-                    }
-                }
-
                 emitToClient(session.getSessionId(), WebChunk.ofCommand(text));
+
+                // 命令执行后通知所有绑定的 IM 通道（微信/飞书/钉钉等）
+                streamBuilder.replyToBoundChannel(session.getSessionId(), text, true);
             }
 
             emitToClient(session.getSessionId(), WebChunk.ofDone());
@@ -606,7 +602,6 @@ public class WebGate extends SimpleWebSocketListener {
                     if ("interrupt".equals(cmdName) || "stop".equals(cmdName)) {
                         emitToClient(sessionId, WebChunk.ofUserInput(input, source));
                         onChatInput(sessionId, null, input, null, null, null, null);
-streamBuilder.replyToBoundChannel(sessionId, "✅ 任务已中断", true);
                         return;
                     }
                 }

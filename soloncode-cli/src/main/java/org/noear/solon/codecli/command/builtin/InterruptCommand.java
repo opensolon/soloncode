@@ -59,7 +59,7 @@ public class InterruptCommand implements Command {
         if (disposable != null) {
             disposable.dispose();
             session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
-            ctx.println("用户已取消任务");
+            ctx.println("用户已取消任务（或中断）");
         } else {
             ctx.println("当前没有正在执行的任务");
         }

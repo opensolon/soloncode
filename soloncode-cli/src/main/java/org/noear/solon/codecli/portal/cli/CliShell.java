@@ -278,14 +278,14 @@ public class CliShell implements Runnable {
                 });
 
         // 执行命令
-        boolean handled = command.execute(ctx);
+        command.execute(ctx);
 
         // clear 命令后重新打印 welcome
         if ("clear".equals(cmdName)) {
             printWelcome(session);
         }
 
-        return handled;
+        return true;
     }
 
     private String getTimeNow() {
