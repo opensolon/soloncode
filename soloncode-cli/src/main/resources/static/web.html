@@ -604,10 +604,72 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="form-actions form-actions-end settings-actions-spacious">
-                            <button class="btn-primary" id="generalSaveBtn">保存</button>
+                            <!-- ============ 配置卡片: Loop Goal ============ -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">循环目标（Loop Goal）</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label">默认 Token 预算</label>
+                                            <input type="text" inputmode="numeric" class="general-input"
+                                                   id="generalLoopDefaultMaxTokens" placeholder="0（不限制）"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">默认时间预算（分钟）</label>
+                                            <input type="text" inputmode="numeric" class="general-input"
+                                                   id="generalLoopDefaultMaxDuration" placeholder="0（不限制）"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">停滞检测阈值（轮）</label>
+                                            <input type="text" inputmode="numeric" class="general-input"
+                                                   id="generalLoopStagnationThreshold" placeholder="默认 3"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-field-row settings-gap-top-md">
+                                        <div class="general-field">
+                                            <label class="general-field-label">连续异常阈值（次）</label>
+                                            <input type="text" inputmode="numeric" class="general-input"
+                                                   id="generalLoopMaxConsecutiveErrors" placeholder="默认 3"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">暂停超时放弃（小时）</label>
+                                            <input type="text" inputmode="numeric" class="general-input"
+                                                   id="generalLoopPauseAutoAbandonHours" placeholder="默认 24"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">预算警告百分比</label>
+                                            <input type="text" inputmode="numeric" class="general-input"
+                                                   id="generalLoopBudgetWarningPercent" placeholder="默认 70"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-field-row settings-gap-top-md">
+                                        <div class="general-field">
+                                            <label class="general-field-label">预算紧急百分比</label>
+                                            <input type="text" inputmode="numeric" class="general-input"
+                                                   id="generalLoopBudgetCriticalPercent" placeholder="默认 85"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">启用验证器</span>
+                                            <span class="general-toggle-desc">目标完成时运行构建/测试验证，未通过则拒绝标记完成</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalLoopValidatorEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm">
+                                        Loop Goal 是长任务目标模式。Token/时间预算设为 0 表示不限制；停滞检测在连续 N 轮无进展时提醒模型；连续异常达阈值时自动标记阻塞
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         </div>
                     </div>
                 </div>

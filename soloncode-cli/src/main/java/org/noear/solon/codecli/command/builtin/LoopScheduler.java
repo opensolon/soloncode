@@ -19,6 +19,8 @@ import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.entity.LoopGroupDo;
 import org.noear.solon.scheduling.ScheduledAnno;
 import org.noear.solon.scheduling.scheduled.manager.IJobManager;
 import org.noear.solon.scheduling.simple.JobManager;
@@ -55,7 +57,7 @@ public class LoopScheduler {
 
     private static volatile boolean interruptHandlerInstalled = false;
 
-    private final LoopConfig loopConfig;
+    private final LoopGroupDo loop;
     private final HarnessEngine engine;
     private final IJobManager jobManager;
     private final ConcurrentHashMap<String, List<LoopTask>> sessionTasks = new ConcurrentHashMap<>();
@@ -82,11 +84,21 @@ public class LoopScheduler {
         boolean isBusy(String sessionId);
     }
 
-    public LoopScheduler(HarnessEngine engine, String worktreeDir) {
+    public LoopScheduler(HarnessEngine engine, String worktreeDir, AgentSettings agentSettings) {
         this.engine = engine;
         this.jobManager = JobManager.getInstance();
         this.worktreeDir = worktreeDir;
-        this.loopConfig = new LoopConfig();
+        this.loop = agentSettings.getLoop();
+        // 同步预算阈值到 GoalState 静态配置
+        GoalState.configure(
+                loop.getBudgetWarningPercentOrDefault(),
+                loop.getBudgetCriticalPercentOrDefault(),
+                loop.getPauseAutoAbandonMsOrDefault()
+        );
+    }
+
+    public LoopGroupDo getLoopConfig() {
+        return loop;
     }
 
     public void addTaskExecutor(TaskExecutor executor) {
@@ -664,7 +676,7 @@ public class LoopScheduler {
                 GoalState gs = task.getGoalState();
                 if (gs.getStatus().isActive() && !gs.isBudgetExceeded()) {
                     int errors = task.incrementConsecutiveErrors();
-                    if (errors >= loopConfig.getMaxConsecutiveErrors()) {
+                    if (errors >= loop.getMaxConsecutiveErrorsOrDefault()) {
                         // 连续异常 → 运行时兜底 blocked
                         LOG.warn("Goal '{}' blocked by runtime: {} consecutive errors",
                                 task.getId(), errors);
@@ -765,7 +777,7 @@ public class LoopScheduler {
         sb.append("\n");
 
         // 停滞质疑（运行时兜底，仅触发时注入）
-        if (task.getStagnationCount() >= loopConfig.getStagnationThreshold()) {
+        if (task.getStagnationCount() >= loop.getStagnationThresholdOrDefault()) {
             sb.append("--- 进展质疑 ---\n");
             sb.append("系统检测到最近 ").append(task.getStagnationCount())
               .append(" 轮执行未产生实质性进展。\n");

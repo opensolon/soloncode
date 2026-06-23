@@ -66,6 +66,21 @@
                 window.cliPrintSimplified = d.cliPrintSimplified !== false;
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
+
+        // 加载 Loop Goal 配置
+        $.get('/web/settings/loop', function (resp) {
+            if (resp.code === 200 && resp.data) {
+                var d = resp.data;
+                $('#generalLoopDefaultMaxTokens').val(d.defaultMaxTokens != null && d.defaultMaxTokens > 0 ? formatNum(d.defaultMaxTokens) : '');
+                $('#generalLoopDefaultMaxDuration').val(d.defaultMaxDurationMinutes != null && d.defaultMaxDurationMinutes > 0 ? d.defaultMaxDurationMinutes : '');
+                $('#generalLoopStagnationThreshold').val(d.stagnationThreshold != null ? d.stagnationThreshold : '');
+                $('#generalLoopMaxConsecutiveErrors').val(d.maxConsecutiveErrors != null ? d.maxConsecutiveErrors : '');
+                $('#generalLoopPauseAutoAbandonHours').val(d.pauseAutoAbandonHours != null ? d.pauseAutoAbandonHours : '');
+                $('#generalLoopBudgetWarningPercent').val(d.budgetWarningPercent != null ? d.budgetWarningPercent : '');
+                $('#generalLoopBudgetCriticalPercent').val(d.budgetCriticalPercent != null ? d.budgetCriticalPercent : '');
+                $('#generalLoopValidatorEnabled').prop('checked', d.validatorEnabled !== false);
+            }
+        }).fail(function () { console.error('[Settings] Failed to load loop settings'); });
     }
 
     $('#generalSaveBtn').on('click', function () {
@@ -100,6 +115,20 @@
             })
             .fail(function () { showToast('网络错误', 'error'); })
             .always(function () { $generalSaveBtn.prop('disabled', false); });
+
+        // 同步保存 Loop Goal 配置
+        var loopObj = {
+            defaultMaxTokens: parseNumStr($('#generalLoopDefaultMaxTokens').val().trim()) || 0,
+            defaultMaxDurationMinutes: parseNumStr($('#generalLoopDefaultMaxDuration').val().trim()) || 0,
+            stagnationThreshold: parseNumStr($('#generalLoopStagnationThreshold').val().trim()),
+            maxConsecutiveErrors: parseNumStr($('#generalLoopMaxConsecutiveErrors').val().trim()),
+            pauseAutoAbandonHours: parseNumStr($('#generalLoopPauseAutoAbandonHours').val().trim()),
+            budgetWarningPercent: parseNumStr($('#generalLoopBudgetWarningPercent').val().trim()),
+            budgetCriticalPercent: parseNumStr($('#generalLoopBudgetCriticalPercent').val().trim()),
+            validatorEnabled: $('#generalLoopValidatorEnabled').is(':checked')
+        };
+        $.ajax({ url: '/web/settings/loop/save', method: 'POST', data: JSON.stringify(loopObj), contentType: 'application/json', dataType: 'json' })
+            .fail(function () { console.error('[Settings] Failed to save loop settings'); });
     });
 
     window._settingsGeneral = {

@@ -19,6 +19,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.codecli.config.entity.LoopGroupDo;
 
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -266,14 +267,14 @@ public class LoopCommand implements Command {
                 taskType, worktreeEnabled, maxIterations, runNow
         );
 
-        // Goal 模式：仅在 LoopConfig 配置了 >0 的默认值时才应用；未配则不限制
+        // Goal 模式：仅在配置了 >0 的默认值时才应用；未配则不限制
         if (taskType == LoopTask.TaskType.GOAL) {
-            LoopConfig loopConfig = new LoopConfig();
-            if (loopConfig.getDefaultMaxTokens() > 0) {
-                task.setMaxTokens(loopConfig.getDefaultMaxTokens());
+            LoopGroupDo loopCfg = scheduler.getLoopConfig();
+            if (loopCfg.getDefaultMaxTokensOrDefault() > 0) {
+                task.setMaxTokens(loopCfg.getDefaultMaxTokensOrDefault());
             }
-            if (loopConfig.getDefaultMaxDurationMs() > 0) {
-                task.setMaxDurationMs(loopConfig.getDefaultMaxDurationMs());
+            if (loopCfg.getDefaultMaxDurationMsOrDefault() > 0) {
+                task.setMaxDurationMs(loopCfg.getDefaultMaxDurationMsOrDefault());
             }
         }
 
@@ -417,17 +418,17 @@ public class LoopCommand implements Command {
                 true          // runNow = true（立即执行首次）
         );
 
-        // 设置预算（仅在 LoopConfig 配置了 >0 的默认值时才应用；未配则不限制）
-        LoopConfig loopConfig = new LoopConfig();
+        // 设置预算（仅在配置了 >0 的默认值时才应用；未配则不限制）
+        LoopGroupDo loopCfg = scheduler.getLoopConfig();
         if (maxTokens != null) {
             task.setMaxTokens(maxTokens);
-        } else if (loopConfig.getDefaultMaxTokens() > 0) {
-            task.setMaxTokens(loopConfig.getDefaultMaxTokens());
+        } else if (loopCfg.getDefaultMaxTokensOrDefault() > 0) {
+            task.setMaxTokens(loopCfg.getDefaultMaxTokensOrDefault());
         }
         if (maxDurationMs != null) {
             task.setMaxDurationMs(maxDurationMs);
-        } else if (loopConfig.getDefaultMaxDurationMs() > 0) {
-            task.setMaxDurationMs(loopConfig.getDefaultMaxDurationMs());
+        } else if (loopCfg.getDefaultMaxDurationMsOrDefault() > 0) {
+            task.setMaxDurationMs(loopCfg.getDefaultMaxDurationMsOrDefault());
         }
 
         // 初始化状态目录

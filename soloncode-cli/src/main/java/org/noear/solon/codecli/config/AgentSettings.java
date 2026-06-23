@@ -33,6 +33,8 @@ public class AgentSettings implements Serializable {
     private final GeneralGroupDo general = new GeneralGroupDo();
     //permission 权限
     private final PermissionGroupDo permission = new PermissionGroupDo();
+    //loop Goal 配置
+    private final LoopGroupDo loop = new LoopGroupDo();
 
     //defaultModel
     private String defaultModel;
@@ -154,6 +156,31 @@ public class AgentSettings implements Serializable {
 
         if(general.getCliThinkPrinted() == null){
             general.setCliThinkPrinted(props.isThinkPrinted());
+        }
+
+        //-----------------------------------------------------
+
+        // loop: 从 app.yml 的 soloncode.loop.* 回填（仅当 settings.json 未配置时）
+        try {
+            org.noear.solon.core.Props cfg = org.noear.solon.Solon.cfg();
+            if (loop.getBudgetWarningPercent() == null)
+                loop.setBudgetWarningPercent(cfg.getInt("soloncode.loop.budgetWarningPercent", 70));
+            if (loop.getBudgetCriticalPercent() == null)
+                loop.setBudgetCriticalPercent(cfg.getInt("soloncode.loop.budgetCriticalPercent", 85));
+            if (loop.getDefaultMaxTokens() == null)
+                loop.setDefaultMaxTokens(cfg.getLong("soloncode.loop.defaultMaxTokens", 0L));
+            if (loop.getDefaultMaxDurationMinutes() == null)
+                loop.setDefaultMaxDurationMinutes(cfg.getInt("soloncode.loop.defaultMaxDurationMinutes", 0));
+            if (loop.getStagnationThreshold() == null)
+                loop.setStagnationThreshold(cfg.getInt("soloncode.loop.stagnationThreshold", 3));
+            if (loop.getMaxConsecutiveErrors() == null)
+                loop.setMaxConsecutiveErrors(cfg.getInt("soloncode.loop.maxConsecutiveErrors", 3));
+            if (loop.getPauseAutoAbandonHours() == null)
+                loop.setPauseAutoAbandonHours(cfg.getInt("soloncode.loop.pauseAutoAbandonHours", 24));
+            if (loop.getValidatorEnabled() == null)
+                loop.setValidatorEnabled(cfg.getBool("soloncode.loop.validatorEnabled", true));
+        } catch (Exception ignored) {
+            // 非 Solon 环境时保持 null，便捷方法提供默认值
         }
 
         //-----------------------------------------------------
@@ -297,6 +324,7 @@ public class AgentSettings implements Serializable {
 
         oNode.getOrNew("general").fill(general);
         oNode.getOrNew("permission").fill(permission);
+        oNode.getOrNew("loop").fill(loop);
 
         oNode.set("defaultModel", this.defaultModel);
 

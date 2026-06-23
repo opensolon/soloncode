@@ -137,8 +137,7 @@ public class GoalTalent extends AbsTalent {
 
         // ---- complete ----
         if ("complete".equals(status)) {
-            LoopConfig config = new LoopConfig();
-            if (config.isValidatorEnabled()) {
+            if (scheduler.getLoopConfig().isValidatorEnabledOrDefault()) {
                 GoalValidator validator = ValidatorFactory.forCondition(gs.getCondition());
                 GoalValidator.ValidationResult vr = validator.validate(gs.getCondition(), __sessionId);
                 if (!vr.isPassed()) {

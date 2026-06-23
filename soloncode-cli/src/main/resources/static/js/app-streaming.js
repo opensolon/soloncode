@@ -20,10 +20,10 @@ $(chatSendBtn).on('click', function() {
 
 /* ===== Click to focus ===== */
 $('.welcome-input-box').on('click', function(e) {
-    if (!$(e.target).closest('button').length && !$(e.target).closest('.loop-panel').length) welcomeInput.focus();
+    if (!$(e.target).closest('button').length && !$(e.target).closest('.loop-panel').length && !$(e.target).closest('.model-dropdown').length) welcomeInput.focus();
 });
 $('.input-box').on('click', function(e) {
-    if (!$(e.target).closest('button').length && !$(e.target).closest('.history-panel').length && !$(e.target).closest('.loop-panel').length) chatInput.focus();
+    if (!$(e.target).closest('button').length && !$(e.target).closest('.history-panel').length && !$(e.target).closest('.loop-panel').length && !$(e.target).closest('.model-dropdown').length) chatInput.focus();
 });
 
 /* ===== New Chat ===== */

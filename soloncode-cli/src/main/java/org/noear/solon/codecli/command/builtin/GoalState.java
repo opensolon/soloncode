@@ -48,6 +48,17 @@ public class GoalState {
 
     private long pausedAtEpochMs;  // PAUSED/BLOCKED 时间戳（用于超时放弃检测）
 
+    // ===== 静态配置（由 LoopScheduler 在启动时通过 configure() 设置） =====
+    private static volatile int budgetWarningPercent = 70;
+    private static volatile int budgetCriticalPercent = 85;
+    private static volatile long pauseAutoAbandonMs = 24 * 3_600_000L;
+
+    public static void configure(int warningPct, int criticalPct, long abandonMs) {
+        budgetWarningPercent = warningPct;
+        budgetCriticalPercent = criticalPct;
+        pauseAutoAbandonMs = abandonMs;
+    }
+
     public GoalState(String condition, long maxTokens) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.condition = condition;
@@ -99,25 +110,15 @@ public class GoalState {
 
     public boolean isBudgetCritical() {
         if (maxTokens <= 0) return false;
-        try {
-            LoopConfig config = new LoopConfig();
-            double threshold = config.getBudgetCriticalPercent() / 100.0;
-            return (double) consumedTokens / maxTokens >= threshold;
-        } catch (Exception ignored) {
-            return maxTokens > 0 && (double) consumedTokens / maxTokens >= 0.85;
-        }
+        double threshold = budgetCriticalPercent / 100.0;
+        return (double) consumedTokens / maxTokens >= threshold;
     }
 
     public boolean isBudgetWarning() {
         if (maxTokens <= 0) return false;
         if (isBudgetCritical()) return false;
-        try {
-            LoopConfig config = new LoopConfig();
-            double threshold = config.getBudgetWarningPercent() / 100.0;
-            return (double) consumedTokens / maxTokens >= threshold;
-        } catch (Exception ignored) {
-            return false;
-        }
+        double threshold = budgetWarningPercent / 100.0;
+        return (double) consumedTokens / maxTokens >= threshold;
     }
 
     // ===== PAUSED/BLOCKED 超时放弃 =====
@@ -125,13 +126,7 @@ public class GoalState {
     public boolean isAbandoned() {
         if (!status.isResumable()) return false;
         if (pausedAtEpochMs == 0) return false;
-        try {
-            LoopConfig config = new LoopConfig();
-            return (System.currentTimeMillis() - pausedAtEpochMs) > config.getPauseAutoAbandonMs();
-        } catch (Exception ignored) {
-            long defaultTimeout = 24 * 60 * 60 * 1000L; // 24h
-            return (System.currentTimeMillis() - pausedAtEpochMs) > defaultTimeout;
-        }
+        return (System.currentTimeMillis() - pausedAtEpochMs) > pauseAutoAbandonMs;
     }
 
     // ===== 预算扩容 =====
