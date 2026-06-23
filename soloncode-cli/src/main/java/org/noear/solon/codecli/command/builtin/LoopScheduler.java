@@ -103,7 +103,14 @@ public class LoopScheduler {
      * 跨会话查找活跃 goal（PURSUING 优先，PAUSED/BLOCKED 次之）
      */
     public LoopTask findActiveGoalAcrossSessions(String sessionId) {
+        if (sessionId == null) {
+            return null;
+        }
+
         List<LoopTask> taskList = sessionTasks.get(sessionId);
+        if (taskList == null) {
+            return null;
+        }
 
         for (LoopTask t : taskList) {
             if (t.isGoalMode() && t.getGoalState().getStatus().isActive()) {

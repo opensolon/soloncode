@@ -158,6 +158,10 @@ public class GoalTalent extends AbsTalent {
             return "错误：status 参数必填（complete 或 blocked）";
         }
 
+        if (__sessionId == null) {
+            return "错误：无活跃会话";
+        }
+
         LoopTask task = scheduler.findActiveGoalAcrossSessions(__sessionId);
         if (task == null) {
             return "错误：未找到活跃目标";
@@ -166,10 +170,6 @@ public class GoalTalent extends AbsTalent {
         GoalState gs = task.getGoalState();
         if (!gs.getStatus().isActive()) {
             return "警告：目标不在活跃状态（" + gs.getStatus() + "），无法更新";
-        }
-
-        if (__sessionId == null) {
-            return "错误：无活跃会话";
         }
 
         // ---- complete ----
