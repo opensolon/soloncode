@@ -279,7 +279,7 @@ public class Configurator {
         Solon.app().router().add(webBean);
 
         //注册第三方渠道（HTTP 端点 + 后台线程）
-        WebGate webGate = new WebGate(agentRuntime);
+        WebGate webGate = new WebGate(agentRuntime, settings);
         WebStreamBuilder streamBuilder = new WebStreamBuilder(agentRuntime);
         WebChannel webChannel = new WebChannel(agentRuntime, webGate);
         // 将渠道绑定到 streamBuilder，使 IM 回复能同步
@@ -303,7 +303,7 @@ public class Configurator {
 
     private void runWeb(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
         //web ws gate
-        WebGate webGate = new WebGate(agentRuntime);
+        WebGate webGate = new WebGate(agentRuntime, settings);
         WebSocketRouter.getInstance().of("/web/gate", webGate);
 
         //web

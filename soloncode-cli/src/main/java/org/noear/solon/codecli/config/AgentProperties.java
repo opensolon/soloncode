@@ -61,7 +61,7 @@ public class AgentProperties implements Serializable {
     private int sessionWindowSize = 8;
 
     private int summaryWindowSize = 40;
-    private int summaryWindowToken = 60_000;
+    private int summaryWindowToken = 64_000;
     private String summaryModel; //摘要大模型
 
     private boolean memoryIsolation = true;

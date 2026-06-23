@@ -24,16 +24,29 @@
         return inChatMode ? $chatLoopBtn : $welcomeLoopBtn;
     }
 
-    // ========== 预设模板 ==========
+    // ========== 预设模板 v2（优化版） ==========
     var LOOP_TEMPLATES = [
         {
             id: 'auto-fix',
             icon: 'AF',
             name: '自动修复循环',
-            desc: '反复尝试修复目标直到测试通过',
+            desc: '反复运行测试 → 分析失败 → 修复代码 → 验证通过',
             data: {
-                prompt: '运行测试套件，如果有失败的测试则分析原因并尝试修复代码',
+                prompt: '运行项目的测试套件，收集所有失败的测试用例；逐一分析失败根因（检查断言、逻辑、依赖），修复对应源码；提交修复并确认所有测试通过。如遇无法修复的阻塞问题，详细记录原因后暂停',
                 intervalMinutes: 10,
+                type: 'GOAL',
+                worktreeEnabled: true,
+                runNow: true
+            }
+        },
+        {
+            id: 'code-refactor',
+            icon: 'RF',
+            name: '代码重构',
+            desc: '逐步重构指定模块，保持测试通过',
+            data: {
+                prompt: '分析项目中需要重构的模块（高复杂度/重复代码/坏味道），制定重构计划；每次重构一个单元后运行测试确保不引入回归；持续迭代直到目标模块重构完成',
+                intervalMinutes: 15,
                 type: 'GOAL',
                 worktreeEnabled: true,
                 runNow: true
@@ -43,9 +56,9 @@
             id: 'daily-review',
             icon: 'CR',
             name: '每日代码审查',
-            desc: '每天定时审查代码提交并汇总风险',
+            desc: '每天 9 点审查昨日提交，生成风险报告',
             data: {
-                prompt: '审查昨天的所有代码提交，总结变更摘要和潜在风险点',
+                prompt: '从昨天 0 点到今天 8 点间的所有提交中提取变更摘要（按文件分类），检查是否存在以下风险：未处理的错误、硬编码密钥、SQL 注入隐患、内存泄漏、逻辑漏洞。输出包含风险等级（高/中/低）的汇总报告',
                 cron: '0 9 * * *',
                 type: 'HEARTBEAT',
                 worktreeEnabled: false,
@@ -57,9 +70,9 @@
             id: 'daily-memory',
             icon: 'MR',
             name: '每晚记忆整理',
-            desc: '每晚定时整理对话记忆，归纳用户偏好',
+            desc: '每晚 22 点归纳当日对话，沉淀长期记忆',
             data: {
-                prompt: '回顾今天的所有对话记录，提取用户的偏好习惯、技术决策和重要约束，归纳整理后存入长期记忆',
+                prompt: '回顾当天所有对话记录，按以下维度提取关键信息：1）技术决策（架构选型、依赖引入、配置变更）2）用户偏好（编码风格、命名习惯、工具偏好）3）重要约束（性能要求、兼容性限制、安全规范）4）待办事项（遗留问题、后续计划）。将提炼后的信息整理为结构化记忆条目存入长期记忆',
                 cron: '0 22 * * *',
                 type: 'HEARTBEAT',
                 worktreeEnabled: false,
@@ -68,12 +81,25 @@
             }
         },
         {
+            id: 'test-coverage',
+            icon: 'TC',
+            name: '测试补全',
+            desc: '扫描未覆盖代码，逐步补充单元测试',
+            data: {
+                prompt: '运行测试覆盖率工具，列出未被测试覆盖的模块/方法；选择优先级最高的模块（核心逻辑 > 边界条件 > 工具函数），编写缺失的单元测试；每次提交后重新检查覆盖率，持续迭代直到目标覆盖率达成',
+                intervalMinutes: 15,
+                type: 'GOAL',
+                worktreeEnabled: true,
+                runNow: true
+            }
+        },
+        {
             id: 'ci-monitor',
             icon: 'CI',
-            name: 'CI 监控',
-            desc: '定时检查构建状态，失败时分析原因',
+            name: 'CI 构建监控',
+            desc: '每 30 分钟检查 CI 状态，失败时自动诊断',
             data: {
-                prompt: '检查最近的 CI 构建状态，如果有失败的用例则分析失败原因并汇总报告',
+                prompt: '检查项目 CI 的最新构建状态（包括编译、测试、lint、打包等阶段）。如有失败阶段，按以下流程诊断：1）定位失败日志的关键错误行 2）分析根因（代码变更/环境问题/配置错误）3）给出修复建议。如连续 3 次检查同一问题未修复，标记为阻塞',
                 intervalMinutes: 30,
                 type: 'HEARTBEAT',
                 worktreeEnabled: false,
@@ -82,14 +108,28 @@
             }
         },
         {
+            id: 'dep-upkeep',
+            icon: 'DU',
+            name: '依赖健康检查',
+            desc: '检查依赖安全漏洞与版本兼容性',
+            data: {
+                prompt: '扫描项目所有直接和传递依赖，检查：1）已知安全漏洞（CVE）及其严重程度 2）版本是否过时（最新稳定版 vs 当前版本）3）依赖间的兼容性冲突。汇总为依赖健康报告，标注每个问题的建议操作（升级/降级/替换/忽略）',
+                intervalMinutes: 60,
+                type: 'HEARTBEAT',
+                worktreeEnabled: false,
+                maxIterations: 10,
+                runNow: false
+            }
+        },
+        {
             id: 'health-check',
             icon: 'HC',
             name: '服务健康巡检',
-            desc: '定时探测服务状态，异常时告警',
+            desc: '每 5 分钟探测核心端点，异常即时告警',
             data: {
-                prompt: '检查所有核心服务的健康状态（HTTP 端点），如果有异常则汇总告警信息',
+                prompt: '依次探测所有核心服务端点的健康状态（HTTP GET /health 或等价端点），记录每个端点的响应状态码、响应时间、返回体摘要。如有异常（非 2xx/超时/连接拒绝），立即输出告警信息并持续监控直到恢复',
                 intervalMinutes: 5,
-                type: 'GOAL',
+                type: 'HEARTBEAT',
                 worktreeEnabled: false,
                 runNow: true
             }

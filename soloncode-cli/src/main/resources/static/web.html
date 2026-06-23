@@ -409,15 +409,15 @@
                                     <div class="general-field-row">
                                         <div class="general-field">
                                             <label class="general-field-label">历史窗口大小</label>
-                                            <input type="text" inputmode="numeric" class="general-input" id="generalSessionWindowSize" placeholder="默认 8"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSessionWindowSize" placeholder="8（默认）"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">压缩触发消息数</label>
-                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowSize" placeholder="默认"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowSize" placeholder="40（默认）"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">压缩触发词元数</label>
-                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowToken" placeholder="100k（默认）" list="summaryTokenList" autocomplete="off"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowToken" placeholder="64k（默认）" list="summaryTokenList" autocomplete="off"/>
                                             <datalist id="summaryTokenList">
                                                 <option value="32k">
                                                 <option value="64k">
@@ -601,6 +601,32 @@
                                             <input type="checkbox" id="generalLspEnabled"/>
                                             <span class="toggle-slider"></span>
                                         </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ============ 配置卡片: 访问认证 ============ -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">访问认证</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field" style="flex:1">
+                                            <label class="general-field-label">用户名</label>
+                                            <input type="text" class="general-input" id="generalWebAuthUser"
+                                                   placeholder="留空=不启用"/>
+                                        </div>
+                                        <div class="general-field" style="flex:1">
+                                            <label class="general-field-label">密码</label>
+                                            <input type="password" class="general-input" id="generalWebAuthPass"
+                                                   placeholder="留空=不启用"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm">
+                                    启用后，访问页面会弹出浏览器登录框，输入账号密码才能进入
                                     </div>
                                 </div>
                             </div>

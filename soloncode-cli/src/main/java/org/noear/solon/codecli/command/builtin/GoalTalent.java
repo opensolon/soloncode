@@ -31,8 +31,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>提供两个工具（Goal 的创建由 /loop goal: 命令驱动，模型侧只读+更新）：
  * <ul>
- *   <li>{@code get_goal} — 查询当前 goal 状态</li>
- *   <li>{@code update_goal} — 标记 complete 或 blocked（模型驱动，对齐 Codex）</li>
+ *   <li>{@code goal_get} — 查询当前 goal 状态</li>
+ *   <li>{@code goal_update} — 标记 complete 或 blocked（模型驱动）</li>
  * </ul>
  *
  * <p>动态控制：{@link #isSupported(Prompt)} 仅在存在活跃 goal 时返回 true，
@@ -144,7 +144,7 @@ public class GoalTalent extends AbsTalent {
                     log.warn("updateGoal: 验证失败 for goal '{}': {}", task.getId(), vr.detail());
                     return errJson("VALIDATION_FAILED",
                             "目标尚未完成：验证失败 - " + vr.detail()
-                                    + "。请继续改进后重新调用 update_goal(complete)。");
+                                    + "。请继续改进后重新调用 goal_update(complete)。");
                 }
             }
 

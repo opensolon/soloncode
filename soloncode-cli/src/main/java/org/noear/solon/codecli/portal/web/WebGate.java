@@ -33,6 +33,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.command.builtin.LoopExecutionResult;
+import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
@@ -88,8 +89,11 @@ public class WebGate extends SimpleWebSocketListener {
      *
      * @param engine     AI 引擎，提供会话、模型、Agent、命令等核心服务
      */
-    public WebGate(HarnessEngine engine) {
+    private final AgentSettings settings;
+
+    public WebGate(HarnessEngine engine, AgentSettings settings) {
         this.engine = engine;
+        this.settings = settings;
         this.streamBuilder = new WebStreamBuilder(engine);
     }
 

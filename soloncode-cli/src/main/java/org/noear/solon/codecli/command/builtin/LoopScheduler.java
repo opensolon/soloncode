@@ -112,7 +112,7 @@ public class LoopScheduler {
     }
 
     /**
-     * 查找指定会话中的活跃 goal（PURSUING 优先，PAUSED/BLOCKED 次之）
+     * 查找指定会话中的 goal（优先返回活跃(PURSUING)，其次返回可恢复态(PAUSED/BLOCKED)）
      */
     public LoopTask findActiveGoalInSession(String sessionId) {
         if (sessionId == null) {
@@ -766,12 +766,12 @@ public class LoopScheduler {
         sb.append("2. 核查：针对目标中的每一项，通过运行测试、检查文件等客观手段验证其是否已完成。\n");
         sb.append("   不要仅凭推理 — 必须有权威证据（测试通过、构建成功、文件存在且内容正确）。\n");
         sb.append("3. 如果你已完成所有项，说明你是如何实现每一项的，\n");
-        sb.append("   然后在回复末尾输出 [GOAL_ACHIEVED] 并调用 update_goal(complete) 标记完成。\n");
+        sb.append("   然后在回复末尾输出 [GOAL_ACHIEVED] 并调用 goal_update(complete) 标记完成。\n");
         sb.append("\n");
 
         // Chapter 7: Blocked audit
         sb.append("--- 阻塞审计 ---\n");
-        sb.append("如果你遇到阻碍（同一困境尝试了 3 次），调用 update_goal(blocked) 声明阻塞。\n");
+        sb.append("如果你遇到阻碍（同一困境尝试了 3 次），调用 goal_update(blocked) 声明阻塞。\n");
         sb.append("不要因为工作困难、进展慢或不确定就声明阻塞 — 仅当同一问题反复尝试仍无法解决时才使用。\n");
         sb.append("resume 后阻塞计数重置为 0。\n");
         sb.append("\n");
@@ -782,7 +782,7 @@ public class LoopScheduler {
             sb.append("系统检测到最近 ").append(task.getStagnationCount())
               .append(" 轮执行未产生实质性进展。\n");
             sb.append("请认真评估：你是否在同一问题上反复尝试但无法推进？\n");
-            sb.append("如果是，请调用 update_goal(blocked) 声明阻塞。\n");
+            sb.append("如果是，请调用 goal_update(blocked) 声明阻塞。\n");
             sb.append("如果不是，请在下一步采取明显不同的策略。\n");
             sb.append("\n");
         }
@@ -814,7 +814,7 @@ public class LoopScheduler {
         sb.append("\n\n");
         sb.append("--- Goal Continuation ---\n");
         sb.append("目标: ").append(gs.getCondition()).append("\n");
-        sb.append("持续工作直至完成。完成后输出 [GOAL_ACHIEVED] 并调用 update_goal(complete)。\n");
+        sb.append("持续工作直至完成。完成后输出 [GOAL_ACHIEVED] 并调用 goal_update(complete)。\n");
         sb.append("\n");
 
         sb.append("--- 完成审计 ---\n");
@@ -839,7 +839,7 @@ public class LoopScheduler {
         sb.append("\n\n");
         sb.append("目标: ").append(gs.getCondition()).append(" | ");
         sb.append(budgetInfo.trim()).append("\n");
-        sb.append("持续工作直至完成。完成后调用 update_goal(complete)。3 轮无法推进则调用 update_goal(blocked)。\n");
+        sb.append("持续工作直至完成。完成后输出 [GOAL_ACHIEVED] 并调用 goal_update(complete)。3 轮无法推进则调用 goal_update(blocked)。\n");
         return prompt + sb.toString();
     }
 
@@ -885,7 +885,7 @@ public class LoopScheduler {
         sb.append("1. 总结已完成的工作和进展\n");
         sb.append("2. 列出剩余未完成的工作\n");
         sb.append("3. 给出明确的下一步建议\n\n");
-        sb.append("不要调用 update_goal 除非目标确实已完成。\n");
+        sb.append("不要调用 goal_update 除非目标确实已完成。\n");
 
         return sb.toString();
     }

@@ -64,6 +64,10 @@
                 $('#generalLspEnabled').prop('checked', !!d.lspEnabled);
                 $('#generalCliPrintSimplified').prop('checked', d.cliPrintSimplified !== false);
                 window.cliPrintSimplified = d.cliPrintSimplified !== false;
+
+                // Web 访问认证
+                $('#generalWebAuthUser').val(d.webAuthUser || '');
+                $('#generalWebAuthPass').val(d.webAuthPass || '');
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
 
@@ -102,7 +106,9 @@
             bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked'),
             subagentEnabled: $('#generalSubagentEnabled').is(':checked'),
             lspEnabled: $('#generalLspEnabled').is(':checked'),
-            cliPrintSimplified: $('#generalCliPrintSimplified').is(':checked')
+            cliPrintSimplified: $('#generalCliPrintSimplified').is(':checked'),
+            webAuthUser: $('#generalWebAuthUser').val().trim() || null,
+            webAuthPass: $('#generalWebAuthPass').val().trim() || null
         };
 
         $generalSaveBtn.prop('disabled', true);

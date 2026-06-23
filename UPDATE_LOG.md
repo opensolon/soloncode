@@ -5,7 +5,8 @@
 * 添加 soloncode /continue 命令 sessionId 参数支持（支持跨会话继续）
 * 添加 soloncode StopLoop 拦截器
 * 添加 soloncode web 输入面板的模型选择添加搜索功能
-* 添加 soloncode web mermaid 渲染支持
+* 添加 soloncode web 对话消息 mermaid 渲染支持
+* 添加 soloncode web WWW-Authenticate 认证
 * 优化 soloncode WebGate 允许中断命令通过忙碌检查
 * 优化 soloncode web 面板拖拽性能；延迟消息流代码高亮；为滚动区域和面板添加contain布局
 * 优化 soloncode web 任务面板数据显示
