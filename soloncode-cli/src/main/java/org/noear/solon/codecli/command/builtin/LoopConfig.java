@@ -14,8 +14,8 @@ import org.noear.solon.Solon;
  *     budgetCriticalPercent: 85
  *     pauseAutoAbandonHours: 24
  *     validatorEnabled: true
- *     defaultMaxTokens: 200000
- *     defaultMaxDurationMinutes: 30
+ *     defaultMaxTokens: 0          # 0 = 不限制（用户未配则不限制）
+ *     defaultMaxDurationMinutes: 0 # 0 = 不限制
  *     stagnationThreshold: 3
  *     maxConsecutiveErrors: 3
  * </pre>
@@ -30,8 +30,8 @@ public class LoopConfig {
     private int budgetCriticalPercent = 85;
 
     // ===== 默认预算上限 =====
-    private long defaultMaxTokens = 200_000;           // 默认 20 万 tokens
-    private long defaultMaxDurationMs = 30 * 60 * 1000L; // 默认 30 分钟
+    private long defaultMaxTokens = 0;                  // 0 = 不限制（用户未配则不限制）
+    private long defaultMaxDurationMs = 0;               // 0 = 不限制
 
     // ===== 运行时兜底 =====
     private int stagnationThreshold = 3;    // 连续无进展轮次阈值
@@ -50,8 +50,8 @@ public class LoopConfig {
             budgetCriticalPercent = cfg.getInt("soloncode.loop.budgetCriticalPercent", 85);
             pauseAutoAbandonMs = cfg.getInt("soloncode.loop.pauseAutoAbandonHours", 24) * 3_600_000L;
             validatorEnabled = cfg.getBool("soloncode.loop.validatorEnabled", true);
-            defaultMaxTokens = cfg.getLong("soloncode.loop.defaultMaxTokens", 200_000L);
-            defaultMaxDurationMs = cfg.getInt("soloncode.loop.defaultMaxDurationMinutes", 30) * 60_000L;
+            defaultMaxTokens = cfg.getLong("soloncode.loop.defaultMaxTokens", 0L);
+            defaultMaxDurationMs = cfg.getInt("soloncode.loop.defaultMaxDurationMinutes", 0) * 60_000L;
             stagnationThreshold = cfg.getInt("soloncode.loop.stagnationThreshold", 3);
             maxConsecutiveErrors = cfg.getInt("soloncode.loop.maxConsecutiveErrors", 3);
         } catch (Exception ignored) {

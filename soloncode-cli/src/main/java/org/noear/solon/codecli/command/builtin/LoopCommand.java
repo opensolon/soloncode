@@ -266,6 +266,17 @@ public class LoopCommand implements Command {
                 taskType, worktreeEnabled, maxIterations, runNow
         );
 
+        // Goal 模式：仅在 LoopConfig 配置了 >0 的默认值时才应用；未配则不限制
+        if (taskType == LoopTask.TaskType.GOAL) {
+            LoopConfig loopConfig = new LoopConfig();
+            if (loopConfig.getDefaultMaxTokens() > 0) {
+                task.setMaxTokens(loopConfig.getDefaultMaxTokens());
+            }
+            if (loopConfig.getDefaultMaxDurationMs() > 0) {
+                task.setMaxDurationMs(loopConfig.getDefaultMaxDurationMs());
+            }
+        }
+
         // 初始化状态目录（用 task 生成的 ID）
         LoopStateManager.init(workspace, task.getId(), prompt);
 
@@ -406,16 +417,16 @@ public class LoopCommand implements Command {
                 true          // runNow = true（立即执行首次）
         );
 
-        // 设置预算（未显式指定时使用 LoopConfig 默认值）
+        // 设置预算（仅在 LoopConfig 配置了 >0 的默认值时才应用；未配则不限制）
         LoopConfig loopConfig = new LoopConfig();
         if (maxTokens != null) {
             task.setMaxTokens(maxTokens);
-        } else {
+        } else if (loopConfig.getDefaultMaxTokens() > 0) {
             task.setMaxTokens(loopConfig.getDefaultMaxTokens());
         }
         if (maxDurationMs != null) {
             task.setMaxDurationMs(maxDurationMs);
-        } else {
+        } else if (loopConfig.getDefaultMaxDurationMs() > 0) {
             task.setMaxDurationMs(loopConfig.getDefaultMaxDurationMs());
         }
 
