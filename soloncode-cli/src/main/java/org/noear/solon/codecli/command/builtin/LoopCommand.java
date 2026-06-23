@@ -24,7 +24,6 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * /loop 命令 - 循环任务与 Goal 统一管理（Loop Engineering 运行时）
@@ -324,6 +323,14 @@ public class LoopCommand implements Command {
             // 基础行
             StringBuilder line = new StringBuilder();
             line.append("  ").append(CYAN).append(t.getId()).append(RESET);
+
+            // ★ P2: 任务类型标签
+            if (t.getType() == LoopTask.TaskType.GOAL) {
+                line.append(" ").append(MAGENTA).append("[goal]").append(RESET);
+            } else {
+                line.append(" ").append(CYAN).append("[heartbeat]").append(RESET);
+            }
+
             line.append(" ").append(scheduleInfo);
             line.append(" ").append(status);
 

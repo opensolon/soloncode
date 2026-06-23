@@ -769,6 +769,7 @@ public class WebController {
     private Map<String, Object> buildTaskMap(LoopTask t) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", t.getId());
+        item.put("type", t.getType().name());  // 任务类型（LOOP / GOAL）
         item.put("prompt", t.getPrompt());
         item.put("intervalMinutes", t.getIntervalMinutes());
         if (t.getCron() != null) item.put("cron", t.getCron());

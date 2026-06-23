@@ -39,6 +39,16 @@ import java.util.UUID;
  */
 @Getter
 public class LoopTask {
+
+    /**
+     * 循环任务类型枚举
+     */
+    public enum TaskType {
+        HEARTBEAT,   // 心跳循环（定时/cron 触发）
+        GOAL         // 目标驱动模式（Goal）
+    }
+
+    private static final TaskType DEFAULT_TYPE = TaskType.HEARTBEAT;
     private static final int MIN_INTERVAL = 0; // 0 = 即时模式（goal 专用）
     private static final int MAX_INTERVAL = 1440; // 24h
     private static final int EXPIRE_DAYS = 7;
@@ -52,6 +62,7 @@ public class LoopTask {
     private final Instant createdAt;
     private final Instant expireAt;
     private final boolean autoInterval;
+    private final TaskType type;  // 任务类型（LOOP / GOAL），方便识别
 
     // ---- Loop Engineering 扩展字段 ----
     private final String goalCondition;      // 目标条件，如 "all tests pass"（保留向后兼容）
@@ -95,7 +106,8 @@ public class LoopTask {
                      boolean enabled,
                      String goalCondition, boolean worktreeEnabled, String worktreeBranch,
                      int maxIterations, boolean runNow, Long maxTokens, Long maxDurationMs,
-                     boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
+                     boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration,
+                     TaskType type) {
         this.id = id;
         this.prompt = prompt;
         this.intervalMinutes = intervalMinutes;
@@ -115,6 +127,7 @@ public class LoopTask {
         this.lastResult = lastResult;
         this.lastExecutedAt = lastExecutedAt;
         this.currentIteration = currentIteration;
+        this.type = type != null ? type : DEFAULT_TYPE;
 
         // Goal 状态初始化：如果存在 goalCondition 但无 goalState，自动构造
         if (goalCondition != null && !goalCondition.isEmpty()) {
@@ -153,6 +166,7 @@ public class LoopTask {
         this.runNow = runNow;
         this.currentIteration = 0;
         this.enabled = true;
+        this.type = (goalCondition != null && !goalCondition.isEmpty()) ? TaskType.GOAL : TaskType.HEARTBEAT;
 
         if (goalCondition != null && !goalCondition.isEmpty()) {
             this.goalState = new GoalState(goalCondition,
@@ -167,6 +181,11 @@ public class LoopTask {
                                     String goalCondition, Boolean worktreeEnabled,
                                     Integer maxIterations, Boolean runNow,
                                     Long maxTokens, Long maxDurationMs) {
+        // 根据新的 goalCondition 派生类型
+        TaskType newType = (goalCondition != null && !goalCondition.isEmpty())
+                ? TaskType.GOAL
+                : TaskType.HEARTBEAT;
+
         LoopTask task = new LoopTask(
                 this.id,
                 prompt,
@@ -186,7 +205,8 @@ public class LoopTask {
                 this.cancelled,
                 this.lastResult,
                 this.lastExecutedAt,
-                this.currentIteration
+                this.currentIteration,
+                newType
         );
         task.running = false;
         return task;
@@ -322,6 +342,7 @@ public class LoopTask {
         node.set("cancelled", cancelled);
         node.set("running", running);
         node.set("enabled", enabled);
+        node.set("type", type.name());
 
         // 运行时状态
         if (lastResult != null) {
@@ -390,6 +411,16 @@ public class LoopTask {
         Long maxDurationMsVal = node.getOrNull("maxDurationMs") != null
                 ? (long) node.get("maxDurationMs").getInt() : null;
 
+        // ★ P2: 读取 TaskType（向后兼容：旧数据没有 type 字段则从 goalCondition 派生）
+        TaskType typeVal;
+        if (node.getOrNull("type") != null) {
+            typeVal = TaskType.valueOf(node.get("type").getString());
+        } else {
+            typeVal = (goalConditionVal != null && !goalConditionVal.isEmpty())
+                    ? TaskType.GOAL
+                    : TaskType.HEARTBEAT;
+        }
+
         // 读取 GoalState（新格式）
         GoalState goalStateVal = null;
         if (node.getOrNull("goalState") != null) {
@@ -420,7 +451,8 @@ public class LoopTask {
                         ? node.get("cancelled").getBoolean() : false,
                 lastResultVal,
                 lastExecutedAtVal,
-                currentIterationVal
+                currentIterationVal,
+                typeVal
         );
 
         // 覆盖构造函数中自动创建的 GoalState（保留 JSON 中的完整状态）
