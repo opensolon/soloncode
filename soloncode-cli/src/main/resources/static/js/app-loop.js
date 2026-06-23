@@ -36,7 +36,6 @@
                 intervalMinutes: 10,
                 type: 'GOAL',
                 worktreeEnabled: true,
-                maxIterations: 10,
                 runNow: true
             }
         },
@@ -92,7 +91,6 @@
                 intervalMinutes: 5,
                 type: 'GOAL',
                 worktreeEnabled: false,
-                maxIterations: 100,
                 runNow: true
             }
         }
@@ -449,19 +447,18 @@
         // ===== Goal 表单区（简洁，无调度字段）=====
         html += '<div class="loop-form-section" data-section="goal">';
         html += '<div class="loop-goal-hint">设定目标后，AI 将自动循环执行直至达成目标，无需配置调度计划</div>';
-        html += '</div>';  // 结束 goal section
 
-        // ★ Worktree / RunNow / MaxIter / 预算（直接展开）
-        html += '<div class="loop-form-inline">';
-        html += '<div class="loop-form-inline-item loop-form-wt-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
-
-        html += '<div class="loop-form-inline-item"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" placeholder="留空不限制" min="1"/></div>';
+        // ★ Goal 预算控制
+        html += '<div class="loop-form-inline" style="margin-top:12px;">';
+        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">Token 预算</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
+        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">时间预算（分钟）</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
         html += '</div>';
 
-        // 预算控制
-        html += '<div class="loop-budget-row">';
-        html += '<div class="loop-form-group"><label style="font-size:11px;">Token 预算</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
-        html += '<div class="loop-form-group"><label style="font-size:11px;">时间预算（分钟）</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
+        html += '</div>';  // 结束 goal section
+
+        // ★ Worktree 隔离（两个 tab 共享）
+        html += '<div style="margin-top:10px;">';
+        html += '<label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行（Worktree 隔离）</label>';
         html += '</div>';
 
         // 操作按钮
@@ -548,7 +545,6 @@
         }
         $panel.find('#loopFormWorktree').prop('checked', !!t.worktreeEnabled);
         $panel.find('#loopFormRunNow').prop('checked', !!t.runNow);
-        $panel.find('#loopFormMaxIter').val(t.maxIterations || '');
 
         // ★ 预算字段
         if (t.maxTokens) $panel.find('#loopFormMaxTokens').val(t.maxTokens);
@@ -649,9 +645,9 @@
             var activeTab = $panel.find('.loop-tab.active').data('tab');
             var isGoal = activeTab === 'goal';
 
-            // ★ 收集预算字段（两个 tab 都支持）
-            var maxTokensVal = $panel.find('#loopFormMaxTokens').val().trim();
-            var maxDurationVal = $panel.find('#loopFormMaxDuration').val().trim();
+            // ★ 收集预算字段（仅 Goal 模式有效）
+            var maxTokensVal = isGoal ? $panel.find('#loopFormMaxTokens').val().trim() : null;
+            var maxDurationVal = isGoal ? $panel.find('#loopFormMaxDuration').val().trim() : null;
 
             var effectiveRunNow = false;
             var effectiveInterval = null;
@@ -681,7 +677,7 @@
                 type: effectiveType,
                 worktreeEnabled: $panel.find('#loopFormWorktree').is(':checked'),
                 runNow: effectiveRunNow,
-                maxIterations: parseInt($panel.find('#loopFormMaxIter').val()) || null,
+
                 maxTokens: maxTokensVal ? parseInt(maxTokensVal) : null,
                 maxDurationMs: maxDurationVal ? parseInt(maxDurationVal) * 60000 : null
             };
