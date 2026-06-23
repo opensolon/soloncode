@@ -72,7 +72,7 @@ public class LoopCommand implements Command {
 
     @Override
     public String description() {
-        return "循环任务与 Goal 管理 (ls, stop, stop-all, pause, resume, extend, goal, <interval> <prompt>, cron:<expr> <prompt>)";
+        return "循环任务 (ls, stop, stop-all, pause, resume, extend, goal, <interval> <prompt>, cron:<expr> <prompt>)";
     }
 
     @Override
