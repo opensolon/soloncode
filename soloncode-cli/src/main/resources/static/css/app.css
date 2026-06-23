@@ -597,6 +597,12 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-budget-row { display: flex; gap: 12px; }
 .loop-budget-row .loop-form-group { flex: 1; margin-bottom: 0; }
 
+/* Cron 快捷示例 */
+.loop-cron-examples { padding: 4px 0 0; font-size: 11px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.loop-cron-hint { opacity: 0.7; }
+.loop-cron-link { color: var(--accent); cursor: pointer; text-decoration: none; padding: 1px 6px; border-radius: 4px; background: var(--bg-hover); transition: background 0.12s; }
+.loop-cron-link:hover { background: var(--border-color); }
+
 
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }

@@ -122,7 +122,8 @@
         PURSUING: '执行中',
         PAUSED: '已暂停',
         ACHIEVED: '已达成',
-        BUDGET_LIMITED: '预算耗尽'
+        BUDGET_LIMITED: '预算耗尽',
+        BLOCKED: '已阻塞'
     };
 
     // 生成 goal 状态标签
@@ -222,8 +223,8 @@
             $panel.html(html);
             bindListEvents();
 
-            // 定时器刷新时长（仅在有活跃 goal 的列表页）
-            scheduleElapsedUpdater();
+            // 有运行中任务时自动刷新列表
+            scheduleListAutoRefresh(items);
         });
     }
 
@@ -293,7 +294,7 @@
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>';
         html += '</div>';
         html += '</div>';
-        html += '<div class="loop-item-prompt">' + escapeHtml(t.prompt) + '</div>';
+        html += '<div class="loop-item-prompt" title="' + escapeHtml(t.prompt) + '">' + escapeHtml(t.prompt) + '</div>';
 
         if (lastInfo) {
             html += '<div class="loop-item-info">' + lastInfo + '</div>';
@@ -303,12 +304,19 @@
         return html;
     }
 
-    // ========== 时长定时刷新 ==========
-    var elapsedTimerId = null;
+    // ========== 列表自动刷新 ==========
+    var listRefreshTimerId = null;
 
-    function scheduleElapsedUpdater() {
-        if (elapsedTimerId) clearInterval(elapsedTimerId);
-        // 行内标签时长固定，无需定时刷新（每次列表渲染时重新计算）
+    function scheduleListAutoRefresh(items) {
+        if (listRefreshTimerId) { clearInterval(listRefreshTimerId); listRefreshTimerId = null; }
+        var hasRunning = items && items.some(function(t) { return t.running && !t.cancelled; });
+        if (hasRunning) {
+            listRefreshTimerId = setInterval(function() {
+                if (loopPanelVisible && !loopEditId) {
+                    renderLoopList();
+                }
+            }, 10000);
+        }
     }
 
     // ========== 列表事件绑定 ==========
@@ -343,10 +351,21 @@
                     }
                 });
             } else if (action === 'remove') {
-                if (!confirm('确定要删除该循环任务吗？')) return;
-                loopApi('remove', { taskId: id }, function(res) {
-                    if (res) { renderLoopList(); showToast('已删除', 'success'); }
-                });
+                var doRemove = function() {
+                    loopApi('remove', { taskId: id }, function(res) {
+                        if (res) { renderLoopList(); showToast('已删除', 'success'); }
+                    });
+                };
+                if (typeof layer !== 'undefined' && layer.confirm) {
+                    layer.confirm('确定要删除该循环任务吗？', {
+                        title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px'
+                    }, function(index) {
+                        layer.close(index);
+                        doRemove();
+                    });
+                } else {
+                    if (confirm('确定要删除该循环任务吗？')) doRemove();
+                }
             } else if (action === 'edit') {
                 loopEditId = id;
                 renderLoopForm();
@@ -411,6 +430,14 @@
         html += '<label class="loop-radio"><input type="radio" name="loopScheduleType" value="cron"/> Cron 表达式</label>';
         html += '<input type="text" class="loop-input" id="loopFormCron" placeholder="0 */5 * * * ?"/>';
         html += '</div>';
+        html += '<div class="loop-cron-examples" id="loopCronExamples">';
+        html += '<span class="loop-cron-hint">示例:</span> ';
+        html += '<a class="loop-cron-link" data-cron="0 */5 * * * ?">每5分钟</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 9 * * *">每天9点</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 22 * * *">每天22点</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 0 * * 1">每周一</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 */2 * * *">每2小时</a>';
+        html += '</div>';
         html += '</div>';
 
         // 高级选项（折叠：Worktree / RunNow / MaxIter / 预算）
@@ -420,7 +447,7 @@
         html += '<div class="loop-form-advanced" id="loopAdvanced">';
         html += '<div class="loop-form-group loop-form-inline">';
         html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
-        html += '<div class="loop-form-inline-item"><label>首次立即执行</label><label class="loop-checkbox"><input type="checkbox" id="loopFormRunNow"/> 保存后立即执行一次</label></div>';
+        html += '<div class="loop-form-inline-item"><label>首次立即执行</label><label class="loop-checkbox"><input type="checkbox" id="loopFormRunNow" checked/> 保存后立即执行一次</label></div>';
         html += '<div class="loop-form-inline-item"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" value="20" min="1"/></div>';
         html += '</div>';
 
@@ -436,6 +463,7 @@
 
         // 操作按钮
         html += '<div class="loop-form-actions">';
+        html += '<button class="loop-btn-secondary" id="loopFormCancelBtn">取消</button>';
         html += '<button class="loop-btn-secondary" id="loopFormTriggerBtn" style="display:' + (loopEditId ? 'inline-block' : 'none') + '">测试运行</button>';
         html += '<button class="loop-btn-primary" id="loopFormSaveBtn">保存</button>';
         html += '</div>';
@@ -451,17 +479,21 @@
 
         // 编辑模式：加载数据
         if (loopEditId) {
+            var editTaskId = loopEditId;
             var $inputs = $panel.find('.loop-input, .loop-checkbox input, select');
             $inputs.prop('disabled', true);
             $panel.find('#loopFormSaveBtn').prop('disabled', true).text('加载中...');
-            loopApi('get', { taskId: loopEditId }, function(res) {
+            loopApi('get', { taskId: editTaskId }, function(res) {
+                // 校验是否仍在编辑同一个任务（用户可能已点击返回）
+                if (loopEditId !== editTaskId) return;
+                var $p = getActivePanel();
                 var t = (res && res.data) ? res.data : null;
                 if (t) {
                     fillFormData(t);
                     var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
                     var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
-                    var $title = $panel.find('.loop-panel-title');
-                    $title.html('编辑循环 #' + escapeHtml(loopEditId) +
+                    var $title = $p.find('.loop-panel-title');
+                    $title.html('编辑循环 #' + escapeHtml(editTaskId) +
                         ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' +
                         (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : ''));
                     // 如果有 goal 且非初始态，显示当前状态
@@ -473,8 +505,8 @@
                 } else if (res !== null) {
                     showToast('未找到任务数据', 'error');
                 }
-                $inputs.prop('disabled', false);
-                $panel.find('#loopFormSaveBtn').prop('disabled', false).text('保存');
+                $p.find('.loop-input, .loop-checkbox input, select').prop('disabled', false);
+                $p.find('#loopFormSaveBtn').prop('disabled', false).text('保存');
             });
         }
     }
@@ -571,6 +603,20 @@
             $panel.find('#loopFormCron').prop('disabled', !isCron);
         });
 
+        // Cron 快捷示例
+        $panel.find('.loop-cron-link').on('click', function(e) {
+            e.preventDefault();
+            var cron = $(this).data('cron');
+            $panel.find('#loopFormCron').val(cron);
+            $panel.find('input[name=loopScheduleType][value=cron]').prop('checked', true).trigger('change');
+        });
+
+        // 取消按钮
+        $panel.find('#loopFormCancelBtn').on('click', function() {
+            loopEditId = null;
+            renderLoopList();
+        });
+
         // 保存
         var $saveBtn = $panel.find('#loopFormSaveBtn');
         $saveBtn.on('click', function() {
@@ -662,7 +708,7 @@
         var $p = getActivePanel();
         $p.removeClass('mode-form');
         $p.css('max-height', '');
-        if (elapsedTimerId) clearInterval(elapsedTimerId);
+        if (listRefreshTimerId) { clearInterval(listRefreshTimerId); listRefreshTimerId = null; }
         _origRenderLoopList();
     };
 })();
