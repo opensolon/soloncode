@@ -153,7 +153,7 @@ public class Configurator {
         RunUtil.async(() -> addServers(engine));
 
         // loop scheduler
-        this.loopScheduler = new LoopScheduler(engine, AgentFlags.getHarnessLoopWorktrees(), agentSettings);
+        this.loopScheduler = new LoopScheduler(engine, agentSettings);
 
         // ★ 初始化 Goal 验证器（在 LoopScheduler 创建之后，GoalExtension 注册之前）
         ValidatorFactory.initDefaults(workspace);

@@ -71,8 +71,6 @@ public class LoopScheduler {
 
     private volatile List<TaskExecutor> taskExecutors = new ArrayList<>();
     private volatile List<BusyChecker> busyCheckers = new ArrayList<>();
-    private volatile WorktreeManager worktreeManager;
-    private final String worktreeDir;
 
     @FunctionalInterface
     public interface TaskExecutor {
@@ -84,10 +82,9 @@ public class LoopScheduler {
         boolean isBusy(String sessionId);
     }
 
-    public LoopScheduler(HarnessEngine engine, String worktreeDir, AgentSettings agentSettings) {
+    public LoopScheduler(HarnessEngine engine, AgentSettings agentSettings) {
         this.engine = engine;
         this.jobManager = JobManager.getInstance();
-        this.worktreeDir = worktreeDir;
         this.loop = agentSettings.getLoop();
         // 同步预算阈值到 GoalState 静态配置
         GoalState.configure(
@@ -174,19 +171,6 @@ public class LoopScheduler {
         }
     }
 
-    private WorktreeManager getWorktreeManager() {
-        if (worktreeManager == null) {
-            synchronized (this) {
-                if (worktreeManager == null) {
-                    worktreeManager = worktreeDir != null
-                            ? new WorktreeManager(worktreeDir)
-                            : new WorktreeManager();
-                }
-            }
-        }
-        return worktreeManager;
-    }
-
     // ==================== 任务注册 ====================
 
     public LoopTask schedule(String sessionId, LoopTask task) {
@@ -217,14 +201,6 @@ public class LoopScheduler {
         String jobName = task.getJobName();
         if (jobManager.jobExists(jobName)) {
             jobManager.jobRemove(jobName);
-        }
-
-        if (task.isWorktreeEnabled()) {
-            try {
-                getWorktreeManager().cleanup(engine.getWorkspace());
-            } catch (Exception e) {
-                LOG.warn("Loop task '{}' worktree cleanup failed: {}", task.getId(), e.getMessage());
-            }
         }
 
         List<LoopTask> tasks = sessionTasks.get(sessionId);
@@ -395,9 +371,6 @@ public class LoopScheduler {
                 if (jobManager.jobExists(jobName)) {
                     jobManager.jobRemove(jobName);
                 }
-                if (t.isWorktreeEnabled()) {
-                    getWorktreeManager().cleanup(engine.getWorkspace());
-                }
             });
         }
         deleteFile(sessionId);
@@ -554,17 +527,7 @@ public class LoopScheduler {
         }
 
         try {
-            // Worktree 隔离
-            String worktreePath = null;
-            if (task.isWorktreeEnabled()) {
-                worktreePath = getWorktreeManager().create(engine.getWorkspace(), task.getId());
-                if (worktreePath != null) {
-                    LOG.info("Loop task '{}' executing in worktree: {}", task.getId(), worktreePath);
-                }
-            }
-
-            try {
-                // 构建 prompt（注入 goal 引导词）
+            // 构建 prompt（注入 goal 引导词）
                 String effectivePrompt = buildEffectivePrompt(sessionId, task);
 
                 LoopExecutionResult executionResult = executeSingle(sessionId, effectivePrompt, null);
@@ -639,12 +602,6 @@ public class LoopScheduler {
 
                 // 实时持久化
                 saveToFile(sessionId, sessionTasks.get(sessionId));
-
-            } finally {
-                if (worktreePath != null) {
-                    getWorktreeManager().remove(worktreePath);
-                }
-            }
 
             // 事件驱动续行：goal 活跃 → submit 下一轮
             if (task.isGoalMode()) {

@@ -41,6 +41,7 @@ import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.CliCommandContext;
+import org.noear.solon.codecli.command.builtin.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -573,7 +574,8 @@ public class CliShell implements Runnable {
         if (Assert.isNotEmpty(action.getToolName())) {
             if (TaskTalent.TOOL_MULTITASK.equals(action.getToolName()) ||
                     TaskTalent.TOOL_TASK.equals(action.getToolName()) ||
-                    MemoryTalent.isMemoryTool(action.getToolName())) {
+                    MemoryTalent.isMemoryTool(action.getToolName()) ||
+                    GoalTalent.isGoalTool(action.getToolName())) {
                 return;
             }
 

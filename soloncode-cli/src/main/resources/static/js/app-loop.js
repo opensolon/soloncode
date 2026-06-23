@@ -35,7 +35,6 @@
                 prompt: '运行项目的测试套件，收集所有失败的测试用例；逐一分析失败根因（检查断言、逻辑、依赖），修复对应源码；提交修复并确认所有测试通过。如遇无法修复的阻塞问题，详细记录原因后暂停',
                 intervalMinutes: 10,
                 type: 'GOAL',
-                worktreeEnabled: true,
                 runNow: true
             }
         },
@@ -48,7 +47,6 @@
                 prompt: '分析项目中需要重构的模块（高复杂度/重复代码/坏味道），制定重构计划；每次重构一个单元后运行测试确保不引入回归；持续迭代直到目标模块重构完成',
                 intervalMinutes: 15,
                 type: 'GOAL',
-                worktreeEnabled: true,
                 runNow: true
             }
         },
@@ -61,7 +59,6 @@
                 prompt: '从昨天 0 点到今天 8 点间的所有提交中提取变更摘要（按文件分类），检查是否存在以下风险：未处理的错误、硬编码密钥、SQL 注入隐患、内存泄漏、逻辑漏洞。输出包含风险等级（高/中/低）的汇总报告',
                 cron: '0 9 * * *',
                 type: 'HEARTBEAT',
-                worktreeEnabled: false,
                 maxIterations: 20,
                 runNow: false
             }
@@ -75,7 +72,6 @@
                 prompt: '回顾当天所有对话记录，按以下维度提取关键信息：1）技术决策（架构选型、依赖引入、配置变更）2）用户偏好（编码风格、命名习惯、工具偏好）3）重要约束（性能要求、兼容性限制、安全规范）4）待办事项（遗留问题、后续计划）。将提炼后的信息整理为结构化记忆条目存入长期记忆',
                 cron: '0 22 * * *',
                 type: 'HEARTBEAT',
-                worktreeEnabled: false,
                 maxIterations: 10,
                 runNow: false
             }
@@ -89,7 +85,6 @@
                 prompt: '运行测试覆盖率工具，列出未被测试覆盖的模块/方法；选择优先级最高的模块（核心逻辑 > 边界条件 > 工具函数），编写缺失的单元测试；每次提交后重新检查覆盖率，持续迭代直到目标覆盖率达成',
                 intervalMinutes: 15,
                 type: 'GOAL',
-                worktreeEnabled: true,
                 runNow: true
             }
         },
@@ -102,7 +97,6 @@
                 prompt: '检查项目 CI 的最新构建状态（包括编译、测试、lint、打包等阶段）。如有失败阶段，按以下流程诊断：1）定位失败日志的关键错误行 2）分析根因（代码变更/环境问题/配置错误）3）给出修复建议。如连续 3 次检查同一问题未修复，标记为阻塞',
                 intervalMinutes: 30,
                 type: 'HEARTBEAT',
-                worktreeEnabled: false,
                 maxIterations: 20,
                 runNow: false
             }
@@ -116,7 +110,6 @@
                 prompt: '扫描项目所有直接和传递依赖，检查：1）已知安全漏洞（CVE）及其严重程度 2）版本是否过时（最新稳定版 vs 当前版本）3）依赖间的兼容性冲突。汇总为依赖健康报告，标注每个问题的建议操作（升级/降级/替换/忽略）',
                 intervalMinutes: 60,
                 type: 'HEARTBEAT',
-                worktreeEnabled: false,
                 maxIterations: 10,
                 runNow: false
             }
@@ -130,7 +123,6 @@
                 prompt: '依次探测所有核心服务端点的健康状态（HTTP GET /health 或等价端点），记录每个端点的响应状态码、响应时间、返回体摘要。如有异常（非 2xx/超时/连接拒绝），立即输出告警信息并持续监控直到恢复',
                 intervalMinutes: 5,
                 type: 'HEARTBEAT',
-                worktreeEnabled: false,
                 runNow: true
             }
         }
@@ -283,7 +275,6 @@
 
         // 标签
         var tags = [];
-        if (t.worktreeEnabled) tags.push('<span class="loop-tag loop-tag-wt">wt</span>');
         if (t.runNow) tags.push('<span class="loop-tag loop-tag-now">now</span>');
 
         // 底部信息
@@ -492,10 +483,7 @@
         html += '<div class="loop-form-inline-item"><label style="font-size:11px;">时间预算（分钟）</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
         html += '</div>';
 
-        // ★ Worktree 隔离（仅 Goal 模式）
-        html += '<div style="margin-top:12px;">';
-        html += '<label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行（Worktree 隔离）</label>';
-        html += '</div>';
+
 
         html += '</div>';  // 结束 goal section
 
@@ -579,7 +567,6 @@
             $panel.find('.loop-form-section[data-section="heartbeat"]').addClass('active');
             $panel.find('#loopFormPrompt').closest('.loop-form-group').find('label').html('任务描述 <span class="loop-required">*</span>');
         }
-        $panel.find('#loopFormWorktree').prop('checked', !!t.worktreeEnabled);
         // ★ cron 模式：runNow 不勾选且禁用（后端不支持）
         if (t.cron) {
             $panel.find('#loopFormRunNow').prop('checked', false);
@@ -720,7 +707,6 @@
                 intervalMinutes: effectiveInterval,
                 cron: cronVal,
                 type: effectiveType,
-                worktreeEnabled: $panel.find('#loopFormWorktree').is(':checked'),
                 runNow: effectiveRunNow,
 
                 maxTokens: maxTokensVal ? parseInt(maxTokensVal) : null,

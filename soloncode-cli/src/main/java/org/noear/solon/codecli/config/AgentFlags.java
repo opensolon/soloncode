@@ -220,10 +220,5 @@ public class AgentFlags {
         return getHarnessHome() + "loops/";
     }
 
-    /**
-     * 马具循环任务 worktree 存放区
-     */
-    public static final String getHarnessLoopWorktrees() {
-        return getHarnessHome() + "loop-worktrees/";
-    }
+
 }

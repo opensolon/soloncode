@@ -137,7 +137,6 @@ public class LoopCommand implements Command {
     private void doSchedule(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
         int intervalMinutes = 5; // default
         String cronExpr = null;
-        boolean worktreeEnabled = false;
         boolean runNow = false;
         Integer maxIterations = null;
         LoopTask.TaskType taskType = LoopTask.TaskType.HEARTBEAT;
@@ -218,10 +217,7 @@ public class LoopCommand implements Command {
                             break;
                     }
                 } else {
-                    // --worktree (boolean flag)
-                    if ("worktree".equals(flag)) {
-                        worktreeEnabled = true;
-                    } else if ("now".equals(flag)) {
+                    if ("now".equals(flag)) {
                         runNow = true;
                     } else {
                         ctx.println(ctx.color(YELLOW + "Unknown flag: --" + flag + RESET));
@@ -264,7 +260,7 @@ public class LoopCommand implements Command {
         // Create task
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
-                taskType, worktreeEnabled, maxIterations, runNow
+                taskType, maxIterations, runNow
         );
 
         // Goal 模式：仅在配置了 >0 的默认值时才应用；未配则不限制
@@ -300,9 +296,6 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color("  " + BOLD + "Prompt:" + RESET + " " + prompt));
 
         // 打印 Loop Engineering 扩展信息
-        if (worktreeEnabled) {
-            ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
-        }
         if (runNow) {
             ctx.println(ctx.color("  " + MAGENTA + "Run Now:" + RESET + " first execution immediately"));
         }
@@ -321,7 +314,6 @@ public class LoopCommand implements Command {
      * prompt 即目标任务描述，type=GOAL，runNow=true，interval=0（调度器自动转 5 秒安全网）。</p>
      */
     private void doScheduleGoal(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
-        boolean worktreeEnabled = false;
         Integer maxIterations = null;
         Long maxTokens = null;
         Long maxDurationMs = null;
@@ -369,11 +361,7 @@ public class LoopCommand implements Command {
                             break;
                     }
                 } else {
-                    if ("worktree".equals(flag)) {
-                        worktreeEnabled = true;
-                    } else {
-                        ctx.println(ctx.color(YELLOW + "Unknown flag: --" + flag + RESET));
-                    }
+                    ctx.println(ctx.color(YELLOW + "Unknown flag: --" + flag + RESET));
                 }
             } else {
                 // 普通参数拼入 prompt
@@ -413,7 +401,6 @@ public class LoopCommand implements Command {
                 0,            // intervalMinutes = 0（调度器自动转 5 秒安全网）
                 null,         // cron
                 LoopTask.TaskType.GOAL,  // type = GOAL
-                worktreeEnabled,
                 maxIterations,
                 true          // runNow = true（立即执行首次）
         );
@@ -446,9 +433,6 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(GREEN + "Goal task registered:" + RESET));
         ctx.println(ctx.color("  " + BOLD + "ID:" + RESET + " " + task.getId()));
         ctx.println(ctx.color("  " + BOLD + "Objective:" + RESET + " " + prompt));
-        if (worktreeEnabled) {
-            ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
-        }
         if (maxIterations != null) {
             ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
         }
@@ -514,18 +498,12 @@ public class LoopCommand implements Command {
                             .append(RESET);
                 }
             } else {
-                if (t.isWorktreeEnabled()) {
-                    line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
-                }
                 if (t.isRunNow()) {
                     line.append(" ").append(MAGENTA).append("[now]").append(RESET);
                 }
                 line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
             }
 
-            if (t.isWorktreeEnabled() && !t.isGoalMode()) {
-                line.append(" ").append(MAGENTA).append("[wt]").append(RESET);
-            }
             if (t.isRunNow() && !t.isGoalMode()) {
                 line.append(" ").append(MAGENTA).append("[now]").append(RESET);
             }

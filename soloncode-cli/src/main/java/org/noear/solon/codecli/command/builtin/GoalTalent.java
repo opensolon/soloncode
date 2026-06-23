@@ -233,4 +233,12 @@ public class GoalTalent extends AbsTalent {
         root.set("message", message);
         return root.toJson();
     }
+
+    public static boolean isGoalTool(String toolName) {
+        if (toolName != null && toolName.startsWith("goal_")) {
+            return true;
+        }
+
+        return false;
+    }
 }

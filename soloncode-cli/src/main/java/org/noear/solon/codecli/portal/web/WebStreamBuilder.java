@@ -32,6 +32,7 @@ import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
+import org.noear.solon.codecli.command.builtin.GoalTalent;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -276,7 +277,8 @@ public class WebStreamBuilder {
 
         if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
                 TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||
-                MemoryTalent.isMemoryTool(chunk.getToolName())) {
+                MemoryTalent.isMemoryTool(chunk.getToolName()) ||
+                GoalTalent.isGoalTool(chunk.getToolName())) {
             return WebChunk.EMPTY;
         }
 
@@ -328,7 +330,8 @@ public class WebStreamBuilder {
         if (Assert.isNotEmpty(chunk.getToolName())) {
             if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
                     TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||
-                    MemoryTalent.isMemoryTool(chunk.getToolName())) {
+                    MemoryTalent.isMemoryTool(chunk.getToolName()) ||
+                    GoalTalent.isGoalTool(chunk.getToolName())) {
                 return WebChunk.EMPTY;
             }
 

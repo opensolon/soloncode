@@ -66,8 +66,6 @@ public class LoopTask {
 
     // ---- Loop Engineering 扩展字段 ----
     private GoalState goalState;             // Goal 状态模型（P0）
-    private final boolean worktreeEnabled;   // 是否在独立 worktree 中执行
-    private final String worktreeBranch;     // worktree 分支名（运行时分配）
     private final int maxIterations;         // 最大迭代次数
     private final boolean runNow;            // 注册后立即执行首次（initialDelay=0）
     private Long maxTokens;            // Token 预算（null = 不限制）
@@ -93,14 +91,14 @@ public class LoopTask {
      * 固定间隔构造
      */
     public LoopTask(String prompt, int intervalMinutes) {
-        this(prompt, intervalMinutes, null, null, false, null);
+        this(prompt, intervalMinutes, null, null, null, false);
     }
 
     /**
      * cron 表达式构造
      */
     public LoopTask(String prompt, String cron) {
-        this(prompt, 0, cron, null, false, null);
+        this(prompt, 0, cron, null, null, false);
     }
 
 
@@ -110,7 +108,6 @@ public class LoopTask {
     LoopTask(String id, String prompt, int intervalMinutes, String cron,
                      Instant createdAt, Instant expireAt, boolean autoInterval,
                      boolean enabled,
-                     boolean worktreeEnabled, String worktreeBranch,
                      int maxIterations, boolean runNow, Long maxTokens, Long maxDurationMs,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration,
                      TaskType type) {
@@ -122,8 +119,6 @@ public class LoopTask {
         this.expireAt = expireAt;
         this.autoInterval = autoInterval;
         this.enabled = enabled;
-        this.worktreeEnabled = worktreeEnabled;
-        this.worktreeBranch = worktreeBranch;
         this.maxIterations = maxIterations;
         this.runNow = runNow;
         this.maxTokens = maxTokens;
@@ -145,17 +140,15 @@ public class LoopTask {
      * 便捷构造（固定间隔 + 扩展参数）
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
-                    TaskType type, Boolean worktreeEnabled,
-                    Integer maxIterations) {
-        this(prompt, intervalMinutes, cron, type, worktreeEnabled, maxIterations, false);
+                    TaskType type, Integer maxIterations) {
+        this(prompt, intervalMinutes, cron, type, maxIterations, false);
     }
 
     /**
      * 便捷构造（固定间隔 + 扩展参数 + runNow）
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
-                    TaskType type, Boolean worktreeEnabled,
-                    Integer maxIterations, boolean runNow) {
+                    TaskType type, Integer maxIterations, boolean runNow) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
         // 间隔钒在 [MIN_INTERVAL, MAX_INTERVAL]，不存在 0 间隔；goal 模式通过 fixedDelay 串行调度逐轮触发
@@ -164,8 +157,6 @@ public class LoopTask {
         this.createdAt = Instant.now();
         this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
         this.autoInterval = false;
-        this.worktreeEnabled = worktreeEnabled != null ? worktreeEnabled : false;
-        this.worktreeBranch = null; // 运行时分配
         this.maxIterations = maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS;
         this.runNow = runNow;
         this.currentIteration = 0;
@@ -181,7 +172,7 @@ public class LoopTask {
      * 基于当前任务复制出一份更新后的任务定义，保留任务身份和运行时状态。
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
-                                    TaskType type, Boolean worktreeEnabled,
+                                    TaskType type,
                                     Integer maxIterations, Boolean runNow,
                                     Long maxTokens, Long maxDurationMs) {
         // 使用新类型（如果提供），否则保留原类型
@@ -196,8 +187,6 @@ public class LoopTask {
                 this.expireAt,
                 this.autoInterval,
                 this.enabled,
-                worktreeEnabled != null ? worktreeEnabled : false,
-                this.worktreeBranch,
                 maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
                 runNow != null ? runNow : this.runNow,
                 maxTokens != null ? maxTokens : this.maxTokens,
@@ -382,9 +371,6 @@ public class LoopTask {
 
         // Loop Engineering 扩展字段
 
-        if (worktreeEnabled) node.set("worktreeEnabled", worktreeEnabled);
-        if (worktreeBranch != null) node.set("worktreeBranch", worktreeBranch);
-
         if (maxIterations != DEFAULT_MAX_ITERATIONS) node.set("maxIterations", maxIterations);
         if (runNow) node.set("runNow", true);
 
@@ -422,10 +408,6 @@ public class LoopTask {
         boolean enabledVal = node.getOrNull("enabled") != null
                 ? node.get("enabled").getBoolean() : true;
 
-        boolean worktreeEnabledVal = node.getOrNull("worktreeEnabled") != null
-                && node.get("worktreeEnabled").getBoolean();
-        String worktreeBranchVal = node.getOrNull("worktreeBranch") != null
-                ? node.get("worktreeBranch").getString() : null;
         int maxIterationsVal = node.getOrNull("maxIterations") != null
                 ? node.get("maxIterations").getInt() : DEFAULT_MAX_ITERATIONS;
         int currentIterationVal = node.getOrNull("currentIteration") != null
@@ -465,8 +447,6 @@ public class LoopTask {
                 Instant.parse(node.get("expireAt").getString()),
                 node.get("autoInterval").getBoolean(),
                 enabledVal,
-                worktreeEnabledVal,
-                worktreeBranchVal,
                 maxIterationsVal,
                 runNowVal,
                 maxTokensVal,

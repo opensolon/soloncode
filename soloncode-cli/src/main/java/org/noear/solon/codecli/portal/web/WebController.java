@@ -780,7 +780,7 @@ public class WebController {
         if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
         if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
 
-        item.put("worktreeEnabled", t.isWorktreeEnabled());
+
         item.put("maxIterations", t.getMaxIterations());
         item.put("runNow", t.isRunNow());
 
@@ -840,8 +840,7 @@ public class WebController {
                           @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                           @Param(value = "cron", required = false) String cron,
                           @Param(value = "type", required = false) String type,
-                          @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
-                          @Param(value = "maxIterations", required = false) Integer maxIterations,
+                           @Param(value = "maxIterations", required = false) Integer maxIterations,
                           @Param(value = "runNow", required = false) Boolean runNow,
                           @Param(value = "maxTokens", required = false) Long maxTokens,
                           @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
@@ -865,7 +864,6 @@ public class WebController {
         LoopTask task = new LoopTask(
                 prompt, interval, cron,
                 taskType,
-                worktreeEnabled != null ? worktreeEnabled : false,
                 maxIterations,
                 runNow != null && runNow
         );
@@ -894,7 +892,6 @@ public class WebController {
                              @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                              @Param(value = "cron", required = false) String cron,
                              @Param(value = "type", required = false) String type,
-                             @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                              @Param(value = "channelNotify", required = false) String channelNotify,
                              @Param(value = "maxIterations", required = false) Integer maxIterations,
                              @Param(value = "runNow", required = false) Boolean runNow,
@@ -924,7 +921,6 @@ public class WebController {
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
                 newType,
-                worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
                 maxIterations != null ? maxIterations : existing.getMaxIterations(),
                 runNow != null ? runNow : existing.isRunNow(),
                 maxTokens,
