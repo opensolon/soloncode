@@ -590,7 +590,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-btn-secondary:hover { background: var(--border-color); }
 
 /* ===== Goal 状态样式 ===== */
-.loop-goal-hint { font-size: 12px; color: var(--text-secondary); padding: 32px 8px; text-align: center; line-height: 1.6; }
+.loop-goal-hint { font-size: 12px; color: var(--text-secondary); padding: 20px 8px; text-align: center; line-height: 1.6; }
 
 .loop-goal-badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; line-height: 18px; cursor: default; color: #8b5cf6; background: #f3f0ff; }
 
