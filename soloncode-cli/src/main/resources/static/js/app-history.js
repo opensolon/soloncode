@@ -272,6 +272,7 @@ function loadMessages(sess) {
             realContainer.appendChild(fragment);
             // 统一高亮所有代码块（user 消息的代码块已被 appendUserMessage 标记收集，不会重复）
             if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(realContainer);
+            if (typeof processMermaidBlocks === 'function') processMermaidBlocks(realContainer);
             resetStreamState(sess);
             if (sess.sessionId === activeSessionId) scrollToBottom(true);
         } catch (e) {
@@ -858,8 +859,13 @@ function renderModelUI() {
             + (m.desc ? '<span class="model-item-desc">' + escapeHtml(m.desc) + '</span>' : '')
             + '</div>';
     }
-    $chatDropdown.html(html);
-    $welcomeDropdown.html(html);
+    $chatDropdown.find('.model-dropdown-items').html(html);
+    $welcomeDropdown.find('.model-dropdown-items').html(html);
+    // Reset search when models re-render
+    $chatDropdown.find('.model-search-input').val('');
+    $welcomeDropdown.find('.model-search-input').val('');
+    $chatDropdown.find('.model-dropdown-items').children().show();
+    $welcomeDropdown.find('.model-dropdown-items').children().show();
 }
 
 function selectModel(modelName) {
@@ -905,12 +911,36 @@ function initModelSelector(selectorId, currentId, dropdownId) {
 }
 
 // Close all dropdowns on outside click
-$(document).on('click', function() {
+$(document).on('click', function(e) {
+    // Don't close if clicking inside model search area
+    if ($(e.target).closest('.model-search-input, .model-search-wrap').length) return;
     $('.model-selector.open').removeClass('open');
 });
 
+// Model search filtering
+function initModelSearch(dropdownId) {
+    var $dropdown = $('#' + dropdownId);
+    var $searchInput = $dropdown.find('.model-search-input');
+    if (!$searchInput.length) return;
+
+    $searchInput.on('input', function() {
+        var query = $(this).val().toLowerCase().trim();
+        var $items = $dropdown.find('.model-dropdown-items').children();
+        if (query === '') {
+            $items.show();
+            return;
+        }
+        $items.each(function() {
+            var name = ($(this).attr('data-model') || '').toLowerCase();
+            $(this).toggle(name.indexOf(query) !== -1);
+        });
+    });
+}
+
 initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
 initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
+initModelSearch('chatModelDropdown');
+initModelSearch('welcomeModelDropdown');
 
 window.reloadModels = reloadModels;
 window.loadModels = loadModels;

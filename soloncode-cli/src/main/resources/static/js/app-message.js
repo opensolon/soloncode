@@ -44,6 +44,7 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
     $(bubble).append(span);
     if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(span);
     if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(span);
+    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(span);
 
     // 长消息或含代码块时放宽气泡宽度，避免被挤成窄高条
     var hasCodeBlock = $(span).find('pre').length > 0;
@@ -226,6 +227,7 @@ function finishThinkingBlock(sess) {
                 sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
             }
         }
+        if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
         $(sess.thinkingBlockEl).removeClass('streaming');
         if (window.cliPrintSimplified !== false) {
             $(sess.thinkingBlockEl).removeClass('expanded');
@@ -727,6 +729,7 @@ function appendCommandOutput(sess, text) {
     ensureAssistantBubble(sess);
     var mdEl = $('<div>').addClass('md-content')[0];
     mdEl.innerHTML = renderMd(text);
+    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
     insertBeforeActions(sess, mdEl);
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }

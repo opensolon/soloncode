@@ -294,6 +294,34 @@ function highlightCodeBlocks(container) {
     }
 }
 
+/* ===== Mermaid ===== */
+function processMermaidBlocks(container) {
+    if (!container || typeof mermaid === 'undefined') return;
+    var blocks = container.querySelectorAll('pre code.language-mermaid:not([data-mermaid-processed])');
+    if (blocks.length === 0) return;
+
+    var nodes = [];
+    for (var i = 0; i < blocks.length; i++) {
+        var codeEl = blocks[i];
+        codeEl.setAttribute('data-mermaid-processed', 'true');
+        var preEl = codeEl.parentNode;
+        var txt = codeEl.textContent.trim();
+        if (!txt) continue;
+
+        var div = document.createElement('div');
+        div.id = 'm-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 8);
+        div.className = 'mermaid-svg';
+        div.style.cssText = 'text-align:center;padding:10px 0;overflow-x:auto;';
+        div.textContent = txt;
+        preEl.parentNode.replaceChild(div, preEl);
+        nodes.push(div);
+    }
+
+    if (nodes.length > 0 && mermaid.run) {
+        mermaid.run({ nodes: nodes, suppressErrors: true }).catch(function() {});
+    }
+}
+
 function applyHljsTheme(theme) {
     var $lightLink = $('#hljs-light-theme');
     var $darkLink = $('#hljs-dark-theme');
@@ -315,12 +343,26 @@ $('body').attr('data-theme', currentTheme);
 applyHljsTheme(currentTheme);
 
 updateThemeIcon();
+
+/* ===== Mermaid Init ===== */
+if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: currentTheme === 'dark' ? 'dark' : 'default',
+        securityLevel: 'loose',
+        fontFamily: 'var(--font-sans)',
+    });
+}
+
 $(themeBtn).on('click', function() {
     currentTheme = currentTheme === 'light' ? 'dark' : 'light';
     $('body').attr('data-theme', currentTheme);
     localStorage.setItem('chat-theme', currentTheme);
     updateThemeIcon();
     applyHljsTheme(currentTheme);
+    if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({ theme: currentTheme === 'dark' ? 'dark' : 'default' });
+    }
 });
 function updateThemeIcon() {
     $(themeIcon).html(currentTheme === 'light' ? '&#xe6c2;' : '&#xe748;');

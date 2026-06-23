@@ -92,7 +92,12 @@
                             <span class="model-name" id="welcomeModelName">加载中...</span>
                             <i class="layui-icon layui-icon-down model-arrow"></i>
                         </div>
-                        <div class="model-dropdown" id="welcomeModelDropdown"></div>
+                        <div class="model-dropdown" id="welcomeModelDropdown">
+                            <div class="model-search-wrap">
+                                <input type="text" class="model-search-input" placeholder="搜索模型..."/>
+                            </div>
+                            <div class="model-dropdown-items"></div>
+                        </div>
                     </div>
                     <button class="attach-btn" id="welcomeAttachBtn" title="添加文件附件">
                         <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -158,7 +163,12 @@
                                 <span class="model-name" id="chatModelName">加载中...</span>
                                 <i class="layui-icon layui-icon-down model-arrow"></i>
                             </div>
-                            <div class="model-dropdown" id="chatModelDropdown"></div>
+                            <div class="model-dropdown" id="chatModelDropdown">
+                                <div class="model-search-wrap">
+                                    <input type="text" class="model-search-input" placeholder="搜索模型..."/>
+                                </div>
+                                <div class="model-dropdown-items"></div>
+                            </div>
                         </div>
                         <button class="attach-btn" id="chatAttachBtn" title="添加文件附件">
                             <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -1286,6 +1296,7 @@
 <script src="/js/marked.min.js"></script>
 <script src="/js/qrcode.min.js"></script>
 <script src="/highlight/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
 <script>
     var SSE_ENDPOINT = "/web/chat/input";

@@ -202,6 +202,7 @@ function finishStream(sess) {
         $(el).html(renderMd(sess.reasonBuffer));
         if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
         if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
+        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(el);
     }
     // 如果有思考中的内容，也刷一下
     if (sess.thinkingBlockEl && sess.thinkingBuffer) {
@@ -209,6 +210,7 @@ function finishStream(sess) {
             $(sess.thinkingBodyMdEl).html(renderMd(sess.thinkingBuffer));
             if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(sess.thinkingBodyMdEl);
             if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(sess.thinkingBodyMdEl);
+            if (typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
         }
     }
     // ---------------------------------------------------

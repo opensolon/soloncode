@@ -376,6 +376,13 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .model-dropdown::-webkit-scrollbar { width: 4px; }
 .model-dropdown::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
 
+/* Model dropdown search */
+.model-search-wrap { position: sticky; top: 0; padding: 8px 8px 4px; background: var(--bg-input-box); border-bottom: 1px solid var(--border-color); border-radius: 10px 10px 0 0; z-index: 1; }
+.model-search-input { width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none; box-sizing: border-box; transition: border-color 0.15s; }
+.model-search-input:focus { border-color: var(--accent); }
+.model-search-input::placeholder { color: var(--text-secondary); }
+.model-dropdown-items { /* container for dropdown items */ }
+
 /* Attachments Preview */
 .attachments-wrap { padding: 8px 14px 0; display: none; }
 .attachments-wrap.has-items { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
@@ -2051,6 +2058,19 @@ pre:hover .code-copy-btn { opacity: 1; }
     font-size: 12px;
     padding: 24px;
     text-align: center;
+}
+
+/* ===== Mermaid SVG ===== */
+.mermaid-svg {
+    text-align: center;
+    padding: 16px 0;
+    margin: 10px 0;
+    overflow-x: auto;
+    background: transparent;
+}
+.mermaid-svg svg {
+    max-width: 100%;
+    height: auto;
 }
 
 /* ===== Context Status (above textarea) ===== */
