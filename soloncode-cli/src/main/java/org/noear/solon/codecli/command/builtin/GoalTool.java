@@ -41,14 +41,14 @@ import java.time.Instant;
 public class GoalTool extends AbsTalent {
 
     private final LoopScheduler scheduler;
-    private volatile String currentSessionId; // 由 GoalCommand 每次执行前同步
+    private volatile String currentSessionId; // 由 LoopCommand 每次执行前同步
 
     public GoalTool(LoopScheduler scheduler) {
         this.scheduler = scheduler;
     }
 
     /**
-     * 设置当前会话 ID（由 GoalCommand 在 execute 时同步）
+     * 设置当前会话 ID（由 LoopCommand 在 execute 时同步）
      */
     public void setCurrentSessionId(String sessionId) {
         this.currentSessionId = sessionId;

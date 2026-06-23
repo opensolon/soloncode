@@ -76,7 +76,7 @@ public class GoalState {
 
     // ===== 电路熔断 =====
 
-    private static final int MAX_BLOCKED_CYCLES = 5;
+    static final int MAX_BLOCKED_CYCLES = 5;
 
     public boolean isBlockedCycleExhausted() {
         return blockedCycleCount >= MAX_BLOCKED_CYCLES;

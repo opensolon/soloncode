@@ -24,9 +24,10 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * /loop 命令 - 循环任务管理（Loop Engineering 运行时）
+ * /loop 命令 - 循环任务与 Goal 统一管理（Loop Engineering 运行时）
  *
  * <pre>
  * 基础用法:
@@ -36,6 +37,8 @@ import java.util.List;
  *   /loop ls                                → list active tasks
  *   /loop stop <id>                         → stop a task
  *   /loop stop-all                          → stop all tasks
+ *   /loop pause <id>                        → pause a goal task
+ *   /loop resume <id>                       → resume a paused goal task
  *
  * Loop Engineering 扩展:
  *   /loop goal:"all tests pass" fix auth    → goal 模式
@@ -57,9 +60,15 @@ public class LoopCommand implements Command {
     private static final String RESET = "\033[0m";
 
     private final LoopScheduler scheduler;
+    private final GoalTool goalTool; // 可为 null（goalsEnabled=false 时）
 
     public LoopCommand(LoopScheduler scheduler) {
+        this(scheduler, null);
+    }
+
+    public LoopCommand(LoopScheduler scheduler, GoalTool goalTool) {
         this.scheduler = scheduler;
+        this.goalTool = goalTool;
     }
 
     @Override
@@ -69,7 +78,7 @@ public class LoopCommand implements Command {
 
     @Override
     public String description() {
-        return "循环任务管理 (ls, stop, stop-all, goal, <interval> <prompt>, cron:<expr> <prompt>)";
+        return "循环任务与 Goal 管理 (ls, stop, stop-all, pause, resume, goal, <interval> <prompt>, cron:<expr> <prompt>)";
     }
 
     @Override
@@ -83,6 +92,11 @@ public class LoopCommand implements Command {
         HarnessEngine engine = ctx.getEngine();
         String workspace = engine.getWorkspace();
         String harnessSessions = engine.getHarnessSessions();
+
+        // 同步 sessionId 到 GoalTool（使 create_goal / update_goal 等工具能准确定位会话）
+        if (goalTool != null) {
+            goalTool.setCurrentSessionId(sessionId);
+        }
 
         String sub = ctx.argAt(0);
 
@@ -103,6 +117,10 @@ public class LoopCommand implements Command {
         } else if ("stop-all".equals(sub)) {
             scheduler.stopAll(sessionId);
             ctx.println(ctx.color(GREEN + "All loop tasks stopped." + RESET));
+        } else if ("pause".equals(sub)) {
+            doPause(ctx, sessionId, ctx.argAt(1));
+        } else if ("resume".equals(sub)) {
+            doResume(ctx, sessionId, ctx.argAt(1));
         } else {
             // Schedule a new task
             doSchedule(ctx, sessionId, workspace, harnessSessions);
@@ -221,7 +239,7 @@ public class LoopCommand implements Command {
                 if (t.isGoalMode() && t.getGoalState().getStatus().isActive()) {
                     ctx.println(ctx.color(YELLOW + "WARN: A goal is already active in this session (" + t.getId() + ")." + RESET));
                     ctx.println(ctx.color(DIM + "  Active: " + t.getGoalState().getCondition() + RESET));
-                    ctx.println(ctx.color(DIM + "  Use /goal clear " + t.getId() + " first to replace the goal." + RESET));
+                    ctx.println(ctx.color(DIM + "  Use /loop stop " + t.getId() + " first to replace the goal." + RESET));
                     return;
                 }
             }
@@ -353,7 +371,70 @@ public class LoopCommand implements Command {
 
             ctx.println(ctx.color(line.toString()));
         }
-        ctx.println(ctx.color(DIM + "\nUsage: /loop stop <id> | /loop stop-all | /goal status" + RESET));
+        ctx.println(ctx.color(DIM + "\nUsage: /loop stop <id> | /loop stop-all | /loop pause <id> | /loop resume <id>" + RESET));
+    }
+
+    // ===== Goal pause / resume =====
+
+    private void doPause(CommandContext ctx, String sessionId, String taskId) {
+        if (taskId == null || taskId.isEmpty()) {
+            ctx.println(ctx.color(RED + "Usage: /loop pause <id>" + RESET));
+            return;
+        }
+
+        LoopTask task = scheduler.getTaskById(sessionId, taskId);
+        if (task == null) {
+            ctx.println(ctx.color(RED + "Task not found: " + taskId + RESET));
+            return;
+        }
+
+        if (!task.isGoalMode()) {
+            ctx.println(ctx.color(YELLOW + "Task '" + taskId + "' is not a goal task." + RESET));
+            return;
+        }
+
+        GoalState gs = task.getGoalState();
+        if (gs.getStatus() != GoalState.Status.PURSUING) {
+            ctx.println(ctx.color(YELLOW + "Goal is not in a pausable state: " + gs.getStatus() + RESET));
+            return;
+        }
+
+        scheduler.pauseGoal(sessionId, task.getId());
+        ctx.println(ctx.color(GREEN + "Goal paused: " + taskId + RESET));
+        ctx.println(ctx.color(DIM + "  Use /loop resume " + taskId + " to resume." + RESET));
+    }
+
+    private void doResume(CommandContext ctx, String sessionId, String taskId) {
+        if (taskId == null || taskId.isEmpty()) {
+            ctx.println(ctx.color(RED + "Usage: /loop resume <id>" + RESET));
+            return;
+        }
+
+        LoopTask task = scheduler.getTaskById(sessionId, taskId);
+        if (task == null) {
+            ctx.println(ctx.color(RED + "Task not found: " + taskId + RESET));
+            return;
+        }
+
+        if (!task.isGoalMode()) {
+            ctx.println(ctx.color(YELLOW + "Task '" + taskId + "' is not a goal task." + RESET));
+            return;
+        }
+
+        GoalState gs = task.getGoalState();
+        if (gs.getStatus() != GoalState.Status.PAUSED) {
+            ctx.println(ctx.color(YELLOW + "Goal is not paused: " + gs.getStatus() + RESET));
+            return;
+        }
+
+        if (gs.isBlockedCycleExhausted()) {
+            ctx.println(ctx.color(RED + "Goal has exhausted its blocked cycle limit (" + GoalState.MAX_BLOCKED_CYCLES + ") and cannot be resumed." + RESET));
+            return;
+        }
+
+        task.setSuppressed(false);
+        scheduler.resumeGoal(sessionId, task.getId());
+        ctx.println(ctx.color(GREEN + "Goal resumed: " + taskId + RESET));
     }
 
     // ★ P0: Goal 辅助方法
@@ -459,6 +540,9 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "  /loop 5m --now check CI                   (run first time immediately)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 30m --notify:feishu check CI         (channel notify)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal:\"lint clean\" --max-iter:10 fix lint" + RESET));
+        ctx.println(ctx.color(DIM + "Goal lifecycle:" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop pause <id>                          (pause a goal task)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop resume <id>                         (resume a paused goal)" + RESET));
     }
 
     private String formatInterval(int minutes) {
