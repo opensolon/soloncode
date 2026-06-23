@@ -65,8 +65,7 @@ public class LoopTask {
     private final TaskType type;  // 任务类型（LOOP / GOAL），方便识别
 
     // ---- Loop Engineering 扩展字段 ----
-    private final String goalCondition;      // 目标条件，如 "all tests pass"（保留向后兼容）
-    private GoalState goalState;             // 新增：Goal 状态模型（P0）
+    private GoalState goalState;             // Goal 状态模型（P0）
     private final boolean worktreeEnabled;   // 是否在独立 worktree 中执行
     private final String worktreeBranch;     // worktree 分支名（运行时分配）
     private final int maxIterations;         // 最大迭代次数
@@ -104,7 +103,7 @@ public class LoopTask {
     LoopTask(String id, String prompt, int intervalMinutes, String cron,
                      Instant createdAt, Instant expireAt, boolean autoInterval,
                      boolean enabled,
-                     String goalCondition, boolean worktreeEnabled, String worktreeBranch,
+                     boolean worktreeEnabled, String worktreeBranch,
                      int maxIterations, boolean runNow, Long maxTokens, Long maxDurationMs,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration,
                      TaskType type) {
@@ -116,7 +115,6 @@ public class LoopTask {
         this.expireAt = expireAt;
         this.autoInterval = autoInterval;
         this.enabled = enabled;
-        this.goalCondition = goalCondition;
         this.worktreeEnabled = worktreeEnabled;
         this.worktreeBranch = worktreeBranch;
         this.maxIterations = maxIterations;
@@ -129,9 +127,9 @@ public class LoopTask {
         this.currentIteration = currentIteration;
         this.type = type != null ? type : DEFAULT_TYPE;
 
-        // Goal 状态初始化：如果存在 goalCondition 但无 goalState，自动构造
-        if (goalCondition != null && !goalCondition.isEmpty()) {
-            this.goalState = new GoalState(goalCondition,
+        // Goal 状态初始化：GOAL 类型自动构造 GoalState（使用 prompt 作为条件）
+        if (type == TaskType.GOAL) {
+            this.goalState = new GoalState(prompt,
                     maxTokens != null ? maxTokens : 0);
         }
     }
@@ -140,16 +138,16 @@ public class LoopTask {
      * 便捷构造（固定间隔 + 扩展参数）
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
-                    String goalCondition, Boolean worktreeEnabled,
+                    TaskType type, Boolean worktreeEnabled,
                     Integer maxIterations) {
-        this(prompt, intervalMinutes, cron, goalCondition, worktreeEnabled, maxIterations, false);
+        this(prompt, intervalMinutes, cron, type, worktreeEnabled, maxIterations, false);
     }
 
     /**
      * 便捷构造（固定间隔 + 扩展参数 + runNow）
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
-                    String goalCondition, Boolean worktreeEnabled,
+                    TaskType type, Boolean worktreeEnabled,
                     Integer maxIterations, boolean runNow) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
@@ -159,18 +157,16 @@ public class LoopTask {
         this.createdAt = Instant.now();
         this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
         this.autoInterval = false;
-        this.goalCondition = goalCondition;
         this.worktreeEnabled = worktreeEnabled != null ? worktreeEnabled : false;
         this.worktreeBranch = null; // 运行时分配
         this.maxIterations = maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS;
         this.runNow = runNow;
         this.currentIteration = 0;
         this.enabled = true;
-        this.type = (goalCondition != null && !goalCondition.isEmpty()) ? TaskType.GOAL : TaskType.HEARTBEAT;
+        this.type = type != null ? type : TaskType.HEARTBEAT;
 
-        if (goalCondition != null && !goalCondition.isEmpty()) {
-            this.goalState = new GoalState(goalCondition,
-                    maxTokens != null ? maxTokens : 0);
+        if (this.type == TaskType.GOAL) {
+            this.goalState = new GoalState(prompt, 0);
         }
     }
 
@@ -178,13 +174,11 @@ public class LoopTask {
      * 基于当前任务复制出一份更新后的任务定义，保留任务身份和运行时状态。
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
-                                    String goalCondition, Boolean worktreeEnabled,
+                                    TaskType type, Boolean worktreeEnabled,
                                     Integer maxIterations, Boolean runNow,
                                     Long maxTokens, Long maxDurationMs) {
-        // 根据新的 goalCondition 派生类型
-        TaskType newType = (goalCondition != null && !goalCondition.isEmpty())
-                ? TaskType.GOAL
-                : TaskType.HEARTBEAT;
+        // 使用新类型（如果提供），否则保留原类型
+        TaskType newType = type != null ? type : this.type;
 
         LoopTask task = new LoopTask(
                 this.id,
@@ -195,7 +189,6 @@ public class LoopTask {
                 this.expireAt,
                 this.autoInterval,
                 this.enabled,
-                goalCondition,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 this.worktreeBranch,
                 maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
@@ -354,7 +347,7 @@ public class LoopTask {
         node.set("currentIteration", currentIteration);
 
         // Loop Engineering 扩展字段
-        if (goalCondition != null) node.set("goalCondition", goalCondition);
+
         if (worktreeEnabled) node.set("worktreeEnabled", worktreeEnabled);
         if (worktreeBranch != null) node.set("worktreeBranch", worktreeBranch);
 
@@ -391,8 +384,6 @@ public class LoopTask {
         boolean enabledVal = node.getOrNull("enabled") != null
                 ? node.get("enabled").getBoolean() : true;
 
-        String goalConditionVal = node.getOrNull("goalCondition") != null
-                ? node.get("goalCondition").getString() : null;
         boolean worktreeEnabledVal = node.getOrNull("worktreeEnabled") != null
                 && node.get("worktreeEnabled").getBoolean();
         String worktreeBranchVal = node.getOrNull("worktreeBranch") != null
@@ -411,25 +402,15 @@ public class LoopTask {
         Long maxDurationMsVal = node.getOrNull("maxDurationMs") != null
                 ? (long) node.get("maxDurationMs").getInt() : null;
 
-        // ★ P2: 读取 TaskType（向后兼容：旧数据没有 type 字段则从 goalCondition 派生）
-        TaskType typeVal;
-        if (node.getOrNull("type") != null) {
-            typeVal = TaskType.valueOf(node.get("type").getString());
-        } else {
-            typeVal = (goalConditionVal != null && !goalConditionVal.isEmpty())
-                    ? TaskType.GOAL
-                    : TaskType.HEARTBEAT;
-        }
+        // 读取 TaskType（默认 HEARTBEAT）
+        TaskType typeVal = node.getOrNull("type") != null
+                ? TaskType.valueOf(node.get("type").getString())
+                : TaskType.HEARTBEAT;
 
-        // 读取 GoalState（新格式）
-        GoalState goalStateVal = null;
-        if (node.getOrNull("goalState") != null) {
-            goalStateVal = GoalState.fromONode(node.get("goalState"));
-        } else if (goalConditionVal != null) {
-            // 向后兼容：只有 goalCondition 字符串，自动构造 GoalState
-            goalStateVal = new GoalState(goalConditionVal,
-                    maxTokensVal != null ? maxTokensVal : 0);
-        }
+        // 读取 GoalState
+        GoalState goalStateVal = node.getOrNull("goalState") != null
+                ? GoalState.fromONode(node.get("goalState"))
+                : null;
 
         LoopTask task = new LoopTask(
                 node.get("id").getString(),
@@ -440,7 +421,6 @@ public class LoopTask {
                 Instant.parse(node.get("expireAt").getString()),
                 node.get("autoInterval").getBoolean(),
                 enabledVal,
-                goalConditionVal,
                 worktreeEnabledVal,
                 worktreeBranchVal,
                 maxIterationsVal,

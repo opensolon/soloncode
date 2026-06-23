@@ -552,6 +552,10 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-form-inline { display: flex; gap: 16px; align-items: flex-start; }
 .loop-form-inline-item { flex: 1; }
 
+/* Loop Form Hint */
+.loop-form-hint { font-size: 11px; color: var(--text-tertiary); font-weight: normal; margin-left: 2px; }
+.loop-form-runnow-item .loop-checkbox { font-size: 13px; }
+
 /* Loop Form */
 .loop-form { padding: 12px 14px; overflow-y: auto; flex: 1; min-height: 0; }
 .loop-form-group { margin-bottom: 10px; }
@@ -563,6 +567,14 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-textarea { width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; background: var(--bg-primary); color: var(--text-primary); box-sizing: border-box; outline: none; resize: vertical; min-height: 50px; }
 .loop-textarea:focus { border-color: var(--accent); }
 .loop-interval-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+/* Loop Tab Bar */
+.loop-tab-bar { display: flex; border-bottom: 1px solid var(--border-color); flex-shrink: 0; margin-bottom: 10px; }
+.loop-tab { flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; user-select: none; text-align: center; background: none; }
+.loop-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.loop-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-hover); }
+.loop-form-section { display: none; }
+.loop-form-section.active { display: block; min-height: 150px; }
+
 .loop-radio { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
 .loop-radio input { margin: 0; }
 .loop-form-advanced-toggle { font-size: 12px; color: var(--text-secondary); cursor: pointer; padding: 6px 0; user-select: none; display: flex; align-items: center; gap: 6px; }
@@ -578,6 +590,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-btn-secondary:hover { background: var(--border-color); }
 
 /* ===== Goal 状态样式 ===== */
+.loop-goal-hint { font-size: 12px; color: var(--text-secondary); padding: 32px 8px; text-align: center; line-height: 1.6; }
+
 .loop-goal-badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; line-height: 18px; cursor: default; color: #8b5cf6; background: #f3f0ff; }
 
 /* Goal 行内标签（列表中的轻量状态指示） */

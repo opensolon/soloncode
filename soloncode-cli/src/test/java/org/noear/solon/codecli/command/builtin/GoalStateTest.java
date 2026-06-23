@@ -187,11 +187,11 @@ class GoalStateTest {
     // ===== 4. LoopTask Goal 模式基础 =====
 
     @Test
-    void goalModeShouldBeTrueWhenGoalConditionProvided() {
-        LoopTask task = new LoopTask("prompt", 0, null, "my objective", false, 0, true);
+    void goalModeShouldBeTrueWhenTypeIsGoal() {
+        LoopTask task = new LoopTask("prompt", 0, null, LoopTask.TaskType.GOAL, false, 0, true);
         assertTrue(task.isGoalMode());
         assertNotNull(task.getGoalState());
-        assertEquals("my objective", task.getGoalState().getCondition());
+        assertEquals("prompt", task.getGoalState().getCondition());
     }
 
     @Test
@@ -203,7 +203,7 @@ class GoalStateTest {
 
     @Test
     void goalTaskSerializationRoundTripShouldPreserveGoalState() {
-        LoopTask task = new LoopTask("test prompt", 0, null, "refactor module", false, 0, true);
+        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, false, 0, true);
         task.getGoalState().addTokens(5000);
         task.incrementIteration();
         task.incrementIteration();
@@ -212,14 +212,14 @@ class GoalStateTest {
         LoopTask restored = LoopTask.fromONode(node);
 
         assertTrue(restored.isGoalMode());
-        assertEquals("refactor module", restored.getGoalState().getCondition());
+        assertEquals("test prompt", restored.getGoalState().getCondition());
         assertEquals(5000, restored.getGoalState().getConsumedTokens());
         assertEquals(2, restored.getCurrentIteration());
     }
 
     @Test
     void goalTaskWithBlockedStateSerializationRoundTrip() {
-        LoopTask task = new LoopTask("test prompt", 0, null, "refactor module", false, 0, true);
+        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, false, 0, true);
         task.getGoalState().markBlocked();
 
         ONode node = task.toONode();

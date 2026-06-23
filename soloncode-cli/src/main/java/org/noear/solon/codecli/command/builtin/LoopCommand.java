@@ -40,7 +40,7 @@ import java.util.List;
  *   /loop resume <id>                       → resume a paused goal task
  *
  * Loop Engineering 扩展:
- *   /loop goal:"all tests pass" fix auth    → goal 模式
+ *   /loop goal fix auth                     → goal 模式（简化）
  *   /loop 5m --worktree fix bug #123        → worktree 隔离
  *   /loop 30m --notify:feishu check CI      → 通道通知
  * </pre>
@@ -83,7 +83,7 @@ public class LoopCommand implements Command {
                 "/loop pause <id>",
                 "/loop resume <id>",
                 "/loop extend [tokens]",
-                "/loop goal:\"<objective>\" <prompt>",
+                "/loop goal <objective>",
                 "/loop 5m <prompt>",
                 "/loop cron:\"<expr>\" <prompt> ",
         };
@@ -121,6 +121,9 @@ public class LoopCommand implements Command {
             doResume(ctx, sessionId, ctx.argAt(1));
         } else if ("extend".equals(sub)) {
             doExtend(ctx, sessionId, ctx.argAt(1));
+        } else if ("goal".equals(sub)) {
+            // /loop goal <objective> — 简化 Goal 模式（一个参数，立即执行）
+            doScheduleGoal(ctx, sessionId, workspace, harnessSessions);
         } else {
             // Schedule a new task
             doSchedule(ctx, sessionId, workspace, harnessSessions);
@@ -133,10 +136,11 @@ public class LoopCommand implements Command {
     private void doSchedule(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
         int intervalMinutes = 5; // default
         String cronExpr = null;
-        String goalCondition = null;
         boolean worktreeEnabled = false;
         boolean runNow = false;
         Integer maxIterations = null;
+        LoopTask.TaskType taskType = LoopTask.TaskType.HEARTBEAT;
+        String oldGoalCondition = null; // 旧 goal 语法的条件（合并到 prompt）
 
         int promptStartIndex = 0;
         String first = ctx.argAt(0);
@@ -156,17 +160,18 @@ public class LoopCommand implements Command {
             }
             promptStartIndex = 1;
         } else if (first != null && first.startsWith("goal:")) {
-            // 2. 检查是否为 goal 模式: /loop goal:"..." <prompt>
-            goalCondition = first.substring(5).trim();
-            if ((goalCondition.startsWith("\"") && goalCondition.endsWith("\"")) ||
-                    (goalCondition.startsWith("'") && goalCondition.endsWith("'"))) {
-                goalCondition = goalCondition.substring(1, goalCondition.length() - 1);
+            // 2. 旧语法兼容：将条件合并到 prompt 中
+            oldGoalCondition = first.substring(5).trim();
+            if ((oldGoalCondition.startsWith("\"") && oldGoalCondition.endsWith("\"")) ||
+                    (oldGoalCondition.startsWith("'") && oldGoalCondition.endsWith("'"))) {
+                oldGoalCondition = oldGoalCondition.substring(1, oldGoalCondition.length() - 1);
             }
-            if (goalCondition.isEmpty()) {
+            if (oldGoalCondition.isEmpty()) {
                 ctx.println(ctx.color(RED + "Usage: /loop goal:\"<condition>\" <prompt>" + RESET));
                 ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix the auth module" + RESET));
                 return;
             }
+            taskType = LoopTask.TaskType.GOAL;
             intervalMinutes = 0; // Goal 模式默认 0（事件驱动续行，安全网 5 秒）
             runNow = true; // Goal 模式自动立即执行
             promptStartIndex = 1;
@@ -181,6 +186,12 @@ public class LoopCommand implements Command {
 
         // Build prompt from remaining args, 同时解析 --flag
         StringBuilder promptBuilder = new StringBuilder();
+
+        // 旧 goal 语法：先追加条件（condition + " " + xxx）
+        if (oldGoalCondition != null) {
+            promptBuilder.append(oldGoalCondition);
+        }
+
         for (int i = promptStartIndex; ; i++) {
             String arg = ctx.argAt(i);
             if (arg == null) break;
@@ -200,10 +211,6 @@ public class LoopCommand implements Command {
                                 ctx.println(ctx.color(RED + "Invalid --max-iter value: " + val + RESET));
                                 return;
                             }
-                            break;
-                        case "goal":
-                            goalCondition = val;
-                            runNow = true; // Goal 模式自动立即执行
                             break;
                         default:
                             ctx.println(ctx.color(YELLOW + "Unknown flag: --" + key + RESET));
@@ -229,17 +236,12 @@ public class LoopCommand implements Command {
         String prompt = promptBuilder.toString().trim();
 
         if (prompt.isEmpty()) {
-            if (goalCondition != null) {
-                // goal 条件即 prompt（简化模式：/loop goal:"xxx"）
-                prompt = goalCondition;
-            } else {
-                printUsage(ctx);
-                return;
-            }
+            printUsage(ctx);
+            return;
         }
 
         // ★ L6: 单会话单活跃 Goal 校验（优化：已超时的 PAUSED 目标可自动覆盖）
-        if (goalCondition != null) {
+        if (taskType == LoopTask.TaskType.GOAL) {
             List<LoopTask> existing = scheduler.listActive(sessionId);
             for (LoopTask t : existing) {
                 if (t.isGoalMode() && t.getGoalState().getStatus().isActive()) {
@@ -261,7 +263,7 @@ public class LoopCommand implements Command {
         // Create task
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
-                goalCondition, worktreeEnabled, maxIterations, runNow
+                taskType, worktreeEnabled, maxIterations, runNow
         );
 
         // 初始化状态目录（用 task 生成的 ID）
@@ -286,9 +288,6 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color("  " + BOLD + "Prompt:" + RESET + " " + prompt));
 
         // 打印 Loop Engineering 扩展信息
-        if (goalCondition != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Goal:" + RESET + " " + goalCondition));
-        }
         if (worktreeEnabled) {
             ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
         }
@@ -299,6 +298,139 @@ public class LoopCommand implements Command {
             ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
         }
 
+        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
+        ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
+    }
+
+    /**
+     * /loop goal &lt;objective&gt; — 简化 Goal 模式
+     *
+     * <p>与 Codex /goal &lt;objective&gt; 对齐：一个参数，立即执行，AI 自主推进。
+     * prompt 即目标任务描述，type=GOAL，runNow=true，interval=0（调度器自动转 5 秒安全网）。</p>
+     */
+    private void doScheduleGoal(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
+        boolean worktreeEnabled = false;
+        Integer maxIterations = null;
+        Long maxTokens = null;
+        Long maxDurationMs = null;
+        StringBuilder promptBuilder = new StringBuilder();
+
+        // 从 index=1 开始解析（index=0 是 "goal"）
+        for (int i = 1; ; i++) {
+            String arg = ctx.argAt(i);
+            if (arg == null) break;
+
+            // 解析 --flag:value 或 --flag
+            if (arg.startsWith("--")) {
+                String flag = arg.substring(2);
+                int colonIdx = flag.indexOf(':');
+                if (colonIdx > 0) {
+                    String key = flag.substring(0, colonIdx);
+                    String val = flag.substring(colonIdx + 1);
+                    switch (key) {
+                        case "max-iter":
+                            try {
+                                maxIterations = Integer.parseInt(val);
+                            } catch (NumberFormatException e) {
+                                ctx.println(ctx.color(RED + "Invalid --max-iter value: " + val + RESET));
+                                return;
+                            }
+                            break;
+                        case "max-tokens":
+                            try {
+                                maxTokens = Long.parseLong(val);
+                            } catch (NumberFormatException e) {
+                                ctx.println(ctx.color(RED + "Invalid --max-tokens value: " + val + RESET));
+                                return;
+                            }
+                            break;
+                        case "max-duration":
+                            try {
+                                maxDurationMs = Long.parseLong(val) * 60000;
+                            } catch (NumberFormatException e) {
+                                ctx.println(ctx.color(RED + "Invalid --max-duration value: " + val + RESET));
+                                return;
+                            }
+                            break;
+                        default:
+                            ctx.println(ctx.color(YELLOW + "Unknown flag: --" + key + RESET));
+                            break;
+                    }
+                } else {
+                    if ("worktree".equals(flag)) {
+                        worktreeEnabled = true;
+                    } else {
+                        ctx.println(ctx.color(YELLOW + "Unknown flag: --" + flag + RESET));
+                    }
+                }
+            } else {
+                // 普通参数拼入 prompt
+                if (promptBuilder.length() > 0) promptBuilder.append(" ");
+                promptBuilder.append(arg);
+            }
+        }
+
+        String prompt = promptBuilder.toString().trim();
+        if (prompt.isEmpty()) {
+            ctx.println(ctx.color(RED + "Usage: /loop goal <objective>" + RESET));
+            ctx.println(ctx.color(DIM + "  /loop goal fix auth module" + RESET));
+            ctx.println(ctx.color(DIM + "  /loop goal --max-iter:10 fix lint" + RESET));
+            return;
+        }
+
+        // ★ 单会话单活跃 Goal 校验
+        List<LoopTask> existing = scheduler.listActive(sessionId);
+        for (LoopTask t : existing) {
+            if (t.isGoalMode() && t.getGoalState().getStatus().isActive()) {
+                ctx.println(ctx.color(YELLOW + "WARN: A goal is already active in this session (" + t.getId() + ")." + RESET));
+                ctx.println(ctx.color(DIM + "  Active: " + t.getGoalState().getCondition() + RESET));
+                ctx.println(ctx.color(DIM + "  Use /loop stop " + t.getId() + " first to replace the goal." + RESET));
+                return;
+            }
+            if (t.isGoalMode()
+                    && t.getGoalState().getStatus() == GoalState.Status.PAUSED
+                    && t.getGoalState().isAbandoned()) {
+                ctx.println(ctx.color(YELLOW + "Abandoned goal '" + t.getId() + "' (" + t.getGoalState().getCondition() + ") auto-cleaned." + RESET));
+                scheduler.remove(sessionId, t);
+            }
+        }
+
+        // 创建任务：★ 显式使用 LoopTask.TaskType.GOAL
+        LoopTask task = new LoopTask(
+                prompt,       // prompt
+                0,            // intervalMinutes = 0（调度器自动转 5 秒安全网）
+                null,         // cron
+                LoopTask.TaskType.GOAL,  // type = GOAL
+                worktreeEnabled,
+                maxIterations,
+                true          // runNow = true（立即执行首次）
+        );
+
+        // 设置预算
+        if (maxTokens != null) task.setMaxTokens(maxTokens);
+        if (maxDurationMs != null) task.setMaxDurationMs(maxDurationMs);
+
+        // 初始化状态目录
+        LoopStateManager.init(workspace, task.getId(), prompt);
+
+        try {
+            scheduler.schedule(sessionId, task);
+        } catch (IllegalStateException e) {
+            ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
+            LoopStateManager.cleanup(workspace, task.getId());
+            return;
+        }
+
+        // 打印注册信息（简洁版）
+        ctx.println(ctx.color(GREEN + "Goal task registered:" + RESET));
+        ctx.println(ctx.color("  " + BOLD + "ID:" + RESET + " " + task.getId()));
+        ctx.println(ctx.color("  " + BOLD + "Objective:" + RESET + " " + prompt));
+        if (worktreeEnabled) {
+            ctx.println(ctx.color("  " + MAGENTA + "Worktree:" + RESET + " enabled"));
+        }
+        if (maxIterations != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
+        }
         ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
         ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
     }
@@ -592,12 +724,11 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "  /loop check CI status   (auto 5m)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
         ctx.println(ctx.color(DIM + "" + RESET));
-        ctx.println(ctx.color(DIM + "Loop Engineering:" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix auth module" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop 5m --worktree fix bug #123           (git worktree)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop 5m --now check CI                   (run first time immediately)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop 30m --notify:feishu check CI         (channel notify)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop goal:\"lint clean\" --max-iter:10 fix lint" + RESET));
+        ctx.println(ctx.color(DIM + "Goal:" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop goal fix auth module                (goal mode, runs immediately)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop goal write a readme.md              (goal mode, runs immediately)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop goal --max-iter:10 fix lint         (goal with max iterations)" + RESET));
+        ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "Goal lifecycle:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop pause <id>                          (pause a goal task)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop resume <id>                         (resume a paused goal)" + RESET));

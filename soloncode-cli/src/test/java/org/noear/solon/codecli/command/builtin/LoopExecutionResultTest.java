@@ -43,14 +43,14 @@ class LoopExecutionResultTest {
         task.updateLastExecution("last");
         task.incrementIteration();
 
-        LoopTask updated = task.copyWithUpdate("new prompt", 5, null, "goal", true, 3, false, null, null);
+        LoopTask updated = task.copyWithUpdate("new prompt", 5, null, LoopTask.TaskType.GOAL, true, 3, false, null, null);
 
         assertEquals(task.getId(), updated.getId());
         assertEquals(task.getCreatedAt(), updated.getCreatedAt());
         assertEquals(1, updated.getCurrentIteration());
         assertEquals("last", updated.getLastResult());
         assertEquals("new prompt", updated.getPrompt());
-        assertEquals("goal", updated.getGoalCondition());
+        assertEquals(LoopTask.TaskType.GOAL, updated.getType());
         assertTrue(updated.isWorktreeEnabled());
         assertFalse(updated.isMaxIterationsReached());
     }
@@ -69,7 +69,7 @@ class LoopExecutionResultTest {
     @Test
     void appendHistoryShouldWriteStructuredResult() throws Exception {
         Path workspace = Files.createTempDirectory("loop-state-test-");
-        LoopTask task = new LoopTask("prompt", 1, null, "goal", false, 2);
+        LoopTask task = new LoopTask("prompt", 1, null, LoopTask.TaskType.GOAL, false, 2);
 
         LoopStateManager.init(workspace.toString(), task.getId(), task.getPrompt());
         LoopStateManager.appendHistory(workspace.toString(), task.getId(),

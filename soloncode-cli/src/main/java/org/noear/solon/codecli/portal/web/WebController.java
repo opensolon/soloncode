@@ -779,7 +779,7 @@ public class WebController {
         item.put("currentIteration", t.getCurrentIteration());
         if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
         if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
-        if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
+
         item.put("worktreeEnabled", t.isWorktreeEnabled());
         item.put("maxIterations", t.getMaxIterations());
         item.put("runNow", t.isRunNow());
@@ -839,7 +839,7 @@ public class WebController {
                           @Param("prompt") String prompt,
                           @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                           @Param(value = "cron", required = false) String cron,
-                          @Param(value = "goalCondition", required = false) String goalCondition,
+                          @Param(value = "type", required = false) String type,
                           @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                           @Param(value = "maxIterations", required = false) Integer maxIterations,
                           @Param(value = "runNow", required = false) Boolean runNow,
@@ -855,11 +855,16 @@ public class WebController {
         String workspace = engine.getWorkspace();
         String harnessSessions = engine.getHarnessSessions();
 
+        // 确定任务类型
+        LoopTask.TaskType taskType = (type != null && "GOAL".equalsIgnoreCase(type))
+                ? LoopTask.TaskType.GOAL
+                : LoopTask.TaskType.HEARTBEAT;
+
         // 初始化状态目录
         int interval = intervalMinutes != null ? intervalMinutes : 5;
         LoopTask task = new LoopTask(
                 prompt, interval, cron,
-                goalCondition,
+                taskType,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 maxIterations,
                 runNow != null && runNow
@@ -888,7 +893,7 @@ public class WebController {
                              @Param(value = "prompt", required = false) String prompt,
                              @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                              @Param(value = "cron", required = false) String cron,
-                             @Param(value = "goalCondition", required = false) String goalCondition,
+                             @Param(value = "type", required = false) String type,
                              @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                              @Param(value = "channelNotify", required = false) String channelNotify,
                              @Param(value = "maxIterations", required = false) Integer maxIterations,
@@ -914,10 +919,11 @@ public class WebController {
         int interval = intervalMinutes != null ? intervalMinutes : existing.getIntervalMinutes();
         String effectiveCron = cron != null ? cron : existing.getCron();
         String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
+        LoopTask.TaskType newType = (type != null) ? LoopTask.TaskType.valueOf(type.toUpperCase()) : null;
 
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
-                goalCondition != null ? goalCondition : existing.getGoalCondition(),
+                newType,
                 worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
                 maxIterations != null ? maxIterations : existing.getMaxIterations(),
                 runNow != null ? runNow : existing.isRunNow(),

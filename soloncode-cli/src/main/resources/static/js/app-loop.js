@@ -34,7 +34,7 @@
             data: {
                 prompt: '运行测试套件，如果有失败的测试则分析原因并尝试修复代码',
                 intervalMinutes: 10,
-                goalCondition: 'all tests pass',
+                type: 'GOAL',
                 worktreeEnabled: true,
                 maxIterations: 10,
                 runNow: true
@@ -48,7 +48,7 @@
             data: {
                 prompt: '审查昨天的所有代码提交，总结变更摘要和潜在风险点',
                 cron: '0 9 * * *',
-                goalCondition: null,
+                type: 'HEARTBEAT',
                 worktreeEnabled: false,
                 maxIterations: 20,
                 runNow: false
@@ -62,7 +62,7 @@
             data: {
                 prompt: '回顾今天的所有对话记录，提取用户的偏好习惯、技术决策和重要约束，归纳整理后存入长期记忆',
                 cron: '0 22 * * *',
-                goalCondition: null,
+                type: 'HEARTBEAT',
                 worktreeEnabled: false,
                 maxIterations: 10,
                 runNow: false
@@ -76,7 +76,7 @@
             data: {
                 prompt: '检查最近的 CI 构建状态，如果有失败的用例则分析失败原因并汇总报告',
                 intervalMinutes: 30,
-                goalCondition: null,
+                type: 'HEARTBEAT',
                 worktreeEnabled: false,
                 maxIterations: 20,
                 runNow: false
@@ -90,7 +90,7 @@
             data: {
                 prompt: '检查所有核心服务的健康状态（HTTP 端点），如果有异常则汇总告警信息',
                 intervalMinutes: 5,
-                goalCondition: 'all services healthy',
+                type: 'GOAL',
                 worktreeEnabled: false,
                 maxIterations: 100,
                 runNow: true
@@ -402,21 +402,21 @@
         // ★ 表单：Goal 从折叠面板提升到主表单
         html += '<div class="loop-form">';
 
+        // ★ Tab 栏（放在最上方，对应 LoopTask.TaskType）
+        html += '<div class="loop-tab-bar">';
+        html += '<div class="loop-tab active" data-tab="heartbeat">定时心跳</div>';
+        html += '<div class="loop-tab" data-tab="goal">目标驱动</div>';
+        html += '</div>';
+
         // 任务描述
         html += '<div class="loop-form-group">';
         html += '<label>任务描述 <span class="loop-required">*</span></label>';
         html += '<input type="text" class="loop-input" id="loopFormPrompt" placeholder=""/>';
         html += '</div>';
 
-        // ★ Goal 条件（直接在主表单中，不再隐藏）
-        html += '<div class="loop-form-group">';
-        html += '<label>Goal <span style="font-weight:400;color:var(--text-secondary);font-size:11px;">（可选，满足条件后自动停止）</span></label>';
-        html += '<div class="loop-form-goal-row">';
-        html += '<input type="text" class="loop-input" id="loopFormGoal" placeholder="例如: all tests pass"/>';
-        html += '</div>';
-        html += '</div>';
-
-        // 间隔
+        // ===== Heartbeat 表单区：调度方式 =====
+        html += '<div class="loop-form-section active" data-section="heartbeat">';
+        html += '<div class="loop-form-schedule">';
         html += '<div class="loop-form-group">';
         html += '<label>调度方式</label>';
         html += '<div class="loop-interval-row">';
@@ -437,26 +437,31 @@
         html += '<a class="loop-cron-link" data-cron="0 */2 * * *">每2小时</a>';
         html += '</div>';
         html += '</div>';
+        html += '</div>';  // 结束 loop-form-schedule
 
-        // 高级选项（折叠：Worktree / RunNow / MaxIter / 预算）
-        html += '<div class="loop-form-advanced-toggle collapsed" id="loopAdvancedToggle">' +
-            '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>' +
-            '<span>高级选项</span></div>';
-        html += '<div class="loop-form-advanced" id="loopAdvanced">';
-        html += '<div class="loop-form-group loop-form-inline">';
-        html += '<div class="loop-form-inline-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
-        html += '<div class="loop-form-inline-item"><label>首次立即执行</label><label class="loop-checkbox"><input type="checkbox" id="loopFormRunNow" checked/> 保存后立即执行一次</label></div>';
-        html += '<div class="loop-form-inline-item"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" value="20" min="1"/></div>';
+        // ★ 首次立即执行（从高级选项移到调度方式下面）
+        html += '<div class="loop-form-runnow-item" style="margin-top:4px;padding:4px 0 0 0;">';
+        html += '<label class="loop-checkbox"><input type="checkbox" id="loopFormRunNow" checked/> 首次立即执行 <span class="loop-form-hint">保存后立即执行一次，后续仍按调度间隔执行</span></label>';
+        html += '</div>';
+
+        html += '</div>';  // 结束 heartbeat section
+
+        // ===== Goal 表单区（简洁，无调度字段）=====
+        html += '<div class="loop-form-section" data-section="goal">';
+        html += '<div class="loop-goal-hint">设定目标后，AI 将自动循环执行直至达成目标，无需配置调度计划</div>';
+        html += '</div>';  // 结束 goal section
+
+        // ★ Worktree / RunNow / MaxIter / 预算（直接展开）
+        html += '<div class="loop-form-inline">';
+        html += '<div class="loop-form-inline-item loop-form-wt-item"><label>Worktree 隔离</label><label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行</label></div>';
+
+        html += '<div class="loop-form-inline-item"><label>最大迭代</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxIter" placeholder="留空不限制" min="1"/></div>';
         html += '</div>';
 
         // 预算控制
-        html += '<div class="loop-form-group">';
         html += '<div class="loop-budget-row">';
         html += '<div class="loop-form-group"><label style="font-size:11px;">Token 预算</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
         html += '<div class="loop-form-group"><label style="font-size:11px;">时间预算（分钟）</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
-        html += '</div>';
-        html += '</div>';
-
         html += '</div>';
 
         // 操作按钮
@@ -527,10 +532,20 @@
             }
             $panel.find('#loopFormCron').val('');
         }
-        // ★ goal 条件（从 goal 对象或旧字段读取）
-        var g = t.goal;
-        var goalVal = g ? g.condition : (t.goalCondition || '');
-        $panel.find('#loopFormGoal').val(goalVal);
+        // ★ 根据 type / t.goal 自动选择任务类型
+        var hasGoal = t.type === 'GOAL' || t.goal;
+        // 激活对应 tab
+        $panel.find('.loop-tab').removeClass('active');
+        $panel.find('.loop-form-section').removeClass('active');
+        if (hasGoal) {
+            $panel.find('.loop-tab[data-tab="goal"]').addClass('active');
+            $panel.find('.loop-form-section[data-section="goal"]').addClass('active');
+            $panel.find('#loopFormPrompt').closest('.loop-form-group').find('label').html('目标描述 <span class="loop-required">*</span>');
+        } else {
+            $panel.find('.loop-tab[data-tab="heartbeat"]').addClass('active');
+            $panel.find('.loop-form-section[data-section="heartbeat"]').addClass('active');
+            $panel.find('#loopFormPrompt').closest('.loop-form-group').find('label').html('任务描述 <span class="loop-required">*</span>');
+        }
         $panel.find('#loopFormWorktree').prop('checked', !!t.worktreeEnabled);
         $panel.find('#loopFormRunNow').prop('checked', !!t.runNow);
         $panel.find('#loopFormMaxIter').val(t.maxIterations || '');
@@ -539,14 +554,7 @@
         if (t.maxTokens) $panel.find('#loopFormMaxTokens').val(t.maxTokens);
         if (t.maxDurationMs) $panel.find('#loopFormMaxDuration').val(Math.floor(t.maxDurationMs / 60000));
 
-        // 有高级字段时自动展开
-        if (t.goalCondition || t.worktreeEnabled || t.runNow || t.maxTokens || t.maxDurationMs) {
-            $panel.find('#loopAdvanced').show();
-            $panel.find('#loopAdvancedToggle').removeClass('collapsed');
-        } else {
-            $panel.find('#loopAdvanced').hide();
-            $panel.find('#loopAdvancedToggle').addClass('collapsed');
-        }
+
     }
 
     // ========== 表单事件绑定 ==========
@@ -583,22 +591,31 @@
             });
         }
 
-        $panel.find('#loopAdvancedToggle').on('click', function() {
-            var $adv = $panel.find('#loopAdvanced');
-            if ($adv.is(':visible')) {
-                $adv.hide();
-                $(this).addClass('collapsed');
-            } else {
-                $adv.show();
-                $(this).removeClass('collapsed');
-            }
-        });
+
 
         $panel.find('input[name=loopScheduleType]').on('change', function() {
             var isCron = $(this).val() === 'cron';
             $panel.find('#loopFormInterval').prop('disabled', isCron);
             $panel.find('#loopFormIntervalUnit').prop('disabled', isCron);
             $panel.find('#loopFormCron').prop('disabled', !isCron);
+        });
+
+        // ★ Tab 切换（对应 LoopTask.TaskType）
+        $panel.find('.loop-tab').on('click', function() {
+            var tab = $(this).data('tab');
+            var isGoal = tab === 'goal';
+            // 切换 tab 激活态
+            $panel.find('.loop-tab').removeClass('active');
+            $(this).addClass('active');
+            // 切换表单区
+            $panel.find('.loop-form-section').removeClass('active');
+            $panel.find('.loop-form-section[data-section="' + tab + '"]').addClass('active');
+
+            // runNow 已移到 heartbeat section 内部，切换 section 时自动隐藏
+            // 更新 prompt 标签
+            $panel.find('#loopFormPrompt').closest('.loop-form-group').find('label').html(
+                isGoal ? '目标描述 <span class="loop-required">*</span>' : '任务描述 <span class="loop-required">*</span>'
+            );
         });
 
         // Cron 快捷示例
@@ -628,26 +645,42 @@
 
             $saveBtn.prop('disabled', true).text('保存中...');
 
-            var isCron = $panel.find('input[name=loopScheduleType]:checked').val() === 'cron';
-            var cronVal = isCron ? $panel.find('#loopFormCron').val().trim() : null;
-            var intervalVal = null;
-            if (!isCron) {
-                var num = parseInt($panel.find('#loopFormInterval').val()) || 5;
-                var unit = $panel.find('#loopFormIntervalUnit').val();
-                intervalVal = unit === 'h' ? num * 60 : num;
-            }
+            // ★ 根据活跃 tab 确定任务类型
+            var activeTab = $panel.find('.loop-tab.active').data('tab');
+            var isGoal = activeTab === 'goal';
 
-            // ★ 收集预算字段
+            // ★ 收集预算字段（两个 tab 都支持）
             var maxTokensVal = $panel.find('#loopFormMaxTokens').val().trim();
             var maxDurationVal = $panel.find('#loopFormMaxDuration').val().trim();
 
+            var effectiveRunNow = false;
+            var effectiveInterval = null;
+            var effectiveType = null;
+            var cronVal = null;
+
+            if (isGoal) {
+                effectiveType = 'GOAL';
+                effectiveRunNow = true;   // Goal 模式恒为 true
+                effectiveInterval = 0;    // 后端转 5 秒安全网
+            } else {
+                effectiveType = 'HEARTBEAT';
+                var isCron = $panel.find('input[name=loopScheduleType]:checked').val() === 'cron';
+                cronVal = isCron ? $panel.find('#loopFormCron').val().trim() : null;
+                if (!isCron) {
+                    var num = parseInt($panel.find('#loopFormInterval').val()) || 5;
+                    var unit = $panel.find('#loopFormIntervalUnit').val();
+                    effectiveInterval = unit === 'h' ? num * 60 : num;
+                }
+                effectiveRunNow = $panel.find('#loopFormRunNow').is(':checked');
+            }
+
             var params = {
                 prompt: prompt,
-                intervalMinutes: intervalVal,
+                intervalMinutes: effectiveInterval,
                 cron: cronVal,
-                goalCondition: $panel.find('#loopFormGoal').val().trim() || null,
+                type: effectiveType,
                 worktreeEnabled: $panel.find('#loopFormWorktree').is(':checked'),
-                runNow: $panel.find('#loopFormRunNow').is(':checked'),
+                runNow: effectiveRunNow,
                 maxIterations: parseInt($panel.find('#loopFormMaxIter').val()) || null,
                 maxTokens: maxTokensVal ? parseInt(maxTokensVal) : null,
                 maxDurationMs: maxDurationVal ? parseInt(maxDurationVal) * 60000 : null
