@@ -152,6 +152,7 @@ public class GoalState {
     public void setStatus(Status status) { this.status = status; }
     public long getConsumedTokens() { return consumedTokens; }
     public long getMaxTokens() { return maxTokens; }
+    public void setMaxTokens(long maxTokens) { this.maxTokens = maxTokens; }
     public long getStartEpochMs() { return startEpochMs; }
     public long getPausedAtEpochMs() { return pausedAtEpochMs; }
 

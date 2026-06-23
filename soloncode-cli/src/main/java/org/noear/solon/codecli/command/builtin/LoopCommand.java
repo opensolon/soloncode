@@ -406,9 +406,18 @@ public class LoopCommand implements Command {
                 true          // runNow = true（立即执行首次）
         );
 
-        // 设置预算
-        if (maxTokens != null) task.setMaxTokens(maxTokens);
-        if (maxDurationMs != null) task.setMaxDurationMs(maxDurationMs);
+        // 设置预算（未显式指定时使用 LoopConfig 默认值）
+        LoopConfig loopConfig = new LoopConfig();
+        if (maxTokens != null) {
+            task.setMaxTokens(maxTokens);
+        } else {
+            task.setMaxTokens(loopConfig.getDefaultMaxTokens());
+        }
+        if (maxDurationMs != null) {
+            task.setMaxDurationMs(maxDurationMs);
+        } else {
+            task.setMaxDurationMs(loopConfig.getDefaultMaxDurationMs());
+        }
 
         // 初始化状态目录
         LoopStateManager.init(workspace, task.getId(), prompt);

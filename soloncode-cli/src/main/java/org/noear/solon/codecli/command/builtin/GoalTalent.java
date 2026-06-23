@@ -75,19 +75,26 @@ public class GoalTalent extends AbsTalent {
         // isSupported 保证有活跃 goal 时才暴露此工具，task 不会为 null
         GoalState gs = task.getGoalState();
 
-        ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
-        root.set("taskId", task.getId());
-        root.set("objective", gs.getCondition());
-        root.set("status", gs.getStatus().name().toLowerCase());
-        root.set("iteration", task.getCurrentIteration());
+        ONode goalNode = new ONode(Options.of(Feature.Write_PrettyFormat));
+        goalNode.set("taskId", task.getId());
+        goalNode.set("objective", gs.getCondition());
+        goalNode.set("status", gs.getStatus().name().toLowerCase());
+        goalNode.set("iteration", task.getCurrentIteration());
 
         long elapsed = (System.currentTimeMillis() - gs.getStartEpochMs()) / 1000;
-        root.set("elapsedSeconds", elapsed);
-        root.set("consumedTokens", gs.getConsumedTokens());
+        goalNode.set("elapsedSeconds", elapsed);
+        goalNode.set("consumedTokens", gs.getConsumedTokens());
         if (gs.getMaxTokens() > 0) {
-            root.set("maxTokens", gs.getMaxTokens());
+            goalNode.set("maxTokens", gs.getMaxTokens());
         }
-        root.set("budgetExceeded", gs.isBudgetExceeded());
+        goalNode.set("budgetExceeded", gs.isBudgetExceeded());
+
+        // Codex 对齐：wrapper 结构 { goal: {...}, remaining_tokens: N, completionBudgetReport: null }
+        ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
+        root.set("goal", goalNode);
+        root.set("remaining_tokens", gs.getMaxTokens() > 0
+                ? gs.getMaxTokens() - gs.getConsumedTokens() : null);
+        root.set("completionBudgetReport", null);
 
         return root.toJson();
     }
@@ -127,12 +134,6 @@ public class GoalTalent extends AbsTalent {
         }
 
         ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
-        root.set("taskId", task.getId());
-        root.set("objective", gs.getCondition());
-        root.set("consumedTokens", gs.getConsumedTokens());
-        if (gs.getMaxTokens() > 0) {
-            root.set("maxTokens", gs.getMaxTokens());
-        }
 
         // ---- complete ----
         if ("complete".equals(status)) {
@@ -151,7 +152,22 @@ public class GoalTalent extends AbsTalent {
             gs.achieve();
             scheduler.clearGoal(__sessionId, task.getId());
 
-            root.set("status", "achieved");
+            // Codex 对齐：wrapper 返回 + completionBudgetReport
+            ONode goalNode = new ONode();
+            goalNode.set("taskId", task.getId());
+            goalNode.set("objective", gs.getCondition());
+            goalNode.set("status", "achieved");
+            goalNode.set("consumedTokens", gs.getConsumedTokens());
+            if (gs.getMaxTokens() > 0) {
+                goalNode.set("maxTokens", gs.getMaxTokens());
+            }
+
+            String budgetReport = buildCompletionBudgetReport(gs);
+            root.set("goal", goalNode);
+            root.set("remaining_tokens", gs.getMaxTokens() > 0
+                    ? gs.getMaxTokens() - gs.getConsumedTokens() : null);
+            root.set("completionBudgetReport", budgetReport);
+
             return root.toJson();
         }
 
@@ -161,7 +177,21 @@ public class GoalTalent extends AbsTalent {
             scheduler.pauseGoal(__sessionId, task.getId());
             log.info("updateGoal: goal '{}' marked as BLOCKED by model", task.getId());
 
-            root.set("status", "blocked");
+            // Codex 对齐：wrapper 返回
+            ONode goalNode = new ONode();
+            goalNode.set("taskId", task.getId());
+            goalNode.set("objective", gs.getCondition());
+            goalNode.set("status", "blocked");
+            goalNode.set("consumedTokens", gs.getConsumedTokens());
+            if (gs.getMaxTokens() > 0) {
+                goalNode.set("maxTokens", gs.getMaxTokens());
+            }
+
+            root.set("goal", goalNode);
+            root.set("remaining_tokens", gs.getMaxTokens() > 0
+                    ? gs.getMaxTokens() - gs.getConsumedTokens() : null);
+            root.set("completionBudgetReport", null);
+
             return root.toJson();
         }
 
@@ -170,6 +200,29 @@ public class GoalTalent extends AbsTalent {
     }
 
     // ===== 辅助方法 =====
+
+    /**
+     * 构建 completion budget report（目标完成时的预算摘要）
+     */
+    private static String buildCompletionBudgetReport(GoalState gs) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Goal achieved. ");
+        if (gs.getMaxTokens() > 0) {
+            sb.append("Token usage: ").append(gs.getConsumedTokens())
+              .append("/").append(gs.getMaxTokens());
+            double pct = (double) gs.getConsumedTokens() * 100 / gs.getMaxTokens();
+            sb.append(" (").append(String.format("%.1f", pct)).append("%). ");
+        } else {
+            sb.append("Token usage: ").append(gs.getConsumedTokens()).append(" tokens. ");
+        }
+        long elapsedSec = (System.currentTimeMillis() - gs.getStartEpochMs()) / 1000;
+        if (elapsedSec >= 60) {
+            sb.append("Duration: ").append(elapsedSec / 60).append("m ").append(elapsedSec % 60).append("s.");
+        } else {
+            sb.append("Duration: ").append(elapsedSec).append("s.");
+        }
+        return sb.toString();
+    }
 
     /**
      * 统一错误 JSON 格式

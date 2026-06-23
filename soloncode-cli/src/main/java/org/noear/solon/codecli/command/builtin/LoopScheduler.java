@@ -500,8 +500,9 @@ public class LoopScheduler {
             if (maxDurationMs != null && maxDurationMs > 0) {
                 long elapsed = System.currentTimeMillis() - gs.getStartEpochMs();
                 if (elapsed >= maxDurationMs) {
-                    LOG.info("Loop task '{}' goal duration exceeded ({}ms >= {}ms)",
+                    LOG.info("Loop task '{}' goal duration exceeded ({}ms >= {}ms), executing wrap-up turn",
                             task.getId(), elapsed, maxDurationMs);
+                    executeBudgetLimitWrapUp(sessionId, task, gs);
                     gs.markBudgetLimited();
                     LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
                             (String) null, task.getCurrentIteration(), "BUDGET_LIMITED");
@@ -512,8 +513,9 @@ public class LoopScheduler {
 
             // Token 预算
             if (gs.isBudgetExceeded()) {
-                LOG.info("Loop task '{}' goal budget exceeded at iteration {}",
+                LOG.info("Loop task '{}' goal budget exceeded at iteration {}, executing wrap-up turn",
                         task.getId(), task.getCurrentIteration());
+                executeBudgetLimitWrapUp(sessionId, task, gs);
                 gs.markBudgetLimited();
                 LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
                         (String) null, task.getCurrentIteration(), "BUDGET_LIMITED");
@@ -557,6 +559,7 @@ public class LoopScheduler {
 
                 String finalResult = executionResult != null ? executionResult.getFinalResult() : null;
                 task.updateLastExecution(finalResult != null ? finalResult : "ok");
+                task.resetConsecutiveErrors(); // 成功执行后重置连续异常计数
 
                 int iteration;
                 if (executionResult != null && executionResult.isCompleted()) {
@@ -574,6 +577,17 @@ public class LoopScheduler {
                         gs.addTokens(executionResult.getTokensUsed());
                     }
 
+                    // 无进展检测（运行时兜底）
+                    String currentFingerprint = computeFingerprint(executionResult);
+                    if (currentFingerprint != null && currentFingerprint.equals(task.getLastFingerprint())) {
+                        task.recordStagnation();
+                        LOG.warn("Goal '{}' stagnation: {} consecutive no-progress turns",
+                                task.getId(), task.getStagnationCount());
+                    } else {
+                        task.resetStagnation();
+                        task.setLastFingerprint(currentFingerprint);
+                    }
+
                     // 完成检测
                     boolean achieved = executionResult != null && executionResult.isGoalAchieved();
                     if (achieved) {
@@ -587,7 +601,9 @@ public class LoopScheduler {
 
                     // 预算检查
                     if (gs.isBudgetExceeded()) {
-                        LOG.info("Loop task '{}' budget exceeded at iteration {}", task.getId(), iteration);
+                        LOG.info("Loop task '{}' budget exceeded at iteration {}, executing wrap-up turn",
+                                task.getId(), iteration);
+                        executeBudgetLimitWrapUp(sessionId, task, gs);
                         gs.markBudgetLimited();
                         LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
                                 executionResult, iteration, "BUDGET_EXCEEDED");
@@ -643,16 +659,30 @@ public class LoopScheduler {
             if (tasks != null) {
                 saveToFile(sessionId, tasks);
             }
-            // 异常后延迟重试
+            // 异常后分级处理（TurnError → blocked）
             if (task.isGoalMode() && !task.isCancelled() && !task.isExpired()) {
                 GoalState gs = task.getGoalState();
                 if (gs.getStatus().isActive() && !gs.isBudgetExceeded()) {
-                    LOG.info("Loop task '{}' scheduling error retry in 5s", task.getId());
-                    asyncExecutor.schedule(() -> {
-                        if (!task.isCancelled() && !task.isExpired()) {
-                            onTrigger(sessionId, task);
-                        }
-                    }, 5, TimeUnit.SECONDS);
+                    int errors = task.incrementConsecutiveErrors();
+                    if (errors >= loopConfig.getMaxConsecutiveErrors()) {
+                        // 连续异常 → 运行时兜底 blocked
+                        LOG.warn("Goal '{}' blocked by runtime: {} consecutive errors",
+                                task.getId(), errors);
+                        gs.markBlocked();
+                        pauseGoal(sessionId, task.getId());
+                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                (String) null, task.getCurrentIteration(), "BLOCKED_BY_ERRORS");
+                    } else {
+                        // 未达阈值 → 递增延迟重试
+                        long delay = 5L * errors; // 5s, 10s, 15s ...
+                        LOG.info("Loop task '{}' scheduling error retry in {}s (attempt {})",
+                                task.getId(), delay, errors);
+                        asyncExecutor.schedule(() -> {
+                            if (!task.isCancelled() && !task.isExpired()) {
+                                onTrigger(sessionId, task);
+                            }
+                        }, delay, TimeUnit.SECONDS);
+                    }
                 }
             }
         } finally {
@@ -665,16 +695,12 @@ public class LoopScheduler {
     /**
      * 构建完整的 effective prompt（goal 引导词注入）
      *
-     * <p>对齐 Codex continuation.md 的 7 章节结构：
-     * <ol>
-     *   <li>Continuation behavior — 跨 turn 持久性</li>
-     *   <li>Budget — token 用量 / 预算 / 剩余</li>
-     *   <li>Work from evidence — 强制验证当前状态</li>
-     *   <li>Progress visibility — 上一轮摘要</li>
-     *   <li>Fidelity — 禁止缩小目标范围</li>
-     *   <li>Completion audit — 逐条需求审计</li>
-     *   <li>Blocked audit — 3 轮规则</li>
-     * </ol>
+     * <p>对齐 Codex continuation.md 的 7 章节结构，并根据预算剩余自动切换精简模式：
+     * <ul>
+     *   <li>预算 > 30%：完整 7 章节</li>
+     *   <li>预算 15%-30%：精简 3 章节（Continuation + Completion audit + Budget）</li>
+     *   <li>预算 < 15%：极简单段落</li>
+     * </ul>
      */
     private String buildEffectivePrompt(String sessionId, LoopTask task) {
         String prompt = task.getPrompt();
@@ -690,6 +716,18 @@ public class LoopScheduler {
 
         String budgetInfo = buildBudgetInfo(gs);
 
+        // 预算感知精简模式
+        double budgetRatio = gs.getMaxTokens() > 0
+                ? (double) (gs.getMaxTokens() - gs.getConsumedTokens()) / gs.getMaxTokens()
+                : 1.0;
+
+        if (budgetRatio < 0.15) {
+            return buildMinimalPrompt(prompt, gs, task, budgetInfo);
+        } else if (budgetRatio < 0.30) {
+            return buildCompactPrompt(prompt, gs, task, budgetInfo, iter, isFirstIter);
+        }
+
+        // 完整模式（7 章节）
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n");
         sb.append("--- Goal Continuation ---\n");
@@ -726,6 +764,17 @@ public class LoopScheduler {
         sb.append("resume 后阻塞计数重置为 0。\n");
         sb.append("\n");
 
+        // 停滞质疑（运行时兜底，仅触发时注入）
+        if (task.getStagnationCount() >= loopConfig.getStagnationThreshold()) {
+            sb.append("--- 进展质疑 ---\n");
+            sb.append("系统检测到最近 ").append(task.getStagnationCount())
+              .append(" 轮执行未产生实质性进展。\n");
+            sb.append("请认真评估：你是否在同一问题上反复尝试但无法推进？\n");
+            sb.append("如果是，请调用 update_goal(blocked) 声明阻塞。\n");
+            sb.append("如果不是，请在下一步采取明显不同的策略。\n");
+            sb.append("\n");
+        }
+
         // Chapter 2: Budget
         if (isCritical) {
             sb.append("[紧急] 你的 Token 预算即将耗尽。请专注于高效完成目标。\n");
@@ -742,6 +791,105 @@ public class LoopScheduler {
         sb.append(budgetInfo);
 
         return prompt + sb.toString();
+    }
+
+    /**
+     * 精简模式（预算 15%-30%）：3 章节
+     */
+    private String buildCompactPrompt(String prompt, GoalState gs, LoopTask task,
+                                      String budgetInfo, int iter, boolean isFirstIter) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n");
+        sb.append("--- Goal Continuation ---\n");
+        sb.append("目标: ").append(gs.getCondition()).append("\n");
+        sb.append("持续工作直至完成。完成后输出 [GOAL_ACHIEVED] 并调用 update_goal(complete)。\n");
+        sb.append("\n");
+
+        sb.append("--- 完成审计 ---\n");
+        sb.append("逐条验证目标完成情况。必须有客观证据（测试通过/文件存在）。不要凭推理判定完成。\n");
+        sb.append("\n");
+
+        if (!isFirstIter && task.getLastResult() != null) {
+            String lastSummary = truncateForPrompt(task.getLastResult(), 200);
+            sb.append("上一轮（第 ").append(iter).append("轮）: ").append(lastSummary).append("\n");
+        }
+
+        sb.append(budgetInfo);
+        return prompt + sb.toString();
+    }
+
+    /**
+     * 极简模式（预算 < 15%）：单段落
+     */
+    private String buildMinimalPrompt(String prompt, GoalState gs, LoopTask task,
+                                      String budgetInfo) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n");
+        sb.append("目标: ").append(gs.getCondition()).append(" | ");
+        sb.append(budgetInfo.trim()).append("\n");
+        sb.append("持续工作直至完成。完成后调用 update_goal(complete)。3 轮无法推进则调用 update_goal(blocked)。\n");
+        return prompt + sb.toString();
+    }
+
+    // ==================== 预算耗尽收尾 ====================
+
+    /**
+     * 预算耗尽时执行一次收尾 turn（对齐 Codex budget_limit.md）
+     *
+     * <p>注入 budget_limit 引导词，让模型总结进展和剩余工作，而非直接终止。
+     * 收尾 turn 不触发续行。
+     */
+    private void executeBudgetLimitWrapUp(String sessionId, LoopTask task, GoalState gs) {
+        try {
+            String wrapUpPrompt = buildBudgetLimitPrompt(task, gs);
+            executeSingle(sessionId, wrapUpPrompt, null);
+        } catch (Exception e) {
+            LOG.warn("Goal '{}' wrap-up turn failed: {}", task.getId(), e.getMessage());
+        }
+    }
+
+    /**
+     * 构建 budget_limit 引导词（对齐 Codex budget_limit.md）
+     */
+    private String buildBudgetLimitPrompt(LoopTask task, GoalState gs) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n--- 预算耗尽 ---\n");
+        sb.append("你的目标 Token 预算已耗尽。\n\n");
+        sb.append("目标: ").append(gs.getCondition()).append("\n\n");
+
+        sb.append("预算:\n");
+        long elapsed = (System.currentTimeMillis() - gs.getStartEpochMs()) / 1000;
+        sb.append("- 耗时: ").append(formatDuration(elapsed * 1000)).append("\n");
+        sb.append("- 已消耗: ").append(formatTokens(gs.getConsumedTokens()));
+        if (gs.getMaxTokens() > 0) {
+            sb.append(" / ").append(formatTokens(gs.getMaxTokens())).append(" tokens\n");
+        } else {
+            sb.append(" tokens\n");
+        }
+        sb.append("\n");
+
+        sb.append("系统已将此目标标记为 budget_limited，请勿开始新的实质性工作。\n");
+        sb.append("请在此轮回复中：\n");
+        sb.append("1. 总结已完成的工作和进展\n");
+        sb.append("2. 列出剩余未完成的工作\n");
+        sb.append("3. 给出明确的下一步建议\n\n");
+        sb.append("不要调用 update_goal 除非目标确实已完成。\n");
+
+        return sb.toString();
+    }
+
+    // ==================== 无进展指纹计算 ====================
+
+    /**
+     * 计算执行指纹（用于无进展检测）
+     *
+     * <p>基于：是否有工具调用 + 结果文本长度区间（粗粒度）
+     */
+    private String computeFingerprint(LoopExecutionResult result) {
+        if (result == null) return "null";
+        int lenBucket = result.getFinalResult() != null
+                ? result.getFinalResult().length() / 500 : 0;
+        return result.isHasToolCalls() + ":" + lenBucket;
     }
 
     // ==================== 格式化辅助 ====================

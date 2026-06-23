@@ -82,6 +82,13 @@ public class LoopTask {
     private volatile boolean enabled = true; // 启用/停用
     private volatile boolean wrapUpPending = false; // 即将收尾（最后一次 wrap-up turn）
 
+    // ---- 运行时兜底：无进展检测 ----
+    private volatile int stagnationCount;       // 连续无进展轮次
+    private volatile String lastFingerprint;     // 上一轮执行指纹
+
+    // ---- 运行时兜底：连续异常检测 ----
+    private volatile int consecutiveErrors;      // 连续异常计数
+
     /**
      * 固定间隔构造
      */
@@ -305,7 +312,14 @@ public class LoopTask {
         this.goalState = goalState;
     }
 
-    public void setMaxTokens(Long maxTokens) { this.maxTokens = maxTokens; }
+    public void setMaxTokens(Long maxTokens) {
+        this.maxTokens = maxTokens;
+        // 同步到 GoalState（便捷构造函数中 GoalState 用的是 0，需在此补同步）
+        if (goalState != null && maxTokens != null) {
+            goalState.setMaxTokens(maxTokens);
+        }
+    }
+
     public void setMaxDurationMs(Long maxDurationMs) { this.maxDurationMs = maxDurationMs; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
@@ -316,6 +330,26 @@ public class LoopTask {
     public void setLastResult(String lastResult) { this.lastResult = lastResult; }
 
     public void setCurrentIteration(int currentIteration) { this.currentIteration = currentIteration; }
+
+    // ===== 无进展检测 =====
+
+    public int getStagnationCount() { return stagnationCount; }
+
+    public void recordStagnation() { this.stagnationCount++; }
+
+    public void resetStagnation() { this.stagnationCount = 0; }
+
+    public String getLastFingerprint() { return lastFingerprint; }
+
+    public void setLastFingerprint(String fingerprint) { this.lastFingerprint = fingerprint; }
+
+    // ===== 连续异常检测 =====
+
+    public int getConsecutiveErrors() { return consecutiveErrors; }
+
+    public int incrementConsecutiveErrors() { return ++consecutiveErrors; }
+
+    public void resetConsecutiveErrors() { this.consecutiveErrors = 0; }
 
     /**
      * 序列化为 ONode
@@ -363,6 +397,10 @@ public class LoopTask {
         if (maxTokens != null) node.set("maxTokens", maxTokens);
         if (maxDurationMs != null) node.set("maxDurationMs", maxDurationMs);
 
+        // ★ 运行时兜底字段（持久化以支持重启恢复）
+        if (stagnationCount > 0) node.set("stagnationCount", stagnationCount);
+        if (consecutiveErrors > 0) node.set("consecutiveErrors", consecutiveErrors);
+
         return node;
     }
 
@@ -402,6 +440,12 @@ public class LoopTask {
         Long maxDurationMsVal = node.getOrNull("maxDurationMs") != null
                 ? (long) node.get("maxDurationMs").getInt() : null;
 
+        // ★ 读取运行时兜底字段
+        int stagnationCountVal = node.getOrNull("stagnationCount") != null
+                ? node.get("stagnationCount").getInt() : 0;
+        int consecutiveErrorsVal = node.getOrNull("consecutiveErrors") != null
+                ? node.get("consecutiveErrors").getInt() : 0;
+
         // 读取 TaskType（默认 HEARTBEAT）
         TaskType typeVal = node.getOrNull("type") != null
                 ? TaskType.valueOf(node.get("type").getString())
@@ -439,6 +483,10 @@ public class LoopTask {
         if (goalStateVal != null) {
             task.goalState = goalStateVal;
         }
+
+        // 恢复运行时兜底字段
+        task.stagnationCount = stagnationCountVal;
+        task.consecutiveErrors = consecutiveErrorsVal;
 
         return task;
     }

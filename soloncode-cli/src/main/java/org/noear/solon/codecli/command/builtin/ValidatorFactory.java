@@ -69,6 +69,19 @@ public class ValidatorFactory {
                         || condition.contains("verify"),
                 new TestsPassValidator(workspace)
         );
+
+        // 构建验证器：匹配含 build/compile/implement/refactor/fix/create/add/write 的目标
+        register(
+                condition -> condition.contains("build")
+                        || condition.contains("compile")
+                        || condition.contains("implement")
+                        || condition.contains("refactor")
+                        || condition.contains("fix")
+                        || condition.contains("create")
+                        || condition.contains("add")
+                        || condition.contains("write"),
+                new BuildPassValidator(workspace)
+        );
     }
 
     /**
