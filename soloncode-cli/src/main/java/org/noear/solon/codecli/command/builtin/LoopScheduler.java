@@ -563,17 +563,27 @@ public class LoopScheduler {
         }
 
         // ★ A3: 自动恢复因 SIGINT 中断而暂停的 goal
+        // ★ P1-2: 不再无条件清零 blocked 审计；仅当 blockedCycleCount 未接近熔断阈值时才自动恢复，
+        //          接近熔断（≥3）时保持 PAUSED 等待人工 resume
         for (LoopTask t : alive) {
             if (t.isGoalMode()) {
         GoalState gs = t.getGoalState();
         if (gs.getStatus() == GoalState.Status.PAUSED) {
-            LOG.info("A3: auto-resuming paused goal '{}'", t.getId());
-            gs.resume();
-            t.resetGoalBlockedAudit();
-                    registerJob(sessionId, t);
-                }
+            if (gs.isBlockedCycleExhausted()) {
+                // 熔断已触发，永久不可恢复
+                LOG.warn("A3: goal '{}' blocked cycle exhausted ({}), staying paused", t.getId(), gs.getBlockedCycleCount());
+            } else if (gs.getBlockedCycleCount() >= 3) {
+                // 接近熔断，保持 PAUSED 等待人工介入
+                LOG.warn("A3: goal '{}' near block exhaustion ({}), staying paused for manual resume", t.getId(), gs.getBlockedCycleCount());
+            } else {
+                LOG.info("A3: auto-resuming paused goal '{}'", t.getId());
+                gs.resume();
+                t.resetGoalBlockedAudit();
+                registerJob(sessionId, t);
             }
-        }
+            } // end if PAUSED
+            } // end if isGoalMode
+        } // end for
 
         // 回写（去掉过期任务）
         saveToFile(sessionId, alive);
@@ -738,12 +748,12 @@ public class LoopScheduler {
                         gs.addTokens(executionResult.getTokensUsed());
                     }
 
-                    // 提取评估原因（取 transcript 末尾 200 字符作为评估文本）
-                    String evalReason = extractTail(transcript, 200);
-                    task.recordGoalEvaluation(evalReason);
+                    // ★ P0-1: 使用行为指纹替代纯文本末尾比对
+                    task.recordGoalEvaluation(executionResult);
 
-                    // 检测 [GOAL_ACHIEVED] 标记
-                    boolean achieved = transcript != null && transcript.contains(LoopExecutionResult.GOAL_ACHIEVED);
+                    // ★ P1-1: 统一完成路径 — 优先检测 update_goal 工具调用（goalAchieved），
+                    //          [GOAL_ACHIEVED] 文本标记作为兼容兜底
+                    boolean achieved = executionResult != null && executionResult.isGoalAchieved();
                     if (achieved) {
                         LOG.info("Loop task '{}' goal ACHIEVED at iteration {}", task.getId(), iteration);
                         gs.achieve();
@@ -919,8 +929,8 @@ public class LoopScheduler {
         sb.append("在继续之前，请完成以下步骤：\n");
         sb.append("1. 回顾：目标是什么？检查已有的进展。\n");
         sb.append("2. 核查：针对目标中的每一项，验证其是否已完成。\n");
-        sb.append("3. 如果你已完成所有项，说明你是如何实现每一项的。\n");
-        sb.append("   — 然后调用 update_goal(complete) 标记完成。\n");
+        sb.append("3. 如果你已完成所有项，说明你是如何实现每一项的，\n");
+        sb.append("   然后在回复末尾输出 [GOAL_ACHIEVED] 并调用 update_goal(complete) 标记完成。\n");
         sb.append("4. 如果你遇到阻碍（同一困境尝试了3次），请继续执行 —\n");
         sb.append("   系统会自动检测阻塞并暂停。\n");
 
@@ -929,9 +939,27 @@ public class LoopScheduler {
               .append("请专注于高效完成目标。\n");
         }
 
+        // ★ P0-2: 注入上一轮执行摘要，避免 AI 重复已尝试的方案
+        if (!isFirstIter && task.getLastResult() != null) {
+            String lastSummary = truncateForPrompt(task.getLastResult(), 300);
+            sb.append("\n--- 上一轮执行摘要（第 ").append(iter).append(" 轮）---\n");
+            sb.append(lastSummary).append("\n");
+            sb.append("请基于以上进展继续推进，避免重复已尝试过的方案。\n");
+        }
+
         sb.append(budgetInfo);
 
         return prompt + sb.toString();
+    }
+
+    /**
+     * ★ P0-2: 截断文本用于 prompt 注入（保留头尾，中间省略）
+     */
+    private static String truncateForPrompt(String text, int maxLen) {
+        if (text == null || text.isEmpty()) return "";
+        if (text.length() <= maxLen) return text;
+        int half = maxLen / 2;
+        return text.substring(0, half) + "\n...(省略)...\n" + text.substring(text.length() - half);
     }
 
     /**
@@ -984,15 +1012,6 @@ public class LoopScheduler {
         if (ms < 60_000) return (ms / 1000) + "s";
         if (ms < 3_600_000) return (ms / 60_000) + "m " + ((ms % 60_000) / 1000) + "s";
         return (ms / 3_600_000) + "h " + ((ms % 3_600_000) / 60_000) + "m";
-    }
-
-    /**
-     * 取字符串末尾最多 maxLen 字符（用于提取评估原因摘要）
-     */
-    private static String extractTail(String text, int maxLen) {
-        if (text == null || text.isEmpty()) return "";
-        int len = Math.min(text.length(), maxLen);
-        return text.substring(text.length() - len).replace('\n', ' ').trim();
     }
 
     /**

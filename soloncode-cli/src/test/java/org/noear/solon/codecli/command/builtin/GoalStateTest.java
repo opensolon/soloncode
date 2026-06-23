@@ -189,47 +189,40 @@ class GoalStateTest {
     // ===== 5. LoopTask blocked 审计 =====
 
     @Test
-    void recordGoalEvaluationSameReasonShouldIncreaseStreak() {
+    void recordGoalEvaluationSameFingerprintShouldIncreaseStreak() {
         LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        // First call sets the baseline reason (streak stays 0)
-        task.recordGoalEvaluation("same reason");
+        LoopExecutionResult r = LoopExecutionResult.fromText("doing the same thing");
+        task.recordGoalEvaluation(r); // streak=0 (baseline)
         assertFalse(task.isGoalBlocked(), "streak=0 after first call");
-        // Second call: streak=1
-        task.recordGoalEvaluation("same reason");
+        task.recordGoalEvaluation(r); // streak=1
         assertFalse(task.isGoalBlocked(), "streak=1");
-        // Third call: streak=2
-        task.recordGoalEvaluation("same reason");
+        task.recordGoalEvaluation(r); // streak=2
         assertFalse(task.isGoalBlocked(), "streak=2, need 3 for blocked");
-        // Fourth call: streak=3
-        task.recordGoalEvaluation("same reason");
+        task.recordGoalEvaluation(r); // streak=3
         assertTrue(task.isGoalBlocked(), "streak=3, should be blocked");
     }
 
     @Test
-    void recordGoalEvaluationDifferentReasonShouldResetStreak() {
+    void recordGoalEvaluationDifferentFingerprintShouldResetStreak() {
         LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        task.recordGoalEvaluation("reason A");
-        task.recordGoalEvaluation("reason A");
-        task.recordGoalEvaluation("reason B"); // reset
-        task.recordGoalEvaluation("reason B");
-        task.recordGoalEvaluation("reason B");
-        assertFalse(task.isGoalBlocked(), "streak for B is only 3 (indices 0,1,2), but wait...");
-        // Actually: first call sets goalLastEvalReason = "reason A", streak = 0
-        // Second "reason A": streak = 1
-        // "reason B": reset, streak = 0, goalLastEvalReason = "reason B"
-        // Second "reason B": streak = 1
-        // Third "reason B": streak = 2
-        // streak needs >= 3 for blocked
-        // So not blocked yet
+        LoopExecutionResult rA = LoopExecutionResult.fromText("doing thing A");
+        LoopExecutionResult rB = LoopExecutionResult.fromText("doing thing B");
+        task.recordGoalEvaluation(rA); // baseline
+        task.recordGoalEvaluation(rA); // streak=1
+        task.recordGoalEvaluation(rB); // reset, streak=0
+        task.recordGoalEvaluation(rB); // streak=1
+        task.recordGoalEvaluation(rB); // streak=2
+        assertFalse(task.isGoalBlocked(), "streak for B is only 2, not blocked");
     }
 
     @Test
     void resetGoalBlockedAuditShouldClearStreakAndReason() {
         LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        task.recordGoalEvaluation("some reason");
-        task.recordGoalEvaluation("some reason");
-        task.recordGoalEvaluation("some reason");
-        task.recordGoalEvaluation("some reason");
+        LoopExecutionResult r = LoopExecutionResult.fromText("some result text");
+        task.recordGoalEvaluation(r);
+        task.recordGoalEvaluation(r);
+        task.recordGoalEvaluation(r);
+        task.recordGoalEvaluation(r);
         assertTrue(task.isGoalBlocked());
 
         task.resetGoalBlockedAudit();
@@ -238,14 +231,12 @@ class GoalStateTest {
     }
 
     @Test
-    void recordGoalEvaluationWithNullReasonShouldNotCrash() {
+    void recordGoalEvaluationWithNullResultShouldNotCrash() {
         LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        // null is converted to "", first call sets baseline
+        task.recordGoalEvaluation(null); // should not crash
         task.recordGoalEvaluation(null);
         task.recordGoalEvaluation(null);
-        task.recordGoalEvaluation(null);
-        task.recordGoalEvaluation(null);
-        assertTrue(task.isGoalBlocked(), "null reasons are converted to empty string, streak should reach 3");
+        assertFalse(task.isGoalBlocked(), "null results should not trigger blocked");
     }
 
     // ===== 6. LoopTask Goal 模式基础 =====

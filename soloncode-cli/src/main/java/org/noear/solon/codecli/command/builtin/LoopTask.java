@@ -79,6 +79,7 @@ public class LoopTask {
     // ---- 运行时 Blocked 检测（不持久化） ----
     private transient volatile int goalBlockedStreak;
     private transient volatile String goalLastEvalReason;
+    private transient volatile String goalLastFingerprint;  // P0-1: 行为指纹（替代纯文本比对）
 
     /**
      * 固定间隔构造
@@ -342,28 +343,64 @@ public class LoopTask {
     // ---- 运行时 Blocked 检测（不持久化，resume 后自动重置） ----
 
     /**
-     * 记录评估原因并更新 blocked streak。
-     * 连续 3 次相同原因 → isGoalBlocked() 返回 true。
+     * ★ P0-1: 记录行为指纹并更新 blocked streak。
+     * 使用行为指纹（工具调用 + 完成状态 + 归一化文本）替代纯文本末尾比对，
+     * 连续 3 次相同指纹 → isGoalBlocked() 返回 true。
      */
-    public void recordGoalEvaluation(String reason) {
-        String safe = reason != null ? reason : "";
-        if (safe.equals(goalLastEvalReason)) {
+    public void recordGoalEvaluation(LoopExecutionResult result) {
+        if (result == null || result.getFinalResult() == null) {
+            // 无效结果不参与 blocked 检测
+            return;
+        }
+
+        String fingerprint = buildBehaviorFingerprint(result);
+        goalLastEvalReason = extractReasonSummary(result.getFinalResult());
+
+        if (fingerprint.equals(goalLastFingerprint)) {
             goalBlockedStreak++;
         } else {
             goalBlockedStreak = 0;
-            goalLastEvalReason = safe;
+            goalLastFingerprint = fingerprint;
         }
     }
 
-    /** 连续 3 轮相同评估原因即视为 blocked */
+    /**
+     * 构建行为指纹：hasToolCalls + completed + 归一化文本摘要。
+     * 比纯文本末尾比对更健壮，能区分"不同行为但措辞相似"和"相同行为但措辞不同"。
+     */
+    private String buildBehaviorFingerprint(LoopExecutionResult result) {
+        String text = result.getFinalResult();
+        String normalized = text != null
+                ? text.toLowerCase().replaceAll("\\s+", " ").trim()
+                : "";
+        String textFp;
+        if (normalized.length() <= 200) {
+            textFp = normalized;
+        } else {
+            textFp = normalized.substring(0, 100) + "|" + normalized.substring(normalized.length() - 100);
+        }
+        return result.isHasToolCalls() + "|" + result.isCompleted() + "|" + textFp;
+    }
+
+    /**
+     * 提取人类可读的评估原因摘要（取末尾最多 200 字符，用于日志和 /loop list 展示）
+     */
+    private static String extractReasonSummary(String text) {
+        if (text == null || text.isEmpty()) return "";
+        int len = Math.min(text.length(), 200);
+        return text.substring(text.length() - len).replace('\n', ' ').trim();
+    }
+
+    /** 连续 3 轮相同行为指纹即视为 blocked */
     public boolean isGoalBlocked() {
         return goalBlockedStreak >= 3;
     }
 
-    /** resume 时重置 blocked 审计（Codex 对齐） */
+    /** resume 时重置 blocked 审计 */
     public void resetGoalBlockedAudit() {
         goalBlockedStreak = 0;
         goalLastEvalReason = null;
+        goalLastFingerprint = null;
     }
 
     public String getGoalLastEvalReason() { return goalLastEvalReason; }
