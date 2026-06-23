@@ -1,5 +1,5 @@
 
-### v2026.6.23
+### v2026.6.24
 
 * 新增 soloncode /interpret 命令（支持跨会话中断）
 * 添加 soloncode /continue 命令 sessionId 参数支持（支持跨会话继续）
