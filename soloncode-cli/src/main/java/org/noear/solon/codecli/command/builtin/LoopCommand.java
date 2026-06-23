@@ -230,8 +230,13 @@ public class LoopCommand implements Command {
         String prompt = promptBuilder.toString().trim();
 
         if (prompt.isEmpty()) {
-            printUsage(ctx);
-            return;
+            if (goalCondition != null) {
+                // goal 条件即 prompt（简化模式：/loop goal:"xxx"）
+                prompt = goalCondition;
+            } else {
+                printUsage(ctx);
+                return;
+            }
         }
 
         // ★ L6: 单会话单活跃 Goal 校验（优化：已超时的 PAUSED 目标可自动覆盖）

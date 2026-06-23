@@ -923,6 +923,14 @@ function initModelSearch(dropdownId) {
     var $searchInput = $dropdown.find('.model-search-input');
     if (!$searchInput.length) return;
 
+    // Ensure input gets focus even if parent handlers intercept mousedown
+    $searchInput.on('mousedown', function(e) {
+        e.stopPropagation();
+        // Use setTimeout to ensure focus is set after all current event processing
+        var self = this;
+        setTimeout(function() { self.focus(); }, 0);
+    });
+
     $searchInput.on('input', function() {
         var query = $(this).val().toLowerCase().trim();
         var $items = $dropdown.find('.model-dropdown-items').children();
