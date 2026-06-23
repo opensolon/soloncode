@@ -14,16 +14,31 @@
         }
     }
 
-    // 解析带千位分隔符的数字（支持 _ 和 ,）
+    // 解析带千位分隔符的数字（支持 _ 和 , 以及 k/m 后缀）
     function parseNumStr(s) {
         if (!s) return null;
-        var n = parseInt(s.replace(/[, _]/g, ''), 10);
+        var raw = s.trim().replace(/[, _]/g, '');
+        var matchK = raw.match(/^(\d+\.?\d*)k$/i);
+        var matchM = raw.match(/^(\d+\.?\d*)m$/i);
+        var n;
+        if (matchK) {
+            n = Math.round(parseFloat(matchK[1]) * 1000);
+        } else if (matchM) {
+            n = Math.round(parseFloat(matchM[1]) * 1000000);
+        } else {
+            n = parseInt(raw, 10);
+        }
         return isNaN(n) ? null : n;
     }
 
-    // 将数字格式化为千位分隔（用下划线，与 placeholder 一致）
+    // 将数字格式化为千位分隔（用下划线，与 placeholder 一致），大于等于 1000 优先显示 xk 格式
     function formatNum(n) {
         if (n == null || n === '') return '';
+        if (n >= 1000000 && n % 1000000 === 0) {
+            return (n / 1000000) + 'm';
+        } else if (n >= 1000) {
+            return n % 1000 === 0 ? (n / 1000) + 'k' : (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+        }
         return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '_');
     }
 

@@ -417,7 +417,13 @@
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">压缩触发词元数</label>
-                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowToken" placeholder="100k（默认）" list="summaryTokenList" autocomplete="off"/>
+                                            <datalist id="summaryTokenList">
+                                                <option value="32k">
+                                                <option value="64k">
+                                                <option value="128k">
+                                                <option value="256k">
+                                            </datalist>
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm">历史窗口控制新指令时使用几条历史消息；压缩策略控制对话上下文的自动压缩，防止超出模型窗口限制</div>
