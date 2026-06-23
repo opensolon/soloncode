@@ -47,11 +47,19 @@ public class ContinueCommand implements Command {
 
     @Override
     public String description() {
-        return "继续运行最后一个未完成的任务。支持指定 sessionId：/continue <sessionId>";
+        return "继续运行最后一个未完成的任务";
     }
 
     @Override
-    public boolean execute(CommandContext ctx) throws Exception {
+    public String[] examples() {
+        return new String[]{
+                "/continue",
+                "/continue <sessionId>"
+        };
+    }
+
+    @Override
+    public void execute(CommandContext ctx) throws Exception {
         String sessionId = ctx.argAt(0);
         AgentSession session;
 
@@ -60,6 +68,10 @@ public class ContinueCommand implements Command {
         } else {
             session = ctx.getSession();
             sessionId = session.getSessionId();
+        }
+
+        if (session == null) {
+            return;
         }
 
         ReActTrace trace = session.getContext().getAs("__main");
@@ -83,6 +95,5 @@ public class ContinueCommand implements Command {
         }
 
         ctx.runAgentTask(null, null);
-        return true;
     }
 }

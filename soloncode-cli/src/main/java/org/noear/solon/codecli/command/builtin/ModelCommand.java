@@ -44,12 +44,21 @@ public class ModelCommand implements Command {
     }
 
     @Override
+    public String[] examples() {
+        return new String[]{
+                "/model",
+                "/model help",
+                "/model <name>"
+        };
+    }
+
+    @Override
     public boolean cliOnly() {
         return true;
     }
 
     @Override
-    public boolean execute(CommandContext ctx) throws Exception {
+    public void execute(CommandContext ctx) throws Exception {
         String flag = ctx.argAt(0);
 
         if ("ls".equals(flag) || flag == null || flag.isEmpty()) {
@@ -80,7 +89,5 @@ public class ModelCommand implements Command {
                 ctx.println(ctx.color(GREEN + "Model switched to: " + RESET + BOLD + flag + RESET));
             }
         }
-
-        return true;
     }
 }

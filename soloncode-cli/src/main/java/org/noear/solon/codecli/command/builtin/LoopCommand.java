@@ -82,12 +82,21 @@ public class LoopCommand implements Command {
     }
 
     @Override
-    public boolean cliOnly() {
-        return false;
+    public String[] examples() {
+        return new String[]{
+                "/loop ls",
+                "/loop stop <id>",
+                "/loop stop-all",
+                "/loop pause <id>",
+                "/loop resume <id>",
+                "/loop goal:\"<objective>\" <prompt>",
+                "/loop 5m <prompt>",
+                "/loop cron:\"<expr>\" <prompt> ",
+        };
     }
 
     @Override
-    public boolean execute(CommandContext ctx) throws Exception {
+    public void execute(CommandContext ctx) throws Exception {
         String sessionId = ctx.getSession().getSessionId();
         HarnessEngine engine = ctx.getEngine();
         String workspace = engine.getWorkspace();
@@ -125,8 +134,6 @@ public class LoopCommand implements Command {
             // Schedule a new task
             doSchedule(ctx, sessionId, workspace, harnessSessions);
         }
-
-        return true;
     }
 
     /**

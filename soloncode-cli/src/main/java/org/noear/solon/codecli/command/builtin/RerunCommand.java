@@ -20,6 +20,7 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.core.util.Assert;
 
 import java.util.List;
 
@@ -41,8 +42,28 @@ public class RerunCommand implements Command {
     }
 
     @Override
-    public boolean execute(CommandContext ctx) throws Exception {
-        AgentSession session = ctx.getSession();
+    public String[] examples() {
+        return new String[]{
+                "/rerun",
+                "/rerun <sessionId>"
+        };
+    }
+
+    @Override
+    public void execute(CommandContext ctx) throws Exception {
+        String sessionId = ctx.argAt(0);
+        AgentSession session;
+
+        if (Assert.isNotEmpty(sessionId)) {
+            session = ctx.getEngine().getSession(sessionId);
+        } else {
+            session = ctx.getSession();
+            sessionId = session.getSessionId();
+        }
+
+        if (session == null) {
+            return;
+        }
 
         List<ChatMessage> messageList = session.getMessages();
         String lastUserInput = null;
@@ -60,6 +81,5 @@ public class RerunCommand implements Command {
         if (lastUserInput != null) {
             ctx.runAgentTask(lastUserInput, null);
         }
-        return true;
     }
 }

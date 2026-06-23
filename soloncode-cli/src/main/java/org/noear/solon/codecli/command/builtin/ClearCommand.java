@@ -16,8 +16,10 @@
 package org.noear.solon.codecli.command.builtin;
 
 
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.core.util.Assert;
 
 /**
  * /clear 命令
@@ -37,13 +39,29 @@ public class ClearCommand implements Command {
     }
 
     @Override
-    public boolean cliOnly() {
-        return true;
+    public String[] examples() {
+        return new String[]{
+                "/clear",
+                "/clear <sessionId>"
+        };
     }
 
     @Override
-    public boolean execute(CommandContext ctx) {
-        ctx.getSession().clear();
-        return true;
+    public void execute(CommandContext ctx) {
+        String sessionId = ctx.argAt(0);
+        AgentSession session;
+
+        if (Assert.isNotEmpty(sessionId)) {
+            session = ctx.getEngine().getSession(sessionId);
+        } else {
+            session = ctx.getSession();
+            sessionId = session.getSessionId();
+        }
+
+        if (session == null) {
+            return;
+        }
+
+        session.clear();
     }
 }

@@ -40,7 +40,15 @@ public class RewindCommand implements Command {
     }
 
     @Override
-    public boolean execute(CommandContext ctx) throws Exception {
+    public String[] examples() {
+        return new String[]{
+                "/rewind",
+                "/rewind <n>"
+        };
+    }
+
+    @Override
+    public void execute(CommandContext ctx) throws Exception {
         String flag = ctx.argAt(0);
         int count = 1;
 
@@ -48,13 +56,11 @@ public class RewindCommand implements Command {
             count = Integer.parseInt(flag);
             if (count <= 0) {
                 ctx.println(ctx.color(DIM + "回退数量必须为正整数" + RESET));
-                return true;
+                return;
             }
         }
 
         ctx.getSession().removeLatestMessage(count);
         ctx.println(ctx.color(DIM + "已回退 " + count + " 条记录" + RESET));
-
-        return true;
     }
 }

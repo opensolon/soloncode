@@ -40,11 +40,19 @@ public class InterruptCommand implements Command {
 
     @Override
     public String description() {
-        return "中断当前正在执行的任务。支持指定 sessionId：/interrupt <sessionId>";
+        return "中断当前正在执行的任务";
     }
 
     @Override
-    public boolean execute(CommandContext ctx) throws Exception {
+    public String[] examples() {
+        return new String[]{
+                "/interrupt",
+                "/interrupt <sessionId>"
+        };
+    }
+
+    @Override
+    public void execute(CommandContext ctx) throws Exception {
         String sessionId = ctx.argAt(0);
         AgentSession session;
 
@@ -55,6 +63,10 @@ public class InterruptCommand implements Command {
             sessionId = session.getSessionId();
         }
 
+        if (session == null) {
+            return;
+        }
+
         Disposable disposable = (Disposable) session.attrs().remove("disposable");
         if (disposable != null) {
             disposable.dispose();
@@ -63,7 +75,5 @@ public class InterruptCommand implements Command {
         } else {
             ctx.println("当前没有正在执行的任务");
         }
-
-        return true;
     }
 }

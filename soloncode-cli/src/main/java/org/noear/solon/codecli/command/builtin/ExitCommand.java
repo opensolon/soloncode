@@ -41,19 +41,19 @@ public class ExitCommand implements Command {
     }
 
     @Override
-    public boolean cliOnly() {
-        return false;
+    public String[] examples() {
+        return new String[]{
+                "/exit"
+        };
     }
 
     @Override
-    public boolean execute(CommandContext ctx) {
+    public void execute(CommandContext ctx) {
         ctx.println(ctx.color(DIM + "Exiting..." + RESET));
 
         Thread exitThread = new Thread(() -> System.exit(0));
         exitThread.start();
         RunUtil.runAndTry(()->Thread.sleep(5000)); // 5秒后强制退出
         Runtime.getRuntime().halt(1);  // 立即终止，不执行hooks
-
-        return true;
     }
 }
