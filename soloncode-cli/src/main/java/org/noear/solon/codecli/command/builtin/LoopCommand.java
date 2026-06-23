@@ -168,6 +168,7 @@ public class LoopCommand implements Command {
                 ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix the auth module" + RESET));
                 return;
             }
+            intervalMinutes = 0; // Goal 模式默认 0（事件驱动续行，安全网 5 秒）
             runNow = true; // Goal 模式自动立即执行
             promptStartIndex = 1;
         } else {

@@ -29,7 +29,6 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -441,9 +440,10 @@ public class LoopScheduler {
         } else {
             long intervalMs = (long) task.getIntervalMinutes() * 60_000L;
             // Goal 模式 intervalMinutes=0 时，设为 5 秒保底间隔
-            if (intervalMs == 0 && task.isGoalMode()) {
+            if (intervalMs == 0) {
                 intervalMs = 5_000L;
             }
+            
             long initialDelay = (firstRegistration && task.isRunNow()) ? 0 : intervalMs;
             scheduled = new ScheduledAnno()
                     .fixedDelay(intervalMs)

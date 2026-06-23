@@ -19,6 +19,8 @@ import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.snack4.Feature;
 import org.noear.solon.ai.annotation.ToolMapping;
+import org.noear.solon.ai.chat.ChatSession;
+import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.talent.AbsTalent;
 import org.noear.solon.annotation.Param;
 import org.slf4j.Logger;
@@ -47,6 +49,17 @@ public class GoalTalent extends AbsTalent {
         this.scheduler = scheduler;
     }
 
+    @Override
+    public boolean isSupported(Prompt prompt) {
+        String __sessionId = prompt.attrAs(ChatSession.ATTR_SESSIONID);
+
+        if (__sessionId != null) {
+            LoopTask existing = scheduler.findActiveGoalAcrossSessions(__sessionId);
+            return existing != null;
+        }
+
+        return false;
+    }
 
     /**
      * 创建新的 Goal（Codex 签名对齐：objective + token_budget）
