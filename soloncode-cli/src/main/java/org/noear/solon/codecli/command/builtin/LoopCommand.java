@@ -42,7 +42,6 @@ import java.util.List;
  *
  * Loop Engineering 扩展:
  *   /loop goal fix auth                     → goal 模式（简化）
- *   /loop 5m --worktree fix bug #123        → worktree 隔离
  *   /loop 30m --notify:feishu check CI      → 通道通知
  * </pre>
  *
@@ -72,7 +71,7 @@ public class LoopCommand implements Command {
 
     @Override
     public String description() {
-        return "循环任务 (ls, stop, stop-all, pause, resume, extend, goal, <interval> <prompt>, cron:<expr> <prompt>)";
+        return "循环任务 (ls, stop, stop-all, pause, resume, goal, <interval> <prompt>, cron:<expr> <prompt>)";
     }
 
     @Override
@@ -83,7 +82,7 @@ public class LoopCommand implements Command {
                 "/loop stop-all",
                 "/loop pause <id>",
                 "/loop resume <id>",
-                "/loop extend [tokens]",
+
                 "/loop goal <objective>",
                 "/loop 5m <prompt>",
                 "/loop cron:\"<expr>\" <prompt> ",
@@ -120,8 +119,6 @@ public class LoopCommand implements Command {
             doPause(ctx, sessionId, ctx.argAt(1));
         } else if ("resume".equals(sub)) {
             doResume(ctx, sessionId, ctx.argAt(1));
-        } else if ("extend".equals(sub)) {
-            doExtend(ctx, sessionId, ctx.argAt(1));
         } else if ("goal".equals(sub)) {
             // /loop goal <objective> — 简化 Goal 模式（一个参数，立即执行）
             doScheduleGoal(ctx, sessionId, workspace, harnessSessions);
@@ -140,7 +137,6 @@ public class LoopCommand implements Command {
         boolean runNow = false;
         Integer maxIterations = null;
         LoopTask.TaskType taskType = LoopTask.TaskType.HEARTBEAT;
-        String oldGoalCondition = null; // 旧 goal 语法的条件（合并到 prompt）
 
         int promptStartIndex = 0;
         String first = ctx.argAt(0);
@@ -159,22 +155,6 @@ public class LoopCommand implements Command {
                 return;
             }
             promptStartIndex = 1;
-        } else if (first != null && first.startsWith("goal:")) {
-            // 2. 旧语法兼容：将条件合并到 prompt 中
-            oldGoalCondition = first.substring(5).trim();
-            if ((oldGoalCondition.startsWith("\"") && oldGoalCondition.endsWith("\"")) ||
-                    (oldGoalCondition.startsWith("'") && oldGoalCondition.endsWith("'"))) {
-                oldGoalCondition = oldGoalCondition.substring(1, oldGoalCondition.length() - 1);
-            }
-            if (oldGoalCondition.isEmpty()) {
-                ctx.println(ctx.color(RED + "Usage: /loop goal:\"<condition>\" <prompt>" + RESET));
-                ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix the auth module" + RESET));
-                return;
-            }
-            taskType = LoopTask.TaskType.GOAL;
-            intervalMinutes = 0; // Goal 模式默认 0（事件驱动续行，安全网 5 秒）
-            runNow = true; // Goal 模式自动立即执行
-            promptStartIndex = 1;
         } else {
             // 3. 检查时间间隔
             Integer parsed = parseInterval(first);
@@ -186,11 +166,6 @@ public class LoopCommand implements Command {
 
         // Build prompt from remaining args, 同时解析 --flag
         StringBuilder promptBuilder = new StringBuilder();
-
-        // 旧 goal 语法：先追加条件（condition + " " + xxx）
-        if (oldGoalCondition != null) {
-            promptBuilder.append(oldGoalCondition);
-        }
 
         for (int i = promptStartIndex; ; i++) {
             String arg = ctx.argAt(i);
@@ -584,48 +559,6 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(GREEN + "Goal resumed: " + taskId + RESET));
     }
 
-    // ===== Goal 预算扩容 =====
-
-    private void doExtend(CommandContext ctx, String sessionId, String tokenArg) {
-        LoopTask task = scheduler.findActiveGoalInSession(sessionId);
-        if (task == null || !task.isGoalMode()) {
-            ctx.println(ctx.color(RED + "没有活跃的 Goal 任务" + RESET));
-            return;
-        }
-
-        GoalState gs = task.getGoalState();
-        if (gs.getStatus() == GoalState.Status.ACHIEVED) {
-            ctx.println(ctx.color(YELLOW + "Goal '" + task.getId() + "' 已完成，无需扩容" + RESET));
-            return;
-        }
-
-        long additional;
-        if (tokenArg != null && !tokenArg.isEmpty()) {
-            try {
-                additional = Long.parseLong(tokenArg);
-                if (additional <= 0) {
-                    ctx.println(ctx.color(RED + "扩容数量必须大于 0" + RESET));
-                    return;
-                }
-            } catch (NumberFormatException e) {
-                ctx.println(ctx.color(RED + "无效的数字: " + tokenArg + RESET));
-                return;
-            }
-        } else {
-            additional = 25000; // 默认扩容 25k
-        }
-
-        gs.extendBudget(additional);
-        ctx.println(ctx.color(GREEN + "Goal '" + task.getId() + "' 预算已扩容 +" + additional + " tokens" + RESET));
-        ctx.println(ctx.color(DIM + "  当前上限: " + gs.getMaxTokens() + " tokens" + RESET));
-
-        // 如果是从 BUDGET_LIMITED 恢复，重新注册调度
-        if (gs.getStatus().isActive()) {
-            scheduler.resumeGoal(sessionId, task.getId());
-            ctx.println(ctx.color(GREEN + "Goal 已恢复执行" + RESET));
-        }
-    }
-
     // ★ P0: Goal 辅助方法
 
     private String goalStatusIcon(GoalState.Status status) {
@@ -731,7 +664,6 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "Goal lifecycle:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop pause <id>                          (pause a goal task)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop resume <id>                         (resume a paused goal)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop extend [tokens]                     (extend token budget)" + RESET));
     }
 
     private String formatInterval(int minutes) {
