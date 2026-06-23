@@ -211,42 +211,11 @@ public class LoopCommand implements Command {
             return;
         }
 
-        // ★ L6: 单会话单活跃 Goal 校验（优化：已超时的 PAUSED 目标可自动覆盖）
-        if (taskType == LoopTask.TaskType.GOAL) {
-            List<LoopTask> existing = scheduler.listActive(sessionId);
-            for (LoopTask t : existing) {
-                if (t.isGoalMode() && t.getGoalState().getStatus().isActive()) {
-                    ctx.println(ctx.color(YELLOW + "WARN: A goal is already active in this session (" + t.getId() + ")." + RESET));
-                    ctx.println(ctx.color(DIM + "  Active: " + t.getGoalState().getCondition() + RESET));
-                    ctx.println(ctx.color(DIM + "  Use /loop stop " + t.getId() + " first to replace the goal." + RESET));
-                    return;
-                }
-                // 已超时放弃的 PAUSED 目标自动清理
-                if (t.isGoalMode()
-                        && t.getGoalState().getStatus() == GoalState.Status.PAUSED
-                        && t.getGoalState().isAbandoned()) {
-                    ctx.println(ctx.color(YELLOW + "Abandoned goal '" + t.getId() + "' (" + t.getGoalState().getCondition() + ") auto-cleaned." + RESET));
-                    scheduler.remove(sessionId, t);
-                }
-            }
-        }
-
         // Create task
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
                 taskType, maxIterations, runNow
         );
-
-        // Goal 模式：仅在配置了 >0 的默认值时才应用；未配则不限制
-        if (taskType == LoopTask.TaskType.GOAL) {
-            LoopGroupDo loopCfg = scheduler.getLoopConfig();
-            if (loopCfg.getDefaultMaxTokensOrDefault() > 0) {
-                task.setMaxTokens(loopCfg.getDefaultMaxTokensOrDefault());
-            }
-            if (loopCfg.getDefaultMaxDurationMsOrDefault() > 0) {
-                task.setMaxDurationMs(loopCfg.getDefaultMaxDurationMsOrDefault());
-            }
-        }
 
         // 初始化状态目录（用 task 生成的 ID）
         LoopStateManager.init(workspace, task.getId(), prompt);
@@ -476,10 +445,6 @@ public class LoopCommand implements Command {
                     line.append(" ").append(MAGENTA).append("[now]").append(RESET);
                 }
                 line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
-            }
-
-            if (t.isRunNow() && !t.isGoalMode()) {
-                line.append(" ").append(MAGENTA).append("[now]").append(RESET);
             }
 
             line.append(" ").append(DIM).append(t.getPrompt()).append(RESET);
