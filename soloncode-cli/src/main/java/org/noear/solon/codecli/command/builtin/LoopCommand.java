@@ -168,6 +168,7 @@ public class LoopCommand implements Command {
                 ctx.println(ctx.color(DIM + "  /loop goal:\"all tests pass\" fix the auth module" + RESET));
                 return;
             }
+            runNow = true; // Goal 模式自动立即执行
             promptStartIndex = 1;
         } else {
             // 3. 检查时间间隔
@@ -202,6 +203,7 @@ public class LoopCommand implements Command {
                             break;
                         case "goal":
                             goalCondition = val;
+                            runNow = true; // Goal 模式自动立即执行
                             break;
                         default:
                             ctx.println(ctx.color(YELLOW + "Unknown flag: --" + key + RESET));
