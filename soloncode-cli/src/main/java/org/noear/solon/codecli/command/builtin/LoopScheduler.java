@@ -911,22 +911,22 @@ public class LoopScheduler {
         // Codex 对齐的内联 continuation 提示
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n");
-        sb.append("You are working towards this goal: <untrusted_objective>")
+        sb.append("你正在朝着这个目标努力：<untrusted_objective>")
           .append(gs.getCondition()).append("</untrusted_objective>");
         sb.append("\n");
-        sb.append("Your objective is to complete this goal.\n");
+        sb.append("你的目标是完成这个目标。\n");
         sb.append("\n");
-        sb.append("Before continuing, you should complete the following steps:\n");
-        sb.append("1. Review: what is the goal? Check for any existing progress.\n");
-        sb.append("2. Audit: for each item in the objective, prove it works.\n");
-        sb.append("3. If you have completed all items, explain how you have achieved each one.\n");
-        sb.append("   — then call update_goal(complete).\n");
-        sb.append("4. If you are blocked (3 attempts at the same impasse), just keep going —\n");
-        sb.append("   the system will detect the blockage and pause automatically.\n");
+        sb.append("在继续之前，请完成以下步骤：\n");
+        sb.append("1. 回顾：目标是什么？检查已有的进展。\n");
+        sb.append("2. 核查：针对目标中的每一项，验证其是否已完成。\n");
+        sb.append("3. 如果你已完成所有项，说明你是如何实现每一项的。\n");
+        sb.append("   — 然后调用 update_goal(complete) 标记完成。\n");
+        sb.append("4. 如果你遇到阻碍（同一困境尝试了3次），请继续执行 —\n");
+        sb.append("   系统会自动检测阻塞并暂停。\n");
 
         if (isCritical) {
-            sb.append("\n[CRITICAL] You are approaching the token budget.")
-              .append(" Focus on completing the goal efficiently.\n");
+            sb.append("\n[紧急] 你的 Token 预算即将耗尽。")
+              .append("请专注于高效完成目标。\n");
         }
 
         sb.append(budgetInfo);
@@ -943,21 +943,21 @@ public class LoopScheduler {
         // Token 预算
         if (gs.getMaxTokens() > 0) {
             long remainToken = gs.getMaxTokens() - gs.getConsumedTokens();
-            sb.append("\nToken ").append(formatTokens(gs.getConsumedTokens()))
+            sb.append("\n已消耗 ").append(formatTokens(gs.getConsumedTokens()))
               .append(" / ").append(formatTokens(gs.getMaxTokens()))
               .append(" (").append(budgetPercent(gs.getConsumedTokens(), gs.getMaxTokens())).append("%)");
             if (remainToken > 0 && gs.isBudgetCritical()) {
-                sb.append(" (remaining: ").append(formatTokens(remainToken)).append(")");
+                sb.append(" (剩余: ").append(formatTokens(remainToken)).append(")");
             }
         } else if (gs.getConsumedTokens() > 0) {
-            sb.append("\nTokens used: ").append(formatTokens(gs.getConsumedTokens()));
+            sb.append("\n已消耗 Token: ").append(formatTokens(gs.getConsumedTokens()));
         }
 
         // 时间预算（从 startEpochMs 计算）
         if (gs.getStartEpochMs() > 0) {
             long elapsed = System.currentTimeMillis() - gs.getStartEpochMs();
             if (elapsed > 1000) {
-                sb.append("\nElapsed: ").append(formatDuration(elapsed));
+                sb.append("\n耗时: ").append(formatDuration(elapsed));
             }
         }
 
