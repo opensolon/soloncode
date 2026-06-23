@@ -155,6 +155,9 @@ public class Configurator {
         // loop scheduler
         this.loopScheduler = new LoopScheduler(engine, AgentFlags.getHarnessLoopWorktrees());
 
+        // ★ 初始化 Goal 验证器（在 LoopScheduler 创建之后，GoalExtension 注册之前）
+        ValidatorFactory.initDefaults(workspace);
+
         // ★ Goal 模式（受 feature flag 控制）
         boolean goalsEnabled = settings.getGeneral().getGoalsEnabled() != null
                 ? settings.getGeneral().getGoalsEnabled() : true;

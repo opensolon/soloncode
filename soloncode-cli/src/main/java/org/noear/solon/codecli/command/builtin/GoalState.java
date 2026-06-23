@@ -19,20 +19,24 @@ import org.noear.snack4.ONode;
 import java.util.UUID;
 
 /**
- * Goal 状态模型 — 100% Codex CLI 对齐，无任何冗余。
+ * Goal 状态模型 — Codex CLI 对齐。
  *
- * <p>4 态精简状态机：
- * PURSUING ⇄ PAUSED → ACHIEVED | BUDGET_LIMITED</p>
- *
- * <p>含 blockedCycleCount 电路熔断（防止 blocked→resume 无限循环）。</p>
+ * <p>5 态状态机：
+ * <pre>
+ *   PURSUING ⇄ PAUSED → ACHIEVED | BUDGET_LIMITED
+ *       ↓
+ *     BLOCKED → (resume) → PURSUING
+ * </pre>
+ * BLOCKED 是模型主动声明的阻塞（通过 update_goal("blocked")），可与 PAUSED 区分。
  */
 public class GoalState {
 
     public enum Status {
-        PURSUING, PAUSED, ACHIEVED, BUDGET_LIMITED;
+        PURSUING, PAUSED, BLOCKED, ACHIEVED, BUDGET_LIMITED;
 
         public boolean isActive() { return this == PURSUING; }
         public boolean isTerminal() { return this == ACHIEVED || this == BUDGET_LIMITED; }
+        public boolean isResumable() { return this == PAUSED || this == BLOCKED; }
     }
 
     private String id;
@@ -41,7 +45,8 @@ public class GoalState {
     private long consumedTokens;
     private long maxTokens;
     private long startEpochMs;
-    private int blockedCycleCount;          // 电路熔断：累计 blocked 次数
+
+    private long pausedAtEpochMs;  // PAUSED/BLOCKED 时间戳（用于超时放弃检测）
 
     public GoalState(String condition, long maxTokens) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
@@ -57,12 +62,14 @@ public class GoalState {
     public boolean pause() {
         if (status != Status.PURSUING) return false;
         this.status = Status.PAUSED;
+        this.pausedAtEpochMs = System.currentTimeMillis();
         return true;
     }
 
     public boolean resume() {
-        if (status != Status.PAUSED) return false;
+        if (!status.isResumable()) return false;
         this.status = Status.PURSUING;
+        this.pausedAtEpochMs = 0;
         return true;
     }
 
@@ -74,19 +81,13 @@ public class GoalState {
         if (status == Status.PURSUING) this.status = Status.BUDGET_LIMITED;
     }
 
-    // ===== 电路熔断 =====
-
-    static final int MAX_BLOCKED_CYCLES = 5;
-
-    public boolean isBlockedCycleExhausted() {
-        return blockedCycleCount >= MAX_BLOCKED_CYCLES;
+    /** 模型主动声明阻塞（PURSUING → BLOCKED） */
+    public void markBlocked() {
+        if (status == Status.PURSUING) {
+            this.status = Status.BLOCKED;
+            this.pausedAtEpochMs = System.currentTimeMillis();
+        }
     }
-
-    public void incrementBlockedCycleCount() {
-        blockedCycleCount++;
-    }
-
-    public int getBlockedCycleCount() { return blockedCycleCount; }
 
     public void addTokens(long tokens) {
         this.consumedTokens += tokens;
@@ -97,7 +98,50 @@ public class GoalState {
     }
 
     public boolean isBudgetCritical() {
-        return maxTokens > 0 && (double) consumedTokens / maxTokens >= 0.8;
+        if (maxTokens <= 0) return false;
+        try {
+            LoopConfig config = new LoopConfig();
+            double threshold = config.getBudgetCriticalPercent() / 100.0;
+            return (double) consumedTokens / maxTokens >= threshold;
+        } catch (Exception ignored) {
+            return maxTokens > 0 && (double) consumedTokens / maxTokens >= 0.85;
+        }
+    }
+
+    public boolean isBudgetWarning() {
+        if (maxTokens <= 0) return false;
+        if (isBudgetCritical()) return false;
+        try {
+            LoopConfig config = new LoopConfig();
+            double threshold = config.getBudgetWarningPercent() / 100.0;
+            return (double) consumedTokens / maxTokens >= threshold;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    // ===== PAUSED/BLOCKED 超时放弃 =====
+
+    public boolean isAbandoned() {
+        if (!status.isResumable()) return false;
+        if (pausedAtEpochMs == 0) return false;
+        try {
+            LoopConfig config = new LoopConfig();
+            return (System.currentTimeMillis() - pausedAtEpochMs) > config.getPauseAutoAbandonMs();
+        } catch (Exception ignored) {
+            long defaultTimeout = 24 * 60 * 60 * 1000L; // 24h
+            return (System.currentTimeMillis() - pausedAtEpochMs) > defaultTimeout;
+        }
+    }
+
+    // ===== 预算扩容 =====
+
+    public void extendBudget(long additionalTokens) {
+        if (additionalTokens <= 0) return;
+        this.maxTokens += additionalTokens;
+        if (status == Status.BUDGET_LIMITED) {
+            this.status = Status.PURSUING;
+        }
     }
 
     // ===== Getters =====
@@ -109,6 +153,7 @@ public class GoalState {
     public long getConsumedTokens() { return consumedTokens; }
     public long getMaxTokens() { return maxTokens; }
     public long getStartEpochMs() { return startEpochMs; }
+    public long getPausedAtEpochMs() { return pausedAtEpochMs; }
 
     // ===== 序列化 =====
 
@@ -120,7 +165,7 @@ public class GoalState {
         node.set("consumedTokens", consumedTokens);
         node.set("maxTokens", maxTokens);
         node.set("startEpochMs", startEpochMs);
-        if (blockedCycleCount > 0) node.set("blockedCycleCount", blockedCycleCount);
+        if (pausedAtEpochMs > 0) node.set("pausedAtEpochMs", pausedAtEpochMs);
         return node;
     }
 
@@ -132,8 +177,8 @@ public class GoalState {
         gs.consumedTokens = node.get("consumedTokens").getLong();
         gs.maxTokens = node.get("maxTokens").getLong();
         gs.startEpochMs = node.get("startEpochMs").getLong();
-        gs.blockedCycleCount = node.getOrNull("blockedCycleCount") != null
-                ? node.get("blockedCycleCount").getInt() : 0;
+        gs.pausedAtEpochMs = node.getOrNull("pausedAtEpochMs") != null
+                ? node.get("pausedAtEpochMs").getLong() : 0;
         return gs;
     }
 }

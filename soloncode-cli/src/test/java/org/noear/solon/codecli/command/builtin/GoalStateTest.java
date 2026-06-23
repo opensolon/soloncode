@@ -21,7 +21,7 @@ import org.noear.snack4.ONode;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Goal 状态机 + 电路熔断 + 序列化 单元测试
+ * Goal 状态机 + 序列化 单元测试
  */
 class GoalStateTest {
 
@@ -45,6 +45,7 @@ class GoalStateTest {
         assertTrue(gs.pause());
         assertEquals(GoalState.Status.PAUSED, gs.getStatus());
         assertFalse(gs.getStatus().isActive());
+        assertTrue(gs.getStatus().isResumable());
     }
 
     @Test
@@ -72,6 +73,23 @@ class GoalStateTest {
     }
 
     @Test
+    void markBlockedShouldTransitionToBlocked() {
+        GoalState gs = new GoalState("test", 1000);
+        gs.markBlocked();
+        assertEquals(GoalState.Status.BLOCKED, gs.getStatus());
+        assertFalse(gs.getStatus().isActive());
+        assertTrue(gs.getStatus().isResumable());
+    }
+
+    @Test
+    void resumeFromBlockedShouldTransitionToPursuing() {
+        GoalState gs = new GoalState("test", 1000);
+        gs.markBlocked();
+        assertTrue(gs.resume());
+        assertEquals(GoalState.Status.PURSUING, gs.getStatus());
+    }
+
+    @Test
     void pauseShouldFailOnNonPursuingState() {
         GoalState gs = new GoalState("test", 1000);
         gs.achieve();
@@ -79,7 +97,7 @@ class GoalStateTest {
     }
 
     @Test
-    void resumeShouldFailOnNonPausedState() {
+    void resumeShouldFailOnNonResumableState() {
         GoalState gs = new GoalState("test", 1000);
         assertFalse(gs.resume(), "should not resume a pursuing goal");
     }
@@ -90,6 +108,14 @@ class GoalStateTest {
         gs.pause();
         gs.achieve(); // only works on PURSUING
         assertEquals(GoalState.Status.PAUSED, gs.getStatus(), "achieve should not fire on PAUSED");
+    }
+
+    @Test
+    void markBlockedShouldNotWorkOnPausedState() {
+        GoalState gs = new GoalState("test", 1000);
+        gs.pause();
+        gs.markBlocked(); // only works on PURSUING
+        assertEquals(GoalState.Status.PAUSED, gs.getStatus(), "markBlocked should not fire on PAUSED");
     }
 
     // ===== 2. Token 预算 =====
@@ -118,52 +144,21 @@ class GoalStateTest {
     }
 
     @Test
-    void isBudgetCriticalShouldReturnTrueAt80Percent() {
+    void isBudgetCriticalShouldReturnTrueAt85Percent() {
         GoalState gs = new GoalState("test", 1000);
-        gs.addTokens(799);
+        gs.addTokens(849);
         assertFalse(gs.isBudgetCritical());
-        gs.addTokens(1); // 800 = 80%
+        gs.addTokens(1); // 850 = 85%
         assertTrue(gs.isBudgetCritical());
     }
 
-    // ===== 3. 电路熔断 =====
-
-    @Test
-    void blockedCycleCountShouldStartAtZero() {
-        GoalState gs = new GoalState("test", 1000);
-        assertEquals(0, gs.getBlockedCycleCount());
-        assertFalse(gs.isBlockedCycleExhausted());
-    }
-
-    @Test
-    void incrementBlockedCycleShouldNotExhaustBeforeThreshold() {
-        GoalState gs = new GoalState("test", 1000);
-        for (int i = 0; i < 4; i++) {
-            gs.incrementBlockedCycleCount();
-        }
-        assertEquals(4, gs.getBlockedCycleCount());
-        assertFalse(gs.isBlockedCycleExhausted(), "threshold is 5, 4 should not exhaust");
-    }
-
-    @Test
-    void incrementBlockedCycleShouldExhaustAtThreshold() {
-        GoalState gs = new GoalState("test", 1000);
-        for (int i = 0; i < 5; i++) {
-            gs.incrementBlockedCycleCount();
-        }
-        assertEquals(5, gs.getBlockedCycleCount());
-        assertTrue(gs.isBlockedCycleExhausted(), "threshold is 5, should be exhausted");
-    }
-
-    // ===== 4. 序列化往返 =====
+    // ===== 3. 序列化往返 =====
 
     @Test
     void serializationRoundTripShouldPreserveAllFields() {
         GoalState gs = new GoalState("refactor the login module", 50000);
         gs.addTokens(1234);
         gs.pause();
-        gs.incrementBlockedCycleCount();
-        gs.incrementBlockedCycleCount();
 
         ONode node = gs.toONode();
         GoalState restored = GoalState.fromONode(node);
@@ -174,72 +169,22 @@ class GoalStateTest {
         assertEquals(gs.getConsumedTokens(), restored.getConsumedTokens());
         assertEquals(gs.getMaxTokens(), restored.getMaxTokens());
         assertEquals(gs.getStartEpochMs(), restored.getStartEpochMs());
-        assertEquals(gs.getBlockedCycleCount(), restored.getBlockedCycleCount());
+        assertEquals(gs.getPausedAtEpochMs(), restored.getPausedAtEpochMs());
     }
 
     @Test
-    void serializationWithoutBlockedCycleShouldDefaultToZero() {
-        GoalState gs = new GoalState("test", 1000);
+    void serializationOfBlockedStateShouldPreserveStatus() {
+        GoalState gs = new GoalState("test blocked", 5000);
+        gs.markBlocked();
+
         ONode node = gs.toONode();
-        // blockedCycleCount is 0, should be omitted in JSON
         GoalState restored = GoalState.fromONode(node);
-        assertEquals(0, restored.getBlockedCycleCount());
+
+        assertEquals(GoalState.Status.BLOCKED, restored.getStatus());
+        assertTrue(restored.getStatus().isResumable());
     }
 
-    // ===== 5. LoopTask blocked 审计 =====
-
-    @Test
-    void recordGoalEvaluationSameFingerprintShouldIncreaseStreak() {
-        LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        LoopExecutionResult r = LoopExecutionResult.fromText("doing the same thing");
-        task.recordGoalEvaluation(r); // streak=0 (baseline)
-        assertFalse(task.isGoalBlocked(), "streak=0 after first call");
-        task.recordGoalEvaluation(r); // streak=1
-        assertFalse(task.isGoalBlocked(), "streak=1");
-        task.recordGoalEvaluation(r); // streak=2
-        assertFalse(task.isGoalBlocked(), "streak=2, need 3 for blocked");
-        task.recordGoalEvaluation(r); // streak=3
-        assertTrue(task.isGoalBlocked(), "streak=3, should be blocked");
-    }
-
-    @Test
-    void recordGoalEvaluationDifferentFingerprintShouldResetStreak() {
-        LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        LoopExecutionResult rA = LoopExecutionResult.fromText("doing thing A");
-        LoopExecutionResult rB = LoopExecutionResult.fromText("doing thing B");
-        task.recordGoalEvaluation(rA); // baseline
-        task.recordGoalEvaluation(rA); // streak=1
-        task.recordGoalEvaluation(rB); // reset, streak=0
-        task.recordGoalEvaluation(rB); // streak=1
-        task.recordGoalEvaluation(rB); // streak=2
-        assertFalse(task.isGoalBlocked(), "streak for B is only 2, not blocked");
-    }
-
-    @Test
-    void resetGoalBlockedAuditShouldClearStreakAndReason() {
-        LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        LoopExecutionResult r = LoopExecutionResult.fromText("some result text");
-        task.recordGoalEvaluation(r);
-        task.recordGoalEvaluation(r);
-        task.recordGoalEvaluation(r);
-        task.recordGoalEvaluation(r);
-        assertTrue(task.isGoalBlocked());
-
-        task.resetGoalBlockedAudit();
-        assertFalse(task.isGoalBlocked());
-        assertNull(task.getGoalLastEvalReason());
-    }
-
-    @Test
-    void recordGoalEvaluationWithNullResultShouldNotCrash() {
-        LoopTask task = new LoopTask("test prompt", 0, null, "test goal", false, 0, true);
-        task.recordGoalEvaluation(null); // should not crash
-        task.recordGoalEvaluation(null);
-        task.recordGoalEvaluation(null);
-        assertFalse(task.isGoalBlocked(), "null results should not trigger blocked");
-    }
-
-    // ===== 6. LoopTask Goal 模式基础 =====
+    // ===== 4. LoopTask Goal 模式基础 =====
 
     @Test
     void goalModeShouldBeTrueWhenGoalConditionProvided() {
@@ -260,7 +205,6 @@ class GoalStateTest {
     void goalTaskSerializationRoundTripShouldPreserveGoalState() {
         LoopTask task = new LoopTask("test prompt", 0, null, "refactor module", false, 0, true);
         task.getGoalState().addTokens(5000);
-        task.getGoalState().incrementBlockedCycleCount();
         task.incrementIteration();
         task.incrementIteration();
 
@@ -270,9 +214,18 @@ class GoalStateTest {
         assertTrue(restored.isGoalMode());
         assertEquals("refactor module", restored.getGoalState().getCondition());
         assertEquals(5000, restored.getGoalState().getConsumedTokens());
-        assertEquals(1, restored.getGoalState().getBlockedCycleCount());
         assertEquals(2, restored.getCurrentIteration());
-        // blocked audit should be reset on deserialization (transient fields)
-        assertFalse(restored.isGoalBlocked());
+    }
+
+    @Test
+    void goalTaskWithBlockedStateSerializationRoundTrip() {
+        LoopTask task = new LoopTask("test prompt", 0, null, "refactor module", false, 0, true);
+        task.getGoalState().markBlocked();
+
+        ONode node = task.toONode();
+        LoopTask restored = LoopTask.fromONode(node);
+
+        assertEquals(GoalState.Status.BLOCKED, restored.getGoalState().getStatus());
+        assertTrue(restored.getGoalState().getStatus().isResumable());
     }
 }

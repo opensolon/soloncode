@@ -72,7 +72,7 @@ public class LoopCommand implements Command {
 
     @Override
     public String description() {
-        return "循环任务与 Goal 管理 (ls, stop, stop-all, pause, resume, goal, <interval> <prompt>, cron:<expr> <prompt>)";
+        return "循环任务与 Goal 管理 (ls, stop, stop-all, pause, resume, extend, goal, <interval> <prompt>, cron:<expr> <prompt>)";
     }
 
     @Override
@@ -83,6 +83,7 @@ public class LoopCommand implements Command {
                 "/loop stop-all",
                 "/loop pause <id>",
                 "/loop resume <id>",
+                "/loop extend [tokens]",
                 "/loop goal:\"<objective>\" <prompt>",
                 "/loop 5m <prompt>",
                 "/loop cron:\"<expr>\" <prompt> ",
@@ -119,6 +120,8 @@ public class LoopCommand implements Command {
             doPause(ctx, sessionId, ctx.argAt(1));
         } else if ("resume".equals(sub)) {
             doResume(ctx, sessionId, ctx.argAt(1));
+        } else if ("extend".equals(sub)) {
+            doExtend(ctx, sessionId, ctx.argAt(1));
         } else {
             // Schedule a new task
             doSchedule(ctx, sessionId, workspace, harnessSessions);
@@ -228,7 +231,7 @@ public class LoopCommand implements Command {
             return;
         }
 
-        // ★ L6: 单会话单活跃 Goal 校验
+        // ★ L6: 单会话单活跃 Goal 校验（优化：已超时的 PAUSED 目标可自动覆盖）
         if (goalCondition != null) {
             List<LoopTask> existing = scheduler.listActive(sessionId);
             for (LoopTask t : existing) {
@@ -237,6 +240,13 @@ public class LoopCommand implements Command {
                     ctx.println(ctx.color(DIM + "  Active: " + t.getGoalState().getCondition() + RESET));
                     ctx.println(ctx.color(DIM + "  Use /loop stop " + t.getId() + " first to replace the goal." + RESET));
                     return;
+                }
+                // 已超时放弃的 PAUSED 目标自动清理
+                if (t.isGoalMode()
+                        && t.getGoalState().getStatus() == GoalState.Status.PAUSED
+                        && t.getGoalState().isAbandoned()) {
+                    ctx.println(ctx.color(YELLOW + "Abandoned goal '" + t.getId() + "' (" + t.getGoalState().getCondition() + ") auto-cleaned." + RESET));
+                    scheduler.remove(sessionId, t);
                 }
             }
         }
@@ -355,12 +365,13 @@ public class LoopCommand implements Command {
             line.append(" ").append(DIM).append(t.getPrompt()).append(RESET);
             line.append(lastInfo);
 
-            // ★ P0: Goal 任务展示最近评估 reason
+            // Goal 任务展示状态信息
             if (t.isGoalMode()) {
                 GoalState gs = t.getGoalState();
-                if (t.getGoalLastEvalReason() != null && gs.getStatus().isActive()) {
+                if (gs.getStatus().isActive()) {
                     line.append("\n    ").append(DIM)
-                            .append("  reason: ").append(abbreviate(t.getGoalLastEvalReason(), 80))
+                            .append("  status: ").append(gs.getStatus().name().toLowerCase())
+                            .append(" | iter: ").append(t.getCurrentIteration())
                             .append(RESET);
                 }
             }
@@ -418,19 +429,55 @@ public class LoopCommand implements Command {
         }
 
         GoalState gs = task.getGoalState();
-        if (gs.getStatus() != GoalState.Status.PAUSED) {
-            ctx.println(ctx.color(YELLOW + "Goal is not paused: " + gs.getStatus() + RESET));
+        if (!gs.getStatus().isResumable()) {
+            ctx.println(ctx.color(YELLOW + "Goal is not paused/blocked: " + gs.getStatus() + RESET));
             return;
         }
 
-        if (gs.isBlockedCycleExhausted()) {
-            ctx.println(ctx.color(RED + "Goal has exhausted its blocked cycle limit (" + GoalState.MAX_BLOCKED_CYCLES + ") and cannot be resumed." + RESET));
-            return;
-        }
-
-        task.setSuppressed(false);
         scheduler.resumeGoal(sessionId, task.getId());
         ctx.println(ctx.color(GREEN + "Goal resumed: " + taskId + RESET));
+    }
+
+    // ===== Goal 预算扩容 =====
+
+    private void doExtend(CommandContext ctx, String sessionId, String tokenArg) {
+        LoopTask task = scheduler.findActiveGoalAcrossSessions();
+        if (task == null || !task.isGoalMode()) {
+            ctx.println(ctx.color(RED + "没有活跃的 Goal 任务" + RESET));
+            return;
+        }
+
+        GoalState gs = task.getGoalState();
+        if (gs.getStatus() == GoalState.Status.ACHIEVED) {
+            ctx.println(ctx.color(YELLOW + "Goal '" + task.getId() + "' 已完成，无需扩容" + RESET));
+            return;
+        }
+
+        long additional;
+        if (tokenArg != null && !tokenArg.isEmpty()) {
+            try {
+                additional = Long.parseLong(tokenArg);
+                if (additional <= 0) {
+                    ctx.println(ctx.color(RED + "扩容数量必须大于 0" + RESET));
+                    return;
+                }
+            } catch (NumberFormatException e) {
+                ctx.println(ctx.color(RED + "无效的数字: " + tokenArg + RESET));
+                return;
+            }
+        } else {
+            additional = 25000; // 默认扩容 25k
+        }
+
+        gs.extendBudget(additional);
+        ctx.println(ctx.color(GREEN + "Goal '" + task.getId() + "' 预算已扩容 +" + additional + " tokens" + RESET));
+        ctx.println(ctx.color(DIM + "  当前上限: " + gs.getMaxTokens() + " tokens" + RESET));
+
+        // 如果是从 BUDGET_LIMITED 恢复，重新注册调度
+        if (gs.getStatus().isActive()) {
+            scheduler.resumeGoal(sessionId, task.getId());
+            ctx.println(ctx.color(GREEN + "Goal 已恢复执行" + RESET));
+        }
     }
 
     // ★ P0: Goal 辅助方法
@@ -539,6 +586,7 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "Goal lifecycle:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop pause <id>                          (pause a goal task)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop resume <id>                         (resume a paused goal)" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop extend [tokens]                     (extend token budget)" + RESET));
     }
 
     private String formatInterval(int minutes) {

@@ -21,21 +21,25 @@ import org.noear.snack4.Feature;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.talent.AbsTalent;
 import org.noear.solon.annotation.Param;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Goal 工具 — 模型侧 Goal 生命周期控制（100% Codex CLI 对齐）
+ * Goal 工具 — 模型侧 Goal 生命周期控制（Codex CLI 对齐）
  *
  * <p>提供三个工具：
  * <ul>
  *   <li>{@code create_goal} — 创建新 goal（参数：objective + token_budget）</li>
  *   <li>{@code get_goal} — 查询当前 goal 状态，无 goal 返回 null</li>
- *   <li>{@code update_goal} — 仅标记 complete（blocked 由运行时自动检测）</li>
+ *   <li>{@code update_goal} — 标记 complete 或 blocked（模型驱动，对齐 Codex）</li>
  * </ul>
  *
  * @author noear
  * @since 3.9.3
  */
 public class GoalTool extends AbsTalent {
+
+    private static final Logger log = LoggerFactory.getLogger(GoalTool.class);
 
     private final LoopScheduler scheduler;
 
@@ -124,23 +128,22 @@ public class GoalTool extends AbsTalent {
     }
 
     /**
-     * 标记 goal 完成（Codex：仅接受 complete，blocked 由运行时自动检测）
+     * 更新 goal 状态（Codex 对齐：支持 complete 和 blocked）
+     *
+     * <p>complete: 通过 ValidatorFactory 执行客观校验后标记完成。
+     * blocked: 模型主动声明阻塞（同一困境尝试了 3 次后），暂停调度等待 resume。
      */
     @ToolMapping(name = "update_goal",
-            description = "将当前活跃目标标记为已完成。" +
-                    "仅当目标已成功达成时才调用此工具。" +
-                    "如果遇到阻塞，请勿调用 — 系统会自动检测并暂停。")
+            description = "更新当前活跃目标的状态。" +
+                    "status='complete' 标记目标已完成；" +
+                    "status='blocked' 声明遇到阻塞（同一困境尝试了3次后使用）。")
     public String updateGoal(
-            @Param(name = "status", description = "状态值：complete") String status,
+            @Param(name = "status", description = "状态值：complete 或 blocked") String status,
             String __sessionId,
             String __cwd) {
 
         if (status == null) {
-            return "错误：status 参数必填（complete）";
-        }
-
-        if (!"complete".equals(status)) {
-            return "错误：未知状态 '" + status + "'. 仅支持 'complete'.";
+            return "错误：status 参数必填（complete 或 blocked）";
         }
 
         LoopTask task = scheduler.findActiveGoalAcrossSessions();
@@ -150,7 +153,7 @@ public class GoalTool extends AbsTalent {
 
         GoalState gs = task.getGoalState();
         if (!gs.getStatus().isActive()) {
-            return "警告：目标不在活跃状态（" + gs.getStatus() + "），无法标记为完成";
+            return "警告：目标不在活跃状态（" + gs.getStatus() + "），无法更新";
         }
 
         String sessionId = __sessionId;
@@ -158,13 +161,38 @@ public class GoalTool extends AbsTalent {
             return "错误：无活跃会话";
         }
 
-        gs.achieve();
-        scheduler.clearGoal(sessionId, task.getId());
+        // ---- complete ----
+        if ("complete".equals(status)) {
+            // 验证闸：AI 声称完成时，通过 ValidatorFactory 执行外部校验
+            LoopConfig config = new LoopConfig();
+            if (config.isValidatorEnabled()) {
+                GoalValidator validator = ValidatorFactory.forCondition(gs.getCondition());
+                GoalValidator.ValidationResult vr = validator.validate(gs.getCondition(), sessionId);
+                if (!vr.isPassed()) {
+                    log.warn("updateGoal: 验证失败 for goal '{}': {}", task.getId(), vr.detail());
+                    return "目标尚未完成：验证失败 - " + vr.detail()
+                            + "。请继续改进后重新调用 update_goal(complete)。";
+                }
+            }
 
-        long used = gs.getConsumedTokens();
-        String tokenReport = gs.getMaxTokens() > 0
-                ? used + "/" + gs.getMaxTokens() + " tokens 已消耗"
-                : used > 0 ? used + " tokens 已消耗" : "token 统计不可用";
-        return "已完成目标 '" + gs.getCondition() + "' 已标记为完成（" + tokenReport + "）";
+            gs.achieve();
+            scheduler.clearGoal(sessionId, task.getId());
+
+            long used = gs.getConsumedTokens();
+            String tokenReport = gs.getMaxTokens() > 0
+                    ? used + "/" + gs.getMaxTokens() + " tokens 已消耗"
+                    : used > 0 ? used + " tokens 已消耗" : "token 统计不可用";
+            return "已完成目标 '" + gs.getCondition() + "' 已标记为完成（" + tokenReport + "）";
+        }
+
+        // ---- blocked ----
+        if ("blocked".equals(status)) {
+            gs.markBlocked();
+            scheduler.pauseGoal(sessionId, task.getId());
+            log.info("updateGoal: goal '{}' marked as BLOCKED by model", task.getId());
+            return "目标已标记为阻塞 — 目标暂停，等待 resume。";
+        }
+
+        return "错误：未知状态 '" + status + "'. 仅支持 'complete' 或 'blocked'.";
     }
 }

@@ -71,15 +71,6 @@ public class LoopTask {
     private volatile int currentIteration;
     private volatile boolean enabled = true; // 启用/停用
     private volatile boolean wrapUpPending = false; // 即将收尾（最后一次 wrap-up turn）
-    private volatile boolean lastHadToolCalls = true; // L5: 上一轮是否有工具调用
-    private volatile boolean suppressed = false;        // L5: 是否被抑制（跳过自动续行）
-    private volatile int continuationCount = 0;          // D1: 连续事件驱动续行深度
-    private volatile long lastContinuationTime = 0;       // D1: 上次续行时间戳（毫秒）
-
-    // ---- 运行时 Blocked 检测（不持久化） ----
-    private transient volatile int goalBlockedStreak;
-    private transient volatile String goalLastEvalReason;
-    private transient volatile String goalLastFingerprint;  // P0-1: 行为指纹（替代纯文本比对）
 
     /**
      * 固定间隔构造
@@ -104,8 +95,7 @@ public class LoopTask {
                      boolean enabled,
                      String goalCondition, boolean worktreeEnabled, String worktreeBranch,
                      int maxIterations, boolean runNow, Long maxTokens, Long maxDurationMs,
-                     boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration,
-                     boolean lastHadToolCalls, boolean suppressed) {
+                     boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
         this.id = id;
         this.prompt = prompt;
         this.intervalMinutes = intervalMinutes;
@@ -125,10 +115,6 @@ public class LoopTask {
         this.lastResult = lastResult;
         this.lastExecutedAt = lastExecutedAt;
         this.currentIteration = currentIteration;
-        this.lastHadToolCalls = lastHadToolCalls;
-        this.suppressed = suppressed;
-        this.continuationCount = 0;
-        this.lastContinuationTime = 0;
 
         // Goal 状态初始化：如果存在 goalCondition 但无 goalState，自动构造
         if (goalCondition != null && !goalCondition.isEmpty()) {
@@ -167,10 +153,6 @@ public class LoopTask {
         this.runNow = runNow;
         this.currentIteration = 0;
         this.enabled = true;
-        this.lastHadToolCalls = true;
-        this.suppressed = false;
-        this.continuationCount = 0;
-        this.lastContinuationTime = 0;
 
         if (goalCondition != null && !goalCondition.isEmpty()) {
             this.goalState = new GoalState(goalCondition,
@@ -204,9 +186,7 @@ public class LoopTask {
                 this.cancelled,
                 this.lastResult,
                 this.lastExecutedAt,
-                this.currentIteration,
-                this.lastHadToolCalls,
-                this.suppressed
+                this.currentIteration
         );
         task.running = false;
         return task;
@@ -324,87 +304,6 @@ public class LoopTask {
 
     public void setCurrentIteration(int currentIteration) { this.currentIteration = currentIteration; }
 
-    // ★ L5: 工具调用状态追踪
-    public boolean isLastHadToolCalls() { return lastHadToolCalls; }
-    public void setLastHadToolCalls(boolean lastHadToolCalls) { this.lastHadToolCalls = lastHadToolCalls; }
-
-    // ★ L5: 抑制状态（跳过自动续行）
-    public boolean isSuppressed() { return suppressed; }
-    public void setSuppressed(boolean suppressed) { this.suppressed = suppressed; }
-
-    // ★ D1: 事件驱动续行深度追踪
-    public int getContinuationCount() { return continuationCount; }
-    public void setContinuationCount(int count) { this.continuationCount = count; }
-    public void incrementContinuationCount() { this.continuationCount++; }
-    public void resetContinuationCount() { this.continuationCount = 0; }
-    public long getLastContinuationTime() { return lastContinuationTime; }
-    public void setLastContinuationTime(long time) { this.lastContinuationTime = time; }
-
-    // ---- 运行时 Blocked 检测（不持久化，resume 后自动重置） ----
-
-    /**
-     * ★ P0-1: 记录行为指纹并更新 blocked streak。
-     * 使用行为指纹（工具调用 + 完成状态 + 归一化文本）替代纯文本末尾比对，
-     * 连续 3 次相同指纹 → isGoalBlocked() 返回 true。
-     */
-    public void recordGoalEvaluation(LoopExecutionResult result) {
-        if (result == null || result.getFinalResult() == null) {
-            // 无效结果不参与 blocked 检测
-            return;
-        }
-
-        String fingerprint = buildBehaviorFingerprint(result);
-        goalLastEvalReason = extractReasonSummary(result.getFinalResult());
-
-        if (fingerprint.equals(goalLastFingerprint)) {
-            goalBlockedStreak++;
-        } else {
-            goalBlockedStreak = 0;
-            goalLastFingerprint = fingerprint;
-        }
-    }
-
-    /**
-     * 构建行为指纹：hasToolCalls + completed + 归一化文本摘要。
-     * 比纯文本末尾比对更健壮，能区分"不同行为但措辞相似"和"相同行为但措辞不同"。
-     */
-    private String buildBehaviorFingerprint(LoopExecutionResult result) {
-        String text = result.getFinalResult();
-        String normalized = text != null
-                ? text.toLowerCase().replaceAll("\\s+", " ").trim()
-                : "";
-        String textFp;
-        if (normalized.length() <= 200) {
-            textFp = normalized;
-        } else {
-            textFp = normalized.substring(0, 100) + "|" + normalized.substring(normalized.length() - 100);
-        }
-        return result.isHasToolCalls() + "|" + result.isCompleted() + "|" + textFp;
-    }
-
-    /**
-     * 提取人类可读的评估原因摘要（取末尾最多 200 字符，用于日志和 /loop list 展示）
-     */
-    private static String extractReasonSummary(String text) {
-        if (text == null || text.isEmpty()) return "";
-        int len = Math.min(text.length(), 200);
-        return text.substring(text.length() - len).replace('\n', ' ').trim();
-    }
-
-    /** 连续 3 轮相同行为指纹即视为 blocked */
-    public boolean isGoalBlocked() {
-        return goalBlockedStreak >= 3;
-    }
-
-    /** resume 时重置 blocked 审计 */
-    public void resetGoalBlockedAudit() {
-        goalBlockedStreak = 0;
-        goalLastEvalReason = null;
-        goalLastFingerprint = null;
-    }
-
-    public String getGoalLastEvalReason() { return goalLastEvalReason; }
-
     /**
      * 序列化为 ONode
      */
@@ -432,9 +331,6 @@ public class LoopTask {
             node.set("lastExecutedAt", lastExecutedAt.toString());
         }
         node.set("currentIteration", currentIteration);
-        node.set("lastHadToolCalls", lastHadToolCalls);
-        node.set("suppressed", suppressed);
-        node.set("continuationCount", continuationCount);
 
         // Loop Engineering 扩展字段
         if (goalCondition != null) node.set("goalCondition", goalCondition);
@@ -494,18 +390,6 @@ public class LoopTask {
         Long maxDurationMsVal = node.getOrNull("maxDurationMs") != null
                 ? (long) node.get("maxDurationMs").getInt() : null;
 
-        // L5: 读取 lastHadToolCalls（默认 true，向后兼容旧 JSON）
-        boolean lastHadToolCallsVal = node.getOrNull("lastHadToolCalls") == null
-                || node.get("lastHadToolCalls").getBoolean();
-
-        // L5: 读取 suppressed（默认 false，向后兼容旧 JSON）
-        boolean suppressedVal = node.getOrNull("suppressed") != null
-                && node.get("suppressed").getBoolean();
-
-        // D1: 读取 continuationCount（默认 0，向后兼容旧 JSON）
-        int continuationCountVal = node.getOrNull("continuationCount") != null
-                ? node.get("continuationCount").getInt() : 0;
-
         // 读取 GoalState（新格式）
         GoalState goalStateVal = null;
         if (node.getOrNull("goalState") != null) {
@@ -536,18 +420,13 @@ public class LoopTask {
                         ? node.get("cancelled").getBoolean() : false,
                 lastResultVal,
                 lastExecutedAtVal,
-                currentIterationVal,
-                lastHadToolCallsVal,
-                suppressedVal
+                currentIterationVal
         );
 
         // 覆盖构造函数中自动创建的 GoalState（保留 JSON 中的完整状态）
         if (goalStateVal != null) {
             task.goalState = goalStateVal;
         }
-
-        // D1: 从 JSON 恢复 continuationCount
-        task.continuationCount = continuationCountVal;
 
         return task;
     }
