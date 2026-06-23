@@ -443,7 +443,7 @@ public class LoopScheduler {
             if (intervalMs == 0) {
                 intervalMs = 5_000L;
             }
-            
+
             long initialDelay = (firstRegistration && task.isRunNow()) ? 0 : intervalMs;
             scheduled = new ScheduledAnno()
                     .fixedDelay(intervalMs)
