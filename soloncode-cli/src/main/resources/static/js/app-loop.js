@@ -454,12 +454,12 @@
         html += '<div class="loop-form-inline-item"><label style="font-size:11px;">时间预算（分钟）</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
         html += '</div>';
 
-        html += '</div>';  // 结束 goal section
-
-        // ★ Worktree 隔离（两个 tab 共享）
-        html += '<div style="margin-top:10px;">';
+        // ★ Worktree 隔离（仅 Goal 模式）
+        html += '<div style="margin-top:12px;">';
         html += '<label class="loop-checkbox"><input type="checkbox" id="loopFormWorktree"/> 在独立分支执行（Worktree 隔离）</label>';
         html += '</div>';
+
+        html += '</div>';  // 结束 goal section
 
         // 操作按钮
         html += '<div class="loop-form-actions">';
@@ -471,9 +471,7 @@
 
         var $panel = getActivePanel();
         $panel.addClass('mode-form');
-        var panelTop = $panel[0].getBoundingClientRect().top;
-        var safeMaxH = Math.max(460, Math.floor(panelTop) - 16);
-        $panel.css('max-height', Math.min(safeMaxH, 640) + 'px');
+        $panel.css('height', '400px');
         $panel.html(html);
         bindFormEvents();
 

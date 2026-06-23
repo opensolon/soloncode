@@ -467,7 +467,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 
 /* ===== Loop Panel ===== */
 .loop-panel { position: absolute; bottom: 100%; left: 0; right: 0; margin-bottom: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); max-height: 400px; overflow: hidden; z-index: 100; animation: drop-up 0.15s ease-out; display: flex; flex-direction: column; }
-.loop-panel.mode-form { max-height: 520px; }
+.loop-panel.mode-form { height: 400px; }
 
 .loop-panel-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border-color); gap: 8px; flex-shrink: 0; }
 .loop-panel-title { font-size: 13px; font-weight: 600; color: var(--text-primary); flex: 1; }
