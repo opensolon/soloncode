@@ -528,6 +528,10 @@
                     if (window._settingsLlm) {
                         window._settingsLlm.load();
                     }
+                    // 通知聊天组件刷新模型下拉列表
+                    if (typeof window.reloadModels === 'function') {
+                        window.reloadModels();
+                    }
                 }
             }
         });
@@ -571,6 +575,10 @@
                     // 刷新 LLM 模型列表（供应商禁用时关联模型会禁用）
                     if (window._settingsLlm) {
                         window._settingsLlm.load();
+                    }
+                    // 通知聊天组件刷新模型下拉列表
+                    if (typeof window.reloadModels === 'function') {
+                        window.reloadModels();
                     }
                 } else {
                     layui.layer.msg(res.msg || '操作失败', { icon: 2 });
