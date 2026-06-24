@@ -196,11 +196,30 @@
         BLOCKED: '已阻塞'
     };
 
-    // 生成 goal 状态标签
-    function renderGoalBadge(g) {
-        if (!g) return '';
-        var label = GOAL_STATUS_LABEL[g.status] || g.status;
-        return '<span class="loop-goal-badge">' + label + '</span>';
+    // ========== 统一状态解析（合并 running / goal 两套机制）==========
+    // 无论任务是 HEARTBEAT 还是 GOAL，都通过此函数获取单一状态
+    function resolveTaskState(t) {
+        // 终态/禁用态优先
+        if (t.cancelled) return { text: '已取消', cls: 'cancelled' };
+        if (!t.enabled) return { text: '已停用', cls: 'disabled' };
+
+        // Goal 任务：以 goal.status 为唯一依据（running 在其面前是冗余的）
+        if (t.goal && t.goal.status) {
+            var label = GOAL_STATUS_LABEL[t.goal.status] || t.goal.status;
+            // 将 goal 状态映射到已有的 CSS 语义（部分复用，部分新增）
+            var clsMap = {
+                PURSUING: 'running',
+                PAUSED: 'paused',
+                ACHIEVED: 'achieved',
+                BLOCKED: 'cancelled',
+                BUDGET_LIMITED: 'cancelled'
+            };
+            return { text: label, cls: clsMap[t.goal.status] || 'ready' };
+        }
+
+        // Heartbeat 任务：使用 running 标记
+        if (t.running) return { text: '运行中', cls: 'running' };
+        return { text: '就绪', cls: 'ready' };
     }
 
     // ========== 面板开关 ==========
@@ -309,12 +328,8 @@
     }
 
     function buildListItem(t) {
-        var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
-        var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
-        // 有 goal 时以 goal 状态为准，覆盖 statusText（留给非 goal 的 running 兜底）
-        if (t.goal && t.goal.status) {
-            statusText = GOAL_STATUS_LABEL[t.goal.status] || t.goal.status;
-        }
+        // ★ 统一通过 resolveTaskState 获取状态，不再分别读 running / goal
+        var state = resolveTaskState(t);
         var scheduleText = t.cron ? ('cron: ' + t.cron) : ('每' + t.intervalMinutes + '分钟');
 
         // 标签
@@ -330,29 +345,19 @@
             lastInfo += '<span class="loop-item-meta">第' + t.currentIteration + '次</span>';
         }
 
-        // Goal 行内标签
-        var goalInlineHtml = '';
-        var showRunningStatus = true;
-        var g = t.goal;
-        if (g) {
-            var label = GOAL_STATUS_LABEL[g.status] || g.status;
-            goalInlineHtml = '<span class="loop-item-goal-inline">' + label + '</span>';
-            // 有 goal 信息时以 goal 状态为准，不再显示 running 状态
-            showRunningStatus = false;
-        }
-
-        // 拼装完整 item
-        var runningStatusHtml = (showRunningStatus && (statusClass === 'running' || statusClass === 'cancelled'))
-            ? '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>'
+        // ★ 统一的状态标签：Goal 任务始终展示（PAUSED/ACHIEVED/BLOCKED 等都是有信息量的状态）
+        //   Heartbeat 任务为减少视觉噪音，仅在运行/取消时展示
+        var showBadge = (t.goal && t.goal.status) || state.cls === 'running' || state.cls === 'cancelled';
+        var statusHtml = showBadge
+            ? '<span class="loop-item-status ' + state.cls + '">' + state.text + '</span>'
             : '';
 
         var html = '<div class="loop-item" data-id="' + t.id + '">';
         html += '<div class="loop-item-row">';
-        html += '<span class="loop-item-dot ' + statusClass + '"></span>';
+        html += '<span class="loop-item-dot ' + state.cls + '"></span>';
         html += '<span class="loop-item-name">#' + escapeHtml(t.id) + '</span>';
-        html += goalInlineHtml;
         html += '<span class="loop-item-schedule">' + scheduleText + '</span>';
-        html += runningStatusHtml;
+        html += statusHtml;
         if (tags.length) html += '<span class="loop-item-tags">' + tags.join('') + '</span>';
         html += '<div class="loop-item-actions">';
         if (!t.cancelled) {
@@ -566,15 +571,11 @@
                 var t = (res && res.data) ? res.data : null;
                 if (t) {
                     fillFormData(t);
-                    var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
-                    var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
-                    // 有 goal 时以 goal 状态为准（与列表视图逻辑一致）
-                    if (t.goal && t.goal.status) {
-                        statusText = GOAL_STATUS_LABEL[t.goal.status] || t.goal.status;
-                    }
+                    // ★ 统一通过 resolveTaskState 获取状态
+                    var state = resolveTaskState(t);
                     var $title = $p.find('.loop-panel-title');
                     var titleHtml = '编辑循环 #' + escapeHtml(editTaskId) +
-                        ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' +
+                        ' <span class="loop-item-status ' + state.cls + '" style="margin-left:6px;font-size:11px">' + state.text + '</span>' +
                         (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : '');
                     $title.html(titleHtml);
                 } else if (res !== null) {
