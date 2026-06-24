@@ -175,8 +175,6 @@ public class AgentSettings implements Serializable {
                 loop.setStagnationThreshold(cfg.getInt("soloncode.loop.stagnationThreshold", 3));
             if (loop.getMaxConsecutiveErrors() == null)
                 loop.setMaxConsecutiveErrors(cfg.getInt("soloncode.loop.maxConsecutiveErrors", 3));
-            if (loop.getPauseAutoAbandonHours() == null)
-                loop.setPauseAutoAbandonHours(cfg.getInt("soloncode.loop.pauseAutoAbandonHours", 24));
             if (loop.getValidatorEnabled() == null)
                 loop.setValidatorEnabled(cfg.getBool("soloncode.loop.validatorEnabled", true));
         } catch (Exception ignored) {

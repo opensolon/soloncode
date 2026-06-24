@@ -46,17 +46,13 @@ public class GoalState {
     private long maxTokens;
     private long startEpochMs;
 
-    private long pausedAtEpochMs;  // PAUSED/BLOCKED 时间戳（用于超时放弃检测）
-
     // ===== 静态配置（由 LoopScheduler 在启动时通过 configure() 设置） =====
     private static volatile int budgetWarningPercent = 70;
     private static volatile int budgetCriticalPercent = 85;
-    private static volatile long pauseAutoAbandonMs = 24 * 3_600_000L;
 
-    public static void configure(int warningPct, int criticalPct, long abandonMs) {
+    public static void configure(int warningPct, int criticalPct) {
         budgetWarningPercent = warningPct;
         budgetCriticalPercent = criticalPct;
-        pauseAutoAbandonMs = abandonMs;
     }
 
     public GoalState(String condition, long maxTokens) {
@@ -73,14 +69,12 @@ public class GoalState {
     public boolean pause() {
         if (status != Status.PURSUING) return false;
         this.status = Status.PAUSED;
-        this.pausedAtEpochMs = System.currentTimeMillis();
         return true;
     }
 
     public boolean resume() {
         if (!status.isResumable()) return false;
         this.status = Status.PURSUING;
-        this.pausedAtEpochMs = 0;
         return true;
     }
 
@@ -96,7 +90,6 @@ public class GoalState {
     public void markBlocked() {
         if (status == Status.PURSUING) {
             this.status = Status.BLOCKED;
-            this.pausedAtEpochMs = System.currentTimeMillis();
         }
     }
 
@@ -121,14 +114,6 @@ public class GoalState {
         return (double) consumedTokens / maxTokens >= threshold;
     }
 
-    // ===== PAUSED/BLOCKED 超时放弃 =====
-
-    public boolean isAbandoned() {
-        if (!status.isResumable()) return false;
-        if (pausedAtEpochMs == 0) return false;
-        return (System.currentTimeMillis() - pausedAtEpochMs) > pauseAutoAbandonMs;
-    }
-
     // ===== 预算扩容 =====
 
     public void extendBudget(long additionalTokens) {
@@ -149,7 +134,6 @@ public class GoalState {
     public long getMaxTokens() { return maxTokens; }
     public void setMaxTokens(long maxTokens) { this.maxTokens = maxTokens; }
     public long getStartEpochMs() { return startEpochMs; }
-    public long getPausedAtEpochMs() { return pausedAtEpochMs; }
 
     // ===== 序列化 =====
 
@@ -161,7 +145,6 @@ public class GoalState {
         node.set("consumedTokens", consumedTokens);
         node.set("maxTokens", maxTokens);
         node.set("startEpochMs", startEpochMs);
-        if (pausedAtEpochMs > 0) node.set("pausedAtEpochMs", pausedAtEpochMs);
         return node;
     }
 
@@ -173,8 +156,6 @@ public class GoalState {
         gs.consumedTokens = node.get("consumedTokens").getLong();
         gs.maxTokens = node.get("maxTokens").getLong();
         gs.startEpochMs = node.get("startEpochMs").getLong();
-        gs.pausedAtEpochMs = node.getOrNull("pausedAtEpochMs") != null
-                ? node.get("pausedAtEpochMs").getLong() : 0;
         return gs;
     }
 }

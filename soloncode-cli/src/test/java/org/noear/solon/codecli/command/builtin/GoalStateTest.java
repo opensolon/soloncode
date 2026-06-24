@@ -194,7 +194,6 @@ class GoalStateTest {
         assertEquals(gs.getConsumedTokens(), restored.getConsumedTokens());
         assertEquals(gs.getMaxTokens(), restored.getMaxTokens());
         assertEquals(gs.getStartEpochMs(), restored.getStartEpochMs());
-        assertEquals(gs.getPausedAtEpochMs(), restored.getPausedAtEpochMs());
     }
 
     @Test

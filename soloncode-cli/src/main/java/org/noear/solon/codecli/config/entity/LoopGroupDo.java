@@ -33,9 +33,6 @@ public class LoopGroupDo implements Serializable {
     // 连续异常阈值（TurnError → blocked，默认 3）
     private Integer maxConsecutiveErrors;
 
-    // ===== PAUSED 超时放弃 =====
-    // 暂停自动放弃时间（小时，默认 24）
-    private Integer pauseAutoAbandonHours;
 
     // ===== 验证器 =====
     // 启用验证器（默认 true）
@@ -65,10 +62,6 @@ public class LoopGroupDo implements Serializable {
 
     public int getMaxConsecutiveErrorsOrDefault() {
         return maxConsecutiveErrors != null ? maxConsecutiveErrors : 3;
-    }
-
-    public long getPauseAutoAbandonMsOrDefault() {
-        return pauseAutoAbandonHours != null ? pauseAutoAbandonHours * 3_600_000L : 24 * 3_600_000L;
     }
 
     public boolean isValidatorEnabledOrDefault() {

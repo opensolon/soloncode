@@ -329,12 +329,7 @@ public class LoopCommand implements Command {
                 ctx.println(ctx.color(DIM + "  Use /loop stop " + t.getId() + " first to replace the goal." + RESET));
                 return;
             }
-            if (t.isGoalMode()
-                    && t.getGoalState().getStatus() == GoalState.Status.PAUSED
-                    && t.getGoalState().isAbandoned()) {
-                ctx.println(ctx.color(YELLOW + "Abandoned goal '" + t.getId() + "' (" + t.getGoalState().getCondition() + ") auto-cleaned." + RESET));
-                scheduler.remove(sessionId, t);
-            }
+            
         }
 
         // 创建任务：★ 显式使用 LoopTask.TaskType.GOAL

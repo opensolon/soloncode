@@ -90,8 +90,7 @@ public class LoopScheduler {
         // 同步预算阈值到 GoalState 静态配置
         GoalState.configure(
                 loop.getBudgetWarningPercentOrDefault(),
-                loop.getBudgetCriticalPercentOrDefault(),
-                loop.getPauseAutoAbandonMsOrDefault()
+                loop.getBudgetCriticalPercentOrDefault()
         );
     }
 
