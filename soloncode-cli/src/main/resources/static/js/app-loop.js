@@ -311,6 +311,10 @@
     function buildListItem(t) {
         var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
         var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
+        // 有 goal 时以 goal 状态为准，覆盖 statusText（留给非 goal 的 running 兜底）
+        if (t.goal && t.goal.status) {
+            statusText = GOAL_STATUS_LABEL[t.goal.status] || t.goal.status;
+        }
         var scheduleText = t.cron ? ('cron: ' + t.cron) : ('每' + t.intervalMinutes + '分钟');
 
         // 标签
@@ -328,14 +332,17 @@
 
         // Goal 行内标签
         var goalInlineHtml = '';
+        var showRunningStatus = true;
         var g = t.goal;
         if (g) {
             var label = GOAL_STATUS_LABEL[g.status] || g.status;
             goalInlineHtml = '<span class="loop-item-goal-inline">' + label + '</span>';
+            // 有 goal 信息时以 goal 状态为准，不再显示 running 状态
+            showRunningStatus = false;
         }
 
         // 拼装完整 item
-        var runningStatusHtml = (statusClass === 'running' || statusClass === 'cancelled')
+        var runningStatusHtml = (showRunningStatus && (statusClass === 'running' || statusClass === 'cancelled'))
             ? '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>'
             : '';
 
