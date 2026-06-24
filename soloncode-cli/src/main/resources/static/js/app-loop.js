@@ -481,6 +481,7 @@
         html += '<div class="loop-form-group">';
         html += '<label>任务描述 <span class="loop-required">*</span></label>';
         html += '<input type="text" class="loop-input" id="loopFormPrompt" placeholder=""/>';
+        html += '<div class="loop-form-goal-hint" id="loopFormGoalHint" style="display:none;">设定目标后，AI 将自动循环执行直至达成目标，无需配置调度计划</div>';
         html += '</div>';
 
         // ===== Heartbeat 表单区：调度方式 =====
@@ -510,15 +511,21 @@
 
         // ===== Goal 表单区（简洁，无调度字段）=====
         html += '<div class="loop-form-section" data-section="goal">';
-        html += '<div class="loop-goal-hint">设定目标后，AI 将自动循环执行直至达成目标，无需配置调度计划</div>';
 
-        // ★ Goal 预算控制
-        html += '<div class="loop-form-inline" style="margin-top:12px;">';
-        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">Token 预算</label><input type="text" inputmode="numeric" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制（如 32k、1m）" style="width:100%;" list="loopMaxTokensList" autocomplete="off"/>' +
+        // ★ Goal 预算控制（同一行）
+        html += '<div class="loop-form-group" style="margin-top:12px;">';
+        html += '<div class="loop-form-inline">';
+        html += '<div class="loop-form-inline-item" style="flex:1;">';
+        html += '<label style="font-size:11px;color:#888;">Token 预算</label>';
+        html += '<input type="text" inputmode="numeric" class="loop-input" id="loopFormMaxTokens" placeholder="留空不限制（如 32k、1m）" list="loopMaxTokensList" autocomplete="off"/>' +
             '<datalist id="loopMaxTokensList">' +
             '<option value="512k"><option value="5m"><option value="10m">' +
             '</datalist></div>';
-        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">时间预算</label><input type="text" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制（如 30m、2h）" style="width:100%;"/></div>';
+        html += '<div class="loop-form-inline-item" style="flex:1;margin-left:12px;">';
+        html += '<label style="font-size:11px;color:#888;">时间预算</label>';
+        html += '<input type="text" class="loop-input" id="loopFormMaxDuration" placeholder="留空不限制（如 30m、2h）"/>';
+        html += '</div>';
+        html += '</div>';  // 结束 loop-form-inline
         html += '</div>';
 
 
@@ -677,6 +684,11 @@
             $panel.find('#loopFormPrompt').closest('.loop-form-group').find('label').html(
                 isGoal ? '目标描述 <span class="loop-required">*</span>' : '任务描述 <span class="loop-required">*</span>'
             );
+            // 显示/隐藏目标提示
+            var $hint = $panel.find('#loopFormGoalHint');
+            if ($hint.length) {
+                $hint.css('display', isGoal ? '' : 'none');
+            }
         });
 
         // Cron 快捷示例
