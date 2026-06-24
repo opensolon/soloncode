@@ -1,4 +1,10 @@
 
+### v2026.6.25
+
+* 添加 soloncode web 设置/通用/日志保存
+* 修复 soloncode web 添加供应商时，没有同步输入面板的模型选择
+* 细节优化
+
 ### v2026.6.24
 
 * 新增 soloncode /interpret 命令（支持跨会话中断）
