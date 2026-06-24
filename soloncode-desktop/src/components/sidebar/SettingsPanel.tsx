@@ -300,19 +300,13 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
           {showAddMenu && (
             <div className="provider-add-dropdown">
               {(Object.keys(PROVIDER_PRESETS) as ProviderType[]).map(type => (
-                <div key={type} className="provider-add-item" onClick={() => {
+                <div key={type || 'auto'} className="provider-add-item" onClick={() => {
                   onAddProvider(type);
                   setShowAddMenu(false);
                 }}>
                   {PROVIDER_PRESETS[type].label}
                 </div>
               ))}
-              <div className="provider-add-item" onClick={() => {
-                onAddProvider('custom');
-                setShowAddMenu(false);
-              }}>
-                自定义
-              </div>
             </div>
           )}
         </div>
@@ -331,7 +325,7 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
         >
           <div className="provider-card-header">
             <div className="provider-card-info">
-              <span className="provider-badge">{PROVIDER_PRESETS[p.type as keyof typeof PROVIDER_PRESETS]?.label || '自定义'}</span>
+              <span className="provider-badge">{PROVIDER_PRESETS[p.type]?.label || PROVIDER_PRESETS[''].label}</span>
               <span className="provider-card-name">{p.name}</span>
             </div>
             <div className="provider-card-actions">
@@ -364,23 +358,16 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
             <select className="setting-select" value={activeProvider.type}
               onChange={e => {
                 const t = e.target.value as ProviderType;
-                const preset = PROVIDER_PRESETS[t as keyof typeof PROVIDER_PRESETS];
+                const preset = PROVIDER_PRESETS[t];
                 const updates: Partial<ModelProvider> = { type: t };
-                if (preset) {
-                  updates.name = preset.label;
-                  updates.apiUrl = preset.apiUrl;
-                  updates.model = preset.models[0]?.value || '';
-                } else {
-                  updates.name = '自定义';
-                  updates.apiUrl = '';
-                  updates.model = '';
-                }
+                updates.name = preset.label;
+                updates.apiUrl = preset.apiUrl;
+                updates.model = preset.models[0]?.value || '';
                 onUpdateProvider(activeProvider.id, updates);
               }}>
               {Object.entries(PROVIDER_PRESETS).map(([key, val]) => (
-                <option key={key} value={key}>{val.label}</option>
+                <option key={key || 'auto'} value={key}>{val.label}</option>
               ))}
-              <option value="custom">自定义</option>
             </select>
           </SettingRow>
           <SettingRow label="API 地址">
@@ -420,8 +407,8 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
   const [error, setError] = useState('');
 
   const handleFetch = useCallback(async () => {
-    if (!provider.apiUrl || !provider.apiKey) {
-      setError('请填写完整的 API 地址和密钥');
+    if (!provider.apiUrl) {
+      setError('请填写 API 地址');
       return;
     }
 
@@ -430,7 +417,7 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
     setError('');
 
     try {
-      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}`;
+      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}&model=${encodeURIComponent(provider.model || '')}`;
       const resp = await fetch(url);
       if (!resp.ok) {
         setError('API地址或密钥不正确');

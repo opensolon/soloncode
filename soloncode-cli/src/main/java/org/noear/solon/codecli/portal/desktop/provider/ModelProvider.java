@@ -1,5 +1,7 @@
 package org.noear.solon.codecli.portal.desktop.provider;
 
+import org.noear.solon.codecli.util.AiApiUrlAdapter;
+
 import java.util.List;
 import java.util.Map;
 
@@ -13,17 +15,7 @@ public interface ModelProvider {
 
     List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey);
 
-    default String deriveBaseUrl(String apiUrl){
-        String[] suffixes = {"/api/anthropic/v1/messages","/api/paas/v4/chat/completions",
-                "/api/coding/paas/v4/chat/completions",
-                "/api/anthropic","/chat/completions", "/images/generations", "/embeddings",
-                "/completions",  };
-        String url = apiUrl;
-        for (String suffix : suffixes) {
-            if (url.endsWith(suffix)) {
-                url = url.substring(0, url.length() - suffix.length());
-            }
-        }
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    default String deriveBaseUrl(String apiUrl) {
+        return AiApiUrlAdapter.deriveBaseUrl(apiUrl, getProviderName());
     }
 }

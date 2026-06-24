@@ -44,7 +44,7 @@ export interface DbGlobalSetting {
 /** 模型供应商 */
 export interface DbProvider {
   id: string;
-  type: string;        // ProviderType: zhipu | openai | deepseek | claude | custom
+  type: string;        // ProviderType: '' | openai | openai-responses | anthropic | ollama
   name: string;
   apiUrl: string;
   apiKey: string;

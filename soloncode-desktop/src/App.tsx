@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ActivityBar, type ActivityType } from './components/layout/ActivityBar';
 import { TitleBar } from './components/layout/TitleBar';
@@ -11,9 +11,7 @@ import { SessionsPanel, type Session, type Project } from './components/sidebar/
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
-import { EditorPanel } from './components/editor/EditorPanel';
 import { ChatView } from './components/ChatView';
-import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { fileService } from './services/fileService';
 import { gitService } from './services/gitService';
 import { settingsService } from './services/settingsService';
@@ -28,6 +26,9 @@ import { UNLINKED_PROJECT, saveMessage, db } from './db';
 import { useWorkspace } from './hooks/useWorkspace';
 import type { Conversation, Plugin, Theme } from './types';
 import './App.css';
+
+const EditorPanel = lazy(() => import('./components/editor/EditorPanel').then(module => ({ default: module.EditorPanel })));
+const TerminalPanel = lazy(() => import('./components/terminal/TerminalPanel').then(module => ({ default: module.TerminalPanel })));
 
 // 模拟扩展
 const mockExtensions = [
@@ -375,6 +376,7 @@ function App() {
 
   // Toast
   const [terminalVisible, setTerminalVisible] = useState(false);
+  const [terminalMounted, setTerminalMounted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((msg: string) => {
@@ -382,6 +384,10 @@ function App() {
     setToast(msg);
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
+
+  useEffect(() => {
+    if (terminalVisible) setTerminalMounted(true);
+  }, [terminalVisible]);
 
   const handleAddProject = useCallback(async () => {
     const selectedPath = await fileService.openFolderDialog();
@@ -508,7 +514,9 @@ function App() {
       if (!panelState.editorVisible) return null;
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
-          <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} diffLines={diffLines} diffFiles={diffFiles} />
+          <Suspense fallback={<div className="panel-loading">Loading editor...</div>}>
+            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} diffLines={diffLines} diffFiles={diffFiles} />
+          </Suspense>
           {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
       );
@@ -606,7 +614,7 @@ function App() {
                       ws.onopen = () => {
                         // 先注册模型配置
                         if (activeProvider) {
-                          ws.send(JSON.stringify({ type: 'config', chatModel: { apiUrl: activeProvider.apiUrl, apiKey: activeProvider.apiKey, model: modelName } }));
+                          ws.send(JSON.stringify({ type: 'config', chatModel: { apiUrl: activeProvider.apiUrl, apiKey: activeProvider.apiKey, model: modelName, provider: activeProvider.type } }));
                         }
                         ws.send(JSON.stringify({ input: prompt, cwd: activeProjectPath, model: modelName }));
                       };
@@ -639,7 +647,11 @@ function App() {
               </div>
             )}
           </div>
-          <TerminalPanel visible={terminalVisible} cwd={activeProjectPath || undefined} />
+          {terminalMounted && (
+            <Suspense fallback={<div className="terminal-panel"><div className="terminal-body panel-loading">Loading terminal...</div></div>}>
+              <TerminalPanel visible={terminalVisible} cwd={activeProjectPath || undefined} />
+            </Suspense>
+          )}
         </div>
       </div>
       <StatusBar

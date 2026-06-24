@@ -399,7 +399,6 @@ public class WebSettingsController {
             if (Assert.isNotEmpty(provider)) {
                 config.setProvider(provider);
             }
-
             Integer contextLength = node.get("contextLength").getInt();
             if (contextLength != null && contextLength > 0) {
                 config.setContextLength(contextLength);

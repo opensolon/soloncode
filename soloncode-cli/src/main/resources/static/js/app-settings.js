@@ -248,7 +248,7 @@
                 + '<div class="llm-empty-desc">添加至少一个大模型以开始 AI 对话</div>'
                 + '</div>';
         } else {
-            var providerIcons = { 'openai': 'OAI', 'ollama': 'OLA', 'zhipu': 'ZP', 'deepseek': 'DS', 'baidu-qianfan': 'BD', 'ali-tongyi': 'ALI', 'moonshot': 'MS', 'minimax': 'MM' };
+            var providerIcons = { 'openai': 'OAI', 'openai-responses': 'OAI', 'ollama': 'OLA', 'zhipu': 'ZP', 'deepseek': 'DS', 'baidu-qianfan': 'BD', 'ali-tongyi': 'ALI', 'moonshot': 'MS', 'minimax': 'MM' };
             list.forEach(function (item) {
                 var model = item.model || '';
                 var provider = item.provider || '';

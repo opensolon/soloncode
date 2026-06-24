@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { Message, Conversation, Theme, Plugin, ContentType, ContentItem } from '../types';
-import type { ModelProvider } from '../services/settingsService';
+import { normalizeProviderType, type ModelProvider } from '../services/settingsService';
 import { saveMessage, getMessagesByConversation } from '../db';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
@@ -165,7 +165,7 @@ class WebSocketManager {
   }
 
   /** 推送配置变更到后端（HTTP POST 代替短连接 WS） */
-  async sendConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string }): Promise<void> {
+  async sendConfig(chatModel: { apiUrl?: string; apiKey?: string; model?: string; provider?: string }): Promise<void> {
     const port = this.backendPort || 4808;
     try {
       await fetch(`http://localhost:${port}/chat/config`, {
@@ -230,7 +230,7 @@ async function registerModelToBackend(provider: { apiUrl: string; apiKey: string
         apiUrl: provider.apiUrl,
         apiKey: provider.apiKey,
         model: provider.model,
-        provider: provider.type || 'openai',
+        provider: normalizeProviderType(provider.type),
         timeout: 'PT120S',
       }),
     });

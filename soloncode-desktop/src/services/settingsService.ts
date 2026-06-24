@@ -35,52 +35,49 @@ export interface AgentConfig {
   source: 'manual' | 'discovered';
 }
 
-export type ProviderType = 'zhipu' | 'openai' | 'deepseek' | 'claude' | 'custom';
+export type ProviderType = '' | 'openai' | 'openai-responses' | 'anthropic' | 'ollama';
 
-export const PROVIDER_PRESETS: Record<Exclude<ProviderType, 'custom'>, {
+export const PROVIDER_PRESETS: Record<ProviderType, {
   label: string;
   apiUrl: string;
   models: { value: string; label: string }[];
 }> = {
-  zhipu: {
-    label: '智谱 AI',
-    apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    models: [
-      { value: 'glm-4.7', label: 'GLM-4.7' },
-      { value: 'glm-4-plus', label: 'GLM-4-Plus' },
-      { value: 'glm-4-flash', label: 'GLM-4-Flash' },
-      { value: 'glm-4-long', label: 'GLM-4-Long' },
-    ],
+  '': {
+    label: '自动检测（须填写完整地址）',
+    apiUrl: '',
+    models: [],
   },
   openai: {
-    label: 'OpenAI',
-    apiUrl: 'https://api.openai.com/v1/chat/completions',
-    models: [
-      { value: 'gpt-4o', label: 'GPT-4o' },
-      { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-      { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-      { value: 'o1', label: 'O1' },
-      { value: 'o3-mini', label: 'O3 Mini' },
-    ],
+    label: 'OpenAI BaseUrl / 兼容接口',
+    apiUrl: 'https://api.openai.com/v1',
+    models: [],
   },
-  deepseek: {
-    label: 'DeepSeek',
-    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
-    models: [
-      { value: 'deepseek-chat', label: 'DeepSeek Chat' },
-      { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
-    ],
+  'openai-responses': {
+    label: 'OpenAI Responses BaseUrl / 兼容接口',
+    apiUrl: 'https://api.openai.com/v1/responses',
+    models: [],
   },
-  claude: {
-    label: 'Claude',
-    apiUrl: 'https://api.anthropic.com/v1/messages',
-    models: [
-      { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-      { value: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
-      { value: 'claude-haiku-4-20250514', label: 'Claude Haiku 4' },
-    ],
+  anthropic: {
+    label: 'Anthropic BaseUrl / 兼容接口',
+    apiUrl: 'https://api.anthropic.com',
+    models: [],
+  },
+  ollama: {
+    label: 'Ollama BaseUrl / 兼容接口',
+    apiUrl: 'http://localhost:11434',
+    models: [],
   },
 };
+
+export function normalizeProviderType(type?: string | null): ProviderType {
+  if (type === 'openai' || type === 'openai-responses' || type === 'anthropic' || type === 'ollama' || type === '') {
+    return type;
+  }
+  if (type === 'claude') {
+    return 'anthropic';
+  }
+  return '';
+}
 
 export interface ModelProvider {
   id: string;
@@ -122,15 +119,15 @@ export interface AppSettings extends GeneralSettings {
 
 let _providerIdCounter = 0;
 export function createProvider(type: ProviderType): ModelProvider {
-  const preset = type !== 'custom' ? PROVIDER_PRESETS[type] : null;
+  const preset = PROVIDER_PRESETS[type];
   _providerIdCounter++;
   return {
     id: `provider_${Date.now()}_${_providerIdCounter}`,
     type,
-    name: preset?.label || '自定义',
-    apiUrl: preset?.apiUrl || '',
+    name: preset.label,
+    apiUrl: preset.apiUrl,
     apiKey: '',
-    model: preset?.models[0]?.value || '',
+    model: preset.models[0]?.value || '',
     enabled: true,
   };
 }
@@ -337,11 +334,12 @@ export const settingsService = {
     apiUrl: string,
     apiKey: string,
     existingProviders: ModelProvider[],
-    provider: string = 'openai',
+    provider: string = '',
+    model: string = '',
   ): Promise<{ providers: ModelProvider[]; activeProviderId: string } | null> {
     try {
       const resp = await fetch(
-        `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}`,
+        `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`,
       );
       if (!resp.ok) return null;
 
@@ -359,16 +357,16 @@ export const settingsService = {
 
         if (existingIds.has(providerId)) continue;
 
-        const provider: ModelProvider = {
+        const modelProvider: ModelProvider = {
           id: providerId,
-          type: 'custom' as ProviderType,
+          type: normalizeProviderType(provider),
           name: m.ownedBy || '远程',
           apiUrl,
           apiKey,
           model: modelId,
           enabled: true,
         };
-        newProviders.push(provider);
+        newProviders.push(modelProvider);
 
         // 注入到 CLI 后端（仅注入尚未添加的模型）
         if (!existingModels.has(modelId)) {
@@ -381,7 +379,7 @@ export const settingsService = {
                 apiUrl,
                 apiKey,
                 model: modelId,
-                provider: 'openai',
+                provider: normalizeProviderType(provider),
                 timeout: 'PT120S',
               }),
             });
@@ -460,7 +458,7 @@ export const settingsService = {
               if (parsed[key] !== undefined) (general as any)[key] = parsed[key];
             }
             if (parsed.apiUrl || parsed.apiKey || parsed.model) {
-              const p = createProvider('custom');
+              const p = createProvider('');
               p.name = '已迁移';
               p.apiUrl = parsed.apiUrl || '';
               p.apiKey = parsed.apiKey || '';
@@ -479,7 +477,7 @@ export const settingsService = {
     const providerRows = await db.providers.orderBy('sortOrder').toArray();
     const providers: ModelProvider[] = providerRows.map(r => ({
       id: r.id,
-      type: r.type as ProviderType,
+      type: normalizeProviderType(r.type),
       name: r.name,
       apiUrl: r.apiUrl,
       apiKey: r.apiKey,
@@ -527,7 +525,7 @@ export const settingsService = {
       const p = providers[i];
       await db.providers.put({
         id: p.id,
-        type: p.type,
+        type: normalizeProviderType(p.type),
         name: p.name,
         apiUrl: p.apiUrl,
         apiKey: p.apiKey,

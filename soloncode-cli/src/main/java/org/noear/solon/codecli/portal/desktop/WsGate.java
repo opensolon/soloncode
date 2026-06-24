@@ -38,6 +38,7 @@ import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentProperties;
+import org.noear.solon.codecli.util.AiApiUrlAdapter;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.core.util.Assert;
@@ -497,13 +498,18 @@ public class WsGate extends SimpleWebSocketListener {
                 String apiUrl = chatModelNode.get("apiUrl") != null ? chatModelNode.get("apiUrl").getString() : null;
                 String apiKey = chatModelNode.get("apiKey") != null ? chatModelNode.get("apiKey").getString() : null;
                 String model = chatModelNode.get("model") != null ? chatModelNode.get("model").getString() : null;
+                String provider = chatModelNode.get("provider") != null ? chatModelNode.get("provider").getString() : null;
+                String normalizedProvider = AiApiUrlAdapter.normalizeProvider(provider, apiUrl);
+                String normalizedApiUrl = apiUrl == null ? null : AiApiUrlAdapter.normalizeChatApiUrl(apiUrl, normalizedProvider);
 
-                if (apiUrl != null || apiKey != null || model != null) {
+                if (apiUrl != null || apiKey != null || model != null || provider != null) {
                     // 更新 AgentProperties 的 chatModel 配置
                     if (agentPros.getChatModel() != null) {
-                        if (apiUrl != null) agentPros.getChatModel().setApiUrl(apiUrl);
+                        if (normalizedApiUrl != null) agentPros.getChatModel().setApiUrl(normalizedApiUrl);
                         if (apiKey != null) agentPros.getChatModel().setApiKey(apiKey);
                         if (model != null) agentPros.getChatModel().setModel(model);
+                        if (provider != null) agentPros.getChatModel().setProvider(normalizedProvider);
+                        AiApiUrlAdapter.normalize(agentPros.getChatModel());
                     }
 
                     // 重建 ChatModel 并注入 kernel
@@ -511,10 +517,10 @@ public class WsGate extends SimpleWebSocketListener {
                     engine.addModel(agentPros.getChatModel());
                     engine.switchMainModel(agentPros.getChatModel().getNameOrModel());
 
-                    LOG.info("[WS] Config updated: model={}", model);
+                    LOG.info("[WS] Config updated: model={}, provider={}", model, normalizedProvider);
 
                     // 持久化到 YAML 文件
-                    saveConfigToFile(apiUrl, apiKey, model);
+                    saveConfigToFile(normalizedApiUrl, apiKey, model, normalizedProvider);
 
                     socket.send(new ONode()
                             .set("type", "config")
@@ -536,7 +542,7 @@ public class WsGate extends SimpleWebSocketListener {
     /**
      * 将 chatModel 配置持久化到 YAML 文件（~/.soloncode/chat-model.yml）
      */
-    private void saveConfigToFile(String apiUrl, String apiKey, String model) {
+    private void saveConfigToFile(String apiUrl, String apiKey, String model, String provider) {
         try {
             String home = System.getProperty("user.home");
             Path configDir = Paths.get(home, ".soloncode");
@@ -548,10 +554,12 @@ public class WsGate extends SimpleWebSocketListener {
             String existApiUrl = agentPros.getChatModel() != null ? agentPros.getChatModel().getApiUrl() : null;
             String existApiKey = agentPros.getChatModel() != null ? agentPros.getChatModel().getApiKey() : null;
             String existModel = agentPros.getChatModel() != null ? agentPros.getChatModel().getNameOrModel() : null;
+            String existProvider = agentPros.getChatModel() != null ? agentPros.getChatModel().getProvider() : null;
 
             String finalApiUrl = apiUrl != null ? apiUrl : existApiUrl;
             String finalApiKey = apiKey != null ? apiKey : existApiKey;
             String finalModel = model != null ? model : existModel;
+            String finalProvider = provider != null ? provider : existProvider;
 
             StringBuilder yaml = new StringBuilder();
             yaml.append("soloncode:\n");
@@ -559,6 +567,7 @@ public class WsGate extends SimpleWebSocketListener {
             if (finalApiUrl != null) yaml.append("    apiUrl: \"").append(escapeYaml(finalApiUrl)).append("\"\n");
             if (finalApiKey != null) yaml.append("    apiKey: \"").append(escapeYaml(finalApiKey)).append("\"\n");
             if (finalModel != null) yaml.append("    model: \"").append(escapeYaml(finalModel)).append("\"\n");
+            if (Assert.isNotEmpty(finalProvider)) yaml.append("    provider: \"").append(escapeYaml(finalProvider)).append("\"\n");
 
             Files.write(configFile, yaml.toString().getBytes(StandardCharsets.UTF_8));
             LOG.info("[WS] Config persisted to: {}", configFile);

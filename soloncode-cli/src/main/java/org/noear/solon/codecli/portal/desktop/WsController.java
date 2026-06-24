@@ -2,12 +2,14 @@ package org.noear.solon.codecli.portal.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.chat.ChatConfig;
+import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.portal.desktop.provider.ModelInfo;
 import org.noear.solon.codecli.portal.desktop.provider.ModelProvider;
 import org.noear.solon.codecli.portal.desktop.provider.ModelProviderFactory;
+import org.noear.solon.codecli.util.AiApiUrlAdapter;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
@@ -53,14 +55,32 @@ public class WsController {
      */
     @Get
     @Mapping("/chat/models/fetch")
-    public Result<List<Map>> fetchModels(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("provider") String provider) throws Exception {
+    public Result<List<Map>> fetchModels(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("provider") String provider, @Param("model") String model) throws Exception {
         if (Assert.isEmpty(apiUrl)) {
             return Result.failure("apiUrl is required");
         }
 
-        ModelProvider modelProvider = modelProviderFactory.getProvider(provider);
-        String baseUrl = modelProvider.deriveBaseUrl(apiUrl);
+        String normalizedProvider = AiApiUrlAdapter.normalizeProvider(provider, apiUrl);
+        String normalizedApiUrl = AiApiUrlAdapter.normalizeChatApiUrl(apiUrl, normalizedProvider);
+        ModelProvider modelProvider = modelProviderFactory.getProvider(normalizedProvider);
+        String baseUrl = AiApiUrlAdapter.deriveBaseUrl(normalizedApiUrl, normalizedProvider);
         List<ModelInfo> models = modelProvider.fetchModels(baseUrl, null, apiKey);
+
+        if (models.isEmpty() && Assert.isNotEmpty(model)) {
+            ChatModel chatModel = ChatModel.of(normalizedApiUrl)
+                    .apiKey(apiKey)
+                    .provider(normalizedProvider)
+                    .model(model)
+                    .build();
+            chatModel.prompt("hi").call();
+
+            models.add(ModelInfo.builder()
+                    .id(model)
+                    .object("model")
+                    .created(System.currentTimeMillis() / 1000)
+                    .ownedBy(Assert.isEmpty(normalizedProvider) ? "openai-compatible" : normalizedProvider)
+                    .build());
+        }
 
         List<Map> list = new ArrayList<>();
         for (ModelInfo mi : models) {
@@ -70,11 +90,14 @@ public class WsController {
             item.put("ownedBy", mi.getOwnedBy());
 
             ChatConfig config = new ChatConfig();
-            config.setName(mi.getObject());
-            config.setApiUrl(apiUrl);
+            config.setName(mi.getId());
+            config.setApiUrl(normalizedApiUrl);
             config.setApiKey(apiKey);
-            config.setModel(mi.getObject());
-            engine.removeModel(mi.getObject());
+            config.setModel(mi.getId());
+            if (Assert.isNotEmpty(normalizedProvider)) {
+                config.setProvider(normalizedProvider);
+            }
+            engine.removeModel(mi.getId());
             engine.addModel(config);
             list.add(item);
         }
@@ -109,6 +132,11 @@ public class WsController {
         config.setApiUrl(apiUrl);
         config.setApiKey(apiKey);
         config.setModel(model);
+        config.setProvider(provider);
+        AiApiUrlAdapter.normalize(config);
+        if (Assert.isEmpty(config.getProvider())) {
+            config.setProvider(null);
+        }
 
         // timeout
         String timeout = root.get("timeout").getString();
