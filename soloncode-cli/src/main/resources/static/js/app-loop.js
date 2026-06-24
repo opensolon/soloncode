@@ -490,7 +490,7 @@
         html += '<label>调度方式</label>';
         html += '<div class="loop-interval-row" style="flex-wrap:wrap;">';
         html += '<label class="loop-radio"><input type="radio" name="loopScheduleType" value="interval" checked/> 固定间隔</label>';
-        html += '<input type="text" class="loop-input loop-input-sm" id="loopFormInterval" value="5m" placeholder="如 30m、2h"/>';
+        html += '<input type="text" class="loop-input loop-input-sm" id="loopFormInterval" value="5m" placeholder="如 5m、1h"/>';
         html += '<label class="loop-checkbox" style="margin-left:8px;white-space:nowrap;"><input type="checkbox" id="loopFormRunNow" checked/> 首次立即执行</label>';
         html += '</div>';
         html += '<div class="loop-interval-row">';
@@ -520,8 +520,7 @@
         html += '<div class="loop-form-inline" style="margin-top:12px;">';
         html += '<div class="loop-form-inline-item"><label style="font-size:11px;">Token 预算</label><input type="text" inputmode="numeric" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制（如 32k、1m）" style="width:100%;" list="loopMaxTokensList" autocomplete="off"/>' +
             '<datalist id="loopMaxTokensList">' +
-            '<option value="16k"><option value="32k"><option value="64k"><option value="128k">' +
-            '<option value="256k"><option value="512k"><option value="1m"><option value="2m">' +
+            '<option value="512k"><option value="5m"><option value="10m">' +
             '</datalist></div>';
         html += '<div class="loop-form-inline-item"><label style="font-size:11px;">时间预算</label><input type="text" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制（如 30m、2h）" style="width:100%;"/></div>';
         html += '</div>';
