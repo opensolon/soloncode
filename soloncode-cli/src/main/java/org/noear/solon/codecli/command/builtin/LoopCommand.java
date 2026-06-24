@@ -217,14 +217,10 @@ public class LoopCommand implements Command {
                 taskType, runNow
         );
 
-        // 初始化状态目录（用 task 生成的 ID）
-        LoopStateManager.init(workspace, task.getId(), prompt);
-
         try {
             scheduler.schedule(sessionId, task);
         } catch (IllegalStateException e) {
             ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
-            LoopStateManager.cleanup(workspace, task.getId());
             return;
         }
 
@@ -354,14 +350,10 @@ public class LoopCommand implements Command {
             task.setMaxDurationMs(loopCfg.getDefaultMaxDurationMsOrDefault());
         }
 
-        // 初始化状态目录
-        LoopStateManager.init(workspace, task.getId(), prompt);
-
         try {
             scheduler.schedule(sessionId, task);
         } catch (IllegalStateException e) {
             ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
-            LoopStateManager.cleanup(workspace, task.getId());
             return;
         }
 

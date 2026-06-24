@@ -869,7 +869,6 @@ public class WebController {
         if (maxDurationMs != null) task.setMaxDurationMs(maxDurationMs);
 
         try {
-            LoopStateManager.init(workspace, task.getId(), prompt);
             loopScheduler.schedule(sessionId, task);
         } catch (IllegalStateException e) {
             return Result.failure(400, e.getMessage());
