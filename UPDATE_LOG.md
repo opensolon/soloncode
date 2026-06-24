@@ -11,6 +11,7 @@
 * 优化 soloncode WebGate 允许中断命令通过忙碌检查
 * 优化 soloncode web 面板拖拽性能；延迟消息流代码高亮；为滚动区域和面板添加contain布局
 * 优化 soloncode web 任务面板数据显示
+* 优化 soloncode web mac 组合输入法的兼容性
 * 重构 soloncode loop goal 实现
 * 细节优化
 
