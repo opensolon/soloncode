@@ -486,7 +486,7 @@ public class LoopScheduler {
         }
 
         try {
-            // ③ 执行一轮（含 prompt 构建、AI 调用、状态评估、历史写入、持久化）
+            // ③ 执行一轮（含 prompt 构建、AI 调用、状态评估、持久化）
             GoalRoundOutcome outcome = executeGoalRound(sessionId, task);
 
             // ④ 事件驱动续行：仅 CONTINUE 且 goal 仍活跃时 submit 下一轮
@@ -537,13 +537,8 @@ public class LoopScheduler {
                             task.getId(), elapsed, maxDurationMs);
                     executeBudgetLimitWrapUp(sessionId, task, gs);
 
-                    if (gs.getStatus() == GoalState.Status.ACHIEVED) {
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                (String) null, task.getCurrentIteration(), "GOAL_ACHIEVED");
-                    } else {
+                    if (gs.getStatus() != GoalState.Status.ACHIEVED) {
                         gs.markBudgetLimited();
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                (String) null, task.getCurrentIteration(), "BUDGET_EXCEEDED");
                     }
 
                     disableGoalScheduling(sessionId, task);
@@ -557,13 +552,8 @@ public class LoopScheduler {
                         task.getId(), task.getCurrentIteration());
                 executeBudgetLimitWrapUp(sessionId, task, gs);
 
-                if (gs.getStatus() == GoalState.Status.ACHIEVED) {
-                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                            (String) null, task.getCurrentIteration(), "GOAL_ACHIEVED");
-                } else {
+                if (gs.getStatus() != GoalState.Status.ACHIEVED) {
                     gs.markBudgetLimited();
-                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                            (String) null, task.getCurrentIteration(), "BUDGET_EXCEEDED");
                 }
 
                 disableGoalScheduling(sessionId, task);
@@ -580,7 +570,7 @@ public class LoopScheduler {
     }
 
     /**
-     * 执行单轮 Goal 调用（含 prompt 构建、AI 执行、状态评估、历史写入、持久化）
+     * 执行单轮 Goal 调用（含 prompt 构建、AI 执行、状态评估、持久化）
      *
      * <p>返回 GoalRoundOutcome 枚举，供调用方决定是否续行。
      */
@@ -626,8 +616,6 @@ public class LoopScheduler {
             if (achieved) {
                 LOG.info("Loop task '{}' goal ACHIEVED at iteration {}", task.getId(), iteration);
                 gs.achieve();
-                LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                        executionResult, iteration, "GOAL_ACHIEVED");
                 disableGoalScheduling(sessionId, task);
                 return GoalRoundOutcome.ACHIEVED;
             }
@@ -640,23 +628,17 @@ public class LoopScheduler {
 
                 // wrap-up 回合若 LLM 认为目标已达成，则标记 ACHIEVED 而非 BUDGET_EXCEEDED
                 if (gs.getStatus() == GoalState.Status.ACHIEVED) {
-                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                            executionResult, iteration, "GOAL_ACHIEVED");
                     disableGoalScheduling(sessionId, task);
                     return GoalRoundOutcome.ACHIEVED;
                 } else {
                     gs.markBudgetLimited();
-                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                            executionResult, iteration, "BUDGET_EXCEEDED");
                     disableGoalScheduling(sessionId, task);
                     return GoalRoundOutcome.BUDGET_EXCEEDED;
                 }
             }
         }
 
-        // 写入执行历史
-        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                executionResult, iteration, "NONE");
+
 
         // 实时持久化
         saveToFile(sessionId, sessionTasks.get(sessionId));
@@ -713,8 +695,7 @@ public class LoopScheduler {
                             task.getId(), errors);
                     gs.markBlocked();
                     pauseGoal(sessionId, task.getId());
-                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                            (String) null, task.getCurrentIteration(), "BLOCKED_BY_ERRORS");
+
                 } else {
                     // 未达阈值 → 递增延迟重试
                     long delay = 5L * errors; // 5s, 10s, 15s ...

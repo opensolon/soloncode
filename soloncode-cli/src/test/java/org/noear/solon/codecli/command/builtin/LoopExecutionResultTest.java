@@ -16,10 +16,6 @@
 package org.noear.solon.codecli.command.builtin;
 
 import org.junit.jupiter.api.Test;
-import org.noear.snack4.ONode;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -54,29 +50,7 @@ class LoopExecutionResultTest {
         
     }
 
-    @Test
-    void appendHistoryShouldWriteStructuredResult() throws Exception {
-        Path workspace = Files.createTempDirectory("loop-state-test-");
-        LoopTask task = new LoopTask("prompt", 1, null, LoopTask.TaskType.GOAL, false);
 
-        LoopStateManager.init(workspace.toString(), task.getId(), task.getPrompt());
-        LoopStateManager.appendHistory(workspace.toString(), task.getId(),
-                LoopExecutionResult.fromText("done\n[GOAL_ACHIEVED]"),
-                1, "GOAL_ACHIEVED");
-
-        String json = new String(Files.readAllBytes(workspace.resolve(".soloncode").resolve("loops")
-                .resolve(task.getId()).resolve("history.json")), "UTF-8");
-        ONode root = ONode.ofJson(json);
-
-        assertTrue(root.isArray());
-        int count = 0;
-        for (ONode ignored : root.getArray()) {
-            count++;
-        }
-        assertEquals(1, count);
-        assertEquals("GOAL_ACHIEVED", root.get(0).get("stopReason").getString());
-        assertTrue(root.get(0).get("goalAchieved").getBoolean());
-    }
 
     @Test
     void submittedOnlyShouldNotBeGoalAchieved() {
