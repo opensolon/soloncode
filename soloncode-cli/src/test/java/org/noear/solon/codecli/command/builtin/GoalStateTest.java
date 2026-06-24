@@ -118,9 +118,34 @@ class GoalStateTest {
         assertEquals(GoalState.Status.PAUSED, gs.getStatus(), "markBlocked should not fire on PAUSED");
     }
 
-    // ===== 2. Token 预算 =====
+    // ===== P0 守卫路径：markBudgetLimited 不覆盖 ACHIEVED =====
 
     @Test
+    void markBudgetLimitedShouldNotOverrideAchieved() {
+        GoalState gs = new GoalState("test", 1000);
+        gs.achieve();
+        assertEquals(GoalState.Status.ACHIEVED, gs.getStatus());
+
+        // markBudgetLimited 有 PURSUING 守卫，不应覆盖 ACHIEVED
+        gs.markBudgetLimited();
+        assertEquals(GoalState.Status.ACHIEVED, gs.getStatus(),
+                "markBudgetLimited should not override ACHIEVED");
+    }
+
+    @Test
+    void markBudgetLimitedShouldNotOverrideAchievedFromWrapUp() {
+        // 模拟守卫路径：wrap-up 中 achieve() → 然后 markBudgetLimited()
+        // 这是 P0 修复的核心场景：executeBudgetLimitWrapUp 调用 gs.achieve()
+        // 之后守卫路径调用 gs.markBudgetLimited()，不应覆盖 ACHIEVED
+        GoalState gs = new GoalState("test", 1000);
+        gs.achieve();
+        gs.markBudgetLimited();
+        assertEquals(GoalState.Status.ACHIEVED, gs.getStatus(),
+                "budget wrap-up achieve must survive markBudgetLimited");
+        assertTrue(gs.getStatus().isTerminal());
+    }
+
+    // ===== 2. Token 预算 =====
     void addTokensShouldAccumulate() {
         GoalState gs = new GoalState("test", 10000);
         gs.addTokens(500);
@@ -188,7 +213,7 @@ class GoalStateTest {
 
     @Test
     void goalModeShouldBeTrueWhenTypeIsGoal() {
-        LoopTask task = new LoopTask("prompt", 0, null, LoopTask.TaskType.GOAL, 0, true);
+        LoopTask task = new LoopTask("prompt", 0, null, LoopTask.TaskType.GOAL, true);
         assertTrue(task.isGoalMode());
         assertNotNull(task.getGoalState());
         assertEquals("prompt", task.getGoalState().getCondition());
@@ -196,14 +221,14 @@ class GoalStateTest {
 
     @Test
     void goalModeShouldBeFalseWithoutGoalCondition() {
-        LoopTask task = new LoopTask("prompt", 1, null, null, 0);
+        LoopTask task = new LoopTask("prompt", 1, null, null, false);
         assertFalse(task.isGoalMode());
         assertNull(task.getGoalState());
     }
 
     @Test
     void goalTaskSerializationRoundTripShouldPreserveGoalState() {
-        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, 0, true);
+        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, true);
         task.getGoalState().addTokens(5000);
         task.incrementIteration();
         task.incrementIteration();
@@ -219,7 +244,7 @@ class GoalStateTest {
 
     @Test
     void goalTaskWithBlockedStateSerializationRoundTrip() {
-        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, 0, true);
+        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, true);
         task.getGoalState().markBlocked();
 
         ONode node = task.toONode();

@@ -385,7 +385,7 @@ public class LoopScheduler {
 
         List<LoopTask> alive = new ArrayList<>();
         for (LoopTask t : tasks) {
-            if (t.isExpired() || t.isCancelled()) {
+            if (t.isCancelled()) {
                 continue;
             }
             alive.add(t);
@@ -459,21 +459,66 @@ public class LoopScheduler {
      * <p>Goal 模式下，执行完成后若 goal 仍活跃则事件驱动续行（submit 下一轮）。
      * 续行无深度限制、无冷却期 — 靠 tryStart() CAS 防重叠 + BusyChecker 防冲突。
      */
+
+    /**
+     * 单轮 Goal 执行结果（用于 executeGoalRound 返回值）
+     */
+    enum GoalRoundOutcome {
+        /** 正常完成一轮，可继续调度下一轮 */
+        CONTINUE,
+        /** 目标已达成 */
+        ACHIEVED,
+        /** 预算耗尽（wrap-up 未达成） */
+        BUDGET_EXCEEDED
+    }
+
     private void onTrigger(String sessionId, LoopTask task) {
-        // 已禁用/过期/已取消则移除
-        if (!task.isEnabled() || task.isExpired() || task.isCancelled()) {
+        // ① 前置守卫（禁用/过期/取消 → 繁忙 → 预算/状态/最大迭代）
+        if (!checkGuardConditions(sessionId, task)) {
+            return;
+        }
+
+        // ② CAS 防重入
+        if (!task.tryStart()) {
+            return;
+        }
+
+        try {
+            // ③ 执行一轮（含 prompt 构建、AI 调用、状态评估、历史写入、持久化）
+            GoalRoundOutcome outcome = executeGoalRound(sessionId, task);
+
+            // ④ 事件驱动续行：仅 CONTINUE 且 goal 仍活跃时 submit 下一轮
+            if (outcome == GoalRoundOutcome.CONTINUE) {
+                scheduleContinuation(sessionId, task);
+            }
+            // ACHIEVED / BUDGET_EXCEEDED / MAX_ITERATIONS 已在 executeGoalRound 内部处理完毕
+        } catch (Exception e) {
+            handleExecutionError(sessionId, task, e);
+        } finally {
+            task.finish();
+        }
+    }
+
+    /**
+     * 前置守卫检查链。任一条件触发则执行对应处理并返回 false。
+     *
+     * @return true = 可以继续执行；false = 已处理完毕（调用方应 return）
+     */
+    private boolean checkGuardConditions(String sessionId, LoopTask task) {
+        // 已禁用/已取消则移除
+        if (!task.isEnabled() || task.isCancelled()) {
             String jobName = task.getJobName();
             if (jobManager.jobExists(jobName)) {
                 jobManager.jobRemove(jobName);
             }
-            return;
+            return false;
         }
 
         // 会话繁忙时跳过
         for (BusyChecker checker : busyCheckers) {
             if (checker.isBusy(sessionId)) {
                 LOG.info("Loop task '{}' skipped: session '{}' is busy", task.getId(), sessionId);
-                return;
+                return false;
             }
         }
 
@@ -489,11 +534,18 @@ public class LoopScheduler {
                     LOG.info("Loop task '{}' goal duration exceeded ({}ms >= {}ms), executing wrap-up turn",
                             task.getId(), elapsed, maxDurationMs);
                     executeBudgetLimitWrapUp(sessionId, task, gs);
-                    gs.markBudgetLimited();
-                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                            (String) null, task.getCurrentIteration(), "BUDGET_LIMITED");
+
+                    if (gs.getStatus() == GoalState.Status.ACHIEVED) {
+                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                (String) null, task.getCurrentIteration(), "GOAL_ACHIEVED");
+                    } else {
+                        gs.markBudgetLimited();
+                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                (String) null, task.getCurrentIteration(), "BUDGET_EXCEEDED");
+                    }
+
                     disableGoalScheduling(sessionId, task);
-                    return;
+                    return false;
                 }
             }
 
@@ -502,169 +554,177 @@ public class LoopScheduler {
                 LOG.info("Loop task '{}' goal budget exceeded at iteration {}, executing wrap-up turn",
                         task.getId(), task.getCurrentIteration());
                 executeBudgetLimitWrapUp(sessionId, task, gs);
-                gs.markBudgetLimited();
-                LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                        (String) null, task.getCurrentIteration(), "BUDGET_LIMITED");
+
+                if (gs.getStatus() == GoalState.Status.ACHIEVED) {
+                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                            (String) null, task.getCurrentIteration(), "GOAL_ACHIEVED");
+                } else {
+                    gs.markBudgetLimited();
+                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                            (String) null, task.getCurrentIteration(), "BUDGET_EXCEEDED");
+                }
+
                 disableGoalScheduling(sessionId, task);
-                return;
+                return false;
             }
 
             // 非活跃状态跳过
             if (!gs.getStatus().isActive()) {
-                return;
-            }
-        } else {
-            // 非 Goal 模式
-            if (task.isMaxIterationsReached()) {
-                LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
-                remove(sessionId, task);
-                return;
+                return false;
             }
         }
 
-        // 防重入
-        if (!task.tryStart()) {
+        return true;
+    }
+
+    /**
+     * 执行单轮 Goal 调用（含 prompt 构建、AI 执行、状态评估、历史写入、持久化）
+     *
+     * <p>返回 GoalRoundOutcome 枚举，供调用方决定是否续行。
+     */
+    private GoalRoundOutcome executeGoalRound(String sessionId, LoopTask task) {
+        // 构建 prompt（注入 goal 引导词）
+        String effectivePrompt = buildEffectivePrompt(sessionId, task);
+
+        LoopExecutionResult executionResult = executeSingle(sessionId, effectivePrompt, null);
+
+        String finalResult = executionResult != null ? executionResult.getFinalResult() : null;
+        task.updateLastExecution(finalResult != null ? finalResult : "ok");
+        task.resetConsecutiveErrors(); // 成功执行后重置连续异常计数
+
+        int iteration;
+        if (executionResult != null && executionResult.isCompleted()) {
+            iteration = task.incrementIteration();
+        } else {
+            iteration = task.getCurrentIteration();
+        }
+
+        // Goal 状态评估（Codex 对齐：仅检测 [GOAL_ACHIEVED] 标记）
+        if (task.isGoalMode()) {
+            GoalState gs = task.getGoalState();
+
+            // 累计 token
+            if (executionResult != null && executionResult.getTokensUsed() > 0) {
+                gs.addTokens(executionResult.getTokensUsed());
+            }
+
+            // 无进展检测（运行时兜底）
+            String currentFingerprint = computeFingerprint(executionResult);
+            if (currentFingerprint != null && currentFingerprint.equals(task.getLastFingerprint())) {
+                task.recordStagnation();
+                LOG.warn("Goal '{}' stagnation: {} consecutive no-progress turns",
+                        task.getId(), task.getStagnationCount());
+            } else {
+                task.resetStagnation();
+                task.setLastFingerprint(currentFingerprint);
+            }
+
+            // 完成检测
+            boolean achieved = executionResult != null && executionResult.isGoalAchieved();
+            if (achieved) {
+                LOG.info("Loop task '{}' goal ACHIEVED at iteration {}", task.getId(), iteration);
+                gs.achieve();
+                LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                        executionResult, iteration, "GOAL_ACHIEVED");
+                disableGoalScheduling(sessionId, task);
+                return GoalRoundOutcome.ACHIEVED;
+            }
+
+            // 预算检查
+            if (gs.isBudgetExceeded()) {
+                LOG.info("Loop task '{}' budget exceeded at iteration {}, executing wrap-up turn",
+                        task.getId(), iteration);
+                executeBudgetLimitWrapUp(sessionId, task, gs);
+
+                // wrap-up 回合若 LLM 认为目标已达成，则标记 ACHIEVED 而非 BUDGET_EXCEEDED
+                if (gs.getStatus() == GoalState.Status.ACHIEVED) {
+                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                            executionResult, iteration, "GOAL_ACHIEVED");
+                    disableGoalScheduling(sessionId, task);
+                    return GoalRoundOutcome.ACHIEVED;
+                } else {
+                    gs.markBudgetLimited();
+                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                            executionResult, iteration, "BUDGET_EXCEEDED");
+                    disableGoalScheduling(sessionId, task);
+                    return GoalRoundOutcome.BUDGET_EXCEEDED;
+                }
+            }
+        }
+
+        // 写入执行历史
+        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                executionResult, iteration, "NONE");
+
+        // 实时持久化
+        saveToFile(sessionId, sessionTasks.get(sessionId));
+
+        return GoalRoundOutcome.CONTINUE;
+    }
+
+    /**
+     * 事件驱动续行：goal 仍活跃且非繁忙时，submit 下一轮 onTrigger
+     */
+    private void scheduleContinuation(String sessionId, LoopTask task) {
+        if (!task.isGoalMode()) {
             return;
         }
 
-        try {
-            // 构建 prompt（注入 goal 引导词）
-                String effectivePrompt = buildEffectivePrompt(sessionId, task);
+        GoalState gs = task.getGoalState();
+        if (!gs.getStatus().isActive() || gs.isBudgetExceeded()) {
+            return;
+        }
 
-                LoopExecutionResult executionResult = executeSingle(sessionId, effectivePrompt, null);
+        boolean busy = false;
+        for (BusyChecker checker : busyCheckers) {
+            if (checker.isBusy(sessionId)) {
+                busy = true;
+                break;
+            }
+        }
 
-                String finalResult = executionResult != null ? executionResult.getFinalResult() : null;
-                task.updateLastExecution(finalResult != null ? finalResult : "ok");
-                task.resetConsecutiveErrors(); // 成功执行后重置连续异常计数
+        if (!busy) {
+            LOG.debug("Loop task '{}' continuing (event-driven)", task.getId());
+            asyncExecutor.submit(() -> onTrigger(sessionId, task));
+        }
+    }
 
-                int iteration;
-                if (executionResult != null && executionResult.isCompleted()) {
-                    iteration = task.incrementIteration();
+    /**
+     * 异常分级处理：连续异常 ≥ 阈值时标记 BLOCKED，否则递增延迟重试
+     */
+    private void handleExecutionError(String sessionId, LoopTask task, Exception e) {
+        LOG.error("Loop task '{}' failed: {}", task.getId(), e.getMessage());
+        task.updateLastExecution("error: " + e.getMessage());
+        List<LoopTask> tasks = sessionTasks.get(sessionId);
+        if (tasks != null) {
+            saveToFile(sessionId, tasks);
+        }
+
+        // 异常后分级处理（TurnError → blocked）
+        if (task.isGoalMode() && !task.isCancelled()) {
+            GoalState gs = task.getGoalState();
+            if (gs.getStatus().isActive() && !gs.isBudgetExceeded()) {
+                int errors = task.incrementConsecutiveErrors();
+                if (errors >= loop.getMaxConsecutiveErrorsOrDefault()) {
+                    // 连续异常 → 运行时兜底 blocked
+                    LOG.warn("Goal '{}' blocked by runtime: {} consecutive errors",
+                            task.getId(), errors);
+                    gs.markBlocked();
+                    pauseGoal(sessionId, task.getId());
+                    LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                            (String) null, task.getCurrentIteration(), "BLOCKED_BY_ERRORS");
                 } else {
-                    iteration = task.getCurrentIteration();
-                }
-
-                // Goal 状态评估（Codex 对齐：仅检测 [GOAL_ACHIEVED] 标记）
-                if (task.isGoalMode()) {
-                    GoalState gs = task.getGoalState();
-
-                    // 累计 token
-                    if (executionResult != null && executionResult.getTokensUsed() > 0) {
-                        gs.addTokens(executionResult.getTokensUsed());
-                    }
-
-                    // 无进展检测（运行时兜底）
-                    String currentFingerprint = computeFingerprint(executionResult);
-                    if (currentFingerprint != null && currentFingerprint.equals(task.getLastFingerprint())) {
-                        task.recordStagnation();
-                        LOG.warn("Goal '{}' stagnation: {} consecutive no-progress turns",
-                                task.getId(), task.getStagnationCount());
-                    } else {
-                        task.resetStagnation();
-                        task.setLastFingerprint(currentFingerprint);
-                    }
-
-                    // 完成检测
-                    boolean achieved = executionResult != null && executionResult.isGoalAchieved();
-                    if (achieved) {
-                        LOG.info("Loop task '{}' goal ACHIEVED at iteration {}", task.getId(), iteration);
-                        gs.achieve();
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                executionResult, iteration, "GOAL_ACHIEVED");
-                        disableGoalScheduling(sessionId, task);
-                        return;
-                    }
-
-                    // 预算检查
-                    if (gs.isBudgetExceeded()) {
-                        LOG.info("Loop task '{}' budget exceeded at iteration {}, executing wrap-up turn",
-                                task.getId(), iteration);
-                        executeBudgetLimitWrapUp(sessionId, task, gs);
-
-                        // wrap-up 回合若 LLM 认为目标已达成，则标记 ACHIEVED 而非 BUDGET_LIMITED
-                        if (gs.getStatus() == GoalState.Status.ACHIEVED) {
-                            LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                    executionResult, iteration, "GOAL_ACHIEVED");
-                        } else {
-                            gs.markBudgetLimited();
-                            LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                    executionResult, iteration, "BUDGET_EXCEEDED");
+                    // 未达阈值 → 递增延迟重试
+                    long delay = 5L * errors; // 5s, 10s, 15s ...
+                    LOG.info("Loop task '{}' scheduling error retry in {}s (attempt {})",
+                            task.getId(), delay, errors);
+                    asyncExecutor.schedule(() -> {
+                        if (!task.isCancelled()) {
+                            onTrigger(sessionId, task);
                         }
-
-                        disableGoalScheduling(sessionId, task);
-                        return;
-                    }
-                } else {
-                    // 非 goal 模式
-                    if (task.isMaxIterationsReached()) {
-                        LOG.info("Loop task '{}' reached max iterations ({})", task.getId(), task.getMaxIterations());
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                executionResult, iteration, "MAX_ITERATIONS_REACHED");
-                        remove(sessionId, task);
-                        return;
-                    }
-                }
-
-                // 写入执行历史
-                LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                        executionResult, iteration, "NONE");
-
-                // 实时持久化
-                saveToFile(sessionId, sessionTasks.get(sessionId));
-
-            // 事件驱动续行：goal 活跃 → submit 下一轮
-            if (task.isGoalMode()) {
-                GoalState gs = task.getGoalState();
-                if (gs.getStatus().isActive() && !gs.isBudgetExceeded()) {
-                    boolean busy = false;
-                    for (BusyChecker checker : busyCheckers) {
-                        if (checker.isBusy(sessionId)) {
-                            busy = true;
-                            break;
-                        }
-                    }
-                    if (!busy) {
-                        LOG.debug("Loop task '{}' continuing (event-driven)", task.getId());
-                        asyncExecutor.submit(() -> onTrigger(sessionId, task));
-                    }
+                    }, delay, TimeUnit.SECONDS);
                 }
             }
-
-        } catch (Exception e) {
-            LOG.error("Loop task '{}' failed: {}", task.getId(), e.getMessage());
-            task.updateLastExecution("error: " + e.getMessage());
-            List<LoopTask> tasks = sessionTasks.get(sessionId);
-            if (tasks != null) {
-                saveToFile(sessionId, tasks);
-            }
-            // 异常后分级处理（TurnError → blocked）
-            if (task.isGoalMode() && !task.isCancelled() && !task.isExpired()) {
-                GoalState gs = task.getGoalState();
-                if (gs.getStatus().isActive() && !gs.isBudgetExceeded()) {
-                    int errors = task.incrementConsecutiveErrors();
-                    if (errors >= loop.getMaxConsecutiveErrorsOrDefault()) {
-                        // 连续异常 → 运行时兜底 blocked
-                        LOG.warn("Goal '{}' blocked by runtime: {} consecutive errors",
-                                task.getId(), errors);
-                        gs.markBlocked();
-                        pauseGoal(sessionId, task.getId());
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                (String) null, task.getCurrentIteration(), "BLOCKED_BY_ERRORS");
-                    } else {
-                        // 未达阈值 → 递增延迟重试
-                        long delay = 5L * errors; // 5s, 10s, 15s ...
-                        LOG.info("Loop task '{}' scheduling error retry in {}s (attempt {})",
-                                task.getId(), delay, errors);
-                        asyncExecutor.schedule(() -> {
-                            if (!task.isCancelled() && !task.isExpired()) {
-                                onTrigger(sessionId, task);
-                            }
-                        }, delay, TimeUnit.SECONDS);
-                    }
-                }
-            }
-        } finally {
-            task.finish();
         }
     }
 
@@ -867,13 +927,29 @@ public class LoopScheduler {
     /**
      * 计算执行指纹（用于无进展检测）
      *
-     * <p>基于：是否有工具调用 + 结果文本长度区间（粗粒度）
+     * <p>基于：是否有工具调用 + 结果文本长度桶（200字/桶）+ 结果行数桶（10行/桶）
      */
-    private String computeFingerprint(LoopExecutionResult result) {
+    static String computeFingerprint(LoopExecutionResult result) {
         if (result == null) return "null";
-        int lenBucket = result.getFinalResult() != null
-                ? result.getFinalResult().length() / 500 : 0;
-        return result.isHasToolCalls() + ":" + lenBucket;
+        String text = result.getFinalResult();
+        if (text == null || text.isEmpty()) return "empty";
+
+        String toolDim = result.isHasToolCalls() ? "1" : "0";
+        int lenBucket = text.length() / 200;      // 200 字/桶（原 500）
+        int lineBucket = countLines(text) / 10;   // 新增：10 行/桶
+
+        return toolDim + ":" + lenBucket + ":" + lineBucket;
+    }
+
+    /**
+     * 统计文本行数（用于指纹计算）
+     */
+    static int countLines(String text) {
+        int count = 1;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') count++;
+        }
+        return count;
     }
 
     // ==================== 格式化辅助 ====================
@@ -964,7 +1040,7 @@ public class LoopScheduler {
 
     private void cleanExpired(String sessionId, List<LoopTask> tasks) {
         boolean changed = tasks.removeIf(t -> {
-            if (t.isExpired() || t.isCancelled()) {
+            if (t.isCancelled()) {
                 String jobName = t.getJobName();
                 if (jobManager.jobExists(jobName)) {
                     jobManager.jobRemove(jobName);

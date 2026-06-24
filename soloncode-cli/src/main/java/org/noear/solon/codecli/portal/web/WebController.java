@@ -781,7 +781,6 @@ public class WebController {
         if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
 
 
-        item.put("maxIterations", t.getMaxIterations());
         item.put("runNow", t.isRunNow());
 
         // ★ P1: 预算字段
@@ -838,10 +837,9 @@ public class WebController {
     public Result loopAdd(@Param("sessionId") String sessionId,
                           @Param("prompt") String prompt,
                           @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
-                          @Param(value = "cron", required = false) String cron,
-                          @Param(value = "type", required = false) String type,
-                           @Param(value = "maxIterations", required = false) Integer maxIterations,
-                          @Param(value = "runNow", required = false) Boolean runNow,
+                           @Param(value = "cron", required = false) String cron,
+                           @Param(value = "type", required = false) String type,
+                           @Param(value = "runNow", required = false) Boolean runNow,
                           @Param(value = "maxTokens", required = false) Long maxTokens,
                           @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
@@ -864,7 +862,6 @@ public class WebController {
         LoopTask task = new LoopTask(
                 prompt, interval, cron,
                 taskType,
-                maxIterations,
                 runNow != null && runNow
         );
         // ★ P1: 预算字段
@@ -893,7 +890,6 @@ public class WebController {
                              @Param(value = "cron", required = false) String cron,
                              @Param(value = "type", required = false) String type,
                              @Param(value = "channelNotify", required = false) String channelNotify,
-                             @Param(value = "maxIterations", required = false) Integer maxIterations,
                              @Param(value = "runNow", required = false) Boolean runNow,
                              @Param(value = "maxTokens", required = false) Long maxTokens,
                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
@@ -921,7 +917,6 @@ public class WebController {
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
                 newType,
-                maxIterations != null ? maxIterations : existing.getMaxIterations(),
                 runNow != null ? runNow : existing.isRunNow(),
                 maxTokens,
                 maxDurationMs

@@ -214,7 +214,7 @@ public class LoopCommand implements Command {
         // Create task
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
-                taskType, maxIterations, runNow
+                taskType, runNow
         );
 
         // 初始化状态目录（用 task 生成的 ID）
@@ -247,7 +247,6 @@ public class LoopCommand implements Command {
         }
 
         ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
-        ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
     }
 
     /**
@@ -344,7 +343,6 @@ public class LoopCommand implements Command {
                 0,            // intervalMinutes = 0（调度器自动转 5 秒安全网）
                 null,         // cron
                 LoopTask.TaskType.GOAL,  // type = GOAL
-                maxIterations,
                 true          // runNow = true（立即执行首次）
         );
 
@@ -390,7 +388,6 @@ public class LoopCommand implements Command {
             ctx.println(ctx.color("  " + MAGENTA + "Max Duration:" + RESET + " " + (loopCfg.getDefaultMaxDurationMsOrDefault() / 60000) + "m"));
         }
         ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
-        ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
     }
 
     private void doList(CommandContext ctx, String sessionId) {
@@ -454,7 +451,7 @@ public class LoopCommand implements Command {
                 if (t.isRunNow()) {
                     line.append(" ").append(MAGENTA).append("[now]").append(RESET);
                 }
-                line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
+                line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append(RESET);
             }
 
             line.append(" ").append(DIM).append(t.getPrompt()).append(RESET);
@@ -633,7 +630,7 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "Goal:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal fix auth module                (goal mode, runs immediately)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal write a readme.md              (goal mode, runs immediately)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop goal --max-iter:10 fix lint         (goal with max iterations)" + RESET));
+        ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "Goal lifecycle:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop pause <id>                          (pause a goal task)" + RESET));

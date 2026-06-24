@@ -11,7 +11,6 @@ import java.io.Serializable;
  * <p>所有字段为包装类型，null 表示未配置，由便捷方法提供默认值。</p>
  *
  * @author noear
- * @since 3.9.5
  */
 @Getter
 @Setter
