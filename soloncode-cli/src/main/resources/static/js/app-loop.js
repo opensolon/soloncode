@@ -147,6 +147,46 @@
         }
     }
 
+    // ========== 预算/间隔 单位解析与格式化 ==========
+    function parseTokenBudget(val) {
+        if (!val) return null;
+        val = val.trim().toLowerCase();
+        if (val.endsWith('m')) return parseInt(val, 10) * 1000000;
+        if (val.endsWith('k')) return parseInt(val, 10) * 1000;
+        return parseInt(val, 10) || null;
+    }
+
+    function parseDurationMs(val) {
+        if (!val) return null;
+        val = val.trim().toLowerCase();
+        if (val.endsWith('h')) return parseInt(val, 10) * 3600000;
+        if (val.endsWith('m')) return parseInt(val, 10) * 60000;
+        // 纯数字默认分钟
+        return (parseInt(val, 10) || 0) * 60000;
+    }
+
+    function parseIntervalMinutes(val) {
+        if (!val) return 5;
+        val = val.trim().toLowerCase();
+        if (val.endsWith('h')) return (parseInt(val, 10) || 1) * 60;
+        if (val.endsWith('m')) return parseInt(val, 10) || 5;
+        return parseInt(val, 10) || 5;
+    }
+
+    function formatTokenBudget(val) {
+        if (!val) return '';
+        if (val % 1000000 === 0) return (val / 1000000) + 'm';
+        if (val % 1000 === 0) return (val / 1000) + 'k';
+        return String(val);
+    }
+
+    function formatDurationBudget(ms) {
+        if (!ms) return '';
+        var mins = Math.floor(ms / 60000);
+        if (mins >= 60 && mins % 60 === 0) return (mins / 60) + 'h';
+        return mins + 'm';
+    }
+
     // Goal 状态中文映射（4 态，与 GoalState.Status 对齐）
     var GOAL_STATUS_LABEL = {
         PURSUING: '执行中',
@@ -450,8 +490,7 @@
         html += '<label>调度方式</label>';
         html += '<div class="loop-interval-row" style="flex-wrap:wrap;">';
         html += '<label class="loop-radio"><input type="radio" name="loopScheduleType" value="interval" checked/> 固定间隔</label>';
-        html += '<input type="number" class="loop-input loop-input-sm" id="loopFormInterval" value="5" min="1" max="1440"/>';
-        html += '<select class="loop-input loop-input-sm" id="loopFormIntervalUnit"><option value="m" selected>分钟</option><option value="h">小时</option></select>';
+        html += '<input type="text" class="loop-input loop-input-sm" id="loopFormInterval" value="5m" placeholder="如 30m、2h"/>';
         html += '<label class="loop-checkbox" style="margin-left:8px;white-space:nowrap;"><input type="checkbox" id="loopFormRunNow" checked/> 首次立即执行</label>';
         html += '</div>';
         html += '<div class="loop-interval-row">';
@@ -479,8 +518,12 @@
 
         // ★ Goal 预算控制
         html += '<div class="loop-form-inline" style="margin-top:12px;">';
-        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">Token 预算</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
-        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">时间预算（分钟）</label><input type="number" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制" min="0" style="width:100%;"/></div>';
+        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">Token 预算</label><input type="text" inputmode="numeric" class="loop-input loop-input-sm" id="loopFormMaxTokens" placeholder="留空不限制（如 32k、1m）" style="width:100%;" list="loopMaxTokensList" autocomplete="off"/>' +
+            '<datalist id="loopMaxTokensList">' +
+            '<option value="16k"><option value="32k"><option value="64k"><option value="128k">' +
+            '<option value="256k"><option value="512k"><option value="1m"><option value="2m">' +
+            '</datalist></div>';
+        html += '<div class="loop-form-inline-item"><label style="font-size:11px;">时间预算</label><input type="text" class="loop-input loop-input-sm" id="loopFormMaxDuration" placeholder="留空不限制（如 30m、2h）" style="width:100%;"/></div>';
         html += '</div>';
 
 
@@ -545,11 +588,9 @@
             $panel.find('input[name=loopScheduleType][value=interval]').prop('checked', true);
             var mins = t.intervalMinutes || 5;
             if (mins >= 60 && mins % 60 === 0) {
-                $panel.find('#loopFormInterval').val(mins / 60);
-                $panel.find('#loopFormIntervalUnit').val('h');
+                $panel.find('#loopFormInterval').val((mins / 60) + 'h');
             } else {
-                $panel.find('#loopFormInterval').val(mins);
-                $panel.find('#loopFormIntervalUnit').val('m');
+                $panel.find('#loopFormInterval').val(mins + 'm');
             }
             $panel.find('#loopFormCron').val('');
         }
@@ -575,8 +616,8 @@
         }
 
         // ★ 预算字段
-        if (t.maxTokens) $panel.find('#loopFormMaxTokens').val(t.maxTokens);
-        if (t.maxDurationMs) $panel.find('#loopFormMaxDuration').val(Math.floor(t.maxDurationMs / 60000));
+        if (t.maxTokens) $panel.find('#loopFormMaxTokens').val(formatTokenBudget(t.maxTokens));
+        if (t.maxDurationMs) $panel.find('#loopFormMaxDuration').val(formatDurationBudget(t.maxDurationMs));
 
         // ★ 触发联动：radio change -> disabled 状态刷新
         $panel.find('input[name=loopScheduleType]:checked').trigger('change');
@@ -621,7 +662,6 @@
         $panel.find('input[name=loopScheduleType]').on('change', function() {
             var isCron = $(this).val() === 'cron';
             $panel.find('#loopFormInterval').prop('disabled', isCron);
-            $panel.find('#loopFormIntervalUnit').prop('disabled', isCron);
             $panel.find('#loopFormRunNow').prop('disabled', isCron);
             $panel.find('#loopFormCron').prop('disabled', !isCron);
         });
@@ -693,9 +733,7 @@
                 var isCron = $panel.find('input[name=loopScheduleType]:checked').val() === 'cron';
                 cronVal = isCron ? $panel.find('#loopFormCron').val().trim() : null;
                 if (!isCron) {
-                    var num = parseInt($panel.find('#loopFormInterval').val()) || 5;
-                    var unit = $panel.find('#loopFormIntervalUnit').val();
-                    effectiveInterval = unit === 'h' ? num * 60 : num;
+                    effectiveInterval = parseIntervalMinutes($panel.find('#loopFormInterval').val());
                     effectiveRunNow = $panel.find('#loopFormRunNow').is(':checked');
                 } else {
                     effectiveRunNow = false;
@@ -709,8 +747,8 @@
                 type: effectiveType,
                 runNow: effectiveRunNow,
 
-                maxTokens: maxTokensVal ? parseInt(maxTokensVal) : null,
-                maxDurationMs: maxDurationVal ? parseInt(maxDurationVal) * 60000 : null
+                maxTokens: parseTokenBudget(maxTokensVal),
+                maxDurationMs: parseDurationMs(maxDurationVal)
             };
 
             function restoreBtn() {

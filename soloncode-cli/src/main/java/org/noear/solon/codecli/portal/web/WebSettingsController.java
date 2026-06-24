@@ -198,6 +198,14 @@ public class WebSettingsController {
         if (tmp.isObject()) {
             tmp.bindTo(settings.getGeneral());
 
+            // 处理 webAuthUser/webAuthPass 清空：bindTo 遇到 null 值会跳过，需要手动处理
+            if (tmp.get("webAuthUser").isNull()) {
+                settings.getGeneral().setWebAuthUser(null);
+            }
+            if (tmp.get("webAuthPass").isNull()) {
+                settings.getGeneral().setWebAuthPass(null);
+            }
+
             engine.setCompressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getSummaryWindowToken());
             engine.setSessionWindowSize(settings.getGeneral().getSessionWindowSize());
 
