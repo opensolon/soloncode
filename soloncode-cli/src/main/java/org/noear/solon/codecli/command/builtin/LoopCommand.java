@@ -134,7 +134,6 @@ public class LoopCommand implements Command {
         int intervalMinutes = 5; // default
         String cronExpr = null;
         boolean runNow = false;
-        Integer maxIterations = null;
         LoopTask.TaskType taskType = LoopTask.TaskType.HEARTBEAT;
 
         int promptStartIndex = 0;
@@ -178,13 +177,9 @@ public class LoopCommand implements Command {
                     String key = flag.substring(0, colonIdx);
                     String val = flag.substring(colonIdx + 1);
                     switch (key) {
-                        case "max-iter":
-                            try {
-                                maxIterations = Integer.parseInt(val);
-                            } catch (NumberFormatException e) {
-                                ctx.println(ctx.color(RED + "Invalid --max-iter value: " + val + RESET));
-                                return;
-                            }
+                        case "max-tokens":
+                        case "max-duration":
+                            ctx.println(ctx.color(YELLOW + "Warning: --" + key + " is only applicable to '/loop goal'" + RESET));
                             break;
                         default:
                             ctx.println(ctx.color(YELLOW + "Unknown flag: --" + key + RESET));
@@ -238,9 +233,7 @@ public class LoopCommand implements Command {
         if (runNow) {
             ctx.println(ctx.color("  " + MAGENTA + "Run Now:" + RESET + " first execution immediately"));
         }
-        if (maxIterations != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
-        }
+
 
         ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
     }
@@ -252,7 +245,6 @@ public class LoopCommand implements Command {
      * prompt 即目标任务描述，type=GOAL，runNow=true，interval=0（调度器自动转 5 秒安全网）。</p>
      */
     private void doScheduleGoal(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
-        Integer maxIterations = null;
         Long maxTokens = null;
         Long maxDurationMs = null;
         StringBuilder promptBuilder = new StringBuilder();
@@ -270,14 +262,7 @@ public class LoopCommand implements Command {
                     String key = flag.substring(0, colonIdx);
                     String val = flag.substring(colonIdx + 1);
                     switch (key) {
-                        case "max-iter":
-                            try {
-                                maxIterations = Integer.parseInt(val);
-                            } catch (NumberFormatException e) {
-                                ctx.println(ctx.color(RED + "Invalid --max-iter value: " + val + RESET));
-                                return;
-                            }
-                            break;
+
                         case "max-tokens":
                             try {
                                 maxTokens = Long.parseLong(val);
@@ -312,7 +297,7 @@ public class LoopCommand implements Command {
         if (prompt.isEmpty()) {
             ctx.println(ctx.color(RED + "Usage: /loop goal <objective>" + RESET));
             ctx.println(ctx.color(DIM + "  /loop goal fix auth module" + RESET));
-            ctx.println(ctx.color(DIM + "  /loop goal --max-iter:10 fix lint" + RESET));
+
             return;
         }
 
@@ -361,9 +346,7 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(GREEN + "Goal task registered:" + RESET));
         ctx.println(ctx.color("  " + BOLD + "ID:" + RESET + " " + task.getId()));
         ctx.println(ctx.color("  " + BOLD + "Objective:" + RESET + " " + prompt));
-        if (maxIterations != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
-        }
+
         if (maxTokens != null) {
             ctx.println(ctx.color("  " + MAGENTA + "Max Tokens:" + RESET + " " + maxTokens));
         } else if (loopCfg.getDefaultMaxTokensOrDefault() > 0) {

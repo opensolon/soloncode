@@ -65,7 +65,8 @@ public class LoopScheduler {
     private final LoopPromptBuilder promptBuilder;
 
     // 共享线程池：续行调度 + 异常重试
-    private final ScheduledExecutorService asyncExecutor = Executors.newScheduledThreadPool(2, r -> {
+    private final ScheduledExecutorService asyncExecutor = Executors.newScheduledThreadPool(
+            Math.max(4, Runtime.getRuntime().availableProcessors()), r -> {
         Thread t = new Thread(r, "loop-async");
         t.setDaemon(true);
         return t;
@@ -669,7 +670,9 @@ public class LoopScheduler {
 
         if (!busy) {
             LOG.debug("Loop task '{}' continuing (event-driven)", task.getId());
-            asyncExecutor.submit(() -> onTrigger(sessionId, task));
+            // 最小 1s 冷却间隙，防止紧循环空转
+            asyncExecutor.schedule(() -> onTrigger(sessionId, task),
+                    1, TimeUnit.SECONDS);
         }
     }
 

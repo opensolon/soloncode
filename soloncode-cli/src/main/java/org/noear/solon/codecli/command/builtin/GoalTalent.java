@@ -89,6 +89,15 @@ public class GoalTalent extends AbsTalent {
         }
         goalNode.set("budgetExceeded", gs.isBudgetExceeded());
 
+        // ★ 暴露时间预算信息，让 AI 感知 maxDurationMs 限
+        Long maxDurationMs = task.getMaxDurationMs();
+        if (maxDurationMs != null && maxDurationMs > 0) {
+            goalNode.set("maxDurationMs", maxDurationMs);
+            long remainingSec = (maxDurationMs / 1000) - elapsed;
+            if (remainingSec < 0) remainingSec = 0;
+            goalNode.set("remainingDurationSeconds", remainingSec);
+        }
+
         // Codex 对齐：wrapper 结构 { goal: {...}, remaining_tokens: N, completionBudgetReport: null }
         ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
         root.set("goal", goalNode);
