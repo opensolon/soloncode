@@ -1,12 +1,16 @@
 .action-group {
-  margin: 2px 0;
+  margin: 6px 0;
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cb-vscode-input-background) 36%, transparent);
+  overflow: hidden;
 }
 
 .action-group-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 0;
+  padding: 6px 10px;
   cursor: pointer;
   user-select: none;
   color: var(--cb-text-secondary);
@@ -68,19 +72,24 @@
 }
 
 .action-group-list {
-  padding-left: 12px;
-  border-left: 2px solid var(--cb-vscode-panel-border);
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--cb-vscode-panel-border);
+  background: color-mix(in srgb, var(--cb-vscode-editor-background) 72%, transparent);
 }
 
 .action-group-item {
-  margin: 1px 0;
+  margin: 4px 0;
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 5px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cb-vscode-input-background) 28%, transparent);
 }
 
 .action-group-item-header {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 0;
+  padding: 5px 8px;
   cursor: pointer;
   user-select: none;
   color: var(--cb-text-secondary);
@@ -126,14 +135,15 @@
 }
 
 .action-group-item-content {
-  padding: 4px 0 4px 10px;
+  padding: 8px 12px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--cb-text-secondary);
   opacity: 0.7;
-  border-left: 2px solid var(--cb-vscode-panel-border);
+  border-top: 1px solid var(--cb-vscode-panel-border);
   max-height: 250px;
   overflow-y: auto;
+  background: color-mix(in srgb, var(--cb-vscode-editor-background) 72%, transparent);
 }
 
 .action-group-item-content pre {

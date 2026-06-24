@@ -81,6 +81,8 @@ interface ChatInputProps {
   workspacePath?: string;
   mode?: ChatMode;
   onModeChange?: (mode: ChatMode) => void;
+  baseContextTokens?: number;
+  contextTokenLimit?: number;
 }
 
 export interface SendOptions {
@@ -89,6 +91,7 @@ export interface SendOptions {
   agent: string;
   contexts: ContextRef[];
   attachments: Attachment[];
+  reasoningEffort: ReasoningEffort;
 }
 
 export interface Attachment {
@@ -107,8 +110,20 @@ function getModelDisplayName(p: ModelProvider): string {
 }
 
 export type ChatMode = 'default' | 'auto' | 'plan';
+export type ReasoningEffort = 'auto' | 'low' | 'medium' | 'high';
 
-export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, mode = 'default', onModeChange }: ChatInputProps & { mode?: ChatMode; onModeChange?: (mode: ChatMode) => void }) {
+const REASONING_OPTIONS: Array<{ key: ReasoningEffort; label: string; desc: string }> = [
+  { key: 'auto', label: '自动', desc: '由模型自动决定推理强度' },
+  { key: 'low', label: '低', desc: '更快响应，适合简单问题' },
+  { key: 'medium', label: '中', desc: '平衡速度和质量' },
+  { key: 'high', label: '高', desc: '更充分推理，适合复杂任务' },
+];
+
+function estimateTokens(text: string) {
+  return Math.ceil(text.length / 4);
+}
+
+export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, mode = 'default', onModeChange, baseContextTokens = 0, contextTokenLimit = 128000 }: ChatInputProps & { mode?: ChatMode; onModeChange?: (mode: ChatMode) => void }) {
   // 从每个 provider 的 availableModels 展开为独立的可选模型
   const allModels = useMemo(() => {
     const result: ModelProvider[] = [];
@@ -124,6 +139,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
             apiKey: p.apiKey,
             model: m.id,
             enabled: true,
+            contextLength: m.contextLength || p.contextLength,
           });
         }
       } else if (p.model) {
@@ -135,6 +151,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   const [userInput, setUserInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('soloncode-last-model') || '');
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
+    const saved = localStorage.getItem('soloncode-reasoning-effort') as ReasoningEffort | null;
+    return saved && REASONING_OPTIONS.some(item => item.key === saved) ? saved : 'auto';
+  });
   const [selectedAgent, setSelectedAgent] = useState('default');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -149,6 +169,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const [showModePicker, setShowModePicker] = useState(false);
   const modePickerRef = useRef<HTMLDivElement>(null);
   const [modePickerPos, setModePickerPos] = useState<{ left: number; bottom: number }>({ left: 0, bottom: 0 });
+
+  const [showReasoningPicker, setShowReasoningPicker] = useState(false);
+  const reasoningPickerRef = useRef<HTMLDivElement>(null);
+  const [reasoningPickerPos, setReasoningPickerPos] = useState<{ left: number; bottom: number }>({ left: 0, bottom: 0 });
 
   // 语音输入状态
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -200,6 +224,13 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     }
   }, [showModePicker]);
 
+  useEffect(() => {
+    if (showReasoningPicker && reasoningPickerRef.current) {
+      const rect = reasoningPickerRef.current.getBoundingClientRect();
+      setReasoningPickerPos({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
+    }
+  }, [showReasoningPicker]);
+
   // 点击外部关闭模式选择器
   useEffect(() => {
     if (!showModePicker) return;
@@ -209,6 +240,15 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showModePicker]);
+
+  useEffect(() => {
+    if (!showReasoningPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (reasoningPickerRef.current && !reasoningPickerRef.current.contains(e.target as Node)) setShowReasoningPicker(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showReasoningPicker]);
 
   // 语音输入初始化
   useEffect(() => {
@@ -596,6 +636,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       agent: selectedAgent,
       contexts: [...contexts],
       attachments: [...attachments],
+      reasoningEffort,
     });
     setUserInput('');
     setContexts([]);
@@ -632,6 +673,17 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
   // 当前选中的 provider
   const currentProvider = allModels.find(p => p.id === selectedModel);
+  const currentReasoning = REASONING_OPTIONS.find(item => item.key === reasoningEffort) || REASONING_OPTIONS[0];
+  const effectiveContextTokenLimit = currentProvider?.contextLength || contextTokenLimit || 128000;
+  const contextTokens = useMemo(() => {
+    const attachmentTokens = attachments.reduce((sum, item) => {
+      if (item.type === 'image') return sum + 1100;
+      return sum + estimateTokens(item.content);
+    }, 0);
+    return baseContextTokens + estimateTokens(userInput) + attachmentTokens;
+  }, [attachments, baseContextTokens, userInput]);
+  const contextPercent = Math.min(100, Math.round((contextTokens / effectiveContextTokenLimit) * 100));
+  const contextTitle = `上下文 ${contextPercent}% · ${(contextTokens / 1000).toFixed(1)}K / ${(effectiveContextTokenLimit / 1000).toFixed(0)}K tokens`;
 
   return (
     <div className="chat-input-wrapper">
@@ -692,22 +744,14 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
               rows={1}
               onKeyDown={handleKeyDown}
             />
-            {isLoading && onStop ? (
-              <button
-                type="button"
-                className="stop-button"
-                onClick={onStop}
-                title="停止生成"
-              >
-                <Icon name="close" size={14} />
-              </button>
-            ) : null}
             <button
-              type="submit"
-              className="send-button"
-              disabled={!userInput.trim()}
+              type={isLoading && onStop ? 'button' : 'submit'}
+              className={`send-stop-button${isLoading ? ' stopping' : ''}`}
+              disabled={!isLoading && !userInput.trim()}
+              onClick={isLoading && onStop ? onStop : undefined}
+              title={isLoading && onStop ? '停止生成' : '发送'}
             >
-              <Icon name="send" size={16} />
+              <Icon name={isLoading && onStop ? 'close' : 'send'} size={isLoading && onStop ? 14 : 16} />
             </button>
           </div>
 
@@ -745,6 +789,40 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
                       <span className="model-picker-item-name">{m.label}</span>
                       <span className="model-picker-item-source">{m.desc}</span>
                       {mode === m.key && <span className="model-picker-check">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="model-picker-wrapper" ref={reasoningPickerRef}>
+              <button
+                type="button"
+                className={`model-picker-btn reasoning-picker-btn${showReasoningPicker ? ' active' : ''}`}
+                onClick={() => setShowReasoningPicker(!showReasoningPicker)}
+                title={`推理强度：${currentReasoning.label}`}
+              >
+                <span className="reasoning-dot" data-level={reasoningEffort} />
+                <span className="model-picker-name">推理 {currentReasoning.label}</span>
+                <span className={`model-picker-arrow${showReasoningPicker ? ' open' : ''}`}>▾</span>
+              </button>
+              {showReasoningPicker && (
+                <div className="model-picker-dropdown reasoning-picker-dropdown" style={{ left: reasoningPickerPos.left, bottom: reasoningPickerPos.bottom }}>
+                  {REASONING_OPTIONS.map(item => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`model-picker-item${reasoningEffort === item.key ? ' active' : ''}`}
+                      onClick={() => {
+                        setReasoningEffort(item.key);
+                        localStorage.setItem('soloncode-reasoning-effort', item.key);
+                        setShowReasoningPicker(false);
+                      }}
+                    >
+                      <span className="reasoning-dot" data-level={item.key} />
+                      <span className="model-picker-item-name">{item.label}</span>
+                      <span className="model-picker-item-source">{item.desc}</span>
+                      {reasoningEffort === item.key && <span className="model-picker-check">✓</span>}
                     </button>
                   ))}
                 </div>
@@ -848,6 +926,13 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
                 <span>{activeFileName}</span>
               </span>
             )}
+            <span
+              className="context-meter"
+              title={contextTitle}
+              style={{ '--context-percent': `${contextPercent}%` } as React.CSSProperties}
+            >
+              <span className="context-meter-ring" />
+            </span>
           </div>
         </form>
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -11,6 +11,7 @@ interface ActionGroupBlockProps {
   items: ContentItem[];
   theme?: Theme;
   onFileClick?: (filePath: string) => void;
+  autoExpanded?: boolean;
 }
 
 function capitalize(s: string): string {
@@ -65,9 +66,14 @@ function extractDiffStats(toolName?: string, args?: Record<string, unknown>): { 
   return null;
 }
 
-export function ActionGroupBlock({ toolName, items, theme, onFileClick }: ActionGroupBlockProps) {
+export function ActionGroupBlock({ toolName, items, theme, onFileClick, autoExpanded = false }: ActionGroupBlockProps) {
   const [groupExpanded, setGroupExpanded] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    setGroupExpanded(autoExpanded);
+    setExpandedIndex(autoExpanded ? Math.max(0, items.length - 1) : null);
+  }, [autoExpanded, items.length]);
 
   const name = capitalize(toolName || 'Tool');
 

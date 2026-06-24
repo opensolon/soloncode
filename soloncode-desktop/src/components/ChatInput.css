@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   background-color: var(--cb-vscode-editor-background);
-  padding: 8px 12px 12px;
+  padding: 6px 10px 8px;
   max-width: var(--input-max-width, 60%);
   margin: 0 auto;
   width: 100%;
@@ -199,6 +199,39 @@
   flex-shrink: 0;
 }
 
+.reasoning-picker-btn .model-picker-name {
+  max-width: 88px;
+}
+
+.reasoning-picker-dropdown {
+  min-width: 260px;
+}
+
+.reasoning-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+  flex-shrink: 0;
+  background: var(--cb-text-secondary);
+}
+
+.reasoning-dot[data-level="auto"] {
+  background: var(--cb-text-secondary);
+}
+
+.reasoning-dot[data-level="low"] {
+  background: #22c55e;
+}
+
+.reasoning-dot[data-level="medium"] {
+  background: #f59e0b;
+}
+
+.reasoning-dot[data-level="high"] {
+  background: #ef4444;
+}
+
 /* 智能体按钮 */
 .agent-btn {
   display: flex;
@@ -286,8 +319,8 @@
   color: var(--cb-text-secondary);
 }
 
-/* 发送按钮 */
-.send-button {
+/* 发送 / 停止按钮 */
+.send-stop-button {
   width: 36px;
   height: 36px;
   background-color: var(--cb-accent);
@@ -302,34 +335,22 @@
   flex-shrink: 0;
 }
 
-.send-button:hover:not(:disabled) {
+.send-stop-button:hover:not(:disabled) {
   background-color: var(--cb-accent-light);
   transform: scale(1.05);
 }
 
-.send-button:disabled {
+.send-stop-button:disabled {
   opacity: 0.3;
   cursor: not-allowed;
   transform: scale(1);
 }
 
-/* 停止按钮 */
-.stop-button {
-  width: 36px;
-  height: 36px;
+.send-stop-button.stopping {
   background-color: var(--cb-error, #ef4444);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s;
-  flex-shrink: 0;
 }
 
-.stop-button:hover {
+.send-stop-button.stopping:hover {
   opacity: 0.85;
   transform: scale(1.05);
 }
@@ -344,7 +365,7 @@
 
 /* 底部提示 */
 .input-footer {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 6px 0 0;
@@ -363,6 +384,25 @@
   font-size: 11px;
   color: var(--cb-text-secondary);
   opacity: 0.6;
+}
+
+.context-meter {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.context-meter-ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--cb-vscode-input-background) 48%, transparent 50%),
+    conic-gradient(var(--cb-accent) var(--context-percent), var(--cb-vscode-panel-border) 0);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 /* 自动完成下拉框 */

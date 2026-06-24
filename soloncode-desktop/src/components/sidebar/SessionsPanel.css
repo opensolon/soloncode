@@ -141,11 +141,12 @@
 .session-item {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: 3px 8px;
   cursor: pointer;
   transition: background-color 0.1s;
   border-radius: 4px;
-  margin: 0 4px;
+  margin: 0 3px;
+  min-height: 32px;
 }
 
 .session-item:hover {
@@ -153,13 +154,14 @@
 }
 
 .session-item.active {
-  background-color: var(--cb-vscode-list-activeSelectionBackground);
+  background-color: rgba(128, 128, 128, 0.16);
 }
 
 .session-icon {
   font-size: 16px;
-  margin-right: 10px;
+  margin-right: 7px;
   flex-shrink: 0;
+  opacity: 0.75;
 }
 
 .session-info {
@@ -168,25 +170,56 @@
 }
 
 .session-title {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--cb-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.25;
 }
 
 .session-meta {
   display: flex;
-  gap: 6px;
-  font-size: 11px;
+  gap: 5px;
+  font-size: 10px;
   color: var(--cb-text-secondary);
-  margin-top: 2px;
+  margin-top: 1px;
+  line-height: 1.2;
+}
+
+.session-run-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.session-run-dot.running {
+  width: 14px;
+  height: 14px;
+  background-color: transparent;
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  border-top-color: rgba(148, 163, 184, 0.9);
+  animation: soloncode-running-spin 0.9s linear infinite;
+}
+
+.session-run-dot.completed {
+  background-color: var(--cb-success);
+}
+
+.session-run-dot.error {
+  background-color: var(--cb-error);
+}
+
+@keyframes soloncode-running-spin {
+  to { transform: rotate(360deg); }
 }
 
 .delete-btn,
 .sync-btn {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   background: transparent;
   border: none;
   cursor: pointer;
