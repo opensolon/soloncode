@@ -884,6 +884,41 @@ fn detect_launch_method() -> BackendLaunchMethod {
     }
 }
 
+/// Check whether an occupied port is already serving the soloncode backend.
+fn is_soloncode_backend(port: u16) -> bool {
+    let addr = format!("127.0.0.1:{}", port);
+    let mut stream = match TcpStream::connect(&addr) {
+        Ok(stream) => stream,
+        Err(_) => return false,
+    };
+
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(2)));
+
+    let req = format!(
+        "GET /version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+        port
+    );
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+
+    let mut buf = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 1024];
+    while buf.len() < 4096 {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+            Err(_) => break,
+        }
+    }
+
+    let resp = String::from_utf8_lossy(&buf);
+    resp.starts_with("HTTP/1.1 200")
+        && resp.contains("\"code\":200")
+        && resp.contains("\"version\"")
+}
+
 /// 启动后端 CLI 进程（如果已在运行则复用）
 #[tauri::command]
 fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
@@ -897,8 +932,15 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
                         *proc = None;
                     }
                     Ok(None) => {
-                        app_log(&format!("[soloncode] Backend already running, reusing PID {}", child.id()));
-                        return Ok(child.id());
+                        if is_soloncode_backend(port) {
+                            app_log(&format!("[soloncode] Backend already running on port {}, reusing PID {}", port, child.id()));
+                            return Ok(child.id());
+                        }
+
+                        app_log(&format!("[soloncode] Managed backend PID {} is alive but port {} is not ready, restarting...", child.id(), port));
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        *proc = None;
                     }
                     Err(e) => {
                         app_log(&format!("[soloncode] Failed to check process status: {}, restarting...", e));
@@ -913,23 +955,10 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检查端口是否已被后端占用（可能是之前启动的 soloncode 服务）
     if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
         // 尝试 HTTP 请求 /version 确认是 soloncode 后端
-        let is_backend = std::net::TcpStream::connect(format!("127.0.0.1:{}", port))
-            .ok()
-            .and_then(|mut stream| {
-                use std::io::{Read as IoRead, Write as IoWrite};
-                let req = format!("GET /version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n", port);
-                stream.write_all(req.as_bytes()).ok()?;
-                stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).ok()?;
-                let mut buf = [0u8; 256];
-                let n = stream.read(&mut buf).ok()?;
-                let resp = String::from_utf8_lossy(&buf[..n]);
-                // 检查 HTTP 响应中包含 200 和 version
-                Some(resp.contains("200") && resp.contains("version"))
-            })
-            .unwrap_or(false);
+        let is_backend = is_soloncode_backend(port);
 
         if is_backend {
-            app_log(&format!("[soloncode] Port {} already occupied by soloncode backend, reusing", port));
+            app_log(&format!("[soloncode] Port {} is already occupied by soloncode backend, reusing", port));
             return Ok(0);
         }
         let msg = format!("端口 {} 已被其他程序占用，请先关闭占用该端口的程序", port);
@@ -1098,9 +1127,10 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
     let mut api_url = String::new();
     let mut api_key = String::new();
     let mut model = String::new();
+    let mut provider = String::new();
 
     // 解析 YAML 中的 chatModel 字段（简单行解析，避免引入 yaml 依赖）
-    let parse_chat_model = |content: &str, api_url: &mut String, api_key: &mut String, model: &mut String| {
+    let parse_chat_model = |content: &str, api_url: &mut String, api_key: &mut String, model: &mut String, provider: &mut String| {
         let mut in_chat_model = false;
         let mut in_soloncode = false;
         for line in content.lines() {
@@ -1131,6 +1161,9 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
                 } else if trimmed.starts_with("model:") {
                     *model = trimmed.trim_start_matches("model:").trim()
                         .trim_matches('"').to_string();
+                } else if trimmed.starts_with("provider:") {
+                    *provider = trimmed.trim_start_matches("provider:").trim()
+                        .trim_matches('"').to_string();
                 }
             }
         }
@@ -1139,7 +1172,7 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
     // 优先读 chat-model.yml
     if chat_model_path.exists() {
         if let Ok(content) = fs::read_to_string(&chat_model_path) {
-            parse_chat_model(&content, &mut api_url, &mut api_key, &mut model);
+            parse_chat_model(&content, &mut api_url, &mut api_key, &mut model, &mut provider);
         }
     }
 
@@ -1149,10 +1182,12 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
             let mut u = String::new();
             let mut k = String::new();
             let mut m = String::new();
-            parse_chat_model(&content, &mut u, &mut k, &mut m);
+            let mut p = String::new();
+            parse_chat_model(&content, &mut u, &mut k, &mut m, &mut p);
             if api_url.is_empty() { api_url = u; }
             if api_key.is_empty() { api_key = k; }
             if model.is_empty() { model = m; }
+            if provider.is_empty() { provider = p; }
         }
     }
 
@@ -1160,6 +1195,7 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
         "apiUrl": api_url,
         "apiKey": api_key,
         "model": model,
+        "provider": provider,
     }))
 }
 

@@ -1,9 +1,7 @@
-import { memo, useState, useRef, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
+import { lazy, memo, Suspense, useState, useRef, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { Icon } from './common/Icon';
 import { ThinkBlock } from './ThinkBlock';
@@ -25,6 +23,97 @@ interface ChatMessagesProps {
 export interface ChatMessagesRef {
   scrollToBottom: () => void;
 }
+
+interface LazyCodeBlockProps {
+  theme?: Theme;
+  language: string;
+  code: string;
+  codeProps: Record<string, unknown>;
+}
+
+const LazyCodeBlock = lazy(async () => {
+  const [
+    highlighterModule,
+    styleModule,
+    bash,
+    css,
+    diff,
+    go,
+    java,
+    javascript,
+    json,
+    jsx,
+    markdown,
+    powershell,
+    python,
+    rust,
+    sql,
+    tsx,
+    typescript,
+    yaml,
+  ] = await Promise.all([
+    import('react-syntax-highlighter/dist/esm/prism-light'),
+    import('react-syntax-highlighter/dist/esm/styles/prism'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/bash'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/css'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/diff'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/go'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/java'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/javascript'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/json'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/jsx'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/markdown'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/powershell'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/python'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/rust'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/sql'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/tsx'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/typescript'),
+    import('react-syntax-highlighter/dist/esm/languages/prism/yaml'),
+  ]);
+  const SyntaxHighlighter = highlighterModule.default;
+  const { oneDark, oneLight } = styleModule;
+
+  SyntaxHighlighter.registerLanguage('bash', bash.default);
+  SyntaxHighlighter.registerLanguage('shell', bash.default);
+  SyntaxHighlighter.registerLanguage('sh', bash.default);
+  SyntaxHighlighter.registerLanguage('css', css.default);
+  SyntaxHighlighter.registerLanguage('diff', diff.default);
+  SyntaxHighlighter.registerLanguage('go', go.default);
+  SyntaxHighlighter.registerLanguage('java', java.default);
+  SyntaxHighlighter.registerLanguage('javascript', javascript.default);
+  SyntaxHighlighter.registerLanguage('js', javascript.default);
+  SyntaxHighlighter.registerLanguage('json', json.default);
+  SyntaxHighlighter.registerLanguage('jsx', jsx.default);
+  SyntaxHighlighter.registerLanguage('markdown', markdown.default);
+  SyntaxHighlighter.registerLanguage('md', markdown.default);
+  SyntaxHighlighter.registerLanguage('powershell', powershell.default);
+  SyntaxHighlighter.registerLanguage('python', python.default);
+  SyntaxHighlighter.registerLanguage('py', python.default);
+  SyntaxHighlighter.registerLanguage('rust', rust.default);
+  SyntaxHighlighter.registerLanguage('rs', rust.default);
+  SyntaxHighlighter.registerLanguage('sql', sql.default);
+  SyntaxHighlighter.registerLanguage('tsx', tsx.default);
+  SyntaxHighlighter.registerLanguage('typescript', typescript.default);
+  SyntaxHighlighter.registerLanguage('ts', typescript.default);
+  SyntaxHighlighter.registerLanguage('yaml', yaml.default);
+  SyntaxHighlighter.registerLanguage('yml', yaml.default);
+
+  return {
+    default: function LazyCodeBlock({ theme, language, code, codeProps }: LazyCodeBlockProps) {
+      return (
+        <SyntaxHighlighter
+          style={theme === 'dark' ? oneDark : oneLight}
+          language={language}
+          PreTag="div"
+          {...codeProps}
+        >
+          {code}
+        </SyntaxHighlighter>
+      );
+    },
+  };
+});
 
 function isExternalHref(href: string): boolean {
   return /^(https?:|mailto:|tel:|data:|blob:|#)/i.test(href);
@@ -60,7 +149,8 @@ function toFileLinkTarget(href?: string): string | null {
 }
 
 // Markdown 代码渲染组件 — 按 onFileSelect 引用缓存，避免每次渲染重建
-const markdownComponentsCache = new WeakMap<object, any>();
+type MarkdownThemeKey = Theme | 'default';
+const markdownComponentsCache = new WeakMap<object, Partial<Record<MarkdownThemeKey, any>>>();
 const noFileSelectKey = {};
 
 function createMarkdownComponents(theme?: Theme, onFileSelect?: (path: string) => void) {
@@ -92,14 +182,14 @@ function createMarkdownComponents(theme?: Theme, onFileSelect?: (path: string) =
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
       return !inline && match ? (
-        <SyntaxHighlighter
-          style={theme === 'dark' ? oneDark : oneLight}
-          language={match[1]}
-          PreTag="div"
-          {...props}
-        >
-          {String(children).replace(/\n$/, '')}
-        </SyntaxHighlighter>
+        <Suspense fallback={<pre className={className}><code>{String(children).replace(/\n$/, '')}</code></pre>}>
+          <LazyCodeBlock
+            theme={theme}
+            language={match[1]}
+            code={String(children).replace(/\n$/, '')}
+            codeProps={props}
+          />
+        </Suspense>
       ) : (
         <code className={className} {...props}>{children}</code>
       );
@@ -109,9 +199,12 @@ function createMarkdownComponents(theme?: Theme, onFileSelect?: (path: string) =
 
 function getMarkdownComponents(theme?: Theme, onFileSelect?: (path: string) => void) {
   const key = (onFileSelect as object) || noFileSelectKey;
-  if (markdownComponentsCache.has(key)) return markdownComponentsCache.get(key);
+  const themeKey: MarkdownThemeKey = theme || 'default';
+  const cachedByTheme = markdownComponentsCache.get(key);
+  if (cachedByTheme?.[themeKey]) return cachedByTheme[themeKey];
+
   const components = createMarkdownComponents(theme, onFileSelect);
-  markdownComponentsCache.set(key, components);
+  markdownComponentsCache.set(key, { ...cachedByTheme, [themeKey]: components });
   return components;
 }
 
