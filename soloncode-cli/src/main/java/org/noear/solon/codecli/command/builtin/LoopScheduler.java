@@ -580,9 +580,17 @@ public class LoopScheduler {
                         LOG.info("Loop task '{}' budget exceeded at iteration {}, executing wrap-up turn",
                                 task.getId(), iteration);
                         executeBudgetLimitWrapUp(sessionId, task, gs);
-                        gs.markBudgetLimited();
-                        LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
-                                executionResult, iteration, "BUDGET_EXCEEDED");
+
+                        // wrap-up 回合若 LLM 认为目标已达成，则标记 ACHIEVED 而非 BUDGET_LIMITED
+                        if (gs.getStatus() == GoalState.Status.ACHIEVED) {
+                            LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                    executionResult, iteration, "GOAL_ACHIEVED");
+                        } else {
+                            gs.markBudgetLimited();
+                            LoopStateManager.appendHistory(engine.getWorkspace(), task.getId(),
+                                    executionResult, iteration, "BUDGET_EXCEEDED");
+                        }
+
                         disableGoalScheduling(sessionId, task);
                         return;
                     }
@@ -812,7 +820,13 @@ public class LoopScheduler {
     private void executeBudgetLimitWrapUp(String sessionId, LoopTask task, GoalState gs) {
         try {
             String wrapUpPrompt = buildBudgetLimitPrompt(task, gs);
-            executeSingle(sessionId, wrapUpPrompt, null);
+            LoopExecutionResult wrapUpResult = executeSingle(sessionId, wrapUpPrompt, null);
+
+            // 预算耗尽后仍给 LLM 一次总结机会：如果 LLM 认为目标已完成，尊重此判断
+            if (wrapUpResult != null && wrapUpResult.isGoalAchieved()) {
+                LOG.info("Goal '{}' ACHIEVED during budget wrap-up turn", task.getId());
+                gs.achieve();
+            }
         } catch (Exception e) {
             LOG.warn("Goal '{}' wrap-up turn failed: {}", task.getId(), e.getMessage());
         }

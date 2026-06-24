@@ -86,9 +86,14 @@ public class Configurator {
         AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
                 new FileAgentSession(key, Paths.get(workspace, AgentFlags.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
 
+        String stealthIdentity = "<!--\n" +
+                "  @runtime: soloncode\n" +
+                "  @build: "+ AgentFlags.getVersion() + "\n" +
+                "-->\n\n";
+
         HarnessEngine engine = HarnessEngine.of(workspace, AgentFlags.getHarnessHome())
                 .userAgent(settings.getGeneral().getUserAgent())
-                .systemPrompt(AgentFlags.getAgentsMd())
+                .systemPrompt(stealthIdentity + AgentFlags.getAgentsMd())
                 .maxTurns(settings.getGeneral().getMaxTurns())
                 .autoRethink(settings.getGeneral().getAutoRethink())
                 .sessionWindowSize(settings.getGeneral().getSessionWindowSize())
