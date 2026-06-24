@@ -602,8 +602,14 @@ function showFeishuModal() {
     if (feishuModalOverlay) return;
 
     feishuModalOverlay = $('<div>').addClass('im-bind-modal-overlay').html(
-        '<div class="im-bind-modal">'
+        '<div class="im-bind-modal" style="min-width:360px">'
         + '<div class="im-bind-modal-title" style="color:#3370ff">飞书绑定</div>'
+        + '<div class="im-bind-tabs">'
+        + '  <button class="im-bind-tab active" data-tab="credential">手动输入</button>'
+        + '  <button class="im-bind-tab" data-tab="qrcode">扫码绑定</button>'
+        + '</div>'
+        /* === 手动输入 Tab === */
+        + '<div class="im-bind-tab-content" id="feishuTabCredential">'
         + '<div class="im-bind-modal-subtitle">输入飞书应用的 App ID 和 App Secret，连接后请在飞书上发消息给机器人完成自动绑定</div>'
         + '<div class="im-bind-input-group">'
         + '  <label class="im-bind-input-label">App ID</label>'
@@ -615,17 +621,39 @@ function showFeishuModal() {
         + '</div>'
         + '<div class="im-bind-status" id="feishuBindStatus">&nbsp;</div>'
         + '<button class="im-bind-confirm-btn feishu" id="feishuBindConfirmBtn">连接</button>'
-        + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
         + '<div class="im-bind-hint">提示：请在飞书开放平台（<a href="https://open.feishu.cn/" target="_blank">open.feishu.cn</a>）创建企业自建应用，开启机器人能力，事件订阅选择 WebSocket 长连接模式，然后复制 App ID 和 App Secret 到这里。</div>'
+        + '</div>'
+        /* === 扫码绑定 Tab === */
+        + '<div class="im-bind-tab-content" id="feishuTabQrcode" style="display:none">'
+        + '<div class="im-bind-modal-subtitle">使用飞书 App 扫描下方二维码，授权后自动完成绑定</div>'
+        + '<div class="feishu-qr-wrap" id="feishuQrWrap"><span class="feishu-qr-loading">正在获取二维码...</span></div>'
+        + '<div class="im-bind-status" id="feishuQrStatus">&nbsp;</div>'
+        + '<button class="im-bind-confirm-btn feishu" id="feishuQrRefreshBtn" style="display:none">刷新二维码</button>'
+        + '<div class="im-bind-hint">提示：扫码后请在飞书 App 上确认授权，绑定后即可在飞书上与 SolonCode 对话</div>'
+        + '</div>'
+        + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
         + '</div>'
     );
     $('body').append(feishuModalOverlay);
+
+    // Tab切换
+    feishuModalOverlay.find('.im-bind-tab').on('click', function() {
+        var tab = $(this).data('tab');
+        feishuModalOverlay.find('.im-bind-tab').removeClass('active');
+        $(this).addClass('active');
+        feishuModalOverlay.find('.im-bind-tab-content').hide();
+        $('#feishuTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).show();
+        if (tab === 'qrcode') {
+            startFeishuQrBinding();
+        }
+    });
 
     $('#feishuModalClose').on('click', closeFeishuModal);
     feishuModalOverlay.on('click', function(e) {
         if ($(e.target).is(feishuModalOverlay)) closeFeishuModal();
     });
 
+    /* ---- 手动输入 Tab 逻辑 ---- */
     var $appIdInput = $('#feishuAppIdInput');
     var $appSecretInput = $('#feishuAppSecretInput');
     var $statusEl = $('#feishuBindStatus');
@@ -682,39 +710,100 @@ function showFeishuModal() {
         });
     });
 
-    function startFeishuPoll() {
-        if (feishuPollTimer) clearInterval(feishuPollTimer);
-        var dotCount = 0;
-        feishuPollTimer = setInterval(function() {
-            dotCount = (dotCount + 1) % 4;
-            var dots = '.'.repeat(dotCount);
-            $statusEl.text('等待飞书消息' + dots);
-
-            $.get('/web/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
-                try {
-                    var data = resp.data || {};
-                    if (data.bound) {
-                        // 绑定成功！
-                        clearInterval(feishuPollTimer);
-                        feishuPollTimer = null;
-                        $statusEl.text('绑定成功！').removeClass('error').addClass('scanned');
-                        setTimeout(function() {
-                            closeFeishuModal();
-                            updateFeishuUI();
-                            switchToChatMode();
-                        }, 1000);
-                    }
-                } catch(e) {}
-            }, 'json');
-        }, 2000);
-    }
-
     // Enter key to confirm
     $appIdInput.add($appSecretInput).on('keydown', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             $confirmBtn.click();
         }
+    });
+
+    /* ---- 扫码绑定 Tab 逻辑 ---- */
+    function startFeishuQrBinding() {
+        var $qrWrap = $('#feishuQrWrap');
+        var $qrStatus = $('#feishuQrStatus');
+        var $refreshBtn = $('#feishuQrRefreshBtn');
+
+        $qrStatus.text('').removeClass('error scanned');
+        $refreshBtn.hide();
+
+        $.ajax({
+            url: '/web/chat/feishu/qrcode?sessionId=' + encodeURIComponent(activeSessionId),
+            method: 'POST',
+            dataType: 'json'
+        }).done(function(resp) {
+            if (resp.code !== 200 || !resp.data) {
+                $qrWrap.html('<span style="font-size:13px;color:#666">' + escapeHtml(resp.message || '获取二维码失败') + '</span>');
+                $qrStatus.text('获取二维码失败').addClass('error');
+                $refreshBtn.show();
+                return;
+            }
+            var qrUrl = resp.data.qrUrl;
+            $qrWrap.html('');
+            if (qrUrl) {
+                try {
+                    new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
+                    $qrStatus.text('请使用飞书 App 扫码').removeClass('error scanned');
+                } catch(e) {
+                    $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                }
+            }
+            // 开始轮询扫码状态
+            startFeishuQrPoll();
+        }).fail(function(jqXhr) {
+            $qrWrap.html('<span style="font-size:13px;color:#666">网络请求失败</span>');
+            $qrStatus.text('网络请求失败').addClass('error');
+            $refreshBtn.show();
+        });
+    }
+
+    function startFeishuQrPoll() {
+        if (feishuPollTimer) clearInterval(feishuPollTimer);
+        var dotCount = 0;
+        feishuPollTimer = setInterval(function() {
+            $.get('/web/chat/feishu/qrcode/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+                try {
+                    var data = resp.data || {};
+                    var $qrStatus = $('#feishuQrStatus');
+                    if (!$qrStatus.length) return;
+
+                    var status = data.status;
+                    if (status === 'waiting') {
+                        dotCount = (dotCount + 1) % 4;
+                        var dots = '.'.repeat(dotCount);
+                        $qrStatus.text('等待扫码' + dots).removeClass('error scanned');
+                    } else if (status === 'success') {
+                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        setTimeout(function() {
+                            closeFeishuModal();
+                            updateFeishuUI();
+                            switchToChatMode();
+                        }, 1200);
+                    } else if (status === 'failed') {
+                        $qrStatus.text(data.message || '绑定失败').addClass('error');
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        $('#feishuQrRefreshBtn').show();
+                    } else if (status === 'error') {
+                        $qrStatus.text(data.message || '查询状态失败').addClass('error');
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        $('#feishuQrRefreshBtn').show();
+                    }
+                } catch(e) {}
+            }, 'json');
+        }, 2000);
+    }
+
+    // 刷新二维码
+    $('#feishuQrRefreshBtn').on('click', function() {
+        if (feishuPollTimer) {
+            clearInterval(feishuPollTimer);
+            feishuPollTimer = null;
+        }
+        startFeishuQrBinding();
     });
 }
 

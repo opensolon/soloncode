@@ -169,6 +169,18 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .im-bind-modal-close { margin-top: 8px; padding: 8px 24px; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; transition: all 0.15s; }
 .im-bind-modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
 
+/* IM Bind Tabs */
+.im-bind-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+.im-bind-tab { flex: 1; padding: 8px 12px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+.im-bind-tab:hover { color: var(--text-primary); }
+.im-bind-tab.active { color: #3370ff; border-bottom-color: #3370ff; font-weight: 500; }
+.im-bind-tab-content { min-height: 100px; }
+
+/* Feishu QR wrap */
+.feishu-qr-wrap { width: 220px; height: 220px; margin: 0 auto 20px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.feishu-qr-wrap img { max-width: 200px; max-height: 200px; }
+.feishu-qr-loading { font-size: 13px; color: var(--text-secondary); }
+
 /* IM Bind Input & Confirm */
 .im-bind-input-group { margin-bottom: 12px; }
 .im-bind-input-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; display: block; }

@@ -96,9 +96,12 @@ public class FeishuAppRegistration {
             throw new RuntimeException("飞书注册响应缺少 device_code");
         }
 
-        // 使用 /page/launcher 格式的 URL（与飞书官方 SDK 一致）
-        String qrUrl = accountsUrl + "/page/launcher?user_code=" + encode(userCode)
-                + "&from=sdk&source=soloncode&tp=sdk";
+        // 直接使用飞书 API 返回的 verification_uri_complete（含 user_code，无需手动拼接）
+        String qrUrl = verificationUriComplete;
+        if (qrUrl == null || qrUrl.isEmpty()) {
+            // 容错：极低概率，API 未返回完整 URL
+            qrUrl = accountsUrl + "/oauth/v1/device/verify?user_code=" + encode(userCode);
+        }
 
         // 默认值保护
         if (expiresIn <= 0) expiresIn = 600;
