@@ -531,13 +531,13 @@
 
 
         html += '</div>';  // 结束 goal section
+        html += '</div>';  // 结束 loop-form（scrollable 区）
 
-        // 操作按钮
+        // 操作按钮（在 loop-form 外部，固定在面板底部）
         html += '<div class="loop-form-actions">';
         html += '<button class="loop-btn-secondary" id="loopFormCancelBtn">取消</button>';
         html += '<button class="loop-btn-secondary" id="loopFormTriggerBtn" style="display:' + (loopEditId ? 'inline-block' : 'none') + '">测试运行</button>';
         html += '<button class="loop-btn-primary" id="loopFormSaveBtn">保存</button>';
-        html += '</div>';
         html += '</div>';
 
         var $panel = getActivePanel();
