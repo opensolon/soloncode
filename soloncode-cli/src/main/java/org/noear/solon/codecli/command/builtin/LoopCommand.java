@@ -379,6 +379,16 @@ public class LoopCommand implements Command {
         if (maxIterations != null) {
             ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
         }
+        if (maxTokens != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Tokens:" + RESET + " " + maxTokens));
+        } else if (loopCfg.getDefaultMaxTokensOrDefault() > 0) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Tokens:" + RESET + " " + loopCfg.getDefaultMaxTokensOrDefault()));
+        }
+        if (maxDurationMs != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Duration:" + RESET + " " + (maxDurationMs / 60000) + "m"));
+        } else if (loopCfg.getDefaultMaxDurationMsOrDefault() > 0) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Duration:" + RESET + " " + (loopCfg.getDefaultMaxDurationMsOrDefault() / 60000) + "m"));
+        }
         ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
         ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
     }

@@ -538,6 +538,11 @@ public class WebStreamBuilder {
             finalAnswer = finalAnswer.replaceAll("(?s)<\\s*/?think\\s*>", "");
         }
 
+        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
+        if (totalTokens != null) {
+            session.attrs().put("_loop_last_total_tokens", totalTokens);
+        }
+
         return WebChunk.ofTrace(model, totalTokens, elapsedSeconds, finalAnswer);
     }
 

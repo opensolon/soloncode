@@ -18,6 +18,7 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.LoopGroupDo;
@@ -922,6 +923,23 @@ public class LoopScheduler {
         for (TaskExecutor taskExecutor : taskExecutors) {
             String result = taskExecutor.execute(sessionId, effectivePrompt, agentName);
             if (result != null) {
+                // 优先使用 LLM 返回的真实 token 消耗（Web 端通过 session attrs 传递）
+                long tokensUsed = 0;
+                try {
+                    AgentSession session = engine.getSession(sessionId);
+                    Object val = session.attrs().get("_loop_last_total_tokens");
+                    if (val instanceof Number) {
+                        tokensUsed = ((Number) val).longValue();
+                    }
+                } catch (Exception e) {
+                    // fallback: 使用 fromText 估算
+                }
+
+                if (tokensUsed > 0) {
+                    return LoopExecutionResult.fromExecution(
+                            result.length() > 20 && !result.startsWith("error:"),
+                            tokensUsed, result);
+                }
                 return LoopExecutionResult.fromText(result);
             }
         }

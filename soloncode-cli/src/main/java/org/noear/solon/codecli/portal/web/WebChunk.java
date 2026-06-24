@@ -317,4 +317,8 @@ public class WebChunk {
 
         return tmp;
     }
+
+    public Long getTotalTokens() {
+        return totalTokens;
+    }
 }

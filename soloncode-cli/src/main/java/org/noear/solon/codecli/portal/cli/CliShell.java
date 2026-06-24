@@ -507,6 +507,12 @@ public class CliShell implements Runnable {
             terminal.writer().println(DIM + traceInfo + RESET);
         }
 
+        Long totalTokens = react.getTrace().getMetrics() != null ? react.getTrace().getMetrics().getTotalTokens() : null;
+        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
+        if (totalTokens != null) {
+            react.getSession().attrs().put("_loop_last_total_tokens", totalTokens);
+        }
+
         // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。
         return clearThink(react.getContent());
     }
