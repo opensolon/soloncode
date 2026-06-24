@@ -17,6 +17,8 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -213,5 +215,341 @@ class LoopPromptBuilderTest {
         GoalState gs = new GoalState("test", 10000);
         gs.addTokens(2500);
         assertEquals(0.75, LoopPromptBuilder.budgetRatio(gs), 0.001);
+    }
+
+    // ===== buildBudgetLimitPrompt — tokens 重复 bug 修复专项测试 =====
+
+    @Test
+    void budgetLimitPrompt_smallTokens_noDuplication() {
+        // consumed < 1000, maxTokens < 1000 — 最关键的 "tokens tokens" 修复场景
+        LoopTask task = createGoalTask(500, 300, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertFalse(result.contains("tokens tokens"), "should not duplicate 'tokens'");
+        assertTrue(result.contains("- 已消耗: 300 tokens / 500 tokens"),
+                "should contain '300 tokens / 500 tokens'");
+    }
+
+    @Test
+    void budgetLimitPrompt_smallConsumedLargeMax() {
+        // consumed < 1000, maxTokens >= 1000
+        LoopTask task = createGoalTask(10000, 300, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertFalse(result.contains("tokens tokens"), "should not duplicate 'tokens'");
+        assertTrue(result.contains("- 已消耗: 300 tokens / 10.0k"),
+                "consumed < 1000 shows tokens suffix, max >= 1000 shows k format");
+    }
+
+    @Test
+    void budgetLimitPrompt_largeConsumedSmallMax() {
+        // consumed >= 1000, maxTokens < 1000
+        LoopTask task = createGoalTask(500, 2000, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertFalse(result.contains("tokens tokens"), "should not duplicate 'tokens'");
+        assertTrue(result.contains("- 已消耗: 2.0k / 500 tokens"),
+                "consumed >= 1000 shows k format, max < 1000 shows tokens suffix");
+    }
+
+    @Test
+    void budgetLimitPrompt_largeTokensBoth() {
+        // consumed >= 1000, maxTokens >= 1000
+        LoopTask task = createGoalTask(10000, 2000, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertFalse(result.contains("tokens tokens"), "should not duplicate 'tokens'");
+        assertTrue(result.contains("- 已消耗: 2.0k / 10.0k"),
+                "both >= 1000 should use k format");
+    }
+
+    @Test
+    void budgetLimitPrompt_unlimitedMaxTokens_smallConsumed() {
+        // maxTokens = 0, consumed < 1000
+        LoopTask task = createGoalTask(0, 300, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertFalse(result.contains("tokens tokens"), "should not duplicate 'tokens'");
+        assertTrue(result.contains("- 已消耗: 300 tokens"),
+                "unlimited budget, consumed < 1000 should show tokens suffix");
+    }
+
+    @Test
+    void budgetLimitPrompt_unlimitedMaxTokens_largeConsumed() {
+        // maxTokens = 0, consumed >= 1000
+        LoopTask task = createGoalTask(0, 2000, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertFalse(result.contains("tokens tokens"), "should not duplicate 'tokens'");
+        assertTrue(result.contains("- 已消耗: 2.0k"),
+                "unlimited budget, consumed >= 1000 should use k format");
+    }
+
+    @Test
+    void budgetLimitPrompt_zeroConsumed() {
+        // 边界：consumed = 0
+        LoopTask task = createGoalTask(10000, 0, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertFalse(result.contains("tokens tokens"), "should not duplicate 'tokens'");
+        assertTrue(result.contains("- 已消耗: 0 tokens"),
+                "0 tokens should still show '0 tokens'");
+    }
+
+    // ===== formatTokens 单测 =====
+
+    @Test
+    void formatTokens_below1000() {
+        assertEquals("0 tokens", LoopPromptBuilder.formatTokens(0));
+        assertEquals("1 tokens", LoopPromptBuilder.formatTokens(1));
+        assertEquals("500 tokens", LoopPromptBuilder.formatTokens(500));
+        assertEquals("999 tokens", LoopPromptBuilder.formatTokens(999));
+    }
+
+    @Test
+    void formatTokens_1000to1M() {
+        assertEquals("1.0k", LoopPromptBuilder.formatTokens(1000));
+        assertEquals("1.5k", LoopPromptBuilder.formatTokens(1500));
+        assertEquals("10.0k", LoopPromptBuilder.formatTokens(10000));
+        assertEquals("999.9k", LoopPromptBuilder.formatTokens(999900));
+    }
+
+    @Test
+    void formatTokens_1Mplus() {
+        assertEquals("1.0M", LoopPromptBuilder.formatTokens(1_000_000));
+        assertEquals("1.5M", LoopPromptBuilder.formatTokens(1_500_000));
+        assertEquals("10.0M", LoopPromptBuilder.formatTokens(10_000_000));
+    }
+
+    // ===== buildBudgetInfo — 确保无 tokens 重复 =====
+
+    @Test
+    void buildBudgetInfo_noTokensDuplication() {
+        GoalState gs = new GoalState("test", 10000);
+        gs.addTokens(300);
+        String info = LoopPromptBuilder.buildBudgetInfo(gs);
+        assertFalse(info.contains("tokens tokens"), "buildBudgetInfo should not duplicate tokens");
+
+        // maxTokens=0 分支
+        GoalState gs2 = new GoalState("test", 0);
+        gs2.addTokens(300);
+        String info2 = LoopPromptBuilder.buildBudgetInfo(gs2);
+        assertFalse(info2.contains("tokens tokens"), "buildBudgetInfo unlimited should not duplicate tokens");
+    }
+
+    // ===== buildBudgetLimitPrompt — 完整内容完整性 =====
+
+    @Test
+    void budgetLimitPrompt_containsAllSections() {
+        LoopTask task = createGoalTask(10000, 2000, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertTrue(result.contains("预算耗尽 (Budget Limit)"), "should have header");
+        assertTrue(result.contains("目标:"), "should contain goal label");
+        assertTrue(result.contains("test goal objective here"), "should contain condition");
+        assertTrue(result.contains("budget_limited"), "should mention budget_limited");
+        assertTrue(result.contains("总结已完成的工作"), "should instruct summary");
+        assertTrue(result.contains("剩余未完成的工作"), "should instruct remaining");
+        assertTrue(result.contains("下一步建议"), "should instruct next steps");
+    }
+
+    // ===== 全面覆盖：完整模式剩余分支 =====
+
+    @Test
+    void fullModeWithPreviousSummary() {
+        // 完整模式 + 非首轮 + 有上一轮结果（覆盖 "上一轮执行摘要" + truncateForPrompt 截断）
+        LoopTask task = createGoalTask(10000, 2000, 3);
+        String longResult = "第一轮：分析了项目结构，发现主要模块。\n" +
+                "第二轮：实现了核心功能，包括A、B、C三个组件。\n" +
+                "第三轮：编写了单元测试，编写了大量测试用例确保覆盖率。";
+        // 追加大量字符触发 truncate (maxLen=300, 当前字符约120)
+        StringBuilder sb = new StringBuilder(longResult);
+        while (sb.length() < 350) {
+            sb.append(" 更多内容以确保文本长度超过300字符触发截断机制。");
+        }
+        task.updateLastExecution(sb.toString());
+        String result = builder.buildEffectivePrompt(task);
+        assertTrue(result.contains("上一轮执行摘要（第 3 轮）"), "full mode should show previous round summary");
+        assertTrue(result.contains("请基于以上进展继续推进"), "should have progress instruction");
+        assertTrue(result.contains("...(省略)..."), "should contain ellipsis when truncated");
+    }
+
+    @Test
+    void fullModeWithoutStagnationCheck() {
+        // 完整模式 + stagnationCount < threshold → 不应出现质疑章节
+        LoopTask task = createGoalTask(10000, 2000, 0);
+        task.recordStagnation(); // 1 < 3
+        String result = builder.buildEffectivePrompt(task);
+        assertFalse(result.contains("进展质疑 (Stagnation Check)"), "should NOT show stagnation when count < threshold");
+    }
+
+    @Test
+    void fullModeWithBudgetCritical() throws Exception {
+        // isBudgetCritical() 在完整模式下通常不可达（ratio >= 0.30 → consumed <= 70%，
+        // 而 critical 需要 >= 85%）。通过 GoalState.configure() 临时降低阈值覆盖此分支。
+        Field warningField = GoalState.class.getDeclaredField("budgetWarningPercent");
+        Field criticalField = GoalState.class.getDeclaredField("budgetCriticalPercent");
+        warningField.setAccessible(true);
+        criticalField.setAccessible(true);
+        int savedWarning = warningField.getInt(null);
+        int savedCritical = criticalField.getInt(null);
+
+        try {
+            // 设置 critical 阈值为 1%，使 consumed=1000 (10%) 超过阈值
+            GoalState.configure(savedWarning, 1);
+            LoopTask task = createGoalTask(10000, 1000, 0);
+            String result = builder.buildEffectivePrompt(task);
+            assertTrue(result.contains("[紧急]"), "full mode should show '[紧急]' when budget critical");
+        } finally {
+            // 恢复原配置，避免影响其他测试
+            warningField.setInt(null, savedWarning);
+            criticalField.setInt(null, savedCritical);
+        }
+    }
+
+    @Test
+    void fullModeContainsGoalAchievedInstruction() {
+        LoopTask task = createGoalTask(10000, 2000, 0);
+        String result = builder.buildEffectivePrompt(task);
+        assertTrue(result.contains("[GOAL_ACHIEVED]"), "full mode should contain GOAL_ACHIEVED instruction");
+    }
+
+    // ===== 全面覆盖：精简模式剩余分支 =====
+
+    @Test
+    void compactModeFirstIter_noPreviousSummary() {
+        // 精简模式 + isFirstIter → 不应有上一轮摘要
+        LoopTask task = createGoalTask(10000, 8000, 0); // iter=0
+        String result = builder.buildEffectivePrompt(task);
+        assertFalse(result.contains("上一轮"), "compact mode first iter should NOT show previous round");
+    }
+
+    @Test
+    void compactModeNullLastResult_noPreviousSummary() {
+        // 精简模式 + 非首轮但 lastResult=null → 不应有上一轮摘要
+        LoopTask task = createGoalTask(10000, 8000, 2);
+        // lastResult 显式置 null
+        task.setLastResult(null);
+        String result = builder.buildEffectivePrompt(task);
+        assertFalse(result.contains("上一轮"), "compact mode with null lastResult should NOT show previous round");
+    }
+
+    // ===== 全面覆盖：buildBudgetInfo =====
+
+    @Test
+    void buildBudgetInfo_withBudgetWarning() {
+        // 消耗 75% (70% ≤ 75% < 85%) → isBudgetWarning() = true
+        GoalState gs = new GoalState("test", 10000);
+        gs.addTokens(7500);
+        String info = LoopPromptBuilder.buildBudgetInfo(gs);
+        assertTrue(info.contains("[预算提示]"), "should show budget warning at 75%");
+        assertTrue(info.contains("75%"), "should show correct percentage 75%");
+    }
+
+    @Test
+    void buildBudgetInfo_withBudgetCriticalAndRemaining() {
+        // 消耗 90% + remainToken > 0 → 显示 (剩余: …)
+        GoalState gs = new GoalState("test", 10000);
+        gs.addTokens(9000);
+        String info = LoopPromptBuilder.buildBudgetInfo(gs);
+        assertTrue(info.contains("剩余: 1.0k"), "should show remaining tokens when critical");
+    }
+
+    @Test
+    void buildBudgetInfo_withElapsedTime() throws Exception {
+        GoalState gs = new GoalState("test", 10000);
+        gs.addTokens(5000);
+        // 反射设置 startEpochMs 为 5 秒前
+        Field field = GoalState.class.getDeclaredField("startEpochMs");
+        field.setAccessible(true);
+        field.setLong(gs, System.currentTimeMillis() - 5000);
+        String info = LoopPromptBuilder.buildBudgetInfo(gs);
+        assertTrue(info.contains("耗时:"), "should show elapsed time when > 1000ms");
+    }
+
+    @Test
+    void buildBudgetInfo_startEpochMsZero() throws Exception {
+        // startEpochMs = 0 → 不显示耗时，其余信息正常
+        GoalState gs = new GoalState("test", 10000);
+        gs.addTokens(300);
+        Field field = GoalState.class.getDeclaredField("startEpochMs");
+        field.setAccessible(true);
+        field.setLong(gs, 0);
+        String info = LoopPromptBuilder.buildBudgetInfo(gs);
+        assertFalse(info.contains("耗时:"), "should NOT show elapsed time when startEpochMs is 0");
+        assertTrue(info.contains("已消耗 300 tokens / 10.0k"), "should still show budget info");
+    }
+
+    @Test
+    void buildBudgetInfo_maxTokensZero_consumedZero_startEpochMsZero() throws Exception {
+        // 三个零 → 空字符串
+        GoalState gs = new GoalState("test", 0);
+        Field field = GoalState.class.getDeclaredField("startEpochMs");
+        field.setAccessible(true);
+        field.setLong(gs, 0);
+        String info = LoopPromptBuilder.buildBudgetInfo(gs);
+        assertEquals("", info, "should be empty when max=0, consumed=0, startEpochMs=0");
+    }
+
+    // ===== 全面覆盖：budgetPercent =====
+
+    @Test
+    void budgetPercent_zeroOrNegativeTotal() {
+        assertEquals("0", LoopPromptBuilder.budgetPercent(100, 0));
+        assertEquals("0", LoopPromptBuilder.budgetPercent(100, -1));
+    }
+
+    @Test
+    void budgetPercent_normal() {
+        assertEquals("25", LoopPromptBuilder.budgetPercent(2500, 10000));
+        assertEquals("0", LoopPromptBuilder.budgetPercent(0, 10000));
+        assertEquals("100", LoopPromptBuilder.budgetPercent(10000, 10000));
+    }
+
+    // ===== 全面覆盖：formatDuration =====
+
+    @Test
+    void formatDuration_seconds() {
+        assertEquals("0s", LoopPromptBuilder.formatDuration(0));
+        assertEquals("30s", LoopPromptBuilder.formatDuration(30_000));
+        assertEquals("59s", LoopPromptBuilder.formatDuration(59_000));
+    }
+
+    @Test
+    void formatDuration_minutes() {
+        assertEquals("1m 0s", LoopPromptBuilder.formatDuration(60_000));
+        assertEquals("1m 30s", LoopPromptBuilder.formatDuration(90_000));
+        assertEquals("59m 59s", LoopPromptBuilder.formatDuration(3_599_000));
+    }
+
+    @Test
+    void formatDuration_hours() {
+        assertEquals("1h 0m", LoopPromptBuilder.formatDuration(3_600_000));
+        assertEquals("2h 5m", LoopPromptBuilder.formatDuration(7_500_000));
+        assertEquals("24h 0m", LoopPromptBuilder.formatDuration(86_400_000));
+    }
+
+    // ===== 全面覆盖：truncateForPrompt =====
+
+    @Test
+    void truncateForPrompt_nullOrEmpty() {
+        assertEquals("", LoopPromptBuilder.truncateForPrompt(null, 100));
+        assertEquals("", LoopPromptBuilder.truncateForPrompt("", 100));
+    }
+
+    @Test
+    void truncateForPrompt_withinMaxLen() {
+        assertEquals("hello", LoopPromptBuilder.truncateForPrompt("hello", 100));
+        assertEquals("hello", LoopPromptBuilder.truncateForPrompt("hello", 5));
+    }
+
+    @Test
+    void truncateForPrompt_truncated() {
+        String text = "hello world this is a long text for testing truncation in loop prompt builder";
+        String result = LoopPromptBuilder.truncateForPrompt(text, 10);
+        assertTrue(result.startsWith("hello"), "should start with first half");
+        assertTrue(result.contains("...(省略)..."), "should contain ellipsis");
+        assertTrue(result.endsWith("lder"), "should end with last half");
+    }
+
+    // ===== 全面覆盖：buildBudgetLimitPrompt 耗时行 =====
+
+    @Test
+    void budgetLimitPrompt_containsDurationLine() {
+        LoopTask task = createGoalTask(10000, 2000, 0);
+        String result = builder.buildBudgetLimitPrompt(task, task.getGoalState());
+        assertTrue(result.contains("- 耗时:"), "budget limit prompt should contain duration line");
     }
 }

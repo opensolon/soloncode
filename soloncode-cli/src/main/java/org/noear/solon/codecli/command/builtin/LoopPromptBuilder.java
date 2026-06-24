@@ -152,9 +152,9 @@ public class LoopPromptBuilder {
         sb.append("- 耗时: ").append(formatDuration(elapsed * 1000)).append("\n");
         sb.append("- 已消耗: ").append(formatTokens(gs.getConsumedTokens()));
         if (gs.getMaxTokens() > 0) {
-            sb.append(" / ").append(formatTokens(gs.getMaxTokens())).append(" tokens\n");
+            sb.append(" / ").append(formatTokens(gs.getMaxTokens())).append("\n");
         } else {
-            sb.append(" tokens\n");
+            sb.append("\n");
         }
         sb.append("\n");
 
