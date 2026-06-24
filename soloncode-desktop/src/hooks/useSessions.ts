@@ -124,7 +124,7 @@ export function useSessions(
           }
           return [{ id: realId, title, timestamp: new Date().toLocaleString(), messageCount: 0, workspacePath: sessionWsPath }, ...p];
         });
-        setCurrentSessionId(realId);
+        setCurrentSessionId(current => current === sessionId ? realId : current);
         options?.onSessionIdResolved?.(sessionId, realId);
       });
 

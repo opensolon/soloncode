@@ -216,20 +216,21 @@
   background: var(--cb-text-secondary);
 }
 
-.reasoning-dot[data-level="auto"] {
-  background: var(--cb-text-secondary);
-}
-
 .reasoning-dot[data-level="low"] {
-  background: #22c55e;
+  background: #cbd5e1;
 }
 
 .reasoning-dot[data-level="medium"] {
-  background: #f59e0b;
+  background: #e5e7eb;
 }
 
 .reasoning-dot[data-level="high"] {
-  background: #ef4444;
+  background: #93c5fd;
+}
+
+.reasoning-dot[data-level="max"] {
+  background: #c084fc;
+  box-shadow: 0 0 0 2px rgba(192, 132, 252, 0.18);
 }
 
 /* 智能体按钮 */
@@ -296,8 +297,7 @@
 .input-row {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  padding: 8px 12px 10px;
+  padding: 8px 12px 4px;
 }
 
 .message-input {
@@ -321,10 +321,10 @@
 
 /* 发送 / 停止按钮 */
 .send-stop-button {
-  width: 36px;
-  height: 36px;
-  background-color: var(--cb-accent);
-  color: white;
+  width: 32px;
+  height: 32px;
+  background-color: #8e8e93;
+  color: #ffffff;
   border: none;
   border-radius: 50%;
   display: flex;
@@ -336,7 +336,7 @@
 }
 
 .send-stop-button:hover:not(:disabled) {
-  background-color: var(--cb-accent-light);
+  background-color: #7c7c82;
   transform: scale(1.05);
 }
 
@@ -347,7 +347,8 @@
 }
 
 .send-stop-button.stopping {
-  background-color: var(--cb-error, #ef4444);
+  background-color: #8e8e93;
+  color: #ffffff;
 }
 
 .send-stop-button.stopping:hover {

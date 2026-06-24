@@ -21,7 +21,7 @@ function StartWorkPanel({ onNewProject, onOpenFolder }: { onNewProject?: () => v
 
   return (
     <div className="start-work-panel" ref={ref}>
-      <button className="start-work-trigger" onClick={() => setOpen(prev => !prev)}>
+      <button type="button" className="start-work-trigger" onClick={() => setOpen(prev => !prev)}>
         <span className="start-work-trigger-left">
           <Icon name="folder" size={14} />
           <span>进入项目工作</span>
@@ -110,13 +110,13 @@ function getModelDisplayName(p: ModelProvider): string {
 }
 
 export type ChatMode = 'default' | 'auto' | 'plan';
-export type ReasoningEffort = 'auto' | 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'max';
 
 const REASONING_OPTIONS: Array<{ key: ReasoningEffort; label: string; desc: string }> = [
-  { key: 'auto', label: '自动', desc: '由模型自动决定推理强度' },
-  { key: 'low', label: '低', desc: '更快响应，适合简单问题' },
-  { key: 'medium', label: '中', desc: '平衡速度和质量' },
-  { key: 'high', label: '高', desc: '更充分推理，适合复杂任务' },
+  { key: 'low', label: 'low', desc: '快速响应，基础推理' },
+  { key: 'medium', label: 'medium', desc: '平衡思考（默认）' },
+  { key: 'high', label: 'high', desc: '深度推理，适合复杂任务' },
+  { key: 'max', label: 'max', desc: '最大推理深度' },
 ];
 
 function estimateTokens(text: string) {
@@ -153,7 +153,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('soloncode-last-model') || '');
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
     const saved = localStorage.getItem('soloncode-reasoning-effort') as ReasoningEffort | null;
-    return saved && REASONING_OPTIONS.some(item => item.key === saved) ? saved : 'auto';
+    return saved && REASONING_OPTIONS.some(item => item.key === saved) ? saved : 'medium';
   });
   const [selectedAgent, setSelectedAgent] = useState('default');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
@@ -744,15 +744,6 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
               rows={1}
               onKeyDown={handleKeyDown}
             />
-            <button
-              type={isLoading && onStop ? 'button' : 'submit'}
-              className={`send-stop-button${isLoading ? ' stopping' : ''}`}
-              disabled={!isLoading && !userInput.trim()}
-              onClick={isLoading && onStop ? onStop : undefined}
-              title={isLoading && onStop ? '停止生成' : '发送'}
-            >
-              <Icon name={isLoading && onStop ? 'close' : 'send'} size={isLoading && onStop ? 14 : 16} />
-            </button>
           </div>
 
           {/* 底部操作栏 */}
@@ -933,6 +924,15 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
             >
               <span className="context-meter-ring" />
             </span>
+            <button
+              type={isLoading && onStop ? 'button' : 'submit'}
+              className={`send-stop-button${isLoading ? ' stopping' : ''}`}
+              disabled={!isLoading && !userInput.trim()}
+              onClick={isLoading && onStop ? onStop : undefined}
+              title={isLoading && onStop ? '停止生成' : '发送'}
+            >
+              <Icon name={isLoading && onStop ? 'close' : 'push'} size={isLoading && onStop ? 13 : 17} />
+            </button>
           </div>
         </form>
 

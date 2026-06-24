@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { Message, Conversation, Theme, Plugin, ContentType, ContentItem } from '../types';
 import { normalizeProviderType, type ModelProvider } from '../services/settingsService';
+import { fileService } from '../services/fileService';
 import { saveMessage, getMessagesByConversation } from '../db';
-import { ChatHeader } from './ChatHeader';
+import { ChatHeader, type ChatHeaderTask, type ChatReviewFile } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
 import { ChatInput, type SendOptions, type ChatMode } from './ChatInput';
 import { Icon } from './common/Icon';
+import type { Session } from './sidebar/SessionsPanel';
 import '../views/ChatPage.css';
 
 interface ChatViewProps {
@@ -16,8 +18,12 @@ interface ChatViewProps {
   projectName?: string;
   theme?: Theme;
   backendPort?: number | null;
+  sessions?: Session[];
+  sessionRunStates?: Record<string, 'running' | 'completed' | 'error'>;
+  maxSteps?: number;
   onUpdateSessionTitle?: (sessionId: string, title: string) => void;
   onNewSession?: (title?: string) => string;
+  onSelectSession?: (sessionId: string) => void;
   providers?: ModelProvider[];
   activeProviderId?: string;
   onActiveProviderChange?: (providerId: string) => void;
@@ -26,6 +32,8 @@ interface ChatViewProps {
   onNewProject?: () => void;
   onOpenFolder?: () => void;
   onFileSelect?: (path: string) => void;
+  reviewFiles?: ChatReviewFile[];
+  onReviewFileSelect?: (path: string) => void;
   initialPrompt?: {
     prompt: string;
     type: 'skill' | 'agent';
@@ -146,6 +154,7 @@ class WebSocketManager {
         }
         const msg = JSON.parse(data);
         const msgSessionId = (msg.sessionId || sessionId || '').toString();
+        if (msgSessionId && !msg.sessionId) msg.sessionId = msgSessionId;
         if (msgSessionId && msg.type === 'done') this.statusCallback?.(msgSessionId, 'completed');
         if (msgSessionId && msg.type === 'error') this.statusCallback?.(msgSessionId, 'error');
         this.messageCallback?.(msg);
@@ -241,6 +250,32 @@ function estimateMessageTokens(messages: Message[]) {
   return Math.ceil(text.length / 4);
 }
 
+async function buildActiveFileContext(filePath: string, workspacePath?: string): Promise<string | null> {
+  try {
+    const content = await fileService.readFile(filePath);
+    const normalizedWorkspace = workspacePath?.replace(/\\/g, '/').replace(/\/$/, '');
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const displayPath = normalizedWorkspace && normalizedPath.startsWith(`${normalizedWorkspace}/`)
+      ? normalizedPath.slice(normalizedWorkspace.length + 1)
+      : normalizedPath;
+    const lineCount = content ? content.split(/\r\n|\r|\n/).length : 0;
+    const sizeKb = Math.max(0.01, new Blob([content]).size / 1024).toFixed(2);
+    const maxChars = 64000;
+    const clipped = content.length > maxChars
+      ? `${content.slice(0, maxChars)}\n\n[Content truncated: ${content.length - maxChars} characters omitted]`
+      : content;
+    return [
+      `[Current File: ${displayPath} (Lines: ${lineCount}, Size: ${sizeKb} KB)]`,
+      '```',
+      clipped,
+      '```',
+    ].join('\n');
+  } catch (err) {
+    console.warn('[ChatView] 读取当前文件上下文失败:', err);
+    return null;
+  }
+}
+
 /** 设置后端 WebSocket 端口（供 App.tsx 调用） */
 export function setBackendPort(port: number | null) {
   WebSocketManager.getInstance().setBackendPort(port);
@@ -303,14 +338,28 @@ export async function sendModelConfig(provider: { apiUrl: string; apiKey: string
   await registerModelToBackend(provider, true);
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, onUpdateSessionTitle, onNewSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder, onFileSelect, initialPrompt, onAiCreateComplete, newSessionFromProject, onSessionRunStateChange, onSessionMessageSaved }: ChatViewProps) {
+function ReviewPrompt({ files, onReview }: { files: ChatReviewFile[]; onReview: () => void }) {
+  return (
+    <div className="chat-review-prompt">
+      <button type="button" className="chat-review-btn" onClick={onReview}>
+        <Icon name="git" size={14} />
+        <span>审查</span>
+        <span className="chat-review-count">{files.length}</span>
+      </button>
+    </div>
+  );
+}
+
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, sessions = [], sessionRunStates = {}, maxSteps = 30, onUpdateSessionTitle, onNewSession, onSelectSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder, onFileSelect, reviewFiles = [], onReviewFileSelect, initialPrompt, onAiCreateComplete, newSessionFromProject, onSessionRunStateChange, onSessionMessageSaved }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>('default');
+  const [reviewInfoSignal, setReviewInfoSignal] = useState(0);
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
   const sessionIdRef = useRef<string>('');
   const conversationIdRef = useRef<string | number>('');
   const isStreamingRef = useRef(false);
+  const streamingSessionIdRef = useRef<string | null>(null);
   const aiCreateRef = useRef<{ type: 'skill' | 'agent'; name: string } | null>(null);
   const initialPromptSentRef = useRef(false);
   const onUpdateSessionTitleRef = useRef(onUpdateSessionTitle);
@@ -384,8 +433,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
     loadingTimerRef.current = setTimeout(() => {
       console.log('[ChatView] Loading timeout (120s), auto-stopping');
+      const timedOutSessionId = streamingSessionIdRef.current;
       setIsLoading(false);
       isStreamingRef.current = false;
+      streamingSessionIdRef.current = null;
+      if (timedOutSessionId) {
+        onSessionRunStateChangeRef.current?.(timedOutSessionId, 'error');
+      }
     }, 120000);
   }, []);
 
@@ -399,9 +453,18 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   // 更新 ref（流式输出期间不更新，避免 temp→real ID 切换导致 WS 回调丢消息）
   useEffect(() => {
     if (!currentConversation.id) return;
-    if (isStreamingRef.current) return;
-    sessionIdRef.current = currentConversation.id.toString();
+    const previousId = sessionIdRef.current;
+    if (previousId && streamingSessionIdRef.current === previousId) {
+      backgroundContentBySessionRef.current.set(previousId, accumulatedContentRef.current);
+    }
+    const nextId = currentConversation.id.toString();
+    sessionIdRef.current = nextId;
     conversationIdRef.current = currentConversation.id;
+    if (streamingSessionIdRef.current === nextId) {
+      accumulatedContentRef.current = backgroundContentBySessionRef.current.get(nextId) || accumulatedContentRef.current;
+    } else {
+      accumulatedContentRef.current = [];
+    }
   }, [currentConversation.id]);
 
   // 重置 initialPrompt 状态
@@ -497,6 +560,11 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
           }
           backgroundContentBySessionRef.current.delete(msgSessionId);
+          if (streamingSessionIdRef.current === msgSessionId) {
+            streamingSessionIdRef.current = null;
+            isStreamingRef.current = false;
+            setIsLoading(false);
+          }
           return;
         }
         clearLoadingTimer();
@@ -571,6 +639,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
         setIsLoading(false);
         isStreamingRef.current = false;
+        if (streamingSessionIdRef.current === msgSessionId) {
+          streamingSessionIdRef.current = null;
+        }
         chatMessagesRef.current?.scrollToBottom();
         return;
       }
@@ -590,6 +661,11 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
           }
           backgroundContentBySessionRef.current.delete(msgSessionId);
+          if (streamingSessionIdRef.current === msgSessionId) {
+            streamingSessionIdRef.current = null;
+            isStreamingRef.current = false;
+            setIsLoading(false);
+          }
           return;
         }
         clearLoadingTimer();
@@ -623,6 +699,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         backgroundContentBySessionRef.current.delete(msgSessionId);
         setIsLoading(false);
         isStreamingRef.current = false;
+        if (streamingSessionIdRef.current === msgSessionId) {
+          streamingSessionIdRef.current = null;
+        }
         return;
       }
 
@@ -731,14 +810,19 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
 
     let fullMessage = messageText;
+    const contextParts: string[] = [];
 
     if (activeFilePath) {
-      // Todo 需要将当前文件加入到上下文中
+      const activeFileContext = await buildActiveFileContext(activeFilePath, workspacePath);
+      if (activeFileContext) contextParts.push(activeFileContext);
     }
 
     if (options.contexts.length > 0) {
-      const contextStr = options.contexts.map(c => `[${c.name}]`).join(' ');
-      fullMessage = `${contextStr}\n\n${messageText}`;
+      contextParts.push(options.contexts.map(c => `[${c.name}]`).join(' '));
+    }
+
+    if (contextParts.length > 0) {
+      fullMessage = `${contextParts.join('\n\n')}\n\n${messageText}`;
     }
 
     // 拼接文本附件内容（图片通过 attachments 字段单独发送）
@@ -762,13 +846,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
     // 标记流式状态，防止会话 ID 变化时重新加载消息
     isStreamingRef.current = true;
+    streamingSessionIdRef.current = sessionId!;
 
     setIsLoading(true);
     startLoadingTimer(); // 开始超时计时
 
     // 重置累积器
     accumulatedContentRef.current = [];
-    backgroundContentBySessionRef.current.set(sessionId!, []);
+    const streamingSegments: AccSegment[] = [];
+    accumulatedContentRef.current = streamingSegments;
+    backgroundContentBySessionRef.current.set(sessionId!, streamingSegments);
 
     assistantMsgIdRef.current = Date.now() + Math.floor(Math.random() * 1000);
 
@@ -818,6 +905,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         agent: options.agent,
         cwd: workspacePath || undefined,
         mode: chatMode,
+        maxSteps,
         reasoningEffort: options.reasoningEffort,
       };
 
@@ -887,8 +975,11 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
       setIsLoading(false);
       isStreamingRef.current = false;
+      if (streamingSessionIdRef.current === sessionId) {
+        streamingSessionIdRef.current = null;
+      }
     }
-  }, [currentConversation, onNewSession, onUpdateSessionTitle, workspacePath, providers]);
+  }, [currentConversation, onNewSession, onUpdateSessionTitle, workspacePath, providers, activeFilePath, maxSteps]);
 
   // AI 创建：自动发送初始 prompt
   useEffect(() => {
@@ -905,7 +996,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       agent: '',
       contexts: [],
       attachments: [],
-      reasoningEffort: 'auto',
+      reasoningEffort: 'medium',
     });
   }, [initialPrompt, currentConversation.id, sendMessage, activeProviderId]);
 
@@ -943,15 +1034,40 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
 
     // 临时会话：清空消息
+    if (streamingSessionIdRef.current === id) {
+      const liveSegments = backgroundContentBySessionRef.current.get(id) || accumulatedContentRef.current;
+      const liveItems = buildContentItems(liveSegments);
+      if (liveItems.length > 0) {
+        setMessages([{
+          id: assistantMsgIdRef.current,
+          role: 'ASSISTANT',
+          timestamp: new Date().toLocaleTimeString(),
+          contents: liveItems,
+        }]);
+        return;
+      }
+    }
+
     if (id.startsWith('temp-') || id.startsWith('pending-')) {
       setMessages([]);
       return;
     }
 
     // 正在流式输出时（ID 从 temp 替换为 real），跳过加载
-    if (isStreamingRef.current) {
-      return;
+    if (streamingSessionIdRef.current === id) {
+      const liveSegments = backgroundContentBySessionRef.current.get(id) || accumulatedContentRef.current;
+      const liveItems = buildContentItems(liveSegments);
+      if (liveItems.length > 0) {
+        setMessages([{
+          id: assistantMsgIdRef.current,
+          role: 'ASSISTANT',
+          timestamp: new Date().toLocaleTimeString(),
+          contents: liveItems,
+        }]);
+        return;
+      }
     }
+
 
     // 正常会话：从数据库加载历史消息
     loadConversationMessages(id);
@@ -981,9 +1097,15 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   }, []);
 
   const handleStop = useCallback(() => {
-    WebSocketManager.getInstance().cancelSession(sessionIdRef.current);
+    const stoppedSessionId = sessionIdRef.current;
+    WebSocketManager.getInstance().cancelSession(stoppedSessionId);
     clearLoadingTimer();
     setIsLoading(false);
+    if (streamingSessionIdRef.current === stoppedSessionId) {
+      streamingSessionIdRef.current = null;
+      isStreamingRef.current = false;
+      onSessionRunStateChangeRef.current?.(stoppedSessionId, 'completed');
+    }
 
     // 保留当前已累积的内容作为最终消息
     const contentItems = buildContentItems();
@@ -1002,6 +1124,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
     // 重置累积器
     accumulatedContentRef.current = [];
+    backgroundContentBySessionRef.current.delete(stoppedSessionId);
   }, []);
 
   // 模型切换时推送配置到后端
@@ -1022,9 +1145,34 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
   }, [providers, onActiveProviderChange]);
 
-  const isEmpty = messages.length === 0 && !isLoading;
+  const currentConversationIdString = currentConversation.id?.toString();
+  const currentRunState = currentConversationIdString ? sessionRunStates[currentConversationIdString] : undefined;
+  const isCurrentConversationLoading = currentRunState === 'running' || (isLoading && streamingSessionIdRef.current === currentConversationIdString);
+  const showReviewButton = reviewFiles.length > 0 && !isCurrentConversationLoading;
+  const isEmpty = messages.length === 0 && !isCurrentConversationLoading && reviewFiles.length === 0;
   const showHeader = !isEmpty;
   const baseContextTokens = useMemo(() => estimateMessageTokens(messages), [messages]);
+  const currentSession = useMemo(() => {
+    return sessions.find(session => session.id === currentConversationIdString);
+  }, [sessions, currentConversationIdString]);
+  const metadataTokens = useMemo(() => {
+    return messages.reduce((total, message) => total + (message.metadata?.totalTokens || 0), 0);
+  }, [messages]);
+  const headerTotalTokens = metadataTokens > 0 ? metadataTokens : baseContextTokens;
+  const headerMessageCount = Math.max(messages.length, currentSession?.messageCount || 0);
+  const headerStartedAt = currentSession?.timestamp || currentConversation.timestamp;
+  const headerTasks = useMemo<ChatHeaderTask[]>(() => {
+    const scopedSessions = workspacePath
+      ? sessions.filter(session => session.workspacePath === workspacePath)
+      : sessions;
+    return scopedSessions.map(session => ({
+      id: session.id,
+      title: session.title,
+      timestamp: session.timestamp,
+      messageCount: session.messageCount,
+      status: sessionRunStates[session.id],
+    }));
+  }, [sessions, sessionRunStates, workspacePath]);
 
   const handleDeleteMessage = useCallback((id: number) => {
     setMessages(prev => prev.filter(m => m.id !== id));
@@ -1033,9 +1181,23 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   return (
     <main className={`main-content${isEmpty ? ' empty-state' : ''}`}>
       {showHeader && (
-        <ChatHeader title={currentConversation.title} status={currentConversation.status} projectName={currentConversation.workspacePath && currentConversation.workspacePath === workspacePath ? projectName : undefined} />
+        <ChatHeader
+          title={currentConversation.title}
+          status={currentConversation.status}
+          projectName={currentConversation.workspacePath && currentConversation.workspacePath === workspacePath ? projectName : undefined}
+          messageCount={headerMessageCount}
+          startedAt={headerStartedAt}
+          totalTokens={headerTotalTokens}
+          totalConversations={headerTasks.length}
+          tasks={headerTasks}
+          activeTaskId={currentConversationIdString}
+          onSelectTask={onSelectSession}
+          reviewFiles={reviewFiles}
+          onReviewFileSelect={onReviewFileSelect}
+          openInfoSignal={reviewInfoSignal}
+        />
       )}
-      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isLoading} theme={theme} projectName={projectName} onDeleteMessage={handleDeleteMessage} onHitlAction={handleHitlAction} onFileSelect={onFileSelect} />
+      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isCurrentConversationLoading} theme={theme} projectName={projectName} onDeleteMessage={handleDeleteMessage} onHitlAction={handleHitlAction} onFileSelect={onFileSelect} />
 
       {isEmpty ? (
         <div className="empty-center-container">
@@ -1043,10 +1205,18 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             <div className="hero-logo">SolonCode</div>
             <div className="hero-slogan">{newSessionFromProject && projectName ? `在 ${projectName} ` : ''}做你想做的事</div>
           </div>
-          <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
+          {showReviewButton && (
+            <ReviewPrompt files={reviewFiles} onReview={() => setReviewInfoSignal(value => value + 1)} />
+          )}
+          <ChatInput onSend={sendMessage} isLoading={isCurrentConversationLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
         </div>
       ) : (
-        <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
+        <>
+          {showReviewButton && (
+            <ReviewPrompt files={reviewFiles} onReview={() => setReviewInfoSignal(value => value + 1)} />
+          )}
+          <ChatInput onSend={sendMessage} isLoading={isCurrentConversationLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
+        </>
       )}
       {/* 底部提示 */}
         <div className="input-footer">

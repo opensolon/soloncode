@@ -645,7 +645,7 @@ public class WsGate extends SimpleWebSocketListener {
         if (normalized.isEmpty() || "auto".equals(normalized)) {
             return null;
         }
-        if ("low".equals(normalized) || "medium".equals(normalized) || "high".equals(normalized)) {
+        if ("low".equals(normalized) || "medium".equals(normalized) || "high".equals(normalized) || "max".equals(normalized)) {
             return normalized;
         }
         return null;

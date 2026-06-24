@@ -11,10 +11,11 @@ import { SessionsPanel, type Session, type Project } from './components/sidebar/
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
+import type { ChatReviewFile } from './components/ChatHeader';
 import { ChatView } from './components/ChatView';
 import { fileService } from './services/fileService';
 import { gitService } from './services/gitService';
-import { settingsService } from './services/settingsService';
+import { DEFAULT_PROMPTS, settingsService } from './services/settingsService';
 import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { startWindowDrag, startWindowResize } from './hooks/useWindowDrag';
@@ -36,12 +37,11 @@ const mockExtensions = [
   { id: '2', name: '代码格式化', description: '自动格式化代码', version: '2.1.0', installed: true, enabled: true, author: 'SolonCode' },
 ];
 
-const plugins: Plugin[] = [
-  { id: 'none', name: '插件暂不支持', icon: 'cube', description: '插件暂不支持', enabled: true, version: '1.0.0' }
-];
+const plugins: Plugin[] = [];
 
 const defaultSettings: Settings = {
   theme: 'dark', fontSize: 14, language: 'zh-CN',
+  editorTheme: 'vs-dark',
   tabSize: 2, autoSave: true, formatOnSave: true,
   shell: 'bash', terminalFontSize: 14,
   providers: [], activeProviderId: '', maxSteps: 30,
@@ -80,9 +80,9 @@ const defaultSettings: Settings = {
   mcpServers: [],
   skills: [],
   agents: [],
-  skillPrompt: '',
-  agentPrompt: '',
-  gitPrompt: '',
+  skillPrompt: DEFAULT_PROMPTS.skillPrompt,
+  agentPrompt: DEFAULT_PROMPTS.agentPrompt,
+  gitPrompt: DEFAULT_PROMPTS.gitPrompt,
 };
 
 type PanelPosition = 'editor' | 'chat';
@@ -122,6 +122,27 @@ function resolveWorkspaceFilePath(path: string, workspacePath: string | null): s
   return `${normalizePath(workspacePath).replace(/\/$/, '')}/${filePath.replace(/^\//, '')}`;
 }
 
+function applyAppTheme(theme: Theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('soloncode-theme', theme);
+}
+
+function applyAppFontSize(fontSize: number) {
+  const size = Math.min(24, Math.max(10, Number(fontSize) || 14));
+  document.documentElement.style.setProperty('--font-size-base', `${size}px`);
+}
+
+function parseDefaultOptions(value?: string): Record<string, unknown> | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    console.warn('[App] 默认模型选项 JSON 无效，已跳过');
+    return undefined;
+  }
+}
+
 function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityType>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -136,18 +157,24 @@ function App() {
   } | null>(null);
   const [newSessionFromProject, setNewSessionFromProject] = useState(false);
   const [sessionRunStates, setSessionRunStates] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
+  const [sessionReviewFiles, setSessionReviewFiles] = useState<Record<string, ChatReviewFile[]>>({});
+  const resolvedSessionIdsRef = useRef<Record<string, string>>({});
   const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('soloncode-theme') as Theme | null;
     const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
+    applyAppTheme(theme);
     return theme;
   });
 
   const toggleTheme = useCallback(() => {
     setCurrentTheme(prev => {
       const next = prev === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('soloncode-theme', next);
+      applyAppTheme(next);
+      setSettings(current => {
+        const updated = { ...current, theme: next };
+        settingsService.save(updated);
+        return updated;
+      });
       return next;
     });
   }, []);
@@ -170,13 +197,28 @@ function App() {
     };
   }, []);
 
-  useEffect(() => { settingsService.load().then(s => setSettings(s)); }, []);
+  useEffect(() => {
+    settingsService.load().then(s => {
+      setSettings(s);
+      if (s.theme) {
+        setCurrentTheme(s.theme);
+        applyAppTheme(s.theme);
+      }
+      applyAppFontSize(s.fontSize);
+    });
+  }, []);
 
   const handleSettingsChange = useCallback((newSettings: Settings) => {
     const prevActive = settings.providers.find(p => p.id === settings.activeProviderId);
     const nextActive = newSettings.providers.find(p => p.id === newSettings.activeProviderId);
+    if (newSettings.theme) {
+      setCurrentTheme(newSettings.theme);
+      applyAppTheme(newSettings.theme);
+    }
+    applyAppFontSize(newSettings.fontSize);
     setSettings(newSettings);
     settingsService.save(newSettings);
+    settingsService.syncRuntimeSettings(newSettings.cliPort || 4808, newSettings);
     if (nextActive && (
       !prevActive ||
       prevActive.apiUrl !== nextActive.apiUrl ||
@@ -210,12 +252,21 @@ function App() {
     restoreLastSession,
   } = useSessions(null, {
     onSessionIdResolved: (oldId, newId) => {
+      resolvedSessionIdsRef.current[oldId] = newId;
       setSessionRunStates(prev => {
         const state = prev[oldId];
         if (!state) return prev;
         const next = { ...prev };
         delete next[oldId];
         next[newId] = state;
+        return next;
+      });
+      setSessionReviewFiles(prev => {
+        const files = prev[oldId];
+        if (!files) return prev;
+        const next = { ...prev };
+        delete next[oldId];
+        next[newId] = files;
         return next;
       });
     },
@@ -304,10 +355,35 @@ function App() {
   // 启动后端
   useEffect(() => {
     const port = settings.cliPort || 4808;
-    startBackend(port, (updater) => setSettings(updater));
+    startBackend(port, (updater) => setSettings(updater)).then(async () => {
+      const runtimeSettings = await settingsService.loadRuntimeSettings(port);
+      if (!runtimeSettings) return;
+      setSettings(prev => {
+        const updated = { ...prev, ...runtimeSettings };
+        settingsService.save(updated);
+        return updated;
+      });
+    });
   }, []);
 
   // 拖拽调整大小
+  const lastStartedCliPortRef = useRef(defaultSettings.cliPort);
+  useEffect(() => {
+    const port = settings.cliPort || 4808;
+    if (lastStartedCliPortRef.current === port) return;
+    lastStartedCliPortRef.current = port;
+    startBackend(port, (updater) => setSettings(updater)).then(async () => {
+      await settingsService.syncRuntimeSettings(port, settings);
+      const runtimeSettings = await settingsService.loadRuntimeSettings(port);
+      if (!runtimeSettings) return;
+      setSettings(prev => {
+        const updated = { ...prev, ...runtimeSettings };
+        settingsService.save(updated);
+        return updated;
+      });
+    });
+  }, [settings.cliPort, startBackend]);
+
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -421,6 +497,37 @@ function App() {
     await handleFileSelect(absPath);
     setDiffFiles(prev => ({ ...prev, [absPath]: original }));
   }, [activeProjectPath, handleFileSelect]);
+
+  const captureSessionReviewFiles = useCallback(async (sessionId: string, workspacePath?: string | null) => {
+    const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : activeProjectPath;
+    if (!cwd) {
+      setSessionReviewFiles(prev => {
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      });
+      return;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const status = await gitService.status(cwd);
+    const reviewFiles: ChatReviewFile[] = status.files
+      .filter(file => file.status === 'modified' || file.status === 'added' || file.status === 'deleted' || file.status === 'untracked')
+      .map(file => ({ path: file.path, status: file.status }));
+
+    const resolvedSessionId = resolvedSessionIdsRef.current[sessionId] || sessionId;
+    setSessionReviewFiles(prev => {
+      const next = { ...prev };
+      if (resolvedSessionId !== sessionId) delete next[sessionId];
+      if (reviewFiles.length > 0) next[resolvedSessionId] = reviewFiles;
+      else delete next[resolvedSessionId];
+      return next;
+    });
+
+    if (cwd === activeProjectPath) {
+      setGitStatus(status);
+    }
+  }, [activeProjectPath, setGitStatus]);
 
   // Toast
   const [terminalVisible, setTerminalVisible] = useState(false);
@@ -564,7 +671,7 @@ function App() {
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
           <Suspense fallback={<div className="panel-loading">Loading editor...</div>}>
-            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} diffLines={diffLines} diffFiles={diffFiles} />
+            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} fontSize={settings.fontSize} tabSize={settings.tabSize} autoSave={settings.autoSave} formatOnSave={settings.formatOnSave} diffLines={diffLines} diffFiles={diffFiles} />
           </Suspense>
           {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
@@ -578,14 +685,28 @@ function App() {
           <ChatView
             currentConversation={currentConversation} plugins={plugins} workspacePath={activeProjectPath || undefined} projectName={workspaceName || undefined}
             theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => { setNewSessionFromProject(false); return handleNewSession(undefined, title); }}
+            sessions={sessions} sessionRunStates={sessionRunStates} maxSteps={settings.maxSteps} onSelectSession={handleSelectSession}
             providers={settings.providers} activeProviderId={settings.activeProviderId} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
             activeFileName={activeFile?.name} activeFilePath={activeFilePath || undefined}
             onFileSelect={handleChatFileSelect}
+            reviewFiles={currentSessionId ? (sessionReviewFiles[currentSessionId] || []) : []}
+            onReviewFileSelect={handleDiffFileSelect}
             onNewProject={handleCreateProject} onOpenFolder={handleOpenFolder}
             initialPrompt={aiCreatePrompt} onAiCreateComplete={handleAiCreateComplete}
             newSessionFromProject={newSessionFromProject}
             onSessionRunStateChange={(sessionId, status) => {
               setSessionRunStates(prev => ({ ...prev, [sessionId]: status }));
+              if (status === 'running') {
+                setSessionReviewFiles(prev => {
+                  const next = { ...prev };
+                  delete next[sessionId];
+                  return next;
+                });
+              }
+              if (status === 'completed') {
+                const session = sessions.find(item => item.id === sessionId);
+                captureSessionReviewFiles(sessionId, session?.workspacePath);
+              }
             }}
             onSessionMessageSaved={incrementSessionMessageCount}
           />
@@ -667,7 +788,18 @@ function App() {
                       ws.onopen = () => {
                         // 先注册模型配置
                         if (activeProvider) {
-                          ws.send(JSON.stringify({ type: 'config', chatModel: { apiUrl: activeProvider.apiUrl, apiKey: activeProvider.apiKey, model: modelName, provider: activeProvider.type } }));
+                          ws.send(JSON.stringify({
+                            type: 'config',
+                            chatModel: {
+                              apiUrl: activeProvider.apiUrl,
+                              apiKey: activeProvider.apiKey,
+                              model: modelName,
+                              provider: activeProvider.type,
+                              contextLength: activeProvider.contextLength,
+                              timeout: activeProvider.timeout,
+                              defaultOptions: parseDefaultOptions(activeProvider.defaultOptions),
+                            },
+                          }));
                         }
                         ws.send(JSON.stringify({ input: prompt, cwd: activeProjectPath, model: modelName }));
                       };
@@ -702,7 +834,7 @@ function App() {
           </div>
           {terminalMounted && (
             <Suspense fallback={<div className="terminal-panel"><div className="terminal-body panel-loading">Loading terminal...</div></div>}>
-              <TerminalPanel visible={terminalVisible} cwd={activeProjectPath || undefined} />
+              <TerminalPanel visible={terminalVisible} cwd={activeProjectPath || undefined} shell={settings.shell} fontSize={settings.terminalFontSize} />
             </Suspense>
           )}
         </div>

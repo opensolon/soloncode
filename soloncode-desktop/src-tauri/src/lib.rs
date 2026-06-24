@@ -699,9 +699,9 @@ struct PtyState {
 
 static PTY_STATE: Mutex<Option<PtyState>> = Mutex::new(None);
 
-/// 启动终端（PowerShell）
+/// 启动终端
 #[tauri::command]
-fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Option<String>) -> Result<(), String> {
+fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Option<String>, shell: Option<String>) -> Result<(), String> {
     // 先关闭已有终端
     {
         let mut pty = PTY_STATE.lock().map_err(|e| format!("锁错误: {}", e))?;
@@ -721,7 +721,16 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
         })
         .map_err(|e| format!("创建 PTY 失败: {}", e))?;
 
-    let mut cmd = PtyCommandBuilder::new("powershell");
+    let shell_name = shell.unwrap_or_else(|| "powershell".to_string());
+    let program = match shell_name.as_str() {
+        "cmd" => "cmd.exe",
+        "powershell" => "powershell.exe",
+        "bash" => "bash",
+        "zsh" => "zsh",
+        other => other,
+    };
+
+    let mut cmd = PtyCommandBuilder::new(program);
     if let Some(dir) = cwd {
         cmd.cwd(dir);
     }
@@ -729,7 +738,7 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("启动 PowerShell 失败: {}", e))?;
+        .map_err(|e| format!("启动终端失败({}): {}", program, e))?;
 
     let reader = pair
         .master

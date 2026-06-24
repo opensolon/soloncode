@@ -9,6 +9,8 @@ import './TerminalPanel.css';
 interface TerminalPanelProps {
   visible: boolean;
   cwd?: string;
+  shell?: string;
+  fontSize?: number;
 }
 
 // 检测 Tauri 环境
@@ -70,12 +72,13 @@ const TERM_THEMES = {
   },
 };
 
-export function TerminalPanel({ visible, cwd }: TerminalPanelProps) {
+export function TerminalPanel({ visible, cwd, shell = 'powershell', fontSize = 14 }: TerminalPanelProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const startedRef = useRef(false);
+  const shellRef = useRef(shell);
 
   const initTerminal = useCallback(async () => {
     if (!termRef.current || xtermRef.current || startedRef.current) return;
@@ -84,7 +87,7 @@ export function TerminalPanel({ visible, cwd }: TerminalPanelProps) {
     const theme = getActiveTheme();
 
     const term = new Terminal({
-      fontSize: 14,
+      fontSize,
       fontFamily: "'Cascadia Code', 'Consolas', 'Fira Code', monospace",
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -134,7 +137,7 @@ export function TerminalPanel({ visible, cwd }: TerminalPanelProps) {
       const rows = term.rows;
       const cols = term.cols;
       try {
-        await invoke('terminal_start', { rows, cols, cwd: cwd || null });
+        await invoke('terminal_start', { rows, cols, cwd: cwd || null, shell });
       } catch (e) {
         term.writeln(`\x1b[31m启动终端失败: ${e}\x1b[0m`);
       }
@@ -169,7 +172,35 @@ export function TerminalPanel({ visible, cwd }: TerminalPanelProps) {
       resizeObserver?.disconnect();
       observer.disconnect();
     };
-  }, [cwd]);
+  }, [cwd, shell, fontSize]);
+
+  useEffect(() => {
+    if (xtermRef.current) {
+      xtermRef.current.options.fontSize = fontSize;
+      setTimeout(() => {
+        try { fitAddonRef.current?.fit(); } catch {}
+      }, 0);
+    }
+  }, [fontSize]);
+
+  useEffect(() => {
+    if (!visible || shellRef.current === shell) {
+      shellRef.current = shell;
+      return;
+    }
+    shellRef.current = shell;
+    unlistenRef.current?.();
+    unlistenRef.current = null;
+    xtermRef.current?.dispose();
+    xtermRef.current = null;
+    fitAddonRef.current = null;
+    startedRef.current = false;
+    if (isTauriEnv()) {
+      invoke('terminal_kill').finally(() => initTerminal());
+    } else {
+      initTerminal();
+    }
+  }, [shell, visible, initTerminal]);
 
   useEffect(() => {
     if (visible) {
