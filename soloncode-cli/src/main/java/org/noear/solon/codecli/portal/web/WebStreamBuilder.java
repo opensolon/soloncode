@@ -475,8 +475,10 @@ public class WebStreamBuilder {
      * @return 映射后的 WebChunk（多任务并行时有内容），或 {@link WebChunk#EMPTY}
      */
     private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk chunk) {
+        ReActTrace trace = chunk.getTrace();
         String sessionId = session.getSessionId();
         String resultContent = chunk.getAssistantMessage().getResultContent();
+        Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
 
         if (Assert.isNotEmpty(resultContent)) {
             // 向所有已绑定的 IM 通道回复
@@ -502,6 +504,11 @@ public class WebStreamBuilder {
                 // 仅在多任务并行且有内容时输出
                 return WebChunk.ofText("\n" + resultContent);
             }
+        }
+
+        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
+        if (totalTokens != null) {
+            session.attrs().put("_loop_last_total_tokens", totalTokens);
         }
 
         return WebChunk.EMPTY;

@@ -350,13 +350,13 @@ public class CliShell implements Runnable {
                             onReasonChunk((ReasonChunk) chunk, isFirstReasonDeltaChunk, isFirstConversation);
                         } else if (chunk instanceof ThoughtChunk) {
                             //ThoughtChunk （想法）为完成块
-                            onThoughtChunk((ThoughtChunk) chunk);
+                            onThoughtChunk(session, (ThoughtChunk) chunk);
                         } else if (chunk instanceof ObservationChunk) {
                             //ObservationChunk 为全量，一次工具调用产生一个 ObservationChunk
                             onObservationChunk((ObservationChunk) chunk, isFirstReasonDeltaChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            String answer = onFinalChunk((ReActChunk) chunk);
+                            String answer = onFinalChunk(session, (ReActChunk) chunk);
                             if (Assert.isNotEmpty(answer)) {
                                 finalAnswer.set(answer);
                             }
@@ -500,23 +500,6 @@ public class CliShell implements Runnable {
         return buf;
     }
 
-    private String onFinalChunk(ReActChunk react) {
-        StringBuilder traceInfo = getTraceInfo(react.getTrace());
-
-        if (traceInfo.length() > 4) {
-            terminal.writer().println(DIM + traceInfo + RESET);
-        }
-
-        Long totalTokens = react.getTrace().getMetrics() != null ? react.getTrace().getMetrics().getTotalTokens() : null;
-        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
-        if (totalTokens != null) {
-            react.getSession().attrs().put("_loop_last_total_tokens", totalTokens);
-        }
-
-        // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。
-        return clearThink(react.getContent());
-    }
-
     private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
         if (!reason.isToolCalls() && reason.hasContent()) {
             String delta = clearThink(reason.getContent());
@@ -555,7 +538,15 @@ public class CliShell implements Runnable {
     }
 
 
-    private void onThoughtChunk(ThoughtChunk thought) {
+    private void onThoughtChunk(AgentSession session, ThoughtChunk thought) {
+        ReActTrace trace = thought.getTrace();
+
+        Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
+        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
+        if (totalTokens != null) {
+            session.attrs().put("_loop_last_total_tokens", totalTokens);
+        }
+
         if (thought.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
             String content = thought.getAssistantMessage().getResultContent();
@@ -572,8 +563,26 @@ public class CliShell implements Runnable {
         }
     }
 
+    private String onFinalChunk(AgentSession session, ReActChunk react) {
+        ReActTrace trace = react.getTrace();
+        StringBuilder traceInfo = getTraceInfo(trace);
+
+        if (traceInfo.length() > 4) {
+            terminal.writer().println(DIM + traceInfo + RESET);
+        }
+
+        Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
+        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
+        if (totalTokens != null) {
+            session.attrs().put("_loop_last_total_tokens", totalTokens);
+        }
+
+        // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。
+        return clearThink(react.getContent());
+    }
+
     private void onObservationChunk(ObservationChunk action, AtomicBoolean isFirstReasonDeltaChunk) {
-        if(action.getError() != null){
+        if (action.getError() != null) {
             return;
         }
 
