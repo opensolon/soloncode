@@ -400,10 +400,11 @@ class LoopPromptBuilderTest {
     }
 
     @Test
-    void fullModeContainsGoalAchievedInstruction() {
+    void fullModeContainsGoalUpdateInstruction() {
         LoopTask task = createGoalTask(10000, 2000, 0);
         String result = builder.buildEffectivePrompt(task);
-        assertTrue(result.contains("[GOAL_ACHIEVED]"), "full mode should contain GOAL_ACHIEVED instruction");
+        assertTrue(result.contains("goal_update(complete)"), "full mode should contain goal_update(complete) instruction");
+        assertFalse(result.contains("[GOAL_ACHIEVED]"), "full mode should NOT contain [GOAL_ACHIEVED]");
     }
 
     // ===== 全面覆盖：精简模式剩余分支 =====

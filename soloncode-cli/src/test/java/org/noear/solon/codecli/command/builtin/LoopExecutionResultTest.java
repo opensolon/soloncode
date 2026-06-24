@@ -23,15 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Loop 闭环能力测试。
  */
 class LoopExecutionResultTest {
-    @Test
-    void fromTextShouldDetectGoalAchieved() {
-        LoopExecutionResult result = LoopExecutionResult.fromText("done\n[GOAL_ACHIEVED]");
 
-        assertTrue(result.isSubmitted());
-        assertTrue(result.isCompleted());
-        assertTrue(result.isGoalAchieved());
-        assertEquals("done\n[GOAL_ACHIEVED]", result.getFinalResult());
-    }
 
     @Test
     void copyWithUpdateShouldKeepIdentityAndRuntimeState() {
@@ -53,21 +45,19 @@ class LoopExecutionResultTest {
 
 
     @Test
-    void submittedOnlyShouldNotBeGoalAchieved() {
+    void submittedOnlyState() {
         LoopExecutionResult result = LoopExecutionResult.submittedOnly();
 
         assertTrue(result.isSubmitted());
         assertFalse(result.isCompleted());
-        assertFalse(result.isGoalAchieved());
         assertNull(result.getFinalResult());
     }
 
     @Test
-    void fromTextWithoutGoalMarkerShouldNotBeGoalAchieved() {
+    void fromTextShouldWork() {
         LoopExecutionResult result = LoopExecutionResult.fromText("normal response");
 
         assertTrue(result.isCompleted());
-        assertFalse(result.isGoalAchieved());
         assertEquals("normal response", result.getFinalResult());
     }
 }

@@ -195,8 +195,7 @@ public class CliShell implements Runnable {
                     effectiveInput = "@" + agentName + " " + prompt;
                 }
 
-                // 直接返回 ReAct 完成时的权威全文（goal 检查依赖此返回值）。
-                // 含 [GOAL_ACHIEVED] 的全文来自 ReActChunk，必须以此为准。
+                // 直接返回 ReAct 完成时的权威全文，由 goal_update(complete) 标记完成。
                 return safeChatInput(session, effectiveInput);
             });
         }
@@ -300,7 +299,7 @@ public class CliShell implements Runnable {
         String currentInput = input;
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
-        // ReAct 完成时的权威全文（含 [GOAL_ACHIEVED]），多轮 HITL 时以最后一轮为准。
+        // ReAct 完成时的权威全文，多轮 HITL 时以最后一轮为准。
         final AtomicReference<String> finalAnswer = new AtomicReference<>();
 
         if (modelSelected == null) {

@@ -24,7 +24,6 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.content.Contents;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
-import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -32,7 +31,6 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
-import org.noear.solon.codecli.command.builtin.LoopExecutionResult;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
@@ -651,16 +649,6 @@ public class WebGate extends SimpleWebSocketListener {
             return null;
         }
 
-        List<ChatMessage> messageList = session.getMessages();
-        if(Assert.isNotEmpty(messageList)) {
-            //如果最新的消息里有 GOAL_ACHIEVED，说明任务完成了
-            ChatMessage message = messageList.get(messageList.size() - 1);
-            if (message instanceof AssistantMessage) {
-                if (message.getContent().contains(LoopExecutionResult.GOAL_ACHIEVED)) {
-                    return message.getContent();
-                }
-            }
-        }
 
         emitToClient(sessionId, WebChunk.ofUserInput(input, source));
 

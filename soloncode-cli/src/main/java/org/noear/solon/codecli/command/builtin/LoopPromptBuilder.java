@@ -99,7 +99,7 @@ public class LoopPromptBuilder {
         sb.append("2. 核查：针对目标中的每一项，通过运行测试、检查文件等客观手段验证其是否已完成。\n");
         sb.append("   不要仅凭推理 — 必须有权威证据（测试通过、构建成功、文件存在且内容正确）。\n");
         sb.append("3. 如果你已完成所有项，说明你是如何实现每一项的，\n");
-        sb.append("   然后在回复末尾输出 [GOAL_ACHIEVED] 并调用 goal_update(complete) 标记完成。\n");
+        sb.append("   然后调用 goal_update(complete) 标记完成。\n");
         sb.append("\n");
 
         // Chapter 7: Blocked audit
@@ -179,7 +179,7 @@ public class LoopPromptBuilder {
         sb.append("\n\n");
         sb.append("--- 目标延续 (Goal Continuation) ---\n");
         sb.append("目标: ").append(gs.getCondition()).append("\n");
-        sb.append("持续工作直至完成。完成后输出 [GOAL_ACHIEVED] 并调用 goal_update(complete)。\n");
+        sb.append("持续工作直至完成。完成后调用 goal_update(complete) 标记完成。\n");
         sb.append("\n");
 
         sb.append("--- 审计完成 (Audit Check) ---\n");
@@ -204,7 +204,7 @@ public class LoopPromptBuilder {
         sb.append("\n\n");
         sb.append("目标: ").append(gs.getCondition()).append(" | ");
         sb.append(budgetInfo.trim()).append("\n");
-        sb.append("持续工作直至完成。完成后输出 [GOAL_ACHIEVED] 并调用 goal_update(complete)。3 轮无法推进则调用 goal_update(blocked)。\n");
+        sb.append("持续工作直至完成。完成后调用 goal_update(complete) 标记完成。连续 3 轮无进展则调用 goal_update(blocked)。\n");
         return prompt + sb.toString();
     }
 

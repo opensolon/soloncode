@@ -591,7 +591,7 @@ public class LoopScheduler {
             iteration = task.getCurrentIteration();
         }
 
-        // Goal 状态评估（Codex 对齐：仅检测 [GOAL_ACHIEVED] 标记）
+        // Goal 状态评估（由 goal_update 工具调用驱动）
         if (task.isGoalMode()) {
             GoalState gs = task.getGoalState();
 
@@ -611,11 +611,11 @@ public class LoopScheduler {
                 task.setLastFingerprint(currentFingerprint);
             }
 
-            // 完成检测
-            boolean achieved = executionResult != null && executionResult.isGoalAchieved();
+            // 完成检测：仅通过 GoalState 状态（由 goal_update(complete) 工具调用设置）
+            boolean achieved = gs.getStatus() == GoalState.Status.ACHIEVED;
+
             if (achieved) {
                 LOG.info("Loop task '{}' goal ACHIEVED at iteration {}", task.getId(), iteration);
-                gs.achieve();
                 disableGoalScheduling(sessionId, task);
                 return GoalRoundOutcome.ACHIEVED;
             }
@@ -724,12 +724,12 @@ public class LoopScheduler {
     private void executeBudgetLimitWrapUp(String sessionId, LoopTask task, GoalState gs) {
         try {
             String wrapUpPrompt = promptBuilder.buildBudgetLimitPrompt(task, gs);
-            LoopExecutionResult wrapUpResult = executeSingle(sessionId, wrapUpPrompt, null);
+            executeSingle(sessionId, wrapUpPrompt, null);
 
-            // 预算耗尽后仍给 LLM 一次总结机会：如果 LLM 认为目标已完成，尊重此判断
-            if (wrapUpResult != null && wrapUpResult.isGoalAchieved()) {
+            // 预算耗尽后仍给 LLM 一次总结机会：LLM 可能调用 goal_update(complete)
+            // 通过 GoalState 状态检测完成
+            if (gs.getStatus() == GoalState.Status.ACHIEVED) {
                 LOG.info("Goal '{}' ACHIEVED during budget wrap-up turn", task.getId());
-                gs.achieve();
             }
         } catch (Exception e) {
             LOG.warn("Goal '{}' wrap-up turn failed: {}", task.getId(), e.getMessage());
