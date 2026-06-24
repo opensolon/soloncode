@@ -568,16 +568,15 @@
                     fillFormData(t);
                     var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
                     var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
-                    var $title = $p.find('.loop-panel-title');
-                    $title.html('编辑循环 #' + escapeHtml(editTaskId) +
-                        ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' +
-                        (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : ''));
-                    // 如果有 goal 且非初始态，显示当前状态
-                    var g = t.goal;
-                    if (g) {
-                        var badge = renderGoalBadge(g);
-                        $title.append(' ' + badge);
+                    // 有 goal 时以 goal 状态为准（与列表视图逻辑一致）
+                    if (t.goal && t.goal.status) {
+                        statusText = GOAL_STATUS_LABEL[t.goal.status] || t.goal.status;
                     }
+                    var $title = $p.find('.loop-panel-title');
+                    var titleHtml = '编辑循环 #' + escapeHtml(editTaskId) +
+                        ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' +
+                        (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : '');
+                    $title.html(titleHtml);
                 } else if (res !== null) {
                     showToast('未找到任务数据', 'error');
                 }
