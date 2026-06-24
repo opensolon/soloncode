@@ -1,6 +1,6 @@
 # Web 进阶特性迁移参考
 
-> Spring Boot → Solon Web 文件上传下载、SSE/WebSocket、参数校验、会话管理迁移指南（目标版本：Solon 3.10.x）
+> Spring Boot → Solon Web 文件上传下载、SSE/WebSocket、参数校验、会话管理迁移指南（目标版本：Solon 4.0.x）
 
 ## 6. 文件上传 / 下载
 

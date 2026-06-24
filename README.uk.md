@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Відкритий кодувальний агент, побудований на <a href="https://github.com/opensolon/solon-ai">Solon AI</a> та Java (підтримує середовища виконання Java8 до Java26)</p>
-<p>Остання версія: v2026.6.4</p>
+<p>Остання версія: v2026.6.21</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 Встановлення:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -85,7 +85,7 @@ Web interface: http://localhost:50488/
 
 Вони функціонально схожі, з ключовими відмінностями:
 
-* Побудований на Java, 100% відкритий код.
+* Побудований на Java, 100% відкритий код. Сумісний з BiSheng JDK (Huawei) та Harmony PC.
 * Повністю керується та створюється китайськими промптами
 * Незалежний від провайдера. Налаштовуйте моделі за потребою. Ітерація моделей зменшить розриви та знизить витрати, роблячи гнучке налаштування важливим.
 * Одночасно підтримує термінальний інтерфейс командного рядка (CLI), інтерфейс браузера (WEB) та інтерфейс десктопної IDE (Desktop).

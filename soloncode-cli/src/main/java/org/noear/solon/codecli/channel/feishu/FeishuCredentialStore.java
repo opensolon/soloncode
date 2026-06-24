@@ -19,7 +19,6 @@ import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.config.AgentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

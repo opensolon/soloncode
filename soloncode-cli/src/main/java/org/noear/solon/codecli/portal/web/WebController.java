@@ -20,13 +20,14 @@ import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.command.builtin.LoopStateManager;
+import org.noear.solon.codecli.command.builtin.LoopTask;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
@@ -38,6 +39,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -103,14 +105,30 @@ public class WebController {
         this.gitService = new GitService(engine.getWorkspace(), engine);
         this.fileService = new FileService(engine.getWorkspace());
 
-        // 注入 Web 端 Loop 任务执行器：异步执行 AI 任务，通过 WebGate WebSocket 推送到前端
+        // 注入 Web 端 Loop 任务执行器：同步等待本轮 AI 响应结束，捕获文本结果用于 goal 检测。
         if (loopScheduler != null) {
-            loopScheduler.addTaskExecutor((sessionId, prompt) -> {
+            // 会话繁忙守卫：session 正在执行任务时，loop 定时触发跳过本次执行
+            loopScheduler.addBusyChecker(sessionId -> {
+                if (sessionId == null || !sessionId.startsWith("web-")) {
+                    return false;
+                }
+                return webGate.isSessionBusy(sessionId);
+            });
+
+            loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (sessionId.startsWith("web-") == false) {
-                    return;
+                    return null;
                 }
 
-                webGate.safeChatInput(sessionId, prompt, "Loop");
+                // 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
+                // WebGate.onChatInput 内部通过 input.startsWith("@") 识别并路由到对应 agent
+                String effectiveInput = prompt;
+                if (agentName != null && !agentName.isEmpty()) {
+                    effectiveInput = "@" + agentName + " " + prompt;
+                }
+
+                // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本
+                return webGate.safeChatInputAndCaptureLoop(sessionId, effectiveInput, "Loop");
             });
         }
     }
@@ -170,7 +188,7 @@ public class WebController {
     @Get
     @Mapping("/web/chat/sessions")
     public Result<List<Map>> sessions() throws Exception {
-        Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions").toAbsolutePath().normalize();
+        Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions()).toAbsolutePath().normalize();
         File sessionsDir = sessionsPath.toFile();
         List<Map> data = new ArrayList<>();
 
@@ -181,9 +199,6 @@ public class WebController {
 
                 for (File dir : dirs) {
                     String sid = dir.getName();
-                    File msgFile = new File(dir, sid + ".messages.ndjson");
-                    if (!msgFile.exists()) continue;
-
                     // 优先使用自定义标签
                     String label = null;
                     File labelFile = new File(dir, "label.txt");
@@ -191,12 +206,20 @@ public class WebController {
                         try (BufferedReader lblReader = new BufferedReader(
                                 new InputStreamReader(new FileInputStream(labelFile), "UTF-8"))) {
                             label = lblReader.readLine();
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
-                    if (label == null || label.isEmpty()) {
+
+                    if (Assert.isEmpty(label)) {
+                        File msgFile = new File(dir, sid + ".messages.ndjson");
+                        if (!msgFile.exists()) continue;
+
                         label = extractFirstUserMessage(msgFile);
                     }
-                    if (label == null || label.isEmpty()) continue;
+
+                    if (Assert.isEmpty(label)) {
+                        continue;
+                    }
 
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("sessionId", sid);
@@ -205,7 +228,7 @@ public class WebController {
                     data.add(item);
 
                     //恢复定时任务
-                    loopScheduler.restore(sid, engine.getWorkspace(), engine.getHarnessSessions());
+                    loopScheduler.restore(sid);
                 }
             }
         }
@@ -228,7 +251,7 @@ public class WebController {
             return Result.failure();
         }
 
-        Path sessionPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File sessionDir = sessionPath.toFile();
 
         if (sessionDir.exists() && sessionDir.isDirectory()) {
@@ -243,7 +266,7 @@ public class WebController {
      * <p>在会话目录下写入 label.txt 文件保存自定义标签，标签最大长度 50 字符。</p>
      *
      * @param sessionId 待重命名的会话 ID
-     * @param label      新的会话标签文本
+     * @param label     新的会话标签文本
      * @return 操作结果
      * @throws Exception 文件写入异常
      */
@@ -261,7 +284,7 @@ public class WebController {
             label = label.substring(0, 50);
         }
 
-        Path sessionPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File labelFile = new File(sessionPath.toFile(), "label.txt");
 
         if (!sessionPath.toFile().exists() || !sessionPath.toFile().isDirectory()) {
@@ -290,24 +313,36 @@ public class WebController {
 
         for (ChatConfig config : engine.getModels()) {
             if (config.isEnabled()) {
-                Map<String, String> item = new LinkedHashMap<>();
+                Map<String, Object> item = new LinkedHashMap<>();
                 item.put("model", config.getModel());
                 item.put("name", config.getNameOrModel());
                 item.put("description", config.getDescriptionOrModel());
+                item.put("contextLength", config.getContextLength());
                 list.add(item);
             }
         }
+        list.sort((a, b) -> {
+            String nameA = (String) a.getOrDefault("name", "");
+            String nameB = (String) b.getOrDefault("name", "");
+            return nameA.compareToIgnoreCase(nameB);
+        });
+
         data.put("list", list);
 
-        if(Assert.isNotEmpty(list)) {
+        if (Assert.isNotEmpty(list)) {
             if (Assert.isNotEmpty(sessionId)) {
                 AgentSession session = engine.getSession(sessionId);
-                String selected = session.getContext().getOrDefault(HarnessFlags.VAR_MODEL_SELECTED,
-                        engine.getMainModel().getNameOrModel());
+                String selected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+
+                if (selected != null) {
+                    selected = engine.getModelOrDef(selected).getNameOrModel();
+                } else {
+                    selected = engine.getModelOrDef(null).getNameOrModel();
+                }
 
                 data.put("selected", selected);
             } else {
-                data.put("selected", engine.getMainModel().getNameOrModel());
+                data.put("selected", engine.getModelOrDef(null).getNameOrModel());
             }
         } else {
             data.put("selected", "");
@@ -330,7 +365,7 @@ public class WebController {
     public Result models_select(@Param("sessionId") String sessionId, @Param("modelName") String modelName) throws Exception {
         AgentSession session = engine.getSession(sessionId);
 
-        session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
+        session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
 
         session.updateSnapshot();
 
@@ -349,7 +384,7 @@ public class WebController {
     @Mapping("/web/chat/messages")
     public Result<List<Map>> messages(@Param("sessionId") String sessionId) throws Exception {
         List<Map> data = new ArrayList<>();
-        Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+        Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File msgFile = new File(sessionsPath.toFile(), sessionId + ".messages.ndjson");
 
         if (msgFile.exists()) {
@@ -418,7 +453,7 @@ public class WebController {
 
         try {
             // 只操作 ndjson 文件（内存中的 AgentSession 在重新生成时会通过新的 prompt 重建上下文）
-            Path sessionsPath = Paths.get(engine.getWorkspace(), ".soloncode", "sessions", sessionId).toAbsolutePath().normalize();
+            Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
             File msgFile = new File(sessionsPath.toFile(), sessionId + ".messages.ndjson");
             if (msgFile.exists()) {
                 // 读取现有消息
@@ -708,6 +743,233 @@ public class WebController {
     }
 
 
+    // ==================== 循环任务管理 ====================
+
+    /**
+     * 获取当前会话的循环任务列表（含已停用的）。
+     */
+    @Get
+    @Mapping("/web/chat/loop/list")
+    public Result<List<Map>> loopList(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+
+        List<LoopTask> tasks = loopScheduler.listAll(sessionId);
+        List<Map> data = new ArrayList<>();
+        for (LoopTask t : tasks) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", t.getId());
+            item.put("prompt", t.getPrompt());
+            item.put("intervalMinutes", t.getIntervalMinutes());
+            if (t.getCron() != null) item.put("cron", t.getCron());
+            item.put("enabled", t.isEnabled());
+            item.put("cancelled", t.isCancelled());
+            item.put("running", t.isRunning());
+            item.put("currentIteration", t.getCurrentIteration());
+            if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
+            if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
+            if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
+            item.put("worktreeEnabled", t.isWorktreeEnabled());
+            item.put("maxIterations", t.getMaxIterations());
+            item.put("runNow", t.isRunNow());
+            data.add(item);
+        }
+        return Result.succeed(data);
+    }
+
+    /**
+     * 获取单个循环任务详情（用于编辑回填）。
+     */
+    @Get
+    @Mapping("/web/chat/loop/get")
+    public Result<Map> loopGet(@Param("sessionId") String sessionId,
+                               @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.trim().isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        List<LoopTask> tasks = loopScheduler.listAll(sessionId);
+        for (LoopTask t : tasks) {
+            if (t.getId().equals(taskId)) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", t.getId());
+                item.put("prompt", t.getPrompt());
+                item.put("intervalMinutes", t.getIntervalMinutes());
+                if (t.getCron() != null) item.put("cron", t.getCron());
+                item.put("enabled", t.isEnabled());
+                item.put("cancelled", t.isCancelled());
+                item.put("running", t.isRunning());
+                item.put("currentIteration", t.getCurrentIteration());
+                if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
+                if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
+                if (t.getGoalCondition() != null) item.put("goalCondition", t.getGoalCondition());
+                item.put("worktreeEnabled", t.isWorktreeEnabled());
+                item.put("maxIterations", t.getMaxIterations());
+                item.put("runNow", t.isRunNow());
+                return Result.succeed(item);
+            }
+        }
+        return Result.failure(404, "Task not found");
+    }
+
+    /**
+     * 新增循环任务。
+     */
+    @Post
+    @Mapping("/web/chat/loop/add")
+    public Result loopAdd(@Param("sessionId") String sessionId,
+                          @Param("prompt") String prompt,
+                          @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
+                          @Param(value = "cron", required = false) String cron,
+                          @Param(value = "goalCondition", required = false) String goalCondition,
+                          @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
+                          @Param(value = "maxIterations", required = false) Integer maxIterations,
+                          @Param(value = "runNow", required = false) Boolean runNow) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (prompt == null || prompt.trim().isEmpty()) {
+            return Result.failure(400, "prompt is required");
+        }
+
+        String workspace = engine.getWorkspace();
+        String harnessSessions = engine.getHarnessSessions();
+
+        // 初始化状态目录
+        int interval = intervalMinutes != null ? intervalMinutes : 5;
+        LoopTask task = new LoopTask(
+                prompt, interval, cron,
+                goalCondition,
+                worktreeEnabled != null ? worktreeEnabled : false,
+                maxIterations,
+                runNow != null && runNow
+        );
+
+        // 设置 enabled
+        // (name removed: use id for display)
+
+        try {
+            LoopStateManager.init(workspace, task.getId(), prompt);
+            loopScheduler.schedule(sessionId, task);
+        } catch (IllegalStateException e) {
+            return Result.failure(400, e.getMessage());
+        }
+
+        return Result.succeed(task.getId());
+    }
+
+    /**
+     * 更新循环任务定义。
+     */
+    @Post
+    @Mapping("/web/chat/loop/update")
+    public Result loopUpdate(@Param("sessionId") String sessionId,
+                             @Param("taskId") String taskId,
+                             @Param(value = "prompt", required = false) String prompt,
+                             @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
+                             @Param(value = "cron", required = false) String cron,
+                             @Param(value = "goalCondition", required = false) String goalCondition,
+                             @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
+                             @Param(value = "channelNotify", required = false) String channelNotify,
+                             @Param(value = "maxIterations", required = false) Integer maxIterations,
+                             @Param(value = "runNow", required = false) Boolean runNow) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        String workspace = engine.getWorkspace();
+        String harnessSessions = engine.getHarnessSessions();
+
+        LoopTask existing = loopScheduler.getTaskById(sessionId, taskId);
+        if (existing == null) {
+            return Result.failure(404, "Task not found");
+        }
+
+        // 基于现有任务构建新任务（保留 id、createdAt、expireAt 等）
+        int interval = intervalMinutes != null ? intervalMinutes : existing.getIntervalMinutes();
+        String effectiveCron = cron != null ? cron : existing.getCron();
+        String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
+
+        LoopTask newTask = existing.copyWithUpdate(
+                effectivePrompt, interval, effectiveCron,
+                goalCondition != null ? goalCondition : existing.getGoalCondition(),
+                worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
+                maxIterations != null ? maxIterations : existing.getMaxIterations(),
+                runNow != null ? runNow : existing.isRunNow()
+        );
+
+        // 保留 enabled
+        newTask.setEnabled(existing.isEnabled());
+
+        loopScheduler.update(sessionId, taskId, newTask);
+        return Result.succeed();
+    }
+
+    /**
+     * 删除循环任务。
+     */
+    @Post
+    @Mapping("/web/chat/loop/remove")
+    public Result loopRemove(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
+        if (task == null) {
+            return Result.failure(400, "the task does not exist.");
+        }
+
+        loopScheduler.remove(sessionId, task);
+        return Result.succeed();
+    }
+
+    /**
+     * 启用/停用循环任务（toggle）。
+     */
+    @Post
+    @Mapping("/web/chat/loop/toggle")
+    public Result loopToggle(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        loopScheduler.toggle(sessionId, taskId);
+        return Result.succeed();
+    }
+
+    /**
+     * 手动触发一次循环任务执行。
+     */
+    @Post
+    @Mapping("/web/chat/loop/trigger")
+    public Result loopTrigger(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (taskId == null || taskId.isEmpty()) {
+            return Result.failure(400, "taskId is required");
+        }
+
+        loopScheduler.trigger(sessionId, taskId);
+        return Result.succeed();
+    }
+
+
+
     // ==================== 工具方法 ====================
 
     /**
@@ -753,6 +1015,100 @@ public class WebController {
             // ignore
         }
         return null;
+    }
+
+    /**
+     * 获取指定会话的 TODO 列表。
+     * <p>从会话对应的 TODO.md 文件中解析 checkbox 任务项，返回结构化的任务列表及统计信息。</p>
+     *
+     * @param sessionId 会话 ID
+     * @return 包含 exists、raw、items、stats 的结果对象
+     */
+    @Get
+    @Mapping("/web/chat/todos")
+    public Result<Map> todos(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+
+        Path todoPath = engine.getTodoTalent().getTodoPath(engine.getWorkspace(), sessionId);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        if (!Files.exists(todoPath)) {
+            data.put("exists", false);
+            data.put("items", new ArrayList<>());
+            Map<String, Integer> stats = new LinkedHashMap<>();
+            stats.put("total", 0);
+            stats.put("pending", 0);
+            stats.put("inProgress", 0);
+            stats.put("done", 0);
+            data.put("stats", stats);
+            return Result.succeed(data);
+        }
+
+        try {
+            String raw = new String(Files.readAllBytes(todoPath), "UTF-8");
+            data.put("exists", true);
+            data.put("raw", raw);
+
+            List<Map> items = new ArrayList<>();
+            String currentGroup = "";
+            int total = 0, pending = 0, inProgress = 0, done = 0;
+
+            String[] lines = raw.split("\n");
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+
+                // 匹配 ## 标题行作为 group
+                if (line.matches("^\\s*##\\s+.+$")) {
+                    currentGroup = line.replaceFirst("^\\s*##\\s+", "").trim();
+                    continue;
+                }
+
+                // 匹配 checkbox 行: - [ ] / - [/] / - [x] / - [X]
+                if (line.matches("^\\s*-\\s*\\[( |x|X|/)\\]\\s+.+$")) {
+                    total++;
+
+                    char statusChar = line.replaceAll("^\\s*-\\s*\\[([ xX/])]\\s+.+$", "$1").charAt(0);
+                    String status;
+                    if (statusChar == ' ') {
+                        status = "pending";
+                        pending++;
+                    } else if (statusChar == '/') {
+                        status = "in_progress";
+                        inProgress++;
+                    } else {
+                        status = "done";
+                        done++;
+                    }
+
+                    String text = line.replaceFirst("^\\s*-\\s*\\[[ xX/]]\\s+", "").trim();
+
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("line", i + 1);
+                    item.put("status", status);
+                    item.put("text", text);
+                    item.put("raw", line.trim());
+                    item.put("group", currentGroup);
+                    items.add(item);
+                }
+            }
+
+            data.put("items", items);
+
+            Map<String, Integer> stats = new LinkedHashMap<>();
+            stats.put("total", total);
+            stats.put("pending", pending);
+            stats.put("inProgress", inProgress);
+            stats.put("done", done);
+            data.put("stats", stats);
+
+            return Result.succeed(data);
+        } catch (Exception e) {
+            LOG.error("Failed to read TODO for session {}: {}", sessionId, e.getMessage());
+            return Result.failure(500, e.getMessage());
+        }
     }
 
     // ==================== 文件浏览（委派给 FileService） ====================

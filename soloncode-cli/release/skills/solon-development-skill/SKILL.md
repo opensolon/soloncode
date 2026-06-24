@@ -10,8 +10,8 @@ Provide expert guidance for building Java applications with the **Solon framewor
 **Official website**: https://solon.noear.org
 **GitHub**: https://github.com/opensolon/solon
 **License**: Apache 2.0
-**JDK support**: Java 8 ~ 25, GraalVM Native Image
-**Current version**: 3.10.4
+**JDK support**: Java 8 ~ 26, GraalVM Native Image
+**Current version**: 4.0.2
 
 ## Critical Rules
 
@@ -19,7 +19,7 @@ Provide expert guidance for building Java applications with the **Solon framewor
 2. **No Spring dependencies.** Never include `spring-boot-starter-*`, `spring-*`, or any Spring artifact in Solon projects. Solon uses `org.noear` group ID.
 3. **Configuration file is `app.yml`** (or `app.properties`), NOT `application.yml`.
 4. **Entry point** is `Solon.start(App.class, args)`, NOT `SpringApplication.run()`.
-5. **All examples must target version 3.10.4** unless the user specifies otherwise.
+5. **All examples must target version 4.0.2** unless the user specifies otherwise.
 6. **Parent POM** is `solon-parent` with `groupId=org.noear`.
 7. **中文支持.** When the user communicates in Chinese, all responses and code comments must be in Chinese.
 

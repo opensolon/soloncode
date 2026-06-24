@@ -179,7 +179,7 @@ Dependency: `solon-net-httputils`
 public class DemoController {
     @Mapping("/hello")
     public Flux<String> hello() throws Exception {
-        return HttpUtils.http("https://solon.noear.org/").execAsTextStream("GET");
+        return HttpUtils.http("https://solon.noear.org/").execAsLineStream("GET");
     }
 }
 ```

@@ -11,8 +11,8 @@
     <link rel="stylesheet" href="/css/theme.css"/>
     <link rel="stylesheet" href="/css/app.css"/>
     <link rel="stylesheet" href="/css/settings.css"/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" media="(prefers-color-scheme: light)" id="hljs-light-theme"/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" media="(prefers-color-scheme: dark)" id="hljs-dark-theme" disabled/>
+    <link rel="stylesheet" href="/highlight/github.min.css" media="(prefers-color-scheme: light)" id="hljs-light-theme"/>
+    <link rel="stylesheet" href="/highlight/github-dark.min.css" media="(prefers-color-scheme: dark)" id="hljs-dark-theme" disabled/>
 </head>
 <body data-theme="light">
 
@@ -38,6 +38,8 @@
 <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="收起侧边栏">‹</button>
 <button class="mobile-menu-btn" id="mobileMenuBtn" title="菜单">☰</button>
 <div class="mobile-overlay" id="mobileOverlay"></div>
+
+<div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
 
 <!-- Main -->
 <div class="main-area">
@@ -80,6 +82,7 @@
             <div class="attachments-wrap" id="welcomeAttachmentsWrap"></div>
             <div style="position:relative">
                 <div class="cmd-complete" id="welcomeCmdComplete"></div>
+                <div class="loop-panel" id="welcomeLoopPanel" style="display:none"></div>
                 <textarea id="welcomeInput" placeholder="随便问..." rows="1" autofocus style="width: 100%;"></textarea>
             </div>
             <div class="welcome-toolbar">
@@ -108,6 +111,12 @@
                     <button class="attach-btn" id="welcomeAgentBtn" title="子代理">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
                     </button>
+                    <button class="attach-btn" id="welcomeLoopBtn" title="循环任务">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                    </button>
+                    <button class="attach-btn" id="welcomeHistoryBtn" title="历史消息" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </button>
                 </div>
                 <div class="toolbar-right">
                     <button class="voice-btn hidden" id="welcomeVoiceBtn" title="语音输入">
@@ -127,6 +136,7 @@
             <!-- Per-session containers are added here dynamically -->
         </div>
         <div class="input-wrap">
+            <div class="context-status" id="chatContextStatus" style="display:none"><span class="context-status-text">Context: -- / -- (--%)</span></div>
             <div class="input-box" id="chatDropZone">
                 <div class="drop-overlay" id="chatDropOverlay">
                     <div class="drop-overlay-content">
@@ -138,6 +148,7 @@
                 <div style="position:relative;">
                     <div class="cmd-complete" id="chatCmdComplete"></div>
                     <div class="history-panel" id="chatHistoryPanel"></div>
+                    <div class="loop-panel" id="chatLoopPanel" style="display:none"></div>
                     <textarea id="chatInput" placeholder="随便问..." rows="1" style="width:100%"></textarea>
                 </div>
                 <div class="input-toolbar">
@@ -163,11 +174,14 @@
                         <button class="attach-btn" id="chatSkillBtn" title="技能">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><text x="4" y="18" font-size="18" font-weight="bold" font-family="monospace" fill="currentColor" stroke="none">$</text></svg>
                         </button>
-                        <button class="attach-btn" id="chatHistoryBtn" title="历史消息">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        </button>
                         <button class="attach-btn" id="chatAgentBtn" title="子代理">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
+                        </button>
+                        <button class="attach-btn" id="chatLoopBtn" title="循环任务">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                        </button>
+                        <button class="attach-btn" id="chatHistoryBtn" title="历史消息">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         </button>
                     </div>
                     <div class="toolbar-right">
@@ -205,11 +219,32 @@
     <div class="filer-resize-handle" id="filerResizeHandle"></div>
     <div class="filer-panel collapsed" id="filerPanel">
         <div class="filer-tabs">
+            <button class="filer-tab" data-tab="tasks">
+                任务
+                <span class="todo-badge" id="todoBadge" style="display:none">0</span>
+            </button>
             <button class="filer-tab active" data-tab="files">文件</button>
             <button class="filer-tab" data-tab="gitdiff">
                 审查
                 <span class="git-badge" id="gitBadge" style="display:none">0</span>
             </button>
+        </div>
+
+
+        <!-- Tab Content: 任务 -->
+        <div class="filer-tab-content" id="tabContentTasks">
+            <div class="todo-panel">
+                <div class="todo-header">
+                    <div class="todo-title">当前任务 <span class="todo-stats-count" id="todoStats" style="display:none"></span></div>
+                    <button class="todo-refresh-btn" id="todoRefreshBtn" title="刷新">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    </button>
+                </div>
+                <div class="todo-list" id="todoList"></div>
+                <div class="todo-empty" id="todoEmpty" style="display:none">
+                    当前会话暂无任务清单
+                </div>
+            </div>
         </div>
 
         <!-- Tab Content: 文件树 -->
@@ -228,7 +263,14 @@
         <div class="filer-tab-content" id="tabContentGitdiff">
             <!-- 状态1：Git 不可用 -->
             <div class="git-unavailable" id="gitUnavailable" style="display:none">
-                <div class="git-empty-icon">&#x26A0;</div>
+                <div class="git-empty-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </div>
                 <div class="git-empty-title">Git 不可用</div>
                 <div class="git-empty-desc">系统未安装 Git 或 Git 不在 PATH 中</div>
             </div>
@@ -238,11 +280,14 @@
                 <div class="git-empty-icon">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
                          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3"/>
-                        <line x1="3" y1="12" x2="9" y2="12"/>
-                        <line x1="15" y1="12" x2="21" y2="12"/>
-                        <line x1="12" y1="3" x2="12" y2="9"/>
-                        <line x1="12" y1="15" x2="12" y2="21"/>
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M15 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                        <path d="M11 8a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                        <path d="M11 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                        <path d="M12 15v-6" />
+                        <path d="M15 11l-2 -2" />
+                        <path d="M11 7l-1.9 -1.9" />
+                        <path d="M13.446 2.6l7.955 7.954a2.045 2.045 0 0 1 0 2.892l-7.955 7.955a2.045 2.045 0 0 1 -2.892 0l-7.955 -7.955a2.045 2.045 0 0 1 0 -2.892l7.955 -7.955a2.045 2.045 0 0 1 2.892 0" />
                     </svg>
                 </div>
                 <div class="git-empty-title">当前工作区不是 Git 仓库</div>
@@ -271,10 +316,19 @@
             <!-- 状态3：正常仓库 -->
             <div class="git-diff-panel" id="gitDiffPanel" style="display:none">
                 <div class="git-diff-header">
-                    <label class="git-select-all-label" title="全选/取消全选">
-                        <input type="checkbox" id="gitSelectAll" checked/>
-                    </label>
-                    <span class="git-branch" id="gitBranch">--</span>
+                    <div class="git-header-left">
+                        <label class="git-select-all-label" title="全选/取消全选">
+                            <input type="checkbox" id="gitSelectAll" checked/>
+                        </label>
+                    </div>
+                    <div class="git-header-center">
+                        <span class="git-branch" id="gitBranch">--</span>
+                    </div>
+                    <div class="git-header-right">
+                        <button class="git-refresh-btn" id="gitRefreshBtn" title="刷新变更列表">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="git-diff-file-list" id="gitDiffFileList"></div>
                 <div class="git-commit-bar" id="gitCommitBar">
@@ -304,11 +358,19 @@
             <div class="settings-tabs">
                 <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">设置</div>
                 <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 通用</button>
-                <button class="settings-tab" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> 大语言模型</button>
+                <button class="settings-tab" data-tab="permission"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> 工具权限</button>
                 <button class="settings-tab" data-tab="mounts"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 挂载</button>
                 <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 技能市场</button>
+
+                <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">大语言模型</div>
+                <button class="settings-tab" data-tab="providers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/></svg> 供应商</button>
+                <button class="settings-tab" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> 模型</button>
+
+                <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">外部连接</div>
                 <button class="settings-tab" data-tab="mcp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> MCP 服务器</button>
                 <button class="settings-tab" data-tab="openapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> OpenAPI 服务器</button>
+                <button class="settings-tab" data-tab="lsp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> LSP 服务器</button>
+
                 <div class="settings-tabs-footer">
                     <div class="settings-product-name">SolonCode</div>
                     <span id="appVersionLabel" class="settings-version"></span>
@@ -337,71 +399,238 @@
                                     <div class="general-field-row">
                                         <div class="general-field">
                                             <label class="general-field-label">历史窗口大小</label>
-                                            <input type="number" class="general-input" id="generalSessionWindowSize" placeholder="默认 8"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSessionWindowSize" placeholder="默认 8"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">压缩触发消息数</label>
-                                            <input type="number" class="general-input" id="generalSummaryWindowSize" placeholder="默认"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowSize" placeholder="默认"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">压缩触发词元数</label>
-                                            <input type="number" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalSummaryWindowToken" placeholder="默认"/>
                                         </div>
                                     </div>
-                                    <div class="general-toggle-desc" style="margin-top:8px;">历史窗口控制新指令时使用几条历史消息；压缩策略控制对话上下文的自动压缩，防止超出模型窗口限制</div>
+                                    <div class="general-toggle-desc settings-gap-top-sm">历史窗口控制新指令时使用几条历史消息；压缩策略控制对话上下文的自动压缩，防止超出模型窗口限制</div>
                                 </div>
                             </div>
 
-                            <!-- 安全策略 -->
+                            <!-- 沙盒模式 -->
                             <div class="general-card">
                                 <div class="general-card-header">
                                         <div class="general-card-text">
-                                        <div class="general-card-title">安全策略</div>
+                                        <div class="general-card-title">沙盒模式</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
                                     <div class="general-toggle-row">
                                         <div class="general-toggle-info">
-                                            <span class="general-toggle-name">沙盒模式</span>
-                                            <span class="general-toggle-desc">开启后，AI 执行的命令将在受限沙盒环境中运行（只能读写'工作区'或'挂载'内的文件）</span>
+                                            <span class="general-toggle-desc">AI 执行的命令将在受限沙盒环境中运行（只能读写'工作区'和'挂载'内的文件）</span>
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="generalSandboxMode"/>
                                             <span class="toggle-slider"></span>
                                         </label>
                                     </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc">在沙盒中允许访问用户主目录（`~/` 目录，如：`~/.m2`）</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSandboxAllowUserHome"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc">采用更严格的系统内核级沙盒限制；关闭则放宽限制（测试）</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSandboxSystemRestrict"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- 重试策略 -->
+                            <!-- 心智记忆 -->
                             <div class="general-card">
                                 <div class="general-card-header">
                                     <div class="general-card-text">
-                                        <div class="general-card-title">重试策略</div>
+                                        <div class="general-card-title">心智记忆</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc">跨会话保留长期记忆；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalMemoryEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc">每个工作区使用独立记忆；关闭后使用全局共享记忆</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalMemoryIsolation"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 失败重试 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">失败重试</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
                                     <div class="general-field-row">
                                         <div class="general-field">
                                             <label class="general-field-label">模型重试次数</label>
-                                            <input type="number" class="general-input" id="generalModelRetries" placeholder="默认 3" min="0" max="10"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalModelRetries" placeholder="默认 3"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">MCP 重试次数</label>
-                                            <input type="number" class="general-input" id="generalMcpRetries" placeholder="默认 3" min="0" max="10"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalMcpRetries" placeholder="默认 3"/>
                                         </div>
                                         <div class="general-field">
                                             <label class="general-field-label">OpenAPI 重试次数</label>
-                                            <input type="number" class="general-input" id="generalApiRetries" placeholder="默认 3" min="0" max="10"/>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalApiRetries" placeholder="默认 3"/>
                                         </div>
                                     </div>
-                                    <div class="general-toggle-desc" style="margin-top:8px;">控制各类请求失败后的自动重试次数，重启会话后生效</div>
+                                    <div class="general-toggle-desc settings-gap-top-sm">控制各类请求失败后的自动重试次数</div>
+                                </div>
+                            </div>
+
+                            <!-- 界面效果 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">界面效果</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">工具调用显示简化（或者收起）</span>
+                                            <span class="general-toggle-desc">开启后工具调用输出更简洁；关闭则展示完整的详细信息</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalCliPrintSimplified"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 功能开关 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">功能开关</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">Bash 异步机制</span>
+                                            <span class="general-toggle-desc">开启后可支持 Bash 异步机制（一般没必要）；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalBashAsyncEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">Subagent 子代理机制</span>
+                                            <span class="general-toggle-desc">开启后可支持 Subagent 子代理机制，允许委派任务给专项子代理；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSubagentEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">MCP 工具网关</span>
+                                            <span class="general-toggle-desc">开启后可连接外部 MCP 服务，扩展 AI 的工具调用能力；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalMcpEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">OpenAPI 接口网关</span>
+                                            <span class="general-toggle-desc">开启后可调用 OpenAPI/Swagger 接口，扩展 AI 的数据访问能力；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalOpenApiEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name">LSP 代码智能</span>
+                                            <span class="general-toggle-desc">开启后提供代码补全、定义跳转等语言服务；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalLspEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="form-actions" style="justify-content:flex-end; margin-top:20px;">
+                        <div class="form-actions form-actions-end settings-actions-spacious">
                             <button class="btn-primary" id="generalSaveBtn">保存</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Permission Tab -->
+                <div class="settings-tab-content" id="settingsTabPermission">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div>
+                                <span class="settings-section-title">工具权限</span>
+                                <div class="settings-section-desc">管理全局工具访问权限，默认启用所有工具，可勾选禁用特定工具</div>
+                            </div>
+                            <button class="btn-secondary" id="permissionAdvancedBtn">高级模式</button>
+                        </div>
+
+                        <div class="permission-container">
+
+                            <!-- 工具列表 -->
+                            <div class="permission-tools-list" id="permissionToolsList"></div>
+
+                            <!-- 高级模式（文本输入） -->
+                            <div class="permission-advanced" id="permissionAdvanced" style="display:none">
+                                <div class="general-card">
+                                    <div class="general-card-header">
+                                        <div class="general-card-text">
+                                            <div class="general-card-title">禁用工具（黑名单）</div>
+                                        </div>
+                                    </div>
+                                    <div class="general-card-body">
+                                        <div class="general-field">
+                                            <textarea class="general-input" id="permissionDisallowedTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="bash&#10;write"></textarea>
+                                        </div>
+                                        <div class="general-toggle-desc settings-gap-top-sm">每行一个匹配模式，不支持通配符</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions form-actions-end settings-actions-spacious">
+                            <button class="btn-primary" id="permissionSaveBtn">保存</button>
                         </div>
                     </div>
                 </div>
@@ -412,7 +641,7 @@
                         <div class="settings-section">
                             <div class="settings-section-header">
                                 <div>
-                                    <span class="settings-section-title">大语言模型</span>
+                                    <span class="settings-section-title">模型</span>
                                     <div class="settings-section-desc">配置 AI 模型的连接参数与默认设定</div>
                                 </div>
                                 <div class="llm-header-actions">
@@ -426,7 +655,7 @@
                     <div class="settings-view settings-view-form" id="llmFormView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="settings-title-row">
                                     <button class="settings-back-btn" id="llmBackBtn" title="返回">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                                     </button>
@@ -445,53 +674,80 @@
                             </div>
                             <div class="llm-add-form" id="llmAddForm">
                                 <div class="form-group">
-                                    <label>接口地址规范</label>
-                                    <select id="llmProvider">
-                                        <option value="">自动检测（须填写完整地址）</option>
-                                        <option value="openai">OpenAI BaseUrl / 兼容接口</option>
+                                    <label>名称 <span class="required">*</span></label>
+                                    <input type="text" id="llmName" placeholder="my-model"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <input type="hidden" id="llmScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="llmScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>接口规范</label>
+                                    <select id="llmStandard">
+                                        <option value="">FullUrl / 完整地址（自动检测）</option>
+                                        <option value="openai">OpenAI Chat Completions BaseUrl / 兼容接口</option>
+                                        <option value="openai-responses">OpenAI Responses BaseUrl / 兼容接口</option>
                                         <option value="anthropic">Anthropic BaseUrl / 兼容接口</option>
-                                        <option value="ollama">Ollama BaseUrl / 兼容接口</option>
+                                        <option value="gemini">Gemini Url</option>
+                                        <option value="ollama">Ollama Url</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>接口地址 <span class="required">*</span></label>
-                                    <input type="text" id="llmApiUrl" placeholder="https://api.openai.com/v1"/>
+                                    <label>API 地址 <span class="required">*</span></label>
+                                    <input type="text" id="llmApiUrl" placeholder="https://api.deepseek.com/v1/chat/completions"/>
                                 </div>
                                 <div class="form-group">
-                                    <label>接口密钥</label>
+                                    <label>API 密钥</label>
                                     <div class="password-input-group">
-                                        <input type="password" id="llmApiKey"/>
+<input type="password" id="llmApiKey" autocomplete="new-password"/>
                                         <button class="password-toggle" id="llmApiKeyToggle" title="显示/隐藏">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                         </button>
                                     </div>
                                 </div>
-                                <div class="form-row-2col">
+                                <div class="form-row-3col">
                                     <div class="form-group">
                                         <label>模型 <span class="required">*</span></label>
-                                        <input type="text" id="llmModel" />
+                                        <input type="text" id="llmModel" placeholder="deepseek-v4-flash" />
                                     </div>
-                                    <div class="form-group">
-                                        <label>显示名称（可选）</label>
-                                        <input type="text" id="llmName" placeholder="给模型起个别名（确保唯一）"/>
-                                    </div>
-                                </div>
-                                <div class="form-row-2col">
                                     <div class="form-group">
                                         <label>超时时间（可选）</label>
                                         <input type="text" id="llmTimeout" placeholder="120s（默认 120 秒）"/>
                                     </div>
                                     <div class="form-group">
                                         <label>上下文长度（可选）</label>
-                                        <input type="number" id="llmContextLength" placeholder="1_000_000（模型上下文长度）"/>
+<input type="text" inputmode="numeric" id="llmContextLength" placeholder="1000k（模型上下文长度）" list="contextLengthList" autocomplete="off"/>
+                                        <datalist id="contextLengthList">
+                                            <option value="128k">
+                                            <option value="256k">
+                                            <option value="512k">
+<option value="1m">
+                                        </datalist>
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <label>默认选项（可选，JSON 格式）</label>
-                                    <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"enable_thinking":false}'></textarea>
+                                    <div class="form-label-row">
+                                        <label>默认选项（可选，JSON 格式）</label>
+                                        <button type="button" class="provider-model-icon-btn" id="llmFormatJsonBtn" title="格式化 JSON">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <polyline points="16 18 22 12 16 6"/>
+                                                <polyline points="8 6 2 12 8 18"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"thinking":{"type":"enabled"},"reasoning_effort":"high"}'></textarea>
                                 </div>
-                                <div class="form-actions" style="justify-content:flex-end;">
-                                    <div style="display:flex;gap:8px;">
+                                <div class="form-actions" style="justify-content:space-between">
+                                    <label class="llm-default-checkbox">
+                                        <input type="checkbox" id="llmIsDefaultModel"/>
+                                        <span class="llm-default-checkmark"></span>
+                                        <span>设为默认模型</span>
+                                    </label>
+                                    <div class="settings-inline-actions">
                                         <button class="btn-secondary" id="llmTestBtn">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                                             测试连接
@@ -555,7 +811,7 @@
                     <div class="settings-view settings-view-form" id="mountsFormView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="settings-title-row">
                                     <button class="settings-back-btn" id="mountsBackBtn" title="返回"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
                                     <span class="settings-section-title" id="mountsFormTitle">添加挂载</span>
                                 </div>
@@ -565,22 +821,29 @@
                             </div>
                             <div class="mounts-add-form">
                                 <div class="form-group">
-                                    <label>别名 <span class="required">*</span></label>
-                                    <input type="text" id="mountsAlias" placeholder="@my_mount"/>
-                                    <div class="form-hint">必须以 @ 开头，例如 @my_skills</div>
+                                    <label>名称 <span class="required">*</span></label>
+                                    <input type="text" id="mountsAlias" placeholder="@my-mount"/>
                                 </div>
                                 <div class="form-group">
-                                    <label>路径 <span class="required">*</span></label>
+                                    <label>作用域</label>
+                                    <input type="hidden" id="mountsScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="mountsScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>内容类型</label>
+                                    <div class="mcp-type-toggle" id="mountsTypeToggle">
+                                        <button class="mcp-type-btn active" data-type="SKILLS" type="button">技能 (SKILLS)</button>
+                                        <button class="mcp-type-btn" data-type="AGENTS" type="button">子代理 (AGENTS)</button>
+                                        <button class="mcp-type-btn" data-type="FILES" type="button">文件 (FILES)</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>映射路径 <span class="required">*</span></label>
                                     <input type="text" id="mountsPath" placeholder="~/.myapp/skills/"/>
-                                    <div class="form-hint">技能文件所在的本地目录路径（支持 './' 和 '~/' 相对路径）</div>
-                                </div>
-                                <div class="form-group">
-                                    <label>挂载内容类型</label>
-                                    <select id="mountsType">
-                                        <option value="SKILLS" selected>技能 (SKILLS)</option>
-                                        <option value="FILES">文件 (FILES)</option>
-                                        <option value="AGENTS">子代理 (AGENTS)</option>
-                                    </select>
+                                    <div class="form-hint">文件所在的本地目录路径（支持 './' 工作区路径和 '~/' 用户目录路径）</div>
                                 </div>
                                 <div class="form-group" id="mountsWriteableGroup">
                                     <label>开放写权限</label>
@@ -593,14 +856,14 @@
                                     <label>描述（可选）</label>
                                     <input type="text" id="mountsDescription" placeholder="简要描述此挂载用途"/>
                                 </div>
-                                <div class="form-actions" style="justify-content:flex-end;">
+                                <div class="form-actions form-actions-end">
                                     <button class="btn-primary" id="mountsSaveBtn">保存</button>
                                 </div>
                                 <div class="mounts-divider" id="mountsPresetsDivider"></div>
                                 <div class="mounts-presets">
                                     <div class="mounts-presets-label">常见挂载选择</div>
                                     <div class="mounts-presets-btns">
-                                        <button type="button" class="mounts-preset-btn" data-alias="@skills" data-path="./skills/">@skills  ./skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@skills" data-path="./skills/">@skills ./skills/</button>
                                         <button type="button" class="mounts-preset-btn" data-alias="@skillhub" data-path="~/.skillhub/skills/">@skillhub  ~/.skillhub/skills/</button>
                                         <button type="button" class="mounts-preset-btn" data-alias="@agents_skills" data-path="~/.agents/skills/">@agents_skills  ~/.agents/skills/</button>
                                         <button type="button" class="mounts-preset-btn" data-alias="@opencode_skills" data-path="~/.opencode/skills/">@opencode_skills  ~/.opencode/skills/</button>
@@ -614,11 +877,11 @@
                     <div class="settings-view settings-view-form" id="mountsSkillsView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="settings-title-row">
                                     <button class="settings-back-btn" id="mountsSkillsBackBtn" title="返回"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
                                     <span class="settings-section-title" id="mountsSkillsTitle">技能包列表</span>
                                 </div>
-                                <div style="display:flex;gap:6px;">
+                                <div class="settings-header-icon-actions">
                                     <button class="mcp-action-btn" id="mountsOpenDirBtn" title="打开目录"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
                                     <button class="mcp-action-btn" id="mountsRefreshBtn" title="刷新"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
                                 </div>
@@ -633,8 +896,16 @@
                     <div class="settings-view settings-view-list" id="mcpListView">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <span class="settings-section-title">MCP 服务器</span>
+                                <div>
+                                    <span class="settings-section-title">MCP 服务器</span>
+                                    <div class="settings-section-desc">管理外部工具服务器，扩展文件、数据库、浏览器等工具能力</div>
+                                </div>
                                 <div class="mcp-header-actions">
+                                    <button class="settings-add-btn" id="mcpImportBtn" title="从 JSON 文件导入 MCP 服务器配置">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        导入
+                                    </button>
+                                    <input type="file" id="mcpImportFileInput" accept=".json" style="display:none;"/>
                                     <button class="settings-add-btn" id="mcpAddBtn">+ 添加服务器</button>
                                 </div>
                             </div>
@@ -645,7 +916,7 @@
                     <div class="settings-view settings-view-form" id="mcpFormView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="settings-title-row">
                                     <button class="settings-back-btn" id="mcpBackBtn" title="返回">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                                     </button>
@@ -666,6 +937,14 @@
                                 <div class="form-group">
                                     <label>名称 <span class="required">*</span></label>
                                     <input type="text" id="mcpName" placeholder="my-mcp-server"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <input type="hidden" id="mcpScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="mcpScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button">工作区（本地）</button>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label>类型</label>
@@ -692,7 +971,7 @@
                                 <div class="mcp-config-remote" id="mcpConfigRemote" style="display:none">
                                     <div class="form-group">
                                         <label>URL <span class="required">*</span></label>
-                                        <input type="text" id="mcpRemoteUrl" placeholder="http://localhost:3001/sse"/>
+                                        <input type="text" id="mcpRemoteUrl" placeholder="http://localhost:3001/mcp"/>
                                     </div>
                                     <div class="form-group">
                                         <label>请求头（KEY=VALUE，每行一个）</label>
@@ -700,12 +979,12 @@
                                     </div>
                                     <div class="form-group">
                                         <label>超时时间</label>
-                                        <input type="text" id="mcpTimeout" placeholder="30s" style="width:120px;"/>
+                                        <input type="text" id="mcpTimeout" class="settings-short-input" placeholder="30s"/>
                                     </div>
                                 </div>
-                                <div class="form-actions" style="justify-content:flex-end;">
-                                    <div style="display:flex;gap:8px;">
-                                        <button class="btn-secondary" id="mcpCheckBtn" style="display:flex;align-items:center;gap:4px;">
+                                <div class="form-actions form-actions-end">
+                                    <div class="settings-inline-actions">
+                                        <button class="btn-secondary settings-icon-btn" id="mcpCheckBtn">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                                             检测连接
                                         </button>
@@ -721,7 +1000,7 @@
                     <div class="settings-view settings-view-form" id="mcpToolsView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="settings-title-row">
                                     <button class="settings-back-btn" id="mcpToolsBackBtn" title="返回">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                                     </button>
@@ -735,7 +1014,7 @@
                                 </label>
                                 <div class="mcp-tools-toolbar-actions">
                                     <span class="mcp-tools-count" id="mcpToolsCount"></span>
-                                    <button class="settings-add-btn" id="mcpToolsSaveBtn" style="padding:6px 16px;font-size:12px;">保存</button>
+                                    <button class="settings-add-btn settings-toolbar-save-btn" id="mcpToolsSaveBtn">保存</button>
                                 </div>
                             </div>
                             <div class="mcp-tools-list" id="mcpToolsList"></div>
@@ -749,7 +1028,10 @@
                     <div class="settings-view settings-view-list" id="openapiListView">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <span class="settings-section-title">OpenAPI 服务器</span>
+                                <div>
+                                    <span class="settings-section-title">OpenAPI 服务器</span>
+                                    <div class="settings-section-desc">接入 REST/OpenAPI 接口，控制 AI 可调用的 API 范围</div>
+                                </div>
                                 <div class="openapi-header-actions">
                                     <button class="settings-add-btn" id="openapiAddBtn">+ 添加服务器</button>
                                 </div>
@@ -761,7 +1043,7 @@
                     <div class="settings-view settings-view-form" id="openapiFormView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="settings-title-row">
                                     <button class="settings-back-btn" id="openapiBackBtn" title="返回">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                                     </button>
@@ -784,20 +1066,28 @@
                                     <input type="text" id="openapiName" placeholder="my-api-server"/>
                                 </div>
                                 <div class="form-group">
+                                    <label>作用域</label>
+                                    <input type="hidden" id="openapiScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="openapiScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
                                     <label>API 基地址 <span class="required">*</span></label>
                                     <input type="text" id="openapiBaseUrl" placeholder="https://api.example.com/app"/>
                                 </div>
                                 <div class="form-group">
-                                    <label>文档地址（OpenApi 规范） <span class="required">*</span></label>
-                                    <input type="text" id="openapiDocUrl" placeholder="https://api.example.com/swagger/v2?group=app"/>
+                                    <label>接口文档地址（OpenApi 规范） <span class="required">*</span></label>
+                                    <input type="text" id="openapiDocUrl" placeholder="https://api.example.com/app/openapi.json"/>
                                 </div>
                                 <div class="form-group">
                                     <label>请求头（KEY=VALUE，每行一个）</label>
                                     <textarea id="openapiHeaders" rows="3" placeholder="API_KEY=xxx&#10;Authorization=Bearer xxx"></textarea>
                                 </div>
-                                <div class="form-actions" style="justify-content:flex-end;">
-                                    <div style="display:flex;gap:8px;">
-                                        <button class="btn-secondary" id="openapiTestBtn" style="display:flex;align-items:center;gap:4px;">
+                                <div class="form-actions form-actions-end">
+                                    <div class="settings-inline-actions">
+                                        <button class="btn-secondary settings-icon-btn" id="openapiTestBtn">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                                             测试连接
                                         </button>
@@ -812,7 +1102,7 @@
                     <div class="settings-view settings-view-form" id="openapiApisView" style="display:none">
                         <div class="settings-section">
                             <div class="settings-section-header">
-                                <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="settings-title-row">
                                     <button class="settings-back-btn" id="openapiApisBackBtn" title="返回">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                                     </button>
@@ -826,13 +1116,165 @@
                                 </label>
                                 <div class="mcp-tools-toolbar-actions">
                                     <span class="mcp-tools-count" id="openapiApisCount"></span>
-                                    <button class="settings-add-btn" id="openapiApisSaveBtn" style="padding:6px 16px;font-size:12px;">保存</button>
+                                    <button class="settings-add-btn settings-toolbar-save-btn" id="openapiApisSaveBtn">保存</button>
                                 </div>
                             </div>
                             <div id="openapiApisList"></div>
                         </div>
                     </div>
 
+                </div>
+                <!-- LSP Tab -->
+                <div class="settings-tab-content" id="settingsTabLsp">
+                    <!-- List View -->
+                    <div class="settings-view settings-view-list" id="lspListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title">LSP 服务器</span>
+                                    <div class="settings-section-desc">配置语言服务器，为代码理解和编辑提供语言能力</div>
+                                </div>
+                                <div class="openapi-header-actions">
+                                    <button class="settings-add-btn" id="lspAddBtn">+ 添加服务器</button>
+                                </div>
+                            </div>
+                            <div class="openapi-server-list" id="lspServerList"></div>
+                        </div>
+                    </div>
+                    <!-- Form View -->
+                    <div class="settings-view settings-view-form" id="lspFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="lspBackBtn" title="返回">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="lspFormTitle">添加服务器</span>
+                                </div>
+                                <div class="settings-form-actions" id="lspFormActions" style="display:none">
+                                    <button class="settings-form-action-btn danger" id="lspFormDeleteBtn" title="删除">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        删除
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="openapi-add-form" id="lspAddForm">
+                                <div class="form-group">
+                                    <label>名称 <span class="required">*</span></label>
+                                    <input type="text" id="lspName" placeholder="my-lsp-server"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <input type="hidden" id="lspScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="lspScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>启动命令 <span class="required">*</span></label>
+                                    <input type="text" id="lspCommand" placeholder="typescript-language-server --stdio"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>关联扩展名（逗号分隔）</label>
+                                    <input type="text" id="lspExtensions" placeholder=".ts, .tsx, .js"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>环境变量（KEY=VALUE，每行一个）</label>
+                                    <textarea id="lspEnv" rows="3" placeholder="NODE_PATH=/usr/local/lib/node_modules"></textarea>
+                                </div>
+                                <div class="form-actions form-actions-end">
+                                    <button class="btn-primary" id="lspSaveBtn">保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Providers Tab -->
+                <div class="settings-tab-content" id="settingsTabProviders">
+                    <!-- List View -->
+                    <div class="settings-view settings-view-list" id="providersListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title">供应商（测试）</span>
+                                    <div class="settings-section-desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div>
+                                </div>
+                                <div class="openapi-header-actions">
+                                    <button class="settings-add-btn" id="providerAddBtn">+ 添加供应商</button>
+                                </div>
+                            </div>
+                            <div class="openapi-server-list" id="providerList"></div>
+                        </div>
+                    </div>
+                    <!-- Form View -->
+                    <div class="settings-view settings-view-form" id="providersFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="providerBackBtn" title="返回">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="providerFormTitle">添加供应商</span>
+                                </div>
+                                <div class="settings-form-actions" id="providerFormActions" style="display:none">
+                                    <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" title="删除">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        删除
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="openapi-add-form" id="providerAddForm">
+                                <div class="form-group">
+                                    <label>名称 <span class="required">*</span></label>
+                                    <input type="text" id="providerName" placeholder="deepseek"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <input type="hidden" id="providerScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="providerScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="local" type="button">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>接口规范</label>
+                                    <select id="providerStandard">
+                                        <option value="openai">OpenAI Chat Completions BaseUrl / 兼容接口</option>
+                                        <option value="openai-responses">OpenAI Responses BaseUrl / 兼容接口</option>
+                                        <option value="anthropic">Anthropic BaseUrl / 兼容接口</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>API 地址 <span class="required">*</span></label>
+                                    <input type="text" id="providerApiUrl" placeholder="https://api.deepseek.com/v1"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>API 密钥</label>
+<input type="password" id="providerApiKey" placeholder="sk-xxx" autocomplete="new-password"/>
+                                </div>
+                                <div class="form-group">
+                                    <div class="form-group-header">
+                                        <label>模型管理</label>
+                                        <div class="provider-model-header-actions">
+                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                            </button>
+                                            <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="provider-models-list" id="providerModelsList"></div>
+                                    <div class="provider-models-empty" id="providerModelsEmpty">点击右侧 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加模型，或 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 从 API 拉取</div>
+                                </div>
+                                
+                                <div class="form-actions form-actions-end">
+                                    <button class="btn-primary" id="providerSaveBtn">保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div><!-- /.settings-body -->
         </div><!-- /.settings-content -->
@@ -843,7 +1285,7 @@
 <script>window.$ = layui.$;</script>
 <script src="/js/marked.min.js"></script>
 <script src="/js/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script src="/highlight/highlight.min.js"></script>
 
 <script>
     var SSE_ENDPOINT = "/web/chat/input";
@@ -859,6 +1301,13 @@
         var titleEl = document.getElementById('welcomeTitle');
         if (titleEl && meta.appTitle) titleEl.textContent = '你好，我是 ' + meta.appTitle + ' ！';
     }).catch(function () { /* ignore */ });
+
+    // 启动时拉取通用设置，回填控制台打印简化开关（决定流式工具卡默认收起/展开）
+    fetch('/web/settings/general').then(function (r) { return r.json(); }).then(function (resp) {
+        if (resp && resp.code === 200 && resp.data) {
+            window.cliPrintSimplified = resp.data.cliPrintSimplified !== false;
+        }
+    }).catch(function () { /* ignore */ });
 </script>
 
 <script src="/js/app-base.js"></script>
@@ -868,7 +1317,18 @@
 <script src="/js/app-streaming.js"></script>
 <script src="/js/app-filer.js"></script>
 <script src="/js/app-gitdiff.js"></script>
+<script src="/js/app-todos.js"></script>
+<script src="/js/app-context.js"></script>
 <script src="/js/app-settings.js"></script>
+<script src="/js/app-settings-general.js"></script>
+<script src="/js/app-settings-permission.js"></script>
+<script src="/js/app-settings-llm.js"></script>
+<script src="/js/app-settings-mounts.js"></script>
+<script src="/js/app-settings-mcp.js"></script>
+<script src="/js/app-settings-openapi.js"></script>
+<script src="/js/app-settings-lsp.js"></script>
+<script src="/js/app-settings-providers.js"></script>
 <script src="/js/app-settings-skill.js"></script>
+<script src="/js/app-loop.js"></script>
 </body>
 </html>

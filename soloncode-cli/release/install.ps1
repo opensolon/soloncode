@@ -1,6 +1,6 @@
 #
 # Solon Code Installer for Windows PowerShell
-# 支持重复安装，保留已有 config.yml
+# 支持重复安装，保留已有 AGENTS.md
 #
 $ErrorActionPreference = "Stop"
 Write-Host ""
@@ -43,14 +43,11 @@ $SOURCE_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
 if (-not $SOURCE_DIR) { $SOURCE_DIR = $PWD.Path }
 $SOURCE_BIN_DIR = Join-Path $SOURCE_DIR "bin"
 $SOURCE_SKILLS_DIR = Join-Path $SOURCE_DIR "skills"
-$SOURCE_CONFIG = Join-Path $SOURCE_DIR "config.yml"
 $SOURCE_AGENTS = Join-Path $SOURCE_DIR "AGENTS.md"
 $TARGET_DIR = Join-Path $env:USERPROFILE ".soloncode"
 $TARGET_BIN_DIR = Join-Path $TARGET_DIR "bin"
 $TARGET_SKILLS_DIR = Join-Path $TARGET_DIR "skills"
-$TARGET_CONFIG = Join-Path $TARGET_DIR "config.yml"
 $TARGET_AGENTS = Join-Path $TARGET_DIR "AGENTS.md"
-$OLD_TARGET_CONFIG = Join-Path $TARGET_BIN_DIR "config.yml"
 $OLD_TARGET_AGENTS = Join-Path $TARGET_BIN_DIR "AGENTS.md"
 # =============================================
 # 检查源目录是否存在
@@ -61,31 +58,18 @@ if (-not (Test-Path $SOURCE_BIN_DIR)) {
     exit 1
 }
 # =============================================
-# [1/5] 检查并备份已有的 config.yml 和 AGENTS.md，并迁移旧版本文件
+# [1/5] 检查并备份已有的 AGENTS.md，并迁移旧版本文件
 # =============================================
-Write-Host "[1/5] Checking for existing configuration..." -ForegroundColor Yellow
-$CONFIG_BACKUP = $null
+Write-Host "[1/5] Checking for existing AGENTS.md..." -ForegroundColor Yellow
 $AGENTS_BACKUP = $null
 
-# 迁移旧版本的配置文件（从 bin/ 目录移动到根目录）
-if ((Test-Path $OLD_TARGET_CONFIG) -and -not (Test-Path $TARGET_CONFIG)) {
-    Move-Item $OLD_TARGET_CONFIG $TARGET_CONFIG -Force
-    Write-Host "      Migrated config.yml from bin/ to root directory" -ForegroundColor Gray
-}
-
+# 迁移旧版本的 AGENTS.md（从 bin/ 目录移动到根目录）
 if ((Test-Path $OLD_TARGET_AGENTS) -and -not (Test-Path $TARGET_AGENTS)) {
     Move-Item $OLD_TARGET_AGENTS $TARGET_AGENTS -Force
     Write-Host "      Migrated AGENTS.md from bin/ to root directory" -ForegroundColor Gray
 }
 
-# 备份现有的配置文件
-if (Test-Path $TARGET_CONFIG) {
-    $CONFIG_BACKUP = Join-Path $env:TEMP "soloncode_config_backup_$(Get-Random).yml"
-    Copy-Item $TARGET_CONFIG $CONFIG_BACKUP -Force
-    Write-Host "      Found existing config.yml (will be preserved)" -ForegroundColor Gray
-} else {
-    Write-Host "      No existing config.yml found" -ForegroundColor Gray
-}
+# 备份现有的 AGENTS.md
 if (Test-Path $TARGET_AGENTS) {
     $AGENTS_BACKUP = Join-Path $env:TEMP "soloncode_agents_backup_$(Get-Random).md"
     Copy-Item $TARGET_AGENTS $AGENTS_BACKUP -Force
@@ -111,38 +95,36 @@ Write-Host "[3/5] Copying files to target directory..." -ForegroundColor Yellow
 Copy-Item -Path "$SOURCE_BIN_DIR\*" -Destination $TARGET_BIN_DIR -Recurse -Force
 Write-Host "      Copied bin/ directory" -ForegroundColor Gray
 
-# 复制 config.yml 和 AGENTS.md（从根目录）
-if (Test-Path $SOURCE_CONFIG) {
-    Copy-Item $SOURCE_CONFIG $TARGET_CONFIG -Force
-    Write-Host "      Copied config.yml" -ForegroundColor Gray
-}
-
+# 复制 AGENTS.md（从根目录）
 if (Test-Path $SOURCE_AGENTS) {
     Copy-Item $SOURCE_AGENTS $TARGET_AGENTS -Force
     Write-Host "      Copied AGENTS.md" -ForegroundColor Gray
 }
-# 复制 skills 目录（如果目标存在，先删除再复制）
+# 复制 skills 目录（仅同名目录替换，保留用户自行安装的 skill）
 if (Test-Path $SOURCE_SKILLS_DIR) {
-    if (Test-Path $TARGET_SKILLS_DIR) {
-        Remove-Item -Path $TARGET_SKILLS_DIR -Recurse -Force
+    if (-not (Test-Path $TARGET_SKILLS_DIR)) {
+        New-Item -ItemType Directory -Path $TARGET_SKILLS_DIR | Out-Null
     }
-    Copy-Item -Path $SOURCE_SKILLS_DIR -Destination $TARGET_SKILLS_DIR -Recurse -Force
-    Write-Host "      Copied skills/ directory" -ForegroundColor Gray
+    # 仅遍历安装包自带的 skill 子目录，逐个替换同名目录
+    Get-ChildItem -Path $SOURCE_SKILLS_DIR -Directory | ForEach-Object {
+        $skillName = $_.Name
+        $targetSkillPath = Join-Path $TARGET_SKILLS_DIR $skillName
+        # 删除目标中的同名 skill 目录后再复制（不影响其他用户 skill）
+        if (Test-Path $targetSkillPath) {
+            Remove-Item -Path $targetSkillPath -Recurse -Force
+        }
+        Copy-Item -Path $_.FullName -Destination $targetSkillPath -Recurse -Force
+        Write-Host "      Updated skill: $skillName" -ForegroundColor Gray
+    }
 } else {
     Write-Host "      No skills/ directory to copy" -ForegroundColor Gray
 }
 Write-Host "      Files copied successfully" -ForegroundColor Green
 # =============================================
-# [4/5] 恢复 config.yml 和 AGENTS.md 并检查 jar 文件
+# [4/5] 恢复 AGENTS.md 并检查 jar 文件
 # =============================================
 Write-Host ""
 Write-Host "[4/5] Finalizing installation..." -ForegroundColor Yellow
-# 恢复 config.yml 备份（如果之前存在）
-if ($CONFIG_BACKUP -and (Test-Path $CONFIG_BACKUP)) {
-    Copy-Item $CONFIG_BACKUP $TARGET_CONFIG -Force
-    Remove-Item $CONFIG_BACKUP -Force
-    Write-Host "      Preserved existing config.yml" -ForegroundColor Gray
-}
 # 恢复 AGENTS.md 备份（如果之前存在）
 if ($AGENTS_BACKUP -and (Test-Path $AGENTS_BACKUP)) {
     Copy-Item $AGENTS_BACKUP $TARGET_AGENTS -Force
@@ -150,10 +132,7 @@ if ($AGENTS_BACKUP -and (Test-Path $AGENTS_BACKUP)) {
     Write-Host "      Preserved existing AGENTS.md" -ForegroundColor Gray
 }
 
-# 清理旧位置的配置文件（如果还存在）
-if (Test-Path $OLD_TARGET_CONFIG) {
-    Remove-Item $OLD_TARGET_CONFIG -Force
-}
+# 清理旧位置的 AGENTS.md（如果还存在）
 if (Test-Path $OLD_TARGET_AGENTS) {
     Remove-Item $OLD_TARGET_AGENTS -Force
 }
@@ -300,11 +279,10 @@ Write-Host "  Java version: $javaVersion" -ForegroundColor White
 Write-Host ""
 Write-Host "  Usage:" -ForegroundColor Cyan
 Write-Host "    1. Open a NEW terminal window (PowerShell or Git Bash)"
-Write-Host "    2. Run: 'soloncode' or 'soloncode web 0'"
+Write-Host "    2. Run: 'soloncode cli' or 'soloncode web 0'"
 Write-Host ""
 Write-Host "  Directory structure:" -ForegroundColor Cyan
 Write-Host "    $env:USERPROFILE\.soloncode\"
-Write-Host "    +-- config.yml      (configuration, preserved)"
 Write-Host "    +-- AGENTS.md       (agents config, preserved)"
 Write-Host "    +-- bin/            (executables)"
 Write-Host "    |   +-- soloncode-cli.jar"

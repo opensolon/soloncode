@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a>とJavaで構築されたオープンソースのコーディングエージェント（Java8からJava26のランタイム環境をサポート）</p>
-<p>最新バージョン: v2026.6.4</p>
+<p>最新バージョン: v2026.6.21</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 インストール方法：
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Web interface: http://localhost:50488/
 
 機能的には類似していますが、主な違いは以下の通りです：
 
-* Javaで構築されており、100%オープンソースです
+* Javaで構築されており、100%オープンソースです。BiSheng JDK（Huawei）およびHarmony PCに対応しています。
 * 純中国語プロンプトで駆動・構築
 * プロバイダーに依存しません。必要に応じてモデルを設定できます。モデルの進化によりギャップが縮まり、コストが削減されるため、自由な設定が重要です
 * ターミナルのコマンドラインインターフェース（CLI）、ブラウザインターフェース（WEB）、デスクトップIDEインターフェース（Desktop）を同時にサポートします

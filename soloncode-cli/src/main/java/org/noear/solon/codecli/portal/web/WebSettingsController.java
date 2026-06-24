@@ -16,10 +16,15 @@
 package org.noear.solon.codecli.portal.web;
 
 import org.noear.snack4.ONode;
+import org.noear.snack4.codec.TypeRef;
+import org.noear.solon.core.handle.UploadedFile;
+
+import java.nio.charset.StandardCharsets;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.chat.tool.FunctionTool;
+import org.noear.solon.ai.mcp.McpChannel;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 import org.noear.solon.ai.mcp.client.McpClientProviders;
 import org.noear.solon.ai.mcp.client.McpServerParameters;
@@ -27,14 +32,26 @@ import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.AgentMd;
 import org.noear.solon.ai.talents.mount.SkillDir;
-import org.noear.solon.ai.talents.openapi.ApiSource;
-import org.noear.solon.ai.talents.openapi.ApiSourceClient;
-import org.noear.solon.ai.talents.openapi.ApiTool;
+import org.noear.solon.ai.talents.gateway.openapi.ApiSource;
+import org.noear.solon.ai.talents.gateway.openapi.ApiSourceClient;
+import org.noear.solon.ai.talents.gateway.openapi.ApiTool;
+import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.annotation.*;
-import org.noear.solon.codecli.config.AgentProperties;
+import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.config.GeneralSettings;
-import org.noear.solon.codecli.config.MountDo;
+import org.noear.solon.codecli.config.entity.GeneralGroupDo;
+import org.noear.solon.codecli.config.entity.PermissionGroupDo;
+import org.noear.solon.codecli.config.entity.ApiSourceDo;
+import org.noear.solon.ai.talents.lsp.LspServerParameters;
+import org.noear.solon.codecli.config.entity.LspServerDo;
+import org.noear.solon.codecli.config.entity.McpServerDo;
+import org.noear.solon.codecli.config.entity.ModelDo;
+import org.noear.solon.codecli.config.entity.MountDo;
+import org.noear.solon.codecli.config.entity.ProviderDo;
+import org.noear.solon.codecli.portal.web.model.ModelInfo;
+import org.noear.solon.codecli.portal.web.model.ModelsAdapter;
+import org.noear.solon.codecli.portal.web.model.ModelsAdapterManager;
+import org.noear.solon.codecli.portal.web.model.ModelSpecService;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -92,14 +109,19 @@ public class WebSettingsController {
     private final MarketManager marketManager;
 
     /**
+     * 模型提供商工厂，用于拉取模型列表
+     */
+    private final ModelsAdapterManager modelProviderFactory;
+
+    /**
+     * 模型规格参考服务，用于从 models.json 获取上下文大小
+     */
+    private final ModelSpecService modelSpecService;
+
+    /**
      * 统一配置管理器，管理 LLM 模型、MCP 服务器、OpenApi 服务器的持久化数据
      */
     private final AgentSettings settings;
-
-    /**
-     * 统一配置文件路径
-     */
-    private final Path settingsFile;
 
     /**
      * 构造函数：使用容器注入的 AgentSettings。
@@ -108,7 +130,7 @@ public class WebSettingsController {
      * @param settings 统一配置管理器（由 App.initAgentSettings 创建并注册到容器）
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings) {
-        this(engine, settings, new MarketManager());
+        this(engine, settings, new MarketManager(), new ModelsAdapterManager(), new ModelSpecService());
     }
 
     /**
@@ -119,10 +141,30 @@ public class WebSettingsController {
      * @param marketManager 技能市场管理器
      */
     public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager) {
+        this(engine, settings, marketManager, new ModelsAdapterManager(), new ModelSpecService());
+    }
+
+    /**
+     * 构造函数：支持自定义 MarketManager 和 ModelProviderFactory。
+     *
+     * @param engine              AI Agent 执行引擎
+     * @param settings            统一配置管理器
+     * @param marketManager       技能市场管理器
+     * @param modelProviderFactory 模型提供商工厂
+     */
+    public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager, ModelsAdapterManager modelProviderFactory) {
+        this(engine, settings, marketManager, modelProviderFactory, new ModelSpecService());
+    }
+
+    /**
+     * 构造函数：支持自定义所有依赖。
+     */
+    public WebSettingsController(HarnessEngine engine, AgentSettings settings, MarketManager marketManager, ModelsAdapterManager modelProviderFactory, ModelSpecService modelSpecService) {
         this.engine = engine;
         this.settings = settings;
         this.marketManager = marketManager;
-        this.settingsFile = Paths.get(AgentProperties.getUserHome(), ".soloncode", "settings.json");
+        this.modelProviderFactory = modelProviderFactory;
+        this.modelSpecService = modelSpecService;
     }
 
     // ==================== 配置持久化 ====================
@@ -131,7 +173,7 @@ public class WebSettingsController {
      * 将当前配置保存到 settings.json
      */
     private void saveSettings() {
-        settings.saveToFile(settingsFile);
+        settings.saveToFile();
     }
 
     // ==================== 设置：General 通用配置 ====================
@@ -141,7 +183,7 @@ public class WebSettingsController {
      */
     @Get
     @Mapping("/web/settings/general")
-    public Result<GeneralSettings> generalGet() {
+    public Result<GeneralGroupDo> generalGet() {
         return Result.succeed(settings.getGeneral());
     }
 
@@ -151,21 +193,79 @@ public class WebSettingsController {
     @Post
     @Mapping("/web/settings/general/save")
     public Result generalSave(@Body String json) throws Exception {
-        GeneralSettings tmp = ONode.ofJson(json).toBean(GeneralSettings.class);
-        if (tmp != null) {
-            settings.setGeneral(tmp);
+        ONode tmp = ONode.ofJson(json);
+        if (tmp.isObject()) {
+            tmp.bindTo(settings.getGeneral());
 
-            engine.setCompressionThreshold(tmp.getSummaryWindowSize(), tmp.getSummaryWindowToken());
-            engine.setSandboxMode(tmp.getSandboxMode());
-            engine.setSessionWindowSize(tmp.getSessionWindowSize());
+            engine.setCompressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getSummaryWindowToken());
+            engine.setSessionWindowSize(settings.getGeneral().getSessionWindowSize());
 
-            engine.setModelRetries(tmp.getModelRetries());
-            engine.setMcpRetries(tmp.getMcpRetries());
-            engine.setApiRetries(tmp.getApiRetries());
+            engine.setModelRetries(settings.getGeneral().getModelRetries());
+            engine.setMcpRetries(settings.getGeneral().getMcpRetries());
+            engine.setApiRetries(settings.getGeneral().getApiRetries());
 
+            engine.setSandboxEnabled(settings.getGeneral().getSandboxMode());
+            engine.setSandboxAllowUserHome(settings.getGeneral().getSandboxAllowUserHome());
+            engine.setSandboxSystemRestrict(settings.getGeneral().getSandboxSystemRestrict());
+
+            engine.setBashAsyncEnabled(settings.getGeneral().getBashAsyncEnabled());
+            engine.setMemoryEnabled(settings.getGeneral().getMemoryEnabled());
+            engine.setSubagentEnabled(settings.getGeneral().getSubagentEnabled());
+
+
+            engine.getMcpGatewayTalent().setEnabled(settings.getGeneral().getMcpEnabled());
+            engine.getOpenApiGatewayTalent().setEnabled(settings.getGeneral().getOpenApiEnabled());
+            engine.getLspTalent().setEnabled(settings.getGeneral().getLspEnabled());
         }
 
         saveSettings();
+        return Result.succeed();
+    }
+
+    // ==================== 设置：Permission 工具权限配置 ====================
+
+    /**
+     * 获取全局工具权限配置（白名单 tools / 黑名单 disallowedTools）
+     */
+    @Get
+    @Mapping("/web/settings/permission")
+    public Result<PermissionGroupDo> permissionGet() {
+        return Result.succeed(settings.getPermission());
+    }
+
+    /**
+     * 保存全局工具权限配置。
+     * <p>tools 为允许白名单（支持通配，如 {@code **}、{@code mcp__*}），留空等价于放开全部；
+     * disallowedTools 为禁用黑名单。保存后通过 engine.allowToolReset / disallowToolReset 热更新，
+     * 引擎会重建主 Agent 即时生效，无需重启。</p>
+     */
+    @Post
+    @Mapping("/web/settings/permission/save")
+    public Result permissionSave(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        if (root.isObject() == false) {
+            return Result.failure("invalid body");
+        }
+
+        List<String> disallowedTools = new ArrayList<>();
+        if (root.hasKey("disallowedTools") && root.get("disallowedTools").isArray()) {
+            for (ONode item : root.get("disallowedTools").getArray()) {
+                String v = item.getString();
+                if (Assert.isNotEmpty(v) && disallowedTools.contains(v) == false) {
+                    disallowedTools.add(v.trim());
+                }
+            }
+        }
+
+        // 先清空再写入，避免 final List 叠加导致重复
+        settings.getPermission().getDisallowedTools().clear();
+        settings.getPermission().getDisallowedTools().addAll(disallowedTools);
+
+        // 热更新到引擎（会重建主 Agent 即时生效）
+        engine.disallowToolReset(settings.getPermission().getDisallowedTools());
+
+        saveSettings();
+        LOG.info("[Settings] Permission updated: disallowedTools={}", disallowedTools);
         return Result.succeed();
     }
 
@@ -176,19 +276,32 @@ public class WebSettingsController {
      */
     @Get
     @Mapping("/web/settings/llm/models")
-    public Result<List<Map>> llmModelsList() {
+    public Result<Map<String, Object>> llmModelsList() {
+        Map<String, Object> data = new LinkedHashMap<>();
+
         List<Map> list = new ArrayList<>();
-        for (ChatConfig config : settings.getModels()) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("name", config.getNameOrModel());
-            item.put("model", config.getModel());
-            item.put("provider", config.getProvider());
-            item.put("apiUrl", config.getApiUrl());
-            item.put("apiKey", config.getApiKey());
-            item.put("enabled", config.isEnabled());
-            list.add(item);
+        for (ModelDo config : settings.getModels().values()) {
+            if (config.isVisibled()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", config.getNameOrModel());
+                item.put("model", config.getModel());
+                item.put("standard", config.getStandardOrProvider());
+                item.put("apiUrl", config.getApiUrl());
+                item.put("apiKey", config.getApiKey());
+                item.put("contextLength", config.getContextLength());
+                item.put("enabled", config.isEnabled());
+                item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_USER);
+                item.put("provider", config.getProvider());  // 所属供应商
+                list.add(item);
+            }
         }
-        return Result.succeed(list);
+
+        sortByName(list, "name");
+
+        data.put("list", list);
+        data.put("default", settings.getDefaultModel());
+
+        return Result.succeed(data);
     }
 
     /**
@@ -201,8 +314,8 @@ public class WebSettingsController {
             return Result.failure("name is required");
         }
 
-        ChatConfig config = null;
-        for (ChatConfig c : settings.getModels()) {
+        ModelDo config = null;
+        for (ModelDo c : settings.getModels().values()) {
             if (name.equals(c.getNameOrModel())) {
                 config = c;
                 break;
@@ -218,9 +331,11 @@ public class WebSettingsController {
         item.put("model", config.getModel());
         item.put("name", config.getNameOrModel());
         item.put("apiKey", config.getApiKey());
-        item.put("provider", config.getProvider());
+        item.put("standard", config.getStandardOrProvider());
+        item.put("scope", config.getScope() != null ? config.getScope() : AgentFlags.SCOPE_USER);
+        item.put("provider", config.getProvider());  // 所属供应商
         if (config.getTimeout() != null) {
-            item.put("timeout", config.getTimeout().toString());
+            item.put("timeout", config.getTimeout().getSeconds() + "s");
         }
         if (config.getUserAgent() != null) {
             item.put("userAgent", config.getUserAgent());
@@ -228,6 +343,7 @@ public class WebSettingsController {
         if (config.getContextLength() > 0) {
             item.put("contextLength", String.valueOf(config.getContextLength()));
         }
+        item.put("isDefault", settings.getDefaultModel() != null && settings.getDefaultModel().equals(config.getNameOrModel()));
 
         return Result.succeed(item);
     }
@@ -237,7 +353,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/models/fetch")
-    public Result llmModelsFetch(String apiUrl, String apiKey, String provider, String model) {
+    public Result llmModelsFetch(String apiUrl, String apiKey, String standard, String model) {
         if (Assert.isEmpty(apiUrl)) {
             return Result.failure("apiUrl is required");
         }
@@ -245,8 +361,9 @@ public class WebSettingsController {
         try {
             ChatModel chatModel = ChatModel.of(apiUrl)
                     .apiKey(apiKey)
-                    .provider(provider)
+                    .standard(standard)
                     .model(model)
+                    .userAgent(settings.getGeneral().getUserAgent())
                     .build();
 
             chatModel.prompt("hi").call();
@@ -263,15 +380,18 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/models/add")
-    public Result llmModelsAdd(@Body ChatConfig config) throws Exception {
+    public Result llmModelsAdd(@Body ModelDo config, boolean isDefaultModel) throws Exception {
         if (Assert.isEmpty(config.getApiUrl()) || Assert.isEmpty(config.getModel())) {
             return Result.failure("apiUrl and model are required");
         }
 
         engine.addModel(config);
 
-        settings.getModels().removeIf(c -> c.getNameOrModel().equals(config.getNameOrModel()));
-        settings.getModels().add(config);
+        if (isDefaultModel) {
+            settings.setDefaultModel(config.getNameOrModel());
+        }
+
+        settings.getModels().put(config.getNameOrModel(), config);
         saveSettings();
 
         LOG.info("[Settings] Model added: {}", config.getNameOrModel());
@@ -287,13 +407,10 @@ public class WebSettingsController {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
         }
-        if (name.equals(engine.getMainModel().getConfig().getName())) {
-            return Result.failure("Cannot remove the active main model");
-        }
 
         engine.removeModel(name);
 
-        settings.getModels().removeIf(c -> name.equals(c.getName()));
+        settings.getModels().remove(name);
         saveSettings();
 
         LOG.info("[Settings] Model removed: {}", name);
@@ -305,7 +422,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/models/update")
-    public Result llmModelsUpdate(@Param("originalName") String originalName, @Body ChatConfig config) throws Exception {
+    public Result llmModelsUpdate(@Param("originalName") String originalName, @Body ModelDo config, boolean isDefaultModel) throws Exception {
         if (Assert.isEmpty(originalName)) {
             return Result.failure("originalName is required");
         }
@@ -314,8 +431,12 @@ public class WebSettingsController {
         engine.removeModel(originalName);
         engine.addModel(config);
 
-        settings.getModels().removeIf(c -> originalName.equals(c.getNameOrModel()));
-        settings.getModels().add(config);
+        settings.getModels().remove(originalName);
+        settings.getModels().put(config.getNameOrModel(), config);
+        if (isDefaultModel) {
+            settings.setDefaultModel(config.getNameOrModel());
+            engine.setDefaultModel(config.getNameOrModel());
+        }
         saveSettings();
 
         LOG.info("[Settings] Model updated: {} -> {}", originalName, config.getNameOrModel());
@@ -331,7 +452,7 @@ public class WebSettingsController {
         if (Assert.isEmpty(name) || enabled == null) {
             return Result.failure("name and enabled are required");
         }
-        for (ChatConfig config : settings.getModels()) {
+        for (ChatConfig config : settings.getModels().values()) {
             if (name.equals(config.getNameOrModel())) {
                 config.setEnabled(enabled);
                 saveSettings();
@@ -340,84 +461,6 @@ public class WebSettingsController {
             }
         }
         return Result.failure("Model not found: " + name);
-    }
-
-    /**
-     * 导出所有模型配置（API Key 脱敏）
-     */
-    @Get
-    @Mapping("/web/settings/llm/models/export")
-    public Result<List<Map>> llmModelsExport() throws Exception {
-        List<Map> list = new ArrayList<>();
-        for (ChatConfig config : settings.getModels()) {
-            Map<String, String> item = new LinkedHashMap<>();
-            item.put("apiUrl", config.getApiUrl());
-            item.put("model", config.getModel());
-            item.put("name", config.getName());
-            item.put("provider", config.getProvider());
-            if (config.getContextLength() > 0) {
-                item.put("contextLength", String.valueOf(config.getContextLength()));
-            }
-            // API Key 脱敏：仅保留前后4位
-            String apiKey = config.getApiKey();
-            if (apiKey != null && apiKey.length() > 8) {
-                item.put("apiKey", apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4));
-            }
-            list.add(item);
-        }
-        return Result.succeed(list);
-    }
-
-    /**
-     * 批量导入模型配置
-     */
-    @Post
-    @Mapping("/web/settings/llm/models/import")
-    public Result llmModelsImport(@Body String json) throws Exception {
-        ONode root = ONode.ofJson(json);
-        ONode models = root.get("models");
-        if (models == null || !models.isArray()) {
-            return Result.failure("Invalid format: expected {models:[...]}");
-        }
-
-        int count = 0;
-        for (ONode node : models.getArray()) {
-            String apiUrl = node.get("apiUrl").getString();
-            String model = node.get("model").getString();
-            if (Assert.isEmpty(apiUrl) || Assert.isEmpty(model)) continue;
-
-            String name = node.get("name").getString();
-            if (Assert.isEmpty(name)) name = model;
-
-            ChatConfig config = new ChatConfig();
-            config.setName(name);
-            config.setApiUrl(apiUrl);
-            config.setApiKey(node.get("apiKey").getString());
-            config.setModel(model);
-
-            String provider = node.get("provider").getString();
-            if (Assert.isNotEmpty(provider)) {
-                config.setProvider(provider);
-            }
-            Integer contextLength = node.get("contextLength").getInt();
-            if (contextLength != null && contextLength > 0) {
-                config.setContextLength(contextLength);
-            }
-
-            final String fName = name;
-            final String fModel = model;
-
-            engine.removeModel(fModel);
-            engine.addModel(config);
-
-            settings.getModels().removeIf(c -> fName.equals(c.getName()) || fModel.equals(c.getModel()));
-            settings.getModels().add(config);
-            count++;
-        }
-
-        saveSettings();
-        LOG.info("[Settings] Models imported: {}", count);
-        return Result.succeed(count);
     }
 
     // ==================== 设置：MCP 服务器管理 ====================
@@ -429,14 +472,15 @@ public class WebSettingsController {
     @Mapping("/web/settings/mcp/servers")
     public Result<List<Map>> mcpServers() throws Exception {
         List<Map> list = new ArrayList<>();
-        for (Map.Entry<String, McpServerParameters> entry : settings.getMcpServers().entrySet()) {
+        for (Map.Entry<String, McpServerDo> entry : settings.getMcpServers().entrySet()) {
             String name = entry.getKey();
-            McpServerParameters params = entry.getValue();
+            McpServerDo params = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", name);
-            item.put("type", params.getType() != null ? params.getType() : "stdio");
+            item.put("type", params.getTypeOrTransport() != null ? params.getTypeOrTransport() : "stdio");
             item.put("enabled", params.isEnabled());
-            if ("stdio".equals(params.getType())) {
+            item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_USER);
+            if ("stdio".equals(params.getTypeOrTransport())) {
                 item.put("command", params.getCommand());
                 if (params.getArgs() != null) {
                     item.put("args", params.getArgs());
@@ -450,11 +494,15 @@ public class WebSettingsController {
                     item.put("headers", params.getHeaders());
                 }
                 if (params.getTimeout() != null) {
-                    item.put("timeout", params.getTimeout().toString());
+                    item.put("timeout", params.getTimeout().getSeconds() + "s");
                 }
             }
             list.add(item);
         }
+
+
+        sortByName(list, "name");
+
         return Result.succeed(list);
     }
 
@@ -478,8 +526,14 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
-        McpServerParameters params = new McpServerParameters();
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER;
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_USER;
+        }
+
+        McpServerDo params = new McpServerDo();
         params.setType(type);
+        params.setScope(scope);
 
         if ("stdio".equals(type)) {
             params.setCommand(root.get("command").getString());
@@ -562,7 +616,7 @@ public class WebSettingsController {
         // 如果 name 变了，使用 originalName 查找旧记录
         String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
 
-        McpServerParameters existing = settings.getMcpServers().get(lookupName);
+        McpServerDo existing = settings.getMcpServers().get(lookupName);
         if (existing == null) {
             return Result.failure("Server not found: " + lookupName);
         }
@@ -577,11 +631,16 @@ public class WebSettingsController {
         }
 
         // 构建新参数
-        String type = root.hasKey("type") ? root.get("type").getString() : existing.getType();
+        String type = root.hasKey("type") ? root.get("type").getString() : existing.getTypeOrTransport();
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER);
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_USER;
+        }
 
-        McpServerParameters params = new McpServerParameters();
+        McpServerDo params = new McpServerDo();
         params.setType(type);
+        params.setScope(scope);
 
         if ("stdio".equals(type)) {
             params.setCommand(root.hasKey("command") ? root.get("command").getString() : existing.getCommand());
@@ -638,11 +697,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/mcp/servers/toggle")
-    public Result mcpServersToggle(@Body String json) throws Exception {
-        ONode root = ONode.ofJson(json);
-        String name = root.get("name").getString();
-        boolean enabled = root.get("enabled").getBoolean();
-
+    public Result mcpServersToggle(@Param("name") String name, @Param("enabled") boolean enabled) throws Exception {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
         }
@@ -650,6 +705,8 @@ public class WebSettingsController {
         McpServerParameters params = settings.getMcpServers().get(name);
         if (params == null) {
             return Result.failure("Server not found: " + name);
+        } else {
+            params.setEnabled(enabled);
         }
 
         if (enabled) {
@@ -659,8 +716,6 @@ public class WebSettingsController {
             // 停用：从引擎移除
             engine.removeMcpServer(name);
         }
-
-        params.setEnabled(enabled);
 
         saveSettings();
         LOG.info("[Settings] MCP server toggled: {} -> {}", name, enabled);
@@ -686,29 +741,18 @@ public class WebSettingsController {
 
                 // 使用 McpClientProvider 进行真实的 MCP 初始化连接测试
                 McpClientProvider.Builder builder = McpClientProvider.builder()
-                        .channel(org.noear.solon.ai.mcp.McpChannel.STDIO)
+                        .channel(McpChannel.STDIO)
                         .command(command);
 
                 // 设置参数
-                ONode argsNode = root.get("args");
-                if (argsNode != null && argsNode.isArray()) {
-                    List<String> argsList = new ArrayList<>();
-                    for (ONode a : argsNode.getArray()) {
-                        String arg = a.getString();
-                        if (arg != null && !arg.isEmpty()) argsList.add(arg);
-                    }
-                    if (!argsList.isEmpty()) {
-                        builder.args(argsList);
-                    }
+                List<String> argsList = root.get("args").toBean(TypeRef.listOf(String.class));
+                if (Assert.isNotEmpty(argsList)) {
+                    builder.args(argsList);
                 }
 
                 // 设置环境变量
-                ONode envNode = root.get("env");
-                if (envNode != null && envNode.isObject() && envNode.getObject().size() > 0) {
-                    Map<String, String> envMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> entry : envNode.getObject().entrySet()) {
-                        envMap.put(entry.getKey(), entry.getValue().getString());
-                    }
+                Map<String, String> envMap = root.get("env").toBean(TypeRef.mapOf(String.class, String.class));
+                if (Assert.isNotEmpty(envMap)) {
                     builder.env(envMap);
                 }
 
@@ -729,20 +773,16 @@ public class WebSettingsController {
 
                 // 使用 McpClientProvider 进行真实的 MCP 初始化连接测试
                 String channel = "sse".equals(type)
-                        ? org.noear.solon.ai.mcp.McpChannel.SSE
-                        : org.noear.solon.ai.mcp.McpChannel.STREAMABLE;
+                        ? McpChannel.SSE
+                        : McpChannel.STREAMABLE;
 
                 McpClientProvider.Builder builder = McpClientProvider.builder()
                         .channel(channel)
                         .url(url);
 
                 // 设置自定义 headers
-                ONode headersNode = root.get("headers");
-                if (headersNode != null && headersNode.isObject()) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> entry : headersNode.getObject().entrySet()) {
-                        headersMap.put(entry.getKey(), entry.getValue().getString());
-                    }
+                Map<String, String> headersMap = root.get("headers").toBean(TypeRef.mapOf(String.class, String.class));
+                if (Assert.isNotEmpty(headersMap)) {
                     builder.headers(headersMap);
                 }
 
@@ -768,98 +808,208 @@ public class WebSettingsController {
         }
     }
 
+    // ==================== 设置：MCP 导入解析（后端解析） ====================
+
     /**
-     * 批量导入 MCP 服务器配置
-     * 支持 Map 格式: {"mcpServers":{"name1":{...},"name2":{...}}}
-     * 支持数组格式: {"mcpServers":[{...},{...}]}
+     * 解析 MCP 导入配置文件
+     *
+     * <p>接受上传的 JSON 文件，使用 ONode 解析后检测格式，返回结构化数据给前端预览。
+     * 支持 OpenCode 格式（{@code $schema} 识别）和通用 {@code mcpServers} 格式。</p>
+     *
+     * @param ctx Solon 上下文，通过 {@code ctx.file("file")} 获取上传文件
+     * @return 包含格式类型与服务器列表的结构化数据
      */
     @Post
-    @Mapping("/web/settings/mcp/servers/import")
-    public Result mcpServersImport(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
-        ONode serversNode = root.get("mcpServers");
-        if (serversNode == null) {
-            return Result.failure("Invalid format: mcpServers not found");
+    @Mapping("/web/settings/mcp/import/parse")
+    public Result mcpImportParse(Context ctx) throws Exception {
+        // 获取上传文件
+        UploadedFile file = ctx.file("file");
+        if (file == null) {
+            return Result.failure("请上传文件");
         }
 
-        int imported = 0;
-        if (serversNode.isObject()) {
-            // Map 格式: name -> config
-            for (Map.Entry<String, ONode> entry : serversNode.getObject().entrySet()) {
-                String name = entry.getKey();
-                if (settings.getMcpServers().containsKey(name)) continue;
-                ONode src = entry.getValue();
-                McpServerParameters params = new McpServerParameters();
-                params.setType(src.hasKey("type") ? src.get("type").getString() : "stdio");
-                if (src.hasKey("command")) params.setCommand(src.get("command").getString());
-                if (src.hasKey("args")) {
-                    List<String> argsList = new ArrayList<>();
-                    for (ONode a : src.get("args").getArray()) {
-                        argsList.add(a.getString());
-                    }
-                    params.setArgs(argsList);
-                }
-                if (src.hasKey("env")) {
-                    Map<String, String> envMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("env").getObject().entrySet()) {
-                        envMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setEnv(envMap);
-                }
-                if (src.hasKey("url")) params.setUrl(src.get("url").getString());
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setHeaders(headersMap);
-                }
-                if (src.hasKey("timeout")) {
-                    params.setTimeout(Duration.parse(src.get("timeout").getString()));
-                }
-                settings.getMcpServers().put(name, params);
-                imported++;
-            }
-        } else if (serversNode.isArray()) {
-            for (ONode src : serversNode.getArray()) {
-                String name = src.get("name").getString();
-                if (settings.getMcpServers().containsKey(name) || Assert.isEmpty(name)) continue;
-                McpServerParameters params = new McpServerParameters();
-                params.setType(src.hasKey("type") ? src.get("type").getString() : "stdio");
-                if (src.hasKey("command")) params.setCommand(src.get("command").getString());
-                if (src.hasKey("args")) {
-                    List<String> argsList = new ArrayList<>();
-                    for (ONode a : src.get("args").getArray()) {
-                        argsList.add(a.getString());
-                    }
-                    params.setArgs(argsList);
-                }
-                if (src.hasKey("env")) {
-                    Map<String, String> envMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("env").getObject().entrySet()) {
-                        envMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setEnv(envMap);
-                }
-                if (src.hasKey("url")) params.setUrl(src.get("url").getString());
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    params.setHeaders(headersMap);
-                }
-                if (src.hasKey("timeout")) {
-                    params.setTimeout(Duration.parse(src.get("timeout").getString()));
-                }
-                settings.getMcpServers().put(name, params);
-                imported++;
-            }
+        // 读取文件内容（InputStream 转 byte[]）
+        java.io.InputStream inStream = file.getContent();
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        int n;
+        while ((n = inStream.read(buf)) != -1) {
+            buffer.write(buf, 0, n);
+        }
+        String content = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+
+        // 使用 ONode 解析 JSON（ONode 原生支持标准 JSON 解析）
+        ONode root;
+        try {
+            root = ONode.ofJson(content);
+        } catch (Exception e) {
+            return Result.failure("文件解析失败: " + e.getMessage());
         }
 
-        saveSettings();
-        LOG.info("[Settings] MCP servers imported: {} items", imported);
-        return Result.succeed("Imported " + imported + " server(s)");
+        if (root.isObject() == false) {
+            return Result.failure("文件内容不是有效的 JSON 对象");
+        }
+
+        // 检测格式
+        ONode mcpServersNode = null;
+        String format = null;
+
+        // 1. OpenCode 格式（$schema + mcp 字段）
+        if (root.hasKey("$schema")
+                && root.get("$schema").getString() != null
+                && root.get("$schema").getString().contains("opencode.ai/config")
+                && root.hasKey("mcp")
+                && root.get("mcp").isObject()) {
+            mcpServersNode = root.get("mcp");
+            format = "OpenCode";
+        }
+        // 2. 通用 mcpServers 格式（Claude Desktop, Cursor 等）
+        else if (root.hasKey("mcpServers") && root.get("mcpServers").isObject()) {
+            mcpServersNode = root.get("mcpServers");
+            format = "mcpServers";
+        }
+        // 3. 显式格式声明
+        else if ("mcp".equals(root.get("format").getString())
+                && root.hasKey("servers")
+                && root.get("servers").isObject()) {
+            mcpServersNode = root.get("servers");
+            format = "explicit";
+        }
+
+        if (mcpServersNode == null) {
+            return Result.failure("无法识别的配置文件格式: 期望 OpenCode 或 mcpServers 格式");
+        }
+
+        // 转换为统一结构返回
+        List<Map<String, Object>> servers = new ArrayList<>();
+        for (Map.Entry<String, ONode> entry : mcpServersNode.getObject().entrySet()) {
+            String name = entry.getKey();
+            ONode cfg = entry.getValue();
+
+            if (!cfg.isObject()) {
+                continue;
+            }
+
+            Map<String, Object> server = new LinkedHashMap<>();
+            server.put("name", name);
+
+            // 检测服务器类型
+            String type = cfg.get("type").getString();
+            String serverType;
+            if (type == null || type.isEmpty()) {
+                // 根据 command/url 推断
+                if (cfg.hasKey("command")) {
+                    serverType = "stdio";
+                } else if (cfg.hasKey("url")) {
+                    serverType = "sse";
+                } else {
+                    // 无法推断类型
+                    server.put("error", "无法识别服务器类型，缺少 command 或 url");
+                    servers.add(server);
+                    continue;
+                }
+            } else if ("local".equals(type)) {
+                serverType = "stdio";
+            } else if ("remote".equals(type)) {
+                serverType = "streamable";
+            } else {
+                serverType = type;
+            }
+            server.put("type", serverType);
+
+            if ("stdio".equals(serverType)) {
+                // 处理 command（可能为字符串或数组）
+                ONode cmdNode = cfg.get("command");
+                if (cmdNode.isArray()) {
+                    List<String> cmdParts = new ArrayList<>();
+                    for (ONode c : cmdNode.getArray()) {
+                        cmdParts.add(c.getString());
+                    }
+                    if (!cmdParts.isEmpty()) {
+                        server.put("command", cmdParts.get(0));
+                        if (cmdParts.size() > 1) {
+                            server.put("args", new ArrayList<>(cmdParts.subList(1, cmdParts.size())));
+                        }
+                    }
+                    server.put("detail", String.join(" ", cmdParts));
+                } else {
+                    String cmdStr = cmdNode.getString();
+                    server.put("command", cmdStr);
+                    server.put("detail", cmdStr);
+                }
+
+                // args（显式声明）
+                if (cfg.hasKey("args")) {
+                    List<String> args = new ArrayList<>();
+                    for (ONode a : cfg.get("args").getArray()) {
+                        args.add(a.getString());
+                    }
+                    server.put("args", args);
+                    // 更新 detail 包含完整 command + args
+                    StringBuilder detail = new StringBuilder();
+                    if (server.containsKey("command")) {
+                        detail.append(server.get("command"));
+                    }
+                    for (String a : args) {
+                        detail.append(" ").append(a);
+                    }
+                    server.put("detail", detail.toString());
+                }
+
+                // 环境变量：兼容多种命名
+                Map<String, String> env = null;
+                if (cfg.hasKey("env")) {
+                    env = oNodeToStringMap(cfg.get("env"));
+                } else if (cfg.hasKey("environment")) {
+                    env = oNodeToStringMap(cfg.get("environment"));
+                } else if (cfg.hasKey("envVars")) {
+                    env = oNodeToStringMap(cfg.get("envVars"));
+                } else if (cfg.hasKey("environmentVariables")) {
+                    env = oNodeToStringMap(cfg.get("environmentVariables"));
+                }
+                if (env != null && !env.isEmpty()) {
+                    server.put("env", env);
+                }
+            } else {
+                // sse / streamable
+                server.put("url", cfg.get("url").getString());
+                server.put("detail", cfg.get("url").getString());
+
+                if (cfg.hasKey("headers")) {
+                    server.put("headers", oNodeToStringMap(cfg.get("headers")));
+                }
+                if (cfg.hasKey("timeout")) {
+                    ONode timeoutNode = cfg.get("timeout");
+                    if (timeoutNode.isNumber()) {
+                        server.put("timeout", timeoutNode.getLong());
+                    } else {
+                        server.put("timeout", timeoutNode.getString());
+                    }
+                }
+            }
+
+            servers.add(server);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("format", format);
+        data.put("servers", servers);
+
+        return Result.succeed(data);
+    }
+
+    /**
+     * 将 ONode 对象转为 Map<String, String>
+     */
+    private Map<String, String> oNodeToStringMap(ONode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        for (Map.Entry<String, ONode> entry : node.getObject().entrySet()) {
+            map.put(entry.getKey(), entry.getValue().getString());
+        }
+        return map;
     }
 
     // ==================== 设置：MCP 工具权限管理 ====================
@@ -912,7 +1062,7 @@ public class WebSettingsController {
     @Post
     @Mapping("/web/settings/mcp/servers/tools/save")
     public Result mcpServerToolsSave(@Param("serverName") String serverName, @Param("disallowedTools") String[] disallowedTools) throws IOException {
-        McpServerParameters serverParameters = settings.getMcpServers().get(serverName);
+        McpServerDo serverParameters = settings.getMcpServers().get(serverName);
         if (serverParameters == null) {
             return Result.failure("Server not found: " + serverName);
         }
@@ -940,19 +1090,23 @@ public class WebSettingsController {
     @Mapping("/web/settings/openapi/servers")
     public Result<List<Map>> openapiServers() throws Exception {
         List<Map> list = new ArrayList<>();
-        for (Map.Entry<String, ApiSource> entry : settings.getApiServers().entrySet()) {
+        for (Map.Entry<String, ApiSourceDo> entry : settings.getApiServers().entrySet()) {
             String name = entry.getKey();
-            ApiSource source = entry.getValue();
+            ApiSourceDo source = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", name);
             item.put("apiBaseUrl", source.getApiBaseUrl());
             item.put("docUrl", source.getDocUrl());
             item.put("enabled", source.isEnabled());
+            item.put("scope", source.getScope() != null ? source.getScope() : AgentFlags.SCOPE_USER);
             if (source.getHeaders() != null) {
                 item.put("headers", source.getHeaders());
             }
             list.add(item);
         }
+
+        sortByName(list, "name");
+
         return Result.succeed(list);
     }
 
@@ -976,10 +1130,15 @@ public class WebSettingsController {
         }
 
         boolean enabled = root.get("enabled").getBoolean(true);
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER;
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_USER;
+        }
 
-        ApiSource source = new ApiSource();
+        ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(apiBaseUrl);
         source.setDocUrl(root.get("docUrl").getString());
+        source.setScope(scope);
         if (root.hasKey("headers")) {
             Map<String, String> headersMap = new LinkedHashMap<>();
             for (Map.Entry<String, ONode> entry : root.get("headers").getObject().entrySet()) {
@@ -1017,7 +1176,7 @@ public class WebSettingsController {
         // 如果 name 变了，使用 originalName 查找旧记录
         String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
 
-        ApiSource existing = settings.getApiServers().get(lookupName);
+        ApiSourceDo existing = settings.getApiServers().get(lookupName);
         if (existing == null) {
             return Result.failure("Server not found: " + lookupName);
         }
@@ -1033,9 +1192,14 @@ public class WebSettingsController {
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
 
         // 构建新配置
-        ApiSource source = new ApiSource();
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER);
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_USER;
+        }
+        ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(root.hasKey("apiBaseUrl") ? root.get("apiBaseUrl").getString() : existing.getApiBaseUrl());
         source.setDocUrl(root.hasKey("docUrl") ? root.get("docUrl").getString() : existing.getDocUrl());
+        source.setScope(scope);
         if (root.hasKey("headers")) {
             Map<String, String> headersMap = new LinkedHashMap<>();
             for (Map.Entry<String, ONode> entry : root.get("headers").getObject().entrySet()) {
@@ -1063,15 +1227,12 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/remove")
-    public Result openapiServersRemove(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
-        String name = root.get("name").getString();
-
+    public Result openapiServersRemove(@Param("name") String name) throws Exception {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
         }
 
-        ApiSource source = settings.getApiServers().get(name);
+        ApiSourceDo source = settings.getApiServers().get(name);
         if (source != null) {
             // 从引擎移除
             engine.removeApiServer(source.getDocUrl());
@@ -1088,11 +1249,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/toggle")
-    public Result openapiServersToggle(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
-        String name = root.get("name").getString();
-        boolean enabled = root.get("enabled").getBoolean();
-
+    public Result openapiServersToggle(@Param("name") String name, @Param("enabled") Boolean enabled) throws Exception {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
         }
@@ -1100,6 +1257,8 @@ public class WebSettingsController {
         ApiSource source = settings.getApiServers().get(name);
         if (source == null) {
             return Result.failure("Server not found: " + name);
+        } else {
+            source.setEnabled(enabled);
         }
 
         if (enabled) {
@@ -1109,8 +1268,6 @@ public class WebSettingsController {
             // 停用：从引擎移除
             engine.removeApiServer(source.getDocUrl());
         }
-
-        source.setEnabled(enabled);
 
         saveSettings();
         LOG.info("[Settings] OpenApi server toggled: {} -> {}", name, enabled);
@@ -1122,16 +1279,18 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/check")
-    public Result openapiServersCheck(Context ctx) {
+    public Result openapiServersCheck(@Body ApiSourceDo sourceDo) {
         try {
-            ONode root = ONode.ofJson(ctx.body());
-            String baseUrl = root.get("baseUrl").getString();
-            if (Assert.isEmpty(baseUrl)) {
+            if (Assert.isEmpty(sourceDo.getApiBaseUrl())) {
                 return Result.failure("API 基地址不能为空");
             }
 
+            if (Assert.isEmpty(sourceDo.getDocUrl())) {
+                return Result.failure("API 文档地址不能为空");
+            }
+
             // 构建HTTP连接测试
-            java.net.URL url = new java.net.URL(baseUrl);
+            java.net.URL url = new java.net.URL(sourceDo.getDocUrl());
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(10000);
@@ -1139,17 +1298,16 @@ public class WebSettingsController {
             conn.setInstanceFollowRedirects(true);
 
             // 设置自定义 headers
-            ONode headersNode = root.get("headers");
-            if (headersNode != null && headersNode.isObject()) {
-                for (Map.Entry<String, ONode> entry : headersNode.getObject().entrySet()) {
-                    conn.setRequestProperty(entry.getKey(), entry.getValue().getString());
+            if (Assert.isNotEmpty(sourceDo.getHeaders())) {
+                for (Map.Entry<String, String> entry : sourceDo.getHeaders().entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue());
                 }
             }
 
             int responseCode = conn.getResponseCode();
             conn.disconnect();
 
-            if (responseCode >= 200 && responseCode < 500) {
+            if (responseCode >= 200 && responseCode < 400) {
                 return Result.succeed("连接成功：HTTP " + responseCode);
             } else {
                 return Result.failure("连接失败：HTTP " + responseCode);
@@ -1165,63 +1323,6 @@ public class WebSettingsController {
         }
     }
 
-    /**
-     * 批量导入 OpenApi 服务器配置
-     * 支持 Map 格式: {"apiServers":{"name1":{...},"name2":{...}}}
-     * 支持数组格式: {"apiServers":[{...},{...}]}
-     */
-    @Post
-    @Mapping("/web/settings/openapi/servers/import")
-    public Result openapiServersImport(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
-        ONode serversNode = root.get("apiServers");
-        if (serversNode == null) {
-            return Result.failure("Invalid format: apiServers not found");
-        }
-
-        int imported = 0;
-        if (serversNode.isObject()) {
-            // Map 格式: name -> config
-            for (Map.Entry<String, ONode> entry : serversNode.getObject().entrySet()) {
-                String name = entry.getKey();
-                if (settings.getApiServers().containsKey(name)) continue;
-                ONode src = entry.getValue();
-                ApiSource source = new ApiSource();
-                source.setApiBaseUrl(src.hasKey("apiBaseUrl") ? src.get("apiBaseUrl").getString() : "");
-                source.setDocUrl(src.hasKey("docUrl") ? src.get("docUrl").getString() : "");
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    source.setHeaders(headersMap);
-                }
-                settings.getApiServers().put(name, source);
-                imported++;
-            }
-        } else if (serversNode.isArray()) {
-            for (ONode src : serversNode.getArray()) {
-                String name = src.get("name").getString();
-                if (settings.getApiServers().containsKey(name) || Assert.isEmpty(name)) continue;
-                ApiSource source = new ApiSource();
-                source.setApiBaseUrl(src.hasKey("apiBaseUrl") ? src.get("apiBaseUrl").getString() : "");
-                source.setDocUrl(src.hasKey("docUrl") ? src.get("docUrl").getString() : "");
-                if (src.hasKey("headers")) {
-                    Map<String, String> headersMap = new LinkedHashMap<>();
-                    for (Map.Entry<String, ONode> e : src.get("headers").getObject().entrySet()) {
-                        headersMap.put(e.getKey(), e.getValue().getString());
-                    }
-                    source.setHeaders(headersMap);
-                }
-                settings.getApiServers().put(name, source);
-                imported++;
-            }
-        }
-
-        saveSettings();
-        LOG.info("[Settings] OpenApi servers imported: {} items", imported);
-        return Result.succeed("Imported " + imported + " server(s)");
-    }
 
     // ==================== 设置：OpenApi 工具权限管理 ====================
 
@@ -1292,6 +1393,637 @@ public class WebSettingsController {
         return Result.succeed();
     }
 
+
+    // ==================== 设置：LSP 服务器管理 ====================
+
+    /**
+     * 获取已配置的 LSP 服务器列表
+     */
+    @Get
+    @Mapping("/web/settings/lsp/servers")
+    public Result<List<Map>> lspServers() throws Exception {
+        List<Map> list = new ArrayList<>();
+        for (Map.Entry<String, LspServerDo> entry : settings.getLspServers().entrySet()) {
+            String name = entry.getKey();
+            LspServerDo params = entry.getValue();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", name);
+            item.put("enabled", params.isEnabled());
+            item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_LOCAL);
+            item.put("command", params.getCommand());
+            item.put("extensions", params.getExtensions());
+            item.put("installed", isCommandInstalled(params.getCommand()));
+            if (params.getEnv() != null && !params.getEnv().isEmpty()) {
+                item.put("env", params.getEnv());
+            }
+            if (params.getInitialization() != null && !params.getInitialization().isEmpty()) {
+                item.put("initialization", params.getInitialization());
+            }
+            list.add(item);
+        }
+
+        sortByName(list, "name");
+
+        return Result.succeed(list);
+    }
+
+    /**
+     * 检测 LSP 启动命令是否已安装（通过 which 检测可执行文件是否存在）
+     */
+    private boolean isCommandInstalled(List<String> command) {
+        if (command == null || command.isEmpty()) return false;
+        String cmd = command.get(0);
+        if (cmd == null || cmd.isEmpty()) return false;
+        try {
+            ProcessBuilder pb = new ProcessBuilder("which", cmd);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            int exitCode = p.waitFor();
+            return exitCode == 0;
+        } catch (Exception e) {
+            LOG.warn("[LSP] Failed to check command: {}", cmd);
+            return false;
+        }
+    }
+
+    /**
+     * 添加 LSP 服务器配置
+     */
+    @Post
+    @Mapping("/web/settings/lsp/servers/add")
+    public Result lspServersAdd(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String name = root.get("name").getString();
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+        if (settings.getLspServers().containsKey(name)) {
+            return Result.failure("Server name already exists: " + name);
+        }
+
+        boolean enabled = root.get("enabled").getBoolean(true);
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER;
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_USER;
+        }
+
+        LspServerDo params = new LspServerDo();
+        params.setScope(scope);
+
+        // command
+        if (root.hasKey("command")) {
+            List<String> commandList = new ArrayList<>();
+            if (root.get("command").isArray()) {
+                for (ONode c : root.get("command").getArray()) {
+                    commandList.add(c.getString());
+                }
+            } else {
+                String cmd = root.get("command").getString();
+                commandList.addAll(CmdUtil.parseArguments(cmd));
+            }
+            params.setCommand(commandList);
+        }
+
+        // extensions
+        if (root.hasKey("extensions")) {
+            List<String> extList = new ArrayList<>();
+            for (ONode e : root.get("extensions").getArray()) {
+                extList.add(e.getString());
+            }
+            params.setExtensions(extList);
+        }
+
+        // env
+        if (root.hasKey("env")) {
+            Map<String, String> envMap = new LinkedHashMap<>();
+            for (Map.Entry<String, ONode> entry : root.get("env").getObject().entrySet()) {
+                envMap.put(entry.getKey(), entry.getValue().getString());
+            }
+            params.setEnv(envMap);
+        }
+
+        settings.getLspServers().put(name, params);
+
+        if (enabled) {
+            engine.addLspServer(name, params);
+        }
+
+        saveSettings();
+        LOG.info("[Settings] LSP server added: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 更新 LSP 服务器配置
+     */
+    @Post
+    @Mapping("/web/settings/lsp/servers/update")
+    public Result lspServersUpdate(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String name = root.get("name").getString();
+        String originalName = root.get("originalName").getString();
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
+        LspServerDo existing = settings.getLspServers().get(lookupName);
+        if (existing == null) {
+            return Result.failure("Server not found: " + lookupName);
+        }
+
+        if (!lookupName.equals(name)) {
+            settings.getLspServers().remove(lookupName);
+            engine.removeLspServer(lookupName);
+        } else {
+            engine.removeLspServer(name);
+        }
+
+        boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
+        String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER);
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_USER;
+        }
+
+        LspServerDo params = new LspServerDo();
+        params.setScope(scope);
+
+        // command
+        if (root.hasKey("command")) {
+            List<String> commandList = new ArrayList<>();
+            if (root.get("command").isArray()) {
+                for (ONode c : root.get("command").getArray()) {
+                    commandList.add(c.getString());
+                }
+            } else {
+                String cmd = root.get("command").getString();
+                commandList.addAll(CmdUtil.parseArguments(cmd));
+            }
+            params.setCommand(commandList);
+        } else {
+            params.setCommand(existing.getCommand());
+        }
+
+        // extensions
+        if (root.hasKey("extensions")) {
+            List<String> extList = new ArrayList<>();
+            for (ONode e : root.get("extensions").getArray()) {
+                extList.add(e.getString());
+            }
+            params.setExtensions(extList);
+        } else {
+            params.setExtensions(existing.getExtensions());
+        }
+
+        // env
+        if (root.hasKey("env")) {
+            Map<String, String> envMap = new LinkedHashMap<>();
+            for (Map.Entry<String, ONode> entry : root.get("env").getObject().entrySet()) {
+                envMap.put(entry.getKey(), entry.getValue().getString());
+            }
+            params.setEnv(envMap);
+        } else {
+            params.setEnv(existing.getEnv());
+        }
+
+        settings.getLspServers().put(name, params);
+
+        if (enabled) {
+            engine.addLspServer(name, params);
+        }
+
+        saveSettings();
+        LOG.info("[Settings] LSP server updated: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 移除 LSP 服务器配置
+     */
+    @Post
+    @Mapping("/web/settings/lsp/servers/remove")
+    public Result lspServersRemove(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String name = root.get("name").getString();
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+        LspServerDo params = settings.getLspServers().get(name);
+        settings.getLspServers().remove(name);
+        saveSettings();
+        engine.removeLspServer(name);
+        LOG.info("[Settings] LSP server removed: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 切换 LSP 服务器启用/停用
+     */
+    @Post
+    @Mapping("/web/settings/lsp/servers/toggle")
+    public Result lspServersToggle(@Param("name") String name, @Param("enabled") Boolean enabled) throws Exception {
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        LspServerParameters params = settings.getLspServers().get(name);
+        if (params == null) {
+            return Result.failure("Server not found: " + name);
+        } else {
+            params.setEnabled(enabled);
+        }
+
+        if (enabled) {
+            engine.addLspServer(name, params);
+        } else {
+            engine.removeLspServer(name);
+        }
+
+        saveSettings();
+        LOG.info("[Settings] LSP server toggled: {} -> {}", name, enabled);
+        return Result.succeed();
+    }
+
+    // ==================== 设置：供应商管理 ====================
+
+    /**
+     * 获取所有供应商列表
+     */
+    @Get
+    @Mapping("/web/settings/providers")
+    public Result<List<Map>> providersList() {
+        List<Map> list = new ArrayList<>();
+        for (Map.Entry<String, ProviderDo> entry : settings.getProviders().entrySet()) {
+            String name = entry.getKey();
+            ProviderDo provider = entry.getValue();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", name);
+            item.put("standard", provider.getStandard());
+            item.put("apiUrl", provider.getApiUrl());
+            item.put("apiKey", maskApiKey(provider.getApiKey()));
+            item.put("enabled", provider.isEnabled());
+            item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_USER);
+            item.put("models", provider.getModels());
+            list.add(item);
+        }
+
+        sortByName(list, "name");
+        return Result.succeed(list);
+    }
+
+    /**
+     * 获取单个供应商详情
+     */
+    @Get
+    @Mapping("/web/settings/providers/get")
+    public Result<Map> providersGet(@Param("name") String name) {
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        ProviderDo provider = settings.getProviders().get(name);
+        if (provider == null) {
+            return Result.failure("Provider not found: " + name);
+        }
+
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("name", name);
+        item.put("standard", provider.getStandard());
+        item.put("apiUrl", provider.getApiUrl());
+        item.put("apiKey", provider.getApiKey());
+        item.put("enabled", provider.isEnabled());
+        item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_USER);
+        item.put("models", provider.getModels());
+        return Result.succeed(item);
+    }
+
+    /**
+     * 添加供应商
+     */
+    @Post
+    @Mapping("/web/settings/providers/add")
+    public Result providersAdd(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String name = root.get("name").getString();
+
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        // 检查重名
+        if (settings.getProviders().containsKey(name)) {
+            return Result.failure("Provider name already exists: " + name);
+        }
+
+        ProviderDo provider = new ProviderDo();
+        provider.setName(name);
+        provider.setStandard(root.get("standard").getString("openai"));
+        provider.setApiUrl(root.get("apiUrl").getString());
+        provider.setApiKey(root.get("apiKey").getString());
+        provider.setEnabled(root.get("enabled").getBoolean(true));
+        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER);
+
+        // 解析模型列表（直接存储 ModelInfo）
+        if (root.hasKey("models") && root.get("models").isArray()) {
+            List<ModelInfo> models = new ArrayList<>();
+            for (ONode modelNode : root.get("models").getArray()) {
+                ModelInfo modelInfo = new ModelInfo();
+                modelInfo.setId(modelNode.get("id").getString());
+                if (modelNode.hasKey("displayName")) {
+                    modelInfo.setDisplayName(modelNode.get("displayName").getString());
+                }
+                if (modelNode.hasKey("maxTokens")) {
+                    modelInfo.setMaxTokens(modelNode.get("maxTokens").getLong());
+                }
+                if (modelNode.hasKey("maxInputTokens")) {
+                    modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
+                }
+                if (modelNode.hasKey("manual")) {
+                    modelInfo.setManual(modelNode.get("manual").getBoolean());
+                }
+                models.add(modelInfo);
+            }
+            provider.setModels(models);
+        }
+
+        settings.getProviders().put(name, provider);
+        saveSettings();
+        LOG.info("[Settings] Provider added: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 更新供应商
+     */
+    @Post
+    @Mapping("/web/settings/providers/update")
+    public Result providersUpdate(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String name = root.get("name").getString();
+        String originalName = root.get("originalName").getString();
+
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
+        ProviderDo existing = settings.getProviders().get(lookupName);
+        if (existing == null) {
+            return Result.failure("Provider not found: " + lookupName);
+        }
+
+        // 如果名称变更，移除旧 key
+        if (!lookupName.equals(name)) {
+            settings.getProviders().remove(lookupName);
+        }
+
+        ProviderDo provider = new ProviderDo();
+        provider.setName(name);
+        provider.setStandard(root.hasKey("standard") ? root.get("standard").getString() : existing.getStandard());
+        provider.setApiUrl(root.hasKey("apiUrl") ? root.get("apiUrl").getString() : existing.getApiUrl());
+        provider.setApiKey(root.hasKey("apiKey") ? root.get("apiKey").getString() : existing.getApiKey());
+        provider.setEnabled(root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : existing.isEnabled());
+        provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER));
+
+        // 解析模型列表（直接存储 ModelInfo）
+        if (root.hasKey("models") && root.get("models").isArray()) {
+            List<ModelInfo> models = new ArrayList<>();
+            for (ONode modelNode : root.get("models").getArray()) {
+                ModelInfo modelInfo = new ModelInfo();
+                modelInfo.setId(modelNode.get("id").getString());
+                if (modelNode.hasKey("displayName")) {
+                    modelInfo.setDisplayName(modelNode.get("displayName").getString());
+                }
+                if (modelNode.hasKey("maxTokens")) {
+                    modelInfo.setMaxTokens(modelNode.get("maxTokens").getLong());
+                }
+                if (modelNode.hasKey("maxInputTokens")) {
+                    modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
+                }
+                if (modelNode.hasKey("manual")) {
+                    modelInfo.setManual(modelNode.get("manual").getBoolean());
+                }
+                models.add(modelInfo);
+            }
+            // 防御性：补回前端可能遗漏的手动模型
+            if (existing.getModels() != null) {
+                java.util.Set<String> newModelIds = new java.util.HashSet<>();
+                for (ModelInfo mi : models) {
+                    newModelIds.add(mi.getId());
+                }
+                for (ModelInfo oldModel : existing.getModels()) {
+                    if (oldModel.isManual() && !newModelIds.contains(oldModel.getId())) {
+                        models.add(oldModel);
+                    }
+                }
+            }
+            provider.setModels(models);
+        } else {
+            provider.setModels(existing.getModels());
+        }
+
+        settings.getProviders().put(name, provider);
+        saveSettings();
+        LOG.info("[Settings] Provider updated: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 删除供应商
+     */
+    @Post
+    @Mapping("/web/settings/providers/remove")
+    public Result providersRemove(@Param("name") String name) throws Exception {
+        if (Assert.isEmpty(name)) {
+            return Result.failure("name is required");
+        }
+
+        settings.getProviders().remove(name);
+        saveSettings();
+        LOG.info("[Settings] Provider removed: {}", name);
+        return Result.succeed();
+    }
+
+    /**
+     * 切换供应商启用/禁用状态
+     */
+    @Post
+    @Mapping("/web/settings/providers/toggle")
+    public Result providersToggle(@Param("name") String name, @Param("enabled") Boolean enabled) throws Exception {
+        if (Assert.isEmpty(name) || enabled == null) {
+            return Result.failure("name and enabled are required");
+        }
+
+        ProviderDo provider = settings.getProviders().get(name);
+        if (provider == null) {
+            return Result.failure("Provider not found: " + name);
+        }
+
+        provider.setEnabled(enabled);
+        
+        // 同步关联模型的启用状态
+        for (ModelDo model : settings.getModels().values()) {
+            if (name.equals(model.getProvider())) {
+                model.setVisibled(enabled);
+            }
+        }
+        
+        saveSettings();
+        LOG.info("[Settings] Provider {} {}", name, enabled ? "enabled" : "disabled");
+        return Result.succeed();
+    }
+
+    /**
+     * 拉取供应商模型列表
+     */
+    @Post
+    @Mapping("/web/settings/providers/fetch")
+    public Result providersFetch(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("standard") String standard) {
+        if (Assert.isEmpty(apiUrl)) {
+            return Result.failure("apiUrl is required");
+        }
+
+        try {
+            // 使用 ModelProviderFactory 获取对应的提供商
+            ModelsAdapter provider = modelProviderFactory.getProvider(standard);
+            
+            // 构建请求头
+            Map<String, String> headers = new HashMap<>();
+            if (apiKey != null && !apiKey.isEmpty()) {
+                headers.put("Authorization", "Bearer " + apiKey);
+            }
+            
+            // 调用提供商获取模型列表
+            List<ModelInfo> models = provider.fetchModels(apiUrl, headers, apiKey);
+            
+            // 转换为前端需要的格式
+            List<Map<String, Object>> modelList = new ArrayList<>();
+            for (ModelInfo model : models) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", model.getId());
+                item.put("owned_by", model.getOwnedBy());
+                modelList.add(item);
+            }
+            
+        return Result.succeed(modelList);
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to fetch models: {}", e.getMessage());
+            return Result.failure("拉取模型列表失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 同步供应商模型到 LLM 模型配置
+     */
+    @Post
+    @Mapping("/web/settings/providers/sync-models")
+    public Result providersSyncModels(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String providerName = root.get("providerName").getString();
+        
+        if (Assert.isEmpty(providerName)) {
+            return Result.failure("providerName is required");
+        }
+        
+        ProviderDo provider = settings.getProviders().get(providerName);
+        if (provider == null) {
+            return Result.failure("Provider not found: " + providerName);
+        }
+        
+        // 获取供应商的模型列表（现在是 ModelInfo 类型）
+        List<ModelInfo> providerModels = provider.getModels();
+        if (providerModels == null || providerModels.isEmpty()) {
+            return Result.succeed(0);
+        }
+        
+        int syncCount = 0;
+        String prefix = providerName + "-";
+        
+        for (ModelInfo modelInfo : providerModels) {
+            String modelId = modelInfo.getId();
+            if (Assert.isEmpty(modelId)) {
+                continue;
+            }
+            
+            String modelName = prefix + modelId;
+            
+            // 如果模型不存在，创建新模型配置
+            if (!settings.getModels().containsKey(modelName)) {
+                ModelDo modelDo = new ModelDo();
+                modelDo.setName(modelName);
+                modelDo.setModel(modelId);
+                modelDo.setStandard(provider.getStandard());
+                modelDo.setApiUrl(provider.getApiUrl());
+                modelDo.setApiKey(provider.getApiKey());
+                modelDo.setScope(provider.getScope());
+                modelDo.setProvider(providerName);
+                modelDo.setVisibled(provider.isEnabled());
+                
+                // 设置 contextLength：优先 maxInputTokens，其次 maxTokens，最后从 models.json 查询
+                if (modelInfo.getMaxInputTokens() != null && modelInfo.getMaxInputTokens() > 0) {
+                    modelDo.setContextLength(modelInfo.getMaxInputTokens());
+                } else if (modelInfo.getMaxTokens() != null && modelInfo.getMaxTokens() > 0) {
+                    modelDo.setContextLength(modelInfo.getMaxTokens());
+                } else {
+                    // 从 models.json 查询上下文大小
+                    Long contextLength = modelSpecService.getContextLength(modelId);
+                    if (contextLength != null) {
+                        modelDo.setContextLength(contextLength);
+                    }
+                }
+                
+                settings.getModels().put(modelName, modelDo);
+                engine.addModel(modelDo);
+                syncCount++;
+            } else {
+                // 模型已存在，检查是否需要同步状态
+                ModelDo existingModel = (ModelDo) settings.getModels().get(modelName);
+                if (providerName.equals(existingModel.getProvider())) {
+                    if (existingModel.isVisibled() != provider.isEnabled()) {
+                        existingModel.setVisibled(provider.isEnabled());
+                        syncCount++;
+                    }
+                    // 更新 contextLength：优先 maxInputTokens，其次 maxTokens，最后从 models.json 查询
+                    long newContextLength = 0;
+                    if (modelInfo.getMaxInputTokens() != null && modelInfo.getMaxInputTokens() > 0) {
+                        newContextLength = modelInfo.getMaxInputTokens();
+                    } else if (modelInfo.getMaxTokens() != null && modelInfo.getMaxTokens() > 0) {
+                        newContextLength = modelInfo.getMaxTokens();
+                    } else {
+                        // 从 models.json 查询上下文大小
+                        Long contextLength = modelSpecService.getContextLength(modelId);
+                        if (contextLength != null) {
+                            newContextLength = contextLength;
+                        }
+                    }
+                    if (newContextLength > 0 && existingModel.getContextLength() != newContextLength) {
+                        existingModel.setContextLength(newContextLength);
+                        syncCount++;
+                    }
+                }
+            }
+        }
+        
+        if (syncCount > 0) {
+            saveSettings();
+        }
+        
+        LOG.info("[Settings] Synced {} models from provider: {}", syncCount, providerName);
+        return Result.succeed(syncCount);
+    }
+
+    /**
+     * API 密钥脱敏处理
+     */
+    private String maskApiKey(String apiKey) {
+        if (apiKey == null || apiKey.isEmpty()) {
+            return "";
+        }
+        if (apiKey.length() <= 8) {
+            return "****";
+        }
+        return apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4);
+    }
 
     // ==================== 设置：Skills 市场（委派给 Market 接口） ====================
 
@@ -1389,8 +2121,20 @@ public class WebSettingsController {
             item.put("writeable", entry.isWriteable());
             item.put("realPath", entry.getRealPath() != null ? entry.getRealPath().toString() : "");
             item.put("description", entry.getDescription());
+
+
+            MountDo mountDo = settings.getMountPools().get(entry.getAlias());
+            if (mountDo == null) {
+                item.put("scope", AgentFlags.SCOPE_USER);
+            } else {
+                item.put("scope", mountDo.getScope());
+            }
+
             list.add(item);
         }
+
+        sortByName(list, "alias");
+
         return Result.succeed(list);
     }
 
@@ -1399,16 +2143,27 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/mounts/add")
-    public Result mountsAdd(Context ctx, @Param("description") String description, @Param("alias") String alias, @Param("path") String path, @Param("type") MountType type, @Param("writeable") boolean writeable) {
+    public Result mountsAdd(Context ctx, @Param("description") String description, @Param("alias") String alias, @Param("path") String path, @Param("type") MountType type, @Param("writeable") boolean writeable, @Param("scope") String scope) {
         if (Assert.isEmpty(alias) || Assert.isEmpty(path)) return Result.failure("参数不完整");
-        if (!alias.startsWith("@")) return Result.failure("别名必须以 @ 开头");
+
+        if (alias.startsWith("@") == false) {
+            alias = "@" + alias;
+        }
+
         if (engine.hasMount(alias)) return Result.failure("别名已存在");
+
 
         if (type == null) {
             type = MountType.SKILLS;
         }
 
-        MountDo mountDo = new MountDo(description,
+        if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
+            scope = AgentFlags.SCOPE_USER;
+        }
+
+        MountDo mountDo = new MountDo(
+                scope,
+                description,
                 type,
                 path,
                 false, true, writeable);
@@ -1430,6 +2185,11 @@ public class WebSettingsController {
     @Mapping("/web/settings/mounts/update")
     public Result mountsUpdate(Context ctx, @Param("alias") String alias, @Param("description") String description, @Param("writeable") boolean writeable) {
         if (Assert.isEmpty(alias)) return Result.failure("参数不完整");
+
+        if (alias.startsWith("@") == false) {
+            alias = "@" + alias;
+        }
+
         if (!engine.hasMount(alias)) return Result.failure("挂载池不存在");
 
         // 更新配置中的数据
@@ -1457,11 +2217,7 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/mounts/toggle")
-    public Result mountsToggle(@Body String json) {
-        ONode root = ONode.ofJson(json);
-        String alias = root.get("alias").getString();
-        boolean enabled = root.get("enabled").getBoolean();
-
+    public Result mountsToggle(@Param("alias") String alias, @Param("enabled") Boolean enabled) {
         if (Assert.isEmpty(alias)) {
             return Result.failure("alias is required");
         }
@@ -1469,6 +2225,8 @@ public class WebSettingsController {
         MountDir mountDir = engine.getMount(alias);
         if (mountDir == null) {
             return Result.failure("挂载池不存在: " + alias);
+        } else {
+            mountDir.setEnabled(enabled);
         }
 
         // 更新配置
@@ -1476,9 +2234,6 @@ public class WebSettingsController {
         if (mountDo != null) {
             mountDo.setEnabled(enabled);
         }
-
-        // 更新运行时
-        mountDir.setEnabled(enabled);
 
         saveSettings();
         LOG.info("[Settings] Mount toggled: {} -> {}", alias, enabled);
@@ -1534,7 +2289,6 @@ public class WebSettingsController {
             skillItem.put("name", subDir.getName());
             skillItem.put("description", subDir.getDescription());
             skillItem.put("realPath", subDir.getRealPath() != null ? subDir.getRealPath().toString() : "");
-            skillItem.put("path", subDir.getRealPath() != null ? subDir.getRealPath().toString().replace('\\', '/') : "");
             skills.add(skillItem);
         }
 
@@ -1622,23 +2376,101 @@ public class WebSettingsController {
     }
 
     /**
-     * 计算工具的权限状态
-     *
-     * @param toolName       工具名
-     * @param allowedTools   允许列表（空或null表示全部允许）
-     * @param disallowedTools 禁止列表（优先级高于允许列表）
-     * @return "allowed" 或 "disallowed"
+     * 从供应商生成模型配置
      */
-    private String computeToolStatus(String toolName, List<String> allowedTools, List<String> disallowedTools) {
-        // disallow 优先级最高
-        if (disallowedTools != null && disallowedTools.contains(toolName)) {
-            return "disallowed";
+    @Post
+    @Mapping("/web/settings/providers/generate")
+    public Result providersGenerate(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
+        String providerName = root.get("providerName").getString();
+        String standard = root.get("standard").getString("openai");
+        String apiUrl = root.get("apiUrl").getString();
+        String apiKey = root.get("apiKey").getString();
+        String scope = root.get("scope").getString(AgentFlags.SCOPE_USER);
+        
+        // 解析模型列表
+        ONode modelsNode = root.get("models");
+        if (!modelsNode.isArray() || modelsNode.getArrayUnsafe().isEmpty()) {
+            return Result.failure("请选择要生成的模型");
         }
-        // 有白名单但不在其中
-        if (allowedTools != null && !allowedTools.isEmpty() && !allowedTools.contains(toolName)) {
-            return "disallowed";
+        
+        // 解析生成选项
+        ONode optionsNode = root.get("options");
+        String prefix = optionsNode.get("prefix").getString(providerName + "-");
+        int timeout = optionsNode.get("timeout").getInt(120);
+        boolean setDefault = optionsNode.get("setDefault").getBoolean(false);
+        
+        // 生成模型配置
+        List<Map<String, Object>> generatedModels = new ArrayList<>();
+        for (ONode modelNode : modelsNode.getArray()) {
+            String modelId = modelNode.get("id").getString();
+            if (Assert.isEmpty(modelId)) {
+                continue;
+            }
+            
+            // 生成模型名称
+            String modelName = prefix + modelId;
+            
+            // 检查是否已存在同名模型
+            if (settings.getModels().containsKey(modelName)) {
+                LOG.warn("[Settings] Model already exists, skipping: {}", modelName);
+                continue;
+            }
+            
+            // 创建模型配置
+            ModelDo modelDo = new ModelDo();
+            modelDo.setName(modelName);
+            modelDo.setModel(modelId);
+            modelDo.setStandard(standard);
+            modelDo.setApiUrl(apiUrl);
+            modelDo.setApiKey(apiKey);
+            modelDo.setScope(scope);
+            modelDo.setProvider(providerName);  // 设置所属供应商
+            
+            // 设置超时时间
+            if (timeout > 0) {
+                modelDo.setTimeout(java.time.Duration.ofSeconds(timeout));
+            }
+            
+            // 保存模型配置
+            settings.getModels().put(modelName, modelDo);
+            
+            // 注入运行时引擎（即时生效，无需重启）
+            engine.addModel(modelDo);
+            
+            // 记录生成的模型信息
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", modelName);
+            item.put("model", modelId);
+            item.put("standard", standard);
+            item.put("scope", scope);
+            generatedModels.add(item);
+            
+            LOG.info("[Settings] Model generated: {} (from provider: {})", modelName, providerName);
         }
-        return "allowed";
+        
+        // 如果设置了默认模型，更新默认模型
+        if (setDefault && !generatedModels.isEmpty()) {
+            String firstModelName = (String) generatedModels.get(0).get("name");
+            settings.setDefaultModel(firstModelName);
+            LOG.info("[Settings] Default model set to: {}", firstModelName);
+        }
+        
+        // 保存配置
+        saveSettings();
+        
+        return Result.succeed(generatedModels);
+    }
+
+    /**
+     * 按 Map 中指定 key 进行不区分大小写排序
+     */
+    private void sortByName(List<? extends Map> list, String key) {
+        list.sort((a, b) -> {
+            String nameA = (String) a.getOrDefault(key, "");
+            String nameB = (String) b.getOrDefault(key, "");
+            return nameA.compareToIgnoreCase(nameB);
+        });
     }
 
     /**

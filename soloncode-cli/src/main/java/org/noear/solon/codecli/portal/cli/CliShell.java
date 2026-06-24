@@ -35,7 +35,6 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.cli.TodoTalent;
@@ -43,8 +42,8 @@ import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
 import org.noear.solon.lang.Preview;
@@ -61,6 +60,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Code CLI 终端
@@ -74,7 +74,7 @@ public class CliShell implements Runnable {
     private Terminal terminal;
     private LineReader reader;
     private final HarnessEngine engine;
-    private final AgentProperties agentProps;
+    private final AgentSettings agentProps;
     private final LoopScheduler loopScheduler;
 
     // ANSI 颜色常量
@@ -90,7 +90,7 @@ public class CliShell implements Runnable {
             RESET = "\033[0m";     // 重置所有样式和颜色（恢复终端默认）
 
 
-    public CliShell(HarnessEngine engine, AgentProperties agentProps, LoopScheduler loopScheduler) {
+    public CliShell(HarnessEngine engine, AgentSettings agentProps, LoopScheduler loopScheduler) {
         this.engine = engine;
         this.agentProps = agentProps;
         this.loopScheduler = loopScheduler;
@@ -170,15 +170,33 @@ public class CliShell implements Runnable {
 
         if (loopScheduler != null) {
             // 恢复上次未过期的 loop 定时任务（如果有）
-            loopScheduler.restore(session.getSessionId(), engine.getWorkspace(), engine.getHarnessSessions());
+            loopScheduler.restore(session.getSessionId());
+
+            // 会话繁忙守卫：CLI 为单线程模型，仅当主线程在等待用户输入（reader.isReading）时才空闲。
+            // 若不在等待输入，说明 agent 任务正在执行，loop 触发应跳过本次。
+            loopScheduler.addBusyChecker(sessionId -> {
+                if (SESSION_ID_CLI.equals(sessionId) == false) {
+                    return false;
+                }
+                return reader == null || !reader.isReading();
+            });
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
-            loopScheduler.addTaskExecutor((sessionId, prompt) -> {
+            loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
-                    return;
+                    return null;
                 }
 
-                safeChatInput(session, prompt);
+                // P0-fix: 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
+                // performAgentTask 内部通过 input.startsWith("@") 识别并路由到对应 agent
+                String effectiveInput = prompt;
+                if (agentName != null && !agentName.isEmpty()) {
+                    effectiveInput = "@" + agentName + " " + prompt;
+                }
+
+                // 直接返回 ReAct 完成时的权威全文（goal 检查依赖此返回值）。
+                // 含 [GOAL_ACHIEVED] 的全文来自 ReActChunk，必须以此为准。
+                return safeChatInput(session, effectiveInput);
             });
         }
 
@@ -216,10 +234,10 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void safeChatInput(AgentSession session, String prompt) {
+    private String safeChatInput(AgentSession session, String prompt) {
         if (reader != null && reader.isReading()) {
             try {
-                performAgentTask(session, prompt, null);
+                return performAgentTask(session, prompt, null);
             } catch (Exception e) {
                 LOG.error("Loop task execution failed: {}", e.getMessage(), e);
             } finally {
@@ -227,6 +245,7 @@ public class CliShell implements Runnable {
                 terminal.raise(Terminal.Signal.INT);
             }
         }
+        return null;
     }
 
     private boolean isCommand(AgentSession session, String input) throws Exception {
@@ -273,16 +292,18 @@ public class CliShell implements Runnable {
         return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
     }
 
-    private void performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
+    private String performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
         terminal.writer().println("\n" + BOLD + "Assistant" + RESET + DIM + " " + getTimeNow() + RESET);
 
         String agentName = null;
         String currentInput = input;
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
+        // ReAct 完成时的权威全文（含 [GOAL_ACHIEVED]），多轮 HITL 时以最后一轮为准。
+        final AtomicReference<String> finalAnswer = new AtomicReference<>();
 
         if (modelSelected == null) {
-            modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+            modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
         }
 
 
@@ -334,7 +355,10 @@ public class CliShell implements Runnable {
                             onObservationChunk((ObservationChunk) chunk, isFirstReasonDeltaChunk);
                         } else if (chunk instanceof ReActChunk) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            onFinalChunk((ReActChunk) chunk);
+                            String answer = onFinalChunk((ReActChunk) chunk);
+                            if (Assert.isNotEmpty(answer)) {
+                                finalAnswer.set(answer);
+                            }
                         }
                     })
                     .doOnError(e -> {
@@ -353,7 +377,7 @@ public class CliShell implements Runnable {
             // 监听回车中断
             if (disposable == null || disposable.isDisposed()) {
                 // 处理订阅失败的情况
-                return;
+                return finalAnswer.get();
             }
 
             waitForTask(latch, disposable, session, isInterrupted);
@@ -363,7 +387,7 @@ public class CliShell implements Runnable {
                 terminal.flush();
                 session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
                 LOG.info("用户已取消任务.");
-                return;
+                return finalAnswer.get();
             }
 
             // HITL 处理 (授权交互)
@@ -372,14 +396,14 @@ public class CliShell implements Runnable {
                     currentInput = null;
                     continue;
                 } else {
-                    return;
+                    return finalAnswer.get();
                 }
             }
 
             if (isTaskCompleted.get()) {
                 terminal.writer().println();
                 terminal.flush();
-                return;
+                return finalAnswer.get();
             }
 
             currentInput = null;
@@ -475,12 +499,15 @@ public class CliShell implements Runnable {
         return buf;
     }
 
-    private void onFinalChunk(ReActChunk react) {
+    private String onFinalChunk(ReActChunk react) {
         StringBuilder traceInfo = getTraceInfo(react.getTrace());
 
         if (traceInfo.length() > 4) {
             terminal.writer().println(DIM + traceInfo + RESET);
         }
+
+        // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。
+        return clearThink(react.getContent());
     }
 
     private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
@@ -488,7 +515,7 @@ public class CliShell implements Runnable {
             String delta = clearThink(reason.getContent());
 
             if (reason.getMessage().isThinking()) {
-                if (agentProps.isThinkPrinted()) {
+                if (agentProps.getGeneral().getCliThinkPrinted()) {
                     onReasonDeltaChunkDo(DIM + delta + RESET, isFirstReasonDeltaChunk, isFirstConversation);
                 }
             } else {
@@ -580,7 +607,7 @@ public class CliShell implements Runnable {
             String argsStr = argsBuilder.toString().replace("\n", " ");
             boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
-            if (agentProps.isCliPrintSimplified() && isTodo == false) {
+            if (agentProps.getGeneral().getCliPrintSimplified() && isTodo == false) {
                 // --- 简化风格：单行摘要模式 ---
                 String content = action.getContent() == null ? "" : action.getContent().trim();
                 String summary;
@@ -650,6 +677,9 @@ public class CliShell implements Runnable {
     }
 
     private String clearThink(String chunk) {
+        if (chunk == null) {
+            return null;
+        }
         return chunk.replaceAll("(?s)<\\s*/?think\\s*>", "");
     }
 
@@ -663,7 +693,7 @@ public class CliShell implements Runnable {
             if (session == null) {
                 modelName = engine.getMainModel().getNameOrModel();
             } else {
-                String modelSelected = session.getContext().getAs(HarnessFlags.VAR_MODEL_SELECTED);
+                String modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
                 modelName = engine.getModelOrMain(modelSelected).getNameOrModel();
             }
         }
@@ -693,10 +723,10 @@ public class CliShell implements Runnable {
 
         String path = new File(engine.getWorkspace()).getAbsolutePath();
 
-        System.err.println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
-        System.err.println(DIM + path + RESET);
-        System.err.println(DIM + DateUtil.format(new Date(), "yyyy-MM-dd HH:mm") + RESET);
-        System.err.println(text);
-        System.err.flush();
+        System.out.println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
+        System.out.println(DIM + path + RESET);
+        System.out.println(DIM + DateUtil.format(new Date(), "yyyy-MM-dd HH:mm") + RESET);
+        System.out.println(text);
+        System.out.flush();
     }
 }

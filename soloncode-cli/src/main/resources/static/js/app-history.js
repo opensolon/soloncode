@@ -3,6 +3,33 @@
 /* 依赖：app-base.js */
 
 /* ===== History ===== */
+
+/* 记住“当前活动会话”，刷新或下次打开时自动恢复 */
+var ACTIVE_SESSION_KEY = 'soloncode-active-session';
+function rememberActiveSession(sessionId) {
+    try { if (sessionId) localStorage.setItem(ACTIVE_SESSION_KEY, sessionId); } catch (e) {}
+}
+function forgetActiveSession() {
+    try { localStorage.removeItem(ACTIVE_SESSION_KEY); } catch (e) {}
+}
+window.rememberActiveSession = rememberActiveSession;
+window.forgetActiveSession = forgetActiveSession;
+
+/* 历史列表加载完成后，尝试恢复上次的活动会话 */
+function restoreActiveSession() {
+    var saved = null;
+    try { saved = localStorage.getItem(ACTIVE_SESSION_KEY); } catch (e) {}
+    if (!saved) return;
+    for (var i = 0; i < chatHistory.length; i++) {
+        if (chatHistory[i].sessionId === saved) {
+            selectSession(i);
+            return;
+        }
+    }
+    /* 保存的会话已不存在，清理掉 */
+    forgetActiveSession();
+}
+
 function loadSessionHistory() {
     $.get('/web/chat/sessions', function(resp) {
         try {
@@ -12,22 +39,36 @@ function loadSessionHistory() {
                 chatHistory.push({ label: list[i].label, sessionId: list[i].sessionId });
             }
             updateHistoryUI();
+            restoreActiveSession();
         } catch (e) {}
     });
 }
 
 function saveChatToHistory(firstMsg) {
-    var label = firstMsg.length > 30 ? firstMsg.substring(0, 30) + '...' : firstMsg;
+    ensureChatInHistory(SESSION_ID, firstMsg, true);
+    rememberActiveSession(SESSION_ID);
+}
+
+function ensureChatInHistory(sessionId, firstMsg, makeCurrent) {
+    if (!sessionId) return;
+    var label = (firstMsg || '新对话').toString();
+    label = label.length > 30 ? label.substring(0, 30) + '...' : label;
+    var shouldMakeCurrent = (makeCurrent !== false) && (sessionId === SESSION_ID || sessionId === activeSessionId || currentChatIndex === -1);
     for (var i = 0; i < chatHistory.length; i++) {
-        if (chatHistory[i].sessionId === SESSION_ID) {
-            currentChatIndex = i;
+        if (chatHistory[i].sessionId === sessionId) {
+            if (shouldMakeCurrent) currentChatIndex = i;
             updateHistoryUI();
             return;
         }
     }
-    chatHistory.unshift({ label: label, sessionId: SESSION_ID });
+    chatHistory.unshift({ label: label, sessionId: sessionId });
     if (chatHistory.length > 50) chatHistory.pop();
-    currentChatIndex = 0;
+    if (shouldMakeCurrent) {
+        currentChatIndex = 0;
+    } else if (currentChatIndex >= 0) {
+        currentChatIndex++;
+        if (currentChatIndex >= chatHistory.length) currentChatIndex = chatHistory.length - 1;
+    }
     updateHistoryUI();
 }
 
@@ -55,23 +96,39 @@ $(historyList).on('click', function(e) {
     }
 });
 
+var _updateHistoryUIPending = false;
 function updateHistoryUI() {
-    var html = '';
-    for (var i = 0; i < chatHistory.length; i++) {
-        var sess = sessionMap[chatHistory[i].sessionId];
-        var streaming = sess && sess.isStreaming;
-        var cls = 'sidebar-item' + (i === currentChatIndex ? ' active' : '') + (streaming ? ' streaming' : '');
+    if (_updateHistoryUIPending) return;
+    _updateHistoryUIPending = true;
+    requestAnimationFrame(function() {
+        _updateHistoryUIPending = false;
+        var html = '';
+        for (var i = 0; i < chatHistory.length; i++) {
+            var sess = sessionMap[chatHistory[i].sessionId];
+            var streaming = sess && sess.isStreaming;
+            var cls = 'sidebar-item' + (i === currentChatIndex ? ' active' : '') + (streaming ? ' streaming' : '');
 
-        html += '<div class="' + cls + '" data-idx="' + i + '">'
-            + '<span class="sidebar-item-label">' + escapeHtml(chatHistory[i].label) + '</span>';
-        if (streaming) {
-            html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
+            html += '<div class="' + cls + '" data-idx="' + i + '">'
+                + '<span class="sidebar-item-label">' + escapeHtml(chatHistory[i].label) + '</span>';
+            // 任务进度 badge
+            var todoInfo = window.sessionTodoMap && window.sessionTodoMap[chatHistory[i].sessionId];
+            if (todoInfo && todoInfo.total > 0) {
+                var doneClass = todoInfo.done === todoInfo.total ? ' done' : '';
+                html += '<span class="sidebar-item-todo' + doneClass + '">' + todoInfo.done + '/' + todoInfo.total + '</span>';
+            }
+            if (streaming) {
+                html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
+            }
+            html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
+                + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
+                + '</div>';
         }
-        html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
-            + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
-            + '</div>';
-    }
-    $(historyList).html(html);
+        var $list = $(historyList);
+        // 仅当 HTML 真正变化时才写入 DOM，避免无效重排
+        if ($list.html() !== html) {
+            $list.html(html);
+        }
+    });
 }
 
 function startRename(idx) {
@@ -122,6 +179,8 @@ function deleteSession(idx) {
     var entry = chatHistory[idx];
     if (!entry) return;
 
+    if (!confirm('确定删除对话 "' + (entry.label || '未命名') + '"？')) return;
+
     $.post('/web/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId), function() {
         /* Clean up session state after server confirms */
         var sess = sessionMap[entry.sessionId];
@@ -144,6 +203,12 @@ function deleteSession(idx) {
         }
 
         updateHistoryUI();
+    }).fail(function () {
+        if (typeof layer !== 'undefined' && layer.msg) {
+            layer.msg('删除对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+        } else {
+            alert('删除对话失败，请重试');
+        }
     });
 }
 
@@ -154,6 +219,8 @@ function selectSession(idx) {
 
     currentChatIndex = idx;
     SESSION_ID = entry.sessionId;
+    rememberActiveSession(entry.sessionId);
+    if (typeof closeDiffViewer === 'function') closeDiffViewer();
     if (!inChatMode) switchToChatMode();
     setActiveSession(entry.sessionId);
     updateHistoryUI();
@@ -171,7 +238,10 @@ function loadMessages(sess) {
     $.get('/web/chat/messages?sessionId=' + encodeURIComponent(sess.sessionId), function(resp) {
         try {
             var msgs = resp.data;
-            $(sess.container).html('');
+            var realContainer = sess.container;
+            // 用临时容器批量构建 DOM，避免逐条 append 触发多次 layout
+            var tempDiv = document.createElement('div');
+            sess.container = tempDiv;
             resetStreamState(sess);
             for (var i = 0; i < msgs.length; i++) {
                 var m = msgs[i];
@@ -183,16 +253,30 @@ function loadMessages(sess) {
                     if (!isConsecutive) resetStreamState(sess);
                     var el = ensureAssistantBubble(sess);
                     sess.reasonBuffer = isConsecutive ? sess.reasonBuffer + '\n\n' + m.content : m.content;
+                    el.setAttribute('data-md-raw', sess.reasonBuffer);
                     $(el).html(renderMd(sess.reasonBuffer));
                     if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
-                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
+                    // 不在此处逐条调用 highlightCodeBlocks；循环结束后统一对真实容器调用一次
                     // 显示时间戳（连续助手消息取最后一条的时间）
                     setAssistantTime(sess, m.createdAt);
                 }
             }
+            // 恢复真实容器，一次性移入所有子节点
+            sess.container = realContainer;
+            $(realContainer).html('');
+            var fragment = document.createDocumentFragment();
+            while (tempDiv.firstChild) {
+                fragment.appendChild(tempDiv.firstChild);
+            }
+            realContainer.appendChild(fragment);
+            // 统一高亮所有代码块（user 消息的代码块已被 appendUserMessage 标记收集，不会重复）
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(realContainer);
             resetStreamState(sess);
             if (sess.sessionId === activeSessionId) scrollToBottom(true);
-        } catch (e) {}
+        } catch (e) {
+            // 异常时确保容器恢复
+            if (realContainer) sess.container = realContainer;
+        }
     });
 }
 
@@ -224,9 +308,25 @@ function getActiveCmdComplete() {
     return inChatMode ? $chatCmdComplete[0] : $welcomeCmdComplete[0];
 }
 
+/**
+ * 关闭所有工具栏弹出面板（互斥核心）
+ * 包括：命令补全、输入历史、循环任务、模型下拉
+ */
+function closeAllToolbarPanels() {
+    // 命令补全
+    hideCmdComplete();
+    // 输入历史
+    if (typeof $chatHistoryPanel !== 'undefined' && $chatHistoryPanel) $chatHistoryPanel.removeClass('show');
+    // 循环任务面板
+    $('#chatLoopPanel, #welcomeLoopPanel').hide();
+    // 模型下拉
+    $('#chatModelDropdown, #welcomeModelDropdown').removeClass('show');
+}
+window.closeAllToolbarPanels = closeAllToolbarPanels;
+
 function showCmdComplete(inputEl, completeEl, prefix) {
     if (!commandsLoaded || commandList.length === 0) return;
-
+    closeAllToolbarPanels();
     var trigger = prefix.charAt(0);
     var query = prefix.substring(1).toLowerCase();
     var filterType = (trigger === '@') ? 'subagent' : (trigger === '$') ? 'skill' : 'command';
@@ -269,10 +369,44 @@ function applyCmdSelection(inputEl, completeEl) {
     if (cmdActiveIndex >= 0 && cmdActiveIndex < cmdVisibleItems.length) {
         var cmd = cmdVisibleItems[cmdActiveIndex];
         var trigger = cmdTrigger || '/';
-        var parts = inputEl.value.trim().split(/\s+/);
-        // Keep existing args after command name
-        var argsStr = parts.length > 1 ? parts.slice(1).join(' ') : '';
-        inputEl.value = trigger + cmd.name + (argsStr ? ' ' + argsStr : ' ');
+        
+        // 找到当前输入框中的命令前缀位置
+        var val = inputEl.value;
+        var prefixPos = -1;
+        
+        // 查找最近的命令前缀（/、@ 或 $）
+        for (var i = val.length - 1; i >= 0; i--) {
+            var ch = val.charAt(i);
+            if (ch === '/' || ch === '@' || ch === '$') {
+                prefixPos = i;
+                break;
+            }
+        }
+        
+        if (prefixPos >= 0) {
+            // 替换前缀及其后面的内容
+            var textBefore = val.substring(0, prefixPos);
+            var textAfter = val.substring(prefixPos);
+            
+            // 找到前缀后面的空格位置（如果有）
+            var spaceIndex = textAfter.indexOf(' ');
+            var argsStr = '';
+            if (spaceIndex >= 0) {
+                argsStr = textAfter.substring(spaceIndex);
+            }
+            
+            // 构建新的值（命令/技能/子代理名称后追加空格）
+            inputEl.value = textBefore + trigger + cmd.name + ' ' + argsStr;
+            
+            // 更新光标位置到命令和空格后面
+            var newCursorPos = textBefore.length + trigger.length + cmd.name.length + 1;
+            inputEl.setSelectionRange(newCursorPos, newCursorPos);
+        } else {
+            // 如果没有找到前缀，直接在开头插入
+            inputEl.value = trigger + cmd.name + ' ' + val;
+            inputEl.setSelectionRange(trigger.length + cmd.name.length + 1, trigger.length + cmd.name.length + 1);
+        }
+        
         autoResize(inputEl);
     }
     hideCmdComplete();
@@ -354,7 +488,18 @@ $('#chatHistoryBtn').on('click', function(e) {
 
 // Command & Agent button handlers
 function triggerCmdComplete(inputEl, completeEl, prefix) {
-    inputEl.value = prefix;
+    // 保存当前光标位置
+    var cursorPos = inputEl.selectionStart;
+    var textBefore = inputEl.value.substring(0, cursorPos);
+    var textAfter = inputEl.value.substring(cursorPos);
+    
+    // 在光标位置插入前缀（命令/子代理/技能符号后追加空格）
+    inputEl.value = textBefore + prefix + ' ' + textAfter;
+    
+    // 更新光标位置到前缀和空格后面
+    var newCursorPos = cursorPos + prefix.length + 1;
+    inputEl.setSelectionRange(newCursorPos, newCursorPos);
+    
     inputEl.focus();
     showCmdComplete(inputEl, completeEl, prefix);
 }
@@ -451,7 +596,8 @@ function extractUserMessages() {
         var $bubble = $row.find('.msg-bubble');
         if (!$bubble.length) continue;
         var $lastSpan = $bubble.find('.user-msg-text');
-        var text = $lastSpan.length ? $lastSpan.text().trim() : '';
+        var rawMd = $lastSpan.length ? ($lastSpan.attr('data-md-raw') || '').trim() : '';
+        var text = rawMd || ($lastSpan.length ? $lastSpan.text().trim() : '');
         if (!text) continue;
         // 去重
         var dup = false;
@@ -467,6 +613,7 @@ function extractUserMessages() {
 }
 
 function showHistoryPanel() {
+    closeAllToolbarPanels();
     var messages = extractUserMessages();
     if (messages.length === 0) {
         $chatHistoryPanel.html('<div class="history-panel-empty">暂无输入历史</div>');
@@ -517,8 +664,6 @@ function showHistoryPanel() {
             e.stopPropagation();
         });
     }
-    // 确保互斥：关闭命令补全
-    hideCmdComplete();
     historyActiveIndex = -1;
     $chatHistoryPanel.addClass('show');
 }
@@ -639,7 +784,7 @@ function loadModels(sessionId, callback) {
 
     $.get(url, function(resp) {
         try {
-            var data = resp.data;
+            var data = resp.data || {};
             var selected = data.selected || '';
 
             // Store selected model per session
@@ -654,7 +799,7 @@ function loadModels(sessionId, callback) {
                 modelList = [];
                 var list = data.list || [];
                 for (var i = 0; i < list.length; i++) {
-                    modelList.push({ name: list[i].name || list[i].model, desc: list[i].description });
+                    modelList.push({ name: list[i].name || list[i].model, desc: list[i].description, contextLength: list[i].contextLength || 0 });
                 }
                 modelsLoaded = true;
             }
@@ -665,6 +810,11 @@ function loadModels(sessionId, callback) {
             console.error('Failed to parse models:', e);
         }
     });
+}
+
+function reloadModels(callback) {
+    modelsLoaded = false;
+    loadModels(activeSessionId || null, callback);
 }
 
 // Refresh model UI for a specific session using local cache (no network request)
@@ -701,8 +851,9 @@ function renderModelUI() {
     for (var i = 0; i < modelList.length; i++) {
         var m = modelList[i];
         var cls = m.name === currentModel ? ' active' : '';
+        var ctxLen = m.contextLength ? (m.contextLength >= 1000000 && m.contextLength % 1000000 === 0 ? (m.contextLength / 1000000) + 'm' : (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength)) : '';
         html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
-            + '<span class="model-item-name">' + escapeHtml(m.name) + '</span>'
+            + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
             + (m.desc ? '<span class="model-item-desc">' + escapeHtml(m.desc) + '</span>' : '')
             + '</div>';
     }
@@ -714,6 +865,14 @@ function selectModel(modelName) {
     var sid = activeSessionId || SESSION_ID;
     sessionModelMap[sid] = modelName;
     renderModelUI();
+
+    // 立即通知服务端绑定模型选择，确保不走 /web/chat/input 的命令（如 /git、循环任务等）也能感知到模型变更
+    $.post('/web/chat/models/select', {
+        sessionId: sid,
+        modelName: modelName
+    }).fail(function(err) {
+        console.error('Failed to select model on server:', err);
+    });
 }
 
 // Toggle dropdown open/close
@@ -751,6 +910,9 @@ $(document).on('click', function() {
 
 initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
 initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
+
+window.reloadModels = reloadModels;
+window.loadModels = loadModels;
 
 // Initial load (no specific session, get default selected)
 loadModels(null);

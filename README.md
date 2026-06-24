@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>An open-source coding agent built with <a href="https://github.com/opensolon/solon-ai">Solon AI</a> and Java (supports Java8 to Java26 runtime environments)</p>
-<p>Latest Version: v2026.6.4</p>
+<p>Latest Version: v2026.6.21</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -22,7 +22,7 @@
 Installation:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -43,7 +43,7 @@ Run the `soloncode` (CLI interactive) or `soloncode web 0` (Web interactive) com
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -55,7 +55,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -84,7 +84,7 @@ If you use "soloncode" in your project name (e.g., "soloncode-dashboard" or "sol
 
 They are functionally similar, with key differences:
 
-* Built with Java, 100% open-source.
+* Built with Java, 100% open-source. Compatible with BiSheng JDK (Huawei) and Harmony PC.
 * Pure Chinese prompt-driven development and construction.
 * Provider-agnostic. Configure models as needed. Model iteration will narrow gaps and reduce costs, making flexible configuration important.
 * Simultaneously supports terminal command-line interface (CLI), browser interface (WEB), and desktop IDE interface (Desktop).

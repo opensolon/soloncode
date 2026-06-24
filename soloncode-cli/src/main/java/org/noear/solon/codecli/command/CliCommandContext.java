@@ -19,7 +19,6 @@ import org.jline.reader.LineReader;
 import org.jline.terminal.Terminal;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 
 import java.util.List;

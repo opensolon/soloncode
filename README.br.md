@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Um agente de codificação de código aberto construído com <a href="https://github.com/opensolon/solon-ai">Solon AI</a> e Java (suporta ambientes de runtime Java8 a Java26)</p>
-<p>Versão Mais Recente: v2026.6.4</p>
+<p>Versão Mais Recente: v2026.6.21</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 Instalação:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ Execute o comando `soloncode` (CLI interativo) ou `soloncode web 0` (Web interat
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -85,7 +85,7 @@ Qual é a diferença em relação ao Claude Code?
 
 Eles são funcionalmente semelhantes, com diferenças principais:
 
-* Construído com Java, 100% código aberto.
+* Construído com Java, 100% código aberto. Compatível com BiSheng JDK (Huawei) e Harmony PC.
 * Totalmente orientado e construído com prompts em chinês
 * Independente de provedor. Configure modelos conforme necessário. A iteração de modelos reduzirá lacunas e custos, tornando a configuração flexível importante.
 * Suporta simultaneamente a interface de linha de comando (CLI), a interface do navegador (WEB) e a interface IDE de desktop (Desktop).

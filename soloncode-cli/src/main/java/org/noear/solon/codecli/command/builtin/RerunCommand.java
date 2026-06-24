@@ -15,29 +15,51 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
+import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 
+import java.util.List;
+
 /**
- * /resume 命令
+ * /rerun 命令
  *
  * @author noear
  * @since 2026.4.28
  */
-public class ResumeCommand implements Command {
+public class RerunCommand implements Command {
     @Override
     public String name() {
-        return "resume";
+        return "rerun";
     }
 
     @Override
     public String description() {
-        return "恢复最后一个未完成的任务";
+        return "重新运行最后一个任务";
     }
 
     @Override
     public boolean execute(CommandContext ctx) throws Exception {
-        ctx.runAgentTask(null, null);
+        AgentSession session = ctx.getSession();
+
+        List<ChatMessage> messageList = session.getMessages();
+        String lastUserInput = null;
+
+        while (!messageList.isEmpty()) {
+            ChatMessage msg = messageList.get(messageList.size() - 1);
+            if (msg instanceof UserMessage) {
+                lastUserInput = msg.getContent();
+                session.removeLatestMessage(1);
+                break;
+            }
+            session.removeLatestMessage(1);
+        }
+
+        if (lastUserInput != null) {
+            ctx.runAgentTask(lastUserInput, null);
+        }
         return true;
     }
 }

@@ -1,6 +1,6 @@
 # Cloud 网关与 RPC 迁移参考
 
-> Spring Cloud → Solon Cloud 迁移指南（目标版本：Solon 3.10.x）
+> Spring Cloud → Solon Cloud 迁移指南（目标版本：Solon 4.0.x）
 > 参考文档：[solon.noear.org/article/compare-springcloud](https://solon.noear.org/article/compare-springcloud)
 
 ## 1. RPC 迁移

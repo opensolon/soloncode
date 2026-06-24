@@ -10,7 +10,7 @@ Provide expert guidance for migrating Java projects from **Spring Boot** / **Spr
 **Official comparison**: https://solon.noear.org/article/compare-springboot
 **Official cloud comparison**: https://solon.noear.org/article/compare-springcloud
 **Solon website**: https://solon.noear.org
-**Current version**: 3.10.x
+**Current version**: 4.0.2
 
 ## Critical Migration Rules
 
@@ -21,7 +21,7 @@ Provide expert guidance for migrating Java projects from **Spring Boot** / **Spr
 5. **Parent POM** is `solon-parent` with `groupId=org.noear`.
 6. **Package scan** uses `@Import` on main class, NOT `@ComponentScan`.
 7. **No setter injection.** Solon only supports field injection and constructor injection.
-8. **All examples target Solon 3.10.x** unless specified otherwise.
+8. **All examples target Solon 4.0.x** unless specified otherwise.
 9. **中文支持.** When the user communicates in Chinese, all responses and code comments must be in Chinese.
 
 ## Migration Scene Navigation

@@ -16,7 +16,6 @@
 package org.noear.solon.codecli.channel.wechat;
 
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.portal.web.WebChunk;
 import org.noear.solon.codecli.portal.web.WebGate;

@@ -1,6 +1,6 @@
 # IoC / AOP / 组件 迁移参考
 
-> Spring Boot → Solon 核心概念迁移指南（目标版本：Solon 3.10.x）
+> Spring Boot → Solon 核心概念迁移指南（目标版本：Solon 4.0.x）
 >
 > 本文档聚焦 IoC 容器、AOP 机制与组件体系的迁移细节，提供完整的代码对照及差异陷阱标注。
 

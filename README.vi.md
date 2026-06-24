@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>SolonCode là một tác nhân mã hóa mã nguồn mở được xây dựng dựa trên <a href="https://github.com/opensolon/solon-ai">Solon AI</a> và Java, hỗ trợ môi trường từ Java8 đến Java26.</p>
-<p>Phiên bản mới nhất: v2026.6.4</p>
+<p>Phiên bản mới nhất: v2026.6.21</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -21,7 +21,7 @@
 Cài đặt:
 
 ```bash
-# Mac / Linux:
+# Mac / Linux / Harmony PC:
 curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 
 # Windows (PowerShell):
@@ -42,7 +42,7 @@ Chạy lệnh `soloncode` (CLI tương tác) hoặc `soloncode web 0` (Web tươ
 
 ```bash
 demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.4 PID-74080 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-74080 Model:deepseek-v4-flash
 /path/demo
 Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
 
@@ -54,7 +54,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.4 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.6.21 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-05-20 09:35
 Web interface: http://localhost:50488/
@@ -83,7 +83,7 @@ Nếu bạn sử dụng "soloncode" trong tên dự án của mình (ví dụ: "
 
 Về mặt chức năng, chúng tương tự nhau, với các điểm khác biệt chính:
 
-* Được xây dựng bằng Java, 100% mã nguồn mở.
+* Được xây dựng bằng Java, 100% mã nguồn mở. Tương thích với BiSheng JDK (Huawei) và Harmony PC.
 * Hoàn toàn được điều khiển và xây dựng bằng prompt tiếng Trung
 * Không phụ thuộc vào nhà cung cấp. Cấu hình mô hình theo nhu cầu. Việc lặp lại mô hình sẽ thu hẹp khoảng cách và giảm chi phí, khiến cấu hình linh hoạt trở nên quan trọng.
 * Hỗ trợ đồng thời giao diện dòng lệnh terminal (CLI), giao diện trình duyệt (WEB) và giao diện IDE máy tính để bàn (Desktop).

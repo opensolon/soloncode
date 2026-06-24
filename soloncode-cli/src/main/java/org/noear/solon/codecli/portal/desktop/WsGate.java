@@ -20,9 +20,11 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ObservationChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
+import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
@@ -31,7 +33,6 @@ import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessFlags;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
@@ -41,6 +42,8 @@ import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.util.AiApiUrlAdapter;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
+import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
@@ -51,10 +54,6 @@ import reactor.core.Disposable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Code CLI WebSocket 网关
@@ -69,17 +68,17 @@ public class WsGate extends SimpleWebSocketListener {
     private static final String SESSION_ID_DESKTOP = "desktop";
 
     private final HarnessEngine engine;
-    private final AgentProperties agentPros;
+    private final AgentSettings agentSettings;
 
-    public WsGate(HarnessEngine engine, AgentProperties agentPros) {
+    public WsGate(HarnessEngine engine, AgentSettings agentSettings) {
         this.engine = engine;
-        this.agentPros = agentPros;
+        this.agentSettings = agentSettings;
     }
 
     @Override
     public void onOpen(WebSocket socket) {
         String sessionId = socket.paramOrDefault("sessionId", SESSION_ID_DESKTOP);
-        String sessionCwd = socket.param(AgentProperties.X_SESSION_CWD);//工作区
+        String sessionCwd = socket.param(AgentFlags.X_SESSION_CWD);//工作区
 
         if (Assert.isNotEmpty(sessionId)) {
             if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
@@ -204,7 +203,7 @@ public class WsGate extends SimpleWebSocketListener {
             String modelName = req.getModel();
             ChatModel chatModel = engine.getModelOrMain(modelName);
 
-            session.getContext().put(HarnessFlags.VAR_MODEL_SELECTED, modelName);
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
 
             // 模式处理：根据前端 mode 字段配置 session 行为
             String mode = req.getMode();
@@ -292,6 +291,8 @@ public class WsGate extends SimpleWebSocketListener {
                             return;
                         } else if (chunk instanceof ReasonChunk) {
                             msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                        } else if (chunk instanceof ActionChunk) {
+                            msg = onActionStartChunk((ActionChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ObservationChunk) {
                             msg = onObservationChunk((ObservationChunk) chunk, finalSessionId);
                         } else if (chunk instanceof ThoughtChunk) {
@@ -358,6 +359,41 @@ public class WsGate extends SimpleWebSocketListener {
         return null;
     }
 
+    /**
+     * 处理 ActionChunk（工具调用前发送）：在工具实际执行前推送 action_start，
+     * 让前端提前渲染 loading 状态的工具卡片骨架，提升流式实时感。
+     * 过滤规则与 onObservationChunk 保持一致，避免卡片创建后却无对应结果填充。
+     */
+    private String onActionStartChunk(ActionChunk chunk, String finalSessionId) {
+        if (Assert.isEmpty(chunk.getToolName())) {
+            return null;
+        }
+
+        if (TaskTalent.TOOL_MULTITASK.equals(chunk.getToolName()) ||
+                TaskTalent.TOOL_TASK.equals(chunk.getToolName()) ||
+                MemoryTalent.isMemoryTool(chunk.getToolName())) {
+            return null;
+        }
+
+        // todowrite 的展示走专用通道，由 ObservationChunk 携带完整 todos 渲染，开始阶段不提前建卡
+        if ("todowrite".equals(chunk.getToolName())) {
+            return null;
+        }
+
+        ONode node = new ONode().set("type", "action_start")
+                .set("sessionId", finalSessionId);
+
+        if (engine.getName().equals(chunk.getAgentName())) {
+            node.set("toolName", chunk.getToolName());
+        } else {
+            node.set("toolName", chunk.getAgentName() + "/" + chunk.getToolName());
+        }
+
+        if (chunk.getArgs() != null) node.set("args", chunk.getArgs());
+
+        return node.toJson();
+    }
+
     private String onObservationChunk(ObservationChunk chunk, String finalSessionId) {
         if (chunk.getError() != null) {
             return null;
@@ -373,7 +409,7 @@ public class WsGate extends SimpleWebSocketListener {
             return null;
         }
 
-        ONode node = new ONode().set("type", "action")
+        ONode node = new ONode().set("type", "action_end")
                 .set("sessionId", finalSessionId);
 
         if (engine.getName().equals(chunk.getAgentName())) {
@@ -425,7 +461,7 @@ public class WsGate extends SimpleWebSocketListener {
             }
 
             // 审批后恢复流执行
-            String modelName = (String) session.getContext().get(HarnessFlags.VAR_MODEL_SELECTED);
+            String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
             ChatModel chatModel = engine.getModelOrMain(modelName);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
 
@@ -449,6 +485,8 @@ public class WsGate extends SimpleWebSocketListener {
                         String msg = null;
                         if (chunk instanceof ReasonChunk) {
                             msg = onReasonChunk((ReasonChunk) chunk, sessionId);
+                        } else if (chunk instanceof ActionChunk) {
+                            msg = onActionStartChunk((ActionChunk) chunk, sessionId);
                         } else if (chunk instanceof ObservationChunk) {
                             msg = onObservationChunk((ObservationChunk) chunk, sessionId);
                         } else if (chunk instanceof ThoughtChunk) {
@@ -504,6 +542,10 @@ public class WsGate extends SimpleWebSocketListener {
 
                 if (apiUrl != null || apiKey != null || model != null || provider != null) {
                     // 更新 AgentProperties 的 chatModel 配置
+                    ChatConfig chatConfig = new ChatConfig();
+                    chatConfig.setApiUrl(apiUrl);
+                    chatConfig.setApiKey(apiKey);
+                    chatConfig.setModel(model);
                     if (agentPros.getChatModel() != null) {
                         if (normalizedApiUrl != null) agentPros.getChatModel().setApiUrl(normalizedApiUrl);
                         if (apiKey != null) agentPros.getChatModel().setApiKey(apiKey);
@@ -513,9 +555,9 @@ public class WsGate extends SimpleWebSocketListener {
                     }
 
                     // 重建 ChatModel 并注入 kernel
-                    engine.removeModel(agentPros.getChatModel().getNameOrModel());
-                    engine.addModel(agentPros.getChatModel());
-                    engine.switchMainModel(agentPros.getChatModel().getNameOrModel());
+                    engine.removeModel(chatConfig.getNameOrModel());
+                    engine.addModel(chatConfig);
+                    engine.refreshMainAgent();
 
                     LOG.info("[WS] Config updated: model={}, provider={}", model, normalizedProvider);
 
@@ -676,6 +718,8 @@ public class WsGate extends SimpleWebSocketListener {
                     String msg = null;
                     if (chunk instanceof ReasonChunk) {
                         msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
+                    } else if (chunk instanceof ActionChunk) {
+                        msg = onActionStartChunk((ActionChunk) chunk, finalSessionId);
                     } else if (chunk instanceof ObservationChunk) {
                         msg = onObservationChunk((ObservationChunk) chunk, finalSessionId);
                     } else if (chunk instanceof ThoughtChunk) {

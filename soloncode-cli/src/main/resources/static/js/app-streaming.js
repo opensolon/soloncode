@@ -20,14 +20,15 @@ $(chatSendBtn).on('click', function() {
 
 /* ===== Click to focus ===== */
 $('.welcome-input-box').on('click', function(e) {
-    if (!$(e.target).closest('button').length) welcomeInput.focus();
+    if (!$(e.target).closest('button').length && !$(e.target).closest('.loop-panel').length) welcomeInput.focus();
 });
 $('.input-box').on('click', function(e) {
-    if (!$(e.target).closest('button').length && !$(e.target).closest('.history-panel').length) chatInput.focus();
+    if (!$(e.target).closest('button').length && !$(e.target).closest('.history-panel').length && !$(e.target).closest('.loop-panel').length) chatInput.focus();
 });
 
 /* ===== New Chat ===== */
 $(newChatBtn).on('click', function() {
+    if (typeof closeDiffViewer === 'function') closeDiffViewer();
     currentChatIndex = -1;
     switchToWelcomeMode();
     updateHistoryUI();
@@ -87,6 +88,34 @@ function sendWithFormData(sess, text, filesToSend) {
     sendWithFormDataGrouped(sess, text, filesToSend);
 }
 
+/* ===== 静默发送斜杠命令 =====
+   与 sendMessage 不同：不渲染用户气泡（避免出现 "/rerun" 这样的丑斜杠文本），
+   只进入流式等待态并发起命令。供最后一条 AI 消息的“重新运行/继续运行”按钮使用。
+   onBeforeSend：发起前的同步回调（如清理旧 DOM）。 */
+function sendCommandSilent(cmdText, onBeforeSend) {
+    if (!activeSessionId || !sessionMap[activeSessionId]) return;
+    var sess = sessionMap[activeSessionId];
+    /* 流式进行中禁止重复触发 */
+    if (sess.isStreaming) return;
+
+    if (typeof onBeforeSend === 'function') {
+        try { onBeforeSend(sess); } catch (e) {}
+    }
+
+    if (!inChatMode) switchToChatMode();
+    setActiveSession(sess.sessionId);
+
+    sess.isStreaming = true;
+    isStreaming = true;
+    sess.messageStartTime = Date.now();
+    setBtnStopMode();
+    resetStreamState(sess);
+    showThinking(sess);
+
+    sendWithFormDataGrouped(sess, cmdText, []);
+}
+window.sendCommandSilent = sendCommandSilent;
+
 function sendWithFormDataGrouped(sess, text, filesToSend) {
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
     var model = getSelectedModel();
@@ -132,16 +161,23 @@ function onWebChunk(sess, chunk) {
 
         removeInlineThinking(sess);
 
+        // 存储当前 chunk 的 runId，用于后续消息渲染
+        if (chunk.runId) {
+            sess.currentRunId = chunk.runId;
+        }
+
         switch (chunk.type) {
             case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
             case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
             case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
-            case 'action': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args); break;
+            case 'action_end': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
+            case 'action_start': finishThinkingBlock(sess); appendActionStartChunk(sess, chunk.toolName, chunk.args, chunk.toolTitle); break;
             case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, false); break;
             case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
             case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
             case 'trace':  finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
+            case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
         }
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
@@ -162,6 +198,7 @@ function finishStream(sess) {
     // 2. 立即把 Buffer 内容渲染出来
     if (sess.reasonBuffer) {
         var el = ensureAssistantBubble(sess);
+        el.setAttribute('data-md-raw', sess.reasonBuffer);
         $(el).html(renderMd(sess.reasonBuffer));
         if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
         if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
@@ -177,15 +214,22 @@ function finishStream(sess) {
     // ---------------------------------------------------
 
     removeThinking(sess);
-    removeInlineThinking(sess);
+    purgeInlineThinking(sess);
     finishThinkingBlock(sess);
     finishPendingTool(sess);
+    sess.approvedToolCard = null;
 
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
 
     // 显示助手消息时间戳
     setAssistantTime(sess, sess._lastCreatedAt || Date.now());
     sess._lastCreatedAt = null;
+
+    // 流式结束，显示复制按钮（流式过程中被隐藏）
+    if (sess.currentBubbleEl) {
+        var doneRow = $(sess.currentBubbleEl).closest('.msg-row')[0];
+        if (doneRow) $(doneRow).find('.msg-actions').show();
+    }
 
     // 清除客户端计时（已由 trace 类型的服务端耗时替代）
     if (sess.messageStartTime) {
@@ -202,7 +246,9 @@ function finishStream(sess) {
         scrollToBottom(true);
         chatInput.focus();
     }
-    loadSessionHistory();
+
+    // 刷新任务面板
+    if (window.loadTodos) window.loadTodos();
 }
 
 /* ===== WebSocket 单连接 ===== */
@@ -264,26 +310,37 @@ function connectWebGate() {
             }
 
             if (!sid) return; // 无 sessionId 的消息丢弃
-            var sess2 = sessionMap[sid];
-            if (!sess2) return; // 未知 session
+
+            // 即使 sess2 不存在，也优先处理 todowrite 动作（用于更新左侧 Sidebar 的 todo 进度）
+            if (chunk.type === 'action_end' && chunk.toolName === 'todowrite') {
+                if (window._todoChunkHandlers) {
+                    window._todoChunkHandlers.forEach(function(h) { h(chunk); });
+                }
+            }
 
             // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡
             if (chunk.type === 'user_input') {
                 if (!sid) return;
-                var userSess = sessionMap[sid];
-                if (!userSess) return;
+                var userSess = getOrCreateSession(sid);
+                if (typeof ensureChatInHistory === 'function') {
+                    ensureChatInHistory(sid, chunk.text, true);
+                }
                 appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt);
-                if (userSess.sessionId === activeSessionId) scrollToBottom(true);
+                if (userSess.sessionId === activeSessionId) {
+                    if (!inChatMode) switchToChatMode();
+                    scrollToBottom(true);
+                }
                 return;
             }
 
-            // Loop/微信 等后端推送触发流式状态
+            var sess2 = getOrCreateSession(sid);
             if (!sess2.isStreaming) {
                 sess2.isStreaming = true;
                 if (!sess2.messageStartTime) sess2.messageStartTime = Date.now();
                 if (sess2.sessionId === activeSessionId) {
                     isStreaming = true;
                     setBtnStopMode();
+                    if (!inChatMode) switchToChatMode();
                 }
                 resetStreamState(sess2);
                 showThinking(sess2);
@@ -371,11 +428,23 @@ updateWechatUI();
 updateFeishuUI();
 updateDingTalkUI();
 var origSetActiveSession = setActiveSession;
+var _sessionSwitchTimer = null;
 setActiveSession = function(sid) {
     origSetActiveSession(sid);
-    updateWechatUI();
-    updateFeishuUI();
-    updateDingTalkUI();
+    if (_sessionSwitchTimer) {
+        clearTimeout(_sessionSwitchTimer);
+    }
+    // 将非关键请求延迟到下一帧执行，让 UI 先完成切换
+    _sessionSwitchTimer = setTimeout(function() {
+        _sessionSwitchTimer = null;
+        updateWechatUI();
+        updateFeishuUI();
+        updateDingTalkUI();
+        // 切换会话时刷新任务面板
+        if (window.loadTodos) window.loadTodos();
+        // 切换会话时重置上下文指示器
+        if (typeof resetContextIndicator === 'function') resetContextIndicator();
+    }, 0);
 };
 
 wechatHeaderBtn.on('click', function() {

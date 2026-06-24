@@ -79,7 +79,10 @@ public class WorkspaceWatcher {
     }
 
     /**
-     * 启动文件监听：初始化 WatchService、注册工作区目录树、开启轮询线程
+     * 启动文件监听：初始化 WatchService、异步注册工作区目录树、开启轮询线程
+     *
+     * <p>目录树注册（{@link #registerTree}）可能在大工作区下耗时较长，
+     * 因此放在独立守护线程中执行，避免阻塞主线程。</p>
      */
     public void start() {
         try {
@@ -90,10 +93,19 @@ public class WorkspaceWatcher {
                 return t;
             });
 
-            registerTree(workspace);
-            scheduler.submit(this::pollEvents);
+            // 异步执行目录树注册，避免阻塞主线程（特别是工作区为用户主目录等大目录时）
+            Thread initThread = new Thread(() -> {
+                try {
+                    registerTree(workspace);
+                    scheduler.submit(WorkspaceWatcher.this::pollEvents);
+                    LOG.info("[WorkspaceWatcher] started for: {}", workspace);
+                } catch (Exception e) {
+                    LOG.error("[WorkspaceWatcher] start failed: {}", e.getMessage(), e);
+                }
+            }, "workspace-watcher-init");
+            initThread.setDaemon(true);
+            initThread.start();
 
-            LOG.info("[WorkspaceWatcher] started for: {}", workspace);
         } catch (Exception e) {
             LOG.error("[WorkspaceWatcher] start failed: {}", e.getMessage(), e);
         }

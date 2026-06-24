@@ -18,7 +18,7 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
-import org.noear.solon.codecli.config.AgentProperties;
+import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.util.Assert;
 import reactor.core.publisher.Mono;
 
@@ -34,12 +34,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class AcpLink implements Runnable {
     private final HarnessEngine agentRuntime;
     private final AcpAgentTransport agentTransport;
-    private final AgentProperties agentProps;
+    private final AgentSettings agentSettings;
 
-    public AcpLink(HarnessEngine agentRuntime, AcpAgentTransport agentTransport, AgentProperties agentProps) {
+    public AcpLink(HarnessEngine agentRuntime, AcpAgentTransport agentTransport, AgentSettings agentSettings) {
         this.agentRuntime = agentRuntime;
         this.agentTransport = agentTransport;
-        this.agentProps = agentProps;
+        this.agentSettings = agentSettings;
     }
 
     private final Map<String, AcpSessionContext> sessionStates = new ConcurrentHashMap<>();
@@ -121,7 +121,7 @@ public class AcpLink implements Runnable {
                                 else if (chunk instanceof ReasonChunk) {
                                     ReasonChunk reasonChunk = (ReasonChunk) chunk;
                                     if (chunk.hasContent() && !reasonChunk.isToolCalls()) {
-                                        if (agentProps.isThinkPrinted() || !reasonChunk.getMessage().isThinking()) {
+                                        if (agentSettings.getGeneral().getCliThinkPrinted()) {
                                             return acpContext.sendThought(chunk.getContent())
                                                     .thenReturn(chunk);
                                         }
@@ -202,7 +202,7 @@ public class AcpLink implements Runnable {
 
         String argsStr = buildArgsStr(args);
 
-        if (agentProps.isCliPrintSimplified()) {
+        if (agentSettings.getGeneral().getCliPrintSimplified()) {
             // 简化模式：只显示工具名 + 结果摘要
             String summary;
             if (Assert.isEmpty(content)) {

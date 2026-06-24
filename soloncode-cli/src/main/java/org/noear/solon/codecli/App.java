@@ -17,14 +17,13 @@ package org.noear.solon.codecli;
 
 import org.noear.solon.Solon;
 import org.noear.solon.SolonApp;
-import org.noear.solon.Utils;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.util.Assert;
-import org.noear.solon.core.util.ResourceUtil;
 import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;
+import org.slf4j.bridge.SLF4JBridgeHandler;
 
 import java.net.URL;
 
@@ -38,10 +37,15 @@ import java.net.URL;
 public class App {
 
     public static void main(String[] args) {
+        // 1. 移除 JUL 默认的控制台处理器
+        SLF4JBridgeHandler.removeHandlersForRootLogger();
+        // 2. 添加 SLF4J 处理器
+        SLF4JBridgeHandler.install();
+
         AgentProperties agentProps = new AgentProperties();
 
         //配置用户扩展目录
-        System.setProperty("solon.extend", "!" + agentProps.getUserExtensions());
+        System.setProperty("solon.extend", "!" + AgentFlags.getUserExtensions());
 
         Solon.start(App.class, args, app -> {
             initAgentProperties(app, agentProps);
@@ -51,7 +55,7 @@ public class App {
     private static void initAgentProperties(SolonApp app, AgentProperties c) throws Exception {
         //加载配置文件
 
-        URL configUrl = c.getConfigUrl();
+        URL configUrl = AgentFlags.getConfigUrl();
 
         app.cfg().loadAdd(configUrl);
 
@@ -66,7 +70,7 @@ public class App {
         initAgentSettings(app, c);
 
         //推入容器
-        app.context().wrapAndPut(AgentProperties.class, c);
+        //app.context().wrapAndPut(AgentProperties.class, c);
 
         //-----
 
@@ -94,20 +98,8 @@ public class App {
     }
 
     private static void initAgentSettings(SolonApp app, AgentProperties props) throws Exception {
-        URL settingsUrl = props.getSettingsUrl();
-        AgentSettings agentSettings = null;
 
-        if (settingsUrl != null) {
-            String settingsJson = ResourceUtil.getResourceAsString(settingsUrl);
-
-            if (Utils.isNotEmpty(settingsJson)) {
-                agentSettings = AgentSettings.fromJson(settingsJson);
-            }
-        }
-
-        if (agentSettings == null) {
-            agentSettings = new AgentSettings();
-        }
+        AgentSettings agentSettings = AgentSettings.loadFromFile();
 
         //与 AgentProperties 双向合并
         agentSettings.mergeFrom(props);
@@ -136,11 +128,9 @@ public class App {
     }
 
     private static void enabledAcp(SolonApp app, AgentProperties c) {
-        //开始控制台日志
-        if ("stdio".equals(c.getAcpTransport()) == false) {
-            app.enableHttp(true);
-            app.enableWebSocket(true);
-        }
+        //开始控制台日志(web 通讯关闭)
+        app.enableHttp(false);
+        app.enableWebSocket(false);
     }
 
     private static String findAvailablePort() {

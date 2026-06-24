@@ -2,7 +2,7 @@
 
 > 适用场景：LLM 调用、Tool Calling、RAG、MCP 协议、智能体 Agent、AI UI、Harness 框架。
 >
-> 目标版本：3.10.0+（当前官方最新 v3.10.4）
+> 目标版本：4.0.0+（当前官方最新 v4.0.2）
 
 ## ChatModel — LLM 调用
 
@@ -57,7 +57,7 @@ Tool Call（或 Function Call）能够让大语言模型在生成时，“按需
 ### @ToolMapping 注解开发
 
 ```java
-public class WeatherTools {
+public class WeatherTools extends AbsToolProvider{
     @ToolMapping(description = "查询天气")
     public String getWeather(@Param(description = "城市") String location) {
         return location + "：晴，14度";
@@ -74,21 +74,10 @@ public ChatModel chatModel(ChatConfig config) {
     return ChatModel.of(config).defaultToolAdd(new WeatherTools()).build();
 }
 
-// 方式2：通过 MethodToolProvider 注册
+// 方式2：通过 ToolProvider 实例注册（如 McpClientProvider）
 @Bean
-public ChatModel chatModel(ChatConfig config) {
-    return ChatModel.of(config).defaultToolAdd(new MethodToolProvider(new WeatherTools())).build();
-}
-
-// 方式3：通过 Lambda 注册
-@Bean
-public ChatModel chatModel(ChatConfig config) {
-    return ChatModel.of(config)
-            .defaultToolAdd("getWeather", tool -> {
-                tool.description("查询天气")
-                    .paramAdd("location", "string", "城市");
-            })
-            .build();
+public ChatModel chatModel(ChatConfig config, McpClientProvider clientProvider) {
+    return ChatModel.of(config).defaultToolAdd(clientProvider).build();
 }
 ```
 
@@ -342,14 +331,14 @@ ChatModel chatModel = ChatModel.of("https://api.moark.com/v1/chat/completions")
         .build();
 
 SimpleAgent robot = SimpleAgent.of(chatModel)
-        .defaultToolAdd(new TimeTool())
+        .defaultToolAdd(new TimeTool()) // v4：POJO 需用 MethodToolProvider 包装
         .build();
 
 String answer = robot.prompt("现在几点了？")
         .call()
         .getContent();
 
-public static class TimeTool {
+public static class TimeTool extends AbsToolProvider {
     @ToolMapping(description = "获取当前系统时间")
     public String getTime() {
         return LocalDateTime.now().toString();
@@ -362,8 +351,9 @@ public static class TimeTool {
 ```java
 ReActAgent agent = ReActAgent.of(chatModel)
     .name("assistant")
-    .defaultToolAdd(new SearchTools())
-    .maxSteps(5)
+    .defaultToolAdd(new MethodToolProvider(new SearchTools())) // v4：POJO 需用 MethodToolProvider 包装
+    .maxTurns(5)        // v4：原 maxSteps 已更名为 maxTurns
+    .autoRethink(true)  // 最大步数自动续航（由 LLM 反思控制）
     .build();
 String answer = agent.prompt("搜索并总结...").call().getContent();
 ```
@@ -508,33 +498,78 @@ GenerateModel generateModel = GenerateModel.of(apiUrl)
 GenerateResponse resp = generateModel.prompt("一只猫的插画").call();
 ```
 
-## AI Skills — 技能体系
+## AI Talents — 才能体系
 
-Dependency: 各 `solon-ai-skill-*` 插件
+Dependency: 各 `solon-ai-talent-*` 插件
 
-v3.9.0 后支持。Solon AI Skills 是一种可插拔的技能扩展机制，可以动态加载到 ChatModel 或 Agent 中使用。
+v4.0.0 起，原 "Skill 技能" 体系正式更名为 "Talent 才能" 体系（概念原型参考 Claude Code Agent Skills，但从"运行时学习"翻转为"开发时注入"）。Talent 是一种可插拔的能力扩展机制，可动态加载到 ChatModel 或 Agent 中使用。
 
-| Artifact | 描述 |
-|---|---|
-| `solon-ai-skill-cli` | CLI 命令行技能（支持 bash, read, edit, grep, glob 等） |
-| `solon-ai-skill-restapi` | REST API 技能 |
-| `solon-ai-skill-toolgateway` | 工具网关技能 |
-| `solon-ai-skill-memory` | 记忆技能（支持会话隔离与共享） |
-| `solon-ai-skill-lucene` | Lucene 搜索技能 |
-| `solon-ai-skill-diff` | 文本差异对比技能 |
+> 命名迁移提示（v3 → v4）：插件 `solon-ai-skill-*` → `solon-ai-talent-*`；添加方法 `defaultSkillAdd(...)` → `defaultTalentAdd(...)`。
+
+### Talent 接口（开发时注入）
+
+Talent 通过生命周期钩子，在开发时定义激活条件、指令策略与工具集。常用做法是继承 `AbsTalent`：
 
 ```java
-// 技能使用示例
-ChatModel chatModel = ChatModel.of(config)
-        .defaultSkillAdd(new CliSkill())
-        .build();
+@Component
+public class WeatherTalent extends AbsTalent {
+    // 准入检查：当前对话上下文中该才能是否被激活
+    @Override
+    public boolean isSupported(Prompt prompt) {
+        String role = prompt.attrAs("role"); // 可取属性做准入控制
+        return prompt.getUserContent().contains("天气");
+    }
+
+    // 动态指令注入：生成并注入到 System Message 的描述性文本
+    @Override
+    public String getInstruction(Prompt prompt) {
+        return "如果有什么天气问题，可以问我";
+    }
+
+    // 动态能力注入：通过 @ToolMapping 暴露工具方法
+    @ToolMapping(description = "查询天气预报")
+    public String getWeather(@Param(description = "城市位置") String location) {
+        return "晴，14度";
+    }
+}
 ```
+
+Talent 接口核心方法：`name()`、`description()`、`metadata()`、`isSupported(Prompt)`、`onAttach(Prompt)`、`getInstruction(Prompt)`、`getTools(Prompt)`。
+
+### Talent 注册（添加方式与 tool 一致）
+
+```java
+@Bean
+public ChatModel chatModel(WeatherTalent weatherTalent) {
+    return ChatModel.of(config)
+            .defaultTalentAdd(weatherTalent) // v4：原 defaultSkillAdd
+            .build();
+}
+```
+
+### 预置才能（部分常用包）
+
+Solon AI 预置了一批 Talent 模块，按职责归入不同依赖包，按需引入：
+
+| Artifact | 代表 Talent | 描述 |
+|---|---|---|
+| `solon-ai-talent-cli` | `TerminalTalent` / `SkillTalent` / `TodoTalent` | 终端命令、技能管理、任务进度 |
+| `solon-ai-talent-web` | `WebsearchTalent` / `WebfetchTalent` / `CodeSearchTalent` | 网络搜索、网页抓取、代码搜索 |
+| `solon-ai-talent-gateway` | `ToolGatewayTalent` / `McpGatewayTalent` / `OpenApiGatewayTalent` | 工具/MCP/OpenAPI 网关 |
+| `solon-ai-talent-text2sql` | `Text2SqlTalent` | 自然语言转 SQL |
+| `solon-ai-talent-data` | `RedisTalent` | Redis 长期记忆 |
+| `solon-ai-talent-file` | `FileReadWriteTalent` / `ZipTalent` | 文件读写、压缩归档 |
+| `solon-ai-talent-pdf` | `PdfTalent` | PDF 读取与排版生成 |
+| `solon-ai-talent-generation` | `ImageGenerationTalent` / `VideoGenerationTalent` | 图片/视频生成 |
+| `solon-ai-talent-mail` | `MailTalent` | 邮件发送 |
+| `solon-ai-talent-social` | `DingTalkTalent` / `FeishuTalent` / `WeComTalent` | 钉钉/飞书/企业微信推送 |
+| `solon-ai-talent-sys` | `NodejsTalent` / `PythonTalent` / `ShellTalent` / `SystemClockTalent` | 脚本与系统运维 |
 
 ## Harness — 智能体马具框架
 
 Dependency: `solon-ai-harness`
 
-v3.10.1 后支持。通过 `solon-ai-skill-*` 插件组合并定制而成的高性能智能体执行框架。理论上可嵌入到任意 Java 项目中。
+v4.0.0 起完善。通过 `solon-ai-talent-*` 插件组合并定制而成的高性能智能体执行框架。理论上可嵌入到任意 Java 项目中。
 
 综合示例项目：
 - [SolonCode（基于 Java 8 实现的 "Claude Code" 或 "OpenCode"）](https://gitee.com/opensolon/soloncode)
@@ -565,7 +600,6 @@ import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessProperties;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.permission.ToolPermission;
 
@@ -574,12 +608,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DemoApp {
     public static void main(String[] arg) throws Throwable {
-        //--- 1. 初始化
-        HarnessProperties harnessProps = new HarnessProperties(".tmp/");
-        harnessProps.addTools(ToolPermission.TOOL_WEBSEARCH); //设定工具权限
-        harnessProps.addModel(new ChatConfig()); //添加大模型配置（可多个，用时可切换）
-        harnessProps.setSystemPrompt("xxx"); //添加主代理系统提示词
-
         AgentSessionProvider sessionProvider = new AgentSessionProvider() {
             private Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
@@ -589,7 +617,11 @@ public class DemoApp {
             }
         };
 
-        HarnessEngine engine = HarnessEngine.of(harnessProps)
+        //--- 1. 初始化（v4：流式构建，不再使用 HarnessProperties）
+        HarnessEngine engine = HarnessEngine.of("work", ".soloncode/") // 工作区、马具主目录
+                .systemPrompt("xxx")                  // 主代理系统提示词
+                .addModel(new ChatConfig())           // 添加大模型配置（可多个，第一个为默认）
+                .toolsAdd(ToolPermission.TOOL_WEBSEARCH) // 设定工具权限
                 .sessionProvider(sessionProvider)
                 .build();
 
@@ -633,58 +665,77 @@ public class DemoApp {
 }
 ```
 
-### 核心配置项 (HarnessProperties)
+### 核心配置项（v4 流式构建）
 
 ```java
-HarnessProperties harnessProps = new HarnessProperties(".tmp/");
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
+        .systemPrompt("你是一个 AI 助手")
+        .sessionWindowSize(8)
+        .compressionThreshold(30, 30_000) // 消息条数阈值、token 阈值
+        .maxTurns(30)
+        .autoRethink(true)
+        .toolsAdd(ToolPermission.TOOL_ALL_FULL) // 设定工具权限
+        .sessionProvider(sessionProvider)
+        .build();
+```
 
-harnessProps.setSessionWindowSize(8);
-harnessProps.setSummaryWindowSize(30);
-harnessProps.setSummaryWindowToken(30_000);
-harnessProps.setMaxSteps(30);
-harnessProps.setMaxStepsAutoExtensible(true);
-harnessProps.setSandboxMode(true);
-harnessProps.setHitlEnabled(false);
-harnessProps.setSubagentEnabled(true);
-harnessProps.addTools(ToolPermission.TOOL_ALL_FULL); //设定工具权限
+构建完成后仍可在运行时动态调整（变更后自动重建主代理立即生效）：
+
+```java
+engine.allowTool("websearch");      // 动态授权工具
+engine.disallowTool("bash");        // 动态禁用工具
+engine.setMaxTurns(30);
+engine.setCompressionThreshold(30, 30_000);
+engine.setSandboxEnabled(true);
+engine.addModel(new ChatConfig());  // 添加模型
+engine.setDefaultModel("deepseek-v4-flash"); // 设定默认模型
 ```
 
 #### 核心配置
 
+> v4 字段更名提示：`maxSteps`→`maxTurns`、`maxStepsAutoExtensible`→`autoRethink`、`summaryWindowSize`→`compressionMaxMessages`、`summaryWindowToken`→`compressionMaxTokens`、`summaryModel`→`compressionModel`、`sandboxMode`→`sandboxEnabled`、`mountPools`→`mounts`。`models` 由 `List` 改为 `Map`。
+
 | 配置项 | 类型 | 默认值 | 描述 |
 |---|---|---|---|
 | `workspace` | `String` | `work` | 工作区 |
-| `tools` | `List<String>` | / | 工具权限配置 |
-| `models` | `List<ChatConfig>` | / | 大模型配置（第一个为默认） |
-| `maxSteps` | int | `30` | 根代理最大循环步数 |
-| `maxStepsAutoExtensible` | bool | `true` | 最大步数自动续航（由 LLM 反思控制） |
+| `harnessHome` | `String` | `.solon/` | 马具主目录（例：`.soloncode`） |
+| `systemPrompt` | `String` | / | 系统提示词 |
+| `tools` | `Set<String>` | / | 工具权限配置（`**`=所有工具；`*`=仅公域工具） |
+| `disallowedTools` | `Set<String>` | / | 禁用工具配置（使用具体工具名） |
+| `defaultModel` | `String` | / | 默认模型名（不指定则取 models 中第一个） |
+| `models` | `Map<String, ChatConfig>` | / | 大模型配置 |
+| `maxTurns` | int | `20` | 根代理最大循环步数 |
+| `autoRethink` | bool | `true` | 最大步数自动续航（由 LLM 反思控制） |
 | `sessionWindowSize` | int | `8` | 会话历史窗口大小（新指令时使用几条历史消息） |
-| `summaryWindowSize` | int | `30` | 触发摘要压缩的消息条数阈值 |
-| `summaryWindowToken` | int | `30000` | 触发摘要压缩的内容长度阈值 |
-| `summaryModel` | `String` | / | 摘要大模型（不指定则使用主模型） |
+| `compressionMaxMessages` | int | `30` | 触发上下文压缩的消息条数阈值 |
+| `compressionMaxTokens` | int | `30000` | 触发上下文压缩的内容长度阈值 |
+| `compressionModel` | `String` | / | 压缩用大模型（不指定则使用主模型） |
 
 #### 安全与行为配置
 
 | 配置项 | 类型 | 默认值 | 描述 |
 |---|---|---|---|
-| `sandboxMode` | bool | `true` | 沙盒模式，启用时禁止访问绝对路径 |
-| `thinkPrinted` | bool | `true` | 是否打印 AI 的内心思考 |
+| `sandboxEnabled` | bool | `true` | 沙盒模式，启用时禁止访问绝对路径（只能访问工作区与用户主目录） |
+| `sandboxAllowUserHome` | bool | `true` | 沙盒模式下允许访问用户主目录 |
+| `sandboxSystemRestrict` | bool | `true` | 沙盒系统级限制 |
 | `hitlEnabled` | bool | `false` | 是否启用人工审核（危险操作需人工确认） |
-| `subagentEnabled` | bool | `true` | 是否启用子代理模式 |
-| `userAgent` | `String` | / | 用户代理标识 |
+| `subagentEnabled` | bool | `true` | 是否启用子代理模式（自动委派任务给专家代理） |
+| `bashAsyncEnabled` | bool | `false` | 是否启用 Bash 异步执行 |
+| `memoryEnabled` | bool | `true` | 是否启用心智记忆 |
+| `userAgent` | `String` | / | 用户代理标识（会自动传播给所有模型） |
 | `apiRetries` | int | `3` | API 重试次数 |
 | `mcpRetries` | int | `3` | MCP 重试次数 |
 | `modelRetries` | int | `3` | 模型重试次数 |
 
 #### 扩展配置
 
-| 配置项          | 类型 | 默认值 | 描述                      |
-|--------------|---|---|-------------------------|
-| `mountPools` | `Map<String, String>` | / | 挂载配置（alias 必须以 `@` 开头） |
-| `agentPools` | `List<String>` | / | 代理池配置                   |
-| `mcpServers` | `Map<String, McpServerParameters>` | / | MCP 服务配置                |
-| `apiServers` | `Map<String, ApiSource>` | / | Web API 服务配置            |
-| `lspServers` | `Map<String, LspServerParameters>` | / | LSP 服务配置                |
+| 配置项 | 类型 | 默认值 | 描述 |
+|---|---|---|---|
+| `mounts` | `MountDir` | / | 挂载配置（alias 须以 `@` 开头） |
+| `mcpServers` | `Map<String, McpServerParameters>` | / | MCP 服务配置 |
+| `apiServers` | `Map<String, ApiSource>` | / | Web API 服务配置 |
+| `lspServers` | `Map<String, LspServerParameters>` | / | LSP 服务配置 |
+| `extensions` | `List<HarnessExtension>` | / | 扩展接口配置 |
 
 ### 工具权限配置 (ToolPermission)
 
@@ -738,8 +789,13 @@ engine.getMainAgent().prompt("hello")
 #### 动态添加 Web API (Rest API) 数据源
 
 ```java
-harnessProps.addApiSource("order-api",
-        new ApiSource().then(s -> {
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
+        .sessionProvider(sessionProvider)
+        .build();
+
+// v4：在 engine 上动态注册（原 harnessProps.addApiSource 已移除）
+// 以文档地址 docUrl 为唯一标识
+engine.addApiServer(new ApiSource().then(s -> {
             s.setDocUrl("http://xx.xx.xx/doc");
             s.setApiBaseUrl("http://xx.xx.xx/");
         }));
@@ -748,7 +804,7 @@ harnessProps.addApiSource("order-api",
 #### 注册自定义业务工具
 
 ```java
-HarnessEngine engine = HarnessEngine.of(harnessProps)
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
         .sessionProvider(sessionProvider)
         .extensionAdd((agentName, agentBuilder) -> {
             agentBuilder.defaultToolAdd(new BizTool());
@@ -759,10 +815,12 @@ HarnessEngine engine = HarnessEngine.of(harnessProps)
 #### 动态配置系统提示词
 
 ```java
-HarnessEngine engine = HarnessEngine.of(harnessProps)
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
         .sessionProvider(sessionProvider)
         .extensionAdd((agentName, agentBuilder) -> {
-            agentBuilder.systemPrompt(context -> "你是一个专业的业务助手...");
+            if ("main".equals(agentName)) {
+                agentBuilder.systemPrompt(context -> "你是一个专业的业务助手...");
+            }
         })
         .build();
 ```
@@ -793,15 +851,15 @@ subagent.prompt(prompt)
 
 ### 内置拦截器
 
-- `summarizationInterceptor` — 上下文摘要处理
+- `compressionInterceptor` — 上下文压缩处理
 - `hitlInterceptor` — 人工介入处理（含七层安全审计策略）
 
 #### 修改内置拦截器
 
 ```java
-HarnessEngine engine = HarnessEngine.of(harnessProps)
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
         .sessionProvider(sessionProvider)
-        .summarizationInterceptor(new SummarizationInterceptor())
+        .compressionInterceptor(new ContextCompressionInterceptor()) // v4：原 SummarizationInterceptor
         .hitlInterceptor(new HITLInterceptor())
         .build();
 ```
@@ -809,7 +867,7 @@ HarnessEngine engine = HarnessEngine.of(harnessProps)
 #### 添加新的拦截器
 
 ```java
-HarnessEngine engine = HarnessEngine.of(harnessProps)
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
         .sessionProvider(sessionProvider)
         .extensionAdd((agentName, agentBuilder) -> {
             agentBuilder.defaultInterceptorAdd(new ReActInterceptor() {
@@ -825,11 +883,12 @@ HarnessEngine engine = HarnessEngine.of(harnessProps)
 ### 模型运行时切换
 
 ```java
-// 切换主模型（自动重建主代理）
-engine.switchMainModel("model-name");
+// 设定默认模型（影响主代理时自动重建）
+engine.setDefaultModel("model-name"); // v4：原 switchMainModel
 
-// 按名取模型，空则返回主模型
-ChatModel model = engine.getModelOrMain("model-name");
+// 运行时增/删模型
+engine.addModel(new ChatConfig());
+engine.removeModel("model-name");
 ```
 
 ### 命令系统
@@ -868,11 +927,9 @@ agentManager.agentPool(Path.of(".solon/agents"));    // 从目录加载
 网上传说的 PiAgent 只有四个工具："read", "write", "edit", "bash"，框架特意定义了 `ToolPermission.TOOL_PI` 枚举方便使用。
 
 ```java
-HarnessProperties harnessProps = new HarnessProperties(".tmp/");
-harnessProps.addTools(ToolPermission.TOOL_PI); //微形命令行工具
-harnessProps.addModel(null); //设定大模型配置
-
-HarnessEngine engine = HarnessEngine.of(harnessProps)
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
+        .toolsAdd(ToolPermission.TOOL_PI) //微形命令行工具
+        .addModel(new ChatConfig()) //设定大模型配置
         .sessionProvider(sessionProvider)
         .build();
 
@@ -882,12 +939,10 @@ engine.prompt("网络调查 ai mcp 协议，生成一个 mcp.md 报告").call();
 ### 典型示例：Code 知识问答智能体
 
 ```java
-HarnessProperties harnessProps = new HarnessProperties(".tmp/");
-harnessProps.addTools(ToolPermission.TOOL_CODESEARCH,
-        ToolPermission.TOOL_WEBSEARCH, ToolPermission.TOOL_WEBFETCH);
-harnessProps.addModel(null); //设定大模型配置
-
-HarnessEngine engine = HarnessEngine.of(harnessProps)
+HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
+        .toolsAdd(ToolPermission.TOOL_CODESEARCH,
+                ToolPermission.TOOL_WEBSEARCH, ToolPermission.TOOL_WEBFETCH)
+        .addModel(new ChatConfig()) //设定大模型配置
         .sessionProvider(sessionProvider)
         .build();
 
@@ -933,16 +988,17 @@ engine.prompt("solon ai 有哪些常用的注解？").call();
 | `McpClientProvider` | MCP 客户端（同时提供 Tool/Prompt/Resource） |
 | `McpChannel` | MCP 通道类型（STDIO/SSE/STREAMABLE/STREAMABLE_STATELESS） |
 | `AiSdkStreamWrapper` | AI SDK 协议流包装器 |
-| `HarnessEngine` | 智能体马具引擎（通过 `HarnessEngine.of(props)` 构建） |
-| `HarnessProperties` | 马具配置属性（工作区、工具权限、模型、安全策略等） |
+| `HarnessEngine` | 智能体马具引擎（通过 `HarnessEngine.of(workspace, harnessHome)` 流式构建） |
+| `HarnessExtension` | 马具扩展接口，可定制代理构建 |
 | `HarnessExtension` | 马具扩展接口，可定制代理构建 |
 | `AgentDefinition` | 代理定义（系统提示词、工具权限、元数据） |
 | `AgentManager` | 代理管理器（内置 bash/explore/plan/general，支持扩展） |
 | `ToolPermission` | 工具权限枚举（`TOOL_PI`, `TOOL_ALL_PUBLIC`, `TOOL_ALL_FULL` 等） |
 | `CommandRegistry` | 命令注册表（支持 Markdown 模板命令） |
 | `GenerateTool` | 动态生成子代理的工具 |
-| `TaskSkill` | 子代理任务调度技能（支持 task/multitask） |
-| `CodeSkill` | 代码工程规范对齐技能 |
+| `Talent` / `AbsTalent` | 才能接口与抽象基类（开发时注入，含 isSupported/getInstruction/getTools 等钩子） |
+| `TaskTalent` | 子代理任务调度才能（支持 task/multitask） |
+| `CodeTalent` | 代码工程规范对齐才能 |
 | `GenerateModel` | 生成模型（图/音/视） |
 
 ## AI 核心依赖
@@ -959,14 +1015,17 @@ engine.prompt("solon ai 有哪些常用的注解？").call();
 | `solon-ai-acp` | ACP 协议支持（stdio/websocket） |
 | `solon-ai-a2a` | A2A 智能体间通信 |
 | `solon-ai-harness` | 智能体马具框架 |
-| `solon-ai-skill-cli` | CLI 技能（bash/read/write/edit/grep/glob/ls/todo/expert-skill） |
-| `solon-ai-skill-web` | Web 技能（websearch/webfetch/codesearch） |
-| `solon-ai-skill-lsp` | LSP 代码理解技能 |
-| `solon-ai-skill-restapi` | REST API 技能 |
-| `solon-ai-skill-toolgateway` | 工具网关技能（MCP） |
-| `solon-ai-skill-memory` | 记忆技能（支持会话隔离与共享） |
-| `solon-ai-skill-lucene` | Lucene 搜索技能 |
-| `solon-ai-skill-diff` | 文本差异对比技能 |
+| `solon-ai-talent-cli` | CLI 才能（TerminalTalent/SkillTalent/TodoTalent：bash/read/write/edit/grep/glob/ls/todo/skill） |
+| `solon-ai-talent-web` | Web 才能（Websearch/Webfetch/CodeSearch） |
+| `solon-ai-talent-gateway` | 网关才能（ToolGateway/McpGateway/OpenApiGateway） |
+| `solon-ai-talent-text2sql` | 自然语言转 SQL 才能 |
+| `solon-ai-talent-data` | Redis 长期记忆才能 |
+| `solon-ai-talent-file` | 文件读写与压缩归档才能 |
+| `solon-ai-talent-pdf` | PDF 读取与排版才能 |
+| `solon-ai-talent-generation` | 图片/视频生成才能 |
+| `solon-ai-talent-mail` | 邮件发送才能 |
+| `solon-ai-talent-social` | 钉钉/飞书/企业微信推送才能 |
+| `solon-ai-talent-sys` | 脚本与系统运维才能（Nodejs/Python/Shell/SystemClock） |
 | `solon-ai-search-baidu` | 百度联网搜索 |
 | `solon-ai-search-bocha` | Bocha 联网搜索 |
 | `solon-ai-search-tavily` | Tavily 联网搜索 |

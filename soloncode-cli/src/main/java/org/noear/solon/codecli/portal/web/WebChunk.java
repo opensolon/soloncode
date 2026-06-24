@@ -24,6 +24,7 @@ import java.util.Map;
  *   <tr><td>{@code done}</td><td>完成信号，表示当前响应流已全部发送完毕</td></tr>
  *   <tr><td>{@code error}</td><td>错误信息，表示处理过程中发生了异常</td></tr>
  *   <tr><td>{@code trace}</td><td>追踪信息，包含模型名称、token 消耗和推理耗时（仅在最终汇总时输出）</td></tr>
+ *   <tr><td>{@code context_size}</td><td>上下文大小信息，包含当前上下文的消息数和 token 数（每次推理前推送）</td></tr>
  * </table>
  *
  * <h3>架构位置</h3>
@@ -56,6 +57,9 @@ public class WebChunk {
     /** 会话标识，关联到具体的用户会话上下文。 */
     private String sessionId;
 
+    /** 运行 id（一次任务运行，一个 runId） */
+    private String runId;
+
     /**
      * 消息块类型标识。
      * 取值范围见类级文档中的 type 类型枚举表（text / reason / action / command / hitl / rewind / done / error）。
@@ -65,8 +69,18 @@ public class WebChunk {
     /** 消息块的文本内容，具体含义由 type 决定（如正文、推理过程、命令、错误描述等）。 */
     private String text;
 
-    /** 工具名称，仅在 type 为 {@code hitl} 时使用，表示需要人工审批的工具标识。 */
+    /**
+     * 工具原名（裸名，不含 agentName 前缀）。
+     * <p>供前端做工具识别、专用渲染器匹配、特判逻辑（如 todowrite 刷新任务面板）。
+     * 注意：前端显示请用 {@link #toolTitle}，识别请用本字段。</p>
+     */
     private String toolName;
+
+    /**
+     * 工具显示名，仅供前端展示。
+     * <p>本引擎工具时与 {@link #toolName} 相同；子代理工具时为 {@code agentName + "/" + toolName}。</p>
+     */
+    private String toolTitle;
 
     /** 工具调用参数映射，保留字段，可用于携带结构化的工具调用参数。 */
     private Map<String, Object> args;
@@ -82,6 +96,9 @@ public class WebChunk {
 
     /** 推理耗时秒数，仅在 type 为 {@code trace} 时使用，记录从 ReAct 开始到结束的耗时。 */
     private Long elapsedSeconds;
+
+    /** 最终答案正文，仅在 type 为 {@code trace} 时使用，携带 ReAct 完成时的全量最终答复，供前端复制使用。 */
+    private String finalAnswer;
 
     /** 消息块创建时间戳（ epoch 毫秒），由工厂方法自动填充。 */
     private Long createdAt;
@@ -168,17 +185,40 @@ public class WebChunk {
 
 
     /**
-     * 创建「动作说明」消息块。
-     * <p>type 为 {@code action}，描述当前正在执行的操作（如调用工具前的简要说明），
-     * 用于向前端指示 Agent 的行为意图。</p>
+     * 创建「动作结束」消息块。
+     * <p>type 为 {@code action_end}，在工具执行完成后发送（来源于引擎的 ObservationChunk），
+     * 携带工具执行结果。与 {@code action_start} 成对：前者标记调用开始并渲染 loading 骨架，
+     * 本块到达时填充结果并将工具卡转为完成态。</p>
      *
-     * @param text 动作描述文本
-     * @return 携带动作说明的消息块
+     * @param text 工具执行结果文本
+     * @return 携带执行结果的动作结束消息块
      */
-    public static WebChunk ofAction(String text) {
+    public static WebChunk ofActionEnd(String text) {
         WebChunk tmp = new WebChunk();
-        tmp.type = "action";
+        tmp.type = "action_end";
         tmp.text = text;
+        tmp.createdAt = Instant.now().toEpochMilli();
+
+        return tmp;
+    }
+
+    /**
+     * 创建「动作开始」消息块。
+     * <p>type 为 {@code action_start}，在工具实际执行前发送（来源于引擎的 ActionChunk），
+     * 携带工具名与调用参数但不含结果。前端据此提前渲染一张 loading 状态的工具卡片骨架，
+     * 待后续 {@code action}（来源于 ObservationChunk）到达时填充结果并转为完成态。</p>
+     *
+     * @param toolName  工具原名（裸名，供前端识别）
+     * @param toolTitle 工具显示名（供前端展示，可含 agentName 前缀）
+     * @param args      工具调用参数
+     * @return 携带工具名与参数的动作开始消息块
+     */
+    public static WebChunk ofActionStart(String toolName, String toolTitle, Map<String, Object> args) {
+        WebChunk tmp = new WebChunk();
+        tmp.type = "action_start";
+        tmp.toolName = toolName;
+        tmp.toolTitle = toolTitle;
+        tmp.args = args;
         tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
@@ -263,14 +303,16 @@ public class WebChunk {
      * @param model          模型名称（如 "gpt-4o"）
      * @param totalTokens    总 token 消耗数，可为 null（无指标时）
      * @param elapsedSeconds 推理耗时（秒），可为 null（无开始时间时）
+     * @param finalAnswer    ReAct 完成时的全量最终答复，供前端复制使用，可为 null
      * @return 携带追踪元数据的消息块
      */
-    public static WebChunk ofTrace(String model, Long totalTokens, Long elapsedSeconds) {
+    public static WebChunk ofTrace(String model, Long totalTokens, Long elapsedSeconds, String finalAnswer) {
         WebChunk tmp = new WebChunk();
         tmp.type = "trace";
         tmp.model = model;
         tmp.totalTokens = totalTokens;
         tmp.elapsedSeconds = elapsedSeconds;
+        tmp.finalAnswer = finalAnswer;
         tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;

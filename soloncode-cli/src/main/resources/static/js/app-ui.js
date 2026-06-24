@@ -6,8 +6,11 @@
 var welcomeAttachmentsWrap = $('#welcomeAttachmentsWrap');
 var chatAttachmentsWrap = $('#chatAttachmentsWrap');
 
-function handlePasteImage(e) {
-    var items = (e.clipboardData || e.originalEvent.clipboardData).items;
+function handlePaste(e) {
+    var clipboard = e.clipboardData || e.originalEvent.clipboardData;
+    if (!clipboard) return;
+
+    var items = clipboard.items;
     for (var i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
             e.preventDefault();
@@ -15,6 +18,25 @@ function handlePasteImage(e) {
             processSelectedFile(file, 'image');
             return;
         }
+    }
+
+    // Handle HTML paste: convert to text preserving formatting
+    var htmlData = clipboard.getData('text/html');
+    if (htmlData) {
+        e.preventDefault();
+        var text = clipboard.getData('text/plain') || '';
+        // If plain text has content, use it directly (preserves newlines/indentation)
+        // textarea.value = text already preserves formatting
+        var textarea = e.target;
+        var start = textarea.selectionStart;
+        var end = textarea.selectionEnd;
+        var before = textarea.value.substring(0, start);
+        var after = textarea.value.substring(end);
+        textarea.value = before + text + after;
+        textarea.selectionStart = textarea.selectionEnd = start + text.length;
+        autoResize(textarea);
+        // Trigger input event for command completion
+        $(textarea).trigger('input');
     }
 }
 
@@ -99,8 +121,8 @@ function processSelectedFiles(fileList, attachmentsType) {
     }
 }
 
-$(welcomeInput).on('paste', handlePasteImage);
-$(chatInput).on('paste', handlePasteImage);
+$(welcomeInput).on('paste', handlePaste);
+$(chatInput).on('paste', handlePaste);
 
 /* ===== Drag & Drop File Upload ===== */
 (function() {
@@ -230,19 +252,45 @@ $('#chatImageInput').on('change', function(e) {
 
 /* ===== Marked ===== */
 if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true }); }
+var _mdCache = new Map();
+var _MD_CACHE_MAX = 100;
 function renderMd(text) {
-    if (typeof marked !== 'undefined') return marked.parse(text);
+    if (typeof marked !== 'undefined') {
+        if (!text) return '';
+        if (text.length < 5000) {
+            var cached = _mdCache.get(text);
+            if (cached) return cached;
+            var html = marked.parse(text);
+            _mdCache.set(text, html);
+            if (_mdCache.size > _MD_CACHE_MAX) {
+                var firstKey = _mdCache.keys().next().value;
+                _mdCache.delete(firstKey);
+            }
+            return html;
+        }
+        return marked.parse(text);
+    }
     return text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 }
 
 /* ===== Highlight.js ===== */
 function highlightCodeBlocks(container) {
     if (!container || typeof hljs === 'undefined') return;
-    var blocks = $(container).find('pre code');
-    for (var i = 0; i < blocks.length; i++) {
-        if (blocks[i].dataset.hljsHighlighted) continue;
-        blocks[i].dataset.hljsHighlighted = 'true';
-        try { hljs.highlightElement(blocks[i]); } catch(e) {}
+    var blocks = $(container).find('pre code:not([data-hljs-collected])');
+    if (blocks.length === 0) return;
+    blocks.each(function() { this.dataset.hljsCollected = 'true'; });
+    function doHighlight() {
+        blocks.each(function() {
+            if (!this.dataset.hljsHighlighted) {
+                this.dataset.hljsHighlighted = 'true';
+                try { hljs.highlightElement(this); } catch(e) {}
+            }
+        });
+    }
+    if (window.requestIdleCallback) {
+        requestIdleCallback(doHighlight, { timeout: 300 });
+    } else {
+        setTimeout(doHighlight, 50);
     }
 }
 
@@ -289,11 +337,15 @@ function switchToChatMode() {
 }
 function switchToWelcomeMode() {
     inChatMode = false;
+    if (typeof forgetActiveSession === 'function') forgetActiveSession();
     SESSION_ID = 'web-' + Date.now().toString(36);
     setActiveSession(SESSION_ID);
     $(welcomeView).show();
     $(chatView).removeClass('active');
     welcomeInput.focus();
+    // 新对话时禁用“历史消息”按钮（循环任务按钮保持可用）
+    $('#welcomeHistoryBtn').prop('disabled', true);
+    $('#welcomeLoopBtn').prop('disabled', false);
     // Reset model UI to new session
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) renderModelUI();
 }
@@ -459,6 +511,95 @@ initVoice();
         btn.addClass('collapsed');
         btn.html('›');
         btn.prop('title', '展开侧边栏');
+    }
+})();
+
+/* ===== Sidebar Resize ===== */
+(function() {
+    var $sidebar = $('.sidebar');
+    var $handle = $('#sidebarResizeHandle');
+    var $toggleBtn = $('#sidebarToggleBtn');
+
+    if (!$handle.length || !$sidebar.length) return;
+
+    var SIDEBAR_MIN_WIDTH = 180;
+    var SIDEBAR_MAX_WIDTH = 600;
+
+    function syncTogglePosition() {
+        if (!$toggleBtn.length) return;
+        if ($sidebar.hasClass('collapsed')) {
+            $toggleBtn.css('left', '4px');
+        } else {
+            var w = $sidebar[0].offsetWidth;
+            $toggleBtn.css('left', (w - 14) + 'px');
+        }
+    }
+
+    // Init resize dragging
+    (function initResize() {
+        var isDragging = false;
+        var startX = 0;
+        var startWidth = 0;
+
+        $handle.on('mousedown', function(e) {
+            if ($sidebar.hasClass('collapsed')) return;
+            isDragging = true;
+            startX = e.clientX;
+            startWidth = $sidebar[0].offsetWidth;
+            $handle.addClass('dragging');
+            $(document.body).css({ cursor: 'col-resize', userSelect: 'none' });
+            e.preventDefault();
+        });
+
+        $(document).on('mousemove', function(e) {
+            if (!isDragging) return;
+            var dx = e.clientX - startX;
+            var newWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, startWidth + dx));
+            $sidebar.css('width', newWidth + 'px');
+            localStorage.setItem('sidebar-width', newWidth);
+            syncTogglePosition();
+        });
+
+        $(document).on('mouseup', function() {
+            if (!isDragging) return;
+            isDragging = false;
+            $handle.removeClass('dragging');
+            $(document.body).css({ cursor: '', userSelect: '' });
+        });
+    })();
+
+    // Restore saved width
+    (function restoreWidth() {
+        var savedWidth = localStorage.getItem('sidebar-width');
+        if (savedWidth) {
+            var w = parseInt(savedWidth, 10);
+            if (w >= SIDEBAR_MIN_WIDTH && w <= SIDEBAR_MAX_WIDTH) {
+                $sidebar.css('width', w + 'px');
+            }
+        }
+        syncTogglePosition();
+    })();
+
+    // Patch toggle button: replace original click handler to include position sync
+    if ($toggleBtn.length) {
+        $toggleBtn.off('click').on('click', function() {
+            $sidebar.toggleClass('collapsed');
+            var collapsed = $sidebar.hasClass('collapsed');
+            $toggleBtn.toggleClass('collapsed', collapsed);
+            $toggleBtn.html(collapsed ? '\u203A' : '\u2039');
+            $toggleBtn.prop('title', collapsed ? '展开侧边栏' : '收起侧边栏');
+            localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+            syncTogglePosition();
+        });
+
+        // Re-apply collapsed state with sync
+        if (localStorage.getItem('sidebar-collapsed') === '1') {
+            $sidebar.addClass('collapsed');
+            $toggleBtn.addClass('collapsed');
+            $toggleBtn.html('\u203A');
+            $toggleBtn.prop('title', '展开侧边栏');
+            syncTogglePosition();
+        }
     }
 })();
 

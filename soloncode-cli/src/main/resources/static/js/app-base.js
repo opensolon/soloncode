@@ -35,6 +35,8 @@ function SessionState(sessionId) {
     this.thinkingBodyWrapEl = null;
     this.thinkingBuffer = '';
     this.pendingToolCard = null;
+    this.pendingToolStarted = false;
+    this.approvedToolCard = null;
     this.thinkingEl = null;
     this.inlineThinkingEl = null;
     this.silenceTimer = null;
@@ -65,6 +67,10 @@ var userScrolledUp = false;
 
 var onFinishStream = null;
 
+/* 控制台打印简化开关（与后端 cliPrintSimplified 对齐）。
+   true：流式工具卡默认收起；false：默认展开。启动时由 /web/settings/general 回填。 */
+var cliPrintSimplified = true;
+
 /* ===== Session Helpers ===== */
 function getOrCreateSession(sessionId) {
     if (!sessionMap[sessionId]) {
@@ -86,6 +92,7 @@ function setActiveSession(sessionId) {
     if (isStreaming) setBtnStopMode();
     else setBtnSendMode();
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) refreshSessionModel(sessionId);
+    if (typeof resetContextIndicator === 'function') resetContextIndicator();
 }
 
 function deactivateSession() {
@@ -116,6 +123,7 @@ function scrollToBottom(force) {
 
 function resetStreamState(sess) {
     sess.currentBubbleEl = null;
+    sess.pendingToolStarted = false;
     sess.reasonBuffer = '';
     sess.thinkingBlockEl = null;
     sess.thinkingBodyMdEl = null;
@@ -161,7 +169,15 @@ function formatMsgTime(ts) {
     if (isNaN(d.getTime())) return '';
     var hh = String(d.getHours()).padStart(2, '0');
     var mm = String(d.getMinutes()).padStart(2, '0');
-    return hh + ':' + mm;
+    var now = new Date();
+    var sameDay = d.getFullYear() === now.getFullYear()
+        && d.getMonth() === now.getMonth()
+        && d.getDate() === now.getDate();
+    if (sameDay) return hh + ':' + mm;
+    var yyyy = d.getFullYear();
+    var MM = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    return yyyy + '-' + MM + '-' + dd + ' ' + hh + ':' + mm;
 }
 
 function getInputText() {

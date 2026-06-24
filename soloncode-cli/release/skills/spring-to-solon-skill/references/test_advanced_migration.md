@@ -1,6 +1,6 @@
 # 测试进阶迁移参考
 
-> Spring Boot Test → Solon Test 迁移指南（目标版本：Solon 3.10.x）
+> Spring Boot Test → Solon Test 迁移指南（目标版本：Solon 4.0.x）
 
 ## 7. 切面测试迁移
 

@@ -1,7 +1,138 @@
 
-### v2026.6.4
+### v2026.6.21
+
+* 修复 soloncode web 设置/默认模型后没有马上生效的问题
+* 添加 soloncode web 设置/供应商管理面板
+* 添加 soloncode anthropic 上下文缓存显示支持
+* 优化 soloncode web 对话切换性能
+* 优化 soloncode web 关闭浏览器密码填充提示
+* 细节优化
+
+### v2026.6.20
+
+* 添加 soloncode web 设置 mcp 导入功能
+* 添加 soloncode web 设置 供应商功能
+* 优化 soloncode web 右侧面板的 emoji 图标改为 svg 图标（跨系统更稳定）
+* 优化 soloncode edit 工具匹配算法（同行号可以乎略缩进）
+* 细节优化
+
+### v2026.6.18
+
+* 添加 soloncode web 设置/通用/子代理开发
+* 添加 soloncode web 设置/工具权限
+* 添加 soloncode 命令 `/rerun`
+* 优化 soloncode 心智记忆处理
+* 优化 soloncode 任务闭合管理
+* 优化 soloncode 代码环境版本识别
+* 调整 soloncode `/resume` 命令更名为 `/continue`
+* 修复 soloncode `/loop goal` 可能重复执行、不能停止等问题
+* 细节优化
+
+
+### v2026.6.17
+
+* 修复 soloncode 安装时，会清掉 `~/.soloncode/skills/` 技能的问题
+* 添加 soloncode `/resume` 命令实现，可恢复任何任务（手动中断，异常结束）
+* 添加 soloncode web 对话的最后一条消息：重新运行、继续运行按钮
+* 细节优化
+
+### v2026.6.16
+
+* 添加 soloncode bash 输出大小限制机制
+* 添加 soloncode web 界面效果设置块（支持工具显示展开或收起）
+* 添加 soloncode loop 立好执行机制
+* 优化 soloncode 上下文压缩算法
+* 优化 soloncode edit 匹配算法
+* 优化 soloncode web tool 调用显示效果
+* 优化 soloncode web edit（git diff） 和 bash（terminal） 显示效果
+* 优化 soloncode web 消息列表的复制按钮效果
+* 调整 soloncode loop 机制
+* 细节优化
+
+### v2026.6.15
+
+* 添加 soloncode web edit 工具（gitdiff 显示）
+* 添加 soloncode web write 工具语法亮显显示
+* 调整 soloncode loop 任务列表与编辑简化
+* 修复 soloncode web 左侧面板 todo 进度（非当前对话）不更新的问题
+* 细节优化
+
+### v2026.6.14
+
+* 调整 soloncode 向去 config.yml 过度（当产生 setting.json 后移除 config.yml）
+* 修复 soloncode web 新对话发送 command 对话记录没名字的问题
+* 修复 soloncode loop maker/checker 模式下无法停止的问题
+* 细节优化
+
+### v2026.6.13
+
+* 添加 soloncode web 左侧面板拖动大小的功能（同时取消展开与收起的动画）
+* 添加 soloncode loop goal 模式支持
+* 优化 soloncode web loop 管理面板
+* 修复 soloncode 在用户根目录启动时，配置错乱问题
+* 修复 soloncode web 默认模型禁用后，对话列表没有更新的问题
+* 细节优化
+
+### v2026.6.12
+
+* 新增 soloncode Loop Engineering 概念支持
+* 添加 soloncode web loop 管理面板
+* 优化 soloncode web highlight.js 由 cdn 引用，改为本地引用（快多了）
+* 优化 soloncode 启动时文件发现扫描改为异步（快多了）
+* 细节优化
+
+### v2026.6.11
+
+* 修复 soloncode web 发送消息时，格式被清的问题
+* 修复 soloncode web 复制“历史消息”时，格式被清的问题
+* 修复 soloncode web 历史记录选对时，格式被清的问题
+* 细节优化
+
+
+### v2026.6.10
+
+* 添加 soloncode web 任务面板（待办事清单）
+* 添加 soloncode web 上下文使用情况实时展示
+* 添加 soloncode web 大语言模型默认设置
+* 添加 soloncode 消盒模式系统内核级支持
+* 优化 soloncode ConfigTalent 引导词和参数校验
+* 优化 soloncode 上下文压缩算法（增加 tool 计数）
+* 细节优化
+
+
+### v2026.6.9
+
+* 优化 soloncode web json 输出时间段格式
+* 优化 soloncode 沙盒模式（减少误伤）
+* 修复 soloncode web 设置/大模型检测失败的问题（有些模型需要有 user-agent）
+* 修复 soloncode 首次自动添加 npx mcp 后，工具加载失败的问题（超时了）
+* 细节优化
+
+### v2026.6.8
+
+* 新增 soloncode 通过提示词自动添加 config 的支持
+* 优化 soloncode web 设置体验细节
+* 重构 soloncode 沙盒模式
+* 修复 soloncode 因 mcp, openapi 配置错误而无法启动的问题
+* 细节优化
+
+### v2026.6.6
+
+* 添加 soloncode web 文件树 tooltip
+* 优化 soloncode web 设置添加模型时，对话框架模型同步刷新
+* 优化 soloncode web 设置作用域选择框样式
+* 优化 soloncode web 设置 LSP 样式
+* 优化 soloncode web 设置 挂截 样式
+* 优化 soloncode OpenAI Responses 接口兼容性
+* 优化 soloncode 压缩算法
+* 细节优化
+
+### v2026.6.5
 
 * 添加 soloncode web 专门的 trace 显示块
+* 添加 soloncode web lsp 管理能力
+* 添加 soloncode web 更多通用设置
+* 添加 soloncode web 设置 “作用域” 权念（有效结合，全局设置和工作区设置）
 * 优化 soloncode web 代码语法高亮看不清的问题（改成了浅底色）
 * 优化 soloncode web 挂载点编辑逻辑
 * 修复 soloncode web 历史对话里没有代码语法高亮的问题

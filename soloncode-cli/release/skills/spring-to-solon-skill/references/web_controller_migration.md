@@ -1,6 +1,6 @@
 # Controller 与请求上下文迁移参考
 
-> Spring Boot → Solon Web 层 Controller 与请求上下文迁移指南（目标版本：Solon 3.10.x）
+> Spring Boot → Solon Web 层 Controller 与请求上下文迁移指南（目标版本：Solon 4.0.x）
 
 ## 1. Controller 迁移
 

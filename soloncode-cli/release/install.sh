@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================
 #  Solon Code Installer (Linux / macOS)
-#  支持重复安装，保留已有 config.yml
+#  支持重复安装，保留已有 AGENTS.md
 #  兼容 bash, zsh, sh 等多种 shell
 # =============================================
 
@@ -56,7 +56,6 @@ TARGET_SKILLS_DIR="$TARGET_DIR/skills"
 # 源目录
 SOURCE_BIN_DIR="$SOURCE_DIR/bin"
 SOURCE_SKILLS_DIR="$SOURCE_DIR/skills"
-SOURCE_CONFIG="$SOURCE_DIR/config.yml"
 SOURCE_AGENTS="$SOURCE_DIR/AGENTS.md"
 
 # =============================================
@@ -68,36 +67,20 @@ if [ ! -d "$SOURCE_BIN_DIR" ]; then
 fi
 
 # =============================================
-# [1/5] 检查并备份已有的 config.yml 和 AGENTS.md，并迁移旧版本文件
+# [1/5] 检查并备份已有的 AGENTS.md，并迁移旧版本文件
 # =============================================
 echo "[1/5] Checking for existing configuration..."
-CONFIG_BACKUP=""
 AGENTS_BACKUP=""
-TARGET_CONFIG="$TARGET_DIR/config.yml"
 TARGET_AGENTS="$TARGET_DIR/AGENTS.md"
-OLD_TARGET_CONFIG="$TARGET_BIN_DIR/config.yml"
 OLD_TARGET_AGENTS="$TARGET_BIN_DIR/AGENTS.md"
 
-# 迁移旧版本的配置文件（从 bin/ 目录移动到根目录）
-if [ -f "$OLD_TARGET_CONFIG" ] && [ ! -f "$TARGET_CONFIG" ]; then
-    mv "$OLD_TARGET_CONFIG" "$TARGET_CONFIG"
-    echo "      Migrated config.yml from bin/ to root directory"
-fi
-
+# 迁移旧版本的 AGENTS.md（从 bin/ 目录移动到根目录）
 if [ -f "$OLD_TARGET_AGENTS" ] && [ ! -f "$TARGET_AGENTS" ]; then
     mv "$OLD_TARGET_AGENTS" "$TARGET_AGENTS"
     echo "      Migrated AGENTS.md from bin/ to root directory"
 fi
 
-# 备份现有的配置文件
-if [ -f "$TARGET_CONFIG" ]; then
-    CONFIG_BACKUP=$(mktemp)
-    cp "$TARGET_CONFIG" "$CONFIG_BACKUP"
-    echo "      Found existing config.yml (will be preserved)"
-else
-    echo "      No existing config.yml found"
-fi
-
+# 备份现有的 AGENTS.md
 if [ -f "$TARGET_AGENTS" ]; then
     AGENTS_BACKUP=$(mktemp)
     cp "$TARGET_AGENTS" "$AGENTS_BACKUP"
@@ -128,40 +111,36 @@ echo "[3/5] Copying files..."
 cp -R "$SOURCE_BIN_DIR/"* "$TARGET_BIN_DIR/" 2>/dev/null || true
 echo "      Copied bin/ directory"
 
-# 复制 config.yml 和 AGENTS.md（从根目录）
-if [ -f "$SOURCE_CONFIG" ]; then
-    cp "$SOURCE_CONFIG" "$TARGET_CONFIG" 2>/dev/null || true
-    echo "      Copied config.yml"
-fi
-
+# 复制 AGENTS.md（从根目录）
 if [ -f "$SOURCE_AGENTS" ]; then
     cp "$SOURCE_AGENTS" "$TARGET_AGENTS" 2>/dev/null || true
     echo "      Copied AGENTS.md"
 fi
 
-# 复制 skills 目录（覆盖更新）
+# 复制 skills 目录（仅同名目录替换，保留用户自行安装的 skill）
 if [ -d "$SOURCE_SKILLS_DIR" ]; then
-    # 如果目标 skills 目录存在，先删除再复制
-    if [ -d "$TARGET_SKILLS_DIR" ]; then
-        rm -rf "$TARGET_SKILLS_DIR"
-    fi
-    cp -R "$SOURCE_SKILLS_DIR" "$TARGET_DIR/" 2>/dev/null || true
-    echo "      Copied skills/ directory"
+    mkdir -p "$TARGET_SKILLS_DIR"
+    # 仅遍历安装包自带的 skill 子目录，逐个替换同名目录
+    for SKILL_PATH in "$SOURCE_SKILLS_DIR"/*/; do
+        # 防止没有匹配项时 glob 原样返回
+        [ -d "$SKILL_PATH" ] || continue
+        SKILL_NAME=$(basename "$SKILL_PATH")
+        # 删除目标中的同名 skill 目录后再复制（不影响其他用户 skill）
+        if [ -d "$TARGET_SKILLS_DIR/$SKILL_NAME" ]; then
+            rm -rf "$TARGET_SKILLS_DIR/$SKILL_NAME"
+        fi
+        cp -R "$SKILL_PATH" "$TARGET_SKILLS_DIR/$SKILL_NAME" 2>/dev/null || true
+        echo "      Updated skill: $SKILL_NAME"
+    done
 else
     echo "      No skills/ directory to copy"
 fi
 
 # =============================================
-# [4/5] 恢复 config.yml 和 AGENTS.md（如果之前存在）
+# [4/5] 恢复 AGENTS.md（如果之前存在）
 # =============================================
 echo ""
 echo "[4/5] Finalizing installation..."
-
-if [ -n "$CONFIG_BACKUP" ]; then
-    cp "$CONFIG_BACKUP" "$TARGET_CONFIG"
-    rm -f "$CONFIG_BACKUP"
-    echo "      Preserved existing config.yml"
-fi
 
 if [ -n "$AGENTS_BACKUP" ]; then
     cp "$AGENTS_BACKUP" "$TARGET_AGENTS"
@@ -169,11 +148,7 @@ if [ -n "$AGENTS_BACKUP" ]; then
     echo "      Preserved existing AGENTS.md"
 fi
 
-# 清理旧位置的配置文件（如果还存在）
-if [ -f "$OLD_TARGET_CONFIG" ]; then
-    rm -f "$OLD_TARGET_CONFIG"
-fi
-
+# 清理旧位置的 AGENTS.md（如果还存在）
 if [ -f "$OLD_TARGET_AGENTS" ]; then
     rm -f "$OLD_TARGET_AGENTS"
 fi
@@ -353,13 +328,13 @@ else
     echo -e "  ${CYAN}Usage:${NC}"
     echo "    1. Run: source ~/.${USER_SHELL}rc"
     echo "    2. Or restart your terminal"
-    echo "    3. Then run: 'soloncode' or 'soloncode web 0'"
+    echo "    3. Then run: 'soloncode cli' or 'soloncode web 0'"
 fi
 
 echo ""
 echo -e "  ${CYAN}Directory structure:${NC}"
 echo "    ~/.soloncode/"
-echo "    ├── config.yml      (configuration, preserved if exists)"
+
 echo "    ├── AGENTS.md       (agents config, preserved if exists)"
 echo "    ├── bin/            (executables)"
 echo "    │   ├── soloncode-cli.jar"

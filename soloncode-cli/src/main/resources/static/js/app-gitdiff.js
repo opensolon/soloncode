@@ -18,6 +18,7 @@
     var gitCommitMsg = document.getElementById('gitCommitMsg');
     var gitCommitBar = document.getElementById('gitCommitBar');
     var gitSelectAll = document.getElementById('gitSelectAll');
+    var gitRefreshBtn = document.getElementById('gitRefreshBtn');
 
     // Diff Viewer / File Viewer 元素（内联在 main-area 内）
     var gitDiffViewer = document.getElementById('gitDiffViewer');
@@ -34,6 +35,13 @@
     var isInitializing = false;
     var viewerMode = null; // 'diff' | 'file' | null
 
+    // ---- 刷新按钮 ----
+    if (gitRefreshBtn) {
+        gitRefreshBtn.addEventListener('click', function() {
+            loadGitStatus();
+        });
+    }
+
     // ---- Tab 切换 ----
     tabs.forEach(function(tab) {
         tab.addEventListener('click', function() {
@@ -48,6 +56,8 @@
 
             // 切到 Git tab 时刷新
             if (targetTab === 'gitdiff') loadGitStatus();
+            // 切到任务 tab 时刷新
+            if (targetTab === 'tasks' && window.loadTodos) window.loadTodos();
             // 持久化
             localStorage.setItem('filer-active-tab', targetTab);
         });
@@ -55,13 +65,18 @@
 
     // 恢复 Tab 状态
     var savedTab = localStorage.getItem('filer-active-tab');
-    if (savedTab === 'gitdiff') {
-        tabs.forEach(function(t) { t.classList.remove('active'); });
-        tabContents.forEach(function(tc) { tc.classList.remove('active'); });
-        var gitTab = document.querySelector('.filer-tab[data-tab="gitdiff"]');
-        var gitContent = document.getElementById('tabContentGitdiff');
-        if (gitTab) gitTab.classList.add('active');
-        if (gitContent) gitContent.classList.add('active');
+    if (savedTab && savedTab !== 'files') {
+        var savedContentId = 'tabContent' + savedTab.charAt(0).toUpperCase() + savedTab.slice(1);
+        var savedTabEl = document.querySelector('.filer-tab[data-tab="' + savedTab + '"]');
+        var savedContentEl = document.getElementById(savedContentId);
+        if (savedTabEl && savedContentEl) {
+            tabs.forEach(function(t) { t.classList.remove('active'); });
+            tabContents.forEach(function(tc) { tc.classList.remove('active'); });
+            savedTabEl.classList.add('active');
+            savedContentEl.classList.add('active');
+            if (savedTab === 'gitdiff') loadGitStatus();
+            if (savedTab === 'tasks' && window.loadTodos) window.loadTodos();
+        }
     }
 
     // ---- 显示/隐藏状态区 ----
@@ -428,7 +443,7 @@
             // 目录：显示提示信息，不调用 diff 接口
             if (gitViewerContent) {
                 gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
-                    + '<div style="margin-bottom:8px">&#x1F4C1; ' + escapeHtml(path) + '</div>'
+                    + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(path) + '</div>'
                     + '<div>这是一个目录，暂无可查看的文本差异。</div>'
                     + '</div>';
             }
@@ -840,7 +855,9 @@
     // 每60秒兜底刷新
     setInterval(loadGitStatus, 60000);
 
-    // 暴露全局（供 app-filer.js 调用）
+    // 暴露全局（供 app-filer.js / app-message.js 调用）
     window.loadGitStatus = loadGitStatus;
     window.openFileViewer = openFileViewer;
+    window.closeDiffViewer = closeDiffViewer;
+    window.guessLang = guessLang;
 })();
