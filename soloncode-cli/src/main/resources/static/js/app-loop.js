@@ -516,13 +516,13 @@
         html += '<div class="loop-form-group" style="margin-top:12px;">';
         html += '<div class="loop-form-inline">';
         html += '<div class="loop-form-inline-item" style="flex:1;">';
-        html += '<label style="font-size:11px;color:#888;">Token 预算</label>';
+        html += '<label>Token 预算</label>';
         html += '<input type="text" inputmode="numeric" class="loop-input" id="loopFormMaxTokens" placeholder="留空不限制（如 32k、1m）" list="loopMaxTokensList" autocomplete="off"/>' +
             '<datalist id="loopMaxTokensList">' +
             '<option value="512k"><option value="5m"><option value="10m">' +
             '</datalist></div>';
         html += '<div class="loop-form-inline-item" style="flex:1;margin-left:12px;">';
-        html += '<label style="font-size:11px;color:#888;">时间预算</label>';
+        html += '<label>时间预算</label>';
         html += '<input type="text" class="loop-input" id="loopFormMaxDuration" placeholder="留空不限制（如 30m、2h）"/>';
         html += '</div>';
         html += '</div>';  // 结束 loop-form-inline
