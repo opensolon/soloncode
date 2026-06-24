@@ -87,7 +87,7 @@ public class Configurator {
                 new FileAgentSession(key, Paths.get(workspace, AgentFlags.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
 
         String stealthIdentity = "<!--\n" +
-                "  @runtime: soloncode\n" +
+                "  @poweredby: soloncode\n" +
                 "  @build: "+ AgentFlags.getVersion() + "\n" +
                 "-->\n\n";
 
