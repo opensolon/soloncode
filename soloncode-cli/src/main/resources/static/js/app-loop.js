@@ -544,7 +544,6 @@
         // 操作按钮（在 loop-form 外部，固定在面板底部）
         html += '<div class="loop-form-actions">';
         html += '<button class="loop-btn-secondary" id="loopFormCancelBtn">取消</button>';
-        html += '<button class="loop-btn-secondary" id="loopFormTriggerBtn" style="display:' + (loopEditId ? 'inline-block' : 'none') + '">测试运行</button>';
         html += '<button class="loop-btn-primary" id="loopFormSaveBtn">保存</button>';
         html += '</div>';
 
@@ -791,16 +790,7 @@
             }
         });
 
-        // 测试运行
-        $panel.find('#loopFormTriggerBtn').on('click', function() {
-            if (loopEditId) {
-                loopApi('trigger', { taskId: loopEditId }, function() {
-                    showToast('已触发执行', 'success');
-                    if (typeof switchToChatMode === 'function') switchToChatMode();
-                    hideLoopPanel();
-                });
-            }
-        });
+
     }
 
     // ========== 公开 API ==========
