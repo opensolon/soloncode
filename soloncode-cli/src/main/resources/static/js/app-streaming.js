@@ -764,8 +764,9 @@ function showFeishuModal() {
             dataType: 'json'
         }).done(function(resp) {
             if (resp.code !== 200 || !resp.data) {
-                $qrWrap.html('<span style="font-size:13px;color:#666">' + escapeHtml(resp.message || '获取二维码失败') + '</span>');
-                $qrStatus.text('获取二维码失败').addClass('error');
+                var errMsg = resp.message || '获取二维码失败';
+                $qrWrap.html('<span style="font-size:13px;color:#666">' + escapeHtml(errMsg) + '</span>');
+                $qrStatus.text(errMsg).addClass('error');
                 $refreshBtn.show();
                 return;
             }
@@ -891,9 +892,15 @@ function showDingTalkModal() {
     if (dingtalkModalOverlay) return;
 
     dingtalkModalOverlay = $('<div>').addClass('im-bind-modal-overlay').html(
-        '<div class="im-bind-modal">'
+        '<div class="im-bind-modal" style="min-width:360px">'
         + '<div class="im-bind-modal-title" style="color:#0089FF">钉钉绑定</div>'
-        + '<div class="im-bind-modal-subtitle">输入钉钉机器人应用的 AppKey 和 AppSecret，连接后请在钉钉上发消息给机器人完成自动绑定</div>'
+        + '<div class="im-bind-tabs">'
+        + '  <button class="im-bind-tab active" data-tab="qrcode">扫码绑定</button>'
+        + '  <button class="im-bind-tab" data-tab="credential">手动输入</button>'
+        + '</div>'
+        /* === 手动输入 Tab === */
+        + '<div class="im-bind-tab-content" id="dingtalkTabCredential" style="display:none">'
+        + '<div class="im-bind-modal-subtitle">输入钉钉应用的 AppKey 和 AppSecret，连接后请在钉钉上发消息给机器人完成自动绑定</div>'
         + '<div class="im-bind-input-group">'
         + '  <label class="im-bind-input-label">AppKey（Client ID）</label>'
         + '  <input class="im-bind-input" id="dingtalkAppKeyInput" placeholder="钉钉开放平台 → 应用 → 凭据 → AppKey" />'
@@ -904,19 +911,42 @@ function showDingTalkModal() {
         + '</div>'
         + '<div class="im-bind-status" id="dingtalkBindStatus">&nbsp;</div>'
         + '<button class="im-bind-confirm-btn dingtalk" id="dingtalkBindConfirmBtn">连接</button>'
-        + '<button class="im-bind-modal-close" id="dingtalkModalClose">取消</button>'
         + '<div class="im-bind-hint">提示：请在钉钉开放平台（<a href="https://open.dingtalk.com/" target="_blank">open.dingtalk.com</a>）创建企业内部应用，开启机器人能力，消息接收模式选择 Stream，然后复制 AppKey 和 AppSecret 到这里。</div>'
+        + '</div>'
+        /* === 扫码绑定 Tab === */
+        + '<div class="im-bind-tab-content" id="dingtalkTabQrcode">'
+        + '<div class="im-bind-modal-subtitle">使用钉钉扫描二维码，授权后自动完成绑定</div>'
+        + '<div class="feishu-qr-wrap" id="dingtalkQrWrap"><span class="feishu-qr-loading">正在获取二维码...</span></div>'
+        + '<div class="im-bind-status" id="dingtalkQrStatus">&nbsp;</div>'
+        + '<button class="im-bind-confirm-btn dingtalk" id="dingtalkQrRefreshBtn" style="display:none">刷新二维码</button>'
+        + '<div class="im-bind-hint">绑定后即可在钉钉上与 SolonCode 对话</div>'
+        + '</div>'
+        + '<button class="im-bind-modal-close" id="dingtalkModalClose">取消</button>'
         + '</div>'
     );
     $('body').append(dingtalkModalOverlay);
 
-    var $modalContent = dingtalkModalOverlay.find('.im-bind-modal');
+    // Tab切换
+    dingtalkModalOverlay.find('.im-bind-tab').on('click', function() {
+        var tab = $(this).data('tab');
+        dingtalkModalOverlay.find('.im-bind-tab').removeClass('active');
+        $(this).addClass('active');
+        dingtalkModalOverlay.find('.im-bind-tab-content').hide();
+        $('#dingtalkTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).show();
+        if (tab === 'qrcode') {
+            startDingtalkQrBinding();
+        }
+    });
 
     $('#dingtalkModalClose').on('click', closeDingTalkModal);
     dingtalkModalOverlay.on('click', function(e) {
         if ($(e.target).is(dingtalkModalOverlay)) closeDingTalkModal();
     });
 
+    // 默认扫码 tab，自动获取二维码
+    startDingtalkQrBinding();
+
+    /* ---- 手动输入 Tab 逻辑 ---- */
     var $appKeyInput = $('#dingtalkAppKeyInput');
     var $appSecretInput = $('#dingtalkAppSecretInput');
     var $statusEl = $('#dingtalkBindStatus');
@@ -1006,6 +1036,98 @@ function showDingTalkModal() {
             e.preventDefault();
             $confirmBtn.click();
         }
+    });
+
+    /* ---- 扫码绑定 Tab 逻辑 ---- */
+    function startDingtalkQrBinding() {
+        var $qrWrap = $('#dingtalkQrWrap');
+        var $qrStatus = $('#dingtalkQrStatus');
+        var $refreshBtn = $('#dingtalkQrRefreshBtn');
+
+        // 防止已在轮询中再次触发
+        if ($qrWrap.find('canvas').length > 0) return;
+
+        $qrStatus.text('').removeClass('error scanned');
+        $refreshBtn.hide();
+
+        $.ajax({
+            url: '/web/chat/dingtalk/qrcode?sessionId=' + encodeURIComponent(activeSessionId),
+            method: 'POST',
+            dataType: 'json'
+        }).done(function(resp) {
+            if (resp.code !== 200 || !resp.data) {
+                var errMsg = resp.message || '获取二维码失败';
+                $qrWrap.html('<span style="font-size:13px;color:#666">' + escapeHtml(errMsg) + '</span>');
+                $qrStatus.text(errMsg).addClass('error');
+                $refreshBtn.show();
+                return;
+            }
+            var qrUrl = resp.data.qrUrl;
+            $qrWrap.html('');
+            if (qrUrl) {
+                try {
+                    new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
+                    $qrStatus.text('请使用钉钉 App 扫码').removeClass('error scanned');
+                } catch(e) {
+                    $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                }
+            }
+            // 开始轮询扫码状态
+            startDingtalkQrPoll();
+        }).fail(function(jqXhr) {
+            $qrWrap.html('<span style="font-size:13px;color:#666">网络请求失败</span>');
+            $qrStatus.text('网络请求失败').addClass('error');
+            $refreshBtn.show();
+        });
+    }
+
+    function startDingtalkQrPoll() {
+        if (dingtalkPollTimer) clearInterval(dingtalkPollTimer);
+        var dotCount = 0;
+        dingtalkPollTimer = setInterval(function() {
+            $.get('/web/chat/dingtalk/qrcode/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+                try {
+                    var data = resp.data || {};
+                    var $qrStatus = $('#dingtalkQrStatus');
+                    if (!$qrStatus.length) return;
+
+                    var status = data.status;
+                    if (status === 'waiting') {
+                        dotCount = (dotCount + 1) % 4;
+                        var dots = '.'.repeat(dotCount);
+                        $qrStatus.text('等待扫码' + dots).removeClass('error scanned');
+                    } else if (status === 'success') {
+                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
+                        clearInterval(dingtalkPollTimer);
+                        dingtalkPollTimer = null;
+                        setTimeout(function() {
+                            closeDingTalkModal();
+                            updateDingTalkUI();
+                            switchToChatMode();
+                        }, 1200);
+                    } else if (status === 'failed') {
+                        $qrStatus.text(data.message || '绑定失败').addClass('error');
+                        clearInterval(dingtalkPollTimer);
+                        dingtalkPollTimer = null;
+                        $('#dingtalkQrRefreshBtn').show();
+                    } else if (status === 'error') {
+                        $qrStatus.text(data.message || '查询状态失败').addClass('error');
+                        clearInterval(dingtalkPollTimer);
+                        dingtalkPollTimer = null;
+                        $('#dingtalkQrRefreshBtn').show();
+                    }
+                } catch(e) {}
+            }, 'json');
+        }, 2000);
+    }
+
+    // 刷新二维码
+    $('#dingtalkQrRefreshBtn').on('click', function() {
+        if (dingtalkPollTimer) {
+            clearInterval(dingtalkPollTimer);
+            dingtalkPollTimer = null;
+        }
+        startDingtalkQrBinding();
     });
 }
 
