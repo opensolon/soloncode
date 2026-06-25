@@ -59,6 +59,10 @@ export function TitleBar({
       id: 'new-folder',
       label: '新建文件夹',
     },
+    {
+      id: 'new-project',
+      label: '新建项目',
+    },
     { id: 'divider1', label: '', divider: true },
     {
       id: 'open-file',

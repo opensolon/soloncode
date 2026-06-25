@@ -154,6 +154,19 @@ export function ExplorerPanel({
     }
   }, []);
 
+  useEffect(() => {
+    if (!activeProjectPath || !projects.some(project => project.id === activeProjectPath)) return;
+    setExpandedProjects(prev => {
+      if (prev.has(activeProjectPath)) return prev;
+      const next = new Set(prev);
+      next.add(activeProjectPath);
+      return next;
+    });
+    if (!projectTrees.has(activeProjectPath) && !loadingProjects.has(activeProjectPath)) {
+      loadProjectTree(activeProjectPath);
+    }
+  }, [activeProjectPath, projects, projectTrees, loadingProjects, loadProjectTree]);
+
   function convertChildren(children: { name: string; isDir: boolean; path: string; children?: any[] }[]): FileNode[] {
     return children.map(f => ({
       name: f.name,

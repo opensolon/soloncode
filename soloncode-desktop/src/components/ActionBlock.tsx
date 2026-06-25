@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -12,6 +12,7 @@ interface ActionBlockProps {
   args?: Record<string, unknown>;
   theme?: Theme;
   onFileClick?: (filePath: string) => void;
+  autoExpanded?: boolean;
 }
 
 function capitalize(s: string): string {
@@ -71,6 +72,45 @@ function extractDiffStats(toolName?: string, args?: Record<string, unknown>): { 
   return null;
 }
 
+interface ReadFileResult {
+  filePath: string;
+  lines?: string;
+  size?: string;
+  content: string;
+  isMarkdown: boolean;
+}
+
+function parseReadFileResult(text: string, toolName?: string): ReadFileResult | null {
+  if (!text || toolName?.toLowerCase() !== 'read') return null;
+
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const first = lines[0]?.trim();
+  const match = first?.match(/^\[File:\s+(.+?)(?:\s+\((.+)\))?\]$/);
+  if (!match) return null;
+
+  const filePath = match[1].trim();
+  const attrs = match[2] || '';
+  const lineMatch = attrs.match(/Lines:\s*([^,]+)/i);
+  const sizeMatch = attrs.match(/Size:\s*([^,]+)/i);
+  let content = lines.slice(1).join('\n').replace(/^\n+/, '');
+
+  const isMarkdown = /\.(md|markdown|mdx)$/i.test(filePath);
+  if (isMarkdown) {
+    content = content
+      .split('\n')
+      .map(line => line.replace(/^\s*\d+\s*\|\s?/, ''))
+      .join('\n');
+  }
+
+  return {
+    filePath,
+    lines: lineMatch?.[1]?.trim(),
+    size: sizeMatch?.[1]?.trim(),
+    content,
+    isMarkdown,
+  };
+}
+
 interface DirEntry {
   type: 'dir' | 'file';
   name: string;
@@ -115,8 +155,12 @@ function DirectoryListing({ entries, onFileClick }: { entries: DirEntry[]; onFil
   );
 }
 
-export function ActionBlock({ text, toolName, args, theme, onFileClick }: ActionBlockProps) {
+export function ActionBlock({ text, toolName, args, theme, onFileClick, autoExpanded = false }: ActionBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    setIsExpanded(autoExpanded);
+  }, [autoExpanded]);
 
   const name = capitalize(toolName || 'Tool');
   const filePath = extractFileArg(args);
@@ -124,27 +168,32 @@ export function ActionBlock({ text, toolName, args, theme, onFileClick }: Action
   const cmd = extractCommand(args);
   const dirEntries = parseDirListing(text || '');
   const diffStats = extractDiffStats(toolName, args);
+  const readFileResult = parseReadFileResult(text || '', toolName);
+  const displayText = readFileResult?.content || text || '鎵ц瀹屾垚';
+  const displayFilePath = readFileResult?.filePath || filePath;
+  const displayLineInfo = readFileResult?.lines || lineInfo;
 
   return (
     <div className="action-block">
       <div className="action-block-header" onClick={() => setIsExpanded(!isExpanded)}>
         <span className="action-block-tool">{name}</span>
-        {filePath && (
+        {displayFilePath && (
           <span
             className="action-block-file"
-            onClick={e => { e.stopPropagation(); onFileClick?.(filePath); }}
+            onClick={e => { e.stopPropagation(); onFileClick?.(displayFilePath); }}
           >
-            {toRelativePath(filePath)}
+            {toRelativePath(displayFilePath)}
           </span>
         )}
-        {lineInfo && <span className="action-block-lines">{lineInfo}</span>}
+        {displayLineInfo && <span className="action-block-lines">{displayLineInfo}</span>}
+        {readFileResult?.size && <span className="action-block-size">{readFileResult.size}</span>}
         {diffStats && (
           <span className="action-block-diff">
             {diffStats.added > 0 && <span className="diff-added">+{diffStats.added}</span>}
             {diffStats.removed > 0 && <span className="diff-removed">-{diffStats.removed}</span>}
           </span>
         )}
-        {!filePath && cmd && <span className="action-block-cmd">{(cmd as string).length > 50 ? (cmd as string).slice(0, 50) + '...' : cmd}</span>}
+        {!displayFilePath && cmd && <span className="action-block-cmd">{(cmd as string).length > 50 ? (cmd as string).slice(0, 50) + '...' : cmd}</span>}
         <span className={`action-block-arrow ${isExpanded ? 'expanded' : ''}`}>▾</span>
       </div>
       {isExpanded && (
@@ -174,7 +223,7 @@ export function ActionBlock({ text, toolName, args, theme, onFileClick }: Action
                 }
               }}
             >
-              {text || '执行完成'}
+              {displayText}
             </ReactMarkdown>
           )}
         </div>

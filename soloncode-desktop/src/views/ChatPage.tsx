@@ -73,6 +73,18 @@ export function ChatPage() {
       <ChatView
         currentConversation={currentConversation}
         plugins={plugins}
+        sessions={conversations.map(conv => ({
+          id: conv.id.toString(),
+          title: conv.title,
+          timestamp: conv.timestamp,
+          messageCount: 0,
+          isPermanent: conv.isPermanent,
+          workspacePath: conv.workspacePath,
+        }))}
+        onSelectSession={(id) => {
+          const next = conversations.find(conv => conv.id.toString() === id);
+          if (next) selectConversation(next);
+        }}
       />
     </div>
   );

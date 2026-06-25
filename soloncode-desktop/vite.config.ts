@@ -52,11 +52,36 @@ export default defineConfig(async () => ({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'monaco-editor': ['@monaco-editor/react'],
-          'xterm': ['@xterm/xterm', '@xterm/addon-fit'],
-          'syntax-highlighter': ['react-syntax-highlighter', 'react-markdown', 'remark-breaks'],
-          'vendor-react': ['react', 'react-dom'],
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, '/');
+          if (normalized.includes('/node_modules/@monaco-editor/') || normalized.includes('/node_modules/monaco-editor/')) {
+            return 'monaco-editor';
+          }
+          if (normalized.includes('/node_modules/@xterm/')) {
+            return 'xterm';
+          }
+          if (
+            normalized.includes('/node_modules/react-syntax-highlighter/') ||
+            normalized.includes('/node_modules/refractor/') ||
+            normalized.includes('/node_modules/prismjs/')
+          ) {
+            return 'syntax-highlighter';
+          }
+          if (
+            normalized.includes('/node_modules/react-markdown/') ||
+            normalized.includes('/node_modules/remark-') ||
+            normalized.includes('/node_modules/rehype-') ||
+            normalized.includes('/node_modules/mdast-') ||
+            normalized.includes('/node_modules/hast-') ||
+            normalized.includes('/node_modules/micromark') ||
+            normalized.includes('/node_modules/unified/') ||
+            normalized.includes('/node_modules/unist-')
+          ) {
+            return 'markdown';
+          }
+          if (normalized.includes('/node_modules/react/') || normalized.includes('/node_modules/react-dom/')) {
+            return 'vendor-react';
+          }
         },
       },
     },

@@ -19,12 +19,14 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
+import org.noear.solon.ai.agent.react.ReActOptionsAmend;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.task.ActionChunk;
 import org.noear.solon.ai.agent.react.task.ObservationChunk;
 import org.noear.solon.ai.agent.react.task.ReasonChunk;
 import org.noear.solon.ai.agent.react.task.ThoughtChunk;
 import org.noear.solon.ai.chat.ChatConfig;
+import org.noear.solon.ai.chat.ChatConfigReadonly;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
@@ -43,6 +45,7 @@ import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.codecli.command.builtin.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.portal.web.model.ModelApiUrl;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
@@ -51,6 +54,10 @@ import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -201,6 +208,7 @@ public class WsGate extends SimpleWebSocketListener {
             // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();
             ChatModel chatModel = engine.getModelOrMain(modelName);
+            String reasoningEffort = normalizeReasoningEffort(req.getReasoningEffort());
 
             session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
 
@@ -222,7 +230,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 命令处理：以 / 开头的输入走命令分发
             if (currentInput.startsWith("/")) {
-                handleCommand(socket, session, agent, chatModel, cwd, currentInput, sessionId);
+                handleCommand(socket, session, agent, chatModel, cwd, currentInput, sessionId, reasoningEffort);
                 return;
             }
 
@@ -270,6 +278,7 @@ public class WsGate extends SimpleWebSocketListener {
             } else {
                 prompt = Prompt.of(currentInput).attrPut("start_time", System.currentTimeMillis());
             }
+            applyReasoningEffort(prompt, reasoningEffort);
 
             String finalCwd = cwd;
             Disposable disposable = engine.prompt(prompt)
@@ -277,6 +286,7 @@ public class WsGate extends SimpleWebSocketListener {
                     .options(o -> {
                         o.chatModel(chatModel);
                         o.toolContextPut(HarnessEngine.ATTR_CWD, finalCwd);
+                        applyReasoningEffort(o, reasoningEffort);
                     })
                     .stream()
                     .doFinally(signal -> {
@@ -537,28 +547,40 @@ public class WsGate extends SimpleWebSocketListener {
                 String apiUrl = chatModelNode.get("apiUrl") != null ? chatModelNode.get("apiUrl").getString() : null;
                 String apiKey = chatModelNode.get("apiKey") != null ? chatModelNode.get("apiKey").getString() : null;
                 String model = chatModelNode.get("model") != null ? chatModelNode.get("model").getString() : null;
+                String provider = chatModelNode.get("provider") != null ? chatModelNode.get("provider").getString() : null;
+                    ChatConfigReadonly currentConfig = engine.getMainModel() == null ? null : engine.getMainModel().getConfig();
+                String existApiUrl = currentConfig == null ? null : currentConfig.getApiUrl();
+                String existApiKey = currentConfig == null ? null : currentConfig.getApiKey();
+                String existModel = currentConfig == null ? null : currentConfig.getNameOrModel();
+                String existProvider = currentConfig == null ? null : currentConfig.getStandardOrProvider();
+                String finalApiUrlInput = apiUrl != null ? apiUrl : existApiUrl;
+                String normalizedProvider = ModelApiUrl.normalizeStandard(provider != null ? provider : existProvider, finalApiUrlInput);
+                String normalizedApiUrl = finalApiUrlInput == null ? null : ModelApiUrl.normalizeChatApiUrl(finalApiUrlInput, normalizedProvider);
+                String finalApiKey = apiKey != null ? apiKey : existApiKey;
+                String finalModel = model != null ? model : existModel;
 
-                if (apiUrl != null || apiKey != null || model != null) {
+                if (apiUrl != null || apiKey != null || model != null || provider != null) {
                     // 更新 AgentProperties 的 chatModel 配置
                     ChatConfig chatConfig = new ChatConfig();
-                    chatConfig.setApiUrl(apiUrl);
-                    chatConfig.setApiKey(apiKey);
-                    chatConfig.setModel(model);
+                    chatConfig.setApiUrl(normalizedApiUrl);
+                    chatConfig.setApiKey(finalApiKey);
+                    chatConfig.setModel(finalModel);
+                    chatConfig.setStandard(normalizedProvider);
 
                     // 重建 ChatModel 并注入 kernel
                     engine.removeModel(chatConfig.getNameOrModel());
                     engine.addModel(chatConfig);
                     engine.refreshMainAgent();
 
-                    LOG.info("[WS] Config updated: model={}", model);
+                    LOG.info("[WS] Config updated: model={}, provider={}", finalModel, normalizedProvider);
 
                     // 持久化到 YAML 文件
-                    saveConfigToFile(apiUrl, apiKey, model);
+                    saveConfigToFile(normalizedApiUrl, finalApiKey, finalModel, normalizedProvider);
 
                     socket.send(new ONode()
                             .set("type", "config")
                             .set("status", "ok")
-                            .set("model", model)
+                            .set("model", finalModel)
                             .toJson());
                 }
             }
@@ -575,36 +597,39 @@ public class WsGate extends SimpleWebSocketListener {
     /**
      * 将 chatModel 配置持久化到 YAML 文件（~/.soloncode/chat-model.yml）
      */
-    private void saveConfigToFile(String apiUrl, String apiKey, String model) {
-        //todo: 这块要根据 AppSetttings 类重新进行设计。noear,2026.6
-//        try {
-//            String home = System.getProperty("user.home");
-//            Path configDir = Paths.get(home, ".soloncode");
-//            Files.createDirectories(configDir);
-//
-//            Path configFile = configDir.resolve("chat-model.yml");
-//
-//            // 读取已有配置，保留未更新的字段
-//            String existApiUrl = agentPros.getChatModel() != null ? agentPros.getChatModel().getApiUrl() : null;
-//            String existApiKey = agentPros.getChatModel() != null ? agentPros.getChatModel().getApiKey() : null;
-//            String existModel = agentPros.getChatModel() != null ? agentPros.getChatModel().getNameOrModel() : null;
-//
-//            String finalApiUrl = apiUrl != null ? apiUrl : existApiUrl;
-//            String finalApiKey = apiKey != null ? apiKey : existApiKey;
-//            String finalModel = model != null ? model : existModel;
-//
-//            StringBuilder yaml = new StringBuilder();
-//            yaml.append("soloncode:\n");
-//            yaml.append("  chatModel:\n");
-//            if (finalApiUrl != null) yaml.append("    apiUrl: \"").append(escapeYaml(finalApiUrl)).append("\"\n");
-//            if (finalApiKey != null) yaml.append("    apiKey: \"").append(escapeYaml(finalApiKey)).append("\"\n");
-//            if (finalModel != null) yaml.append("    model: \"").append(escapeYaml(finalModel)).append("\"\n");
-//
-//            Files.write(configFile, yaml.toString().getBytes(StandardCharsets.UTF_8));
-//            LOG.info("[WS] Config persisted to: {}", configFile);
-//        } catch (Exception e) {
-//            LOG.error("[WS] Failed to persist config to YAML", e);
-//        }
+    private void saveConfigToFile(String apiUrl, String apiKey, String model, String provider) {
+        try {
+            String home = System.getProperty("user.home");
+            Path configDir = Paths.get(home, ".soloncode");
+            Files.createDirectories(configDir);
+
+            Path configFile = configDir.resolve("chat-model.yml");
+
+            // 读取已有配置，保留未更新的字段
+            ChatConfigReadonly currentConfig = engine.getMainModel() == null ? null : engine.getMainModel().getConfig();
+            String existApiUrl = currentConfig != null ? currentConfig.getApiUrl() : null;
+            String existApiKey = currentConfig != null ? currentConfig.getApiKey() : null;
+            String existModel = currentConfig != null ? currentConfig.getNameOrModel() : null;
+            String existProvider = currentConfig != null ? currentConfig.getStandardOrProvider() : null;
+
+            String finalApiUrl = apiUrl != null ? apiUrl : existApiUrl;
+            String finalApiKey = apiKey != null ? apiKey : existApiKey;
+            String finalModel = model != null ? model : existModel;
+            String finalProvider = provider != null ? provider : existProvider;
+
+            StringBuilder yaml = new StringBuilder();
+            yaml.append("soloncode:\n");
+            yaml.append("  chatModel:\n");
+            if (finalApiUrl != null) yaml.append("    apiUrl: \"").append(escapeYaml(finalApiUrl)).append("\"\n");
+            if (finalApiKey != null) yaml.append("    apiKey: \"").append(escapeYaml(finalApiKey)).append("\"\n");
+            if (finalModel != null) yaml.append("    model: \"").append(escapeYaml(finalModel)).append("\"\n");
+            if (Assert.isNotEmpty(finalProvider)) yaml.append("    provider: \"").append(escapeYaml(finalProvider)).append("\"\n");
+
+            Files.write(configFile, yaml.toString().getBytes(StandardCharsets.UTF_8));
+            LOG.info("[WS] Config persisted to: {}", configFile);
+        } catch (Exception e) {
+            LOG.error("[WS] Failed to persist config to YAML", e);
+        }
     }
 
     private String escapeYaml(String value) {
@@ -612,11 +637,41 @@ public class WsGate extends SimpleWebSocketListener {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
+    private String normalizeReasoningEffort(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim().toLowerCase();
+        if (normalized.isEmpty() || "auto".equals(normalized)) {
+            return null;
+        }
+        if ("low".equals(normalized) || "medium".equals(normalized) || "high".equals(normalized) || "max".equals(normalized)) {
+            return normalized;
+        }
+        return null;
+    }
+
+    private void applyReasoningEffort(Prompt prompt, String reasoningEffort) {
+        if (Assert.isEmpty(reasoningEffort)) {
+            return;
+        }
+        prompt.attrPut("reasoning_effort", reasoningEffort);
+        prompt.attrPut("reasoningEffort", reasoningEffort);
+    }
+
+    private void applyReasoningEffort(ReActOptionsAmend options, String reasoningEffort) {
+        if (Assert.isEmpty(reasoningEffort)) {
+            return;
+        }
+        options.optionSet("reasoning_effort", reasoningEffort);
+        options.optionSet("reasoningEffort", reasoningEffort);
+    }
+
     /**
      * 处理命令输入（/ 开头），通过 CommandRegistry 分发执行
      */
     private void handleCommand(WebSocket socket, AgentSession session, ReActAgent agent, ChatModel chatModel,
-                               String sessionCwd, String input, String finalSessionId) {
+                               String sessionCwd, String input, String finalSessionId, String reasoningEffort) {
         try {
             // 解析命令名和参数
             List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
@@ -631,7 +686,7 @@ public class WsGate extends SimpleWebSocketListener {
             Command command = engine.getCommandRegistry().find(cmdName);
             if (command == null) {
                 // 不是有效命令，当作普通输入走流式处理
-                handleFallbackPrompt(socket, session, chatModel, sessionCwd, input, finalSessionId);
+                handleFallbackPrompt(socket, session, chatModel, sessionCwd, input, finalSessionId, reasoningEffort);
                 return;
             }
 
@@ -639,7 +694,7 @@ public class WsGate extends SimpleWebSocketListener {
             WebCommandContext ctx = new WebCommandContext(session, engine, input, cmdName, args,
                     (prompt, model) -> {
                         ChatModel selectedModel = model != null ? engine.getModelOrMain(model) : chatModel;
-                        handleFallbackPrompt(socket, session, selectedModel, sessionCwd, prompt, finalSessionId);
+                        handleFallbackPrompt(socket, session, selectedModel, sessionCwd, prompt, finalSessionId, reasoningEffort);
                     });
 
             // 执行命令
@@ -687,12 +742,14 @@ public class WsGate extends SimpleWebSocketListener {
      * 将输入作为普通 prompt 走流式处理
      */
     private void handleFallbackPrompt(WebSocket socket, AgentSession session, ChatModel chatModel,
-                                      String sessionCwd, String input, String finalSessionId) {
+                                      String sessionCwd, String input, String finalSessionId, String reasoningEffort) {
         Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+        applyReasoningEffort(prompt, reasoningEffort);
         Disposable disposable = engine.prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.chatModel(chatModel);
+                    applyReasoningEffort(o, reasoningEffort);
                     if (Assert.isNotEmpty(sessionCwd)) {
                         o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
                     }

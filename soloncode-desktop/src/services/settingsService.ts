@@ -12,6 +12,39 @@ export interface McpServerConfig {
   command: string;
   args: string[];
   enabled: boolean;
+  scope?: 'user' | 'workspace';
+  type?: 'stdio' | 'sse' | 'streamable';
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  timeout?: string;
+}
+
+export interface MountConfig {
+  alias: string;
+  path: string;
+  type: 'SKILLS' | 'AGENTS' | 'FILES';
+  scope: 'user' | 'workspace';
+  writeable: boolean;
+  description?: string;
+}
+
+export interface OpenApiServerConfig {
+  name: string;
+  baseUrl: string;
+  docUrl: string;
+  scope: 'user' | 'workspace';
+  headers?: Record<string, string>;
+  enabled: boolean;
+}
+
+export interface LspServerConfig {
+  name: string;
+  command: string;
+  extensions: string[];
+  scope: 'user' | 'workspace';
+  env?: Record<string, string>;
+  enabled: boolean;
 }
 
 export type SkillGroup = 'global' | 'project' | 'claude' | 'codex';
@@ -35,52 +68,49 @@ export interface AgentConfig {
   source: 'manual' | 'discovered';
 }
 
-export type ProviderType = 'zhipu' | 'openai' | 'deepseek' | 'claude' | 'custom';
+export type ProviderType = '' | 'openai' | 'openai-responses' | 'anthropic' | 'ollama';
 
-export const PROVIDER_PRESETS: Record<Exclude<ProviderType, 'custom'>, {
+export const PROVIDER_PRESETS: Record<ProviderType, {
   label: string;
   apiUrl: string;
   models: { value: string; label: string }[];
 }> = {
-  zhipu: {
-    label: '智谱 AI',
-    apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    models: [
-      { value: 'glm-4.7', label: 'GLM-4.7' },
-      { value: 'glm-4-plus', label: 'GLM-4-Plus' },
-      { value: 'glm-4-flash', label: 'GLM-4-Flash' },
-      { value: 'glm-4-long', label: 'GLM-4-Long' },
-    ],
+  '': {
+    label: '自动检测（须填写完整地址）',
+    apiUrl: '',
+    models: [],
   },
   openai: {
-    label: 'OpenAI',
-    apiUrl: 'https://api.openai.com/v1/chat/completions',
-    models: [
-      { value: 'gpt-4o', label: 'GPT-4o' },
-      { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-      { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-      { value: 'o1', label: 'O1' },
-      { value: 'o3-mini', label: 'O3 Mini' },
-    ],
+    label: 'OpenAI BaseUrl / 兼容接口',
+    apiUrl: 'https://api.openai.com/v1',
+    models: [],
   },
-  deepseek: {
-    label: 'DeepSeek',
-    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
-    models: [
-      { value: 'deepseek-chat', label: 'DeepSeek Chat' },
-      { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
-    ],
+  'openai-responses': {
+    label: 'OpenAI Responses BaseUrl / 兼容接口',
+    apiUrl: 'https://api.openai.com/v1/responses',
+    models: [],
   },
-  claude: {
-    label: 'Claude',
-    apiUrl: 'https://api.anthropic.com/v1/messages',
-    models: [
-      { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-      { value: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
-      { value: 'claude-haiku-4-20250514', label: 'Claude Haiku 4' },
-    ],
+  anthropic: {
+    label: 'Anthropic BaseUrl / 兼容接口',
+    apiUrl: 'https://api.anthropic.com',
+    models: [],
+  },
+  ollama: {
+    label: 'Ollama BaseUrl / 兼容接口',
+    apiUrl: 'http://localhost:11434',
+    models: [],
   },
 };
+
+export function normalizeProviderType(type?: string | null): ProviderType {
+  if (type === 'openai' || type === 'openai-responses' || type === 'anthropic' || type === 'ollama' || type === '') {
+    return type;
+  }
+  if (type === 'claude') {
+    return 'anthropic';
+  }
+  return '';
+}
 
 export interface ModelProvider {
   id: string;
@@ -90,7 +120,11 @@ export interface ModelProvider {
   apiKey: string;
   model: string;
   enabled: boolean;
-  availableModels?: { id: string; ownedBy?: string }[];
+  scope?: 'user' | 'workspace';
+  timeout?: string;
+  contextLength?: number;
+  defaultOptions?: string;
+  availableModels?: { id: string; ownedBy?: string; contextLength?: number }[];
 }
 
 /** 常规设置（键值对，存在 globalSettings 表） */
@@ -107,6 +141,37 @@ export interface GeneralSettings {
   activeProviderId: string;
   maxSteps: number;
   cliPort: number;
+  sessionWindowSize: number;
+  compressionMaxMessages: number;
+  compressionMaxTokens: number;
+  sandboxEnabled: boolean;
+  sandboxAllowUserHome: boolean;
+  sandboxSystemRestrict: boolean;
+  memoryEnabled: boolean;
+  memoryIsolation: boolean;
+  modelRetries: number;
+  mcpRetries: number;
+  apiRetries: number;
+  cliPrintSimplified: boolean;
+  webAuthUser: string;
+  webAuthPass: string;
+  bashAsyncEnabled: boolean;
+  subagentEnabled: boolean;
+  mcpEnabled: boolean;
+  openApiEnabled: boolean;
+  lspEnabled: boolean;
+  loopDefaultMaxTokens: number;
+  loopDefaultMaxDuration: number;
+  loopStagnationThreshold: number;
+  loopMaxConsecutiveErrors: number;
+  loopPauseAutoAbandonHours: number;
+  loopBudgetWarningPercent: number;
+  loopBudgetCriticalPercent: number;
+  loopValidatorEnabled: boolean;
+  disallowedTools: string[];
+  mounts: MountConfig[];
+  openApiServers: OpenApiServerConfig[];
+  lspServers: LspServerConfig[];
   skillPrompt: string;
   agentPrompt: string;
   gitPrompt: string;
@@ -122,16 +187,20 @@ export interface AppSettings extends GeneralSettings {
 
 let _providerIdCounter = 0;
 export function createProvider(type: ProviderType): ModelProvider {
-  const preset = type !== 'custom' ? PROVIDER_PRESETS[type] : null;
+  const preset = PROVIDER_PRESETS[type];
   _providerIdCounter++;
   return {
     id: `provider_${Date.now()}_${_providerIdCounter}`,
     type,
-    name: preset?.label || '自定义',
-    apiUrl: preset?.apiUrl || '',
+    name: preset.label,
+    apiUrl: preset.apiUrl,
     apiKey: '',
-    model: preset?.models[0]?.value || '',
+    model: preset.models[0]?.value || '',
     enabled: true,
+    scope: 'user',
+    timeout: 'PT120S',
+    contextLength: 128000,
+    defaultOptions: '',
   };
 }
 
@@ -232,6 +301,37 @@ const defaultGeneral: GeneralSettings = {
   activeProviderId: '',
   maxSteps: 30,
   cliPort: 4808,
+  sessionWindowSize: 8,
+  compressionMaxMessages: 40,
+  compressionMaxTokens: 64000,
+  sandboxEnabled: true,
+  sandboxAllowUserHome: false,
+  sandboxSystemRestrict: true,
+  memoryEnabled: true,
+  memoryIsolation: true,
+  modelRetries: 3,
+  mcpRetries: 3,
+  apiRetries: 3,
+  cliPrintSimplified: true,
+  webAuthUser: '',
+  webAuthPass: '',
+  bashAsyncEnabled: false,
+  subagentEnabled: true,
+  mcpEnabled: true,
+  openApiEnabled: true,
+  lspEnabled: true,
+  loopDefaultMaxTokens: 0,
+  loopDefaultMaxDuration: 0,
+  loopStagnationThreshold: 3,
+  loopMaxConsecutiveErrors: 3,
+  loopPauseAutoAbandonHours: 24,
+  loopBudgetWarningPercent: 70,
+  loopBudgetCriticalPercent: 85,
+  loopValidatorEnabled: false,
+  disallowedTools: [],
+  mounts: [],
+  openApiServers: [],
+  lspServers: [],
   skillPrompt: DEFAULT_PROMPTS.skillPrompt,
   agentPrompt: DEFAULT_PROMPTS.agentPrompt,
   gitPrompt: DEFAULT_PROMPTS.gitPrompt,
@@ -275,6 +375,175 @@ export function parseSimpleYaml(text: string): Record<string, Record<string, str
     }
   }
   return result;
+}
+
+function parseJsonArray(value?: string): string[] {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonRecord(value?: string): Record<string, string> | undefined {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return Object.fromEntries(Object.entries(parsed).map(([key, val]) => [key, String(val)]));
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeMcpType(type?: string): 'stdio' | 'sse' | 'streamable' {
+  return type === 'sse' || type === 'streamable' ? type : 'stdio';
+}
+
+type BackendResult<T> = { code?: number; data?: T; message?: string };
+
+function backendBaseUrl(backendPort: number): string {
+  return `http://localhost:${backendPort}`;
+}
+
+async function backendGet<T>(backendPort: number, path: string): Promise<T | null> {
+  const resp = await fetch(`${backendBaseUrl(backendPort)}${path}`, { cache: 'no-store' });
+  if (!resp.ok) return null;
+  const result = await resp.json() as BackendResult<T>;
+  return result.code === 200 ? (result.data ?? null) : null;
+}
+
+async function backendPost(backendPort: number, path: string, body: Record<string, unknown>): Promise<boolean> {
+  const resp = await fetch(`${backendBaseUrl(backendPort)}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) return false;
+  const result = await resp.json().catch(() => ({ code: 200 })) as BackendResult<unknown>;
+  return result.code === undefined || result.code === 200;
+}
+
+function normalizeScope(scope?: string): 'user' | 'workspace' {
+  return scope === 'workspace' ? 'workspace' : 'user';
+}
+
+function compactRecord(record?: Record<string, string>): Record<string, string> | undefined {
+  if (!record) return undefined;
+  const entries = Object.entries(record).filter(([key, value]) => key.trim() && String(value).trim());
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function mapGeneralToBackend(settings: AppSettings) {
+  return {
+    sessionWindowSize: settings.sessionWindowSize,
+    summaryWindowSize: settings.compressionMaxMessages,
+    summaryWindowToken: settings.compressionMaxTokens,
+    sandboxMode: settings.sandboxEnabled,
+    sandboxAllowUserHome: settings.sandboxAllowUserHome,
+    sandboxSystemRestrict: settings.sandboxSystemRestrict,
+    apiRetries: settings.apiRetries,
+    mcpRetries: settings.mcpRetries,
+    modelRetries: settings.modelRetries,
+    memoryEnabled: settings.memoryEnabled,
+    memoryIsolation: settings.memoryIsolation,
+    mcpEnabled: settings.mcpEnabled,
+    openApiEnabled: settings.openApiEnabled,
+    bashAsyncEnabled: settings.bashAsyncEnabled,
+    subagentEnabled: settings.subagentEnabled,
+    lspEnabled: settings.lspEnabled,
+    cliPrintSimplified: settings.cliPrintSimplified,
+    webAuthUser: settings.webAuthUser || null,
+    webAuthPass: settings.webAuthPass || null,
+  };
+}
+
+function mapLoopToBackend(settings: AppSettings) {
+  return {
+    defaultMaxTokens: settings.loopDefaultMaxTokens || 0,
+    defaultMaxDurationMinutes: settings.loopDefaultMaxDuration || 0,
+    stagnationThreshold: settings.loopStagnationThreshold,
+    maxConsecutiveErrors: settings.loopMaxConsecutiveErrors,
+    pauseAutoAbandonHours: settings.loopPauseAutoAbandonHours,
+    budgetWarningPercent: settings.loopBudgetWarningPercent,
+    budgetCriticalPercent: settings.loopBudgetCriticalPercent,
+    validatorEnabled: settings.loopValidatorEnabled,
+  };
+}
+
+function mapMcpToBackend(server: McpServerConfig): Record<string, unknown> {
+  const type = server.type || 'stdio';
+  const body: Record<string, unknown> = {
+    name: server.name,
+    type,
+    enabled: server.enabled,
+    scope: server.scope || 'user',
+  };
+  if (type === 'stdio') {
+    body.command = server.command;
+    body.args = server.args || [];
+    const env = compactRecord(server.env);
+    if (env) body.env = env;
+  } else {
+    body.url = server.url || '';
+    const headers = compactRecord(server.headers);
+    if (headers) body.headers = headers;
+    if (server.timeout) body.timeout = server.timeout;
+  }
+  return body;
+}
+
+function mapOpenApiToBackend(server: OpenApiServerConfig): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    name: server.name,
+    apiBaseUrl: server.baseUrl,
+    docUrl: server.docUrl,
+    enabled: server.enabled,
+    scope: server.scope || 'user',
+  };
+  const headers = compactRecord(server.headers);
+  if (headers) body.headers = headers;
+  return body;
+}
+
+function mapLspToBackend(server: LspServerConfig): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    name: server.name,
+    command: server.command,
+    extensions: server.extensions || [],
+    enabled: server.enabled,
+    scope: server.scope || 'user',
+  };
+  const env = compactRecord(server.env);
+  if (env) body.env = env;
+  return body;
+}
+
+async function syncNamedServers<T extends { name: string; enabled?: boolean }>(
+  backendPort: number,
+  basePath: string,
+  remoteServers: any[],
+  localServers: T[],
+  mapBody: (server: T) => Record<string, unknown>,
+): Promise<void> {
+  const remoteNames = new Set(remoteServers.map(server => server.name).filter(Boolean));
+  const localNames = new Set(localServers.map(server => server.name).filter(Boolean));
+
+  for (const server of localServers) {
+    if (!server.name) continue;
+    const exists = remoteNames.has(server.name);
+    const body = mapBody(server);
+    await backendPost(backendPort, `${basePath}/${exists ? 'update' : 'add'}`, body);
+    if (exists && server.enabled !== undefined) {
+      await backendPost(backendPort, `${basePath}/toggle`, { name: server.name, enabled: server.enabled });
+    }
+  }
+
+  for (const remote of remoteServers) {
+    if (remote.name && !localNames.has(remote.name)) {
+      await backendPost(backendPort, `${basePath}/remove`, { name: remote.name });
+    }
+  }
 }
 
 export const settingsService = {
@@ -328,6 +597,152 @@ export const settingsService = {
     }
   },
 
+  async loadRuntimeSettings(backendPort: number): Promise<Partial<AppSettings> | null> {
+    try {
+      const [general, loop, permission, mounts, mcpServers, openApiServers, lspServers] = await Promise.all([
+        backendGet<Record<string, any>>(backendPort, '/web/settings/general'),
+        backendGet<Record<string, any>>(backendPort, '/web/settings/loop'),
+        backendGet<Record<string, any>>(backendPort, '/web/settings/permission'),
+        backendGet<any[]>(backendPort, '/web/settings/mounts'),
+        backendGet<any[]>(backendPort, '/web/settings/mcp/servers'),
+        backendGet<any[]>(backendPort, '/web/settings/openapi/servers'),
+        backendGet<any[]>(backendPort, '/web/settings/lsp/servers'),
+      ]);
+
+      const result: Partial<AppSettings> = {};
+      if (general) {
+        Object.assign(result, {
+          sessionWindowSize: Number(general.sessionWindowSize) || defaultGeneral.sessionWindowSize,
+          compressionMaxMessages: Number(general.summaryWindowSize) || defaultGeneral.compressionMaxMessages,
+          compressionMaxTokens: Number(general.summaryWindowToken) || defaultGeneral.compressionMaxTokens,
+          sandboxEnabled: !!general.sandboxMode,
+          sandboxAllowUserHome: general.sandboxAllowUserHome !== false,
+          sandboxSystemRestrict: !!general.sandboxSystemRestrict,
+          apiRetries: Number(general.apiRetries) || defaultGeneral.apiRetries,
+          mcpRetries: Number(general.mcpRetries) || defaultGeneral.mcpRetries,
+          modelRetries: Number(general.modelRetries) || defaultGeneral.modelRetries,
+          memoryEnabled: general.memoryEnabled !== false,
+          memoryIsolation: general.memoryIsolation !== false,
+          mcpEnabled: general.mcpEnabled !== false,
+          openApiEnabled: general.openApiEnabled !== false,
+          bashAsyncEnabled: !!general.bashAsyncEnabled,
+          subagentEnabled: general.subagentEnabled !== false,
+          lspEnabled: !!general.lspEnabled,
+          cliPrintSimplified: general.cliPrintSimplified !== false,
+          webAuthUser: general.webAuthUser || '',
+          webAuthPass: general.webAuthPass || '',
+        });
+      }
+      if (loop) {
+        Object.assign(result, {
+          loopDefaultMaxTokens: Number(loop.defaultMaxTokens) || 0,
+          loopDefaultMaxDuration: Number(loop.defaultMaxDurationMinutes) || 0,
+          loopStagnationThreshold: Number(loop.stagnationThreshold) || defaultGeneral.loopStagnationThreshold,
+          loopMaxConsecutiveErrors: Number(loop.maxConsecutiveErrors) || defaultGeneral.loopMaxConsecutiveErrors,
+          loopPauseAutoAbandonHours: Number(loop.pauseAutoAbandonHours) || defaultGeneral.loopPauseAutoAbandonHours,
+          loopBudgetWarningPercent: Number(loop.budgetWarningPercent) || defaultGeneral.loopBudgetWarningPercent,
+          loopBudgetCriticalPercent: Number(loop.budgetCriticalPercent) || defaultGeneral.loopBudgetCriticalPercent,
+          loopValidatorEnabled: loop.validatorEnabled !== false,
+        });
+      }
+      if (Array.isArray(permission?.disallowedTools)) {
+        result.disallowedTools = permission.disallowedTools.map(String);
+      }
+      if (Array.isArray(mounts)) {
+        result.mounts = mounts.map(item => ({
+          alias: item.alias || '',
+          path: item.path || '',
+          type: item.type || 'SKILLS',
+          scope: normalizeScope(item.scope),
+          writeable: !!item.writeable,
+          description: item.description || '',
+        }));
+      }
+      if (Array.isArray(mcpServers)) {
+        result.mcpServers = mcpServers.map(item => ({
+          name: item.name || '',
+          command: Array.isArray(item.command) ? item.command.join(' ') : (item.command || ''),
+          args: Array.isArray(item.args) ? item.args.map(String) : [],
+          enabled: item.enabled !== false,
+          scope: normalizeScope(item.scope),
+          type: normalizeMcpType(item.type),
+          url: item.url || '',
+          env: item.env || {},
+          headers: item.headers || {},
+          timeout: item.timeout || '',
+        }));
+      }
+      if (Array.isArray(openApiServers)) {
+        result.openApiServers = openApiServers.map(item => ({
+          name: item.name || '',
+          baseUrl: item.apiBaseUrl || '',
+          docUrl: item.docUrl || '',
+          scope: normalizeScope(item.scope),
+          headers: item.headers || {},
+          enabled: item.enabled !== false,
+        }));
+      }
+      if (Array.isArray(lspServers)) {
+        result.lspServers = lspServers.map(item => ({
+          name: item.name || '',
+          command: Array.isArray(item.command) ? item.command.join(' ') : (item.command || ''),
+          extensions: Array.isArray(item.extensions) ? item.extensions.map(String) : [],
+          scope: normalizeScope(item.scope),
+          env: item.env || {},
+          enabled: item.enabled !== false,
+        }));
+      }
+
+      return Object.keys(result).length > 0 ? result : null;
+    } catch (err) {
+      console.warn('[settingsService] 同步读取后端设置失败:', err);
+      return null;
+    }
+  },
+
+  async syncRuntimeSettings(backendPort: number, settings: AppSettings): Promise<void> {
+    try {
+      await Promise.all([
+        backendPost(backendPort, '/web/settings/general/save', mapGeneralToBackend(settings)),
+        backendPost(backendPort, '/web/settings/loop/save', mapLoopToBackend(settings)),
+        backendPost(backendPort, '/web/settings/permission/save', { disallowedTools: settings.disallowedTools || [] }),
+      ]);
+
+      const [remoteMounts, remoteMcpServers, remoteOpenApiServers, remoteLspServers] = await Promise.all([
+        backendGet<any[]>(backendPort, '/web/settings/mounts'),
+        backendGet<any[]>(backendPort, '/web/settings/mcp/servers'),
+        backendGet<any[]>(backendPort, '/web/settings/openapi/servers'),
+        backendGet<any[]>(backendPort, '/web/settings/lsp/servers'),
+      ]);
+
+      const remoteMountMap = new Map((remoteMounts || []).map(item => [item.alias, item]));
+      for (const mount of settings.mounts || []) {
+        if (!mount.alias || !mount.path) continue;
+        const exists = remoteMountMap.has(mount.alias);
+        await backendPost(backendPort, exists ? '/web/settings/mounts/update' : '/web/settings/mounts/add', {
+          alias: mount.alias,
+          path: mount.path,
+          type: mount.type || 'SKILLS',
+          writeable: !!mount.writeable,
+          description: mount.description || '',
+          scope: mount.scope || 'user',
+        });
+      }
+      for (const remote of remoteMounts || []) {
+        if (remote.system === true) continue;
+        if (!(settings.mounts || []).some(mount => mount.alias === remote.alias)) {
+          await backendPost(backendPort, '/web/settings/mounts/remove', { alias: remote.alias });
+        }
+      }
+
+      await syncNamedServers(backendPort, '/web/settings/mcp/servers', remoteMcpServers || [], settings.mcpServers || [], mapMcpToBackend);
+      await syncNamedServers(backendPort, '/web/settings/openapi/servers', remoteOpenApiServers || [], settings.openApiServers || [], mapOpenApiToBackend);
+      await syncNamedServers(backendPort, '/web/settings/lsp/servers', remoteLspServers || [], settings.lspServers || [], mapLspToBackend);
+    } catch (err) {
+      console.warn('[settingsService] 同步保存后端设置失败:', err);
+    }
+  },
+
   /**
    * 从后端获取可用模型列表并生成为 ModelProvider[]
    * 获取后自动注入到 CLI 后端的动态模型配置器
@@ -337,11 +752,12 @@ export const settingsService = {
     apiUrl: string,
     apiKey: string,
     existingProviders: ModelProvider[],
-    provider: string = 'openai',
+    provider: string = '',
+    model: string = '',
   ): Promise<{ providers: ModelProvider[]; activeProviderId: string } | null> {
     try {
       const resp = await fetch(
-        `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}`,
+        `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`,
       );
       if (!resp.ok) return null;
 
@@ -359,16 +775,20 @@ export const settingsService = {
 
         if (existingIds.has(providerId)) continue;
 
-        const provider: ModelProvider = {
+        const modelProvider: ModelProvider = {
           id: providerId,
-          type: 'custom' as ProviderType,
+          type: normalizeProviderType(provider),
           name: m.ownedBy || '远程',
           apiUrl,
           apiKey,
           model: modelId,
           enabled: true,
+          scope: 'user',
+          timeout: 'PT120S',
+          contextLength: Number(m.contextLength || m.context_length) || undefined,
+          defaultOptions: '',
         };
-        newProviders.push(provider);
+        newProviders.push(modelProvider);
 
         // 注入到 CLI 后端（仅注入尚未添加的模型）
         if (!existingModels.has(modelId)) {
@@ -381,8 +801,11 @@ export const settingsService = {
                 apiUrl,
                 apiKey,
                 model: modelId,
-                provider: 'openai',
+                provider: normalizeProviderType(provider),
+                standard: normalizeProviderType(provider),
+                scope: modelProvider.scope,
                 timeout: 'PT120S',
+                contextLength: modelProvider.contextLength,
               }),
             });
           } catch (e) {
@@ -460,7 +883,7 @@ export const settingsService = {
               if (parsed[key] !== undefined) (general as any)[key] = parsed[key];
             }
             if (parsed.apiUrl || parsed.apiKey || parsed.model) {
-              const p = createProvider('custom');
+              const p = createProvider('');
               p.name = '已迁移';
               p.apiUrl = parsed.apiUrl || '';
               p.apiKey = parsed.apiKey || '';
@@ -479,12 +902,16 @@ export const settingsService = {
     const providerRows = await db.providers.orderBy('sortOrder').toArray();
     const providers: ModelProvider[] = providerRows.map(r => ({
       id: r.id,
-      type: r.type as ProviderType,
+      type: normalizeProviderType(r.type),
       name: r.name,
       apiUrl: r.apiUrl,
       apiKey: r.apiKey,
       model: r.model,
       enabled: !!r.enabled,
+      scope: ((r as any).scope === 'workspace' ? 'workspace' : 'user'),
+      timeout: (r as any).timeout || 'PT120S',
+      contextLength: Number((r as any).contextLength) || 128000,
+      defaultOptions: (r as any).defaultOptions || '',
       availableModels: r.availableModels ? JSON.parse(r.availableModels) : undefined,
     }));
 
@@ -494,7 +921,13 @@ export const settingsService = {
       id: r.id,
       name: r.name,
       command: r.command,
-      args: JSON.parse(r.args || '[]'),
+      args: parseJsonArray(r.args),
+      scope: r.scope === 'workspace' ? 'workspace' : 'user',
+      type: normalizeMcpType(r.type),
+      url: r.url || '',
+      env: parseJsonRecord(r.env),
+      headers: parseJsonRecord(r.headers),
+      timeout: r.timeout || '',
       enabled: !!r.enabled,
     }));
 
@@ -507,9 +940,21 @@ export const settingsService = {
       path: r.path,
       enabled: !!r.enabled,
       source: r.source as 'manual' | 'discovered',
+      group: 'global',
     }));
 
-    return { ...general, providers, mcpServers, skills, agents: [] };
+    // 5. Agents
+    const agentRows = await db.agents.toArray();
+    const agents: AgentConfig[] = agentRows.map(r => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      path: r.path,
+      enabled: !!r.enabled,
+      source: r.source as 'manual' | 'discovered',
+    }));
+
+    return { ...general, providers, mcpServers, skills, agents };
   },
 
   /**
@@ -527,13 +972,17 @@ export const settingsService = {
       const p = providers[i];
       await db.providers.put({
         id: p.id,
-        type: p.type,
+        type: normalizeProviderType(p.type),
         name: p.name,
         apiUrl: p.apiUrl,
         apiKey: p.apiKey,
         model: p.model,
         enabled: p.enabled ? 1 : 0,
         sortOrder: i,
+        scope: p.scope || 'user',
+        timeout: p.timeout || 'PT120S',
+        contextLength: p.contextLength || 128000,
+        defaultOptions: p.defaultOptions || '',
         availableModels: p.availableModels ? JSON.stringify(p.availableModels) : '',
       });
     }
@@ -545,6 +994,12 @@ export const settingsService = {
         name: s.name,
         command: s.command,
         args: JSON.stringify(s.args),
+        scope: s.scope || 'user',
+        type: s.type || 'stdio',
+        url: s.url || '',
+        env: s.env ? JSON.stringify(s.env) : '',
+        headers: s.headers ? JSON.stringify(s.headers) : '',
+        timeout: s.timeout || '',
         enabled: s.enabled ? 1 : 0,
         sortOrder: 0,
       });

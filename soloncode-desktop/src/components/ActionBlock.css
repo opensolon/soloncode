@@ -1,12 +1,16 @@
 .action-block {
-  margin: 2px 0;
+  margin: 6px 0;
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cb-vscode-input-background) 36%, transparent);
+  overflow: hidden;
 }
 
 .action-block-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 0;
+  padding: 6px 10px;
   cursor: pointer;
   user-select: none;
   color: var(--cb-text-secondary);
@@ -40,6 +44,14 @@
 }
 
 .action-block-lines {
+  color: var(--cb-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.action-block-size {
   color: var(--cb-text-secondary);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -83,14 +95,33 @@
 }
 
 .action-block-content {
-  padding: 6px 0 6px 12px;
+  padding: 10px 14px 10px 18px;
   font-size: 13px;
   line-height: 1.5;
   color: var(--cb-text-secondary);
   opacity: 0.7;
-  border-left: 2px solid var(--cb-vscode-panel-border);
+  border-top: 1px solid var(--cb-vscode-panel-border);
   max-height: 300px;
   overflow-y: auto;
+  background: color-mix(in srgb, var(--cb-vscode-editor-background) 72%, transparent);
+}
+
+.action-block-content > :first-child {
+  margin-top: 0;
+}
+
+.action-block-content > :last-child {
+  margin-bottom: 0;
+}
+
+.action-block-content ul,
+.action-block-content ol {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+
+.action-block-content li {
+  padding-left: 2px;
 }
 
 .action-block-content pre {
