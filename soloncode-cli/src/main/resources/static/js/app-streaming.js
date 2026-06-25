@@ -166,6 +166,11 @@ function onWebChunk(sess, chunk) {
             sess.currentRunId = chunk.runId;
         }
 
+        // 捕获消息来源标识，用于 AI 回复气泡的来源标签显示
+        if (chunk.sourceLabel && !sess.currentSourceLabel) {
+            sess.currentSourceLabel = chunk.sourceLabel;
+        }
+
         switch (chunk.type) {
             case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
@@ -237,6 +242,9 @@ function finishStream(sess) {
     if (sess.messageStartTime) {
         sess.messageStartTime = null;
     }
+
+    // 清除消息来源标识，避免污染下一条流式响应
+    sess.currentSourceLabel = null;
 
     // resetStreamState 会清空 buffer，所以必须在上面强刷完后再调
     resetStreamState(sess);
@@ -327,7 +335,7 @@ function connectWebGate() {
                 if (typeof ensureChatInHistory === 'function') {
                     ensureChatInHistory(sid, chunk.text, true);
                 }
-                appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt);
+                appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt, chunk.sourceLabel);
                 if (userSess.sessionId === activeSessionId) {
                     if (!inChatMode) switchToChatMode();
                     scrollToBottom(true);

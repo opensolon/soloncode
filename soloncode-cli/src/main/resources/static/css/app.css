@@ -232,6 +232,23 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .msg-row.user .user-msg-col { max-width: 75%; }
 .msg-row.user.wide-user .user-msg-col { max-width: 92%; }
 
+/* 来源标识标签 — 显示消息来自哪个 IM 通道 */
+.source-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    line-height: 1.6;
+    color: #fff;
+    user-select: none;
+}
+.source-tag.source-wechat { background: #07C160; }
+.source-tag.source-feishu { background: #3370FF; }
+.source-tag.source-dingtalk { background: #0089FF; }
+.source-tag.source-default { background: #999; }
+
 /* Markdown */
 .md-content { padding: 2px 0; color: var(--text-ai-msg); font-size: 14px; }
 .md-content > :first-child { margin-top: 0; }

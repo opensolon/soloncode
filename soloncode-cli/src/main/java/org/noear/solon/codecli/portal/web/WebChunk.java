@@ -100,6 +100,12 @@ public class WebChunk {
     /** 最终答案正文，仅在 type 为 {@code trace} 时使用，携带 ReAct 完成时的全量最终答复，供前端复制使用。 */
     private String finalAnswer;
 
+    /** 消息来源通道标识，如 "wechat" / "feishu" / "dingtalk" / "web"。 */
+    private String source;
+
+    /** 消息来源通道显示标签，如 "微信" / "飞书" / "钉钉" / "Web"。 */
+    private String sourceLabel;
+
     /** 消息块创建时间戳（ epoch 毫秒），由工厂方法自动填充。 */
     private Long createdAt;
 
@@ -270,10 +276,26 @@ public class WebChunk {
         WebChunk tmp = new WebChunk();
         tmp.type = "user_input";
         tmp.text = text;
-        tmp.toolName = source; // 复用 toolName 字段传递来源标识
+        tmp.toolName = source; // 复用 toolName 字段传递来源标识（兼容旧版前端）
+        tmp.source = source;
+        tmp.sourceLabel = toSourceLabel(source);
         tmp.createdAt = Instant.now().toEpochMilli();
 
         return tmp;
+    }
+
+    /**
+     * 将通道标识映射为中文显示标签
+     */
+    public static String toSourceLabel(String source) {
+        if (source == null) return "Web";
+        switch (source.toLowerCase()) {
+            case "wechat":    return "微信";
+            case "feishu":    return "飞书";
+            case "dingtalk":  return "钉钉";
+            case "loop":      return "循环";
+            default:          return "Web";
+        }
     }
 
     /**
