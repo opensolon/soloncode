@@ -120,7 +120,7 @@ public class FeishuClient {
 
             ONode content = new ONode();
             content.set("text", text);
-            body.set("content", content.toJson());
+            body.set("content", content.toJson()); //说明：这是规范要求，不能动
 
             String resp = httpPost(BASE_URL + "/im/v1/messages?receive_id_type=" + receiveIdType, body.toJson(), accessToken);
             if (resp == null) return null;

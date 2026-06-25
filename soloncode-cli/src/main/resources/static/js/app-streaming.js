@@ -471,9 +471,10 @@ function showWechatModal() {
     wechatModalOverlay = $('<div>').addClass('wechat-modal-overlay').html(
         '<div class="wechat-modal">'
         + '<div class="wechat-modal-title">微信扫码绑定</div>'
-        + '<div class="wechat-modal-subtitle">用微信扫描二维码，当前会话将同步到微信</div>'
+        + '<div class="wechat-modal-subtitle">用微信扫描二维码，授权后自动完成绑定</div>'
         + '<div class="wechat-qr-wrap" id="wechatQrWrap"><span style="color:#999;font-size:13px">加载中...</span></div>'
         + '<div class="wechat-status" id="wechatQrStatus">等待扫码...</div>'
+        + '<div class="im-bind-hint">绑定后即可在微信上与 SolonCode 对话</div>'
         + '<button class="wechat-modal-close" id="wechatModalClose">取消</button>'
         + '</div>'
     );
@@ -605,11 +606,11 @@ function showFeishuModal() {
         '<div class="im-bind-modal" style="min-width:360px">'
         + '<div class="im-bind-modal-title" style="color:#3370ff">飞书绑定</div>'
         + '<div class="im-bind-tabs">'
-        + '  <button class="im-bind-tab active" data-tab="credential">手动输入</button>'
-        + '  <button class="im-bind-tab" data-tab="qrcode">扫码绑定</button>'
+        + '  <button class="im-bind-tab active" data-tab="qrcode">扫码绑定</button>'
+        + '  <button class="im-bind-tab" data-tab="credential">手动输入</button>'
         + '</div>'
         /* === 手动输入 Tab === */
-        + '<div class="im-bind-tab-content" id="feishuTabCredential">'
+        + '<div class="im-bind-tab-content" id="feishuTabCredential" style="display:none">'
         + '<div class="im-bind-modal-subtitle">输入飞书应用的 App ID 和 App Secret，连接后请在飞书上发消息给机器人完成自动绑定</div>'
         + '<div class="im-bind-input-group">'
         + '  <label class="im-bind-input-label">App ID</label>'
@@ -624,12 +625,12 @@ function showFeishuModal() {
         + '<div class="im-bind-hint">提示：请在飞书开放平台（<a href="https://open.feishu.cn/" target="_blank">open.feishu.cn</a>）创建企业自建应用，开启机器人能力，事件订阅选择 WebSocket 长连接模式，然后复制 App ID 和 App Secret 到这里。</div>'
         + '</div>'
         /* === 扫码绑定 Tab === */
-        + '<div class="im-bind-tab-content" id="feishuTabQrcode" style="display:none">'
-        + '<div class="im-bind-modal-subtitle">使用飞书 App 扫描下方二维码，授权后自动完成绑定</div>'
+        + '<div class="im-bind-tab-content" id="feishuTabQrcode">'
+        + '<div class="im-bind-modal-subtitle">使用飞书扫描二维码，授权后自动完成绑定</div>'
         + '<div class="feishu-qr-wrap" id="feishuQrWrap"><span class="feishu-qr-loading">正在获取二维码...</span></div>'
         + '<div class="im-bind-status" id="feishuQrStatus">&nbsp;</div>'
         + '<button class="im-bind-confirm-btn feishu" id="feishuQrRefreshBtn" style="display:none">刷新二维码</button>'
-        + '<div class="im-bind-hint">提示：扫码后请在飞书 App 上确认授权，绑定后即可在飞书上与 SolonCode 对话</div>'
+        + '<div class="im-bind-hint">绑定后即可在飞书上与 SolonCode 对话</div>'
         + '</div>'
         + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
         + '</div>'
@@ -652,6 +653,9 @@ function showFeishuModal() {
     feishuModalOverlay.on('click', function(e) {
         if ($(e.target).is(feishuModalOverlay)) closeFeishuModal();
     });
+
+    // 默认扫码 tab，自动获取二维码
+    startFeishuQrBinding();
 
     /* ---- 手动输入 Tab 逻辑 ---- */
     var $appIdInput = $('#feishuAppIdInput');
@@ -717,6 +721,33 @@ function showFeishuModal() {
             $confirmBtn.click();
         }
     });
+
+    /* ---- 手动输入绑定轮询逻辑 ---- */
+    function startFeishuPoll() {
+        if (feishuPollTimer) clearInterval(feishuPollTimer);
+        var dotCount = 0;
+        feishuPollTimer = setInterval(function() {
+            dotCount = (dotCount + 1) % 4;
+            var dots = '.'.repeat(dotCount);
+            $statusEl.text('等待飞书消息' + dots);
+
+            $.get('/web/chat/feishu/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+                try {
+                    var data = resp.data || {};
+                    if (data.bound) {
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        $statusEl.text('绑定成功！').removeClass('error').addClass('scanned');
+                        setTimeout(function() {
+                            closeFeishuModal();
+                            updateFeishuUI();
+                            switchToChatMode();
+                        }, 1000);
+                    }
+                } catch(e) {}
+            }, 'json');
+        }, 2000);
+    }
 
     /* ---- 扫码绑定 Tab 逻辑 ---- */
     function startFeishuQrBinding() {

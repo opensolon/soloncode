@@ -192,7 +192,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .im-bind-confirm-btn.feishu:hover { background: var(--color-feishu-hover); }
 .im-bind-confirm-btn.dingtalk { background: var(--color-dingtalk); color: #fff; }
 .im-bind-confirm-btn.dingtalk:hover { background: var(--color-dingtalk-hover); }
-.im-bind-hint { font-size: 12px; color: var(--text-secondary); margin-top: 12px; line-height: 1.6; text-align: left; }
+.im-bind-hint { font-size: 12px; color: var(--text-secondary); margin-top: 12px; line-height: 1.6; text-align: center; }
 
 /* ===== Welcome ===== */
 .welcome-view { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px 80px; }

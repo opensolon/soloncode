@@ -2,6 +2,9 @@
 ### v2026.6.25
 
 * 添加 soloncode web 设置/通用/日志保存
+* 添加 soloncode web 飞书扫码绑定
+* 优化 soloncode loop goal 完成识别（改为 tool 单一机制，之前还有消息标识）
+* 优化 soloncode loop goal 移除 maxIterations 限制（严格使用预算机制）
 * 修复 soloncode web 添加供应商时，没有同步输入面板的模型选择
 * 修复 soloncode web 附件显示不正常的问题
 * 细节优化
