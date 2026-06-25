@@ -1,6 +1,10 @@
 
 ### v2026.6.26
 
+* 添加 soloncode web 用户消息来源显示（飞书、Web）
+* 优化 soloncode web 钉钉推送标题显示
+* 优化 soloncode web 模型选择框架
+* 修复 soloncode web 重启后钉钉不能直接收消息的问题
 * 细节优化
 
 ### v2026.6.25
