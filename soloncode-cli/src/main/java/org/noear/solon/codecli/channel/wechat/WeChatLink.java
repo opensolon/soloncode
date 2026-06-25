@@ -19,7 +19,6 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.portal.web.WebChunk;
 import org.noear.solon.codecli.portal.web.WebGate;
-import org.noear.solon.codecli.channel.ChunkedSender;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
@@ -49,10 +48,6 @@ public class WeChatLink implements Channel, Runnable {
      */
     private final Map<String, WeChatBinding> bindings = new ConcurrentHashMap<>();
 
-    /**
-     * sessionId -> 中间消息累积缓冲区（用于 isFinal=false 时的内容暂存）
-     */
-    private final Map<String, StringBuilder> pendingBuffers = new ConcurrentHashMap<>();
 
     /**
      * sessionId -> PollWorker
@@ -114,7 +109,6 @@ public class WeChatLink implements Channel, Runnable {
      */
     public void unbindSession(String sessionId) {
         bindings.remove(sessionId);
-        pendingBuffers.remove(sessionId); // 清理累积缓冲区
         stopPolling(sessionId);
         // 持久化凭据（解绑后保存空的映射会删除文件）
         credentialStore.save(bindings);
@@ -272,39 +266,20 @@ public class WeChatLink implements Channel, Runnable {
 
     @Override
     public void sendReply(String sessionId, String reply, boolean isFinal) {
+        if (isFinal == false) {
+            return;
+        }
+
         WeChatBinding binding = bindings.get(sessionId);
         if (binding == null) {
             return;
         }
 
-        if (Assert.isEmpty(reply)) {
+        if (Assert.isEmpty(reply) || binding.lastContextToken == null) {
             return;
         }
 
-        if (isFinal == false) {
-            // ★ 不丢弃：累加到缓冲区，等待最终结果时合并发送
-            pendingBuffers.computeIfAbsent(sessionId, k -> new StringBuilder())
-                    .append(reply).append("\n\n");
-            return;
-        }
-
-        if (binding.lastContextToken == null) {
-            return;
-        }
-
-        // ★ isFinal=true：取出累积内容 + 最终内容，合成完整消息
-        StringBuilder buf = pendingBuffers.remove(sessionId);
-        String fullReply;
-        if (buf != null && buf.length() > 0) {
-            fullReply = buf.toString() + reply;
-        } else {
-            fullReply = reply;
-        }
-
-        final String finalReply = fullReply;
-        RunUtil.runAndTry(() -> {
-            sendReplyDo(binding, finalReply);
-        });
+        sendReplyDo(binding, reply);
     }
 
     private void sendReplyDo(WeChatBinding binding, String reply) {
@@ -320,13 +295,24 @@ public class WeChatLink implements Channel, Runnable {
             cleanReply = reply; // fallback 到原文
         }
 
-        // 使用 ChunkedSender 分段发送（含段间限速 + 失败重试）
-        final String finalReply = cleanReply;
-        ChunkedSender.sendChunked(finalReply,
-                ChunkedSender.Config.wechat(),
-                (chunk, part) -> WeChatClient.sendMessage(
-                        binding.botToken, binding.lastFromUserId,
-                        binding.lastContextToken, chunk));
+        // 微信消息长度限制，分段发送（每段最多 2000 字符）
+        int maxLen = 2000;
+        if (cleanReply.length() <= maxLen) {
+            WeChatClient.sendMessage(binding.botToken, binding.lastFromUserId, binding.lastContextToken, cleanReply);
+        } else {
+            int pos = 0;
+            int part = 1;
+            while (pos < cleanReply.length()) {
+                int end = Math.min(pos + maxLen, cleanReply.length());
+                String chunk = cleanReply.substring(pos, end);
+                if (part > 1) {
+                    chunk = "(" + part + ") " + chunk;
+                }
+                WeChatClient.sendMessage(binding.botToken, binding.lastFromUserId, binding.lastContextToken, chunk);
+                pos = end;
+                part++;
+            }
+        }
     }
 
     // ==================== 内部数据类 ====================
