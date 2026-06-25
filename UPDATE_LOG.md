@@ -1,13 +1,8 @@
-
-### v2026.6.26
-
-* 添加 soloncode web 钉钉扫码绑定
-* 细节优化
-
 ### v2026.6.25
 
 * 添加 soloncode web 设置/通用/日志保存
 * 添加 soloncode web 飞书扫码绑定
+* 添加 soloncode web 钉钉扫码绑定
 * 优化 soloncode loop goal 完成识别（改为 tool 单一机制，之前还有消息标识）
 * 优化 soloncode loop goal 移除 maxIterations 限制（严格使用预算机制）
 * 修复 soloncode web 添加供应商时，没有同步输入面板的模型选择
@@ -27,6 +22,7 @@
 * 优化 soloncode web 面板拖拽性能；延迟消息流代码高亮；为滚动区域和面板添加contain布局
 * 优化 soloncode web 任务面板数据显示
 * 优化 soloncode web mac 组合输入法的兼容性
+* 优化 soloncode 上下文压缩算法
 * 重构 soloncode loop goal 实现
 * 细节优化
 
