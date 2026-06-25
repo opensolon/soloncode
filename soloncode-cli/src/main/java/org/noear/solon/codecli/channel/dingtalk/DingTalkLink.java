@@ -325,6 +325,9 @@ public class DingTalkLink implements Channel, Runnable {
             DingTalkBinding binding = entry.getValue();
             bindings.put(sessionId, binding);
             userIdToSession.put(binding.userId, sessionId);
+            if (binding.sessionWebhook != null && !binding.sessionWebhook.isEmpty()) {
+                webhookCache.put(binding.userId, binding.sessionWebhook);
+            }
             LOG.info("[DingTalk] Restored session {} -> userId {}", sessionId, binding.userId);
         }
     }
@@ -457,6 +460,12 @@ public class DingTalkLink implements Channel, Runnable {
 
         DingTalkBinding binding = bindings.get(sessionId);
         if (binding == null) return;
+
+        // 持久化 sessionWebhook 到绑定记录（重启后可用）
+        if (webhook != null && !webhook.equals(binding.sessionWebhook)) {
+            binding.sessionWebhook = webhook;
+            credentialStore.save(bindings);
+        }
 
         // 防重复处理
         if (msgId != null && msgId.equals(binding.lastMessageId)) {
@@ -677,5 +686,6 @@ public class DingTalkLink implements Channel, Runnable {
         public String lastMessageId;   // 最后处理的消息 ID（防重复）
         public String appKey;          // 保存的 AppKey（用于重启后恢复 Stream 连接）
         public String appSecret;       // 保存的 AppSecret
+        public String sessionWebhook;  // sessionWebhook（持久化后重启可恢复 webhook 回复）
     }
 }

@@ -81,6 +81,7 @@ public class DingTalkCredentialStore {
                     binding.lastMessageId = node.get("lastMessageId").getString();
                     binding.appKey = node.get("appKey").getString();
                     binding.appSecret = node.get("appSecret").getString();
+                    binding.sessionWebhook = node.get("sessionWebhook").getString();
 
                     if (binding.userId != null && !binding.userId.isEmpty()) {
                         result.put(sessionId, binding);
@@ -122,6 +123,7 @@ public class DingTalkCredentialStore {
                 node.set("lastMessageId", binding.lastMessageId);
                 node.set("appKey", binding.appKey);
                 node.set("appSecret", binding.appSecret);
+                node.set("sessionWebhook", binding.sessionWebhook);
 
                 root.set(sessionId, node);
             }
