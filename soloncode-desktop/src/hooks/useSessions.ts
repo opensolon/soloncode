@@ -3,6 +3,7 @@ import {
   getAllConversations, saveConversation, deleteConversation,
   updateConversation, saveLastSessionId, loadLastSessionId,
   migrateConversationsToProjects, reassignMessages,
+  getMessageCount,
   UNLINKED_PROJECT,
 } from '../db';
 import type { Conversation } from '../types';
@@ -16,7 +17,12 @@ export interface Session {
   workspacePath?: string;
 }
 
-export function useSessions(activeProjectPath: string | null) {
+export function useSessions(
+  activeProjectPath: string | null,
+  options?: {
+    onSessionIdResolved?: (oldId: string, newId: string) => void;
+  },
+) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [pendingSessionProject, setPendingSessionProject] = useState<string | null>(null);
@@ -26,13 +32,16 @@ export function useSessions(activeProjectPath: string | null) {
     (async () => {
       await migrateConversationsToProjects();
       const convs = await getAllConversations();
-      const loaded: Session[] = convs.map(c => ({
-        id: c.id!.toString(),
-        title: c.title,
-        timestamp: c.timestamp,
-        messageCount: 0,
-        isPermanent: c.isPermanent,
-        workspacePath: c.workspacePath || UNLINKED_PROJECT,
+      const loaded: Session[] = await Promise.all(convs.map(async c => {
+        const id = c.id!.toString();
+        return {
+          id,
+          title: c.title,
+          timestamp: c.timestamp,
+          messageCount: await getMessageCount(id),
+          isPermanent: c.isPermanent,
+          workspacePath: c.workspacePath || UNLINKED_PROJECT,
+        };
       }));
       setSessions(loaded);
     })();
@@ -66,9 +75,18 @@ export function useSessions(activeProjectPath: string | null) {
     }
 
     const tempId = `temp-${Date.now()}`;
+    const workspacePath = projectId && projectId !== UNLINKED_PROJECT
+      ? projectId
+      : (activeProjectPath || UNLINKED_PROJECT);
+    const title = _title || '新会话';
+    const timestamp = new Date().toISOString();
+    setSessions(prev => [
+      { id: tempId, title, timestamp, messageCount: 0, workspacePath },
+      ...prev.filter(s => s.id !== tempId),
+    ]);
     setCurrentSessionId(tempId);
     return tempId;
-  }, [currentSessionId, sessions]);
+  }, [activeProjectPath, currentSessionId, sessions]);
 
   const handleDeleteSession = useCallback((id: string) => {
     const remaining = sessions.filter(s => s.id !== id);
@@ -102,11 +120,12 @@ export function useSessions(activeProjectPath: string | null) {
         await reassignMessages(sessionId, realId);
         setSessions(p => {
           if (p.find(s => s.id === sessionId)) {
-            return p.map(s => s.id === sessionId ? { ...s, id: realId, title, workspacePath: sessionWsPath } : s);
+            return p.map(s => s.id === sessionId ? { ...s, id: realId, title, workspacePath: sessionWsPath, timestamp: new Date().toISOString() } : s);
           }
           return [{ id: realId, title, timestamp: new Date().toLocaleString(), messageCount: 0, workspacePath: sessionWsPath }, ...p];
         });
-        setCurrentSessionId(realId);
+        setCurrentSessionId(current => current === sessionId ? realId : current);
+        options?.onSessionIdResolved?.(sessionId, realId);
       });
 
       if (exists) {
@@ -115,7 +134,15 @@ export function useSessions(activeProjectPath: string | null) {
       return prev;
     });
     setPendingSessionProject(null);
-  }, [activeProjectPath, pendingSessionProject]);
+  }, [activeProjectPath, pendingSessionProject, options]);
+
+  const incrementSessionMessageCount = useCallback((sessionId: string, count = 1) => {
+    setSessions(prev => prev.map(session =>
+      session.id === sessionId
+        ? { ...session, messageCount: session.messageCount + count, timestamp: new Date().toISOString() }
+        : session
+    ));
+  }, []);
 
   const currentConversation: Conversation = useMemo(() => {
     const session = sessions.find(s => s.id === currentSessionId);
@@ -137,6 +164,7 @@ export function useSessions(activeProjectPath: string | null) {
     handleNewSession,
     handleDeleteSession,
     handleUpdateSessionTitle,
+    incrementSessionMessageCount,
     restoreLastSession,
   };
 }

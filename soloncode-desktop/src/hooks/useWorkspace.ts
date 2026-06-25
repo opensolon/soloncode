@@ -163,7 +163,10 @@ export function useWorkspace(deps: UseWorkspaceDeps) {
     try {
       const homeDir = await import('@tauri-apps/api/path').then(m => m.homeDir());
       const sep = homeDir.includes('\\') ? '\\' : '/';
-      const baseDir = `${homeDir}Documents${sep}SolonCode`;
+      const normalizedHome = homeDir.endsWith('\\') || homeDir.endsWith('/')
+        ? homeDir
+        : `${homeDir}${sep}`;
+      const baseDir = `${normalizedHome}Documents${sep}SolonCode`;
 
       await fileService.createDirectory(baseDir);
 
@@ -186,11 +189,15 @@ export function useWorkspace(deps: UseWorkspaceDeps) {
       setActiveProjectPath(projectPath);
       setChatWorkspacePath(projectPath);
       saveLastActiveProject(projectPath);
+      saveLastFolder(projectPath);
+      setOpenFiles([]);
+      setActiveFilePath(null);
       setActiveActivity('explorer');
+      refreshFileTreeLocal(projectPath);
     } catch (err) {
       console.error('[App] 创建项目失败:', err);
     }
-  }, [projects, setActiveActivity]);
+  }, [projects, setOpenFiles, setActiveFilePath, setActiveActivity, refreshFileTreeLocal]);
 
   return {
     activeProjectPath,

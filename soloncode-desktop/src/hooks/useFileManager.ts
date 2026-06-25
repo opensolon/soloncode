@@ -74,20 +74,20 @@ export function useFileManager(activeProjectPath: string | null, onAllFilesClose
     ));
   }, []);
 
-  const handleFileSave = useCallback(async (path: string) => {
+  const handleFileSave = useCallback(async (path: string, contentOverride?: string) => {
     const file = openFilesRef.current.find(f => f.path === path);
-    if (file && activeProjectPath) {
+    if (file) {
       try {
-        await fileService.writeFile(path, file.content);
+        await fileService.writeFile(path, contentOverride ?? file.content);
         setOpenFiles(prev => prev.map(f =>
-          f.path === path ? { ...f, modified: false } : f
+          f.path === path ? { ...f, content: contentOverride ?? f.content, modified: false } : f
         ));
       } catch (err) {
         console.error('保存文件失败:', err);
       }
     } else {
       setOpenFiles(prev => prev.map(f =>
-        f.path === path ? { ...f, modified: false } : f
+        f.path === path ? { ...f, content: contentOverride ?? f.content, modified: false } : f
       ));
     }
   }, [activeProjectPath]);

@@ -7,7 +7,7 @@ export type IconName =
   | 'file-java' | 'file-rs' | 'file-py' | 'file-img' | 'file-lock' | 'file-yml'
   // 功能图标
   | 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'settings'
-  | 'chat' | 'terminal' | 'code' | 'skills' | 'agents' | 'channels'
+  | 'chat' | 'terminal' | 'code' | 'skills' | 'agents' | 'channels' | 'info'
   // 操作图标
   | 'add' | 'remove' | 'edit' | 'delete' | 'refresh' | 'save'
   | 'push' | 'pull' | 'commit' | 'stage' | 'unstage'
@@ -58,6 +58,7 @@ const iconPaths: Record<IconName, string> = {
   'chat': 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
   'terminal': 'M4 17l6-6-6-6M12 19h8',
   'code': 'M16 18l6-6-6-6M8 6l-6 6 6 6',
+  'info': 'M12 16v-4M12 8h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20',
 
   // 操作图标
   'add': 'M12 5v14M5 12h14',

@@ -14,7 +14,7 @@ export interface Session {
 }
 
 export interface Project {
-  id: string;       // workspace path
+  id: string;
   name: string;
   sortOrder: number;
 }
@@ -25,6 +25,7 @@ interface SessionsPanelProps {
   currentSessionId: string | null;
   currentProjectId: string | null;
   backendPort?: number | null;
+  sessionRunStates?: Record<string, 'running' | 'completed' | 'error'>;
   onSelectSession: (id: string) => void;
   onNewSession: (projectId?: string) => string | void;
   onDeleteSession: (id: string) => void;
@@ -33,12 +34,26 @@ interface SessionsPanelProps {
   onSyncSession?: (sessionId: string) => Promise<void>;
 }
 
+function formatRelativeTime(timestamp: string) {
+  const time = new Date(timestamp).getTime();
+  if (!Number.isFinite(time)) return timestamp;
+  const diff = Date.now() - time;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) return '刚刚';
+  if (diff < hour) return `${Math.floor(diff / minute)}分钟前`;
+  if (diff < day) return `${Math.floor(diff / hour)}小时前`;
+  if (diff < day * 30) return `${Math.floor(diff / day)}天前`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
 export function SessionsPanel({
   projects,
   sessions,
   currentSessionId,
   currentProjectId,
-  backendPort,
+  sessionRunStates = {},
   onSelectSession,
   onNewSession,
   onDeleteSession,
@@ -63,67 +78,24 @@ export function SessionsPanel({
     });
   };
 
-  // 按项目分组会话
   const sessionsByProject = new Map<string, Session[]>();
-  for (const s of sessions) {
-    const key = s.workspacePath || UNLINKED_PROJECT;
+  for (const session of sessions) {
+    const key = session.workspacePath || UNLINKED_PROJECT;
     if (!sessionsByProject.has(key)) sessionsByProject.set(key, []);
-    sessionsByProject.get(key)!.push(s);
+    sessionsByProject.get(key)!.push(session);
   }
 
-  // 项目列表（不含"对话"）
   const projectEntries: { id: string; name: string }[] = [
-    ...projects.map(p => ({ id: p.id, name: p.name })),
+    ...projects.map(project => ({ id: project.id, name: project.name })),
   ];
-  // 如果某个项目有会话但不在 projects 列表中，也加上
   for (const [projectId] of sessionsByProject) {
-    if (projectId !== UNLINKED_PROJECT && !projects.find(p => p.id === projectId)) {
+    if (projectId !== UNLINKED_PROJECT && !projects.find(project => project.id === projectId)) {
       const name = projectId.split(/[/\\]/).pop() || projectId;
       projectEntries.push({ id: projectId, name });
     }
   }
 
   const unlinkedSessions = sessionsByProject.get(UNLINKED_PROJECT) || [];
-  const isUnlinkedExpanded = expandedProjects.has(UNLINKED_PROJECT);
-
-  // 渲染项目或对话组的会话列表
-  function renderSessionList(sessionList: Session[]) {
-    return sessionList.map(session => (
-      <div
-        key={session.id}
-        className={`session-item${currentSessionId === session.id ? ' active' : ''}`}
-        onClick={() => onSelectSession(session.id)}
-      >
-        <div className="session-icon">
-          <Icon name={session.isPermanent ? 'bot' : 'chat'} size={16} />
-        </div>
-        <div className="session-info">
-          <div className="session-title">{session.title}</div>
-          <div className="session-meta">
-            <span>{session.messageCount} 条消息</span>
-            <span className="separator">·</span>
-            <span>{session.timestamp}</span>
-          </div>
-        </div>
-        <button
-          className={`sync-btn${syncingIds.has(session.id) ? ' syncing' : ''}`}
-          onClick={e => { e.stopPropagation(); requestSync(session.id, session.title); }}
-          title="同步消息"
-        >
-          <Icon name={syncingIds.has(session.id) ? 'loading' : 'refresh'} size={14} />
-        </button>
-        {!session.isPermanent && (
-          <button
-            className="delete-btn"
-            onClick={e => { e.stopPropagation(); onDeleteSession(session.id); }}
-            title="删除"
-          >
-            <Icon name="delete" size={14} />
-          </button>
-        )}
-      </div>
-    ));
-  }
 
   const handleSync = useCallback(async (sessionId: string) => {
     if (syncingIds.has(sessionId)) return;
@@ -144,12 +116,59 @@ export function SessionsPanel({
   }, []);
 
   const handleSyncAll = useCallback(async () => {
-    for (const s of sessions) {
-      if (!s.id.startsWith('temp-') && !s.id.startsWith('pending-')) {
-        await handleSync(s.id);
+    for (const session of sessions) {
+      if (!session.id.startsWith('temp-') && !session.id.startsWith('pending-')) {
+        await handleSync(session.id);
       }
     }
   }, [sessions, handleSync]);
+
+  function renderSessionList(sessionList: Session[]) {
+    return sessionList.map(session => {
+      const runState = sessionRunStates[session.id];
+      return (
+        <div
+          key={session.id}
+          className={`session-item${currentSessionId === session.id ? ' active' : ''}${runState ? ` ${runState}` : ''}`}
+          onClick={() => onSelectSession(session.id)}
+        >
+          <div className="session-icon">
+            <Icon name={session.isPermanent ? 'bot' : 'chat'} size={14} />
+          </div>
+          <div className="session-info">
+            <div className="session-title">{session.title}</div>
+            <div className="session-meta">
+              <span>{session.messageCount}</span>
+              <span className="separator">·</span>
+              <span>{formatRelativeTime(session.timestamp)}</span>
+            </div>
+          </div>
+          {runState && (
+            <span
+              className={`session-run-dot ${runState}`}
+              title={runState === 'running' ? '正在运行' : runState === 'completed' ? '运行完成' : '运行失败'}
+            />
+          )}
+          <button
+            className={`sync-btn${syncingIds.has(session.id) ? ' syncing' : ''}`}
+            onClick={event => { event.stopPropagation(); requestSync(session.id, session.title); }}
+            title="同步消息"
+          >
+            <Icon name={syncingIds.has(session.id) ? 'loading' : 'refresh'} size={14} />
+          </button>
+          {!session.isPermanent && (
+            <button
+              className="delete-btn"
+              onClick={event => { event.stopPropagation(); onDeleteSession(session.id); }}
+              title="删除"
+            >
+              <Icon name="delete" size={14} />
+            </button>
+          )}
+        </div>
+      );
+    });
+  }
 
   return (
     <div className="sessions-panel">
@@ -175,12 +194,10 @@ export function SessionsPanel({
           onCancel={() => setConfirmSyncAll(false)}
         />
       )}
+
       <div className="panel-header">
         <span className="panel-title">项目</span>
         <div className="panel-header-actions">
-          {/* <button className="new-session-btn" onClick={() => setConfirmSyncAll(true)} title="同步全部">
-            <Icon name="refresh" size={14} />
-          </button> */}
           <button className="new-session-btn" onClick={() => onNewSession(currentProjectId || undefined)} title="新建会话">
             <Icon name="add" size={16} />
           </button>
@@ -191,7 +208,6 @@ export function SessionsPanel({
       </div>
 
       <div className="sessions-list">
-        {/* 上半部分：项目列表 */}
         {projectEntries.length > 0 && projectEntries.map(entry => {
           const projectSessions = sessionsByProject.get(entry.id) || [];
           const isExpanded = expandedProjects.has(entry.id);
@@ -209,14 +225,14 @@ export function SessionsPanel({
                 <span className="project-count">{projectSessions.length}</span>
                 <button
                   className="project-remove-btn"
-                  onClick={e => { e.stopPropagation(); onRemoveProject(entry.id); }}
+                  onClick={event => { event.stopPropagation(); onRemoveProject(entry.id); }}
                   title="移除项目"
                 >
                   <Icon name="delete" size={12} />
                 </button>
                 <button
                   className="project-add-session-btn"
-                  onClick={e => { e.stopPropagation(); onNewSession(entry.id); }}
+                  onClick={event => { event.stopPropagation(); onNewSession(entry.id); }}
                   title="新建会话"
                 >
                   <Icon name="add" size={12} />
@@ -246,7 +262,6 @@ export function SessionsPanel({
           </button>
         </div>
 
-        {/* 对话列表：直接平铺，不需要折叠分组 */}
         {unlinkedSessions.length === 0 && (
           <div className="project-empty">暂无对话</div>
         )}

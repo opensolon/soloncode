@@ -15,4 +15,8 @@ public interface ModelsAdapter {
     String getStandard();
 
     List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey);
+
+    default String deriveBaseUrl(String apiUrl) {
+        return ModelApiUrl.deriveBaseUrl(apiUrl, getStandard());
+    }
 }

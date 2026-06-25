@@ -7,6 +7,9 @@ import {
   type ModelProvider,
   type ProviderType,
   type GeneralSettings,
+  type MountConfig,
+  type OpenApiServerConfig,
+  type LspServerConfig,
   PROVIDER_PRESETS,
   DEFAULT_PROMPTS,
   createProvider,
@@ -22,7 +25,7 @@ export interface Settings extends GeneralSettings {
   agents: AgentConfig[];
 }
 
-type SettingsMenuKey = 'general' | 'model' | 'channels' | 'mcp' | 'skills' | 'prompts' | 'logs';
+type SettingsMenuKey = 'general' | 'permission' | 'mounts' | 'model' | 'channels' | 'mcp' | 'openapi' | 'lsp' | 'skills' | 'prompts' | 'logs';
 
 interface SettingsPanelProps {
   visible: boolean;
@@ -36,9 +39,13 @@ interface SettingsPanelProps {
 
 const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'general', icon: 'settings', label: '常规' },
+  { key: 'permission', icon: 'settings', label: '工具权限' },
+  { key: 'mounts', icon: 'folder', label: '挂载' },
   { key: 'model', icon: 'bot', label: '模型' },
   { key: 'channels', icon: 'channels', label: '渠道绑定' },
   { key: 'mcp', icon: 'extensions', label: 'MCP 服务器' },
+  { key: 'openapi', icon: 'code', label: 'OpenAPI' },
+  { key: 'lsp', icon: 'code', label: 'LSP' },
   { key: 'skills', icon: 'skills', label: 'Skills' },
   { key: 'prompts', icon: 'edit', label: 'AI 提示词' },
   ...(import.meta.env.DEV ? [{ key: 'logs' as SettingsMenuKey, icon: 'terminal' as IconName, label: '日志' }] : []),
@@ -91,6 +98,18 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
       ...prev,
       mcpServers: prev.mcpServers.map((s, i) => i === index ? { ...s, ...updates } : s),
     }));
+  }
+  function updateList<K extends 'mounts' | 'openApiServers' | 'lspServers'>(key: K, index: number, updates: Partial<Settings[K][number]>) {
+    setLocalSettings(prev => ({
+      ...prev,
+      [key]: (prev[key] as any[]).map((item, i) => i === index ? { ...item, ...updates } : item),
+    }));
+  }
+  function addListItem<K extends 'mounts' | 'openApiServers' | 'lspServers'>(key: K, item: Settings[K][number]) {
+    setLocalSettings(prev => ({ ...prev, [key]: [...(prev[key] as any[]), item] }));
+  }
+  function removeListItem<K extends 'mounts' | 'openApiServers' | 'lspServers'>(key: K, index: number) {
+    setLocalSettings(prev => ({ ...prev, [key]: (prev[key] as any[]).filter((_, i) => i !== index) }));
   }
 
 
@@ -161,6 +180,20 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
                 backendPort={backendPort}
               />
             )}
+            {activeMenu === 'permission' && (
+              <PermissionSettings
+                disallowedTools={localSettings.disallowedTools}
+                onChange={tools => updateSetting('disallowedTools', tools)}
+              />
+            )}
+            {activeMenu === 'mounts' && (
+              <MountSettings
+                mounts={localSettings.mounts}
+                onAdd={() => addListItem('mounts', { alias: '', path: '', type: 'SKILLS', scope: 'user', writeable: false, description: '' })}
+                onRemove={index => removeListItem('mounts', index)}
+                onUpdate={(index, updates) => updateList('mounts', index, updates)}
+              />
+            )}
             {activeMenu === 'channels' && (
               <ChannelSettings backendPort={backendPort} sessionId={sessionId} />
             )}
@@ -170,6 +203,22 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
                 onAdd={handleAddMcpServer}
                 onRemove={handleRemoveMcpServer}
                 onUpdate={handleUpdateMcpServer}
+              />
+            )}
+            {activeMenu === 'openapi' && (
+              <OpenApiSettings
+                servers={localSettings.openApiServers}
+                onAdd={() => addListItem('openApiServers', { name: '', baseUrl: '', docUrl: '', scope: 'user', headers: {}, enabled: true })}
+                onRemove={index => removeListItem('openApiServers', index)}
+                onUpdate={(index, updates) => updateList('openApiServers', index, updates)}
+              />
+            )}
+            {activeMenu === 'lsp' && (
+              <LspSettings
+                servers={localSettings.lspServers}
+                onAdd={() => addListItem('lspServers', { name: '', command: '', extensions: [], scope: 'user', env: {}, enabled: true })}
+                onRemove={index => removeListItem('lspServers', index)}
+                onUpdate={(index, updates) => updateList('lspServers', index, updates)}
               />
             )}
             {activeMenu === 'skills' && (
@@ -271,6 +320,126 @@ function GeneralSettings({ settings, updateSetting }: {
           onChange={e => updateSetting('cliPort', parseInt(e.target.value) || 4808)}
           min={1024} max={65535} />
       </SettingRow>
+
+      <div className="settings-section-title">对话策略</div>
+      <SettingRow label="历史窗口大小">
+        <input type="number" className="setting-input number" value={settings.sessionWindowSize}
+          onChange={e => updateSetting('sessionWindowSize', parseInt(e.target.value) || 8)} min={1} />
+      </SettingRow>
+      <SettingRow label="压缩触发消息数">
+        <input type="number" className="setting-input number" value={settings.compressionMaxMessages}
+          onChange={e => updateSetting('compressionMaxMessages', parseInt(e.target.value) || 40)} min={1} />
+      </SettingRow>
+      <SettingRow label="压缩触发词元数">
+        <input type="number" className="setting-input number" value={settings.compressionMaxTokens}
+          onChange={e => updateSetting('compressionMaxTokens', parseInt(e.target.value) || 64000)} min={1} step={1000} />
+      </SettingRow>
+
+      <div className="settings-section-title">沙盒与记忆</div>
+      <SettingRow label="沙盒模式">
+        <input type="checkbox" checked={settings.sandboxEnabled}
+          onChange={e => updateSetting('sandboxEnabled', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="允许用户目录">
+        <input type="checkbox" checked={settings.sandboxAllowUserHome}
+          onChange={e => updateSetting('sandboxAllowUserHome', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="系统级限制">
+        <input type="checkbox" checked={settings.sandboxSystemRestrict}
+          onChange={e => updateSetting('sandboxSystemRestrict', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="心智记忆">
+        <input type="checkbox" checked={settings.memoryEnabled}
+          onChange={e => updateSetting('memoryEnabled', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="记忆按工作区隔离">
+        <input type="checkbox" checked={settings.memoryIsolation}
+          onChange={e => updateSetting('memoryIsolation', e.target.checked)} />
+      </SettingRow>
+
+      <div className="settings-section-title">失败重试</div>
+      <SettingRow label="模型重试次数">
+        <input type="number" className="setting-input number" value={settings.modelRetries}
+          onChange={e => updateSetting('modelRetries', parseInt(e.target.value) || 0)} min={0} />
+      </SettingRow>
+      <SettingRow label="MCP 重试次数">
+        <input type="number" className="setting-input number" value={settings.mcpRetries}
+          onChange={e => updateSetting('mcpRetries', parseInt(e.target.value) || 0)} min={0} />
+      </SettingRow>
+      <SettingRow label="OpenAPI 重试次数">
+        <input type="number" className="setting-input number" value={settings.apiRetries}
+          onChange={e => updateSetting('apiRetries', parseInt(e.target.value) || 0)} min={0} />
+      </SettingRow>
+
+      <div className="settings-section-title">功能开关</div>
+      <SettingRow label="工具调用简化显示">
+        <input type="checkbox" checked={settings.cliPrintSimplified}
+          onChange={e => updateSetting('cliPrintSimplified', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="Bash 异步机制">
+        <input type="checkbox" checked={settings.bashAsyncEnabled}
+          onChange={e => updateSetting('bashAsyncEnabled', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="Subagent 子代理">
+        <input type="checkbox" checked={settings.subagentEnabled}
+          onChange={e => updateSetting('subagentEnabled', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="MCP 工具网关">
+        <input type="checkbox" checked={settings.mcpEnabled}
+          onChange={e => updateSetting('mcpEnabled', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="OpenAPI 网关">
+        <input type="checkbox" checked={settings.openApiEnabled}
+          onChange={e => updateSetting('openApiEnabled', e.target.checked)} />
+      </SettingRow>
+      <SettingRow label="LSP 代码智能">
+        <input type="checkbox" checked={settings.lspEnabled}
+          onChange={e => updateSetting('lspEnabled', e.target.checked)} />
+      </SettingRow>
+
+      <div className="settings-section-title">访问认证</div>
+      <SettingRow label="用户名">
+        <input type="text" className="setting-input" value={settings.webAuthUser}
+          onChange={e => updateSetting('webAuthUser', e.target.value)} placeholder="留空不启用" />
+      </SettingRow>
+      <SettingRow label="密码">
+        <input type="password" className="setting-input" value={settings.webAuthPass}
+          onChange={e => updateSetting('webAuthPass', e.target.value)} placeholder="留空不启用" />
+      </SettingRow>
+
+      <div className="settings-section-title">循环目标</div>
+      <SettingRow label="Token 预算">
+        <input type="number" className="setting-input number" value={settings.loopDefaultMaxTokens}
+          onChange={e => updateSetting('loopDefaultMaxTokens', parseInt(e.target.value) || 0)} min={0} />
+      </SettingRow>
+      <SettingRow label="时间预算（分钟）">
+        <input type="number" className="setting-input number" value={settings.loopDefaultMaxDuration}
+          onChange={e => updateSetting('loopDefaultMaxDuration', parseInt(e.target.value) || 0)} min={0} />
+      </SettingRow>
+      <SettingRow label="停滞阈值">
+        <input type="number" className="setting-input number" value={settings.loopStagnationThreshold}
+          onChange={e => updateSetting('loopStagnationThreshold', parseInt(e.target.value) || 3)} min={1} />
+      </SettingRow>
+      <SettingRow label="连续异常阈值">
+        <input type="number" className="setting-input number" value={settings.loopMaxConsecutiveErrors}
+          onChange={e => updateSetting('loopMaxConsecutiveErrors', parseInt(e.target.value) || 3)} min={1} />
+      </SettingRow>
+      <SettingRow label="暂停放弃（小时）">
+        <input type="number" className="setting-input number" value={settings.loopPauseAutoAbandonHours}
+          onChange={e => updateSetting('loopPauseAutoAbandonHours', parseInt(e.target.value) || 24)} min={1} />
+      </SettingRow>
+      <SettingRow label="预算警告百分比">
+        <input type="number" className="setting-input number" value={settings.loopBudgetWarningPercent}
+          onChange={e => updateSetting('loopBudgetWarningPercent', parseInt(e.target.value) || 70)} min={1} max={100} />
+      </SettingRow>
+      <SettingRow label="预算紧急百分比">
+        <input type="number" className="setting-input number" value={settings.loopBudgetCriticalPercent}
+          onChange={e => updateSetting('loopBudgetCriticalPercent', parseInt(e.target.value) || 85)} min={1} max={100} />
+      </SettingRow>
+      <SettingRow label="启用验证器">
+        <input type="checkbox" checked={settings.loopValidatorEnabled}
+          onChange={e => updateSetting('loopValidatorEnabled', e.target.checked)} />
+      </SettingRow>
     </div>
   );
 }
@@ -300,19 +469,13 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
           {showAddMenu && (
             <div className="provider-add-dropdown">
               {(Object.keys(PROVIDER_PRESETS) as ProviderType[]).map(type => (
-                <div key={type} className="provider-add-item" onClick={() => {
+                <div key={type || 'auto'} className="provider-add-item" onClick={() => {
                   onAddProvider(type);
                   setShowAddMenu(false);
                 }}>
                   {PROVIDER_PRESETS[type].label}
                 </div>
               ))}
-              <div className="provider-add-item" onClick={() => {
-                onAddProvider('custom');
-                setShowAddMenu(false);
-              }}>
-                自定义
-              </div>
             </div>
           )}
         </div>
@@ -331,7 +494,7 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
         >
           <div className="provider-card-header">
             <div className="provider-card-info">
-              <span className="provider-badge">{PROVIDER_PRESETS[p.type as keyof typeof PROVIDER_PRESETS]?.label || '自定义'}</span>
+              <span className="provider-badge">{PROVIDER_PRESETS[p.type]?.label || PROVIDER_PRESETS[''].label}</span>
               <span className="provider-card-name">{p.name}</span>
             </div>
             <div className="provider-card-actions">
@@ -360,27 +523,27 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
             <input type="text" className="setting-input" value={activeProvider.name}
               onChange={e => onUpdateProvider(activeProvider.id, { name: e.target.value })} />
           </SettingRow>
+          <SettingRow label="作用域">
+            <select className="setting-select" value={activeProvider.scope || 'user'}
+              onChange={e => onUpdateProvider(activeProvider.id, { scope: e.target.value as 'user' | 'workspace' })}>
+              <option value="user">用户（全局）</option>
+              <option value="workspace">工作区（本地）</option>
+            </select>
+          </SettingRow>
           <SettingRow label="类型">
             <select className="setting-select" value={activeProvider.type}
               onChange={e => {
                 const t = e.target.value as ProviderType;
-                const preset = PROVIDER_PRESETS[t as keyof typeof PROVIDER_PRESETS];
+                const preset = PROVIDER_PRESETS[t];
                 const updates: Partial<ModelProvider> = { type: t };
-                if (preset) {
-                  updates.name = preset.label;
-                  updates.apiUrl = preset.apiUrl;
-                  updates.model = preset.models[0]?.value || '';
-                } else {
-                  updates.name = '自定义';
-                  updates.apiUrl = '';
-                  updates.model = '';
-                }
+                updates.name = preset.label;
+                updates.apiUrl = preset.apiUrl;
+                updates.model = preset.models[0]?.value || '';
                 onUpdateProvider(activeProvider.id, updates);
               }}>
               {Object.entries(PROVIDER_PRESETS).map(([key, val]) => (
-                <option key={key} value={key}>{val.label}</option>
+                <option key={key || 'auto'} value={key}>{val.label}</option>
               ))}
-              <option value="custom">自定义</option>
             </select>
           </SettingRow>
           <SettingRow label="API 地址">
@@ -392,7 +555,50 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
             <ApiKeyInput value={activeProvider.apiKey} onChange={v => onUpdateProvider(activeProvider.id, { apiKey: v })} />
           </SettingRow>
           <SettingRow label="模型">
-            <ProviderModelSelect provider={activeProvider} onChange={m => onUpdateProvider(activeProvider.id, { model: m })} onModelsLoaded={models => onUpdateProvider(activeProvider.id, { availableModels: models })} backendPort={backendPort} />
+            <ProviderModelSelect
+              provider={activeProvider}
+              onChange={m => {
+                const selected = activeProvider.availableModels?.find(item => item.id === m);
+                onUpdateProvider(activeProvider.id, {
+                  model: m,
+                  ...(selected?.contextLength ? { contextLength: selected.contextLength } : {}),
+                });
+              }}
+              onModelsLoaded={models => {
+                const selected = models.find(item => item.id === activeProvider.model);
+                onUpdateProvider(activeProvider.id, {
+                  availableModels: models,
+                  ...(selected?.contextLength ? { contextLength: selected.contextLength } : {}),
+                });
+              }}
+              backendPort={backendPort}
+            />
+          </SettingRow>
+          <SettingRow label="上下文限制">
+            <input
+              type="number"
+              className="setting-input number"
+              value={activeProvider.contextLength || 128000}
+              onChange={e => onUpdateProvider(activeProvider.id, { contextLength: Math.max(1, parseInt(e.target.value, 10) || 128000) })}
+              min={1}
+              step={1000}
+              placeholder="128000"
+            />
+          </SettingRow>
+          <SettingRow label="超时时间">
+            <input type="text" className="setting-input" value={activeProvider.timeout || 'PT120S'}
+              onChange={e => onUpdateProvider(activeProvider.id, { timeout: e.target.value })}
+              placeholder="PT120S / 120s" />
+          </SettingRow>
+          <SettingRow label="默认选项">
+            <textarea
+              className="setting-input"
+              value={activeProvider.defaultOptions || ''}
+              onChange={e => onUpdateProvider(activeProvider.id, { defaultOptions: e.target.value })}
+              placeholder='{"temperature":0.2,"top_p":0.5,"reasoning_effort":"high"}'
+              rows={4}
+              style={{ resize: 'vertical', fontFamily: 'monospace' }}
+            />
           </SettingRow>
         </>
       )}
@@ -412,7 +618,7 @@ const FALLBACK_PORT = 4808;
 function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }: {
   provider: ModelProvider;
   onChange: (model: string) => void;
-  onModelsLoaded: (models: { id: string; ownedBy?: string }[]) => void;
+  onModelsLoaded: (models: { id: string; ownedBy?: string; contextLength?: number }[]) => void;
   backendPort?: number | null;
 }) {
   const models = provider.availableModels || [];
@@ -420,8 +626,8 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
   const [error, setError] = useState('');
 
   const handleFetch = useCallback(async () => {
-    if (!provider.apiUrl || !provider.apiKey) {
-      setError('请填写完整的 API 地址和密钥');
+    if (!provider.apiUrl) {
+      setError('请填写 API 地址');
       return;
     }
 
@@ -430,7 +636,7 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
     setError('');
 
     try {
-      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}`;
+      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}&model=${encodeURIComponent(provider.model || '')}`;
       const resp = await fetch(url);
       if (!resp.ok) {
         setError('API地址或密钥不正确');
@@ -444,7 +650,11 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
         return;
       }
 
-      onModelsLoaded(modelList);
+      onModelsLoaded(modelList.map(m => ({
+        id: m.id,
+        ownedBy: m.ownedBy || m.owned_by,
+        contextLength: Number(m.contextLength || m.context_length) || undefined,
+      })));
       if (!provider.model && modelList.length > 0) {
         onChange(modelList[0].id);
       }
@@ -480,6 +690,78 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
       </div>
       {error && <span style={{ fontSize: '11px', color: '#f87171' }}>{error}</span>}
       {models.length > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>已加载 {models.length} 个模型</span>}
+    </div>
+  );
+}
+
+function parseKvText(text: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  text.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const idx = trimmed.indexOf('=');
+    if (idx <= 0) return;
+    result[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
+  });
+  return result;
+}
+
+function kvToText(value?: Record<string, string>): string {
+  return Object.entries(value || {}).map(([k, v]) => `${k}=${v}`).join('\n');
+}
+
+function PermissionSettings({ disallowedTools, onChange }: {
+  disallowedTools: string[];
+  onChange: (tools: string[]) => void;
+}) {
+  return (
+    <div className="settings-section-content">
+      <div className="settings-section-title">工具权限</div>
+      <SettingRow label="禁用工具">
+        <textarea
+          className="setting-input"
+          value={(disallowedTools || []).join('\n')}
+          onChange={e => onChange(e.target.value.split('\n').map(v => v.trim()).filter(Boolean))}
+          rows={8}
+          placeholder={"bash\nwrite"}
+          style={{ resize: 'vertical', fontFamily: 'monospace' }}
+        />
+      </SettingRow>
+    </div>
+  );
+}
+
+function MountSettings({ mounts, onAdd, onRemove, onUpdate }: {
+  mounts: MountConfig[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onUpdate: (index: number, updates: Partial<MountConfig>) => void;
+}) {
+  return (
+    <div className="settings-section-content">
+      <div className="settings-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>挂载</span>
+        <button className="mcp-add-btn" onClick={onAdd}>+ 添加</button>
+      </div>
+      {mounts.length === 0 && <div className="mcp-empty">暂无挂载配置</div>}
+      {mounts.map((mount, index) => (
+        <div key={index} className="mcp-server-card">
+          <div className="mcp-server-header">
+            <label className="checkbox-label">
+              <input type="checkbox" checked={mount.writeable} onChange={e => onUpdate(index, { writeable: e.target.checked })} />
+              <span>写权限</span>
+            </label>
+            <button className="mcp-remove-btn" onClick={() => onRemove(index)}><Icon name="close" size={12} /></button>
+          </div>
+          <div className="mcp-server-fields">
+            <div className="mcp-field"><label>名称</label><input className="setting-input" value={mount.alias} onChange={e => onUpdate(index, { alias: e.target.value })} placeholder="@skills" /></div>
+            <div className="mcp-field"><label>路径</label><input className="setting-input" value={mount.path} onChange={e => onUpdate(index, { path: e.target.value })} placeholder="./skills/" /></div>
+            <div className="mcp-field"><label>类型</label><select className="setting-select" value={mount.type} onChange={e => onUpdate(index, { type: e.target.value as MountConfig['type'] })}><option value="SKILLS">技能</option><option value="AGENTS">子代理</option><option value="FILES">文件</option></select></div>
+            <div className="mcp-field"><label>作用域</label><select className="setting-select" value={mount.scope} onChange={e => onUpdate(index, { scope: e.target.value as MountConfig['scope'] })}><option value="user">用户</option><option value="workspace">工作区</option></select></div>
+            <div className="mcp-field"><label>描述</label><input className="setting-input" value={mount.description || ''} onChange={e => onUpdate(index, { description: e.target.value })} /></div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -521,6 +803,21 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate }: {
                 onChange={e => onUpdate(index, { name: e.target.value })} placeholder="my-server" />
             </div>
             <div className="mcp-field">
+              <label>作用域</label>
+              <select className="setting-select" value={server.scope || 'user'} onChange={e => onUpdate(index, { scope: e.target.value as McpServerConfig['scope'] })}>
+                <option value="user">用户</option>
+                <option value="workspace">工作区</option>
+              </select>
+            </div>
+            <div className="mcp-field">
+              <label>类型</label>
+              <select className="setting-select" value={server.type || 'stdio'} onChange={e => onUpdate(index, { type: e.target.value as McpServerConfig['type'] })}>
+                <option value="stdio">stdio</option>
+                <option value="sse">http sse</option>
+                <option value="streamable">http streamable</option>
+              </select>
+            </div>
+            <div className="mcp-field">
               <label>命令</label>
               <input type="text" className="setting-input" value={server.command}
                 onChange={e => onUpdate(index, { command: e.target.value })} placeholder="npx" />
@@ -532,6 +829,96 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate }: {
                 onChange={e => onUpdate(index, { args: e.target.value.split(' ').filter(Boolean) })}
                 placeholder="-y @modelcontextprotocol/server-memory" />
             </div>
+            <div className="mcp-field">
+              <label>远程 URL</label>
+              <input type="text" className="setting-input" value={server.url || ''}
+                onChange={e => onUpdate(index, { url: e.target.value })} placeholder="http://localhost:3001/mcp" />
+            </div>
+            <div className="mcp-field">
+              <label>超时时间</label>
+              <input type="text" className="setting-input" value={server.timeout || ''}
+                onChange={e => onUpdate(index, { timeout: e.target.value })} placeholder="30s" />
+            </div>
+            <div className="mcp-field">
+              <label>环境变量</label>
+              <textarea className="setting-input" value={kvToText(server.env)}
+                onChange={e => onUpdate(index, { env: parseKvText(e.target.value) })} rows={3} placeholder="API_KEY=xxx" />
+            </div>
+            <div className="mcp-field">
+              <label>请求头</label>
+              <textarea className="setting-input" value={kvToText(server.headers)}
+                onChange={e => onUpdate(index, { headers: parseKvText(e.target.value) })} rows={3} placeholder="Authorization=Bearer xxx" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpenApiSettings({ servers, onAdd, onRemove, onUpdate }: {
+  servers: OpenApiServerConfig[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onUpdate: (index: number, updates: Partial<OpenApiServerConfig>) => void;
+}) {
+  return (
+    <div className="settings-section-content">
+      <div className="settings-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>OpenAPI 服务器</span>
+        <button className="mcp-add-btn" onClick={onAdd}>+ 添加</button>
+      </div>
+      {servers.length === 0 && <div className="mcp-empty">暂无 OpenAPI 服务器配置</div>}
+      {servers.map((server, index) => (
+        <div key={index} className="mcp-server-card">
+          <div className="mcp-server-header">
+            <label className="checkbox-label">
+              <input type="checkbox" checked={server.enabled} onChange={e => onUpdate(index, { enabled: e.target.checked })} />
+              <span>启用</span>
+            </label>
+            <button className="mcp-remove-btn" onClick={() => onRemove(index)}><Icon name="close" size={12} /></button>
+          </div>
+          <div className="mcp-server-fields">
+            <div className="mcp-field"><label>名称</label><input className="setting-input" value={server.name} onChange={e => onUpdate(index, { name: e.target.value })} placeholder="my-api-server" /></div>
+            <div className="mcp-field"><label>作用域</label><select className="setting-select" value={server.scope} onChange={e => onUpdate(index, { scope: e.target.value as OpenApiServerConfig['scope'] })}><option value="user">用户</option><option value="workspace">工作区</option></select></div>
+            <div className="mcp-field"><label>API 基地址</label><input className="setting-input" value={server.baseUrl} onChange={e => onUpdate(index, { baseUrl: e.target.value })} placeholder="https://api.example.com/app" /></div>
+            <div className="mcp-field"><label>接口文档地址</label><input className="setting-input" value={server.docUrl} onChange={e => onUpdate(index, { docUrl: e.target.value })} placeholder="https://api.example.com/openapi.json" /></div>
+            <div className="mcp-field"><label>请求头</label><textarea className="setting-input" value={kvToText(server.headers)} onChange={e => onUpdate(index, { headers: parseKvText(e.target.value) })} rows={3} placeholder="Authorization=Bearer xxx" /></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LspSettings({ servers, onAdd, onRemove, onUpdate }: {
+  servers: LspServerConfig[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onUpdate: (index: number, updates: Partial<LspServerConfig>) => void;
+}) {
+  return (
+    <div className="settings-section-content">
+      <div className="settings-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>LSP 服务器</span>
+        <button className="mcp-add-btn" onClick={onAdd}>+ 添加</button>
+      </div>
+      {servers.length === 0 && <div className="mcp-empty">暂无 LSP 服务器配置</div>}
+      {servers.map((server, index) => (
+        <div key={index} className="mcp-server-card">
+          <div className="mcp-server-header">
+            <label className="checkbox-label">
+              <input type="checkbox" checked={server.enabled} onChange={e => onUpdate(index, { enabled: e.target.checked })} />
+              <span>启用</span>
+            </label>
+            <button className="mcp-remove-btn" onClick={() => onRemove(index)}><Icon name="close" size={12} /></button>
+          </div>
+          <div className="mcp-server-fields">
+            <div className="mcp-field"><label>名称</label><input className="setting-input" value={server.name} onChange={e => onUpdate(index, { name: e.target.value })} placeholder="typescript" /></div>
+            <div className="mcp-field"><label>作用域</label><select className="setting-select" value={server.scope} onChange={e => onUpdate(index, { scope: e.target.value as LspServerConfig['scope'] })}><option value="user">用户</option><option value="workspace">工作区</option></select></div>
+            <div className="mcp-field"><label>启动命令</label><input className="setting-input" value={server.command} onChange={e => onUpdate(index, { command: e.target.value })} placeholder="typescript-language-server --stdio" /></div>
+            <div className="mcp-field"><label>关联扩展名</label><input className="setting-input" value={server.extensions.join(', ')} onChange={e => onUpdate(index, { extensions: e.target.value.split(',').map(v => v.trim()).filter(Boolean) })} placeholder=".ts, .tsx, .js" /></div>
+            <div className="mcp-field"><label>环境变量</label><textarea className="setting-input" value={kvToText(server.env)} onChange={e => onUpdate(index, { env: parseKvText(e.target.value) })} rows={3} placeholder="NODE_PATH=/usr/local/lib/node_modules" /></div>
           </div>
         </div>
       ))}

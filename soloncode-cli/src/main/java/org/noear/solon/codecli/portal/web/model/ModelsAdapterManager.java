@@ -1,5 +1,7 @@
 package org.noear.solon.codecli.portal.web.model;
 
+import org.noear.solon.annotation.Component;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -7,6 +9,7 @@ import java.util.Map;
  * ModelProvider 工厂
  * 管理不同类型的模型提供商实现
  */
+@Component
 public class ModelsAdapterManager {
     private final Map<String, ModelsAdapter> providerMap = new HashMap<>();
     private ModelsAdapter defaultProvider;
@@ -17,7 +20,9 @@ public ModelsAdapterManager() {
         OllamaModelsAdapter ollamaModelsAdapter = new OllamaModelsAdapter();
         
         providerMap.put(openAIModelProvider.getStandard(), openAIModelProvider);
+        providerMap.put("openai-responses", openAIModelProvider);
         providerMap.put(anthropicModelsAdapter.getStandard(), anthropicModelsAdapter);
+        providerMap.put("claude", anthropicModelsAdapter);
         providerMap.put(ollamaModelsAdapter.getStandard(), ollamaModelsAdapter);
         defaultProvider = openAIModelProvider;
     }
@@ -28,10 +33,11 @@ public ModelsAdapterManager() {
      * @return 对应的 ModelProvider，如果不存在则返回默认的 OpenAI 提供商
      */
     public ModelsAdapter getProvider(String standard) {
-        if (standard == null || standard.isEmpty()) {
+        String normalizedStandard = ModelApiUrl.normalizeStandard(standard, null);
+        if (normalizedStandard == null || normalizedStandard.isEmpty()) {
             return defaultProvider;
         }
-        return providerMap.getOrDefault(standard.toLowerCase(), defaultProvider);
+        return providerMap.getOrDefault(normalizedStandard, defaultProvider);
     }
 
     /**

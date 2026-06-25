@@ -699,9 +699,9 @@ struct PtyState {
 
 static PTY_STATE: Mutex<Option<PtyState>> = Mutex::new(None);
 
-/// 启动终端（PowerShell）
+/// 启动终端
 #[tauri::command]
-fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Option<String>) -> Result<(), String> {
+fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Option<String>, shell: Option<String>) -> Result<(), String> {
     // 先关闭已有终端
     {
         let mut pty = PTY_STATE.lock().map_err(|e| format!("锁错误: {}", e))?;
@@ -721,7 +721,16 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
         })
         .map_err(|e| format!("创建 PTY 失败: {}", e))?;
 
-    let mut cmd = PtyCommandBuilder::new("powershell");
+    let shell_name = shell.unwrap_or_else(|| "powershell".to_string());
+    let program = match shell_name.as_str() {
+        "cmd" => "cmd.exe",
+        "powershell" => "powershell.exe",
+        "bash" => "bash",
+        "zsh" => "zsh",
+        other => other,
+    };
+
+    let mut cmd = PtyCommandBuilder::new(program);
     if let Some(dir) = cwd {
         cmd.cwd(dir);
     }
@@ -729,7 +738,7 @@ fn terminal_start(app_handle: tauri::AppHandle, rows: u16, cols: u16, cwd: Optio
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("启动 PowerShell 失败: {}", e))?;
+        .map_err(|e| format!("启动终端失败({}): {}", program, e))?;
 
     let reader = pair
         .master
@@ -832,6 +841,18 @@ enum BackendLaunchMethod {
 
 /// 检测启动方式：优先 soloncode 命令，回退到 JAR
 fn detect_launch_method() -> BackendLaunchMethod {
+    if cfg!(windows) {
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            let bin_dir = Path::new(&home).join(".soloncode").join("bin");
+            for name in ["soloncode.ps1", "soloncode.bat", "soloncode.cmd", "soloncode.exe"] {
+                let candidate = bin_dir.join(name);
+                if candidate.exists() {
+                    app_log(&format!("[soloncode] Found {}: {:?}", name, candidate));
+                    return BackendLaunchMethod::Command { cmd: candidate.to_string_lossy().to_string() };
+                }
+            }
+        }
+    }
     // 1. 优先检查 soloncode 命令是否在 PATH 中
     let check = Command::new(if cfg!(windows) { "where" } else { "which" })
         .arg("soloncode")
@@ -840,7 +861,20 @@ fn detect_launch_method() -> BackendLaunchMethod {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() {
-                let cmd = path.lines().next().unwrap_or(&path).to_string();
+                let cmd = path.lines()
+                    .find(|line| {
+                        if !cfg!(windows) {
+                            return true;
+                        }
+                        let ext = Path::new(line)
+                            .extension()
+                            .and_then(|v| v.to_str())
+                            .unwrap_or("")
+                            .to_ascii_lowercase();
+                        matches!(ext.as_str(), "ps1" | "bat" | "cmd" | "exe")
+                    })
+                    .unwrap_or_else(|| path.lines().next().unwrap_or(&path))
+                    .to_string();
                 app_log(&format!("[soloncode] Found soloncode command: {}", cmd));
                 return BackendLaunchMethod::Command { cmd };
             }
@@ -884,6 +918,51 @@ fn detect_launch_method() -> BackendLaunchMethod {
     }
 }
 
+/// Check whether an occupied port is already serving the soloncode backend.
+fn is_soloncode_backend(port: u16) -> bool {
+    let addr = format!("127.0.0.1:{}", port);
+    let mut stream = match TcpStream::connect(&addr) {
+        Ok(stream) => stream,
+        Err(_) => return false,
+    };
+
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(2)));
+
+    let req = format!(
+        "GET /version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+        port
+    );
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+
+    let mut buf = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 1024];
+    while buf.len() < 4096 {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+            Err(_) => break,
+        }
+    }
+
+    let resp = String::from_utf8_lossy(&buf);
+    resp.starts_with("HTTP/1.1 200")
+        && resp.contains("\"code\":200")
+        && resp.contains("\"version\"")
+}
+
+/// 检测指定端口是否已经有可复用的 SolonCode 后端。
+#[tauri::command]
+fn detect_backend(port: u16) -> Result<bool, String> {
+    let detected = is_soloncode_backend(port);
+    if detected {
+        app_log(&format!("[soloncode] Detected existing soloncode backend on port {}", port));
+    }
+    Ok(detected)
+}
+
 /// 启动后端 CLI 进程（如果已在运行则复用）
 #[tauri::command]
 fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
@@ -897,8 +976,15 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
                         *proc = None;
                     }
                     Ok(None) => {
-                        app_log(&format!("[soloncode] Backend already running, reusing PID {}", child.id()));
-                        return Ok(child.id());
+                        if is_soloncode_backend(port) {
+                            app_log(&format!("[soloncode] Backend already running on port {}, reusing PID {}", port, child.id()));
+                            return Ok(child.id());
+                        }
+
+                        app_log(&format!("[soloncode] Managed backend PID {} is alive but port {} is not ready, restarting...", child.id(), port));
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        *proc = None;
                     }
                     Err(e) => {
                         app_log(&format!("[soloncode] Failed to check process status: {}, restarting...", e));
@@ -913,23 +999,10 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检查端口是否已被后端占用（可能是之前启动的 soloncode 服务）
     if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
         // 尝试 HTTP 请求 /version 确认是 soloncode 后端
-        let is_backend = std::net::TcpStream::connect(format!("127.0.0.1:{}", port))
-            .ok()
-            .and_then(|mut stream| {
-                use std::io::{Read as IoRead, Write as IoWrite};
-                let req = format!("GET /version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n", port);
-                stream.write_all(req.as_bytes()).ok()?;
-                stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).ok()?;
-                let mut buf = [0u8; 256];
-                let n = stream.read(&mut buf).ok()?;
-                let resp = String::from_utf8_lossy(&buf[..n]);
-                // 检查 HTTP 响应中包含 200 和 version
-                Some(resp.contains("200") && resp.contains("version"))
-            })
-            .unwrap_or(false);
+        let is_backend = is_soloncode_backend(port);
 
         if is_backend {
-            app_log(&format!("[soloncode] Port {} already occupied by soloncode backend, reusing", port));
+            app_log(&format!("[soloncode] Port {} is already occupied by soloncode backend, reusing", port));
             return Ok(0);
         }
         let msg = format!("端口 {} 已被其他程序占用，请先关闭占用该端口的程序", port);
@@ -966,9 +1039,24 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
         BackendLaunchMethod::Command { cmd: cmd_path } => {
             app_log(&format!("[soloncode] Starting: {} serve {}", cmd_path, port_str));
             if cfg!(windows) {
-                let mut c = Command::new("powershell");
-                c.args(["-ExecutionPolicy", "Bypass", "-File", cmd_path, "serve", &port_str]);
-                c
+                let ext = Path::new(cmd_path)
+                    .extension()
+                    .and_then(|v| v.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if ext == "ps1" {
+                    let mut c = Command::new("powershell");
+                    c.args(["-ExecutionPolicy", "Bypass", "-File", cmd_path, "serve", &port_str]);
+                    c
+                } else if ext == "bat" || ext == "cmd" {
+                    let mut c = Command::new("cmd");
+                    c.args(["/C", cmd_path, "serve", &port_str]);
+                    c
+                } else {
+                    let mut c = Command::new(cmd_path);
+                    c.args(["serve", &port_str]);
+                    c
+                }
             } else {
                 let mut c = Command::new(cmd_path);
                 c.args(["serve", &port_str]);
@@ -1098,9 +1186,10 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
     let mut api_url = String::new();
     let mut api_key = String::new();
     let mut model = String::new();
+    let mut provider = String::new();
 
     // 解析 YAML 中的 chatModel 字段（简单行解析，避免引入 yaml 依赖）
-    let parse_chat_model = |content: &str, api_url: &mut String, api_key: &mut String, model: &mut String| {
+    let parse_chat_model = |content: &str, api_url: &mut String, api_key: &mut String, model: &mut String, provider: &mut String| {
         let mut in_chat_model = false;
         let mut in_soloncode = false;
         for line in content.lines() {
@@ -1131,6 +1220,9 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
                 } else if trimmed.starts_with("model:") {
                     *model = trimmed.trim_start_matches("model:").trim()
                         .trim_matches('"').to_string();
+                } else if trimmed.starts_with("provider:") {
+                    *provider = trimmed.trim_start_matches("provider:").trim()
+                        .trim_matches('"').to_string();
                 }
             }
         }
@@ -1139,7 +1231,7 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
     // 优先读 chat-model.yml
     if chat_model_path.exists() {
         if let Ok(content) = fs::read_to_string(&chat_model_path) {
-            parse_chat_model(&content, &mut api_url, &mut api_key, &mut model);
+            parse_chat_model(&content, &mut api_url, &mut api_key, &mut model, &mut provider);
         }
     }
 
@@ -1149,10 +1241,12 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
             let mut u = String::new();
             let mut k = String::new();
             let mut m = String::new();
-            parse_chat_model(&content, &mut u, &mut k, &mut m);
+            let mut p = String::new();
+            parse_chat_model(&content, &mut u, &mut k, &mut m, &mut p);
             if api_url.is_empty() { api_url = u; }
             if api_key.is_empty() { api_key = k; }
             if model.is_empty() { model = m; }
+            if provider.is_empty() { provider = p; }
         }
     }
 
@@ -1160,6 +1254,7 @@ fn read_global_chat_model() -> Result<serde_json::Value, String> {
         "apiUrl": api_url,
         "apiKey": api_key,
         "model": model,
+        "provider": provider,
     }))
 }
 
@@ -1483,6 +1578,7 @@ pub fn run() {
             git_diff_staged,
             copy_item,
             move_item,
+            detect_backend,
             start_backend,
             stop_backend,
             backend_status,

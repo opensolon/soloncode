@@ -34,6 +34,57 @@
   width: 100%;
 }
 
+.chat-review-prompt {
+  width: 100%;
+  max-width: var(--input-max-width, 60%);
+  margin: 0 auto 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.empty-center-container > .chat-review-prompt {
+  max-width: 100%;
+}
+
+.chat-review-btn {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--cb-vscode-panel-border);
+  border-radius: 7px;
+  background-color: var(--cb-vscode-input-background);
+  color: var(--cb-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.16s, border-color 0.16s, transform 0.16s;
+}
+
+.chat-review-btn:hover {
+  border-color: rgba(14, 99, 156, 0.48);
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.chat-review-btn:active {
+  transform: translateY(1px);
+}
+
+.chat-review-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: var(--cb-accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+}
+
 .empty-state-hero {
   display: flex;
   flex-direction: column;

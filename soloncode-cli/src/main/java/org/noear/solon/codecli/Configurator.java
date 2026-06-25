@@ -37,12 +37,12 @@ import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.codecli.portal.web.WebSettingsController;
 import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.portal.web.WebStreamBuilder;
-import org.noear.solon.codecli.portal.desktop.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
 import org.noear.solon.core.util.JavaUtil;
 import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.net.websocket.WebSocketRouter;
+import org.noear.solon.codecli.portal.web.model.ModelsAdapterManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,7 +73,7 @@ public class Configurator {
     AgentSettings agentSettings;
 
     @Inject
-    ModelProviderFactory modelProviderFactory;
+    ModelsAdapterManager modelProviderFactory;
 
     private LoopScheduler loopScheduler;
 
@@ -278,13 +278,16 @@ public class Configurator {
     private void runServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
         //serve ws gate
         WebSocketRouter.getInstance().of("/ws", new WsGate(agentRuntime, settings));
+        WebGate webGate = new WebGate(agentRuntime, settings);
+        WebSocketRouter.getInstance().of("/web/gate", webGate);
 
         //serve web controller
         BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, modelProviderFactory));
         Solon.app().router().add(webBean);
+        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
+        Solon.app().router().add(webController);
 
         //注册第三方渠道（HTTP 端点 + 后台线程）
-        WebGate webGate = new WebGate(agentRuntime, settings);
         WebStreamBuilder streamBuilder = new WebStreamBuilder(agentRuntime);
         WebChannel webChannel = new WebChannel(agentRuntime, webGate);
         // 将渠道绑定到 streamBuilder，使 IM 回复能同步
@@ -296,6 +299,15 @@ public class Configurator {
         BeanWrap channelBean = Solon.context().wrapAndPut(WebChannel.class, webChannel);
         Solon.app().router().add(channelBean);
         RunUtil.async(webChannel);
+
+        try {
+            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
+            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
+            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
+            workspaceWatcher.start();
+        } catch (Exception e) {
+            // watcher startup failure should not block serve mode
+        }
 
         //settings controller
         WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);

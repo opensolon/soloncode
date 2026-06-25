@@ -78,9 +78,19 @@ export const backendService = {
 
     try {
       await fileService.writeLog(`backendService.start called, workspacePath=${workspacePath}, port=${port}`);
+      const existingBackend = await fileService.detectBackend(port);
+      if (existingBackend) {
+        await fileService.writeLog(`existing backend detected on port ${port}, reuse directly`);
+        console.log('[backendService] existing backend detected, reuse directly', { port });
+        return port;
+      }
       console.log('[backendService] 启动后端...', { workspacePath, port });
       const pid = await fileService.startBackend(workspacePath, port);
       await fileService.writeLog(`startBackend returned PID=${pid}`);
+      if (pid === 0) {
+        await fileService.writeLog(`backend port ${port} was reused by startBackend`);
+        return port;
+      }
       console.log('[backendService] 后端进程 PID:', pid);
 
       const ready = await waitForReady(port);
