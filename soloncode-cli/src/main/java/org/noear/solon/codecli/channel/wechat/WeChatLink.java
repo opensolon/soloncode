@@ -286,6 +286,16 @@ public class WeChatLink implements Channel, Runnable {
     }
 
     private void sendReplyDo(WeChatBinding binding, String reply) {
+        // 发送前调用 getconfig 刷新 typing_ticket，可能延长 context_token 生命周期
+        try {
+            String freshTicket = WeChatClient.getConfig(binding.botToken, binding.lastFromUserId, binding.lastContextToken);
+            if (freshTicket != null) {
+                binding.typingTicket = freshTicket;
+            }
+        } catch (Exception e) {
+            LOG.warn("[WeChat] pre-send getconfig failed, using cached token: {}", e.getMessage());
+        }
+
         // 清理 markdown 标记，微信不渲染 markdown
         String cleanReply = reply
                 .replaceAll("`{3}[\\s\\S]*?`{3}", "") // 去掉代码块
