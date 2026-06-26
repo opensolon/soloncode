@@ -41,7 +41,7 @@ const plugins: Plugin[] = [];
 
 const defaultSettings: Settings = {
   theme: 'dark', fontSize: 14, language: 'zh-CN',
-  editorTheme: 'vs-dark',
+  editorTheme: 'auto',
   tabSize: 2, autoSave: true, formatOnSave: true,
   shell: 'bash', terminalFontSize: 14,
   providers: [], activeProviderId: '', maxSteps: 30,
@@ -132,6 +132,11 @@ function applyAppFontSize(fontSize: number) {
   document.documentElement.style.setProperty('--font-size-base', `${size}px`);
 }
 
+function normalizeEditorTheme(editorTheme?: string) {
+  if (editorTheme === 'vs-dark' || editorTheme === 'light' || !editorTheme) return 'auto';
+  return editorTheme;
+}
+
 function parseDefaultOptions(value?: string): Record<string, unknown> | undefined {
   if (!value?.trim()) return undefined;
   try {
@@ -141,6 +146,18 @@ function parseDefaultOptions(value?: string): Record<string, unknown> | undefine
     console.warn('[App] 默认模型选项 JSON 无效，已跳过');
     return undefined;
   }
+}
+
+function countDiffStats(diffText: string) {
+  return diffText.split('\n').reduce(
+    (stats, line) => {
+      if (line.startsWith('+++') || line.startsWith('---')) return stats;
+      if (line.startsWith('+')) stats.additions += 1;
+      if (line.startsWith('-')) stats.deletions += 1;
+      return stats;
+    },
+    { additions: 0, deletions: 0 }
+  );
 }
 
 function App() {
@@ -199,26 +216,31 @@ function App() {
 
   useEffect(() => {
     settingsService.load().then(s => {
-      setSettings(s);
-      if (s.theme) {
-        setCurrentTheme(s.theme);
-        applyAppTheme(s.theme);
+      const normalizedSettings = { ...s, editorTheme: normalizeEditorTheme(s.editorTheme) };
+      setSettings(normalizedSettings);
+      if (normalizedSettings.theme) {
+        setCurrentTheme(normalizedSettings.theme);
+        applyAppTheme(normalizedSettings.theme);
       }
-      applyAppFontSize(s.fontSize);
+      applyAppFontSize(normalizedSettings.fontSize);
+      if (normalizedSettings.editorTheme !== s.editorTheme) {
+        settingsService.save(normalizedSettings);
+      }
     });
   }, []);
 
   const handleSettingsChange = useCallback((newSettings: Settings) => {
+    const normalizedSettings = { ...newSettings, editorTheme: normalizeEditorTheme(newSettings.editorTheme) };
     const prevActive = settings.providers.find(p => p.id === settings.activeProviderId);
-    const nextActive = newSettings.providers.find(p => p.id === newSettings.activeProviderId);
-    if (newSettings.theme) {
-      setCurrentTheme(newSettings.theme);
-      applyAppTheme(newSettings.theme);
+    const nextActive = normalizedSettings.providers.find(p => p.id === normalizedSettings.activeProviderId);
+    if (normalizedSettings.theme) {
+      setCurrentTheme(normalizedSettings.theme);
+      applyAppTheme(normalizedSettings.theme);
     }
-    applyAppFontSize(newSettings.fontSize);
-    setSettings(newSettings);
-    settingsService.save(newSettings);
-    settingsService.syncRuntimeSettings(newSettings.cliPort || 4808, newSettings);
+    applyAppFontSize(normalizedSettings.fontSize);
+    setSettings(normalizedSettings);
+    settingsService.save(normalizedSettings);
+    settingsService.syncRuntimeSettings(normalizedSettings.cliPort || 4808, normalizedSettings);
     if (nextActive && (
       !prevActive ||
       prevActive.apiUrl !== nextActive.apiUrl ||
@@ -229,7 +251,7 @@ function App() {
       prevActive.timeout !== nextActive.timeout ||
       prevActive.scope !== nextActive.scope ||
       prevActive.defaultOptions !== nextActive.defaultOptions ||
-      settings.activeProviderId !== newSettings.activeProviderId
+      settings.activeProviderId !== normalizedSettings.activeProviderId
     )) {
       sendModelConfig(nextActive);
     }
@@ -511,9 +533,12 @@ function App() {
 
     await new Promise(resolve => setTimeout(resolve, 300));
     const status = await gitService.status(cwd);
-    const reviewFiles: ChatReviewFile[] = status.files
-      .filter(file => file.status === 'modified' || file.status === 'added' || file.status === 'deleted' || file.status === 'untracked')
-      .map(file => ({ path: file.path, status: file.status }));
+    const changedFiles = status.files
+      .filter(file => file.status === 'modified' || file.status === 'added' || file.status === 'deleted' || file.status === 'untracked');
+    const reviewFiles: ChatReviewFile[] = await Promise.all(changedFiles.map(async file => {
+      const stats = countDiffStats(await gitService.diffText(cwd, file.path));
+      return { path: file.path, status: file.status, ...stats };
+    }));
 
     const resolvedSessionId = resolvedSessionIdsRef.current[sessionId] || sessionId;
     setSessionReviewFiles(prev => {
@@ -528,6 +553,17 @@ function App() {
       setGitStatus(status);
     }
   }, [activeProjectPath, setGitStatus]);
+
+  const handleDiscardReviewFile = useCallback(async (relPath: string) => {
+    if (!activeProjectPath || !currentSessionId) return;
+    await gitService.discard(activeProjectPath, [relPath]);
+    setDiffFiles(prev => {
+      const next = { ...prev };
+      delete next[activeProjectPath.replace(/\\/g, '/') + '/' + relPath];
+      return next;
+    });
+    await captureSessionReviewFiles(currentSessionId, activeProjectPath);
+  }, [activeProjectPath, currentSessionId, captureSessionReviewFiles]);
 
   // Toast
   const [terminalVisible, setTerminalVisible] = useState(false);
@@ -671,7 +707,7 @@ function App() {
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
           <Suspense fallback={<div className="panel-loading">Loading editor...</div>}>
-            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} fontSize={settings.fontSize} tabSize={settings.tabSize} autoSave={settings.autoSave} formatOnSave={settings.formatOnSave} diffLines={diffLines} diffFiles={diffFiles} />
+            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={currentTheme} editorTheme={settings.editorTheme} fontSize={settings.fontSize} tabSize={settings.tabSize} autoSave={settings.autoSave} formatOnSave={settings.formatOnSave} diffLines={diffLines} diffFiles={diffFiles} />
           </Suspense>
           {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
@@ -691,6 +727,7 @@ function App() {
             onFileSelect={handleChatFileSelect}
             reviewFiles={currentSessionId ? (sessionReviewFiles[currentSessionId] || []) : []}
             onReviewFileSelect={handleDiffFileSelect}
+            onReviewFileDiscard={handleDiscardReviewFile}
             onNewProject={handleCreateProject} onOpenFolder={handleOpenFolder}
             initialPrompt={aiCreatePrompt} onAiCreateComplete={handleAiCreateComplete}
             newSessionFromProject={newSessionFromProject}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -157,6 +157,7 @@ function DirectoryListing({ entries, onFileClick }: { entries: DirEntry[]; onFil
 
 export function ActionBlock({ text, toolName, args, theme, onFileClick, autoExpanded = false }: ActionBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsExpanded(autoExpanded);
@@ -172,6 +173,15 @@ export function ActionBlock({ text, toolName, args, theme, onFileClick, autoExpa
   const displayText = readFileResult?.content || text || '鎵ц瀹屾垚';
   const displayFilePath = readFileResult?.filePath || filePath;
   const displayLineInfo = readFileResult?.lines || lineInfo;
+
+  useEffect(() => {
+    if (!isExpanded || !contentRef.current) return;
+    const frameId = requestAnimationFrame(() => {
+      if (!contentRef.current) return;
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [displayText, isExpanded]);
 
   return (
     <div className="action-block">
@@ -197,7 +207,7 @@ export function ActionBlock({ text, toolName, args, theme, onFileClick, autoExpa
         <span className={`action-block-arrow ${isExpanded ? 'expanded' : ''}`}>▾</span>
       </div>
       {isExpanded && (
-        <div className="action-block-content">
+        <div className="action-block-content" ref={contentRef}>
           {dirEntries ? (
             <DirectoryListing entries={dirEntries} onFileClick={onFileClick} />
           ) : (

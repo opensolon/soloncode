@@ -918,7 +918,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
               </span>
             )}
             <span
-              className="context-meter"
+              className="context-meter spacer"
               title={contextTitle}
               style={{ '--context-percent': `${contextPercent}%` } as React.CSSProperties}
             >

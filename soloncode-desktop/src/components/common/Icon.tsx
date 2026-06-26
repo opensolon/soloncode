@@ -11,7 +11,7 @@ export type IconName =
   // 操作图标
   | 'add' | 'remove' | 'edit' | 'delete' | 'refresh' | 'save'
   | 'push' | 'pull' | 'commit' | 'stage' | 'unstage'
-  | 'close' | 'collapse' | 'expand' | 'swap'
+  | 'close' | 'collapse' | 'expand' | 'swap' | 'undo'
   | 'send' | 'attach' | 'theme' | 'user' | 'assistant' | 'bot'
   | 'copy' | 'check' | 'mic'
   // 状态图标
@@ -76,6 +76,7 @@ const iconPaths: Record<IconName, string> = {
   'collapse': 'M4 14l6 0l0 6',
   'expand': 'M15 3l6 0l0 6',
   'swap': 'M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4',
+  'undo': 'M9 14 4 9l5-5M4 9h10a5 5 0 1 1-3.54 8.54',
   'copy': 'M20 9h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
   'check': 'M20 6L9 17l-5-5',
   'mic': 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z',

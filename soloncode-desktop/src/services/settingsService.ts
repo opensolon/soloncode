@@ -290,7 +290,7 @@ description: {description}
 
 const defaultGeneral: GeneralSettings = {
   theme: 'dark',
-  editorTheme: 'vs-dark',
+  editorTheme: 'auto',
   fontSize: 14,
   language: 'zh-CN',
   tabSize: 2,

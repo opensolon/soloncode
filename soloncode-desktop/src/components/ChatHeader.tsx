@@ -13,6 +13,8 @@ export interface ChatHeaderTask {
 export interface ChatReviewFile {
   path: string;
   status: 'modified' | 'added' | 'deleted' | 'untracked';
+  additions?: number;
+  deletions?: number;
 }
 
 interface ChatHeaderProps {

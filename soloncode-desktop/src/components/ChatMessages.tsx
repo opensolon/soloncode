@@ -13,6 +13,7 @@ import './ChatMessages.css';
 interface ChatMessagesProps {
   messages: Message[];
   isLoading: boolean;
+  thinkingElapsedSeconds?: number;
   theme?: Theme;
   projectName?: string;
   onDeleteMessage?: (id: number) => void;
@@ -149,6 +150,67 @@ function toFileLinkTarget(href?: string): string | null {
 }
 
 // Markdown 代码渲染组件 — 按 onFileSelect 引用缓存，避免每次渲染重建
+const FILE_EXTENSION_PATTERN = 'ts|tsx|js|jsx|mjs|cjs|vue|svelte|py|java|kt|kts|go|rs|c|cc|cpp|h|hpp|cs|php|rb|swift|scala|sh|bash|zsh|ps1|bat|cmd|sql|json|jsonc|yaml|yml|toml|xml|html|css|scss|sass|less|md|mdx|txt|csv|tsv|env|ini|properties|gradle|lock';
+const FILE_REFERENCE_PATTERN = new RegExp(
+  `(^|[\\s([{"'\`，。；：、])((?:[A-Za-z]:[\\\\/])?(?:(?:\\.{1,2}|~)?[\\\\/])?(?:(?:[\\w.@#$%+\\-=]+)[\\\\/])+[\\w.@#$%+\\-=]+\\.(?:${FILE_EXTENSION_PATTERN})|[\\w.@#$%+\\-=]+\\.(?:${FILE_EXTENSION_PATTERN}))(?:[:#](\\d+)(?:[:-](\\d+))?)?`,
+  'gi'
+);
+
+function fileReferencePlugin() {
+  const skipParentTypes = new Set(['link', 'linkReference', 'image', 'imageReference', 'definition']);
+
+  function transformNode(node: any, parent?: any) {
+    if (!node || !Array.isArray(node.children)) return;
+
+    const nextChildren: any[] = [];
+    for (const child of node.children) {
+      if (child?.type === 'text' && typeof child.value === 'string' && !skipParentTypes.has(parent?.type)) {
+        nextChildren.push(...splitFileReferences(child.value));
+      } else {
+        transformNode(child, node);
+        nextChildren.push(child);
+      }
+    }
+    node.children = nextChildren;
+  }
+
+  return (tree: any) => transformNode(tree);
+}
+
+function splitFileReferences(value: string) {
+  FILE_REFERENCE_PATTERN.lastIndex = 0;
+  const nodes: any[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = FILE_REFERENCE_PATTERN.exec(value))) {
+    const leading = match[1] || '';
+    const filePath = match[2];
+    const lineSuffix = match[3] ? match[0].slice(leading.length + filePath.length) : '';
+    const linkStart = match.index + leading.length;
+
+    if (linkStart > lastIndex) {
+      nodes.push({ type: 'text', value: value.slice(lastIndex, linkStart) });
+    }
+
+    const displayText = `${filePath}${lineSuffix}`;
+    nodes.push({
+      type: 'link',
+      url: filePath,
+      title: null,
+      children: [{ type: 'text', value: displayText }],
+    });
+
+    lastIndex = linkStart + displayText.length;
+  }
+
+  if (lastIndex < value.length) {
+    nodes.push({ type: 'text', value: value.slice(lastIndex) });
+  }
+
+  return nodes.length > 0 ? nodes : [{ type: 'text', value }];
+}
+
 type MarkdownThemeKey = Theme | 'default';
 const markdownComponentsCache = new WeakMap<object, Partial<Record<MarkdownThemeKey, any>>>();
 const noFileSelectKey = {};
@@ -208,7 +270,7 @@ function getMarkdownComponents(theme?: Theme, onFileSelect?: (path: string) => v
   return components;
 }
 
-const remarkPlugins = [remarkGfm, remarkBreaks];
+const remarkPlugins = [remarkGfm, remarkBreaks, fileReferencePlugin];
 
 // 通用可折叠块（无边框、灰色文字、默认折叠）
 function CollapsibleBlock({ label, text, theme }: { label: string; text: string; theme?: Theme }) {
@@ -347,9 +409,16 @@ const MessageMetadata = memo(function MessageMetadata({ metadata }: { metadata: 
 });
 
 // 单条消息组件 — memo 化
+const ThinkingRow = memo(function ThinkingRow({ elapsedSeconds }: { elapsedSeconds: number }) {
+  return (
+    <div className="message thinking-row">
+      <div className="thinking-text">正在思考 {elapsedSeconds}s</div>
+    </div>
+  );
+});
+
 const MessageRow = memo(function MessageRow({ message, theme, onDelete, onHitlAction, onFileSelect, isStreaming }: { message: Message; theme?: Theme; onDelete?: (id: number) => void; onHitlAction?: (action: 'approve' | 'reject') => void; onFileSelect?: (path: string) => void; isStreaming?: boolean }) {
   const [copied, setCopied] = useState(false);
-
   const handleCopy = useCallback(() => {
     const text = message.contents
       .map(item => item.text)
@@ -371,7 +440,7 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onHitlAc
   }, [grouped, isStreaming]);
 
   return (
-    <div className={`message ${message.role.toLowerCase()}`}>
+    <div className={`message ${message.role.toLowerCase()}${isStreaming ? ' streaming' : ''}`}>
       <div className="message-bubble">
         <div className="message-text">
           {grouped.map((g, index) =>
@@ -383,7 +452,8 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onHitlAc
           )}
         </div>
       </div>
-      <div className="message-footer">
+      {!isStreaming && (
+        <div className="message-footer">
         <div className="message-time">{message.timestamp}</div>
         <div className="message-actions">
           <button className="message-action-btn" onClick={handleCopy} title="复制">
@@ -394,13 +464,14 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onHitlAc
           </button>
           <MessageMetadata metadata={message.metadata} />
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 });
 
 export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
-  ({ messages, isLoading, theme, projectName, onDeleteMessage, onHitlAction, onFileSelect }, ref) => {
+  ({ messages, isLoading, thinkingElapsedSeconds = 0, theme, projectName, onDeleteMessage, onHitlAction, onFileSelect }, ref) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
 
     useImperativeHandle(ref, () => ({
@@ -409,13 +480,18 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
       }
     }));
 
+    const showThinkingRow = isLoading && messages[messages.length - 1]?.role !== 'ASSISTANT';
+
     const itemContent = useCallback((index: number) => {
+      if (showThinkingRow && index === messages.length) {
+        return <ThinkingRow elapsedSeconds={thinkingElapsedSeconds} />;
+      }
       const message = messages[index];
       const isStreamingMessage = isLoading && index === messages.length - 1 && message?.role === 'ASSISTANT';
       return (
         <MessageRow message={message} theme={theme} onDelete={onDeleteMessage} onHitlAction={onHitlAction} onFileSelect={onFileSelect} isStreaming={isStreamingMessage} />
       );
-    }, [messages, isLoading, theme, onDeleteMessage, onHitlAction, onFileSelect]);
+    }, [messages, isLoading, showThinkingRow, thinkingElapsedSeconds, theme, onDeleteMessage, onHitlAction, onFileSelect]);
 
     if (messages.length === 0 && !isLoading) {
       return (
@@ -431,15 +507,16 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
     return (
       <div className="chat-messages">
         <Virtuoso
+          className="chat-messages-list"
           ref={virtuosoRef}
-          totalCount={messages.length}
+          totalCount={messages.length + (showThinkingRow ? 1 : 0)}
           itemContent={itemContent}
           followOutput="smooth"
-          initialTopMostItemIndex={messages.length - 1}
-          computeItemKey={(index) => messages[index]?.id ?? index}
+          initialTopMostItemIndex={Math.max(0, messages.length - 1)}
+          computeItemKey={(index) => showThinkingRow && index === messages.length ? 'thinking' : (messages[index]?.id ?? index)}
           style={{ height: '100%' }}
         />
-        {isLoading && (
+        {false && (
           <div className="message assistant loading">
             <div className="message-bubble">
               <div className="message-header">

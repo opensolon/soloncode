@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -64,6 +64,25 @@ function extractDiffStats(toolName?: string, args?: Record<string, unknown>): { 
     return { added: content.split('\n').length, removed: 0 };
   }
   return null;
+}
+
+function AutoScrollContent({ children, watchKey }: { children: ReactNode; watchKey: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const frameId = requestAnimationFrame(() => {
+      if (!ref.current) return;
+      ref.current.scrollTop = ref.current.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [watchKey]);
+
+  return (
+    <div className="action-group-item-content" ref={ref}>
+      {children}
+    </div>
+  );
 }
 
 export function ActionGroupBlock({ toolName, items, theme, onFileClick, autoExpanded = false }: ActionGroupBlockProps) {
@@ -153,11 +172,11 @@ export function ActionGroupBlock({ toolName, items, theme, onFileClick, autoExpa
                   {itemLine && <span className="action-group-item-lines">{itemLine}</span>}
                 </div>
                 {isOpen && (
-                  <div className="action-group-item-content">
+                  <AutoScrollContent watchKey={item.text || ''}>
                     <ReactMarkdown remarkPlugins={[remarkBreaks]} components={markdownComponents}>
                       {item.text || '执行完成'}
                     </ReactMarkdown>
-                  </div>
+                  </AutoScrollContent>
                 )}
               </div>
             );

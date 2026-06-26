@@ -388,12 +388,15 @@
 }
 
 .context-meter {
-  margin-left: auto;
   width: 20px;
   height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.context-meter.spacer {
+  margin-left: auto;
 }
 
 .context-meter-ring {

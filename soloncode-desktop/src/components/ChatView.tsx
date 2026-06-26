@@ -34,6 +34,7 @@ interface ChatViewProps {
   onFileSelect?: (path: string) => void;
   reviewFiles?: ChatReviewFile[];
   onReviewFileSelect?: (path: string) => void;
+  onReviewFileDiscard?: (path: string) => void;
   initialPrompt?: {
     prompt: string;
     type: 'skill' | 'agent';
@@ -46,6 +47,8 @@ interface ChatViewProps {
 }
 
 // 全局 WebSocket 连接管理器（每次请求独立连接）
+const STREAM_CHAR_INTERVAL_MS = 8;
+
 class WebSocketManager {
   private static instance: WebSocketManager | null = null;
   private activeWs = new Map<string, WebSocket>();
@@ -350,16 +353,81 @@ function ReviewPrompt({ files, onReview }: { files: ChatReviewFile[]; onReview: 
   );
 }
 
-export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, sessions = [], sessionRunStates = {}, maxSteps = 30, onUpdateSessionTitle, onNewSession, onSelectSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder, onFileSelect, reviewFiles = [], onReviewFileSelect, initialPrompt, onAiCreateComplete, newSessionFromProject, onSessionRunStateChange, onSessionMessageSaved }: ChatViewProps) {
+function getReviewFileName(path: string) {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+function getReviewFileActionLabel(status: ChatReviewFile['status']) {
+  if (status === 'added' || status === 'untracked') return '已新增';
+  if (status === 'deleted') return '已删除';
+  return '已编辑';
+}
+
+function ReviewFilesBar({ files, onReview, onDiscard }: { files: ChatReviewFile[]; onReview?: (path: string) => void; onDiscard?: (path: string) => void }) {
+  if (files.length === 0) return null;
+  const additions = files.reduce((total, file) => total + (file.additions || 0), 0);
+  const deletions = files.reduce((total, file) => total + (file.deletions || 0), 0);
+  const primaryStatus = files.every(file => file.status === files[0].status) ? files[0].status : 'modified';
+  const title = files.length === 1
+    ? `${getReviewFileActionLabel(files[0].status)} ${getReviewFileName(files[0].path)}`
+    : `${getReviewFileActionLabel(primaryStatus)} ${files.length} 个文件`;
+  const handleReviewAll = () => onReview?.(files[0].path);
+  const handleDiscardAll = () => files.forEach(file => onDiscard?.(file.path));
+
+  return (
+    <div className="chat-review-files-bar">
+      <div className="chat-review-file-card">
+        <div className="chat-review-file-summary">
+          <div className="chat-review-file-icon">
+            <Icon name={primaryStatus === 'deleted' ? 'deleted' : primaryStatus === 'added' || primaryStatus === 'untracked' ? 'added' : 'modified'} size={26} />
+          </div>
+          <button type="button" className="chat-review-file-main" onClick={handleReviewAll} title={files[0].path}>
+            <span className="chat-review-file-title">{title}</span>
+            <span className="chat-review-file-stats">
+              <span className="review-additions">+{additions}</span>
+              <span className="review-deletions">-{deletions}</span>
+            </span>
+          </button>
+          <div className="chat-review-file-actions">
+            <button type="button" className="chat-review-link-btn" onClick={handleDiscardAll} title="撤销">
+              <span>撤销</span>
+              <Icon name="undo" size={15} />
+            </button>
+            <button type="button" className="chat-review-primary-btn" onClick={handleReviewAll}>
+              审核
+            </button>
+          </div>
+        </div>
+        {files.length > 1 && (
+          <div className="chat-review-file-list-card">
+            {files.map(file => (
+              <button type="button" key={`${file.status}:${file.path}`} className="chat-review-file-row" onClick={() => onReview?.(file.path)} title={file.path}>
+                <span className="chat-review-file-path-text">{file.path}</span>
+                <span className="chat-review-file-row-stats">
+                  <span className="review-additions">+{file.additions || 0}</span>
+                  <span className="review-deletions">-{file.deletions || 0}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function ChatView({ currentConversation, plugins, workspacePath, projectName, theme = 'dark', backendPort, sessions = [], sessionRunStates = {}, maxSteps = 30, onUpdateSessionTitle, onNewSession, onSelectSession, providers = [], activeProviderId, onActiveProviderChange, activeFileName, activeFilePath, onNewProject, onOpenFolder, onFileSelect, reviewFiles = [], onReviewFileSelect, onReviewFileDiscard, initialPrompt, onAiCreateComplete, newSessionFromProject, onSessionRunStateChange, onSessionMessageSaved }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>('default');
   const [reviewInfoSignal, setReviewInfoSignal] = useState(0);
+  const [thinkingElapsedSeconds, setThinkingElapsedSeconds] = useState(0);
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
   const sessionIdRef = useRef<string>('');
   const conversationIdRef = useRef<string | number>('');
   const isStreamingRef = useRef(false);
   const streamingSessionIdRef = useRef<string | null>(null);
+  const thinkingStartedAtBySessionRef = useRef(new Map<string, number>());
   const aiCreateRef = useRef<{ type: 'skill' | 'agent'; name: string } | null>(null);
   const initialPromptSentRef = useRef(false);
   const onUpdateSessionTitleRef = useRef(onUpdateSessionTitle);
@@ -381,10 +449,26 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
   const accumulatedContentRef = useRef<AccSegment[]>([]);
   const backgroundContentBySessionRef = useRef(new Map<string, AccSegment[]>());
+  const liveBaseMessagesBySessionRef = useRef(new Map<string, Message[]>());
+  const liveUserMessageBySessionRef = useRef(new Map<string, Message>());
+  const liveMessagesBySessionRef = useRef(new Map<string, Message[]>());
 
   // RAF 节流：流式更新时合并多次 chunk 到一帧渲染
   const rafIdRef = useRef<number | null>(null);
   const pendingUpdateRef = useRef(false);
+  type StreamQueueItem = {
+    sessionId: string;
+    type: 'THINK' | 'TEXT' | 'ACTION';
+    chars: string[];
+    index: number;
+    agentName?: string;
+    toolName?: string;
+    args?: Record<string, unknown>;
+    forceNewSegment?: boolean;
+  };
+  const streamQueueRef = useRef<StreamQueueItem[]>([]);
+  const streamPumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamIdleResolversRef = useRef(new Map<string, Array<() => void>>());
 
   const scheduleMessageUpdate = useCallback(() => {
     if (pendingUpdateRef.current) return;
@@ -412,6 +496,201 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   }, []);
 
   // 待持久化的首条用户消息（新会话时暂存，done/error 时真正保存）
+  function isSessionVisible(sessionId: string) {
+    const currentId = conversationIdRef.current?.toString();
+    const selectedId = sessionIdRef.current;
+    return sessionId === currentId || sessionId === selectedId;
+  }
+
+  function getSegmentsForSession(sessionId: string) {
+    if (isSessionVisible(sessionId)) {
+      return accumulatedContentRef.current;
+    }
+    let segments = backgroundContentBySessionRef.current.get(sessionId);
+    if (!segments) {
+      segments = [];
+      backgroundContentBySessionRef.current.set(sessionId, segments);
+    }
+    return segments;
+  }
+
+  function getLiveUserMessage(sessionId: string): Message | null {
+    const cached = liveUserMessageBySessionRef.current.get(sessionId);
+    if (cached) return cached;
+
+    const pending = pendingPersistBySessionRef.current.get(sessionId);
+    if (!pending) return null;
+    try {
+      const contents = JSON.parse(pending.userMessage.contents);
+      const message: Message = {
+        id: Date.now(),
+        role: 'USER',
+        timestamp: pending.userMessage.timestamp,
+        contents: Array.isArray(contents) ? contents : [],
+      };
+      liveUserMessageBySessionRef.current.set(sessionId, message);
+      return message;
+    } catch {
+      return null;
+    }
+  }
+
+  function buildLiveMessages(sessionId: string, segments = getSegmentsForSession(sessionId)) {
+    const baseMessages = liveBaseMessagesBySessionRef.current.get(sessionId);
+    const userMessage = getLiveUserMessage(sessionId);
+    const liveMessages: Message[] = baseMessages ? [...baseMessages] : (userMessage ? [userMessage] : []);
+
+    const contentItems = buildContentItems(segments);
+    if (contentItems.length > 0) {
+      const assistantMessage: Message = {
+        id: assistantMsgIdRef.current,
+        role: 'ASSISTANT',
+        timestamp: new Date().toLocaleTimeString(),
+        contents: contentItems,
+      };
+      const existingIndex = liveMessages.findIndex(message => message.id === assistantMsgIdRef.current);
+      if (existingIndex >= 0) liveMessages[existingIndex] = assistantMessage;
+      else liveMessages.push(assistantMessage);
+    }
+
+    if (liveMessages.length > 0) {
+      liveMessagesBySessionRef.current.set(sessionId, liveMessages);
+    }
+    return liveMessages;
+  }
+
+  function restoreLiveMessages(sessionId: string) {
+    const liveMessages = liveMessagesBySessionRef.current.get(sessionId) || buildLiveMessages(sessionId);
+    setMessages(liveMessages);
+    chatMessagesRef.current?.scrollToBottom();
+    return liveMessages.length > 0;
+  }
+
+  function appendStreamChar(item: StreamQueueItem, char: string) {
+    const segments = getSegmentsForSession(item.sessionId);
+    const last = segments.length > 0 ? segments[segments.length - 1] : null;
+    if (item.type === 'THINK') {
+      if (last && last.type === 'THINK' && !item.forceNewSegment) {
+        last.text += char;
+      } else {
+        segments.push({ type: 'THINK', text: char });
+        item.forceNewSegment = false;
+      }
+      buildLiveMessages(item.sessionId, segments);
+      return;
+    }
+    if (item.type === 'ACTION') {
+      if (last && last.type === 'ACTION' && !item.forceNewSegment) {
+        last.text += char;
+      } else {
+        segments.push({ type: 'ACTION', text: char, toolName: item.toolName, args: item.args });
+        item.forceNewSegment = false;
+      }
+      buildLiveMessages(item.sessionId, segments);
+      return;
+    }
+    if (last && last.type === 'TEXT' && !item.forceNewSegment) {
+      last.text += char;
+      if (item.agentName) last.agentName = item.agentName;
+    } else {
+      segments.push({ type: 'TEXT', text: char, agentName: item.agentName });
+      item.forceNewSegment = false;
+    }
+    buildLiveMessages(item.sessionId, segments);
+  }
+
+  function hasPendingQueuedChars(sessionId: string) {
+    return streamQueueRef.current.some(item => item.sessionId === sessionId && item.index < item.chars.length);
+  }
+
+  function resolveStreamIdle(sessionId?: string) {
+    const ids = sessionId ? [sessionId] : Array.from(streamIdleResolversRef.current.keys());
+    ids.forEach(id => {
+      if (hasPendingQueuedChars(id)) return;
+      const resolvers = streamIdleResolversRef.current.get(id);
+      if (!resolvers) return;
+      streamIdleResolversRef.current.delete(id);
+      resolvers.forEach(resolve => resolve());
+    });
+  }
+
+  function pumpStreamQueue() {
+    if (streamPumpTimerRef.current) return;
+
+    const tick = () => {
+      const item = streamQueueRef.current[0];
+      if (!item) {
+        streamPumpTimerRef.current = null;
+        resolveStreamIdle();
+        return;
+      }
+
+      const char = item.chars[item.index++];
+      if (char !== undefined) {
+        appendStreamChar(item, char);
+        if (isSessionVisible(item.sessionId)) {
+          scheduleMessageUpdate();
+        }
+      }
+
+      if (item.index >= item.chars.length) {
+        const finishedSessionId = item.sessionId;
+        streamQueueRef.current.shift();
+        resolveStreamIdle(finishedSessionId);
+      }
+
+      streamPumpTimerRef.current = setTimeout(tick, STREAM_CHAR_INTERVAL_MS);
+    };
+
+    streamPumpTimerRef.current = setTimeout(tick, 0);
+  }
+
+  function enqueueStreamText(
+    sessionId: string,
+    type: 'THINK' | 'TEXT' | 'ACTION',
+    text: string,
+    options: Pick<StreamQueueItem, 'agentName' | 'toolName' | 'args' | 'forceNewSegment'> = {}
+  ) {
+    const chars = Array.from(text);
+    if (chars.length === 0) return;
+    streamQueueRef.current.push({
+      sessionId,
+      type,
+      chars,
+      index: 0,
+      ...options,
+    });
+    pumpStreamQueue();
+  }
+
+  function waitForStreamQueueIdle(sessionId: string) {
+    if (!hasPendingQueuedChars(sessionId)) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      const resolvers = streamIdleResolversRef.current.get(sessionId) || [];
+      resolvers.push(resolve);
+      streamIdleResolversRef.current.set(sessionId, resolvers);
+    });
+  }
+
+  function clearStreamQueue(sessionId?: string) {
+    streamQueueRef.current = sessionId
+      ? streamQueueRef.current.filter(item => item.sessionId !== sessionId)
+      : [];
+    if (streamPumpTimerRef.current && streamQueueRef.current.length === 0) {
+      clearTimeout(streamPumpTimerRef.current);
+      streamPumpTimerRef.current = null;
+    }
+    resolveStreamIdle(sessionId);
+  }
+
+  function clearLiveSession(sessionId: string) {
+    backgroundContentBySessionRef.current.delete(sessionId);
+    liveBaseMessagesBySessionRef.current.delete(sessionId);
+    liveUserMessageBySessionRef.current.delete(sessionId);
+    liveMessagesBySessionRef.current.delete(sessionId);
+    thinkingStartedAtBySessionRef.current.delete(sessionId);
+  }
+
   const pendingPersistRef = useRef<{
     sessionId: string;
     userMessage: { timestamp: string; contents: string };
@@ -434,6 +713,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     loadingTimerRef.current = setTimeout(() => {
       console.log('[ChatView] Loading timeout (120s), auto-stopping');
       const timedOutSessionId = streamingSessionIdRef.current;
+      if (timedOutSessionId) {
+        clearStreamQueue(timedOutSessionId);
+        clearLiveSession(timedOutSessionId);
+      }
       setIsLoading(false);
       isStreamingRef.current = false;
       streamingSessionIdRef.current = null;
@@ -539,6 +822,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       // done / error 类型必须处理，不受 session 校验限制（保证 loading 状态正确）
       if (data.type === 'done') {
         if (!isCurrentSession) {
+          await waitForStreamQueueIdle(msgSessionId);
           const pending = await flushPendingUserMessage(msgSessionId);
           const backgroundSegments = backgroundContentBySessionRef.current.get(msgSessionId) || [];
           const contentItems = buildContentItems(backgroundSegments);
@@ -559,7 +843,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           if (pending?.wasNew && onUpdateSessionTitleRef.current) {
             onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
           }
-          backgroundContentBySessionRef.current.delete(msgSessionId);
+          clearLiveSession(msgSessionId);
           if (streamingSessionIdRef.current === msgSessionId) {
             streamingSessionIdRef.current = null;
             isStreamingRef.current = false;
@@ -568,6 +852,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           return;
         }
         clearLoadingTimer();
+        await waitForStreamQueueIdle(msgSessionId);
 
         // 持久化用户消息（如果是新会话）
         const pending = await flushPendingUserMessage(msgSessionId);
@@ -633,7 +918,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
         // 重置累积器
         accumulatedContentRef.current = [];
-        backgroundContentBySessionRef.current.delete(msgSessionId);
+        clearLiveSession(msgSessionId);
         if (rafIdRef.current) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
         pendingUpdateRef.current = false;
 
@@ -660,7 +945,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           if (pending?.wasNew && onUpdateSessionTitleRef.current) {
             onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
           }
-          backgroundContentBySessionRef.current.delete(msgSessionId);
+          clearLiveSession(msgSessionId);
           if (streamingSessionIdRef.current === msgSessionId) {
             streamingSessionIdRef.current = null;
             isStreamingRef.current = false;
@@ -669,6 +954,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           return;
         }
         clearLoadingTimer();
+        clearStreamQueue(msgSessionId);
 
         // 即使出错也要持久化用户消息
         const pending = await flushPendingUserMessage(msgSessionId);
@@ -696,7 +982,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
         }
 
-        backgroundContentBySessionRef.current.delete(msgSessionId);
+        clearLiveSession(msgSessionId);
         setIsLoading(false);
         isStreamingRef.current = false;
         if (streamingSessionIdRef.current === msgSessionId) {
@@ -745,6 +1031,25 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
       // 收到任何内容消息，重置加载超时计时器
       if (isCurrentSession) startLoadingTimer();
+      if (isCurrentSession) {
+        switch (type) {
+          case 'THINK':
+            enqueueStreamText(msgSessionId, 'THINK', text);
+            break;
+          case 'TEXT':
+          case 'REASON':
+            enqueueStreamText(msgSessionId, 'TEXT', text, { agentName: data.agentName });
+            break;
+          case 'ACTION':
+            enqueueStreamText(msgSessionId, 'ACTION', text, {
+              toolName: data.toolName,
+              args: data.args,
+              forceNewSegment: Boolean(data.toolName),
+            });
+            break;
+        }
+        return;
+      }
 
       // 累积内容
       // 累积内容 — 保留交错顺序
@@ -784,7 +1089,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       }
 
       // 实时更新显示（RAF 节流，合并多次 chunk）
-      if (isCurrentSession) scheduleMessageUpdate();
+      if (isCurrentSession) {
+        // Updates are driven by the character pump.
+      }
     };
 
     wsManager.registerCallback(handleMessage);
@@ -842,20 +1149,32 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       contents: [{ type: 'TEXT', text: fullMessage }]
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => {
+      const nextMessages = [...prev, userMessage];
+      liveBaseMessagesBySessionRef.current.set(sessionId!, nextMessages);
+      liveMessagesBySessionRef.current.set(sessionId!, nextMessages);
+      return nextMessages;
+    });
 
     // 标记流式状态，防止会话 ID 变化时重新加载消息
     isStreamingRef.current = true;
     streamingSessionIdRef.current = sessionId!;
+    thinkingStartedAtBySessionRef.current.set(sessionId!, Date.now());
 
     setIsLoading(true);
     startLoadingTimer(); // 开始超时计时
 
     // 重置累积器
     accumulatedContentRef.current = [];
+    clearStreamQueue(sessionId!);
     const streamingSegments: AccSegment[] = [];
     accumulatedContentRef.current = streamingSegments;
     backgroundContentBySessionRef.current.set(sessionId!, streamingSegments);
+    liveUserMessageBySessionRef.current.set(sessionId!, userMessage);
+    if (!liveBaseMessagesBySessionRef.current.has(sessionId!)) {
+      liveBaseMessagesBySessionRef.current.set(sessionId!, [userMessage]);
+      liveMessagesBySessionRef.current.set(sessionId!, [userMessage]);
+    }
 
     assistantMsgIdRef.current = Date.now() + Math.floor(Math.random() * 1000);
 
@@ -973,6 +1292,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         }
       }
 
+      clearLiveSession(sessionId!);
       setIsLoading(false);
       isStreamingRef.current = false;
       if (streamingSessionIdRef.current === sessionId) {
@@ -1034,18 +1354,8 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
 
     // 临时会话：清空消息
-    if (streamingSessionIdRef.current === id) {
-      const liveSegments = backgroundContentBySessionRef.current.get(id) || accumulatedContentRef.current;
-      const liveItems = buildContentItems(liveSegments);
-      if (liveItems.length > 0) {
-        setMessages([{
-          id: assistantMsgIdRef.current,
-          role: 'ASSISTANT',
-          timestamp: new Date().toLocaleTimeString(),
-          contents: liveItems,
-        }]);
-        return;
-      }
+    if (streamingSessionIdRef.current === id || liveMessagesBySessionRef.current.has(id) || sessionRunStates[id] === 'running') {
+      if (restoreLiveMessages(id)) return;
     }
 
     if (id.startsWith('temp-') || id.startsWith('pending-')) {
@@ -1054,24 +1364,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
 
     // 正在流式输出时（ID 从 temp 替换为 real），跳过加载
-    if (streamingSessionIdRef.current === id) {
-      const liveSegments = backgroundContentBySessionRef.current.get(id) || accumulatedContentRef.current;
-      const liveItems = buildContentItems(liveSegments);
-      if (liveItems.length > 0) {
-        setMessages([{
-          id: assistantMsgIdRef.current,
-          role: 'ASSISTANT',
-          timestamp: new Date().toLocaleTimeString(),
-          contents: liveItems,
-        }]);
-        return;
-      }
-    }
-
-
     // 正常会话：从数据库加载历史消息
     loadConversationMessages(id);
-  }, [currentConversationId]);
+  }, [currentConversationId, sessionRunStates]);
 
   // 停止当前请求
   const handleHitlAction = useCallback(async (action: 'approve' | 'reject') => {
@@ -1100,6 +1395,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     const stoppedSessionId = sessionIdRef.current;
     WebSocketManager.getInstance().cancelSession(stoppedSessionId);
     clearLoadingTimer();
+    clearStreamQueue(stoppedSessionId);
     setIsLoading(false);
     if (streamingSessionIdRef.current === stoppedSessionId) {
       streamingSessionIdRef.current = null;
@@ -1124,7 +1420,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
     // 重置累积器
     accumulatedContentRef.current = [];
-    backgroundContentBySessionRef.current.delete(stoppedSessionId);
+    clearLiveSession(stoppedSessionId);
   }, []);
 
   // 模型切换时推送配置到后端
@@ -1148,7 +1444,17 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   const currentConversationIdString = currentConversation.id?.toString();
   const currentRunState = currentConversationIdString ? sessionRunStates[currentConversationIdString] : undefined;
   const isCurrentConversationLoading = currentRunState === 'running' || (isLoading && streamingSessionIdRef.current === currentConversationIdString);
-  const showReviewButton = reviewFiles.length > 0 && !isCurrentConversationLoading;
+  useEffect(() => {
+    if (!currentConversationIdString || !isCurrentConversationLoading) {
+      setThinkingElapsedSeconds(0);
+      return;
+    }
+    const getElapsed = () => Math.max(0, Math.floor((Date.now() - (thinkingStartedAtBySessionRef.current.get(currentConversationIdString) || Date.now())) / 1000));
+    setThinkingElapsedSeconds(getElapsed());
+    const timer = window.setInterval(() => setThinkingElapsedSeconds(getElapsed()), 1000);
+    return () => window.clearInterval(timer);
+  }, [currentConversationIdString, isCurrentConversationLoading]);
+  const showReviewFiles = reviewFiles.length > 0 && !isCurrentConversationLoading;
   const isEmpty = messages.length === 0 && !isCurrentConversationLoading && reviewFiles.length === 0;
   const showHeader = !isEmpty;
   const baseContextTokens = useMemo(() => estimateMessageTokens(messages), [messages]);
@@ -1197,7 +1503,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           openInfoSignal={reviewInfoSignal}
         />
       )}
-      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isCurrentConversationLoading} theme={theme} projectName={projectName} onDeleteMessage={handleDeleteMessage} onHitlAction={handleHitlAction} onFileSelect={onFileSelect} />
+      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isCurrentConversationLoading} thinkingElapsedSeconds={thinkingElapsedSeconds} theme={theme} projectName={projectName} onDeleteMessage={handleDeleteMessage} onHitlAction={handleHitlAction} onFileSelect={onFileSelect} />
 
       {isEmpty ? (
         <div className="empty-center-container">
@@ -1205,15 +1511,15 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             <div className="hero-logo">SolonCode</div>
             <div className="hero-slogan">{newSessionFromProject && projectName ? `在 ${projectName} ` : ''}做你想做的事</div>
           </div>
-          {showReviewButton && (
-            <ReviewPrompt files={reviewFiles} onReview={() => setReviewInfoSignal(value => value + 1)} />
+          {showReviewFiles && (
+            <ReviewFilesBar files={reviewFiles} onReview={onReviewFileSelect} onDiscard={onReviewFileDiscard} />
           )}
           <ChatInput onSend={sendMessage} isLoading={isCurrentConversationLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
         </div>
       ) : (
         <>
-          {showReviewButton && (
-            <ReviewPrompt files={reviewFiles} onReview={() => setReviewInfoSignal(value => value + 1)} />
+          {showReviewFiles && (
+            <ReviewFilesBar files={reviewFiles} onReview={onReviewFileSelect} onDiscard={onReviewFileDiscard} />
           )}
           <ChatInput onSend={sendMessage} isLoading={isCurrentConversationLoading} onStop={handleStop} providers={providers} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={activeFileName} backendPort={backendPort} showStartWork={!workspacePath} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
         </>

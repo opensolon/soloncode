@@ -76,6 +76,11 @@ function getActiveTheme(): 'dark' | 'light' {
   return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
 }
 
+function resolveMonacoTheme(appTheme: 'dark' | 'light', editorTheme?: string) {
+  if (editorTheme && editorTheme !== 'auto') return editorTheme;
+  return appTheme === 'dark' ? 'vs-dark' : 'light';
+}
+
 export function EditorPanel({
   files,
   activeFilePath,
@@ -93,14 +98,15 @@ export function EditorPanel({
   diffFiles = {},
 }: EditorPanelProps) {
   // 直接从 DOM 读取主题，确保与 ChatView 同步
-  const [activeTheme, setActiveTheme] = useState<'dark' | 'light'>(getActiveTheme());
+  const [activeTheme, setActiveTheme] = useState<'dark' | 'light'>(_themeProp || getActiveTheme());
 
   // 监听 DOM data-theme 变化（MutationObserver）
   useEffect(() => {
     const el = document.documentElement;
 
+    setActiveTheme(_themeProp || getActiveTheme());
     const observer = new MutationObserver(() => {
-      setActiveTheme(getActiveTheme());
+      setActiveTheme(_themeProp || getActiveTheme());
     });
 
     observer.observe(el, {
@@ -109,7 +115,7 @@ export function EditorPanel({
     });
 
     return () => observer.disconnect();
-  }, []);
+  }, [_themeProp]);
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
@@ -265,7 +271,7 @@ export function EditorPanel({
     },
   }), [fontSize, tabSize]);
 
-  const monacoTheme = _editorTheme || (activeTheme === 'dark' ? 'vs-dark' : 'light');
+  const monacoTheme = resolveMonacoTheme(activeTheme, _editorTheme);
 
   const activeFile = files.find(f => f.path === activeFilePath);
 

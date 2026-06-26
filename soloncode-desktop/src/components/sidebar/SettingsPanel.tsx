@@ -279,8 +279,7 @@ function GeneralSettings({ settings, updateSetting }: {
       <SettingRow label="编辑器主题">
         <select className="setting-select" value={settings.editorTheme}
           onChange={e => updateSetting('editorTheme', e.target.value)}>
-          <option value="vs-dark">VS Dark</option>
-          <option value="light">VS Light</option>
+          <option value="auto">跟随全局主题</option>
           <option value="hc-black">High Contrast Dark</option>
           <option value="hc-light">High Contrast Light</option>
         </select>

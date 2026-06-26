@@ -1,26 +1,28 @@
 .action-block {
-  margin: 6px 0;
-  border: 1px solid var(--cb-vscode-panel-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--cb-vscode-input-background) 36%, transparent);
+  margin: 7px 0;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cb-vscode-input-background) 62%, transparent);
   overflow: hidden;
 }
 
 .action-block-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 10px;
   cursor: pointer;
   user-select: none;
   color: var(--cb-text-secondary);
-  opacity: 0.7;
   font-size: 12px;
-  transition: opacity 0.15s;
+  background: color-mix(in srgb, var(--cb-vscode-editor-background) 56%, transparent);
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .action-block-header:hover {
-  opacity: 1;
+  color: var(--cb-text-primary);
+  background: color-mix(in srgb, var(--cb-vscode-list-hoverBackground) 48%, transparent);
 }
 
 .action-block-tool {
@@ -36,7 +38,9 @@
   font-size: 11px;
   cursor: pointer;
   text-decoration: none;
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-block-file:hover {
@@ -85,6 +89,7 @@
 }
 
 .action-block-arrow {
+  margin-left: auto;
   font-size: 9px;
   flex-shrink: 0;
   transition: transform 0.15s;
@@ -95,15 +100,19 @@
 }
 
 .action-block-content {
-  padding: 10px 14px 10px 18px;
+  padding: 10px 14px;
   font-size: 13px;
   line-height: 1.5;
   color: var(--cb-text-secondary);
-  opacity: 0.7;
-  border-top: 1px solid var(--cb-vscode-panel-border);
+  opacity: 0.82;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
   max-height: 300px;
   overflow-y: auto;
-  background: color-mix(in srgb, var(--cb-vscode-editor-background) 72%, transparent);
+  background: color-mix(in srgb, var(--cb-vscode-editor-background) 82%, transparent);
+}
+
+.message.streaming .action-block {
+  border-color: rgba(64, 158, 255, 0.28);
 }
 
 .action-block-content > :first-child {
