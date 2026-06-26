@@ -863,6 +863,7 @@ var dingtalkHeaderBtn = $('#dingtalkHeaderBtn');
 var dingtalkHeaderLabel = $('#dingtalkHeaderLabel');
 var dingtalkModalOverlay = null;
 var dingtalkPollTimer = null;
+var dingtalkStatusTimer = null;
 
 function updateDingTalkUI() {
     if (!activeSessionId) return;
@@ -875,6 +876,34 @@ function updateDingTalkUI() {
             dingtalkHeaderBtn.attr('title', bound ? '钉钉已绑定（点击解绑）' : '钉钉绑定');
         } catch(e) {}
     }, 'json');
+}
+
+/**
+ * 后台轮询钉钉绑定状态。
+ * 扫码绑定成功后，等待用户给钉钉机器人发消息完成真正绑定，
+ * 一旦检测到 bound=true 自动更新按钮为"已连接"（无需刷新页面）。
+ */
+function startDingtalkStatusPoll() {
+    if (dingtalkStatusTimer) return;
+    dingtalkStatusTimer = setInterval(function() {
+        if (!activeSessionId) {
+            clearInterval(dingtalkStatusTimer);
+            dingtalkStatusTimer = null;
+            return;
+        }
+        $.get('/web/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+            try {
+                var data = resp.data || {};
+                if (data.bound) {
+                    clearInterval(dingtalkStatusTimer);
+                    dingtalkStatusTimer = null;
+                    dingtalkHeaderBtn.toggleClass('bound', true);
+                    dingtalkHeaderLabel.text('已连接');
+                    dingtalkHeaderBtn.attr('title', '钉钉已绑定（点击解绑）');
+                }
+            } catch(e) {}
+        }, 'json');
+    }, 3000);
 }
 
 // Page load: refresh status
@@ -1105,27 +1134,16 @@ function showDingTalkModal() {
                         var dots = '.'.repeat(dotCount);
                         $qrStatus.text('等待扫码' + dots).removeClass('error scanned');
                     } else if (status === 'success') {
-                        $qrStatus.text('扫码成功！请在钉钉上给机器人发送任意消息完成绑定').removeClass('error').addClass('scanned');
-                        // 停止二维码轮询，切换为等待钉钉消息轮询
+                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
                         clearInterval(dingtalkPollTimer);
                         dingtalkPollTimer = null;
-                        dingtalkPollTimer = setInterval(function() {
-                            $.get('/web/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
-                                try {
-                                    var data = resp.data || {};
-                                    if (data.bound) {
-                                        clearInterval(dingtalkPollTimer);
-                                        dingtalkPollTimer = null;
-                                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
-                                        setTimeout(function() {
-                                            closeDingTalkModal();
-                                            updateDingTalkUI();
-                                            switchToChatMode();
-                                        }, 1000);
-                                    }
-                                } catch(e) {}
-                            }, 'json');
-                        }, 2000);
+                        setTimeout(function() {
+                            closeDingTalkModal();
+                            updateDingTalkUI();
+                            switchToChatMode();
+                            // 后台轮询，绑定完成后自动更新按钮，无需手动刷新
+                            startDingtalkStatusPoll();
+                        }, 1200);
                     } else if (status === 'failed') {
                         $qrStatus.text(data.message || '绑定失败').addClass('error');
                         clearInterval(dingtalkPollTimer);
