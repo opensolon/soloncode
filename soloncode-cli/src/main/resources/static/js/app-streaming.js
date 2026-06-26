@@ -1105,14 +1105,27 @@ function showDingTalkModal() {
                         var dots = '.'.repeat(dotCount);
                         $qrStatus.text('等待扫码' + dots).removeClass('error scanned');
                     } else if (status === 'success') {
-                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
+                        $qrStatus.text('扫码成功！请在钉钉上给机器人发送任意消息完成绑定').removeClass('error').addClass('scanned');
+                        // 停止二维码轮询，切换为等待钉钉消息轮询
                         clearInterval(dingtalkPollTimer);
                         dingtalkPollTimer = null;
-                        setTimeout(function() {
-                            closeDingTalkModal();
-                            updateDingTalkUI();
-                            switchToChatMode();
-                        }, 1200);
+                        dingtalkPollTimer = setInterval(function() {
+                            $.get('/web/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+                                try {
+                                    var data = resp.data || {};
+                                    if (data.bound) {
+                                        clearInterval(dingtalkPollTimer);
+                                        dingtalkPollTimer = null;
+                                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
+                                        setTimeout(function() {
+                                            closeDingTalkModal();
+                                            updateDingTalkUI();
+                                            switchToChatMode();
+                                        }, 1000);
+                                    }
+                                } catch(e) {}
+                            }, 'json');
+                        }, 2000);
                     } else if (status === 'failed') {
                         $qrStatus.text(data.message || '绑定失败').addClass('error');
                         clearInterval(dingtalkPollTimer);
