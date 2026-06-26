@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.portal.web;
+package org.noear.solon.codecli.portal.web.service;
 
+import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.core.handle.Result;
 
 import java.io.BufferedReader;

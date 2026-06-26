@@ -75,6 +75,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Web 设置控制器 —— SolonCode Web UI 的设置管理 HTTP 入口。
@@ -782,9 +783,9 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/mcp/servers/check")
-    public Result mcpServersCheck(Context ctx) {
+    public Result mcpServersCheck(String json) {
         try {
-            ONode root = ONode.ofJson(ctx.body());
+            ONode root = ONode.ofJson(json);
             String type = root.get("type").getString();
             if (type == null || type.isEmpty()) type = "stdio";
 
@@ -842,10 +843,22 @@ public class WebSettingsController {
                 }
 
                 McpClientProvider client = builder.build();
+                AtomicReference<Throwable> errorRef = new AtomicReference<>();
                 try {
                     // 通过 getTools() 触发 MCP 初始化握手，验证连接有效性
-                    client.getTools();
+                    client.getClient().listTools()
+                            .doOnError(err -> {
+                                errorRef.set(err);
+                            })
+                            .block();
+
                     return Result.succeed("连接成功：MCP 初始化握手完成（" + type + "）");
+                } catch (Exception e) {
+                    if (errorRef.get() != null) {
+                        throw errorRef.get();
+                    } else {
+                        throw e;
+                    }
                 } finally {
                     client.close();
                 }
@@ -858,7 +871,7 @@ public class WebSettingsController {
             return Result.failure("连接超时，请检查地址是否可达");
         } catch (java.io.IOException e) {
             return Result.failure("连接失败: " + e.getMessage());
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return Result.failure("检测失败: " + e.getMessage());
         }
     }
@@ -1170,8 +1183,8 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/add")
-    public Result openapiServersAdd(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
+    public Result openapiServersAdd(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
         String name = root.get("name").getString();
         String apiBaseUrl = root.get("apiBaseUrl").getString();
 
@@ -1226,8 +1239,8 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/update")
-    public Result openapiServersUpdate(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
+    public Result openapiServersUpdate(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
         String name = root.get("name").getString();
         String originalName = root.get("originalName").getString();
 

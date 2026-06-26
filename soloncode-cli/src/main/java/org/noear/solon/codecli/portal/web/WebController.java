@@ -26,6 +26,8 @@ import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.*;
+import org.noear.solon.codecli.portal.web.service.FileService;
+import org.noear.solon.codecli.portal.web.service.GitService;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
