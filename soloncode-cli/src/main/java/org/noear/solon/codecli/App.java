@@ -80,7 +80,6 @@ public class App {
 
         if (AgentFlags.FLAG_SERVE.equals(flag)) {
             enabledWeb(app, c);
-            enabledAcp(app, c);
             return;
         }
 

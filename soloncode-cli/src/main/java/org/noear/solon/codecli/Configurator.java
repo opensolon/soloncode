@@ -246,6 +246,7 @@ public class Configurator {
 
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
                 runWeb(agentRuntime, agentSettings, cliShell);
+                openBrowser();
                 return;
             }
 
@@ -284,6 +285,7 @@ public class Configurator {
         //serve web controller
         BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, modelProviderFactory));
         Solon.app().router().add(webBean);
+
         BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
         Solon.app().router().add(webController);
 
@@ -347,15 +349,18 @@ public class Configurator {
             // watcher 启动失败不影响主流程
         }
 
-        if (cliShell == null) {
-            return;
+        if (cliShell != null) {
+            String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
+            cliShell.printWelcome("Web interface: " + url);
         }
+    }
+
+    private void openBrowser(){
+        String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
 
         RunUtil.async(() -> {
             try {
                 Thread.sleep(500);
-
-                String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
 
                 if (JavaUtil.IS_WINDOWS) {
                     new ProcessBuilder("cmd", "/c", "start", url.replace("&", "^&")).start();
@@ -365,9 +370,7 @@ public class Configurator {
                     new ProcessBuilder("xdg-open", url).start();
                 }
 
-                if (cliShell != null) {
-                    cliShell.printWelcome("Web interface: " + url);
-                }
+
             } catch (Throwable e) { // 使用 Throwable 捕获更全面
                 LOG.warn("Failed to open browser: {}", e.getMessage());
             }
