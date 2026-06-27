@@ -240,12 +240,13 @@ public class Configurator {
             }
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
-                runServe(agentRuntime, agentSettings, cliShell);
+                runDesktopServe(agentRuntime, agentSettings, cliShell);
+                runWebServe(agentRuntime, agentSettings, cliShell);
                 return;
             }
 
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
-                runWeb(agentRuntime, agentSettings, cliShell);
+                runWebServe(agentRuntime, agentSettings, cliShell);
                 openBrowser();
                 return;
             }
@@ -276,51 +277,19 @@ public class Configurator {
         }
     }
 
-    private void runServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
+    private void runDesktopServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
         //serve ws gate
         WebSocketRouter.getInstance().of("/ws", new WsGate(agentRuntime, settings));
-        WebGate webGate = new WebGate(agentRuntime, settings);
-        WebSocketRouter.getInstance().of("/web/gate", webGate);
 
         //serve web controller
         BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, modelProviderFactory));
         Solon.app().router().add(webBean);
 
-        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
-        Solon.app().router().add(webController);
-
-        //注册第三方渠道（HTTP 端点 + 后台线程）
-        WebStreamBuilder streamBuilder = new WebStreamBuilder(agentRuntime);
-        WebChannel webChannel = new WebChannel(agentRuntime, webGate);
-        // 将渠道绑定到 streamBuilder，使 IM 回复能同步
-        for (Channel ch : Collections.singletonList(webChannel.getWeChatLink())) {
-            streamBuilder.bind(ch);
-        }
-        streamBuilder.bind(webChannel.getFeishuLink());
-        streamBuilder.bind(webChannel.getDingTalkLink());
-        BeanWrap channelBean = Solon.context().wrapAndPut(WebChannel.class, webChannel);
-        Solon.app().router().add(channelBean);
-        RunUtil.async(webChannel);
-
-        try {
-            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
-            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
-            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
-            workspaceWatcher.start();
-        } catch (Exception e) {
-            // watcher startup failure should not block serve mode
-        }
-
-        //settings controller
-        WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);
-        BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
-        Solon.app().router().add(webSettingsController);
-
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
     }
 
 
-    private void runWeb(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
+    private void runWebServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
         //web ws gate
         WebGate webGate = new WebGate(agentRuntime, settings);
         WebSocketRouter.getInstance().of("/web/gate", webGate);
@@ -349,10 +318,8 @@ public class Configurator {
             // watcher 启动失败不影响主流程
         }
 
-        if (cliShell != null) {
-            String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
-            cliShell.printWelcome("Web interface: " + url);
-        }
+        String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
+        cliShell.printWelcome("Web interface: " + url);
     }
 
     private void openBrowser(){
