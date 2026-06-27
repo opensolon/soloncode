@@ -3,6 +3,7 @@
 
 * 优化 soloncode web 钉钉与微信绑定
 * 优化 soloncode web mcp 编辑提示
+* 优化 soloncode web 循环任务编辑提示
 * 细节优化
 
 ### v2026.6.26
