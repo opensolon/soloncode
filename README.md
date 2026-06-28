@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>An open-source coding agent built with <a href="https://github.com/opensolon/solon-ai">Solon AI</a> and Java (supports Java8 to Java26 runtime environments)</p>
-<p>Latest Version: v2026.6.27</p>
+<p>Latest Version: v2026.6.28</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
