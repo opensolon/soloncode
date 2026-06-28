@@ -739,10 +739,10 @@ public class CliShell implements Runnable {
 
         String path = new File(engine.getWorkspace()).getAbsolutePath();
 
-        System.out.println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
-        System.out.println(DIM + path + RESET);
-        System.out.println(DIM + DateUtil.format(new Date(), "yyyy-MM-dd HH:mm") + RESET);
-        System.out.println(text);
-        System.out.flush();
+        terminal.writer().write(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
+        terminal.writer().write(DIM + path + RESET);
+        terminal.writer().write(DIM + DateUtil.format(new Date(), "yyyy-MM-dd HH:mm") + RESET);
+        terminal.writer().write(text);
+        terminal.writer().flush();
     }
 }

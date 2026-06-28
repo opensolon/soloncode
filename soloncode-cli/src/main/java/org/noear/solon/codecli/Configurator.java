@@ -241,7 +241,7 @@ public class Configurator {
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
                 runDesktopServe(agentRuntime, agentSettings, cliShell);
-                runWebServe(agentRuntime, agentSettings, cliShell);
+                runWebServe(agentRuntime, agentSettings, null);
                 return;
             }
 
@@ -318,8 +318,10 @@ public class Configurator {
             // watcher 启动失败不影响主流程
         }
 
-        String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
-        cliShell.printWelcome("Web interface: " + url);
+        if (cliShell != null) {
+            String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
+            cliShell.printWelcome("Web interface: " + url);
+        }
     }
 
     private void openBrowser(){
