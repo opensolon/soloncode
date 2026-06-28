@@ -1947,7 +1947,7 @@ public class WebSettingsController {
             }
             // 防御性：补回前端可能遗漏的手动模型
             if (existing.getModels() != null) {
-                java.util.Set<String> newModelIds = new java.util.HashSet<>();
+                Set<String> newModelIds = new HashSet<>();
                 for (ModelInfo mi : models) {
                     newModelIds.add(mi.getId());
                 }
@@ -2119,12 +2119,12 @@ public class WebSettingsController {
                 syncCount++;
             } else {
                 // 模型已存在，检查是否需要同步状态
-                ModelDo existingModel = (ModelDo) settings.getModels().get(modelName);
+                ModelDo existingModel = settings.getModels().get(modelName);
                 if (providerName.equals(existingModel.getProvider())) {
-                    if (existingModel.isVisibled() != provider.isEnabled()) {
-                        existingModel.setVisibled(provider.isEnabled());
-                        syncCount++;
-                    }
+                    syncCount++;
+
+                    existingModel.setVisibled(provider.isEnabled());
+
                     // 更新 contextLength：优先 maxInputTokens，其次 maxTokens，最后从 models.json 查询
                     long newContextLength = 0;
                     if (modelInfo.getMaxInputTokens() != null && modelInfo.getMaxInputTokens() > 0) {
@@ -2140,8 +2140,12 @@ public class WebSettingsController {
                     }
                     if (newContextLength > 0 && existingModel.getContextLength() != newContextLength) {
                         existingModel.setContextLength(newContextLength);
-                        syncCount++;
                     }
+
+                    existingModel.setStandard(provider.getStandard());
+                    existingModel.setApiUrl(provider.getApiUrl());
+                    existingModel.setApiKey(provider.getApiKey());
+                    existingModel.setScope(provider.getScope());
                 }
             }
         }
