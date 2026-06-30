@@ -1,6 +1,6 @@
 /**
  * 供应商设置管理模块
- * 
+ *
  * 负责供应商的增删改查、模型列表拉取等功能
  */
 ;(function () {
@@ -91,6 +91,43 @@
             toggleProviderModel(modelId, enabled, llmName, isSynced);
         });
 
+        // 批量选择菜单
+        $('#providerModelsSelectToggle').on('click', function (e) {
+            e.stopPropagation();
+            $('#providerModelsActionMenu').toggleClass('show');
+        });
+
+        $(document).on('click', function (e) {
+            if ($(e.target).closest('.provider-model-menu-wrap').length === 0) {
+                $('#providerModelsActionMenu').removeClass('show');
+            }
+        });
+
+        $('#providerModelsSelectAll, #providerModelsSelectNone, #providerModelsInvert').on('click', function () {
+            var action = this.id;
+            var changed = false;
+
+            $modelsList.find('.provider-model-toggle').each(function () {
+                var $toggle = $(this);
+                var nextChecked = $toggle.prop('checked');
+
+                if (action === 'providerModelsSelectAll') {
+                    nextChecked = true;
+                } else if (action === 'providerModelsSelectNone') {
+                    nextChecked = false;
+                } else if (action === 'providerModelsInvert') {
+                    nextChecked = !$toggle.prop('checked');
+                }
+
+                if ($toggle.prop('checked') !== nextChecked) {
+                    changed = true;
+                    $toggle.prop('checked', nextChecked).trigger('change');
+                }
+            });
+
+            $('#providerModelsActionMenu').removeClass('show');
+        });
+
         // 作用域切换
         $('.settings-scope-toggle').on('click', '.settings-scope-btn', function () {
             var $toggle = $(this).closest('.settings-scope-toggle');
@@ -133,7 +170,7 @@
 
     function renderProviderItem(provider) {
         var modelsCount = (provider.models || []).length;
-        
+
         return '<div class="mcp-server-item" data-name="' + provider.name + '">' +
             '<div class="mcp-server-icon">P</div>' +
             '<div class="mcp-server-info">' +
@@ -169,7 +206,7 @@
         $('#providerApiUrl').val(provider ? provider.apiUrl : '');
         $('#providerApiKey').val(provider ? provider.apiKey : '');
         $('#providerScope').val(provider ? (provider.scope || 'global') : 'global');
-        
+
         // 设置作用域按钮状态
         var scope = provider ? (provider.scope || 'global') : 'global';
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn').removeClass('active');

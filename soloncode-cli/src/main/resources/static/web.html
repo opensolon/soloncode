@@ -1397,6 +1397,16 @@
                                     <div class="form-group-header">
                                         <label>模型管理</label>
                                         <div class="provider-model-header-actions">
+                                            <div class="provider-model-menu-wrap">
+                                                <button class="provider-model-icon-btn" id="providerModelsSelectToggle" title="批量选择模型">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list-checks-icon lucide-list-checks"><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/></svg>
+                                                </button>
+                                                <div class="provider-model-menu" id="providerModelsActionMenu">
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsSelectAll">全选</button>
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsSelectNone">全不选</button>
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsInvert">反选</button>
+                                                </div>
+                                            </div>
                                             <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                             </button>

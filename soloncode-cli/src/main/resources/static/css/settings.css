@@ -904,6 +904,46 @@ select[disabled] {
     gap: 4px;
 }
 
+.provider-model-menu-wrap {
+    position: relative;
+}
+
+.provider-model-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    display: none;
+    min-width: 96px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.provider-model-menu.show {
+    display: block;
+}
+
+.provider-model-menu-item {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.provider-model-menu-item:hover {
+    background: var(--bg-hover);
+}
+
 .provider-model-icon-btn {
     display: flex;
     align-items: center;
