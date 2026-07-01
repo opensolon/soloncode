@@ -3,6 +3,7 @@
 
 * 添加 soloncode web 设置/供应商 模型“全选”“反选”
 * 优化 soloncode web md 链接渲染改为新窗口打开
+* 优化 soloncode web 适配studio，优化超链接跳转机制
 * 细节优化
 
 ### v2026.6.28
