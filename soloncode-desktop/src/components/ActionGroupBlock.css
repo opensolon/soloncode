@@ -149,6 +149,7 @@
   border-top: 1px solid rgba(148, 163, 184, 0.16);
   max-height: 250px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: color-mix(in srgb, var(--cb-vscode-editor-background) 84%, transparent);
 }
 

@@ -49,6 +49,28 @@ interface CommandItem {
   type: string; // SYSTEM | CONFIG | AGENT
 }
 
+const DEFAULT_COMMANDS: CommandItem[] = [
+  { name: 'loop', description: '查看或启动循环任务', type: 'SYSTEM' },
+  { name: 'clear', description: '清空当前对话上下文', type: 'SYSTEM' },
+  { name: 'compact', description: '压缩当前上下文', type: 'SYSTEM' },
+  { name: 'models', description: '查看可用模型', type: 'CONFIG' },
+  { name: 'help', description: '查看可用命令', type: 'SYSTEM' },
+];
+
+function normalizeCommands(list: CommandItem[]) {
+  const map = new Map<string, CommandItem>();
+  for (const command of [...DEFAULT_COMMANDS, ...list]) {
+    const name = String(command.name || '').replace(/^\//, '').trim();
+    if (!name) continue;
+    map.set(name, {
+      name,
+      description: command.description || '',
+      type: command.type || 'SYSTEM',
+    });
+  }
+  return Array.from(map.values());
+}
+
 // 可用的智能体列表
 const AVAILABLE_AGENTS = [
   { id: 'default', name: '助手', icon: 'bot', description: '通用编程助手' },
@@ -329,7 +351,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // 命令列表（从后端加载，缓存）
-  const [commands, setCommands] = useState<CommandItem[]>([]);
+  const [commands, setCommands] = useState<CommandItem[]>(DEFAULT_COMMANDS);
   const commandsLoadedRef = useRef(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -401,10 +423,13 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       if (resp.ok) {
         const json = await resp.json();
         const list: CommandItem[] = json.data || json;
-        setCommands(list);
+        setCommands(normalizeCommands(Array.isArray(list) ? list : []));
         commandsLoadedRef.current = true;
       }
-    } catch { /* ignore */ }
+    } catch {
+      setCommands(DEFAULT_COMMANDS);
+      commandsLoadedRef.current = true;
+    }
   }, [backendPort]);
 
   // 加载工作区文件列表（懒加载，首次输入 # 时触发）
@@ -481,7 +506,9 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
     if (lastSlashIndex !== -1) {
       const afterSlash = textBeforeCursor.substring(lastSlashIndex + 1);
-      if (!afterSlash.includes(' ') && lastSlashIndex >= lastAtIndex && lastSlashIndex >= lastHashIndex) {
+      const beforeSlash = textBeforeCursor.substring(0, lastSlashIndex);
+      const isCommandPosition = beforeSlash.length === 0 || /\s$/.test(beforeSlash);
+      if (isCommandPosition && !afterSlash.includes(' ') && lastSlashIndex >= lastAtIndex && lastSlashIndex >= lastHashIndex) {
         triggerType = 'command';
         triggerIndex = lastSlashIndex;
         // 异步加载命令（首次）
@@ -937,13 +964,17 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
         </form>
 
         {/* 自动完成下拉框 */}
-        {showAutocomplete && filteredOptions.length > 0 && (
+        {showAutocomplete && (
           <div className="autocomplete-dropdown" ref={autocompleteRef}>
             <div className="autocomplete-header">
               {autocompleteType === 'command' ? '命令' : autocompleteType === 'agent' ? '选择智能体' : '引用文件'}
             </div>
             <div className="autocomplete-list">
-              {filteredOptions.map((option, index) => (
+              {filteredOptions.length === 0 ? (
+                <div className="autocomplete-empty">
+                  {autocompleteType === 'command' && !commandsLoadedRef.current ? '加载命令中...' : '没有匹配项'}
+                </div>
+              ) : filteredOptions.map((option, index) => (
                 <div
                   key={option.id || (option as any).name}
                   className={`autocomplete-item${index === selectedIndex ? ' selected' : ''}`}

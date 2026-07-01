@@ -159,15 +159,15 @@ const FILE_REFERENCE_PATTERN = new RegExp(
 function fileReferencePlugin() {
   const skipParentTypes = new Set(['link', 'linkReference', 'image', 'imageReference', 'definition']);
 
-  function transformNode(node: any, parent?: any) {
+  function transformNode(node: any) {
     if (!node || !Array.isArray(node.children)) return;
 
     const nextChildren: any[] = [];
     for (const child of node.children) {
-      if (child?.type === 'text' && typeof child.value === 'string' && !skipParentTypes.has(parent?.type)) {
+      if (child?.type === 'text' && typeof child.value === 'string' && !skipParentTypes.has(node.type)) {
         nextChildren.push(...splitFileReferences(child.value));
       } else {
-        transformNode(child, node);
+        transformNode(child);
         nextChildren.push(child);
       }
     }
@@ -302,7 +302,7 @@ function groupConsecutiveActions(items: ContentItem[]): GroupedItem[] {
   let i = 0;
   while (i < items.length) {
     const item = items[i];
-    if (item.type === 'ACTION' && item.toolName && item.toolName.toLowerCase() !== 'read') {
+    if (item.type === 'ACTION' && item.toolName) {
       const toolName = item.toolName;
       const group: ContentItem[] = [item];
       let j = i + 1;
@@ -473,10 +473,12 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onHitlAc
 export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
   ({ messages, isLoading, thinkingElapsedSeconds = 0, theme, projectName, onDeleteMessage, onHitlAction, onFileSelect }, ref) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
+    const autoFollowRef = useRef(true);
 
     useImperativeHandle(ref, () => ({
       scrollToBottom() {
-        virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' });
+        autoFollowRef.current = true;
+        virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'auto' });
       }
     }));
 
@@ -511,7 +513,10 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
           ref={virtuosoRef}
           totalCount={messages.length + (showThinkingRow ? 1 : 0)}
           itemContent={itemContent}
-          followOutput="smooth"
+          followOutput={(isAtBottom) => autoFollowRef.current && isAtBottom ? 'auto' : false}
+          atBottomStateChange={(atBottom) => {
+            autoFollowRef.current = atBottom;
+          }}
           initialTopMostItemIndex={Math.max(0, messages.length - 1)}
           computeItemKey={(index) => showThinkingRow && index === messages.length ? 'thinking' : (messages[index]?.id ?? index)}
           style={{ height: '100%' }}

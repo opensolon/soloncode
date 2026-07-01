@@ -964,6 +964,7 @@ fn detect_backend(port: u16) -> Result<bool, String> {
 }
 
 /// 启动后端 CLI 进程（如果已在运行则复用）
+#[allow(unreachable_code, unused_variables)]
 #[tauri::command]
 fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检查已有进程是否仍在运行
@@ -981,13 +982,13 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
                             return Ok(child.id());
                         }
 
-                        app_log(&format!("[soloncode] Managed backend PID {} is alive but port {} is not ready, restarting...", child.id(), port));
+                        app_log(&format!("[soloncode] Managed backend PID {} is alive but port {} is not ready, clearing handle", child.id(), port));
                         let _ = child.kill();
                         let _ = child.wait();
                         *proc = None;
                     }
                     Err(e) => {
-                        app_log(&format!("[soloncode] Failed to check process status: {}, restarting...", e));
+                        app_log(&format!("[soloncode] Failed to check process status: {}, clearing handle", e));
                         *proc = None;
                     }
                 }

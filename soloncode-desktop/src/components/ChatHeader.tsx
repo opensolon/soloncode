@@ -5,9 +5,9 @@ import './ChatHeader.css';
 export interface ChatHeaderTask {
   id: string;
   title: string;
-  timestamp: string;
-  messageCount: number;
-  status?: 'running' | 'completed' | 'error';
+  status: 'pending' | 'in_progress' | 'done';
+  group?: string;
+  line?: number;
 }
 
 export interface ChatReviewFile {
@@ -58,23 +58,20 @@ function formatRelativeTime(value?: string) {
   const hour = 60 * minute;
   const day = 24 * hour;
   if (diff < minute) return '刚刚';
-  if (diff < hour) return `${Math.floor(diff / minute)}分钟前`;
-  if (diff < day) return `${Math.floor(diff / hour)}小时前`;
-  if (diff < day * 30) return `${Math.floor(diff / day)}天前`;
+  if (diff < hour) return `${Math.floor(diff / minute)} 分钟前`;
+  if (diff < day) return `${Math.floor(diff / hour)} 小时前`;
+  if (diff < day * 30) return `${Math.floor(diff / day)} 天前`;
   return new Date(value).toLocaleDateString('zh-CN');
 }
 
 function getTaskStatusMeta(status?: ChatHeaderTask['status']) {
-  if (status === 'running') {
-    return { label: '执行中', tone: 'primary', progress: 50 };
+  if (status === 'in_progress') {
+    return { label: '进行中', tone: 'primary', progress: 50 };
   }
-  if (status === 'error') {
-    return { label: '失败', tone: 'danger', progress: 100 };
-  }
-  if (status === 'completed') {
+  if (status === 'done') {
     return { label: '已完成', tone: 'success', progress: 100 };
   }
-  return { label: '等待执行', tone: 'info', progress: 0 };
+  return { label: '待处理', tone: 'info', progress: 0 };
 }
 
 function getFileName(path: string) {
@@ -131,13 +128,13 @@ export function ChatHeader({
 
   const sortedTasks = useMemo(() => {
     return [...tasks].sort((a, b) => {
-      const aTime = new Date(a.timestamp).getTime();
-      const bTime = new Date(b.timestamp).getTime();
-      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+      if (typeof a.line === 'number' && typeof b.line === 'number') return a.line - b.line;
+      return 0;
     });
   }, [tasks]);
 
   const handleSelectTask = (id: string) => {
+    if (!onSelectTask) return;
     onSelectTask?.(id);
     setInfoOpen(false);
   };
@@ -220,7 +217,7 @@ export function ChatHeader({
                 {sortedTasks.map((task, index) => {
                   const statusMeta = getTaskStatusMeta(task.status);
                   const isActiveTask = activeTaskId === task.id;
-                  const progress = isActiveTask && !task.status ? 10 : statusMeta.progress;
+                  const progress = statusMeta.progress;
                   return (
                     <button
                       key={task.id}
@@ -236,8 +233,8 @@ export function ChatHeader({
                       </span>
                       <span className="chat-task-card-footer">
                         <span className="chat-task-card-meta">
-                          <span>{formatNumber(task.messageCount)} 条消息</span>
-                          <span>{formatRelativeTime(task.timestamp)}</span>
+                          <span>{task.group || '当前任务清单'}</span>
+                          {typeof task.line === 'number' && <span>第 {formatNumber(task.line)} 行</span>}
                         </span>
                         <span className={`chat-task-progress ${statusMeta.tone}`}>
                           <span style={{ width: `${progress}%` }} />

@@ -206,6 +206,117 @@ export function createProvider(type: ProviderType): ModelProvider {
 
 // ==================== 默认值 ====================
 
+type ChatModelConfig = {
+  apiUrl: string;
+  apiKey?: string;
+  provider?: string;
+  model?: string;
+};
+
+function normalizeBaseUrl(value?: string) {
+  return (value || '').trim().replace(/\/+$/, '');
+}
+
+function configuredProviderId(apiUrl: string, providerType: ProviderType) {
+  const raw = `${providerType || 'auto'}_${normalizeBaseUrl(apiUrl)}`;
+  const key = raw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  return `provider_${(key || 'remote').slice(0, 96)}`;
+}
+
+function providerNameFromConfig(apiUrl: string, providerType: ProviderType, model?: string) {
+  try {
+    return new URL(apiUrl).host || model || PROVIDER_PRESETS[providerType].label;
+  } catch {
+    return model || PROVIDER_PRESETS[providerType].label;
+  }
+}
+
+function mergeAvailableModels(
+  current: ModelProvider['availableModels'],
+  next: ModelProvider['availableModels'],
+  selectedModel?: string,
+) {
+  const models = new Map<string, { id: string; ownedBy?: string; contextLength?: number }>();
+  for (const item of current || []) {
+    if (item?.id) models.set(item.id, item);
+  }
+  for (const item of next || []) {
+    if (item?.id) models.set(item.id, item);
+  }
+  if (selectedModel && !models.has(selectedModel)) {
+    models.set(selectedModel, { id: selectedModel });
+  }
+  return Array.from(models.values());
+}
+
+function sameConfiguredProvider(provider: ModelProvider, config: ChatModelConfig, providerType: ProviderType) {
+  return normalizeBaseUrl(provider.apiUrl) === normalizeBaseUrl(config.apiUrl)
+    && normalizeProviderType(provider.type) === providerType;
+}
+
+function upsertConfiguredProvider(
+  existingProviders: ModelProvider[],
+  config: ChatModelConfig,
+  availableModels?: ModelProvider['availableModels'],
+): { providers: ModelProvider[]; providerId: string; changed: boolean } {
+  const apiUrl = normalizeBaseUrl(config.apiUrl);
+  const providerType = normalizeProviderType(config.provider);
+  const selectedModel = (config.model || '').trim();
+  if (!apiUrl) {
+    return { providers: existingProviders, providerId: '', changed: false };
+  }
+
+  const nextProviders = [...existingProviders];
+  const index = nextProviders.findIndex(p => sameConfiguredProvider(p, { ...config, apiUrl }, providerType));
+  const baseId = configuredProviderId(apiUrl, providerType);
+
+  if (index < 0) {
+    let id = baseId;
+    let suffix = 1;
+    while (nextProviders.some(p => p.id === id)) {
+      suffix += 1;
+      id = `${baseId}_${suffix}`;
+    }
+    const provider: ModelProvider = {
+      id,
+      type: providerType,
+      name: providerNameFromConfig(apiUrl, providerType, selectedModel),
+      apiUrl,
+      apiKey: config.apiKey || '',
+      model: selectedModel || availableModels?.[0]?.id || '',
+      enabled: true,
+      scope: 'user',
+      timeout: 'PT120S',
+      contextLength: availableModels?.find(m => m.id === selectedModel)?.contextLength || 128000,
+      defaultOptions: '',
+      availableModels: mergeAvailableModels(undefined, availableModels, selectedModel),
+    };
+    nextProviders.push(provider);
+    return { providers: nextProviders, providerId: provider.id, changed: true };
+  }
+
+  const current = nextProviders[index];
+  const mergedModels = mergeAvailableModels(current.availableModels, availableModels, selectedModel || current.model);
+  const selected = mergedModels.find(m => m.id === (selectedModel || current.model));
+  const updated: ModelProvider = {
+    ...current,
+    type: providerType,
+    name: current.name || providerNameFromConfig(apiUrl, providerType, selectedModel),
+    apiUrl,
+    apiKey: config.apiKey !== undefined ? config.apiKey : current.apiKey,
+    model: selectedModel || current.model || mergedModels[0]?.id || '',
+    enabled: current.enabled !== false,
+    scope: current.scope || 'user',
+    timeout: current.timeout || 'PT120S',
+    contextLength: selected?.contextLength || current.contextLength || 128000,
+    availableModels: mergedModels.length > 0 ? mergedModels : undefined,
+  };
+
+  const changed = JSON.stringify(current) !== JSON.stringify(updated);
+  if (changed) nextProviders[index] = updated;
+  return { providers: nextProviders, providerId: updated.id, changed };
+}
+
 export const DEFAULT_PROMPTS: Record<'skillPrompt' | 'agentPrompt' | 'gitPrompt', string> = {
   skillPrompt: `请帮我创建一个名为「{name}」的 Skill。
 {description}
@@ -401,6 +512,10 @@ function normalizeMcpType(type?: string): 'stdio' | 'sse' | 'streamable' {
 }
 
 type BackendResult<T> = { code?: number; data?: T; message?: string };
+type RuntimeSettingsSection = 'general' | 'loop' | 'permission' | 'mounts' | 'mcp' | 'openapi' | 'lsp';
+
+const CORE_RUNTIME_SETTINGS_SECTIONS: RuntimeSettingsSection[] = ['general', 'mounts', 'mcp', 'openapi'];
+const FULL_RUNTIME_SETTINGS_SECTIONS: RuntimeSettingsSection[] = ['general', 'loop', 'permission', 'mounts', 'mcp', 'openapi', 'lsp'];
 
 function backendBaseUrl(backendPort: number): string {
   return `http://localhost:${backendPort}`;
@@ -597,16 +712,17 @@ export const settingsService = {
     }
   },
 
-  async loadRuntimeSettings(backendPort: number): Promise<Partial<AppSettings> | null> {
+  async loadRuntimeSettings(backendPort: number, sections: RuntimeSettingsSection[] = CORE_RUNTIME_SETTINGS_SECTIONS): Promise<Partial<AppSettings> | null> {
     try {
+      const enabledSections = new Set(sections);
       const [general, loop, permission, mounts, mcpServers, openApiServers, lspServers] = await Promise.all([
-        backendGet<Record<string, any>>(backendPort, '/web/settings/general'),
-        backendGet<Record<string, any>>(backendPort, '/web/settings/loop'),
-        backendGet<Record<string, any>>(backendPort, '/web/settings/permission'),
-        backendGet<any[]>(backendPort, '/web/settings/mounts'),
-        backendGet<any[]>(backendPort, '/web/settings/mcp/servers'),
-        backendGet<any[]>(backendPort, '/web/settings/openapi/servers'),
-        backendGet<any[]>(backendPort, '/web/settings/lsp/servers'),
+        enabledSections.has('general') ? backendGet<Record<string, any>>(backendPort, '/web/settings/general') : Promise.resolve(null),
+        enabledSections.has('loop') ? backendGet<Record<string, any>>(backendPort, '/web/settings/loop') : Promise.resolve(null),
+        enabledSections.has('permission') ? backendGet<Record<string, any>>(backendPort, '/web/settings/permission') : Promise.resolve(null),
+        enabledSections.has('mounts') ? backendGet<any[]>(backendPort, '/web/settings/mounts') : Promise.resolve(null),
+        enabledSections.has('mcp') ? backendGet<any[]>(backendPort, '/web/settings/mcp/servers') : Promise.resolve(null),
+        enabledSections.has('openapi') ? backendGet<any[]>(backendPort, '/web/settings/openapi/servers') : Promise.resolve(null),
+        enabledSections.has('lsp') ? backendGet<any[]>(backendPort, '/web/settings/lsp/servers') : Promise.resolve(null),
       ]);
 
       const result: Partial<AppSettings> = {};
@@ -700,6 +816,18 @@ export const settingsService = {
     }
   },
 
+  runtimeSettingsSections: {
+    core: CORE_RUNTIME_SETTINGS_SECTIONS,
+    full: FULL_RUNTIME_SETTINGS_SECTIONS,
+  },
+
+  ensureConfiguredProvider(
+    existingProviders: ModelProvider[],
+    config: ChatModelConfig,
+  ): { providers: ModelProvider[]; providerId: string; changed: boolean } {
+    return upsertConfiguredProvider(existingProviders, config);
+  },
+
   async syncRuntimeSettings(backendPort: number, settings: AppSettings): Promise<void> {
     try {
       await Promise.all([
@@ -768,10 +896,21 @@ export const settingsService = {
       const existingIds = new Set(existingProviders.map(p => p.id));
       const existingModels = new Set(existingProviders.map(p => p.model));
       const newProviders: ModelProvider[] = [];
+      const availableModels = modelList.map(m => ({
+        id: String(m.id),
+        ownedBy: m.ownedBy || m.owned_by,
+        contextLength: Number(m.contextLength || m.context_length) || undefined,
+      }));
+      const merged = upsertConfiguredProvider(
+        existingProviders,
+        { apiUrl, apiKey, provider, model },
+        availableModels,
+      );
 
       for (const m of modelList) {
         const modelId = m.id as string;
         const providerId = `model_${modelId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const contextLength = Number(m.contextLength || m.context_length) || undefined;
 
         if (existingIds.has(providerId)) continue;
 
@@ -785,7 +924,7 @@ export const settingsService = {
           enabled: true,
           scope: 'user',
           timeout: 'PT120S',
-          contextLength: Number(m.contextLength || m.context_length) || undefined,
+          contextLength,
           defaultOptions: '',
         };
         newProviders.push(modelProvider);
@@ -814,11 +953,11 @@ export const settingsService = {
         }
       }
 
-      if (newProviders.length === 0) return null;
+      if (!merged.changed && newProviders.length === 0) return null;
 
-      const allProviders = [...existingProviders, ...newProviders];
-      const activeProviderId = existingProviders.length === 0 && allProviders.length > 0
-        ? allProviders[0].id
+      const allProviders = [...merged.providers, ...newProviders.filter(p => !merged.providers.some(existing => existing.id === p.id))];
+      const activeProviderId = existingProviders.length === 0 && merged.providerId
+        ? merged.providerId
         : '';
 
       return { providers: allProviders, activeProviderId };

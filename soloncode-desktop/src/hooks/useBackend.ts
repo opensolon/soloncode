@@ -23,6 +23,12 @@ export function useBackend() {
     setChatBackendPort(port);
   }, []);
 
+  const markDisconnected = useCallback(() => {
+    setBackendPortState(null);
+    setBackendStatus('disconnected');
+    setChatBackendPort(null);
+  }, []);
+
   const markProbeFailed = useCallback(() => {
     failedProbeCountRef.current += 1;
     const lastConnectedAt = lastConnectedAtRef.current;
@@ -101,7 +107,7 @@ export function useBackend() {
 
   const startBackend = useCallback(async (cliPort: number, onSettingsUpdate?: (updater: (prev: any) => any) => void) => {
     setBackendStatus('connecting');
-    fileService.writeLog(`Starting backend on port ${cliPort}`);
+    fileService.writeLog(`Starting backend flow on port ${cliPort}`);
 
     try {
       const port = await backendService.start('', cliPort);
@@ -111,7 +117,20 @@ export function useBackend() {
         const cliConfig = await fileService.readGlobalChatModel();
         if (cliConfig && cliConfig.apiUrl && onSettingsUpdate) {
           onSettingsUpdate(prev => {
-            settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, prev.providers, cliConfig.provider, cliConfig.model)
+            const seeded = settingsService.ensureConfiguredProvider(prev.providers, cliConfig);
+            const baseSettings = seeded.changed
+              ? {
+                ...prev,
+                providers: seeded.providers,
+                activeProviderId: prev.activeProviderId || seeded.providerId,
+              }
+              : prev;
+
+            if (seeded.changed) {
+              settingsService.save(baseSettings);
+            }
+
+            settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, baseSettings.providers, cliConfig.provider, cliConfig.model)
               .then(result => {
                 if (result) {
                   onSettingsUpdate(p => {
@@ -124,18 +143,16 @@ export function useBackend() {
                   });
                 }
               });
-            return prev;
+            return baseSettings;
           });
         }
       } else {
-        setBackendPortState(null);
-        setBackendStatus('disconnected');
+        markDisconnected();
       }
     } catch {
-      setBackendPortState(null);
-      setBackendStatus('disconnected');
+      markDisconnected();
     }
-  }, [markConnected]);
+  }, [markConnected, markDisconnected]);
 
   useEffect(() => { setChatBackendPort(backendPort); }, [backendPort]);
 

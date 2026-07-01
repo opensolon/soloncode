@@ -26,6 +26,7 @@ import { useSessions } from './hooks/useSessions';
 import { UNLINKED_PROJECT, saveMessage, db } from './db';
 import { useWorkspace } from './hooks/useWorkspace';
 import type { Conversation, Plugin, Theme } from './types';
+import type { GitFileStatus } from './services/gitService';
 import './App.css';
 
 const EditorPanel = lazy(() => import('./components/editor/EditorPanel').then(module => ({ default: module.EditorPanel })));
@@ -137,6 +138,20 @@ function normalizeEditorTheme(editorTheme?: string) {
   return editorTheme;
 }
 
+function normalizeLoadedSettings(settings: Settings): Settings {
+  const enabledProviders = settings.providers.filter(provider => provider.enabled);
+  const hasActiveProvider = settings.activeProviderId
+    ? settings.providers.some(provider => provider.id === settings.activeProviderId)
+    : false;
+  return {
+    ...settings,
+    editorTheme: normalizeEditorTheme(settings.editorTheme),
+    activeProviderId: hasActiveProvider
+      ? settings.activeProviderId
+      : (enabledProviders[0]?.id || settings.providers[0]?.id || ''),
+  };
+}
+
 function parseDefaultOptions(value?: string): Record<string, unknown> | undefined {
   if (!value?.trim()) return undefined;
   try {
@@ -160,6 +175,59 @@ function countDiffStats(diffText: string) {
   );
 }
 
+type ReviewBaseline = Record<string, string>;
+
+function isDirectoryLikeReviewPath(path: string) {
+  const normalized = path.trim().replace(/\\/g, '/');
+  return normalized.length === 0 || normalized.endsWith('/');
+}
+
+function isReviewableGitStatus(status: GitFileStatus['status']) {
+  return status === 'modified' || status === 'added' || status === 'deleted' || status === 'untracked';
+}
+
+function isReviewableGitFile(file: GitFileStatus) {
+  return isReviewableGitStatus(file.status) && !isDirectoryLikeReviewPath(file.path);
+}
+
+function makeReviewSignature(file: GitFileStatus, stats: { additions: number; deletions: number }) {
+  return `${file.status}:${file.staged ? 'staged' : 'unstaged'}:+${stats.additions}:-${stats.deletions}`;
+}
+
+function toAbsoluteReviewPath(cwd: string, filePath: string) {
+  if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\\\')) {
+    return filePath;
+  }
+  const base = cwd.replace(/[\\/]+$/, '');
+  const relative = filePath.replace(/^[\\/]+/, '').replace(/\\/g, '/');
+  return `${base}/${relative}`;
+}
+
+async function resolveReviewStats(cwd: string, file: GitFileStatus) {
+  let stats = countDiffStats(await gitService.diffText(cwd, file.path));
+
+  if (stats.additions === 0 && stats.deletions === 0 && (file.status === 'added' || file.status === 'untracked')) {
+    try {
+      const content = await fileService.readFile(toAbsoluteReviewPath(cwd, file.path));
+      const normalized = content.replace(/\r\n/g, '\n');
+      stats = {
+        additions: normalized.length === 0 ? 0 : normalized.split('\n').length,
+        deletions: 0,
+      };
+    } catch {
+      // 保持 diff 结果，交给后续过滤处理
+    }
+  }
+
+  return stats;
+}
+
+function hasMeaningfulReviewChange(file: GitFileStatus, stats: { additions: number; deletions: number }) {
+  if (!isReviewableGitFile(file)) return false;
+  if (stats.additions > 0 || stats.deletions > 0) return true;
+  return file.status === 'deleted';
+}
+
 function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityType>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -176,6 +244,8 @@ function App() {
   const [sessionRunStates, setSessionRunStates] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
   const [sessionReviewFiles, setSessionReviewFiles] = useState<Record<string, ChatReviewFile[]>>({});
   const resolvedSessionIdsRef = useRef<Record<string, string>>({});
+  const sessionReviewBaselinesRef = useRef<Record<string, ReviewBaseline>>({});
+  const sessionReviewBaselinePromisesRef = useRef<Record<string, Promise<void>>>({});
   const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('soloncode-theme') as Theme | null;
     const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -216,21 +286,18 @@ function App() {
 
   useEffect(() => {
     settingsService.load().then(s => {
-      const normalizedSettings = { ...s, editorTheme: normalizeEditorTheme(s.editorTheme) };
+      const normalizedSettings = normalizeLoadedSettings(s);
       setSettings(normalizedSettings);
       if (normalizedSettings.theme) {
         setCurrentTheme(normalizedSettings.theme);
         applyAppTheme(normalizedSettings.theme);
       }
       applyAppFontSize(normalizedSettings.fontSize);
-      if (normalizedSettings.editorTheme !== s.editorTheme) {
-        settingsService.save(normalizedSettings);
-      }
     });
   }, []);
 
   const handleSettingsChange = useCallback((newSettings: Settings) => {
-    const normalizedSettings = { ...newSettings, editorTheme: normalizeEditorTheme(newSettings.editorTheme) };
+    const normalizedSettings = normalizeLoadedSettings(newSettings);
     const prevActive = settings.providers.find(p => p.id === settings.activeProviderId);
     const nextActive = normalizedSettings.providers.find(p => p.id === normalizedSettings.activeProviderId);
     if (normalizedSettings.theme) {
@@ -291,6 +358,14 @@ function App() {
         next[newId] = files;
         return next;
       });
+      if (sessionReviewBaselinesRef.current[oldId]) {
+        sessionReviewBaselinesRef.current[newId] = sessionReviewBaselinesRef.current[oldId];
+        delete sessionReviewBaselinesRef.current[oldId];
+      }
+      if (sessionReviewBaselinePromisesRef.current[oldId]) {
+        sessionReviewBaselinePromisesRef.current[newId] = sessionReviewBaselinePromisesRef.current[oldId];
+        delete sessionReviewBaselinePromisesRef.current[oldId];
+      }
     },
   });
 
@@ -376,9 +451,15 @@ function App() {
 
   // 启动后端
   useEffect(() => {
+    let cancelled = false;
     const port = settings.cliPort || 4808;
     startBackend(port, (updater) => setSettings(updater)).then(async () => {
-      const runtimeSettings = await settingsService.loadRuntimeSettings(port);
+      if (cancelled) return;
+      const runtimeSettings = await settingsService.loadRuntimeSettings(
+        port,
+        settingsService.runtimeSettingsSections.core,
+      );
+      if (cancelled) return;
       if (!runtimeSettings) return;
       setSettings(prev => {
         const updated = { ...prev, ...runtimeSettings };
@@ -386,6 +467,9 @@ function App() {
         return updated;
       });
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 拖拽调整大小
@@ -394,9 +478,16 @@ function App() {
     const port = settings.cliPort || 4808;
     if (lastStartedCliPortRef.current === port) return;
     lastStartedCliPortRef.current = port;
+    let cancelled = false;
     startBackend(port, (updater) => setSettings(updater)).then(async () => {
+      if (cancelled) return;
       await settingsService.syncRuntimeSettings(port, settings);
-      const runtimeSettings = await settingsService.loadRuntimeSettings(port);
+      if (cancelled) return;
+      const runtimeSettings = await settingsService.loadRuntimeSettings(
+        port,
+        settingsService.runtimeSettingsSections.core,
+      );
+      if (cancelled) return;
       if (!runtimeSettings) return;
       setSettings(prev => {
         const updated = { ...prev, ...runtimeSettings };
@@ -404,6 +495,9 @@ function App() {
         return updated;
       });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [settings.cliPort, startBackend]);
 
   const [isResizing, setIsResizing] = useState<string | null>(null);
@@ -520,6 +614,33 @@ function App() {
     setDiffFiles(prev => ({ ...prev, [absPath]: original }));
   }, [activeProjectPath, handleFileSelect]);
 
+  const captureReviewBaseline = useCallback(async (sessionId: string, workspacePath?: string | null) => {
+    const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : activeProjectPath;
+    if (!cwd) {
+      delete sessionReviewBaselinesRef.current[sessionId];
+      delete sessionReviewBaselinePromisesRef.current[sessionId];
+      return;
+    }
+
+    const promise = (async () => {
+      const status = await gitService.status(cwd);
+      const files = status.files.filter(isReviewableGitFile);
+      const entries = await Promise.all(files.map(async file => {
+        const stats = await resolveReviewStats(cwd, file);
+        return [file.path, makeReviewSignature(file, stats)] as const;
+      }));
+      sessionReviewBaselinesRef.current[sessionId] = Object.fromEntries(entries);
+    })();
+    sessionReviewBaselinePromisesRef.current[sessionId] = promise;
+    try {
+      await promise;
+    } finally {
+      if (sessionReviewBaselinePromisesRef.current[sessionId] === promise) {
+        delete sessionReviewBaselinePromisesRef.current[sessionId];
+      }
+    }
+  }, [activeProjectPath]);
+
   const captureSessionReviewFiles = useCallback(async (sessionId: string, workspacePath?: string | null) => {
     const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : activeProjectPath;
     if (!cwd) {
@@ -528,19 +649,25 @@ function App() {
         delete next[sessionId];
         return next;
       });
+      delete sessionReviewBaselinesRef.current[sessionId];
       return;
     }
 
+    const resolvedSessionId = resolvedSessionIdsRef.current[sessionId] || sessionId;
+    await (sessionReviewBaselinePromisesRef.current[resolvedSessionId] || sessionReviewBaselinePromisesRef.current[sessionId]);
     await new Promise(resolve => setTimeout(resolve, 300));
     const status = await gitService.status(cwd);
+    const baseline = sessionReviewBaselinesRef.current[resolvedSessionId] || sessionReviewBaselinesRef.current[sessionId];
     const changedFiles = status.files
-      .filter(file => file.status === 'modified' || file.status === 'added' || file.status === 'deleted' || file.status === 'untracked');
-    const reviewFiles: ChatReviewFile[] = await Promise.all(changedFiles.map(async file => {
-      const stats = countDiffStats(await gitService.diffText(cwd, file.path));
-      return { path: file.path, status: file.status, ...stats };
+      .filter(isReviewableGitFile);
+    const reviewCandidates: Array<ChatReviewFile | null> = await Promise.all(changedFiles.map(async file => {
+      const stats = await resolveReviewStats(cwd, file);
+      if (!hasMeaningfulReviewChange(file, stats)) return null;
+      const signature = makeReviewSignature(file, stats);
+      return !baseline || baseline[file.path] === signature ? null : { path: file.path, status: file.status, ...stats };
     }));
+    const reviewFiles = reviewCandidates.filter(Boolean) as ChatReviewFile[];
 
-    const resolvedSessionId = resolvedSessionIdsRef.current[sessionId] || sessionId;
     setSessionReviewFiles(prev => {
       const next = { ...prev };
       if (resolvedSessionId !== sessionId) delete next[sessionId];
@@ -548,6 +675,8 @@ function App() {
       else delete next[resolvedSessionId];
       return next;
     });
+    delete sessionReviewBaselinesRef.current[sessionId];
+    delete sessionReviewBaselinesRef.current[resolvedSessionId];
 
     if (cwd === activeProjectPath) {
       setGitStatus(status);
@@ -562,8 +691,16 @@ function App() {
       delete next[activeProjectPath.replace(/\\/g, '/') + '/' + relPath];
       return next;
     });
-    await captureSessionReviewFiles(currentSessionId, activeProjectPath);
-  }, [activeProjectPath, currentSessionId, captureSessionReviewFiles]);
+    setSessionReviewFiles(prev => {
+      const next = { ...prev };
+      const remaining = (next[currentSessionId] || []).filter(file => file.path !== relPath);
+      if (remaining.length > 0) next[currentSessionId] = remaining;
+      else delete next[currentSessionId];
+      return next;
+    });
+    const status = await gitService.status(activeProjectPath);
+    setGitStatus(status);
+  }, [activeProjectPath, currentSessionId, setGitStatus]);
 
   // Toast
   const [terminalVisible, setTerminalVisible] = useState(false);
@@ -739,6 +876,8 @@ function App() {
                   delete next[sessionId];
                   return next;
                 });
+                const session = sessions.find(item => item.id === sessionId);
+                captureReviewBaseline(sessionId, session?.workspacePath);
               }
               if (status === 'completed') {
                 const session = sessions.find(item => item.id === sessionId);

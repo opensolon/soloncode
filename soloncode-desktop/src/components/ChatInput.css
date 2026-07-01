@@ -443,6 +443,13 @@
   padding: 2px;
 }
 
+.autocomplete-empty {
+  padding: 14px 10px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  text-align: center;
+}
+
 .autocomplete-item {
   display: flex;
   align-items: center;

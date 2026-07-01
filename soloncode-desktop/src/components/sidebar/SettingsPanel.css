@@ -162,11 +162,6 @@
   font-size: 11px;
 }
 
-.provider-model-row > .setting-select,
-.provider-model-row > .setting-input:not(.provider-model-combo),
-.provider-model-row > .provider-model-input {
-  display: none;
-}
 .settings-menu-item.active {
   color: var(--cb-text-primary);
   background-color: var(--cb-vscode-list-hoverBackground);

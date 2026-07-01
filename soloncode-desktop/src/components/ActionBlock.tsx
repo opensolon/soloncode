@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { UIEvent, WheelEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -116,6 +117,17 @@ interface DirEntry {
   name: string;
 }
 
+function shouldLockParentScroll(element: HTMLDivElement, deltaY: number): boolean {
+  if (element.scrollHeight <= element.clientHeight) return false;
+  if (deltaY === 0) return true;
+
+  const atTop = element.scrollTop <= 0;
+  const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+
+  if (deltaY < 0) return !atTop;
+  return !atBottom;
+}
+
 function parseDirListing(text: string): DirEntry[] | null {
   const lines = text.trim().split('\n').filter(l => l.trim());
   if (lines.length === 0) return null;
@@ -158,6 +170,7 @@ function DirectoryListing({ entries, onFileClick }: { entries: DirEntry[]; onFil
 export function ActionBlock({ text, toolName, args, theme, onFileClick, autoExpanded = false }: ActionBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
 
   useEffect(() => {
     setIsExpanded(autoExpanded);
@@ -175,13 +188,25 @@ export function ActionBlock({ text, toolName, args, theme, onFileClick, autoExpa
   const displayLineInfo = readFileResult?.lines || lineInfo;
 
   useEffect(() => {
-    if (!isExpanded || !contentRef.current) return;
+    if (!isExpanded || !autoExpanded || !shouldAutoScrollRef.current || !contentRef.current) return;
     const frameId = requestAnimationFrame(() => {
       if (!contentRef.current) return;
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     });
     return () => cancelAnimationFrame(frameId);
-  }, [displayText, isExpanded]);
+  }, [displayText, isExpanded, autoExpanded]);
+
+  function handleContentScroll(event: UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
+    shouldAutoScrollRef.current = remaining <= 12;
+  }
+
+  function handleContentWheel(event: WheelEvent<HTMLDivElement>) {
+    if (shouldLockParentScroll(event.currentTarget, event.deltaY)) {
+      event.stopPropagation();
+    }
+  }
 
   return (
     <div className="action-block">
@@ -207,7 +232,12 @@ export function ActionBlock({ text, toolName, args, theme, onFileClick, autoExpa
         <span className={`action-block-arrow ${isExpanded ? 'expanded' : ''}`}>▾</span>
       </div>
       {isExpanded && (
-        <div className="action-block-content" ref={contentRef}>
+        <div
+          className="action-block-content"
+          ref={contentRef}
+          onScroll={handleContentScroll}
+          onWheelCapture={handleContentWheel}
+        >
           {dirEntries ? (
             <DirectoryListing entries={dirEntries} onFileClick={onFileClick} />
           ) : (

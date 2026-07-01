@@ -13,6 +13,7 @@ import {
   PROVIDER_PRESETS,
   DEFAULT_PROMPTS,
   createProvider,
+  settingsService,
 } from '../../services/settingsService';
 import { fileService } from '../../services/fileService';
 import './SettingsPanel.css';
@@ -61,6 +62,18 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
       setActiveMenu('general');
     }
   }, [visible, settings]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    settingsService.load()
+      .then(freshSettings => {
+        if (cancelled) return;
+        setLocalSettings(freshSettings);
+      })
+      .catch(err => console.warn('[SettingsPanel] reload settings failed:', err));
+    return () => { cancelled = true; };
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -708,28 +721,6 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
           onClick={handleFetch} disabled={loading}>
           {loading ? '加载中...' : '获取模型'}
         </button>
-        {models.length > 0 ? (
-          <>
-          <select className="setting-select" value={provider.model}
-            onChange={e => onChange(e.target.value)} style={{ flex: 1, minWidth: 0 }}>
-            <option value="">选择模型...</option>
-            {models.map(m => (
-              <option key={m.id} value={m.id}>{m.id}</option>
-            ))}
-          </select>
-          <input
-            type="text"
-            className="setting-input provider-model-input"
-            value={provider.model}
-            onChange={e => onChange(e.target.value)}
-            placeholder="妯″瀷鍚嶇О"
-          />
-          </>
-        ) : (
-          <input type="text" className="setting-input" value={provider.model}
-            onChange={e => onChange(e.target.value)} placeholder="模型名称"
-            disabled={loading} style={{ flex: 1, minWidth: 0 }} />
-        )}
       </div>
       {error && <span style={{ fontSize: '11px', color: '#f87171' }}>{error}</span>}
       {models.length > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>已加载 {models.length} 个模型</span>}
