@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::net::TcpStream;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
 
@@ -80,6 +80,46 @@ pub struct FileInfo {
 pub struct WorkspaceInfo {
     path: String,
     name: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInfo {
+    current_desktop_version: String,
+    current_backend_version: Option<String>,
+    latest_desktop_version: Option<String>,
+    latest_backend_version: Option<String>,
+    latest_desktop_release_tag: Option<String>,
+    desktop_download_url: Option<String>,
+    backend_update_url: String,
+    desktop_update_available: bool,
+    backend_update_available: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteUpdateJson {
+    cli_version: Option<String>,
+    #[serde(rename = "ide_version")]
+    _ide_version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteRelease {
+    tag_name: String,
+    assets: Vec<RemoteReleaseAsset>,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopReleaseInfo {
+    release_tag: String,
+    version: String,
+    download_url: String,
 }
 
 // ==================== Git 相关结构体 ====================
@@ -844,7 +884,13 @@ fn detect_launch_method() -> BackendLaunchMethod {
     if cfg!(windows) {
         if let Ok(home) = std::env::var("USERPROFILE") {
             let bin_dir = Path::new(&home).join(".soloncode").join("bin");
-            for name in ["soloncode.ps1", "soloncode.bat", "soloncode.cmd", "soloncode.exe"] {
+            let jar = bin_dir.join("soloncode-cli.jar");
+            if jar.exists() {
+                app_log(&format!("[soloncode] Found JAR (preferred on Windows): {:?}", jar));
+                return BackendLaunchMethod::Jar { path: jar };
+            }
+
+            for name in ["soloncode.exe", "soloncode.bat", "soloncode.cmd", "soloncode.ps1"] {
                 let candidate = bin_dir.join(name);
                 if candidate.exists() {
                     app_log(&format!("[soloncode] Found {}: {:?}", name, candidate));
@@ -875,7 +921,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
                     })
                     .unwrap_or_else(|| path.lines().next().unwrap_or(&path))
                     .to_string();
-                app_log(&format!("[soloncode] Found soloncode command: {}", cmd));
+                app_log(&format!("[soloncode] Found soloncode command in PATH: {}", cmd));
                 return BackendLaunchMethod::Command { cmd };
             }
         }
@@ -885,18 +931,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
     let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     if let Ok(home) = std::env::var(home_var) {
         let bin_dir = Path::new(&home).join(".soloncode").join("bin");
-        if cfg!(windows) {
-            let bat = bin_dir.join("soloncode.bat");
-            if bat.exists() {
-                app_log(&format!("[soloncode] Found soloncode.bat: {:?}", bat));
-                return BackendLaunchMethod::Command { cmd: bat.to_string_lossy().to_string() };
-            }
-            let ps1 = bin_dir.join("soloncode.ps1");
-            if ps1.exists() {
-                app_log(&format!("[soloncode] Found soloncode.ps1: {:?}", ps1));
-                return BackendLaunchMethod::Command { cmd: ps1.to_string_lossy().to_string() };
-            }
-        } else {
+        if !cfg!(windows) {
             let sh = bin_dir.join("soloncode");
             if sh.exists() {
                 app_log(&format!("[soloncode] Found soloncode script: {:?}", sh));
@@ -965,6 +1000,262 @@ fn detect_backend(port: u16) -> Result<bool, String> {
 
 /// 启动后端 CLI 进程（如果已在运行则复用）
 #[allow(unreachable_code, unused_variables)]
+fn compare_version_text(left: &str, right: &str) -> std::cmp::Ordering {
+    let left_parts: Vec<u32> = left
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.parse::<u32>().unwrap_or(0))
+        .collect();
+    let right_parts: Vec<u32> = right
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.parse::<u32>().unwrap_or(0))
+        .collect();
+
+    let size = left_parts.len().max(right_parts.len());
+    for idx in 0..size {
+        let l = *left_parts.get(idx).unwrap_or(&0);
+        let r = *right_parts.get(idx).unwrap_or(&0);
+        match l.cmp(&r) {
+            std::cmp::Ordering::Equal => {}
+            order => return order,
+        }
+    }
+
+    std::cmp::Ordering::Equal
+}
+
+fn pick_desktop_asset(assets: &[RemoteReleaseAsset]) -> Option<&RemoteReleaseAsset> {
+    let mut ranked: Vec<(&RemoteReleaseAsset, u8)> = assets
+        .iter()
+        .filter_map(|asset| {
+            let lower = asset.name.to_ascii_lowercase();
+            if lower.ends_with("_zh-cn.msi") {
+                Some((asset, 0))
+            } else if lower.ends_with("_x64_en-us.msi") {
+                Some((asset, 1))
+            } else if lower.ends_with(".msi") {
+                Some((asset, 2))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    ranked.sort_by_key(|(_, rank)| *rank);
+    ranked.into_iter().next().map(|(asset, _)| asset)
+}
+
+fn extract_desktop_version(asset_name: &str) -> Option<String> {
+    let rest = asset_name.strip_prefix("soloncode-desktop_")?;
+    let version = rest.split('_').next()?.trim();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version.to_string())
+    }
+}
+
+fn build_http_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("创建更新检查客户端失败: {}", e))
+}
+
+fn fetch_current_backend_version(backend_port: Option<u16>) -> Option<String> {
+    let port = backend_port?;
+    let client = build_http_client().ok()?;
+    let url = format!("http://127.0.0.1:{}/version", port);
+    let payload = client.get(url).send().ok()?.error_for_status().ok()?;
+    let json: serde_json::Value = payload.json().ok()?;
+    json.get("data")
+        .and_then(|data| data.get("version"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+}
+
+fn fetch_latest_desktop_release(client: &reqwest::blocking::Client) -> Result<Option<DesktopReleaseInfo>, String> {
+    let mut releases: Vec<RemoteRelease> = client
+        .get("https://gitee.com/api/v5/repos/opensolon/soloncode/releases?page=1&per_page=100")
+        .send()
+        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
+        .json()
+        .map_err(|e| format!("解析桌面发行版列表失败: {}", e))?;
+
+    releases.sort_by(|left, right| compare_version_text(&right.tag_name, &left.tag_name));
+
+    for release in releases {
+        let Some(asset) = pick_desktop_asset(&release.assets) else {
+            continue;
+        };
+        let Some(version) = extract_desktop_version(&asset.name) else {
+            continue;
+        };
+
+        let preferred_url = format!(
+            "https://gitee.com/opensolon/soloncode/releases/download/{}/soloncode-desktop_{}_zh-CN.msi",
+            release.tag_name, version
+        );
+
+        let download_url = match client.head(&preferred_url).send() {
+            Ok(resp) if resp.status().is_success() => preferred_url,
+            _ => asset.browser_download_url.clone(),
+        };
+
+        return Ok(Some(DesktopReleaseInfo {
+            release_tag: release.tag_name,
+            version,
+            download_url,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn build_update_info(app: &tauri::AppHandle, backend_port: Option<u16>) -> Result<UpdateInfo, String> {
+    let client = build_http_client()?;
+    let remote_info: RemoteUpdateJson = client
+        .get("https://solon.noear.org/soloncode/info.json")
+        .send()
+        .map_err(|e| format!("读取远端版本信息失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("读取远端版本信息失败: {}", e))?
+        .json()
+        .map_err(|e| format!("解析远端版本信息失败: {}", e))?;
+
+    let current_desktop_version = app.package_info().version.to_string();
+    let current_backend_version = fetch_current_backend_version(backend_port);
+    let latest_backend_version = remote_info.cli_version.clone();
+    let latest_desktop_release = fetch_latest_desktop_release(&client)?;
+
+    let latest_desktop_version = latest_desktop_release.as_ref().map(|item| item.version.clone());
+    let latest_desktop_release_tag = latest_desktop_release.as_ref().map(|item| item.release_tag.clone());
+    let desktop_download_url = latest_desktop_release.as_ref().map(|item| item.download_url.clone());
+
+    let desktop_update_available = latest_desktop_version
+        .as_ref()
+        .map(|latest| compare_version_text(latest, &current_desktop_version) == std::cmp::Ordering::Greater)
+        .unwrap_or(false);
+
+    let backend_update_available = match (latest_backend_version.as_ref(), current_backend_version.as_ref()) {
+        (Some(latest), Some(current)) => compare_version_text(latest, current) == std::cmp::Ordering::Greater,
+        _ => false,
+    };
+
+    Ok(UpdateInfo {
+        current_desktop_version,
+        current_backend_version,
+        latest_desktop_version,
+        latest_backend_version,
+        latest_desktop_release_tag,
+        desktop_download_url,
+        backend_update_url: "https://solon.noear.org/soloncode/setup.ps1".to_string(),
+        desktop_update_available,
+        backend_update_available,
+    })
+}
+
+#[tauri::command]
+fn check_updates(app: tauri::AppHandle, backend_port: Option<u16>) -> Result<UpdateInfo, String> {
+    build_update_info(&app, backend_port)
+}
+
+#[tauri::command]
+fn install_updates(app: tauri::AppHandle, backend_port: Option<u16>) -> Result<String, String> {
+    let info = build_update_info(&app, backend_port)?;
+    let need_backend = info.backend_update_available;
+    let need_desktop = info.desktop_update_available && info.desktop_download_url.is_some();
+
+    if !need_backend && !need_desktop {
+        return Err("当前已是最新版本".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        let script_path = std::env::temp_dir().join(format!(
+            "soloncode-updater-{}.ps1",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
+
+        let backend_line = if need_backend {
+            "    irm 'https://solon.noear.org/soloncode/setup.ps1' | iex\n".to_string()
+        } else {
+            String::new()
+        };
+
+        let desktop_line = if need_desktop {
+            if let Some(url) = info.desktop_download_url.clone() {
+                format!(
+                    "    $msiPath = Join-Path $env:TEMP ('soloncode-desktop-update-' + [guid]::NewGuid().ToString() + '.msi')\n    Invoke-WebRequest -UseBasicParsing -Uri '{}' -OutFile $msiPath\n    Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', $msiPath)\n",
+                    url.replace('\'', "''")
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let script = format!(
+            "$ErrorActionPreference = 'Stop'\n\
+try {{\n\
+    Wait-Process -Id {} -ErrorAction SilentlyContinue\n\
+}} catch {{}}\n\
+try {{\n\
+{}\
+{}\
+}} catch {{\n\
+    $logPath = Join-Path $env:TEMP 'soloncode-updater-error.log'\n\
+    ('[' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '] ' + $_.Exception.Message) | Out-File -FilePath $logPath -Append -Encoding utf8\n\
+}}\n",
+            std::process::id(),
+            backend_line,
+            desktop_line
+        );
+
+        fs::write(&script_path, script).map_err(|e| format!("写入更新脚本失败: {}", e))?;
+
+        let script_path_str = script_path.to_string_lossy().to_string();
+        let mut command = Command::new("powershell");
+        command
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-File",
+                script_path_str.as_str(),
+            ])
+            .creation_flags(0x08000000);
+
+        command.spawn().map_err(|e| format!("启动更新进程失败: {}", e))?;
+
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            app_handle.exit(0);
+        });
+
+        return Ok("更新任务已启动".to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = backend_port;
+        Err("当前仅支持 Windows 自动更新".to_string())
+    }
+}
+
 #[tauri::command]
 fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检查已有进程是否仍在运行
@@ -982,13 +1273,17 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
                             return Ok(child.id());
                         }
 
-                        app_log(&format!("[soloncode] Managed backend PID {} is alive but port {} is not ready, clearing handle", child.id(), port));
+                        app_log(&format!(
+                            "[soloncode] Killing managed backend PID {} because port {} is not serving soloncode",
+                            child.id(),
+                            port
+                        ));
                         let _ = child.kill();
                         let _ = child.wait();
                         *proc = None;
                     }
                     Err(e) => {
-                        app_log(&format!("[soloncode] Failed to check process status: {}, clearing handle", e));
+                        app_log(&format!("[soloncode] Failed to check managed backend process status: {}, clearing handle", e));
                         *proc = None;
                     }
                 }
@@ -1105,7 +1400,7 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
         })?;
 
     let pid = child.id();
-    app_log(&format!("[soloncode] Backend started, PID={}", pid));
+    app_log(&format!("[soloncode] Backend started, managed PID={}", pid));
 
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
     *proc = Some(child);
@@ -1118,6 +1413,7 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
 fn stop_backend() -> Result<(), String> {
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
     if let Some(mut child) = proc.take() {
+        app_log(&format!("[soloncode] stop_backend invoked, killing managed backend PID {}", child.id()));
         let _ = child.kill();
         let _ = child.wait();
         app_log("[soloncode] Backend process stopped");
@@ -1580,6 +1876,8 @@ pub fn run() {
             copy_item,
             move_item,
             detect_backend,
+            check_updates,
+            install_updates,
             start_backend,
             stop_backend,
             backend_status,
@@ -1603,6 +1901,7 @@ pub fn run() {
                 // 应用退出时停止后端进程
                 if let Ok(mut proc) = BACKEND_PROCESS.lock() {
                     if let Some(mut child) = proc.take() {
+                        app_log(&format!("[soloncode] Window close requested, killing managed backend PID {}", child.id()));
                         let _ = child.kill();
                         let _ = child.wait();
                     }

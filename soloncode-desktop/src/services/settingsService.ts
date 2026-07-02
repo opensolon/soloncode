@@ -133,6 +133,8 @@ export interface GeneralSettings {
   editorTheme: string;
   fontSize: number;
   language: string;
+  autoCheckUpdates: boolean;
+  lastUpdateCheckAt: string;
   tabSize: number;
   autoSave: boolean;
   formatOnSave: boolean;
@@ -404,6 +406,8 @@ const defaultGeneral: GeneralSettings = {
   editorTheme: 'auto',
   fontSize: 14,
   language: 'zh-CN',
+  autoCheckUpdates: false,
+  lastUpdateCheckAt: '',
   tabSize: 2,
   autoSave: true,
   formatOnSave: true,

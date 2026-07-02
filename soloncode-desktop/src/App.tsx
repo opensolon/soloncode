@@ -16,6 +16,7 @@ import { ChatView } from './components/ChatView';
 import { fileService } from './services/fileService';
 import { gitService } from './services/gitService';
 import { DEFAULT_PROMPTS, settingsService } from './services/settingsService';
+import { updateService } from './services/updateService';
 import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { startWindowDrag, startWindowResize } from './hooks/useWindowDrag';
@@ -42,6 +43,8 @@ const plugins: Plugin[] = [];
 
 const defaultSettings: Settings = {
   theme: 'dark', fontSize: 14, language: 'zh-CN',
+  autoCheckUpdates: false,
+  lastUpdateCheckAt: '',
   editorTheme: 'auto',
   tabSize: 2, autoSave: true, formatOnSave: true,
   shell: 'bash', terminalFontSize: 14,
@@ -706,12 +709,51 @@ function App() {
   const [terminalVisible, setTerminalVisible] = useState(false);
   const [terminalMounted, setTerminalMounted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const autoUpdateCheckedRef = useRef(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(msg);
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
+
+  useEffect(() => {
+    if (!backendPort || !settings.autoCheckUpdates || autoUpdateCheckedRef.current) return;
+
+    const lastCheckedAt = settings.lastUpdateCheckAt ? Date.parse(settings.lastUpdateCheckAt) : NaN;
+    if (!Number.isNaN(lastCheckedAt) && Date.now() - lastCheckedAt < 12 * 60 * 60 * 1000) {
+      autoUpdateCheckedRef.current = true;
+      return;
+    }
+
+    autoUpdateCheckedRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const info = await updateService.checkForUpdates(backendPort);
+        if (cancelled) return;
+
+        const checkedAt = new Date().toISOString();
+        setSettings(prev => {
+          const updated = { ...prev, lastUpdateCheckAt: checkedAt };
+          settingsService.save(updated);
+          return updated;
+        });
+
+        if (info.backendUpdateAvailable || info.desktopUpdateAvailable) {
+          showToast('检测到新版本，正在启动更新...');
+          await updateService.installUpdates(backendPort);
+        }
+      } catch (err) {
+        console.warn('[App] auto update check failed:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [backendPort, settings.autoCheckUpdates, settings.lastUpdateCheckAt, showToast]);
 
   useEffect(() => {
     if (terminalVisible) setTerminalMounted(true);

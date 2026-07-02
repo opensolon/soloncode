@@ -16,6 +16,7 @@ import {
   settingsService,
 } from '../../services/settingsService';
 import { fileService } from '../../services/fileService';
+import { updateService, type UpdateInfo } from '../../services/updateService';
 import './SettingsPanel.css';
 import './ChannelPanel.css';
 
@@ -178,7 +179,10 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
 
           <div className="settings-detail">
             {activeMenu === 'general' && (
-              <GeneralSettings settings={localSettings} updateSetting={updateSetting} />
+              <>
+                <UpdateSettingsClean settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
+                <GeneralSettings settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
+              </>
             )}
             {activeMenu === 'model' && (
               <ModelSettings
@@ -261,9 +265,252 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
 }
 
 /* ==================== 常规设置 ==================== */
-function GeneralSettings({ settings, updateSetting }: {
+function UpdateSettingsClean({ settings, updateSetting, backendPort }: {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  backendPort?: number | null;
+}) {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const loadUpdateInfo = useCallback(async () => {
+    setLoading(true);
+    try {
+      const info = await updateService.checkForUpdates(backendPort);
+      setUpdateInfo(info);
+      setMessage('');
+    } catch (err) {
+      console.warn('[SettingsPanel] update check failed:', err);
+      setMessage(err instanceof Error ? err.message : 'Version check failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort]);
+
+  useEffect(() => {
+    loadUpdateInfo();
+  }, [loadUpdateInfo]);
+
+  const handleCheckAndUpdate = useCallback(async () => {
+    setLoading(true);
+    try {
+      const info = await updateService.checkForUpdates(backendPort);
+      setUpdateInfo(info);
+      updateSetting('lastUpdateCheckAt', new Date().toISOString());
+
+      if (!info.backendUpdateAvailable && !info.desktopUpdateAvailable) {
+        setMessage('You are already on the latest version');
+        return;
+      }
+
+      setMessage('Update detected. Starting updater...');
+      await updateService.installUpdates(backendPort);
+    } catch (err) {
+      console.warn('[SettingsPanel] install update failed:', err);
+      setMessage(err instanceof Error ? err.message : 'Failed to start updater');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort, updateSetting]);
+
+  const latestDesktop = updateInfo?.latestDesktopVersion || 'Not found';
+  const latestBackend = updateInfo?.latestBackendVersion || 'Not found';
+  const desktopStatus = updateInfo?.desktopUpdateAvailable ? 'Update available' : 'Latest';
+  const backendStatus = updateInfo?.backendUpdateAvailable ? 'Update available' : 'Latest';
+
+  return (
+    <>
+      <div className="settings-section-title">Update</div>
+      <div className="settings-update-card">
+        <div className="settings-update-intro">
+          <div className="settings-update-name">SolonCode Desktop</div>
+          <div className="settings-update-desc">Checking updates will run the backend update script first, then download and launch the desktop installer.</div>
+        </div>
+
+        <div className="settings-update-grid">
+          <div className="settings-update-item">
+            <span className="settings-update-label">Desktop</span>
+            <span className="settings-update-value">{updateInfo?.currentDesktopVersion || 'Unknown'}</span>
+            <span className={`settings-update-badge${updateInfo?.desktopUpdateAvailable ? ' warning' : ''}`}>{desktopStatus}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">Desktop latest</span>
+            <span className="settings-update-value">
+              {latestDesktop}
+              {updateInfo?.latestDesktopReleaseTag ? ` (${updateInfo.latestDesktopReleaseTag})` : ''}
+            </span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">Backend</span>
+            <span className="settings-update-value">{updateInfo?.currentBackendVersion || 'Disconnected'}</span>
+            <span className={`settings-update-badge${updateInfo?.backendUpdateAvailable ? ' warning' : ''}`}>{backendStatus}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">Backend latest</span>
+            <span className="settings-update-value">{latestBackend}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">Last checked</span>
+            <span className="settings-update-value">
+              {settings.lastUpdateCheckAt ? new Date(settings.lastUpdateCheckAt).toLocaleString() : 'Never'}
+            </span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">Installer</span>
+            <span className="settings-update-value">{updateInfo?.desktopDownloadUrl || 'No download URL available'}</span>
+          </div>
+        </div>
+
+        <SettingRow label="Auto check">
+          <input
+            type="checkbox"
+            checked={settings.autoCheckUpdates}
+            onChange={e => updateSetting('autoCheckUpdates', e.target.checked)}
+          />
+        </SettingRow>
+
+        <div className="settings-update-actions">
+          <button className="settings-btn cancel" onClick={loadUpdateInfo} disabled={loading}>
+            {loading ? 'Checking...' : 'Refresh info'}
+          </button>
+          <button className="settings-btn save" onClick={handleCheckAndUpdate} disabled={loading}>
+            {loading ? 'Working...' : 'Check and update'}
+          </button>
+        </div>
+
+        {message && <div className="settings-update-message">{message}</div>}
+      </div>
+    </>
+  );
+}
+
+/*
+function UpdateSettings({ settings, updateSetting, backendPort }: {
+  settings: Settings;
+  updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  backendPort?: number | null;
+}) {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const loadUpdateInfo = useCallback(async () => {
+    setLoading(true);
+    try {
+      const info = await updateService.checkForUpdates(backendPort);
+      setUpdateInfo(info);
+      setMessage('');
+    } catch (err) {
+      console.warn('[SettingsPanel] update check failed:', err);
+      setMessage(err instanceof Error ? err.message : '版本检查失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort]);
+
+  useEffect(() => {
+    loadUpdateInfo();
+  }, [loadUpdateInfo]);
+
+  const handleCheckAndUpdate = useCallback(async () => {
+    setLoading(true);
+    try {
+      const info = await updateService.checkForUpdates(backendPort);
+      setUpdateInfo(info);
+      updateSetting('lastUpdateCheckAt', new Date().toISOString());
+
+      if (!info.backendUpdateAvailable && !info.desktopUpdateAvailable) {
+        setMessage('当前已是最新版本');
+        return;
+      }
+
+      setMessage('检测到新版本，正在启动更新...');
+      await updateService.installUpdates(backendPort);
+    } catch (err) {
+      console.warn('[SettingsPanel] install update failed:', err);
+      setMessage(err instanceof Error ? err.message : '更新启动失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort, updateSetting]);
+
+  const latestDesktop = updateInfo?.latestDesktopVersion || '未发现';
+  const latestBackend = updateInfo?.latestBackendVersion || '未发现';
+  const desktopStatus = updateInfo?.desktopUpdateAvailable ? '可更新' : '最新';
+  const backendStatus = updateInfo?.backendUpdateAvailable ? '可更新' : '最新';
+
+  return (
+    <>
+      <div className="settings-section-title">版本更新</div>
+      <div className="settings-update-card">
+        <div className="settings-update-intro">
+          <div className="settings-update-name">SolonCode Desktop</div>
+          <div className="settings-update-desc">检查时会先执行后端更新脚本，再下载并启动桌面端安装包。</div>
+        </div>
+
+        <div className="settings-update-grid">
+          <div className="settings-update-item">
+            <span className="settings-update-label">桌面端</span>
+            <span className="settings-update-value">{updateInfo?.currentDesktopVersion || '未知'}</span>
+            <span className={`settings-update-badge${updateInfo?.desktopUpdateAvailable ? ' warning' : ''}`}>{desktopStatus}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">桌面端最新</span>
+            <span className="settings-update-value">
+              {latestDesktop}
+              {updateInfo?.latestDesktopReleaseTag ? ` (${updateInfo.latestDesktopReleaseTag})` : ''}
+            </span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">后端</span>
+            <span className="settings-update-value">{updateInfo?.currentBackendVersion || '未连接'}</span>
+            <span className={`settings-update-badge${updateInfo?.backendUpdateAvailable ? ' warning' : ''}`}>{backendStatus}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">后端最新</span>
+            <span className="settings-update-value">{latestBackend}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">最近检查</span>
+            <span className="settings-update-value">
+              {settings.lastUpdateCheckAt ? new Date(settings.lastUpdateCheckAt).toLocaleString() : '从未检查'}
+            </span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">桌面安装包</span>
+            <span className="settings-update-value">{updateInfo?.desktopDownloadUrl || '暂无可用下载地址'}</span>
+          </div>
+        </div>
+
+        <SettingRow label="自动检查更新">
+          <input
+            type="checkbox"
+            checked={settings.autoCheckUpdates}
+            onChange={e => updateSetting('autoCheckUpdates', e.target.checked)}
+          />
+        </SettingRow>
+
+        <div className="settings-update-actions">
+          <button className="settings-btn cancel" onClick={loadUpdateInfo} disabled={loading}>
+            {loading ? '检查中...' : '刷新版本信息'}
+          </button>
+          <button className="settings-btn save" onClick={handleCheckAndUpdate} disabled={loading}>
+            {loading ? '处理中...' : '检查并更新'}
+          </button>
+        </div>
+
+        {message && <div className="settings-update-message">{message}</div>}
+      </div>
+    </>
+  );
+}
+
+*/
+function GeneralSettings({ settings, updateSetting, backendPort }: {
+  settings: Settings;
+  updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  backendPort?: number | null;
 }) {
   return (
     <div className="settings-section-content">

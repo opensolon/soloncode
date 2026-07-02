@@ -315,7 +315,15 @@
                             return m.manual === true;
                         });
                         var fetchedMapped = models.map(function (m) {
-                            return { id: m.id || m.name || m, manual: false };
+                            return {
+                                id: m.id || m.name || m,
+                                displayName: m.displayName || m.display_name || '',
+                                ownedBy: m.ownedBy || m.owned_by || '',
+                                type: m.type || '',
+                                maxInputTokens: m.maxInputTokens || m.max_input_tokens || m.contextLength || m.context_length || 0,
+                                maxTokens: m.maxTokens || m.max_tokens || 0,
+                                manual: false
+                            };
                         });
                         // 手动模型去重：如果手动模型 id 已在拉取列表中，保留手动标记
                         var fetchedIds = {};
@@ -323,8 +331,17 @@
                         manualModels.forEach(function (mm) {
                             if (fetchedIds[mm.id]) {
                                 fetchedIds[mm.id].manual = true;
+                                if (mm.displayName) {
+                                    fetchedIds[mm.id].displayName = mm.displayName;
+                                }
+                                if (mm.ownedBy) {
+                                    fetchedIds[mm.id].ownedBy = mm.ownedBy;
+                                }
                                 if (mm.maxInputTokens) {
                                     fetchedIds[mm.id].maxInputTokens = mm.maxInputTokens;
+                                }
+                                if (mm.maxTokens) {
+                                    fetchedIds[mm.id].maxTokens = mm.maxTokens;
                                 }
                             } else {
                                 fetchedMapped.push(mm);
@@ -458,8 +475,20 @@
         var scope = $('#providerScope').val();
         var models = fetchedModels.map(function (m) {
             var model = { id: m.id, manual: m.manual || false };
+            if (m.displayName) {
+                model.displayName = m.displayName;
+            }
+            if (m.ownedBy) {
+                model.ownedBy = m.ownedBy;
+            }
+            if (m.type) {
+                model.type = m.type;
+            }
             if (m.maxInputTokens) {
                 model.maxInputTokens = m.maxInputTokens;
+            }
+            if (m.maxTokens) {
+                model.maxTokens = m.maxTokens;
             }
             return model;
         });

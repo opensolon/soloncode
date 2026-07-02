@@ -480,6 +480,97 @@
   min-height: 80px;
 }
 
+.settings-update-card {
+  margin: 8px 16px 14px;
+  padding: 14px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 8px;
+  background-color: var(--cb-vscode-input-background);
+}
+
+.settings-update-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.settings-update-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cb-text-primary);
+}
+
+.settings-update-desc {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  line-height: 1.5;
+}
+
+.settings-update-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin-bottom: 10px;
+}
+
+.settings-update-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-update-label {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  min-width: 72px;
+}
+
+.settings-update-value {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--cb-text-primary);
+}
+
+.settings-update-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #4ade80;
+  background-color: rgba(74, 222, 128, 0.14);
+}
+
+.settings-update-badge.warning {
+  color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.14);
+}
+
+.settings-update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 20px 0;
+}
+
+.settings-update-message {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+}
+
+@media (max-width: 900px) {
+  .settings-update-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ==================== Skills 设置（分栏布局） ==================== */
 .skills-settings-layout {
   display: flex;
