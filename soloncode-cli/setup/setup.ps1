@@ -57,13 +57,9 @@ try {
     # Set environment variable to tell install.ps1 not to wait
     $env:SOLONCODE_SETUP = "1"
     
-    # Execute the installer script
-    & $installPath
-    
-    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
-        Write-Error "Installer failed with exit code: $LASTEXITCODE"
-        throw "Installation failed"
-    }
+    # Execute the installer script via Invoke-Expression to bypass execution policy
+    # Using & triggers PowerShell's execution policy check (Restricted), causing "禁止运行脚本" error
+    Get-Content -Path $installPath -Raw | Invoke-Expression
 
     # Refresh PATH for current session
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
