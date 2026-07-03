@@ -7,10 +7,35 @@
 import { fileService } from './fileService';
 
 const DEFAULT_PORT = 4808;
+const BACKEND_READY_TIMEOUT_MS = 15000;
+const BACKEND_READY_POLL_MS = 500;
 
 function isTauriEnv(): boolean {
   return typeof window !== 'undefined'
     && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+async function isBackendReady(port: number): Promise<boolean> {
+  try {
+    return await fileService.detectBackend(port);
+  } catch {
+    return false;
+  }
+}
+
+async function waitForBackendReady(port: number): Promise<boolean> {
+  const deadline = Date.now() + BACKEND_READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await isBackendReady(port)) {
+      return true;
+    }
+    await sleep(BACKEND_READY_POLL_MS);
+  }
+  return false;
 }
 
 export const backendService = {
@@ -29,6 +54,12 @@ export const backendService = {
       await fileService.writeLog(`backendService.start called, workspacePath=${workspacePath}, port=${port}`);
       const pid = await fileService.startBackend(workspacePath, port);
       await fileService.writeLog(`startBackend returned PID=${pid}`);
+      const ready = await waitForBackendReady(port);
+      if (!ready) {
+        await fileService.writeLog(`backend readiness timed out on port ${port}`);
+        return null;
+      }
+      await fileService.writeLog(`backend ready on port ${port}`);
       return port;
     } catch (err: any) {
       const errMsg = String(err || '');

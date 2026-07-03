@@ -1,0 +1,88 @@
+{
+  "$schema": "https://solon.noear.org/soloncode/settings.schema.json",
+  "general": {
+    "sessionWindowSize": 8,
+    "summaryWindowSize": 30,
+    "summaryWindowToken": 30000,
+    "sandboxMode": true,
+    "sandboxAllowUserHome": true,
+    "sandboxSystemRestrict": false,
+    "apiRetries": 3,
+    "mcpRetries": 3,
+    "modelRetries": 3,
+    "bashAsyncEnabled": false,
+    "memoryEnabled": true,
+    "memoryIsolation": true,
+    "mcpEnabled": true,
+    "openApiEnabled": true,
+    "lspEnabled": false,
+    "userAgent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; SolonCode/1.0; +https://solon.noear.org/)",
+    "maxTurns": 30,
+    "autoRethink": true,
+    "hitlEnabled": false,
+    "subagentEnabled": true,
+    "cliThinkPrinted": true,
+    "cliPrintSimplified": true,
+    "goalsEnabled": true
+  },
+  "permission": {
+    "tools": [
+      "**"
+    ],
+    "disallowedTools": []
+  },
+  "loop": {
+    "budgetWarningPercent": 70,
+    "budgetCriticalPercent": 85,
+    "defaultMaxTokens": 0,
+    "defaultMaxDurationMinutes": 0,
+    "stagnationThreshold": 3,
+    "maxConsecutiveErrors": 3,
+    "pauseAutoAbandonHours": 24,
+    "validatorEnabled": false
+  },
+  "defaultModel": "gpt-5.5",
+  "models": [
+    {
+      "visibled": true,
+      "scope": "user",
+      "name": "gpt-5.5",
+      "contextLength": 0,
+      "enabled": false,
+      "apiUrl": "https://ai.loserbai.cn/responses",
+      "apiKey": "sk-02d6d782c2f5a5fe484ae280856dbb3bde84128338d323d93ccd6ccfa170e54f",
+      "provider": "anthropic",
+      "model": "gpt-5.5",
+      "headers": {},
+      "timeout": "120s"
+    },
+    {
+      "visibled": true,
+      "scope": "user",
+      "name": "gpt-5.4",
+      "contextLength": 0,
+      "enabled": true,
+      "apiUrl": "https://ai.loserbai.cn/v1",
+      "apiKey": "sk-02d6d782c2f5a5fe484ae280856dbb3bde84128338d323d93ccd6ccfa170e54f",
+      "provider": "openai",
+      "model": "gpt-5.4",
+      "headers": {},
+      "timeout": "120s"
+    }
+  ],
+  "mcpServers": {},
+  "apiServers": {},
+  "mountPools": {
+    "@global-skills": {
+      "scope": "user",
+      "description": "",
+      "type": 0,
+      "path": "~/.soloncode/skills/",
+      "primary": false,
+      "enabled": true,
+      "writeable": false
+    }
+  },
+  "lspServers": {},
+  "providers": {}
+}

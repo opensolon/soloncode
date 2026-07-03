@@ -480,6 +480,29 @@
   min-height: 80px;
 }
 
+.settings-about-card {
+  margin: 8px 16px 14px;
+  padding: 16px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at top right, rgba(0, 122, 204, 0.14), transparent 36%),
+    var(--cb-vscode-input-background);
+}
+
+.settings-about-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--cb-text-primary);
+}
+
+.settings-about-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--cb-text-secondary);
+}
+
 .settings-update-card {
   margin: 8px 16px 14px;
   padding: 14px;

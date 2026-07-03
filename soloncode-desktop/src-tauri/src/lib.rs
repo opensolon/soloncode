@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::net::TcpStream;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
 
@@ -868,8 +868,19 @@ fn terminal_kill() -> Result<(), String> {
 
 // ==================== 后端进程管理 ====================
 
+const BACKEND_READY_ATTEMPTS: u32 = 20;
+const BACKEND_READY_SLEEP_MS: u64 = 500;
+const BACKEND_STARTUP_GRACE: Duration = Duration::from_secs(10);
+const LEGACY_SETTINGS_SCHEMA: &str = "https://solon.noear.org/soloncode/settings.schema.json";
+
+struct ManagedBackendProcess {
+    child: Child,
+    port: u16,
+    started_at: Instant,
+}
+
 /// 全局后端进程句柄
-static BACKEND_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+static BACKEND_PROCESS: Mutex<Option<ManagedBackendProcess>> = Mutex::new(None);
 
 /// 启动方式：soloncode 命令 或 java -jar
 enum BackendLaunchMethod {
@@ -877,6 +888,109 @@ enum BackendLaunchMethod {
     Command { cmd: String },
     /// java -jar 方式（回退到 ~/.soloncode/bin/soloncode-cli.jar）
     Jar { path: std::path::PathBuf },
+}
+
+fn user_home_dir() -> String {
+    if cfg!(windows) {
+        std::env::var("USERPROFILE").unwrap_or_default()
+    } else {
+        std::env::var("HOME").unwrap_or_default()
+    }
+}
+
+fn user_settings_json_path() -> std::path::PathBuf {
+    Path::new(&user_home_dir()).join(".soloncode").join("settings.json")
+}
+
+fn maybe_prepare_legacy_cli_settings() {
+    let settings_path = user_settings_json_path();
+    let raw = match fs::read_to_string(&settings_path) {
+        Ok(raw) => raw,
+        Err(_) => return,
+    };
+
+    let value: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(value) => value,
+        Err(e) => {
+            app_log(&format!(
+                "[soloncode] Failed to parse settings.json before legacy compatibility check: {}",
+                e
+            ));
+            return;
+        }
+    };
+
+    let root = match value.as_object() {
+        Some(root) => root,
+        None => return,
+    };
+
+    let has_incompatible_shape = root.get("models").is_some()
+        || root.get("permission").is_some()
+        || root.get("loop").is_some()
+        || root.get("mcpServers").is_some()
+        || root.get("apiServers").is_some()
+        || root.get("lspServers").is_some()
+        || root.get("providers").is_some();
+
+    if !has_incompatible_shape {
+        return;
+    }
+
+    let mut legacy_root = serde_json::Map::new();
+    legacy_root.insert(
+        "$schema".to_string(),
+        serde_json::Value::String(LEGACY_SETTINGS_SCHEMA.to_string()),
+    );
+
+    if let Some(general) = root.get("general").filter(|v| v.is_object()) {
+        legacy_root.insert("general".to_string(), general.clone());
+    }
+
+    if let Some(mount_pools) = root.get("mountPools").filter(|v| v.is_object()) {
+        legacy_root.insert("mountPools".to_string(), mount_pools.clone());
+    }
+
+    let fallback = serde_json::Value::Object(legacy_root);
+    if value == fallback {
+        return;
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let backup_path = settings_path.with_file_name(format!("settings.desktop-backup-{}.json", timestamp));
+
+    if let Err(e) = fs::copy(&settings_path, &backup_path) {
+        app_log(&format!(
+            "[soloncode] Failed to backup incompatible legacy settings.json: {}",
+            e
+        ));
+        return;
+    }
+
+    match serde_json::to_string_pretty(&fallback) {
+        Ok(serialized) => {
+            if let Err(e) = fs::write(&settings_path, serialized) {
+                app_log(&format!(
+                    "[soloncode] Failed to rewrite settings.json for legacy CLI compatibility: {}",
+                    e
+                ));
+                return;
+            }
+            app_log(&format!(
+                "[soloncode] Backed up incompatible settings.json to {:?} and wrote legacy-compatible fallback for java -jar serve startup",
+                backup_path
+            ));
+        }
+        Err(e) => {
+            app_log(&format!(
+                "[soloncode] Failed to serialize legacy-compatible settings.json fallback: {}",
+                e
+            ));
+        }
+    }
 }
 
 /// 检测启动方式：优先 soloncode 命令，回退到 JAR
@@ -986,6 +1100,60 @@ fn is_soloncode_backend(port: u16) -> bool {
     resp.starts_with("HTTP/1.1 200")
         && resp.contains("\"code\":200")
         && resp.contains("\"version\"")
+}
+
+fn wait_for_backend_ready(port: u16, attempts: u32, sleep_ms: u64) -> bool {
+    for _ in 0..attempts {
+        if is_soloncode_backend(port) {
+            return true;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+    }
+
+    false
+}
+
+fn spawn_backend_readiness_watchdog(port: u16, pid: u32) {
+    std::thread::spawn(move || {
+        if wait_for_backend_ready(port, BACKEND_READY_ATTEMPTS, BACKEND_READY_SLEEP_MS) {
+            app_log(&format!(
+                "[soloncode] Backend PID {} on port {} reported ready",
+                pid, port
+            ));
+            return;
+        }
+
+        let mut proc = match BACKEND_PROCESS.lock() {
+            Ok(guard) => guard,
+            Err(e) => {
+                app_log(&format!(
+                    "[soloncode] Failed to lock backend process for watchdog cleanup: {}",
+                    e
+                ));
+                return;
+            }
+        };
+
+        let should_kill = match proc.as_ref() {
+            Some(managed) => managed.child.id() == pid && managed.port == port && !is_soloncode_backend(port),
+            None => false,
+        };
+
+        if !should_kill {
+            return;
+        }
+
+        if let Some(mut managed) = proc.take() {
+            app_log(&format!(
+                "[soloncode] Killing managed backend PID {} because port {} did not become ready within startup grace period",
+                managed.child.id(),
+                port
+            ));
+            let _ = managed.child.kill();
+            let _ = managed.child.wait();
+        }
+    });
 }
 
 /// 检测指定端口是否已经有可复用的 SolonCode 后端。
@@ -1262,25 +1430,46 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     {
         let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
         match proc.as_mut() {
-            Some(child) => {
-                match child.try_wait() {
+            Some(managed) => {
+                match managed.child.try_wait() {
                     Ok(Some(_status)) => {
                         *proc = None;
                     }
                     Ok(None) => {
-                        if is_soloncode_backend(port) {
-                            app_log(&format!("[soloncode] Backend already running on port {}, reusing PID {}", port, child.id()));
-                            return Ok(child.id());
+                        if managed.port != port {
+                            app_log(&format!(
+                                "[soloncode] Managed backend PID {} is running on port {}, restarting for requested port {}",
+                                managed.child.id(),
+                                managed.port,
+                                port
+                            ));
+                            let _ = managed.child.kill();
+                            let _ = managed.child.wait();
+                            *proc = None;
+                        } else if is_soloncode_backend(port) {
+                            app_log(&format!(
+                                "[soloncode] Backend already running on port {}, reusing PID {}",
+                                port,
+                                managed.child.id()
+                            ));
+                            return Ok(managed.child.id());
+                        } else if managed.started_at.elapsed() < BACKEND_STARTUP_GRACE {
+                            app_log(&format!(
+                                "[soloncode] Managed backend PID {} on port {} is still starting, reusing pending launch",
+                                managed.child.id(),
+                                port
+                            ));
+                            return Ok(managed.child.id());
+                        } else {
+                            app_log(&format!(
+                                "[soloncode] Killing managed backend PID {} because port {} is still not serving soloncode after startup grace period",
+                                managed.child.id(),
+                                port
+                            ));
+                            let _ = managed.child.kill();
+                            let _ = managed.child.wait();
+                            *proc = None;
                         }
-
-                        app_log(&format!(
-                            "[soloncode] Killing managed backend PID {} because port {} is not serving soloncode",
-                            child.id(),
-                            port
-                        ));
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        *proc = None;
                     }
                     Err(e) => {
                         app_log(&format!("[soloncode] Failed to check managed backend process status: {}, clearing handle", e));
@@ -1309,6 +1498,9 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检测启动方式
     let launch = detect_launch_method();
     let port_str = port.to_string();
+    if let BackendLaunchMethod::Jar { .. } = &launch {
+        maybe_prepare_legacy_cli_settings();
+    }
 
     // 确定工作目录（空路径时使用用户主目录）
     let work_dir = if workspace_path.is_empty() {
@@ -1403,7 +1595,15 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     app_log(&format!("[soloncode] Backend started, managed PID={}", pid));
 
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
-    *proc = Some(child);
+    *proc = Some(ManagedBackendProcess {
+        child,
+        port,
+        started_at: Instant::now(),
+    });
+
+    drop(proc);
+
+    spawn_backend_readiness_watchdog(port, pid);
 
     Ok(pid)
 }
@@ -1412,10 +1612,14 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
 #[tauri::command]
 fn stop_backend() -> Result<(), String> {
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
-    if let Some(mut child) = proc.take() {
-        app_log(&format!("[soloncode] stop_backend invoked, killing managed backend PID {}", child.id()));
-        let _ = child.kill();
-        let _ = child.wait();
+    if let Some(mut managed) = proc.take() {
+        app_log(&format!(
+            "[soloncode] stop_backend invoked, killing managed backend PID {} on port {}",
+            managed.child.id(),
+            managed.port
+        ));
+        let _ = managed.child.kill();
+        let _ = managed.child.wait();
         app_log("[soloncode] Backend process stopped");
     }
     Ok(())
@@ -1820,9 +2024,9 @@ fn backend_status() -> Result<bool, String> {
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
 
     match proc.as_mut() {
-        Some(child) => {
+        Some(managed) => {
             // 尝试检查进程状态（非阻塞）
-            match child.try_wait() {
+            match managed.child.try_wait() {
                 Ok(Some(_status)) => {
                     // 进程已退出
                     *proc = None;
@@ -1900,10 +2104,14 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // 应用退出时停止后端进程
                 if let Ok(mut proc) = BACKEND_PROCESS.lock() {
-                    if let Some(mut child) = proc.take() {
-                        app_log(&format!("[soloncode] Window close requested, killing managed backend PID {}", child.id()));
-                        let _ = child.kill();
-                        let _ = child.wait();
+                    if let Some(mut managed) = proc.take() {
+                        app_log(&format!(
+                            "[soloncode] Window close requested, killing managed backend PID {} on port {}",
+                            managed.child.id(),
+                            managed.port
+                        ));
+                        let _ = managed.child.kill();
+                        let _ = managed.child.wait();
                     }
                 }
                 // 关闭终端

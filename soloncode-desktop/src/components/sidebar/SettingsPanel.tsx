@@ -27,7 +27,7 @@ export interface Settings extends GeneralSettings {
   agents: AgentConfig[];
 }
 
-type SettingsMenuKey = 'general' | 'permission' | 'mounts' | 'model' | 'channels' | 'mcp' | 'openapi' | 'lsp' | 'skills' | 'prompts' | 'logs';
+type SettingsMenuKey = 'general' | 'permission' | 'mounts' | 'model' | 'channels' | 'mcp' | 'openapi' | 'lsp' | 'skills' | 'prompts' | 'about' | 'logs';
 
 interface SettingsPanelProps {
   visible: boolean;
@@ -49,6 +49,7 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'openapi', icon: 'code', label: 'OpenAPI' },
   { key: 'lsp', icon: 'code', label: 'LSP' },
   { key: 'skills', icon: 'skills', label: 'Skills' },
+  { key: 'about', icon: 'info', label: 'About' },
   { key: 'prompts', icon: 'edit', label: 'AI 提示词' },
   ...(import.meta.env.DEV ? [{ key: 'logs' as SettingsMenuKey, icon: 'terminal' as IconName, label: '日志' }] : []),
 ];
@@ -179,10 +180,7 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
 
           <div className="settings-detail">
             {activeMenu === 'general' && (
-              <>
-                <UpdateSettingsClean settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
-                <GeneralSettings settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
-              </>
+              <GeneralSettings settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
             )}
             {activeMenu === 'model' && (
               <ModelSettings
@@ -249,6 +247,9 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
                 onPromptChange={(key, value) => setLocalSettings(prev => ({ ...prev, [key]: value }))}
               />
             )}
+            {activeMenu === 'about' && (
+              <AboutSettings settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
+            )}
             {activeMenu === 'logs' && (
               <LogsSettings workspacePath={workspacePath} />
             )}
@@ -265,6 +266,22 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
 }
 
 /* ==================== 常规设置 ==================== */
+function AboutSettings({ settings, updateSetting, backendPort }: {
+  settings: Settings;
+  updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  backendPort?: number | null;
+}) {
+  return (
+    <div className="settings-section-content">
+      <div className="settings-about-card">
+        <div className="settings-about-name">SolonCode Desktop</div>
+        <div className="settings-about-desc">Desktop client for SolonCode. Version details and update actions live here.</div>
+      </div>
+      <UpdateSettingsClean settings={settings} updateSetting={updateSetting} backendPort={backendPort} />
+    </div>
+  );
+}
+
 function UpdateSettingsClean({ settings, updateSetting, backendPort }: {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
