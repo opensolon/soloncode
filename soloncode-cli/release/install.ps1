@@ -39,8 +39,15 @@ Write-Host ""
 # =============================================
 # 设置源目录和目标目录
 # =============================================
-$SOURCE_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
-if (-not $SOURCE_DIR) { $SOURCE_DIR = $PWD.Path }
+# When install.ps1 is executed via Get-Content | Invoke-Expression (from setup.ps1),
+# $MyInvocation.MyCommand.Definition doesn't return the correct file path.
+# In that case, setup.ps1 sets $env:SOLONCODE_INSTALL_DIR to the correct directory.
+if ($env:SOLONCODE_INSTALL_DIR -and (Test-Path $env:SOLONCODE_INSTALL_DIR)) {
+    $SOURCE_DIR = $env:SOLONCODE_INSTALL_DIR
+} else {
+    $SOURCE_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    if (-not $SOURCE_DIR -or -not (Test-Path $SOURCE_DIR)) { $SOURCE_DIR = $PWD.Path }
+}
 $SOURCE_BIN_DIR = Join-Path $SOURCE_DIR "bin"
 $SOURCE_SKILLS_DIR = Join-Path $SOURCE_DIR "skills"
 $SOURCE_AGENTS = Join-Path $SOURCE_DIR "AGENTS.md"
