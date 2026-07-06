@@ -496,6 +496,12 @@
   color: var(--cb-text-primary);
 }
 
+.settings-about-version {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+}
+
 .settings-about-desc {
   margin-top: 6px;
   font-size: 12px;
