@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { Icon, type IconName } from '../common/Icon';
 import {
@@ -1499,6 +1499,25 @@ function ApiKeyInput({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 /* ==================== 渠道绑定设置 ==================== */
+type ChannelKind = 'wechat' | 'feishu' | 'dingtalk';
+type ChannelStatusPayload = {
+  bound?: boolean;
+  streamStarted?: boolean;
+  pending?: boolean;
+};
+
+function resolveChannelSessionId(sessionId?: string) {
+  return sessionId || 'default';
+}
+
+async function fetchChannelStatus(backendPort: number | null | undefined, channel: ChannelKind, sessionId?: string): Promise<ChannelStatusPayload | null> {
+  if (!backendPort) return null;
+  const sid = resolveChannelSessionId(sessionId);
+  const resp = await fetch(`http://localhost:${backendPort}/chat/${channel}/status?sessionId=${encodeURIComponent(sid)}`);
+  const data = await resp.json();
+  return data.data || null;
+}
+
 function ChannelSettings({ backendPort, sessionId }: { backendPort?: number | null; sessionId?: string }) {
   return (
     <div className="settings-section-content">
@@ -1518,39 +1537,78 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
   const [status, setStatus] = useState('');
   const [bound, setBound] = useState(false);
   const [loading, setLoading] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const data = await fetchChannelStatus(backendPort, 'wechat', sessionId);
+      setBound(!!data?.bound);
+      setStatus(data?.bound ? 'bound' : '');
+    } catch {
+      // 状态查询失败不阻断手动绑定。
+    }
+  }, [backendPort, sessionId]);
+
+  useEffect(() => {
+    checkStatus();
+    return stopPolling;
+  }, [checkStatus, stopPolling]);
 
   const fetchQR = useCallback(async () => {
     if (!backendPort) return;
+    stopPolling();
     setLoading(true);
     setStatus('scanning');
     try {
-      const sid = sessionId || 'default';
+      const sid = resolveChannelSessionId(sessionId);
       const resp = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode?sessionId=${encodeURIComponent(sid)}`);
       const data = await resp.json();
-      if (data.data?.qrcode_img_content) {
-        setQrCode(data.data.qrcode_img_content);
+      const qrToken = data.data?.qrcode;
+      const qrImage = data.data?.qrcode_img_content || data.data?.qrcode;
+      if (qrToken && qrImage) {
+        setQrCode(qrImage);
         setShowQR(true);
-        const poll = setInterval(async () => {
+        pollRef.current = setInterval(async () => {
           try {
-            const r = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(data.data.qrcode_img_content)}&sessionId=${encodeURIComponent(sid)}`);
+            const r = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(qrToken)}&sessionId=${encodeURIComponent(sid)}`);
             const d = await r.json();
             if (d.data?.status === 'confirmed') {
-              clearInterval(poll);
+              stopPolling();
               setBound(true);
               setStatus('bound');
               setShowQR(false);
+            } else if (d.data?.status === 'scaned') {
+              setStatus('scanned');
+            } else if (d.data?.status === 'wait') {
+              setStatus('scanning');
             } else if (d.data?.status === 'error' || d.data?.status === 'expired') {
-              clearInterval(poll);
+              stopPolling();
               setStatus('expired');
               setShowQR(false);
             }
           } catch {
-            clearInterval(poll);
+            stopPolling();
             setStatus('error');
             setShowQR(false);
           }
         }, 2000);
-        setTimeout(() => { clearInterval(poll); setStatus('timeout'); setShowQR(false); }, 60000);
+        timeoutRef.current = setTimeout(() => {
+          stopPolling();
+          setStatus('timeout');
+          setShowQR(false);
+        }, 60000);
       } else {
         setStatus('error');
       }
@@ -1559,16 +1617,18 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
     } finally {
       setLoading(false);
     }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   const unbind = useCallback(async () => {
     if (!backendPort) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/wechat/unbind?sessionId=${encodeURIComponent(sessionId || 'default')}`, { method: 'POST' });
+      stopPolling();
+      await fetch(`http://localhost:${backendPort}/chat/wechat/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setStatus('');
+      setShowQR(false);
     } catch { /* ignore */ }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   return (
     <div className="channel-card">
@@ -1592,12 +1652,14 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
       </div>
       {status === 'error' && <p className="channel-error">获取二维码失败</p>}
       {status === 'timeout' && <p className="channel-error">二维码已过期，请重新获取</p>}
+      {status === 'expired' && <p className="channel-error">二维码已失效，请重新获取</p>}
+      {status === 'scanned' && <p className="channel-card-desc">已扫码，请在微信中确认</p>}
       {showQR && qrCode && (
-        <div className="qrcode-overlay" onClick={() => setShowQR(false)}>
+        <div className="qrcode-overlay" onClick={() => { stopPolling(); setStatus(''); setShowQR(false); }}>
           <div className="qrcode-modal" onClick={e => e.stopPropagation()}>
             <img src={qrCode} alt="微信二维码" className="qrcode-modal-img" />
             <p className="qrcode-modal-hint">请使用微信扫码关注</p>
-            <button className="qrcode-modal-close" onClick={() => setShowQR(false)}>
+            <button className="qrcode-modal-close" onClick={() => { stopPolling(); setStatus(''); setShowQR(false); }}>
               <Icon name="close" size={16} />
             </button>
           </div>
@@ -1614,32 +1676,90 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(false);
+  const [statusText, setStatusText] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const data = await fetchChannelStatus(backendPort, 'feishu', sessionId);
+      const nextBound = !!data?.bound;
+      setBound(nextBound);
+      if (nextBound) {
+        stopPolling();
+        setExpanded(false);
+        setAppId('');
+        setAppSecret('');
+        setStatusText('');
+      } else if (data?.pending || data?.streamStarted) {
+        setStatusText('连接已启动，请在飞书上发送消息完成绑定');
+      } else {
+        setStatusText('');
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }, [backendPort, sessionId, stopPolling]);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    pollRef.current = setInterval(() => {
+      refreshStatus();
+    }, 2000);
+  }, [refreshStatus, stopPolling]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshStatus().then(data => {
+      if (!cancelled && !data?.bound && (data?.pending || data?.streamStarted)) {
+        startPolling();
+      }
+    });
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+  }, [refreshStatus, startPolling, stopPolling]);
 
   const bind = useCallback(async () => {
     if (!backendPort || !appId || !appSecret) return;
     setLoading(true);
     setError('');
+    setStatusText('');
     try {
       const resp = await fetch(`http://localhost:${backendPort}/chat/feishu/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `sessionId=${encodeURIComponent(sessionId || 'default')}&appId=${encodeURIComponent(appId)}&appSecret=${encodeURIComponent(appSecret)}`,
+        body: `sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}&appId=${encodeURIComponent(appId)}&appSecret=${encodeURIComponent(appSecret)}`,
       });
       const data = await resp.json();
-      if (data.code === 200) setBound(true);
-      else setError(data.description || '绑定失败');
+      if (data.code === 200) {
+        setStatusText('连接已启动，请在飞书上发送消息完成绑定');
+        startPolling();
+      } else {
+        setError(data.description || data.message || '绑定失败');
+      }
     } catch { setError('连接失败'); } finally { setLoading(false); }
-  }, [backendPort, sessionId, appId, appSecret]);
+  }, [backendPort, sessionId, appId, appSecret, startPolling]);
 
   const unbind = useCallback(async () => {
-    if (!backendPort || !sessionId) return;
+    if (!backendPort) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/feishu/unbind?sessionId=${encodeURIComponent(sessionId || 'default')}`, { method: 'POST' });
+      stopPolling();
+      await fetch(`http://localhost:${backendPort}/chat/feishu/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setAppId('');
       setAppSecret('');
+      setStatusText('');
     } catch { /* ignore */ }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   return (
     <div className="channel-card">
@@ -1649,7 +1769,7 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
         </div>
         <div className="channel-card-info">
           <span className="channel-card-name">飞书</span>
-          <span className="channel-card-desc">{bound ? '已绑定' : '输入机器人凭据绑定'}</span>
+          <span className="channel-card-desc">{bound ? '已绑定' : (statusText || '输入机器人凭据绑定')}</span>
         </div>
         <div className="channel-card-action">
           {bound ? (
@@ -1668,6 +1788,7 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
           <button className="channel-btn bind" onClick={bind} disabled={loading || !appId || !appSecret} style={{ alignSelf: 'flex-end' }}>
             {loading ? '绑定中...' : '确认绑定'}
           </button>
+          {statusText && <p className="channel-card-desc">{statusText}</p>}
           {error && <p className="channel-error">{error}</p>}
         </div>
       )}
@@ -1682,32 +1803,90 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(false);
+  const [statusText, setStatusText] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const data = await fetchChannelStatus(backendPort, 'dingtalk', sessionId);
+      const nextBound = !!data?.bound;
+      setBound(nextBound);
+      if (nextBound) {
+        stopPolling();
+        setExpanded(false);
+        setAppKey('');
+        setAppSecret('');
+        setStatusText('');
+      } else if (data?.pending || data?.streamStarted) {
+        setStatusText('连接已启动，请在钉钉上发送消息完成绑定');
+      } else {
+        setStatusText('');
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }, [backendPort, sessionId, stopPolling]);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    pollRef.current = setInterval(() => {
+      refreshStatus();
+    }, 2000);
+  }, [refreshStatus, stopPolling]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshStatus().then(data => {
+      if (!cancelled && !data?.bound && (data?.pending || data?.streamStarted)) {
+        startPolling();
+      }
+    });
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+  }, [refreshStatus, startPolling, stopPolling]);
 
   const bind = useCallback(async () => {
     if (!backendPort || !appKey || !appSecret) return;
     setLoading(true);
     setError('');
+    setStatusText('');
     try {
       const resp = await fetch(`http://localhost:${backendPort}/chat/dingtalk/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `sessionId=${encodeURIComponent(sessionId || 'default')}&appKey=${encodeURIComponent(appKey)}&appSecret=${encodeURIComponent(appSecret)}`,
+        body: `sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}&appKey=${encodeURIComponent(appKey)}&appSecret=${encodeURIComponent(appSecret)}`,
       });
       const data = await resp.json();
-      if (data.code === 200) setBound(true);
-      else setError(data.description || '绑定失败');
+      if (data.code === 200) {
+        setStatusText('连接已启动，请在钉钉上发送消息完成绑定');
+        startPolling();
+      } else {
+        setError(data.description || data.message || '绑定失败');
+      }
     } catch { setError('连接失败'); } finally { setLoading(false); }
-  }, [backendPort, sessionId, appKey, appSecret]);
+  }, [backendPort, sessionId, appKey, appSecret, startPolling]);
 
   const unbind = useCallback(async () => {
-    if (!backendPort || !sessionId) return;
+    if (!backendPort) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/dingtalk/unbind?sessionId=${encodeURIComponent(sessionId || 'default')}`, { method: 'POST' });
+      stopPolling();
+      await fetch(`http://localhost:${backendPort}/chat/dingtalk/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setAppKey('');
       setAppSecret('');
+      setStatusText('');
     } catch { /* ignore */ }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   return (
     <div className="channel-card">
@@ -1717,7 +1896,7 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
         </div>
         <div className="channel-card-info">
           <span className="channel-card-name">钉钉</span>
-          <span className="channel-card-desc">{bound ? '已绑定' : '输入机器人凭据绑定'}</span>
+          <span className="channel-card-desc">{bound ? '已绑定' : (statusText || '输入机器人凭据绑定')}</span>
         </div>
         <div className="channel-card-action">
           {bound ? (
@@ -1736,6 +1915,7 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
           <button className="channel-btn bind" onClick={bind} disabled={loading || !appKey || !appSecret} style={{ alignSelf: 'flex-end' }}>
             {loading ? '绑定中...' : '确认绑定'}
           </button>
+          {statusText && <p className="channel-card-desc">{statusText}</p>}
           {error && <p className="channel-error">{error}</p>}
         </div>
       )}
