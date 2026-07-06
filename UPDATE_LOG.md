@@ -1,4 +1,9 @@
 
+### v2026.7.7
+
+* 优化 soloncode hitl 实现
+* 优化 soloncode permission 实现
+
 ### v2026.7.3
 
 * 修复 soloncode web mcp 不能检测的问题
