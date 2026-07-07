@@ -1,5 +1,9 @@
 server.port: 4808
 
+server.request:
+  maxBodySize: 2mb
+  maxFileSize: 2mb
+
 solon.app:
   name: "soloncode"
   title: "SolonCode"
