@@ -58,15 +58,19 @@
     }
 
     function renderGitWorkspaceBar(list) {
-        var $sel = document.getElementById('gitWorkspaceSelect');
-        if (!$sel) return;
+        var $selector = document.getElementById('gitWorkspaceSelector');
+        var $name = document.getElementById('gitWorkspaceName');
+        var $items = document.getElementById('gitWorkspaceDropdownItems');
+        if (!$selector || !$name || !$items) return;
+        var currentLabel = '';
         var html = '';
         list.forEach(function(ws) {
-            var selected = (ws.id === gitWorkspace) ? ' selected' : '';
-            var label = ws.name;
-            html += '<option value="' + ws.id + '"' + selected + '>' + escapeHtml(label) + '</option>';
+            var label = ws.name || ws.id;
+            if (ws.id === gitWorkspace) currentLabel = label;
+            html += '<div class="git-workspace-dropdown-item" data-workspace="' + ws.id + '">' + escapeHtml(label) + '</div>';
         });
-        $sel.innerHTML = html;
+        $items.innerHTML = html;
+        $name.textContent = currentLabel || '工作区';
     }
     var chatView = document.getElementById('chatView');
 
@@ -914,14 +918,39 @@
         return div.innerHTML;
     }
 
-    // ---- 工作区切换事件（下拉框）----
-    document.addEventListener('change', function(e) {
-        if (e.target.id === 'gitWorkspaceSelect') {
-            var ws = e.target.value;
+    // ---- 工作区切换事件（自定义下拉）----
+    document.addEventListener('click', function(e) {
+        var $selector = document.getElementById('gitWorkspaceSelector');
+        if (!$selector) return;
+        var $current = document.getElementById('gitWorkspaceCurrent');
+        var $dropdown = document.getElementById('gitWorkspaceDropdown');
+
+        // 点击 current 切换打开/关闭
+        if ($current && $current.contains(e.target)) {
+            e.stopPropagation();
+            $selector.classList.toggle('open');
+            return;
+        }
+
+        // 点击 dropdown item 选择工作区
+        var $item = $(e.target).closest('.git-workspace-dropdown-item');
+        if ($item.length) {
+            e.stopPropagation();
+            var ws = $item.attr('data-workspace');
             if (ws && ws !== gitWorkspace) {
                 gitWorkspace = ws;
+                // 更新显示名称
+                var $name = document.getElementById('gitWorkspaceName');
+                if ($name) $name.textContent = $item.text();
                 loadGitStatus();
             }
+            $selector.classList.remove('open');
+            return;
+        }
+
+        // 点击外部关闭
+        if ($selector.classList.contains('open') && !$selector.contains(e.target)) {
+            $selector.classList.remove('open');
         }
     });
 

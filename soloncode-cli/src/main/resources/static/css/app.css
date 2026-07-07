@@ -884,33 +884,91 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .git-workspace-bar {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
 }
 
-.git-workspace-bar label {
-    font-size: 11px;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    flex-shrink: 0;
+/* 自定义下拉选择器 - 参考 model-selector */
+.git-workspace-selector {
+    position: relative;
+    display: flex;
+    align-items: center;
 }
-
-.git-workspace-select {
-    flex: 1;
-    max-width: 240px;
+.git-workspace-current {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
     border: none;
     background: transparent;
-    color: var(--text-primary);
+    color: var(--text-secondary);
     font-size: 11px;
     cursor: pointer;
-    outline: none;
-    padding: 2px 0;
+    transition: color 0.2s;
+    white-space: nowrap;
+    max-width: 220px;
+}
+.git-workspace-current:hover {
+    color: var(--text-primary);
+}
+.git-workspace-current .git-workspace-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+.git-workspace-current .git-workspace-arrow {
+    font-size: 11px;
+    transition: transform 0.2s;
+    opacity: 0.5;
+}
+.git-workspace-selector.open .git-workspace-arrow {
+    transform: rotate(180deg);
 }
 
-.git-workspace-select:focus {
-    outline: none;
+.git-workspace-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 4px;
+    background: var(--bg-input-box);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    min-width: 160px;
+    max-width: 90vw;
+    width: max-content;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+    z-index: 100;
+}
+.git-workspace-selector.open .git-workspace-dropdown {
+    display: block;
+}
+.git-workspace-dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-primary);
+    transition: background 0.15s;
+}
+.git-workspace-dropdown-item:hover {
+    background: var(--bg-hover);
+}
+.git-workspace-dropdown-item.active {
+    background: var(--accent-light);
+    color: var(--accent);
+}
+.git-workspace-dropdown::-webkit-scrollbar {
+    width: 4px;
+}
+.git-workspace-dropdown::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
 }
 
 .filer-panel-tree {

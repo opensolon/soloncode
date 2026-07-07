@@ -271,9 +271,17 @@
 
         <!-- Tab Content: Git Diff -->
         <div class="filer-tab-content" id="tabContentGitdiff">
-            <!-- 审查工作区选择器（下拉式） -->
+            <!-- 审查工作区选择器（自定义下拉） -->
             <div class="git-workspace-bar" id="gitWorkspaceBar">
-                <select id="gitWorkspaceSelect" class="git-workspace-select"></select>
+                <div class="git-workspace-selector" id="gitWorkspaceSelector">
+                    <div class="git-workspace-current" id="gitWorkspaceCurrent" title="切换工作区">
+                        <span class="git-workspace-name" id="gitWorkspaceName">加载中...</span>
+                        <i class="layui-icon layui-icon-down git-workspace-arrow"></i>
+                    </div>
+                    <div class="git-workspace-dropdown" id="gitWorkspaceDropdown">
+                        <div class="git-workspace-dropdown-items" id="gitWorkspaceDropdownItems"></div>
+                    </div>
+                </div>
             </div>
             <!-- 状态1：Git 不可用 -->
             <div class="git-unavailable" id="gitUnavailable" style="display:none">
