@@ -76,18 +76,25 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
 
     var delBtn = $(row).find('.user-del-btn')[0];
     $(delBtn).on('click', function() {
-        if (!confirm('确认删除此消息及之后的所有消息？此操作不可撤销。')) return;
-        var rows = $(sess.container).find('.msg-row');
-        var idx = rows.index(row);
-        if (idx < 0) return;
-        // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
-        var serverCount = calcServerCount(sess.container, row);
-        $.post('/web/chat/rewind', {
-            sessionId: sess.sessionId,
-            count: serverCount
+        layer.confirm('确认删除此消息及之后的所有消息？此操作不可撤销。', {
+            title: '确认删除',
+            btn: ['删除', '取消'],
+            icon: 3,
+            offset: '120px'
+        }, function(index) {
+            var rows = $(sess.container).find('.msg-row');
+            var idx = rows.index(row);
+            if (idx < 0) { layer.close(index); return; }
+            // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
+            var serverCount = calcServerCount(sess.container, row);
+            $.post('/web/chat/rewind', {
+                sessionId: sess.sessionId,
+                count: serverCount
+            });
+            // 前端删所有可视行（含命令消息的无记录行），保持界面干净
+            handleRewind(sess, rows.length - idx);
+            layer.close(index);
         });
-        // 前端删所有可视行（含命令消息的无记录行），保持界面干净
-        handleRewind(sess, rows.length - idx);
     });
 
     // 时间戳（实时发送不传 createdAt 时兜底为当前时间，与历史加载行为一致）
@@ -193,18 +200,25 @@ function ensureAssistantBubble(sess) {
         if (continueBtn) $(continueBtn).on('click', function() { triggerCommand('/continue', false); });
         var delBtn = $(row).find('.del-btn')[0];
         if (delBtn) $(delBtn).on('click', function() {
-            if (!confirm('确认删除此消息及之后的所有消息？此操作不可撤销。')) return;
-            var rows = $(sess.container).find('.msg-row');
-            var idx = rows.index(row);
-            if (idx < 0) return;
-            // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
-            var serverCount = calcServerCount(sess.container, row);
-            $.post('/web/chat/rewind', {
-                sessionId: sess.sessionId,
-                count: serverCount
+            layer.confirm('确认删除此消息及之后的所有消息？此操作不可撤销。', {
+                title: '确认删除',
+                btn: ['删除', '取消'],
+                icon: 3,
+                offset: '120px'
+            }, function(index) {
+                var rows = $(sess.container).find('.msg-row');
+                var idx = rows.index(row);
+                if (idx < 0) { layer.close(index); return; }
+                // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
+                var serverCount = calcServerCount(sess.container, row);
+                $.post('/web/chat/rewind', {
+                    sessionId: sess.sessionId,
+                    count: serverCount
+                });
+                // 前端删所有可视行（含命令消息的无记录行），保持界面干净
+                handleRewind(sess, rows.length - idx);
+                layer.close(index);
             });
-            // 前端删所有可视行（含命令消息的无记录行），保持界面干净
-            handleRewind(sess, rows.length - idx);
         });
         // 流式输出过程中隐藏复制按钮，待 finishStream 收尾后再显示；
         // 非流式（历史加载）保持原有显示逻辑。
