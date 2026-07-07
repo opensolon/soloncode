@@ -47,7 +47,7 @@
             .then(function(res) {
                 var all = (res && res.data) ? res.data : [];
                 // 只保留可写的
-                gitWritableWorkspaces = all.filter(function(ws) { return ws.writable; });
+                gitWritableWorkspaces = all.filter(function(ws) { return ws.writeable; });
                 renderGitWorkspaceBar(gitWritableWorkspaces);
                 var exists = gitWritableWorkspaces.some(function(ws) { return ws.id === gitWorkspace; });
                 if (!exists) {
@@ -58,15 +58,15 @@
     }
 
     function renderGitWorkspaceBar(list) {
-        var $bar = document.getElementById('gitWorkspaceBar');
-        if (!$bar) return;
+        var $sel = document.getElementById('gitWorkspaceSelect');
+        if (!$sel) return;
         var html = '';
         list.forEach(function(ws) {
-            var active = (ws.id === gitWorkspace);
+            var selected = (ws.id === gitWorkspace) ? ' selected' : '';
             var label = ws.name;
-            html += '<button class="git-workspace-item' + (active ? ' active' : '') + '" data-workspace="' + ws.id + '">' + escapeHtml(label) + '</button>';
+            html += '<option value="' + ws.id + '"' + selected + '>' + escapeHtml(label) + '</option>';
         });
-        $bar.innerHTML = html;
+        $sel.innerHTML = html;
     }
     var chatView = document.getElementById('chatView');
 
@@ -914,14 +914,12 @@
         return div.innerHTML;
     }
 
-    // ---- 工作区切换事件 ----
-    document.addEventListener('click', function(e) {
-        var btn = e.target.closest('.git-workspace-item');
-        if (btn) {
-            var ws = btn.getAttribute('data-workspace');
+    // ---- 工作区切换事件（下拉框）----
+    document.addEventListener('change', function(e) {
+        if (e.target.id === 'gitWorkspaceSelect') {
+            var ws = e.target.value;
             if (ws && ws !== gitWorkspace) {
                 gitWorkspace = ws;
-                renderGitWorkspaceBar(gitWritableWorkspaces);
                 loadGitStatus();
             }
         }
