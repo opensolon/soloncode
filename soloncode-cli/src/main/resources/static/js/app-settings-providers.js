@@ -205,10 +205,10 @@
         $('#providerStandard').val(provider ? provider.standard : 'openai');
         $('#providerApiUrl').val(provider ? provider.apiUrl : '');
         $('#providerApiKey').val(provider ? provider.apiKey : '');
-        $('#providerScope').val(provider ? (provider.scope || 'global') : 'global');
+        $('#providerScope').val(provider ? (provider.scope || 'user') : 'user');
 
         // 设置作用域按钮状态
-        var scope = provider ? (provider.scope || 'global') : 'global';
+        var scope = provider ? (provider.scope || 'user') : 'user';
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn').removeClass('active');
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn[data-scope="' + scope + '"]').addClass('active');
 

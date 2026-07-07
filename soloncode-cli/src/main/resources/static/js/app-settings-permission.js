@@ -123,8 +123,7 @@
             if (resp.code === 200 && resp.data) {
                 var disallowedTools = resp.data.disallowedTools || [];
                 renderToolsList(disallowedTools);
-                // 高级模式同步
-                $('#permissionDisallowedTools').val(toLines(disallowedTools));
+                // 已移除高级模式同步
             }
         }).fail(function () { console.error('[Settings] Failed to load permission settings'); });
     }
@@ -140,14 +139,8 @@
 
     // 保存权限设置
     function savePermissionSettings() {
-        var disallowedTools;
-        if ($('#permissionAdvanced').is(':visible')) {
-            // 高级模式：从文本框解析
-            disallowedTools = toList($('#permissionDisallowedTools').val());
-        } else {
-            // 可视化模式：从复选框获取
-            disallowedTools = getDisallowedTools();
-        }
+        // 从复选框获取禁用的工具列表
+        var disallowedTools = getDisallowedTools();
 
         var $btn = $('#permissionSaveBtn');
         $btn.prop('disabled', true);
@@ -200,30 +193,7 @@
 
 
 
-        // 高级模式切换
-        $('#permissionAdvancedBtn').on('click', function () {
-            var $advanced = $('#permissionAdvanced');
-            var $list = $('#permissionToolsList');
-            var $toolbar = $('.permission-toolbar-actions');
-            
-            if ($advanced.is(':visible')) {
-                // 切换到可视化模式
-                $advanced.hide();
-                $list.show();
-                $(this).text('高级模式');
-                // 同步数据：从文本框更新到复选框
-                var disallowedTools = toList($('#permissionDisallowedTools').val());
-                renderToolsList(disallowedTools);
-            } else {
-                // 切换到高级模式
-                $advanced.show();
-                $list.hide();
-                $(this).text('简易模式');
-                // 同步数据：从复选框更新到文本框
-                var disallowedTools = getDisallowedTools();
-                $('#permissionDisallowedTools').val(toLines(disallowedTools));
-            }
-        });
+        // 高级模式已移除
     }
 
     // 初始化
