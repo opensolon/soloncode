@@ -8,12 +8,14 @@ var OK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 /* 重新运行（循环箭头）与继续运行（快进）图标 */
 var RERUN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
 var CONTINUE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>';
+/* 删除图标 */
+var DELETE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
 /* ===== Message Rendering (Session-Aware) ===== */
 function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt, sourceLabel) {
     var row = $('<div>').addClass('msg-row user')[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
-    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button></div>';
+    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="msg-actions"><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button><button class="user-del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button></div></div>';
     var bubble = $(row).find('.msg-bubble')[0];
 
     // 来源标签（仅非空且非 "Web" 时显示；会在时间戳左侧追加）
@@ -69,6 +71,20 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         }
     });
 
+    var delBtn = $(row).find('.user-del-btn')[0];
+    $(delBtn).on('click', function() {
+        if (!confirm('确认删除此消息及之后的所有消息？此操作不可撤销。')) return;
+        var rows = $(sess.container).find('.msg-row');
+        var idx = rows.index(row);
+        if (idx < 0) return;
+        var count = rows.length - idx;
+        $.post('/web/chat/rewind', {
+            sessionId: sess.sessionId,
+            count: count
+        });
+        handleRewind(sess, count);
+    });
+
     // 时间戳（实时发送不传 createdAt 时兜底为当前时间，与历史加载行为一致）
     var msgTime = createdAt || Date.now();
     var timeEl = $('<div>').addClass('msg-time')[0];
@@ -107,6 +123,7 @@ function ensureAssistantBubble(sess) {
             + '<button class="user-copy-btn copy-btn" title="复制">' + COPY_SVG + '</button>'
             + '<button class="user-copy-btn rerun-btn" title="重新运行">' + RERUN_SVG + '</button>'
             + '<button class="user-copy-btn continue-btn" title="继续运行">' + CONTINUE_SVG + '</button>'
+            + '<button class="user-copy-btn del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button>'
             + '</div></div>';
         $(sess.container).append(row);
         sess.currentBubbleEl = $(row).find('.md-content')[0];
@@ -169,6 +186,19 @@ function ensureAssistantBubble(sess) {
         }
         if (rerunBtn) $(rerunBtn).on('click', function() { triggerCommand('/rerun', true); });
         if (continueBtn) $(continueBtn).on('click', function() { triggerCommand('/continue', false); });
+        var delBtn = $(row).find('.del-btn')[0];
+        if (delBtn) $(delBtn).on('click', function() {
+            if (!confirm('确认删除此消息及之后的所有消息？此操作不可撤销。')) return;
+            var rows = $(sess.container).find('.msg-row');
+            var idx = rows.index(row);
+            if (idx < 0) return;
+            var count = rows.length - idx;
+            $.post('/web/chat/rewind', {
+                sessionId: sess.sessionId,
+                count: count
+            });
+            handleRewind(sess, count);
+        });
         // 流式输出过程中隐藏复制按钮，待 finishStream 收尾后再显示；
         // 非流式（历史加载）保持原有显示逻辑。
         if (sess.isStreaming) {

@@ -344,6 +344,15 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .user-copy-btn:hover { opacity: 1; background: var(--bg-hover); color: var(--text-primary); }
 .user-copy-btn.copied { color: var(--color-success); opacity: 1; }
 
+/* 删除按钮（用户 & AI）红色警示 */
+.user-del-btn,
+.del-btn { background: none; border: none; border-radius: 8px; padding: 4px; margin-top: 4px; cursor: pointer; color: var(--text-secondary); font-size: 14px; line-height: 1; opacity: 0.6; transition: background 0.15s, color 0.15s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.user-del-btn:hover,
+.del-btn:hover { opacity: 1; background: rgba(220, 38, 38, 0.1); color: #dc2626; }
+
+/* 删除按钮在 AI 消息中也默认显示（与 rerun/continue 不同，始终可见） */
+.msg-row.assistant .del-btn { display: flex; }
+
 /* 重新运行 / 继续运行：仅在最后一条 AI 消息显示（该语义只针对最近一轮）。
    用 :last-child 零维护：发送新消息后新 AI 气泡自动成为末尾，旧气泡按钮自动隐藏。 */
 .msg-row.assistant .rerun-btn,
