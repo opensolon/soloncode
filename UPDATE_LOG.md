@@ -1,8 +1,11 @@
 
 ### v2026.7.7
 
+* 添加 soloncode web 对话消息删除功能
+* 优化 soloncode 上下文压缩算法
 * 优化 soloncode hitl 实现
 * 优化 soloncode permission 实现
+* 细节优化
 
 ### v2026.7.3
 

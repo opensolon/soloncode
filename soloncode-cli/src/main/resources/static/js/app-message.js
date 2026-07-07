@@ -77,12 +77,14 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         var rows = $(sess.container).find('.msg-row');
         var idx = rows.index(row);
         if (idx < 0) return;
-        var count = rows.length - idx;
+        // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
+        var serverCount = calcServerCount(sess.container, row);
         $.post('/web/chat/rewind', {
             sessionId: sess.sessionId,
-            count: count
+            count: serverCount
         });
-        handleRewind(sess, count);
+        // 前端删所有可视行（含命令消息的无记录行），保持界面干净
+        handleRewind(sess, rows.length - idx);
     });
 
     // 时间戳（实时发送不传 createdAt 时兜底为当前时间，与历史加载行为一致）
@@ -192,12 +194,14 @@ function ensureAssistantBubble(sess) {
             var rows = $(sess.container).find('.msg-row');
             var idx = rows.index(row);
             if (idx < 0) return;
-            var count = rows.length - idx;
+            // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
+            var serverCount = calcServerCount(sess.container, row);
             $.post('/web/chat/rewind', {
                 sessionId: sess.sessionId,
-                count: count
+                count: serverCount
             });
-            handleRewind(sess, count);
+            // 前端删所有可视行（含命令消息的无记录行），保持界面干净
+            handleRewind(sess, rows.length - idx);
         });
         // 流式输出过程中隐藏复制按钮，待 finishStream 收尾后再显示；
         // 非流式（历史加载）保持原有显示逻辑。
@@ -950,6 +954,30 @@ function handleHitlResponse(sess, action) {
         // 通过回调占位调用 finishStream（由 app-streaming.js 注册）
         if (onFinishStream) onFinishStream(sess);
     });
+}
+
+/* ===== Server Record Count =====
+ * 计算从 startRow 到末尾、在 ndjson 中有服务端记录的消息数量。
+ * 命令消息（以 / 开头）在 ndjson 中无记录，不计入，避免后端多删。 */
+function calcServerCount(container, startRow) {
+    var rows = $(container).find('.msg-row');
+    var idx = rows.index(startRow);
+    if (idx < 0) return 0;
+    var count = 0;
+    for (var i = idx; i < rows.length; i++) {
+        var r = rows[i];
+        // 用户消息中，以 / 开头的命令在 ndjson 中无记录，跳过
+        if ($(r).hasClass('user')) {
+            var textEl = $(r).find('.user-msg-text')[0];
+            if (textEl) {
+                var raw = textEl.getAttribute('data-md-raw') || textEl.innerText;
+                if (raw.trim().startsWith('/')) continue;
+            }
+        }
+        // 系统通知也可能无记录，但删除按钮不存在于系统通知上，无需处理
+        count++;
+    }
+    return count;
 }
 
 /* ===== Rewind Handling ===== */
