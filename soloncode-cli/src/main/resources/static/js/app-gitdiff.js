@@ -28,6 +28,46 @@
     var gitViewerClose = document.getElementById('gitViewerClose');
     // main-area 子视图引用
     var welcomeView = document.getElementById('welcomeView');
+
+    // ---- 多工作区状态 ----
+    var gitWorkspace = 'workspace';
+    var gitWritableWorkspaces = [];
+
+    function gitUrl(basePath, params) {
+        var query = params || '';
+        if (gitWorkspace !== 'workspace') {
+            query += (query ? '&' : '') + 'workspace=' + encodeURIComponent(gitWorkspace);
+        }
+        return basePath + (query ? '?' + query : '');
+    }
+
+    function loadGitWorkspaces() {
+        fetch('/web/chat/filer/workspaces')
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                var all = (res && res.data) ? res.data : [];
+                // 只保留可写的
+                gitWritableWorkspaces = all.filter(function(ws) { return ws.writable; });
+                renderGitWorkspaceBar(gitWritableWorkspaces);
+                var exists = gitWritableWorkspaces.some(function(ws) { return ws.id === gitWorkspace; });
+                if (!exists) {
+                    gitWorkspace = 'workspace';
+                }
+                loadGitStatus();
+            });
+    }
+
+    function renderGitWorkspaceBar(list) {
+        var $bar = document.getElementById('gitWorkspaceBar');
+        if (!$bar) return;
+        var html = '';
+        list.forEach(function(ws) {
+            var active = (ws.id === gitWorkspace);
+            var label = ws.name;
+            html += '<button class="git-workspace-item' + (active ? ' active' : '') + '" data-workspace="' + ws.id + '">' + escapeHtml(label) + '</button>';
+        });
+        $bar.innerHTML = html;
+    }
     var chatView = document.getElementById('chatView');
 
     // ---- 状态 ----
@@ -92,7 +132,7 @@
 
     // ---- 加载 Git 状态 ----
     function loadGitStatus() {
-        fetch('/web/chat/git/status')
+        fetch(gitUrl('/web/chat/git/status'))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var data = (res && res.data) ? res.data : {};
@@ -297,9 +337,29 @@
         gitDiffViewer.style.display = 'flex';
         diffViewerActive = true;
 
-        // 更新 header
+        // 从路径中解析工作区前缀：@xxx/xxx
+        var fileWorkspace = 'workspace';
+        var apiPath = path;
+        var displayPath = path;
+        if (path && path.charAt(0) === '@') {
+            var slashIdx = path.indexOf('/');
+            if (slashIdx > 1) {
+                fileWorkspace = path.substring(0, slashIdx);
+                apiPath = path.substring(slashIdx + 1);
+                // displayPath 保持原样（含 @xxx/ 前缀）
+            }
+        } else {
+            // 无 @ 前缀时，回退到全局工作区状态
+            fileWorkspace = window.activeFilerWorkspace || 'workspace';
+            // 如果全局状态是挂载工作区，displayPath 也要补上 @xxx/ 前缀
+            if (fileWorkspace !== 'workspace') {
+                displayPath = fileWorkspace + '/' + displayPath;
+            }
+        }
+
+        // 更新 header（显示带工作区前缀的路径）
         if (gitViewerLabel) gitViewerLabel.textContent = '文件内容';
-        if (gitViewerFile) gitViewerFile.textContent = path;
+        if (gitViewerFile) gitViewerFile.textContent = displayPath;
 
         // 清理操作栏
         var oldActions = gitDiffViewer.querySelector('.git-viewer-actions');
@@ -307,7 +367,11 @@
 
         if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">加载中...</div>';
 
-        fetch('/web/chat/filer/read?path=' + encodeURIComponent(path))
+        var readUrl = '/web/chat/filer/read?path=' + encodeURIComponent(apiPath);
+        if (fileWorkspace !== 'workspace') {
+            readUrl += '&workspace=' + encodeURIComponent(fileWorkspace);
+        }
+        fetch(readUrl)
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
@@ -453,7 +517,7 @@
 
         if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">加载中...</div>';
 
-        fetch('/web/chat/git/diff?path=' + encodeURIComponent(path))
+        fetch(gitUrl('/web/chat/git/diff', 'path=' + encodeURIComponent(path)))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
@@ -493,7 +557,7 @@
             addBtn.addEventListener('click', function() {
                 addBtn.disabled = true;
                 addBtn.textContent = '添加中...';
-                fetch('/web/chat/git/stage', {
+        fetch(gitUrl('/web/chat/git/stage'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -526,7 +590,7 @@
             unstageBtn.addEventListener('click', function() {
                 unstageBtn.disabled = true;
                 unstageBtn.textContent = '移出中...';
-                fetch('/web/chat/git/unstage', {
+        fetch(gitUrl('/web/chat/git/unstage'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -675,7 +739,7 @@
             // 获取当前会话的 sessionId
             var currentSessionId = (typeof activeSessionId !== 'undefined') ? activeSessionId : '';
 
-            fetch('/web/chat/git/summary', {
+        fetch(gitUrl('/web/chat/git/summary'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'sessionId=' + encodeURIComponent(currentSessionId)
@@ -738,7 +802,7 @@
             gitCommitBtn.disabled = true;
             gitCommitBtn.innerHTML = '<span style="opacity:0.7">提交中...</span>';
 
-            fetch('/web/chat/git/commit', {
+        fetch(gitUrl('/web/chat/git/commit'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: msg, files: files })
@@ -791,7 +855,7 @@
             gitInitBtn.textContent = '初始化中...';
 
             var doCommit = gitInitCommit && gitInitCommit.checked;
-            fetch('/web/chat/git/init?initialCommit=' + (doCommit ? 'true' : 'false'), { method: 'POST' })
+        fetch(gitUrl('/web/chat/git/init', 'initialCommit=' + (doCommit ? 'true' : 'false')), { method: 'POST' })
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
                     if (res && res.code === 200) {
@@ -850,8 +914,21 @@
         return div.innerHTML;
     }
 
+    // ---- 工作区切换事件 ----
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.git-workspace-item');
+        if (btn) {
+            var ws = btn.getAttribute('data-workspace');
+            if (ws && ws !== gitWorkspace) {
+                gitWorkspace = ws;
+                renderGitWorkspaceBar(gitWritableWorkspaces);
+                loadGitStatus();
+            }
+        }
+    });
+
     // ---- 初始化 ----
-    loadGitStatus();
+    loadGitWorkspaces();
     // 每60秒兜底刷新
     setInterval(loadGitStatus, 60000);
 

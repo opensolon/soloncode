@@ -863,6 +863,59 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     padding: 0 2px;
     font-weight: 600;
 }
+
+/* ===== 工作区根节点（文件树一级节点） ===== */
+.filer-workspace-readonly {
+    color: var(--text-secondary);
+    opacity: 0.55;
+}
+
+.filer-ws-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* ===== 工作区选择器（审查 tab） ===== */
+.git-workspace-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    overflow-x: auto;
+}
+
+.git-workspace-item {
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+
+.git-workspace-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.git-workspace-item.active {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: var(--accent);
+    font-weight: 500;
+}
+
 .filer-panel-tree {
     flex: 1;
     overflow-y: auto;

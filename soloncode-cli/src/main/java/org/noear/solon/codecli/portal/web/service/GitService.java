@@ -19,6 +19,8 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.core.handle.Result;
 import org.slf4j.Logger;
@@ -27,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -49,8 +52,11 @@ import java.util.concurrent.TimeUnit;
 public class GitService {
     private static final Logger LOG = LoggerFactory.getLogger(GitService.class);
 
-    /** 工作区目录 */
-    private final File workspaceDir;
+    /** 默认工作区目录（可通过 setter 切换） */
+    private File workspaceDir;
+
+    /** 保存构造时的原始工作区目录，用于恢复 */
+    private final File defaultWorkspaceDir;
 
     /** AI Agent 执行引擎，用于 gitSummary 时获取模型和 Agent */
     private final HarnessEngine engine;
@@ -63,7 +69,39 @@ public class GitService {
      */
     public GitService(String workspace, HarnessEngine engine) {
         this.workspaceDir = new File(workspace);
+        this.defaultWorkspaceDir = this.workspaceDir;
         this.engine = engine;
+    }
+
+    /**
+     * 获取默认工作区目录。
+     */
+    public File getDefaultWorkspaceDir() {
+        return defaultWorkspaceDir;
+    }
+
+    /**
+     * 设置当前 Git 工作目录（用于临时切换工作区）。
+     */
+    public void setWorkspaceDir(File dir) {
+        this.workspaceDir = dir;
+    }
+
+    /**
+     * 根据工作区标识解析 Git 工作目录。
+     */
+    public File resolveGitDir(String workspaceId) {
+        if (workspaceId == null || workspaceId.isEmpty() || "workspace".equals(workspaceId)) {
+            return defaultWorkspaceDir;
+        }
+        MountDir mount = engine.getMount(workspaceId);
+        if (mount == null) {
+            throw new IllegalArgumentException("Mount not found: " + workspaceId);
+        }
+        if (mount.getType() != MountType.FILES) {
+            throw new IllegalArgumentException("Mount is not FILES type: " + workspaceId);
+        }
+        return mount.getRealPath().toFile();
     }
 
     // ==================== 内部基础设施 ====================
@@ -92,6 +130,36 @@ public class GitService {
     private ProcessResult runGitCommand(String... command) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(workspaceDir);
+        pb.redirectErrorStream(false);
+        pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+
+        Process proc = pb.start();
+        String stdout = readStream(proc.getInputStream());
+        String stderr = readStream(proc.getErrorStream());
+
+        boolean finished = proc.waitFor(10, TimeUnit.SECONDS);
+        if (!finished) {
+            proc.destroyForcibly();
+            ProcessResult result = new ProcessResult();
+            result.exitCode = -1;
+            result.stdout = "";
+            result.stderr = "Command timed out after 10 seconds";
+            return result;
+        }
+
+        ProcessResult result = new ProcessResult();
+        result.exitCode = proc.exitValue();
+        result.stdout = stdout;
+        result.stderr = stderr;
+        return result;
+    }
+
+    /**
+     * 在指定目录下执行 Git 命令。
+     */
+    private ProcessResult runGitCommandInDir(File dir, String... command) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(dir);
         pb.redirectErrorStream(false);
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
 
@@ -481,6 +549,8 @@ public class GitService {
      * @param files     需要分析的文件路径列表
      * @return 包含 summary 的结果对象
      */
+
+
     public Result<Map> summary(String sessionId, List<String> files) {
         if (files == null || files.isEmpty()) {
             return Result.failure(400, "paths is required");

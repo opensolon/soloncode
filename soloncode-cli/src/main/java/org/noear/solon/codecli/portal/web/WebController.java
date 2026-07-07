@@ -104,7 +104,7 @@ public class WebController {
         this.webGate = webGate;
         this.loopScheduler = loopScheduler;
         this.gitService = new GitService(engine.getWorkspace(), engine);
-        this.fileService = new FileService(engine.getWorkspace());
+        this.fileService = new FileService(engine.getWorkspace(), engine);
 
         // 注入 Web 端 Loop 任务执行器：同步等待本轮 AI 响应结束，捕获文本结果用于 goal 检测。
         if (loopScheduler != null) {
@@ -645,57 +645,77 @@ public class WebController {
      * @return 包含 gitAvailable、initialized、branch、changed、staged、untracked 的结果对象
      * @throws Exception Git 命令执行异常
      */
-    @Get
-    @Mapping("/web/chat/git/status")
-    public Result<Map> gitStatus() throws Exception {
-        return gitService.status();
-    }
 
     /**
-     * 初始化 Git 仓库。
-     * <p>在工作区执行 git init，自动生成 .gitignore 文件（仅当文件不存在时），
-     * 可选执行初始提交（initialCommit=true 时）。</p>
-     *
-     * @param initialCommit 是否执行初始提交，默认为 false
-     * @return 包含 initialized、branch 的结果对象
-     * @throws Exception Git 命令执行异常
+     * 执行带工作区切换的 Git 操作。
+     * <p>临时切换 gitService 的工作目录到指定挂载点，执行操作后恢复默认。</p>
      */
+    private Result<Map> withGitWorkspace(String workspaceId, GitOperation op) throws Exception {
+        File originalDir = gitService.getDefaultWorkspaceDir();
+        if (workspaceId != null && !workspaceId.isEmpty() && !"workspace".equals(workspaceId)) {
+            File targetDir = gitService.resolveGitDir(workspaceId);
+            gitService.setWorkspaceDir(targetDir);
+        }
+        try {
+            return op.execute();
+        } finally {
+            gitService.setWorkspaceDir(originalDir);
+        }
+    }
+
+    @FunctionalInterface
+    private interface GitOperation {
+        Result<Map> execute() throws Exception;
+    }
+
+    @Get
+    @Mapping("/web/chat/git/status")
+    public Result<Map> gitStatus(@Param(value = "workspace", required = false) String workspace) throws Exception {
+        return withGitWorkspace(workspace, () -> gitService.status());
+    }
+
     @Post
     @Mapping("/web/chat/git/init")
-    public Result<Map> gitInit(@Param(value = "initialCommit", required = false) Boolean initialCommit) throws Exception {
-        return gitService.init(initialCommit);
+    public Result<Map> gitInit(@Param(value = "workspace", required = false) String workspace,
+                               @Param(value = "initialCommit", required = false) Boolean initialCommit) throws Exception {
+        return withGitWorkspace(workspace, () -> gitService.init(initialCommit));
     }
 
     @Get
     @Mapping("/web/chat/git/diff")
-    public Result<Map> gitDiff(@Param(value = "path", required = false) String path) throws Exception {
-        return gitService.diff(path);
+    public Result<Map> gitDiff(@Param(value = "workspace", required = false) String workspace,
+                               @Param(value = "path", required = false) String path) throws Exception {
+        return withGitWorkspace(workspace, () -> gitService.diff(path));
     }
 
     @Post
     @Mapping("/web/chat/git/stage")
-    public Result<Map> gitStage(@Body String body) throws Exception {
+    public Result<Map> gitStage(@Body String body,
+                                @Param(value = "workspace", required = false) String workspace) throws Exception {
         String path = parseJsonPath(body);
-        return gitService.stage(path);
+        return withGitWorkspace(workspace, () -> gitService.stage(path));
     }
 
     @Post
     @Mapping("/web/chat/git/unstage")
-    public Result<Map> gitUnstage(@Body String body) throws Exception {
+    public Result<Map> gitUnstage(@Body String body,
+                                  @Param(value = "workspace", required = false) String workspace) throws Exception {
         String path = parseJsonPath(body);
-        return gitService.unstage(path);
+        return withGitWorkspace(workspace, () -> gitService.unstage(path));
     }
 
     @Get
     @Mapping("/web/chat/git/file-content")
-    public Result<Map> gitFileContent(@Param("path") String path,
+    public Result<Map> gitFileContent(@Param(value = "workspace", required = false) String workspace,
+                                      @Param("path") String path,
                                       @Param(value = "ref", required = false) String ref) throws Exception {
-        return gitService.fileContent(path, ref);
+        return withGitWorkspace(workspace, () -> gitService.fileContent(path, ref));
     }
 
     @Post
     @Mapping("/web/chat/git/commit")
-    public Result<Map> gitCommit(@Body String body) throws Exception {
+    public Result<Map> gitCommit(@Body String body,
+                                 @Param(value = "workspace", required = false) String workspace) throws Exception {
         String message = null;
         List<String> files = null;
         if (body != null && !body.trim().isEmpty()) {
@@ -717,13 +737,16 @@ public class WebController {
             } catch (Exception ignored) {
             }
         }
-        return gitService.commit(message, files);
+        final String finalMsg = message;
+        final List<String> finalFiles = files;
+        return withGitWorkspace(workspace, () -> gitService.commit(finalMsg, finalFiles));
     }
 
     @Post
     @Mapping("/web/chat/git/summary")
-    public Result<Map> gitSummary(@Param("sessionId") String sessionId,
-                                  @Param("paths") String paths) {
+    public Result<Map> gitSummary(@Param(value = "workspace", required = false) String workspace,
+                                  @Param("sessionId") String sessionId,
+                                  @Param("paths") String paths) throws Exception {
         if (sessionId == null || sessionId.isEmpty()) {
             return Result.failure(400, "sessionId is required");
         }
@@ -749,7 +772,7 @@ public class WebController {
             }
         }
 
-        return gitService.summary(sessionId, files);
+        return withGitWorkspace(workspace, () -> gitService.summary(sessionId, files));
     }
 
     /**
@@ -1316,36 +1339,42 @@ public class WebController {
     // ==================== 文件浏览（委派给 FileService） ====================
 
     /**
+     * 列出可用工作区列表。
+     */
+    @Get
+    @Mapping("/web/chat/filer/workspaces")
+    public Result<List<Map>> fileWorkspaces() throws Exception {
+        return fileService.listWorkspaces();
+    }
+
+    /**
      * 工作区文件树浏览接口。
-     *
-     * @see FileService#tree(String, Integer)
      */
     @Get
     @Mapping("/web/chat/filer/tree")
-    public Result<List<Map>> fileTree(@Param(value = "path", required = false) String path,
+    public Result<List<Map>> fileTree(@Param(value = "workspace", required = false) String workspace,
+                                      @Param(value = "path", required = false) String path,
                                       @Param(value = "depth", required = false) Integer depth) throws Exception {
-        return fileService.tree(path, depth);
+        return fileService.tree(workspace, path, depth);
     }
 
     /**
      * 工作区文件搜索接口。
-     *
-     * @see FileService#search(String)
      */
     @Get
     @Mapping("/web/chat/filer/search")
-    public Result<List<Map>> fileSearch(@Param("keyword") String keyword) throws Exception {
-        return fileService.search(keyword);
+    public Result<List<Map>> fileSearch(@Param(value = "workspace", required = false) String workspace,
+                                        @Param("keyword") String keyword) throws Exception {
+        return fileService.search(workspace, keyword);
     }
 
     /**
      * 读取工作区文件内容接口。
-     *
-     * @see FileService#read(String)
      */
     @Get
     @Mapping("/web/chat/filer/read")
-    public Result<Map> fileRead(@Param("path") String path) throws Exception {
-        return fileService.read(path);
+    public Result<Map> fileRead(@Param(value = "workspace", required = false) String workspace,
+                                @Param("path") String path) throws Exception {
+        return fileService.read(workspace, path);
     }
 }

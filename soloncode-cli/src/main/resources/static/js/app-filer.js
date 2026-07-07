@@ -12,6 +12,24 @@
     var FILER_MAX_WIDTH = 600;
     var FILER_DEFAULT_WIDTH = 280;
 
+    /** 当前活动工作区（用于搜索/文件查看器） */
+    window.activeFilerWorkspace = 'workspace';
+
+    /** 查找 DOM 节点所属的工作区 ID */
+    function getNodeWorkspaceId($el) {
+        var $wsRoot = $el.closest('[data-workspace-id]');
+        return $wsRoot.length ? ($wsRoot.attr('data-workspace-id') || 'workspace') : 'workspace';
+    }
+
+    /** 构建带 workspace 参数的 URL */
+    function filerUrl(basePath, params) {
+        var query = params || '';
+        if (window.activeFilerWorkspace !== 'workspace') {
+            query += (query ? '&' : '') + 'workspace=' + encodeURIComponent(window.activeFilerWorkspace);
+        }
+        return basePath + (query ? '?' + query : '');
+    }
+
     // ---- 同步 toggle 按钮位置 ----
     function syncToggleBtnPosition(knownWidth) {
         if (!$toggleBtn.length || !$panel.length) return;
@@ -63,7 +81,6 @@
             if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
             $resizeHandle.removeClass('dragging');
             $(document.body).css({ cursor: '', userSelect: '' });
-            // 拖拽结束后一次性保存宽度，避免拖拽过程中反复写入 localStorage 阻塞主线程
             var finalWidth = $panel[0].offsetWidth;
             if (finalWidth >= FILER_MIN_WIDTH && finalWidth <= FILER_MAX_WIDTH) {
                 localStorage.setItem('filer-width', finalWidth);
@@ -137,14 +154,98 @@
         return paths;
     }
 
-    // ---- 加载文件树 ----
+    /** 加载工作区列表作为树的根节点 */
     function loadTree() {
-        $.get('/web/chat/filer/tree?depth=1', function(res) {
-            var data = (res && res.data) ? res.data : [];
-            if ($treeEl.length) renderTree(data, $treeEl, 0);
+        $.get('/web/chat/filer/workspaces', function(res) {
+            var wsList = (res && res.data) ? res.data : [];
+            if ($treeEl.length) {
+                $treeEl.html('');
+                wsList.forEach(function(ws) {
+                    appendWorkspaceNode(ws, $treeEl, 0);
+                });
+            }
         }).fail(function(jqXHR, textStatus, error) {
-            console.error('[filer] load error', error);
+            console.error('[filer] workspaces load error', error);
+            // fallback：直接用当前工作区文件树
+            $.get('/web/chat/filer/tree?depth=1', function(res) {
+                var data = (res && res.data) ? res.data : [];
+                if ($treeEl.length) renderTree(data, $treeEl, 0);
+            });
         });
+    }
+
+    /** 渲染工作区根节点（树的顶级节点） */
+    function appendWorkspaceNode(ws, $container, indent) {
+        var wsId = ws.id;
+        var isReadonly = ws.readonly === true;
+
+        var $nodeEl = $('<div>').addClass('filer-node')
+            .attr('data-indent', indent)
+            .attr('data-workspace-id', wsId)
+            .attr('data-path', ws.name);
+
+        var $row = $('<div>').addClass('filer-node-row')
+            .addClass(isReadonly ? 'filer-workspace-readonly' : '')
+            .attr('title', ws.name + (isReadonly ? ' (只读)' : ''));
+
+        // 箭头
+        var $arrow = $('<span>').addClass('filer-arrow')
+            .html('<svg width="12" height="12" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+        $row.append($arrow);
+
+        // 图标（文件夹样式）
+        var $icon = $('<span>').addClass('filer-node-icon')
+            .html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
+        $row.append($icon);
+
+        // 名称
+        var $name = $('<span>').addClass('filer-node-name')
+            .text(ws.name);
+        $row.append($name);
+
+        // 只读徽标
+        if (isReadonly) {
+            $row.append('<span class="filer-ws-badge">只读</span>');
+        }
+
+        $nodeEl.append($row);
+
+        // 子容器（工作区展开后，文件树渲染在此）
+        var $childrenEl = $('<div>').addClass('filer-node-children');
+        $nodeEl.append($childrenEl);
+
+        // 点击展开/折叠
+        (function(id, $ne, $cEl, $r) {
+            $row.on('click', function(e) {
+                e.stopPropagation();
+                var $aEl = $r.find('.filer-arrow');
+                var isOpen = $cEl.hasClass('open');
+                if (isOpen) {
+                    $cEl.removeClass('open');
+                    $aEl.removeClass('open');
+                } else {
+                    // 设置为当前活动工作区（供搜索和文件查看器使用）
+                    window.activeFilerWorkspace = id;
+
+                    $cEl.addClass('open');
+                    $aEl.addClass('open');
+                    if (!$cEl.children().length) {
+                        var url = '/web/chat/filer/tree?depth=1';
+                        if (id !== 'workspace') {
+                            url += '&workspace=' + encodeURIComponent(id);
+                        }
+                        $.get(url, function(res) {
+                            var data = (res && res.data) ? res.data : [];
+                            renderTree(data, $cEl, indent + 1);
+                        }).fail(function() {
+                            console.error('[filer] load workspace tree error', id);
+                        });
+                    }
+                }
+            });
+        })(wsId, $nodeEl, $childrenEl, $row);
+
+        $container.append($nodeEl);
     }
 
     // ---- 渲染树节点 ----
@@ -216,11 +317,16 @@
                     } else {
                         $cEl.addClass('open');
                         $aEl.addClass('open');
-                        // dirty 标记或无子节点时，展开后重新拉取最新数据
                         var isDirty = $ne.attr('data-dirty') === '1';
                         if (isDirty || !$cEl.children().length) {
                             $ne.removeAttr('data-dirty');
-                            $.get('/web/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1', function(res) {
+                            // 使用 workspace 感知的路径查询
+                            var wsId = getNodeWorkspaceId($ne);
+                            var url = '/web/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1';
+                            if (wsId !== 'workspace') {
+                                url += '&workspace=' + encodeURIComponent(wsId);
+                            }
+                            $.get(url, function(res) {
                                 var subData = (res && res.data) ? res.data : [];
                                 renderTree(subData, $cEl, indent + 1);
                             });
@@ -230,14 +336,16 @@
             })(node, $nodeEl);
         } else {
             // 文件：单击打开文件查看器（延迟 250ms，避免与双击冲突）
-            (function(n) {
+            (function(n, $ne) {
+                var wsId = getNodeWorkspaceId($ne);
+                var viewPath = (wsId !== 'workspace' && wsId.indexOf('@') === 0) ? wsId + '/' + n.path : n.path;
                 var clickTimer = null;
                 $row.on('click', function(e) {
                     e.stopPropagation();
                     if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
                     clickTimer = setTimeout(function() {
                         if (typeof window.openFileViewer === 'function') {
-                            window.openFileViewer(n.path, n.name);
+                            window.openFileViewer(viewPath, n.name);
                         }
                     }, 250);
                 });
@@ -246,19 +354,22 @@
                     e.preventDefault();
                     if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
                 });
-            })(node);
+            })(node, $nodeEl);
         }
 
         // 双击：插入 path 到输入框（所有节点通用）
-        (function(n) {
+        (function(n, $ne) {
             $row.on('dblclick', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
 
+                var wsId = getNodeWorkspaceId($ne);
                 var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
                 if (!targetInput) return;
                 var currentVal = targetInput.value || '';
-                var insertText = '[' + n.path + ']';
+                var insertText = (wsId !== 'workspace')
+                    ? '[' + wsId + '/' + n.path + ']'
+                    : '[' + n.path + ']';
                 var cursorPos = targetInput.selectionStart || currentVal.length;
                 var before = currentVal.substring(0, cursorPos);
                 var after = currentVal.substring(cursorPos);
@@ -269,7 +380,7 @@
                 targetInput.setSelectionRange(newPos, newPos);
                 if (typeof autoResize === 'function') autoResize(targetInput);
             });
-        })(node);
+        })(node, $nodeEl);
 
         $container.append($nodeEl);
     }
@@ -278,7 +389,6 @@
     function onFilerChange(chunk) {
         if (!chunk || !chunk.changes || chunk.changes.length === 0) return;
 
-        // 文件树为空时，直接全量刷新根目录兜底
         if (!$treeEl.length || !$treeEl.children().length) {
             smartRefreshRoot();
             showFilerChangeIndicator();
@@ -286,8 +396,6 @@
         }
 
         var changes = chunk.changes;
-
-        // 收集所有受影响的父目录
         var affectedDirs = {};
         changes.forEach(function(path) {
             var lastSlash = path.lastIndexOf('/');
@@ -295,7 +403,6 @@
             affectedDirs[parentDir] = true;
         });
 
-        // 逐个刷新受影响的目录
         Object.keys(affectedDirs).forEach(function(dirPath) {
             refreshDirectory(dirPath);
         });
@@ -305,7 +412,6 @@
 
     function refreshDirectory(dirPath) {
         if (!dirPath) {
-            // 根目录变化：智能刷新，保留已展开目录的展开状态
             smartRefreshRoot();
             return;
         }
@@ -320,15 +426,20 @@
 
         var isExpanded = $childrenEl.hasClass('open');
         if (!isExpanded) {
-            // 折叠的目录标记为 dirty，下次展开时重新拉取最新数据
             $nodeEl.attr('data-dirty', '1');
             return;
         }
 
         var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
-        $.get('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1', function(res) {
+        var wsId = getNodeWorkspaceId($nodeEl);
+
+        var url = '/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1';
+        if (wsId !== 'workspace') {
+            url += '&workspace=' + encodeURIComponent(wsId);
+        }
+
+        $.get(url, function(res) {
             var subData = (res && res.data) ? res.data : [];
-            // 先收集已展开的子目录，刷新后恢复
             var expandedPaths = {};
             $childrenEl.find('.filer-node-children.open').each(function() {
                 var $parent = $(this).parent();
@@ -338,7 +449,6 @@
                 }
             });
             renderTree(subData, $childrenEl, indent + 1);
-            // 恢复子目录展开状态（异步重新拉取数据）
             Object.keys(expandedPaths).forEach(function(expandedPath) {
                 var expSelector = '.filer-node[data-path="' + CSS.escape(expandedPath) + '"]';
                 var $expNodeEl = $childrenEl.find(expSelector);
@@ -349,7 +459,12 @@
                     if ($expChildrenEl.length) {
                         $expChildrenEl.addClass('open');
                         $expArrow.addClass('open');
-                        $.get('/web/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1', function(res2) {
+
+                        var expUrl = '/web/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1';
+                        if (wsId !== 'workspace') {
+                            expUrl += '&workspace=' + encodeURIComponent(wsId);
+                        }
+                        $.get(expUrl, function(res2) {
                             var subData2 = (res2 && res2.data) ? res2.data : [];
                             renderTree(subData2, $expChildrenEl, expIndent + 1);
                         });
@@ -361,40 +476,72 @@
         });
     }
 
-    /**
-     * 智能刷新根树：重新拉取根层节点，但保留已展开目录的展开状态
-     */
     function smartRefreshRoot() {
         var expandedPaths = collectExpandedPaths();
 
-        $.get('/web/chat/filer/tree?depth=1', function(res) {
-            var newData = (res && res.data) ? res.data : [];
+        // 重新加载工作区列表（可能有新增/删除的挂载）
+        $.get('/web/chat/filer/workspaces', function(res) {
+            var wsList = (res && res.data) ? res.data : [];
             if (!$treeEl.length) return;
 
             $treeEl.html('');
-            newData.forEach(function(node) {
-                if (expandedPaths[node.path] && node.type === 'directory') {
-                    node.expanded = true;
+            wsList.forEach(function(ws) {
+                // 之前展开的工作区保持展开
+                if (expandedPaths[ws.name] && ws.type === 'workspace') {
+                    // workspace 根节点不支持 expanded 标记，暂时忽略
                 }
-                appendNode(node, $treeEl, 0);
+                appendWorkspaceNode(ws, $treeEl, 0);
             });
 
-            // 对之前已展开的目录，重新拉取子节点
-            Object.keys(expandedPaths).forEach(function(dirPath) {
-                var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
-                var $nodeEl = $treeEl.find(selector);
-                if (!$nodeEl.length) return;
-                var $childrenEl = $nodeEl.children('.filer-node-children');
-                if (!$childrenEl.length) return;
-                var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
-
-                $.get('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1', function(res2) {
-                    var subData = (res2 && res2.data) ? res2.data : [];
-                    renderTree(subData, $childrenEl, indent + 1);
+            // 对之前已展开的工作区，重新加载其文件树
+            // 注意：expandedPaths 存的是 ws.name，需要匹配
+            wsList.forEach(function(ws) {
+                if (expandedPaths[ws.name]) {
+                    var sel = '.filer-node[data-path="' + CSS.escape(ws.name) + '"]';
+                    var $wn = $treeEl.find(sel);
+                    if ($wn.length) {
+                        var $wc = $wn.children('.filer-node-children');
+                        var $wa = $wn.children('.filer-node-row').find('.filer-arrow');
+                        if ($wc.length) {
+                            $wc.addClass('open');
+                            $wa.addClass('open');
+                            var url = '/web/chat/filer/tree?depth=1';
+                            if (ws.id !== 'workspace') {
+                                url += '&workspace=' + encodeURIComponent(ws.id);
+                            }
+                            $.get(url, function(res2) {
+                                var data2 = (res2 && res2.data) ? res2.data : [];
+                                renderTree(data2, $wc, 1);
+                            });
+                        }
+                    }
+                }
+            });
+        }).fail(function() {
+            // fallback
+            $.get('/web/chat/filer/tree?depth=1', function(res) {
+                var newData = (res && res.data) ? res.data : [];
+                if (!$treeEl.length) return;
+                $treeEl.html('');
+                newData.forEach(function(node) {
+                    if (expandedPaths[node.path] && node.type === 'directory') {
+                        node.expanded = true;
+                    }
+                    appendNode(node, $treeEl, 0);
+                });
+                Object.keys(expandedPaths).forEach(function(dirPath) {
+                    var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
+                    var $nodeEl = $treeEl.find(selector);
+                    if (!$nodeEl.length) return;
+                    var $childrenEl = $nodeEl.children('.filer-node-children');
+                    if (!$childrenEl.length) return;
+                    var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
+                    $.get('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1', function(res2) {
+                        var subData = (res2 && res2.data) ? res2.data : [];
+                        renderTree(subData, $childrenEl, indent + 1);
+                    });
                 });
             });
-        }).fail(function(jqXHR, textStatus, error) {
-            console.error('[filer] smart refresh root error', error);
         });
     }
 
@@ -440,7 +587,7 @@
         searchResultsEl.show();
         searchResultsEl.html('<div class="filer-search-loading">搜索中...</div>');
 
-        $.get('/web/chat/filer/search?keyword=' + encodeURIComponent(kw), function(res) {
+        $.get(filerUrl('/web/chat/filer/search', 'keyword=' + encodeURIComponent(kw)), function(res) {
             var data = (res && res.data) ? res.data : [];
             searchResultsEl.html('');
 
@@ -455,7 +602,6 @@
                     .attr('data-name', item.name)
                     .attr('data-type', item.type);
 
-                // 图标
                 var $icon = $('<span>').addClass('filer-search-item-icon');
                 if (item.type === 'directory') {
                     $icon.html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
@@ -464,7 +610,6 @@
                 }
                 $row.append($icon);
 
-                // 路径显示（高亮匹配部分）
                 var $pathSpan = $('<span>').addClass('filer-search-item-path');
                 var pathLower = item.path.toLowerCase();
                 var idx = pathLower.indexOf(kw);
@@ -477,16 +622,17 @@
                 }
                 $row.append($pathSpan);
 
-                // 单击：打开文件查看器（延迟 250ms，避免与双击冲突）
                 if (item.type === 'file') {
                     (function(it, $r) {
+                        var wsId = window.activeFilerWorkspace || 'workspace';
+                        var viewPath = (wsId !== 'workspace' && wsId.indexOf('@') === 0) ? wsId + '/' + it.path : it.path;
                         var clickTimer = null;
                         $r.on('click', function(e) {
                             e.stopPropagation();
                             if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
                             clickTimer = setTimeout(function() {
                                 if (typeof window.openFileViewer === 'function') {
-                                    window.openFileViewer(it.path, it.name);
+                                    window.openFileViewer(viewPath, it.name);
                                 }
                             }, 250);
                         });
@@ -496,15 +642,17 @@
                     })(item, $row);
                 }
 
-                // 双击：插入路径到输入框
                 (function(it) {
                     $row.on('dblclick', function(e) {
                         e.stopPropagation();
                         e.preventDefault();
+                        var wsId = window.activeFilerWorkspace || 'workspace';
                         var targetInput = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : welcomeInput;
                         if (!targetInput) return;
                         var currentVal = targetInput.value || '';
-                        var insertText = '[' + it.path + ']';
+                        var insertText = (wsId !== 'workspace')
+                            ? '[' + wsId + '/' + it.path + ']'
+                            : '[' + it.path + ']';
                         var cursorPos = targetInput.selectionStart || currentVal.length;
                         var before = currentVal.substring(0, cursorPos);
                         var after = currentVal.substring(cursorPos);

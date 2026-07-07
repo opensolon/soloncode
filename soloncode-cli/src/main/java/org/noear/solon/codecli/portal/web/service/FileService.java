@@ -15,6 +15,9 @@
  */
 package org.noear.solon.codecli.portal.web.service;
 
+import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.core.handle.Result;
 
@@ -23,6 +26,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -35,6 +39,7 @@ import java.util.*;
  * <ul>
  *   <li>通过 workspace 路径构造，所有文件操作均基于此路径</li>
  *   <li>内部维护排除目录列表，自动过滤构建产物、IDE 配置等无需展示的目录</li>
+ *   <li>支持多工作区：可通过 workspaceId 切换到 FILES 挂载点浏览</li>
  *   <li>供 WebController 直接调用，Controller 层仅做参数解析和结果转发</li>
  * </ul>
  *
@@ -44,6 +49,9 @@ import java.util.*;
 public class FileService {
     /** 工作区根目录路径 */
     private final String workspace;
+
+    /** AI Agent 执行引擎，用于访问挂载点 */
+    private final HarnessEngine engine;
 
     /**
      * 文件树浏览时排除的目录名称集合。
@@ -58,52 +66,164 @@ public class FileService {
      * 构造函数。
      *
      * @param workspace 工作区根目录路径
+     * @param engine    AI Agent 执行引擎（用于挂载点解析）
      */
-    public FileService(String workspace) {
+    public FileService(String workspace, HarnessEngine engine) {
         this.workspace = workspace;
+        this.engine = engine;
     }
 
     // ==================== 公开业务方法 ====================
 
     /**
-     * 工作区文件树浏览。
-     * <p>以工作区根目录为基准，按指定路径和深度返回目录结构。
-     * 排除以点号开头的隐藏文件和 {@link #EXCLUDED_DIRS} 中的目录。</p>
+     * 从路径字符串中解析工作区标识和相对路径。
+     * <p>如果路径以 @xxx/ 开头，则提取 xxx 作为工作区标识，剩余部分为相对路径。
+     * 否则返回默认工作区 "workspace"。</p>
      *
-     * @param path  相对路径，基于工作区根目录；为空时从根目录开始
-     * @param depth 展开深度，默认为 1（仅展开第一层）
-     * @return 文件树列表，每项包含 name、path、type、expanded、children
+     * @param path 可能包含工作区前缀的路径
+     * @return 包含两个元素的数组：[workspaceId, relativePath]
+     */
+    public String[] parseWorkspaceFromPath(String path) {
+        if (path != null && path.startsWith("@")) {
+            int slashIdx = path.indexOf('/');
+            if (slashIdx > 1) {
+                return new String[]{path.substring(0, slashIdx), path.substring(slashIdx + 1)};
+            }
+        }
+        return new String[]{"workspace", path};
+    }
+
+    /**
+     * 解析工作区根路径。
+     * <p>当 workspaceId 为空或 "workspace" 时，返回默认工作区路径；
+     * 否则从挂载引擎中查找对应别名的 FILES 挂载点，返回其真实路径。</p>
+     *
+     * @param workspaceId 工作区标识（如 "workspace"、"@solon-ai"）
+     * @return 解析后的绝对路径
+     * @throws IllegalArgumentException 挂载不存在或不是 FILES 类型
+     */
+    public Path resolveRoot(String workspaceId) {
+        if (workspaceId == null || workspaceId.isEmpty() || "workspace".equals(workspaceId)) {
+            return Paths.get(workspace).toAbsolutePath().normalize();
+        }
+        MountDir mount = engine.getMount(workspaceId);
+        if (mount == null) {
+            throw new IllegalArgumentException("Mount not found: " + workspaceId);
+        }
+        if (mount.getType() != MountType.FILES) {
+            throw new IllegalArgumentException("Mount is not FILES type: " + workspaceId + " (" + mount.getType() + ")");
+        }
+        return mount.getRealPath().toAbsolutePath().normalize();
+    }
+
+    /**
+     * 列出所有可用的工作区（用于前端选择器）。
+     * <p>第一个条目固定为 "当前工作区"，随后是所有 enabled 的 FILES 挂载点。</p>
+     *
+     * @return 工作区列表，每项包含 id、name、type、writeable、readonly
+     */
+    public Result<List<Map>> listWorkspaces() {
+        List<Map<String, Object>> list = new ArrayList<>();
+
+        // 1. 当前工作区
+        Map<String, Object> defaultWs = new LinkedHashMap<>();
+        defaultWs.put("id", "workspace");
+        defaultWs.put("name", "当前工作区");
+        defaultWs.put("type", "workspace");
+        defaultWs.put("writeable", true);
+        defaultWs.put("readonly", false);
+        list.add(defaultWs);
+
+        // 2. FILES 类型的挂载点
+        for (MountDir entry : engine.getMounts()) {
+            if (entry.getType() != MountType.FILES) continue;
+            if (!entry.isEnabled()) continue;
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", entry.getAlias());
+            item.put("name", entry.getAlias());
+            item.put("type", "mount");
+            item.put("writeable", entry.isWriteable());
+            item.put("readonly", !entry.isWriteable());
+            item.put("realPath", entry.getRealPath() != null ? entry.getRealPath().toString() : "");
+            list.add(item);
+        }
+
+        return Result.succeed((List) list);
+    }
+
+    /**
+     * 工作区文件树浏览（默认工作区）。
+     *
+     * @see #tree(String, String, Integer)
      */
     public Result<List<Map>> tree(String path, Integer depth) {
+        return tree("workspace", path, depth);
+    }
+
+    /**
+     * 工作区文件树浏览（指定工作区）。
+     * <p>以指定工作区根目录为基准，按指定路径和深度返回目录结构。
+     * 排除以点号开头的隐藏文件和 {@link #EXCLUDED_DIRS} 中的目录。</p>
+     *
+     * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
+     * @param path        相对路径，基于工作区根目录；为空时从根目录开始
+     * @param depth       展开深度，默认为 1（仅展开第一层）
+     * @return 文件树列表，每项包含 name、path、type、expanded、children
+     */
+    public Result<List<Map>> tree(String workspaceId, String path, Integer depth) {
         if (depth == null || depth < 1) depth = 1;
         if (path == null) path = "";
         if (path.contains("..")) {
             return Result.failure(400, "Invalid path");
         }
 
-        java.nio.file.Path workspacePath = Paths.get(workspace).toAbsolutePath().normalize();
-        java.nio.file.Path target = workspacePath.resolve(path).toAbsolutePath().normalize();
+        // 如果 workspaceId 未指定，尝试从路径中的 @xxx/ 前缀解析
+        if (workspaceId == null || workspaceId.isEmpty()) {
+            String[] parsed = parseWorkspaceFromPath(path);
+            workspaceId = parsed[0];
+            path = parsed[1];
+        }
 
-        if (!target.startsWith(workspacePath)) {
+        Path rootPath;
+        try {
+            rootPath = resolveRoot(workspaceId);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        }
+
+        Path target = rootPath.resolve(path).toAbsolutePath().normalize();
+
+        if (!target.startsWith(rootPath)) {
             return Result.failure(403, "Access denied");
         }
         if (!target.toFile().exists() || !target.toFile().isDirectory()) {
             return Result.failure(404, "Directory not found");
         }
 
-        List<Map> tree = buildTree(target, workspacePath, depth, 1);
+        List<Map> tree = buildTree(target, rootPath, depth, 1);
         return Result.succeed(tree);
     }
 
     /**
-     * 工作区文件搜索。
-     * <p>递归扫描整个工作区，返回路径中包含关键词的文件列表。
-     * 排除规则与文件树接口一致：隐藏文件和 EXCLUDED_DIRS 中的目录。</p>
+     * 工作区文件搜索（默认工作区）。
      *
-     * @param keyword 搜索关键词，匹配文件路径（大小写不敏感）
-     * @return 匹配的文件列表，每项包含 name、path、type
+     * @see #search(String, String)
      */
     public Result<List<Map>> search(String keyword) {
+        return search("workspace", keyword);
+    }
+
+    /**
+     * 工作区文件搜索（指定工作区）。
+     * <p>递归扫描指定工作区，返回路径中包含关键词的文件列表。
+     * 排除规则与文件树接口一致：隐藏文件和 EXCLUDED_DIRS 中的目录。</p>
+     *
+     * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
+     * @param keyword     搜索关键词，匹配文件路径（大小写不敏感）
+     * @return 匹配的文件列表，每项包含 name、path、type
+     */
+    public Result<List<Map>> search(String workspaceId, String keyword) {
         if (keyword == null || keyword.trim().isEmpty()) {
             return Result.failure(400, "Keyword is required");
         }
@@ -111,11 +231,17 @@ public class FileService {
             return Result.failure(400, "Invalid keyword");
         }
 
-        java.nio.file.Path workspacePath = Paths.get(workspace).toAbsolutePath().normalize();
+        Path rootPath;
+        try {
+            rootPath = resolveRoot(workspaceId);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        }
+
         String kw = keyword.trim().toLowerCase();
 
         List<Map> results = new ArrayList<>();
-        searchFiles(workspacePath.toFile(), workspacePath, kw, results, 0);
+        searchFiles(rootPath.toFile(), rootPath, kw, results, 0);
 
         if (results.size() > 200) {
             results = results.subList(0, 200);
@@ -125,14 +251,24 @@ public class FileService {
     }
 
     /**
-     * 读取工作区文件内容。
-     * <p>以工作区根目录为基准，读取指定路径的文件文本内容。
-     * 支持安全路径校验和文件大小限制（最大 2MB）。</p>
+     * 读取工作区文件内容（默认工作区）。
      *
-     * @param path 相对路径，基于工作区根目录
-     * @return 文件信息，包含 content、path、name、size
+     * @see #read(String, String)
      */
     public Result<Map> read(String path) {
+        return read("workspace", path);
+    }
+
+    /**
+     * 读取工作区文件内容（指定工作区）。
+     * <p>以指定工作区根目录为基准，读取指定路径的文件文本内容。
+     * 支持安全路径校验和文件大小限制（最大 2MB）。</p>
+     *
+     * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
+     * @param path        相对路径，基于工作区根目录
+     * @return 文件信息，包含 content、path、name、size
+     */
+    public Result<Map> read(String workspaceId, String path) {
         if (path == null || path.trim().isEmpty()) {
             return Result.failure(400, "Path is required");
         }
@@ -140,10 +276,23 @@ public class FileService {
             return Result.failure(400, "Invalid path");
         }
 
-        java.nio.file.Path workspacePath = Paths.get(workspace).toAbsolutePath().normalize();
-        java.nio.file.Path target = workspacePath.resolve(path).toAbsolutePath().normalize();
+        // 如果 workspaceId 未指定（null 或空），尝试从路径中的 @xxx/ 前缀解析
+        if (workspaceId == null || workspaceId.isEmpty()) {
+            String[] parsed = parseWorkspaceFromPath(path);
+            workspaceId = parsed[0];
+            path = parsed[1];
+        }
 
-        if (!target.startsWith(workspacePath)) {
+        Path rootPath;
+        try {
+            rootPath = resolveRoot(workspaceId);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        }
+
+        Path target = rootPath.resolve(path).toAbsolutePath().normalize();
+
+        if (!target.startsWith(rootPath)) {
             return Result.failure(403, "Access denied");
         }
         // 检测符号链接，防止越权读取工作区外部的文件
@@ -163,7 +312,7 @@ public class FileService {
         // 读取文件内容（尝试 UTF-8，失败回退系统默认编码）
         String content;
         try {
-            content = new String(java.nio.file.Files.readAllBytes(target), "UTF-8");
+            content = new String(Files.readAllBytes(target), "UTF-8");
         } catch (Exception e) {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file)))) {
                 StringBuilder sb = new StringBuilder();
@@ -195,12 +344,12 @@ public class FileService {
      * 当达到最大深度时，目录节点不再展开（children 为 null）。</p>
      *
      * @param dir          当前扫描的目录路径
-     * @param workspacePath 工作区根路径，用于计算相对路径
+     * @param rootPath     工作区根路径，用于计算相对路径
      * @param maxDepth     最大展开深度
      * @param currentDepth 当前递归深度
      * @return 当前层级的文件/目录信息列表
      */
-    private List<Map> buildTree(java.nio.file.Path dir, java.nio.file.Path workspacePath, int maxDepth, int currentDepth) {
+    private List<Map> buildTree(Path dir, Path rootPath, int maxDepth, int currentDepth) {
         File[] files = dir.toFile().listFiles();
         if (files == null) return Collections.emptyList();
 
@@ -218,12 +367,12 @@ public class FileService {
 
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", f.getName());
-            item.put("path", workspacePath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/'));
+            item.put("path", rootPath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/'));
             item.put("type", f.isDirectory() ? "directory" : "file");
 
             if (f.isDirectory() && currentDepth < maxDepth) {
                 item.put("expanded", true);
-                item.put("children", buildTree(f.toPath(), workspacePath, maxDepth, currentDepth + 1));
+                item.put("children", buildTree(f.toPath(), rootPath, maxDepth, currentDepth + 1));
             } else if (f.isDirectory()) {
                 item.put("expanded", false);
                 item.put("children", null);
@@ -237,12 +386,12 @@ public class FileService {
      * 递归搜索匹配关键词的文件。
      *
      * @param dir       当前扫描的目录
-     * @param workspacePath 工作区根路径，用于计算相对路径
+     * @param rootPath  工作区根路径，用于计算相对路径
      * @param keyword   小写化后的搜索关键词
      * @param results   收集结果的列表
      * @param depth     当前递归深度，超过 20 层停止
      */
-    private void searchFiles(File dir, java.nio.file.Path workspacePath, String keyword, List<Map> results, int depth) {
+    private void searchFiles(File dir, Path rootPath, String keyword, List<Map> results, int depth) {
         if (depth > 20) return;
         File[] files = dir.listFiles();
         if (files == null) return;
@@ -252,7 +401,7 @@ public class FileService {
             // 跳过符号链接，防止遍历到工作区外部的文件
             if (Files.isSymbolicLink(f.toPath())) continue;
 
-            String relativePath = workspacePath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/');
+            String relativePath = rootPath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/');
 
             if (relativePath.toLowerCase().contains(keyword)) {
                 Map<String, Object> item = new LinkedHashMap<>();
@@ -263,7 +412,7 @@ public class FileService {
             }
 
             if (f.isDirectory()) {
-                searchFiles(f, workspacePath, keyword, results, depth + 1);
+                searchFiles(f, rootPath, keyword, results, depth + 1);
             }
         }
     }
