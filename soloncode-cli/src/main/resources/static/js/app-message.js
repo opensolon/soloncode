@@ -36,10 +36,8 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         for (var j = 0; j < fileAttachments.length; j++) {
             var att = fileAttachments[j];
             var tag = $('<div>').addClass('user-attach-file')[0];
-            var icon = att.type === 'image' ? '🖼️' : '📎';
             var sizeHtml = att.size != null ? '<span class="user-attach-file-size">(' + formatFileSize(att.size) + ')</span>' : '';
-            tag.innerHTML = '<span>' + icon + '</span>'
-                + '<span class="user-attach-file-name">' + escapeHtml(att.name) + '</span>'
+            tag.innerHTML = '<span class="user-attach-file-name">' + escapeHtml(att.name) + '</span>'
                 + sizeHtml;
             $(bubble).append(tag);
         }
