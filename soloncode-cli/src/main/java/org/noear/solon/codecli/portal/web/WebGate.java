@@ -290,6 +290,7 @@ public class WebGate extends SimpleWebSocketListener {
                         Path uploadDir = Paths.get(engine.getWorkspace(), ".uploads").toAbsolutePath().normalize();
                         Files.createDirectories(uploadDir);
                         Path savePath = uploadDir.resolve(fileName).toAbsolutePath().normalize();
+                        fileName = ".uploads/" + fileName;
 
                         if (savePath.startsWith(Paths.get(engine.getWorkspace()).toAbsolutePath().normalize())) {
                             Files.copy(attachment.getContent(), savePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
