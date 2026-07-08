@@ -22,6 +22,14 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
     }
 
     @Override
+    public String deriveBaseUrl(String apiUrl) {
+        return ModelApiUrl.stripSuffixes(
+                ModelApiUrl.trimTrailingSlash(apiUrl == null ? "" : apiUrl.trim()),
+                "/v1/messages", "/v1/models",
+                "/messages", "/models", "/v1");
+    }
+
+    @Override
     public List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey) {
         final String modelsUrl = buildModelsUrl(baseUrl);
 

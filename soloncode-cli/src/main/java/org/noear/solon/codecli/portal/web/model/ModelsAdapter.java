@@ -16,16 +16,13 @@ public interface ModelsAdapter {
 
     List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey);
 
-    default String deriveBaseUrl(String apiUrl) {
-        return ModelApiUrl.deriveBaseUrl(apiUrl, getStandard());
-    }
+    String deriveBaseUrl(String apiUrl);
 
     default String buildModelsUrl(String baseUrl) {
-        if (baseUrl.endsWith("/v1")) {
-            return baseUrl + "/models";
-        } else if (baseUrl.endsWith("/v1/")) {
-            return baseUrl + "models";
+        String url = ModelApiUrl.trimTrailingSlash(baseUrl);
+        if (url.endsWith("/v1")) {
+            return url + "/models";
         }
-        return baseUrl + "/v1/models";
+        return url + "/v1/models";
     }
 }

@@ -21,6 +21,23 @@ public class OpenAIModelsAdapter implements ModelsAdapter {
     }
 
     @Override
+    public String deriveBaseUrl(String apiUrl) {
+        String url = ModelApiUrl.trimTrailingSlash(apiUrl == null ? "" : apiUrl.trim());
+        String base = ModelApiUrl.stripSuffixes(url,
+                "/chat/completions", "/responses",
+                "/models", "/images/generations",
+                "/embeddings", "/completions");
+        // Ensure OpenAI base URL ends with /v1
+        if (base.endsWith("/v1")) {
+            return base;
+        }
+        if (base.endsWith("api.openai.com")) {
+            return base + "/v1";
+        }
+        return base;
+    }
+
+    @Override
     public List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey) {
         final String modelsUrl = buildModelsUrl(baseUrl);
 

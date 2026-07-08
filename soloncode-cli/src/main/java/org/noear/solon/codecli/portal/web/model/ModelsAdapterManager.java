@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.portal.web.model;
 
 import org.noear.solon.annotation.Component;
+import org.noear.solon.core.util.Assert;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -34,11 +35,11 @@ public class ModelsAdapterManager {
      * @return 对应的 ModelsAdapter，如果不存在则返回默认的 OpenAI 提供商
      */
     public ModelsAdapter getAdapter(String standard) {
-        String normalizedStandard = ModelApiUrl.normalizeStandard(standard);
-        if (normalizedStandard == null || normalizedStandard.isEmpty()) {
+        String normalized = ModelApiUrl.normalizeStandard(standard);
+        if (Assert.isEmpty(normalized)) {
             return defaultAdapter;
         }
-        return adapterMap.getOrDefault(normalizedStandard, defaultAdapter);
+        return adapterMap.getOrDefault(normalized, defaultAdapter);
     }
 
     /**

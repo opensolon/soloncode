@@ -21,6 +21,14 @@ public class OllamaModelsAdapter implements ModelsAdapter {
     }
 
     @Override
+    public String deriveBaseUrl(String apiUrl) {
+        return ModelApiUrl.stripSuffixes(
+                ModelApiUrl.trimTrailingSlash(apiUrl == null ? "" : apiUrl.trim()),
+                "/api/chat", "/api/generate", "/api/tags",
+                "/v1/chat/completions", "/chat/completions");
+    }
+
+    @Override
     public List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey) {
         String modelsUrl = baseUrl + "/api/tags";
         List<ModelInfo> result = new ArrayList<>();
