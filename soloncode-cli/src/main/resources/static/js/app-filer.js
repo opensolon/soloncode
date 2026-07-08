@@ -706,6 +706,15 @@
         });
     }
 
+    // ---- 添加文件类型挂载点击事件 ----
+    $(document).on('click', '#filerMountHint', function() {
+        if (typeof window.openSettingsTab === 'function') {
+            window.openSettingsTab('mounts');
+        } else {
+            $('#settingsBtn').click();
+        }
+    });
+
     // ---- 启动 ----
     loadTree();
 })();

@@ -980,6 +980,26 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     line-height: 1.6;
 }
 
+.filer-mount-hint {
+    padding: 10px 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-top: 1px solid var(--border-subtle, rgba(128,128,128,0.15));
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+.filer-mount-hint:hover {
+    background: var(--bg-hover);
+    color: var(--accent);
+}
+.filer-mount-hint svg {
+    flex-shrink: 0;
+}
+
 .filer-panel-toggle-btn {
     position: fixed;
     top: 20px;

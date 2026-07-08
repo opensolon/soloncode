@@ -961,6 +961,7 @@
 
     // 暴露全局（供 app-filer.js / app-message.js 调用）
     window.loadGitStatus = loadGitStatus;
+    window.loadGitWorkspaces = loadGitWorkspaces;
     window.openFileViewer = openFileViewer;
     window.closeDiffViewer = closeDiffViewer;
     window.guessLang = guessLang;

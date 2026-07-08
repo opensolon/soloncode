@@ -50,6 +50,12 @@
         });
     }
 
+    function refreshPanels() {
+        if (typeof window.loadTree === 'function') window.loadTree();
+        if (typeof window.loadGitWorkspaces === 'function') window.loadGitWorkspaces();
+        if (typeof window.loadGitStatus === 'function') window.loadGitStatus();
+    }
+
     function renderMountsList(list) {
         var html = '';
         if (!list || list.length === 0) {
@@ -154,6 +160,7 @@
                 success: function (resp) {
                     if (resp.code === 200) {
                         layer.msg(enabled ? '已启用' : '已停用', { icon: 1, time: 1500, offset: '120px' });
+                        refreshPanels();
                     } else {
                         layer.msg(resp.message || '操作失败', { icon: 2, time: 3000, offset: '120px' });
                     }
@@ -305,7 +312,7 @@
         layer.confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）', { title: '确认移除', btn: ['移除', '取消'], icon: 3, offset: '120px' }, function(index) {
             layer.close(index);
             $.post('/web/settings/mounts/remove', { alias: alias }, function (resp) {
-                if (resp && resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); }
+                if (resp && resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); refreshPanels(); }
                 else showToast('移除失败: ' + ((resp && resp.message) || '未知错误'), 'error');
             }, 'json').fail(function () { showToast('网络错误', 'error'); });
         });
@@ -350,7 +357,7 @@
         $mountsSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { showToast(actionText + '成功'); mountsEditAlias = null; loadMountsList(); showMountsListView(); }
+                if (resp.code === 200) { showToast(actionText + '成功'); mountsEditAlias = null; loadMountsList(); showMountsListView(); refreshPanels(); }
                 else showToast(actionText + '失败: ' + (resp.message || ''), 'error');
             })
             .fail(function () { showToast('网络错误', 'error'); })
