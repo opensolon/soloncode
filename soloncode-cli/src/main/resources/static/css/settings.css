@@ -207,6 +207,7 @@
 .mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
 .mcp-server-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .mcp-server-item:active { transform: scale(0.997); }
+.mcp-server-item.disabled { opacity: 0.5; }
 .mcp-server-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 .mcp-server-info { flex: 1; min-width: 0; }
 .mcp-server-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }

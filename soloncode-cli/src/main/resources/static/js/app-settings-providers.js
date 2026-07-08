@@ -171,7 +171,7 @@
     function renderProviderItem(provider) {
         var modelsCount = (provider.models || []).length;
 
-        return '<div class="mcp-server-item" data-name="' + provider.name + '">' +
+        return '<div class="mcp-server-item' + (provider.enabled === false ? ' disabled' : '') + '" data-name="' + provider.name + '">' +
             '<div class="mcp-server-icon">P</div>' +
             '<div class="mcp-server-info">' +
                 '<div class="mcp-server-name">' + provider.name + ' <span class="settings-inline-tag">[' + (provider.standard || 'openai') + ']</span></div>' +
@@ -609,6 +609,8 @@
             success: function (res) {
                 if (res.code === 200) {
                     layui.layer.msg(enabled ? '供应商已启用' : '供应商已禁用', { icon: 1 });
+                    // 刷新供应商列表 UI（更新 disabled 样式）
+                    loadProvidersList();
                     // 刷新 LLM 模型列表（供应商禁用时关联模型会禁用）
                     if (window._settingsLlm) {
                         window._settingsLlm.load();

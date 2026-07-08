@@ -231,7 +231,7 @@
     function llmToggleModel(name, enabled) {
         postJson('/web/settings/llm/models/toggle', { name: name, enabled: enabled }, function (resp) {
             if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadLlmList(); }
-            else { syncChatModelList(); }
+            else { syncChatModelList(); loadLlmList(); }
         });
     }
 
