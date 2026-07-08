@@ -45,6 +45,19 @@
             fetchModels();
         });
 
+        // 清空模型列表
+        $('#providerClearModelsBtn').on('click', function () {
+            if (fetchedModels.length === 0) return;
+            layui.layer.confirm('确定清空当前模型列表吗？手动添加的模型也会一并清除。', {
+                btn: ['清空', '取消'],
+                icon: 3
+            }, function (index) {
+                layui.layer.close(index);
+                fetchedModels = [];
+                renderModelsList();
+            });
+        });
+
         // 手动添加模型
         $('#providerAddModelBtn').on('click', function () {
             addManualModel();

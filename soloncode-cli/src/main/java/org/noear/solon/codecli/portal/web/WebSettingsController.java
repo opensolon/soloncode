@@ -2126,7 +2126,7 @@ public class WebSettingsController {
             } else {
                 // 模型已存在，检查是否需要同步状态
                 ModelDo existingModel = settings.getModels().get(modelName);
-                if (providerName.equals(existingModel.getProvider())) {
+                if (existingModel != null) { //providerName.equals(existingModel.getProvider())
                     syncCount++;
 
                     existingModel.setVisibled(provider.isEnabled());
