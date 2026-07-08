@@ -76,7 +76,7 @@
                 var isSystem = item.system === true;
                 var typeMap = { SKILLS: 'S', FILES: 'F', AGENTS: 'A' };
                 var iconText = typeMap[item.type] || (item.type ? item.type.charAt(0).toUpperCase() : 'M');
-                html += '<div class="mcp-server-item mounts-pool-item' + (isSystem ? ' mounts-system' : '') + '" data-alias="' + escapeAttr(alias) + '">'
+                html += '<div class="mcp-server-item mounts-pool-item' + (isSystem ? ' mounts-system' : '') + (item.enabled === false ? ' disabled' : '') + '" data-alias="' + escapeAttr(alias) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(iconText) + '</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(alias)
@@ -161,6 +161,7 @@
                     if (resp.code === 200) {
                         layer.msg(enabled ? '已启用' : '已停用', { icon: 1, time: 1500, offset: '120px' });
                         refreshPanels();
+                        loadMountsList();
                     } else {
                         layer.msg(resp.message || '操作失败', { icon: 2, time: 3000, offset: '120px' });
                     }

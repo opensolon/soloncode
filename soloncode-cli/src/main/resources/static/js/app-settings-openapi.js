@@ -55,7 +55,7 @@
                 var baseUrl = item.apiBaseUrl || '';
                 var docUrl = item.docUrl || '';
                 var enabled = item.enabled !== false;
-                html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
+                html += '<div class="mcp-server-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">A</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
@@ -229,6 +229,7 @@
     function openapiToggleServer(name, enabled) {
         postJson('/web/settings/openapi/servers/toggle', { name: name, enabled: enabled }, function (resp) {
             if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadOpenapiList(); }
+            else { loadOpenapiList(); }
         });
     }
 

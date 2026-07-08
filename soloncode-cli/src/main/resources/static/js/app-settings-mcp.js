@@ -64,7 +64,7 @@
                 var type = item.type || 'stdio';
                 var detail = type === 'stdio' ? (item.command || '') : (item.url || '');
                 var icon = iconMap[type] || 'M';
-                html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
+                html += '<div class="mcp-server-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
@@ -309,6 +309,7 @@
     function mcpToggleServer(name, enabled) {
         postJson('/web/settings/mcp/servers/toggle', { name: name, enabled: enabled }, function (resp) {
             if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadMcpList(); }
+            else { loadMcpList(); }
         });
     }
 
