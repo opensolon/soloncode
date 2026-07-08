@@ -19,4 +19,13 @@ public interface ModelsAdapter {
     default String deriveBaseUrl(String apiUrl) {
         return ModelApiUrl.deriveBaseUrl(apiUrl, getStandard());
     }
+
+    default String buildModelsUrl(String baseUrl) {
+        if (baseUrl.endsWith("/v1")) {
+            return baseUrl + "/models";
+        } else if (baseUrl.endsWith("/v1/")) {
+            return baseUrl + "models";
+        }
+        return baseUrl + "/v1/models";
+    }
 }

@@ -15,14 +15,15 @@ import java.util.Map;
 @Slf4j
 public class OpenAIModelsAdapter implements ModelsAdapter {
 
-@Override
+    @Override
     public String getStandard() {
         return "openai";
     }
 
     @Override
     public List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey) {
-        String modelsUrl = baseUrl + "/models";
+        final String modelsUrl = buildModelsUrl(baseUrl);
+
         List<ModelInfo> result = new ArrayList<>();
 
         try {

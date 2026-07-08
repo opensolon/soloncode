@@ -23,7 +23,8 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
 
     @Override
     public List<ModelInfo> fetchModels(String baseUrl, Map<String, String> headers, String apiKey) {
-        String modelsUrl = baseUrl + "/v1/models";
+        final String modelsUrl = buildModelsUrl(baseUrl);
+
         List<ModelInfo> result = new ArrayList<>();
 
         try {
@@ -79,29 +80,22 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
         }
     }
 
-    private Map<String, Object> parseCapabilities(ONode capabilitiesNode) {
-        if (capabilitiesNode == null || capabilitiesNode.isNull()) {
+    private Map<String, Object> parseCapabilities(ONode node) {
+        if (node == null || node.isNull()) {
             return null;
         }
-        Map<String, Object> capabilities = new HashMap<>();
-        // 将 ONode 转换为 Map<String, ONode>
-        Map<String, ONode> nodeMap = capabilitiesNode.toBean(Map.class);
-        if (nodeMap == null) {
-            return null;
-        }
-        for (Map.Entry<String, ONode> entry : nodeMap.entrySet()) {
-            String key = entry.getKey();
-            ONode value = entry.getValue();
-            if (value.isObject()) {
-                capabilities.put(key, parseCapabilities(value));
-            } else if (value.isBoolean()) {
-                capabilities.put(key, value.getBoolean());
-            } else if (value.isNumber()) {
-                capabilities.put(key, value.getLong());
+        Map<String, Object> caps = new HashMap<>();
+        node.obj().forEach((key, val) -> {
+            if (val.isObject()) {
+                caps.put(key, parseCapabilities(val));
+            } else if (val.isBoolean()) {
+                caps.put(key, val.getBoolean());
+            } else if (val.isNumber()) {
+                caps.put(key, val.getLong());
             } else {
-                capabilities.put(key, value.getString());
+                caps.put(key, val.getString());
             }
-        }
-        return capabilities;
+        });
+        return caps;
     }
 }
