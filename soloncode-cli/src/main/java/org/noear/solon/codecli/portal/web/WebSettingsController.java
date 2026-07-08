@@ -483,6 +483,14 @@ public class WebSettingsController {
             return Result.failure("originalName is required");
         }
 
+        // 编辑时保持 provider 关联（防止前端遗漏 provider 字段）
+        if (config.getProvider() == null) {
+            ChatConfig oldConfig = settings.getModels().get(originalName);
+            if (oldConfig != null && oldConfig.getProvider() != null) {
+                config.setProvider(oldConfig.getProvider());
+            }
+        }
+
         // 先移除旧配置
         engine.removeModel(originalName);
         engine.addModel(config);

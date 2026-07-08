@@ -129,6 +129,7 @@
         llmEditName = null;
         $llmSaveBtn.text('保存');
         $('#llmStandard, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
+        $('#llmProvider').val('');
         $('#llmIsDefaultModel').prop('checked', false);
         setScopeValue('llmScope', 'user');
         $('#llmApiKey').attr('placeholder', 'sk-...');
@@ -161,6 +162,8 @@
         if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
         // 回显“设为默认模型”勾选状态
         $("#llmIsDefaultModel").prop("checked", !!item.isDefault);
+        // 回显 provider（隐藏表单，编辑时保持关联）
+        $('#llmProvider').val(item.provider || '');
     }
 
     function buildLlmBodyObj() {
@@ -185,6 +188,11 @@
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {
             try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { showToast('默认选项 JSON 格式无效', 'error'); return null; }
+        }
+        // 编辑时保持 provider 关联（隐藏表单）
+        var providerVal = $('#llmProvider').val();
+        if (providerVal) {
+            bodyObj.provider = providerVal;
         }
         return bodyObj;
     }
