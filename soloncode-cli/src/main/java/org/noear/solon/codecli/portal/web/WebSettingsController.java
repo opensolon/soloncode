@@ -62,8 +62,6 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ch.qos.logback.classic.Level;
-
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
@@ -412,11 +410,9 @@ public class WebSettingsController {
         }
 
         try {
-            String normalizedStandard = ModelApiUrl.normalizeStandard(standard, apiUrl);
-            String normalizedApiUrl = ModelApiUrl.normalizeChatApiUrl(apiUrl, normalizedStandard);
-            ChatModel chatModel = ChatModel.of(normalizedApiUrl)
+            ChatModel chatModel = ChatModel.of(apiUrl)
                     .apiKey(apiKey)
-                    .standard(normalizedStandard)
+                    .standard(standard)
                     .model(model)
                     .userAgent(settings.getGeneral().getUserAgent())
                     .build();
@@ -2033,8 +2029,7 @@ public class WebSettingsController {
 
         try {
             // 使用 ModelsAdapterManager 获取对应的提供商
-            String normalizedStandard = ModelApiUrl.normalizeStandard(standard, apiUrl);
-            ModelsAdapter provider = modelProviderFactory.getProvider(normalizedStandard);
+            ModelsAdapter provider = modelProviderFactory.getAdapter(standard);
             String baseUrl = provider.deriveBaseUrl(apiUrl);
             
             // 构建请求头

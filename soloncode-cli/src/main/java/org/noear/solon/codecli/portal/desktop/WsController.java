@@ -60,16 +60,14 @@ public class WsController {
             return Result.failure("apiUrl is required");
         }
 
-        String normalizedProvider = ModelApiUrl.normalizeStandard(provider, apiUrl);
-        String normalizedApiUrl = ModelApiUrl.normalizeChatApiUrl(apiUrl, normalizedProvider);
-        ModelsAdapter modelProvider = modelProviderFactory.getProvider(normalizedProvider);
-        String baseUrl = modelProvider.deriveBaseUrl(normalizedApiUrl);
-        List<ModelInfo> models = modelProvider.fetchModels(baseUrl, null, apiKey);
+        ModelsAdapter modelsAdapter = modelProviderFactory.getAdapter(provider);
+        String baseUrl = modelsAdapter.deriveBaseUrl(apiUrl);
+        List<ModelInfo> models = modelsAdapter.fetchModels(baseUrl, null, apiKey);
 
         if (models.isEmpty() && Assert.isNotEmpty(model)) {
-            ChatModel chatModel = ChatModel.of(normalizedApiUrl)
+            ChatModel chatModel = ChatModel.of(apiUrl)
                     .apiKey(apiKey)
-                    .standard(normalizedProvider)
+                    .standard(provider)
                     .model(model)
                     .build();
             chatModel.prompt("hi").call();
@@ -78,7 +76,7 @@ public class WsController {
                     .id(model)
                     .object("model")
                     .created(System.currentTimeMillis() / 1000)
-                    .ownedBy(Assert.isEmpty(normalizedProvider) ? "openai-compatible" : normalizedProvider)
+                    .ownedBy(Assert.isEmpty(provider) ? "openai-compatible" : provider)
                     .build());
         }
 
@@ -91,11 +89,11 @@ public class WsController {
 
             ChatConfig config = new ChatConfig();
             config.setName(mi.getId());
-            config.setApiUrl(normalizedApiUrl);
+            config.setApiUrl(apiUrl);
             config.setApiKey(apiKey);
             config.setModel(mi.getId());
-            if (Assert.isNotEmpty(normalizedProvider)) {
-                config.setStandard(normalizedProvider);
+            if (Assert.isNotEmpty(provider)) {
+                config.setStandard(provider);
             }
             engine.removeModel(mi.getId());
             engine.addModel(config);

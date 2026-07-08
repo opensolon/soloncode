@@ -554,8 +554,8 @@ public class WsGate extends SimpleWebSocketListener {
                 String existModel = currentConfig == null ? null : currentConfig.getNameOrModel();
                 String existProvider = currentConfig == null ? null : currentConfig.getStandardOrProvider();
                 String finalApiUrlInput = apiUrl != null ? apiUrl : existApiUrl;
-                String normalizedProvider = ModelApiUrl.normalizeStandard(provider != null ? provider : existProvider, finalApiUrlInput);
-                String normalizedApiUrl = finalApiUrlInput == null ? null : ModelApiUrl.normalizeChatApiUrl(finalApiUrlInput, normalizedProvider);
+                String normalizedProvider = ModelApiUrl.normalizeStandard(provider != null ? provider : existProvider);
+                String normalizedApiUrl = finalApiUrlInput;
                 String finalApiKey = apiKey != null ? apiKey : existApiKey;
                 String finalModel = model != null ? model : existModel;
 
