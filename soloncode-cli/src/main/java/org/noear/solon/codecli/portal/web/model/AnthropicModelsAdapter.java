@@ -85,7 +85,7 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
             return null;
         }
         Map<String, Object> caps = new HashMap<>();
-        node.obj().forEach((key, val) -> {
+        node.getObject().forEach((key, val) -> {
             if (val.isObject()) {
                 caps.put(key, parseCapabilities(val));
             } else if (val.isBoolean()) {
