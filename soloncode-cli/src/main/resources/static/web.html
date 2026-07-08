@@ -1482,6 +1482,102 @@
 <script src="/js/app-settings-providers.js"></script>
 <script src="/js/app-settings-skill.js"></script>
 <script src="/js/app-loop.js"></script>
-<script src="/js/studio.js"></script>
+    <script src="/js/studio.js"></script>
+
+<!-- ===== 任务完成通知（浏览器通知 + 声音提示） ===== -->
+<script>
+(function() {
+    // 通知权限状态
+    var _notifyPerm = Notification.permission;
+
+    // 请求通知权限
+    function _requestNotifyPerm() {
+        if (_notifyPerm === 'granted') return true;
+        if (_notifyPerm === 'denied') return false;
+        Notification.requestPermission().then(function(p) {
+            _notifyPerm = p;
+        });
+        return false;
+    }
+
+    // 使用 Web Audio API 生成一段提示音（无需外部音频文件）
+    function _playChime() {
+        try {
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            var now = ctx.currentTime;
+
+            // 音符频率：C5(523), E5(659), G5(784) 构成 C 大调三和弦
+            var notes = [523.25, 659.25, 783.99];
+
+            notes.forEach(function(freq, i) {
+                var osc = ctx.createOscillator();
+                var gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, now + i * 0.12);
+                gain.gain.linearRampToValueAtTime(0.15, now + i * 0.12 + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + i * 0.12);
+                osc.stop(now + i * 0.12 + 0.4);
+            });
+        } catch(e) {
+            // 静默失败，不影响主流程
+        }
+    }
+
+    // 显示浏览器通知 + 播放声音
+    function notifyTaskComplete() {
+        // 如果页面在前台（有焦点），不打扰用户
+        if (document.hasFocus && document.hasFocus()) {
+            return;
+        }
+
+        // 播放提示音
+        _playChime();
+
+        // 显示浏览器通知
+        if (_notifyPerm === 'granted') {
+            try {
+                var n = new Notification('SolonCode', {
+                    body: 'AI 任务已完成',
+                    icon: '/img/favicon.png',
+                    tag: 'soloncode-task-done',
+                    requireInteraction: false
+                });
+                // 点击通知跳转到页面
+                n.onclick = function() {
+                    window.focus();
+                    this.close();
+                };
+                // 自动关闭
+                setTimeout(function() { n.close(); }, 5000);
+            } catch(e) {}
+        }
+    }
+
+    // 请求通知权限（首次友好提示）
+    _requestNotifyPerm();
+
+    // 包装 finishStream：在任务完成时触发通知
+    var _origFinish = window.onFinishStream || window.finishStream;
+    window._wrappedFinish = function(sess) {
+        if (_origFinish) _origFinish(sess);
+        // 延迟触发，确保 UI 已更新完毕
+        setTimeout(notifyTaskComplete, 500);
+    };
+    window.onFinishStream = window._wrappedFinish;
+    window.finishStream = window._wrappedFinish;
+
+    // 用户点击时请求通知权限（用于触发浏览器授权弹窗）
+    document.addEventListener('click', function() {
+        if (_notifyPerm === 'default') {
+            _requestNotifyPerm();
+        }
+    }, { once: true });
+})();
+</script>
+
 </body>
 </html>
