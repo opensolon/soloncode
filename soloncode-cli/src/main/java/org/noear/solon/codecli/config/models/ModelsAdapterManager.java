@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.portal.web.model;
+package org.noear.solon.codecli.config.models;
 
 import org.noear.solon.annotation.Component;
 import org.noear.solon.core.util.Assert;

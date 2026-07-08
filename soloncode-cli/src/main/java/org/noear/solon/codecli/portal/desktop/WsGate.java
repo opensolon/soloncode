@@ -45,7 +45,6 @@ import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.codecli.command.builtin.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.portal.web.model.ModelApiUrl;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;

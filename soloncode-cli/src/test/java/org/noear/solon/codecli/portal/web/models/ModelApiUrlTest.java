@@ -1,6 +1,7 @@
-package org.noear.solon.codecli.portal.web.model;
+package org.noear.solon.codecli.portal.web.models;
 
 import org.junit.jupiter.api.Test;
+import org.noear.solon.codecli.config.models.ModelApiUrl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

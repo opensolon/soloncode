@@ -3,7 +3,7 @@ package org.noear.solon.codecli.config.entity;
 import lombok.Getter;
 import lombok.Setter;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.portal.web.model.ModelInfo;
+import org.noear.solon.codecli.config.models.ModelInfo;
 
 import java.io.Serializable;
 import java.util.ArrayList;

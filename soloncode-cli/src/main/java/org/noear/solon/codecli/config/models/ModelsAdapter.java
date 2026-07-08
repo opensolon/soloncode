@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.portal.web.model;
+package org.noear.solon.codecli.config.models;
 
 import java.util.List;
 import java.util.Map;
