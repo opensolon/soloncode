@@ -9,6 +9,7 @@ target/
 .settings
 .springBeans
 .soloncode
+.uploads
 
 ### IntelliJ IDEA ###
 .idea
