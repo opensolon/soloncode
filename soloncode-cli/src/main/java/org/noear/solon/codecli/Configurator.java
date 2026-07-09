@@ -291,11 +291,20 @@ public class Configurator {
         WebGate webGate = new WebGate(agentRuntime, settings);
         WebSocketRouter.getInstance().of("/web/gate", webGate);
 
+        // 初始化文件监听服务（提前创建，以便 WebSettingsController 引用）
+        Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
+        FileWatchService fileWatchService = new FileWatchService();
+        // 默认工作区 → 前端广播
+        fileWatchService.addRoot("workspace", workspacePath)
+                .addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+
         //web
         BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
         Solon.app().router().add(webController);
 
         WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);
+        settingsController.setFileWatchService(fileWatchService);
+        settingsController.setWebGate(webGate);
         BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
         Solon.app().router().add(webSettingsController);
 
@@ -305,43 +314,29 @@ public class Configurator {
         // 启动微信通道
         RunUtil.async((Runnable) webChannel.get());
 
-        // 启动工作区 + 挂载点的文件变化监听
-        // 为 FILES 类根注册前端广播处理器，为 SKILLS/AGENTS 类根注册刷新处理器
-        try {
-            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
-            FileWatchService fileWatchService = new FileWatchService();
+        // 遍历所有挂载点，按类型分配不同的处理器
+        for (MountDir mount : agentRuntime.getMounts()) {
+            if (!mount.isEnabled()) continue;
 
-            // 默认工作区 → 前端广播
-            fileWatchService.addRoot("workspace", workspacePath)
-                    .addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+            FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
 
-            // 遍历所有挂载点，按类型分配不同的处理器
-            for (MountDir mount : agentRuntime.getMounts()) {
-                if (!mount.isEnabled()) continue;
-
-                FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
-
-                switch (mount.getType()) {
-                    case FILES:
-                        // FILES 挂载 → 前端广播
-                        root.addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
-                        break;
-                    case SKILLS:
-                        // SKILLS 挂载 → 触发技能刷新
-                        root.addHandler(changes -> agentRuntime.getSkillProvider().refreshByGroup(mount.getAlias()));
-                        break;
-                    case AGENTS:
-                        // AGENTS 挂载 → 触发代理刷新
-                        root.addHandler(changes -> agentRuntime.getAgentManager().refreshByMountAlias(mount.getAlias()));
-                        break;
-                }
+            switch (mount.getType()) {
+                case FILES:
+                    // FILES 挂载 → 前端广播
+                    root.addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+                    break;
+                case SKILLS:
+                    // SKILLS 挂载 → 触发技能刷新
+                    root.addHandler(changes -> agentRuntime.getSkillProvider().refreshByGroup(mount.getAlias()));
+                    break;
+                case AGENTS:
+                    // AGENTS 挂载 → 触发代理刷新
+                    root.addHandler(changes -> agentRuntime.getAgentManager().refreshByMountAlias(mount.getAlias()));
+                    break;
             }
-
-            fileWatchService.start();
-        } catch (Exception e) {
-            // watcher 启动失败不影响主流程
-            LOG.warn("[Configurator] file watch service start failed: {}", e.getMessage());
         }
+
+        fileWatchService.start();
 
         if (cliShell != null) {
             String url = "http://localhost:" + Solon.cfg().serverPort() + "/";

@@ -34,10 +34,10 @@ import static java.nio.file.StandardWatchEventKinds.*;
  *   <li><b>AGENTS 挂载</b> → 调用代理刷新</li>
  * </ul>
  *
- * <h3>支持多根目录</h3>
+ * <h3>动态挂载管理</h3>
  * <ul>
- *   <li>通过 {@link #addRoot(String, Path)} 添加任意数量的监听根，返回 {@link WatchRoot} 供链式注册处理器</li>
- *   <li>广播变更时使用结构化对象 {@code ChangeEntry {wsId, path}}，处理器可按需构建 JSON</li>
+ *   <li>{@link #addRoot(String, Path)} 在 {@link #start()} 前后均可调用，自动判断是否需要立即注册目录树</li>
+ *   <li>{@link #removeRoot(String)} 动态移除监听根，取消所有关联的 WatchKey</li>
  *   <li>自动排除 .git、node_modules、target 等无关目录</li>
  *   <li>新增目录时自动注册监听，覆盖子树</li>
  *   <li>使用守护线程，随主进程退出</li>
@@ -62,21 +62,26 @@ public class FileWatchService {
             "target", "build"
     ));
 
-    /** 监听根列表 */
-    private final List<WatchRoot> watchRoots = new ArrayList<>();
+    /** 监听根映射表（按 id 索引，支持动态增删） */
+    private final Map<String, WatchRoot> watchRoots = new ConcurrentHashMap<>();
     private WatchService watchService;
     private ScheduledExecutorService scheduler;
+
+    /** 标记 start() 是否已执行，决定 addRoot 时是否需要立即注册目录树 */
+    private volatile boolean started = false;
 
     /** 待推送的变更路径集合（去重、线程安全） */
     private final Set<ChangeEntry> changedPaths = ConcurrentHashMap.newKeySet();
 
     /**
-     * 监听根节点 —— 包含工作区标识、真实路径及独立的处理器列表
+     * 监听根节点 —— 包含工作区标识、真实路径、独立的处理器列表及关联的 WatchKey 列表
      */
     public static class WatchRoot {
         final String id;   // "workspace" 或 "@mount-alias"
         final Path path;   // 真实文件系统绝对路径
         final List<Consumer<List<ChangeEntry>>> handlers = new ArrayList<>();
+        /** 该根注册的所有 WatchKey，用于 removeRoot 时批量取消 */
+        final List<WatchKey> watchKeys = Collections.synchronizedList(new ArrayList<>());
 
         WatchRoot(String id, Path path) {
             this.id = id;
@@ -124,14 +129,62 @@ public class FileWatchService {
     /**
      * 添加一个监听根目录
      *
+     * <p>在 {@link #start()} 之前调用：仅记录，待 start() 时统一注册目录树。<br>
+     * 在 {@link #start()} 之后调用：立即注册目录树，实现动态挂载监听。</p>
+     *
+     * <p>若 id 已存在，先移除旧根（等价于替换场景），再创建新根。</p>
+     *
      * @param id   工作区标识（如 "workspace" 或 "@solon-ai-source"）
      * @param path 真实文件系统路径
      * @return 创建的 {@link WatchRoot} 实例，可链式调用 {@link WatchRoot#addHandler}
      */
     public WatchRoot addRoot(String id, Path path) {
+        // 若已存在同 id 的根，先清理（防止重复注册）
+        removeRoot(id);
+
         WatchRoot root = new WatchRoot(id, path);
-        this.watchRoots.add(root);
+        watchRoots.put(id, root);
+
+        // start() 之后动态添加：立即注册目录树
+        if (started && watchService != null) {
+            try {
+                if (Files.exists(root.path)) {
+                    registerTree(root.path, root);
+                    LOG.info("[FileWatchService] dynamically registered root: {} -> {}", id, root.path);
+                } else {
+                    LOG.warn("[FileWatchService] root path not exists, skip: {} -> {}", id, root.path);
+                }
+            } catch (Exception e) {
+                LOG.error("[FileWatchService] dynamic registerTree failed for root '{}': {}", id, e.getMessage(), e);
+            }
+        }
+
         return root;
+    }
+
+    /**
+     * 移除一个监听根目录，取消其所有 WatchKey
+     *
+     * <p>用于挂载禁用、删除等场景。移除后，该根目录下的文件变更不再被捕获和分发。</p>
+     *
+     * @param id 工作区标识
+     */
+    public void removeRoot(String id) {
+        WatchRoot root = watchRoots.remove(id);
+        if (root == null) return;
+
+        // 取消该根注册的所有 WatchKey
+        synchronized (root.watchKeys) {
+            for (WatchKey key : root.watchKeys) {
+                try {
+                    key.cancel();
+                } catch (Exception ignored) {
+                }
+            }
+            root.watchKeys.clear();
+        }
+
+        LOG.info("[FileWatchService] removed root: {}", id);
     }
 
     /**
@@ -149,12 +202,14 @@ public class FileWatchService {
                 return t;
             });
 
+            started = true;
+
             // 异步执行所有根目录的目录树注册，避免阻塞主线程
             Thread initThread = new Thread(() -> {
-                for (WatchRoot root : watchRoots) {
+                for (WatchRoot root : watchRoots.values()) {
                     try {
                         if (Files.exists(root.path)) {
-                            registerTree(root.path);
+                            registerTree(root.path, root);
                             LOG.info("[FileWatchService] registered root: {} -> {}", root.id, root.path);
                         } else {
                             LOG.warn("[FileWatchService] root path not exists, skip: {} -> {}", root.id, root.path);
@@ -182,6 +237,7 @@ public class FileWatchService {
      */
     public void stop() {
         try {
+            started = false;
             if (scheduler != null) scheduler.shutdownNow();
             if (watchService != null) watchService.close();
         } catch (Exception e) {
@@ -190,9 +246,12 @@ public class FileWatchService {
     }
 
     /**
-     * 递归注册目录树到 WatchService（排除无关目录）
+     * 递归注册目录树到 WatchService（排除无关目录），将 WatchKey 存入 root 便于后续清理
+     *
+     * @param dir  要注册的起始目录
+     * @param root 所属的监听根，用于关联 WatchKey
      */
-    private void registerTree(Path dir) throws Exception {
+    private void registerTree(Path dir, WatchRoot root) throws Exception {
         Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes attrs) {
@@ -201,7 +260,8 @@ public class FileWatchService {
                     return FileVisitResult.SKIP_SUBTREE;
                 }
                 try {
-                    d.register(watchService, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
+                    WatchKey key = d.register(watchService, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
+                    root.watchKeys.add(key);
                 } catch (Exception ignored) {
                 }
                 return FileVisitResult.CONTINUE;
@@ -219,7 +279,7 @@ public class FileWatchService {
      * 查找给定路径所属的 WatchRoot
      */
     private WatchRoot findRoot(Path dir) {
-        for (WatchRoot root : watchRoots) {
+        for (WatchRoot root : watchRoots.values()) {
             if (dir.startsWith(root.path)) {
                 return root;
             }
@@ -239,7 +299,8 @@ public class FileWatchService {
                 // 找到所属的根，以确定相对化基准
                 WatchRoot root = findRoot(dir);
                 if (root == null) {
-                    key.reset();
+                    // 根已被移除，取消此 key 避免空转
+                    key.cancel();
                     continue;
                 }
 
@@ -257,7 +318,7 @@ public class FileWatchService {
                     // 新增目录时，递归注册其子目录监听
                     if (event.kind() == ENTRY_CREATE && fullPath.toFile().isDirectory()) {
                         try {
-                            registerTree(fullPath);
+                            registerTree(fullPath, root);
                         } catch (Exception ignored) {
                         }
                     }
@@ -305,7 +366,7 @@ public class FileWatchService {
                 .collect(Collectors.groupingBy(e -> e.wsId));
 
         // 逐根分发
-        for (WatchRoot root : watchRoots) {
+        for (WatchRoot root : watchRoots.values()) {
             List<ChangeEntry> rootChanges = grouped.get(root.id);
             if (rootChanges != null && !rootChanges.isEmpty()) {
                 for (Consumer<List<ChangeEntry>> handler : root.handlers) {

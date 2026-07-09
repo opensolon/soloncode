@@ -54,6 +54,8 @@ import org.noear.solon.codecli.config.models.ModelInfo;
 import org.noear.solon.codecli.config.models.ModelsAdapter;
 import org.noear.solon.codecli.config.models.ModelsAdapterManager;
 import org.noear.solon.codecli.config.models.ModelSpecService;
+import org.noear.solon.codecli.portal.FileWatchService;
+import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -128,6 +130,16 @@ public class WebSettingsController {
     private final AgentSettings settings;
 
     /**
+     * 文件变更监听服务（由 Configurator 注入，用于动态挂载管理）
+     */
+    private FileWatchService fileWatchService;
+
+    /**
+     * Web 网关（用于前端 WebSocket 广播）
+     */
+    private WebGate webGate;
+
+    /**
      * 构造函数：使用容器注入的 AgentSettings。
      *
      * @param engine   AI Agent 执行引擎
@@ -169,6 +181,41 @@ public class WebSettingsController {
         this.marketManager = marketManager;
         this.modelProviderFactory = modelProviderFactory;
         this.modelSpecService = modelSpecService;
+    }
+
+    /**
+     * 注册挂载点的文件监听（根据类型分配不同的处理器）
+     */
+    private void registerMountWatch(MountDir mount) {
+        if (fileWatchService == null || !mount.isEnabled()) return;
+
+        FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
+
+        switch (mount.getType()) {
+            case FILES:
+                root.addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+                break;
+            case SKILLS:
+                root.addHandler(changes -> engine.getSkillProvider().refreshByGroup(mount.getAlias()));
+                break;
+            case AGENTS:
+                root.addHandler(changes -> engine.getAgentManager().refreshByMountAlias(mount.getAlias()));
+                break;
+        }
+    }
+
+    /**
+     * 设置 FileWatchService（由 Configurator 注入）
+     */
+    public void setFileWatchService(FileWatchService fileWatchService) {
+        this.fileWatchService = fileWatchService;
+    }
+
+    /**
+     * 设置 WebGate（由 Configurator 注入）
+     */
+    public void setWebGate(WebGate webGate) {
+        this.webGate = webGate;
     }
 
     // ==================== 配置持久化 ====================
@@ -2327,6 +2374,13 @@ public class WebSettingsController {
                 .path(path)
                 .writeable(writeable)
                 .build());
+
+        // 同步注册文件监听
+        MountDir newMount = engine.getMount(alias);
+        if (newMount != null) {
+            registerMountWatch(newMount);
+        }
+
         return Result.succeed("添加成功");
     }
 
@@ -2388,6 +2442,16 @@ public class WebSettingsController {
         }
 
         saveSettings();
+
+        // 同步文件监听：启用时注册，停用时移除
+        if (fileWatchService != null) {
+            if (Boolean.TRUE.equals(enabled)) {
+                registerMountWatch(mountDir);
+            } else {
+                fileWatchService.removeRoot(alias);
+            }
+        }
+
         LOG.info("[Settings] Mount toggled: {} -> {}", alias, enabled);
         return Result.succeed();
     }
@@ -2410,6 +2474,12 @@ public class WebSettingsController {
         settings.getMountPools().remove(alias);
         saveSettings();
         engine.removeMount(alias);
+
+        // 同步移除文件监听
+        if (fileWatchService != null) {
+            fileWatchService.removeRoot(alias);
+        }
+
         return Result.succeed("移除成功");
     }
 
