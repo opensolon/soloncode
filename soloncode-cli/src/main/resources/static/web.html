@@ -1507,7 +1507,7 @@
     // 通知函数
     window._notifyTaskComplete = function() {
         if (document.hasFocus && document.hasFocus()) return;
-        window._playChime();
+        // window._playChime();  // 已取消声音提醒
         if (window._notifyPerm === 'granted') {
             try {
                 var n = new Notification('SolonCode', {
