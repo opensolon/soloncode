@@ -1783,6 +1783,20 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     color: var(--text-primary);
 }
 
+/* 全屏状态 */
+.git-diff-viewer:fullscreen {
+    background: var(--bg-primary, #ffffff);
+    padding: 0;
+}
+.git-diff-viewer:-webkit-full-screen {
+    background: var(--bg-primary, #ffffff);
+    padding: 0;
+}
+.git-diff-viewer:-moz-full-screen {
+    background: var(--bg-primary, #ffffff);
+    padding: 0;
+}
+
 /* 右侧按钮组（视图切换 + 复制） — 已废弃，按钮移至 header */
 .file-view-copy-group {
     margin-left: auto;

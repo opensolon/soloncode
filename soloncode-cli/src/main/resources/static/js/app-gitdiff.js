@@ -406,6 +406,10 @@
         var _copyBtnReset = document.getElementById('gitViewerCopyBtn');
         if (_copyBtnReset) _copyBtnReset.style.display = '';
 
+        // 显示全屏按钮（可能在审查详情中被隐藏）
+        var _fullscreenReset = document.getElementById('gitViewerFullscreen');
+        if (_fullscreenReset) _fullscreenReset.style.display = '';
+
         var lang = guessLang(filePath || fileName);
         var lines = (content || '').split('\n');
         var totalLines = lines.length;
@@ -664,11 +668,13 @@
         gitDiffViewer.style.display = 'flex';
         diffViewerActive = true;
 
-        // 审查详情模式：隐藏"视图"和"复制"按钮
+        // 审查详情模式：隐藏"视图"和"复制"按钮（全屏按钮保留）
         var _mdToggle = document.getElementById('gitViewerMdToggle');
         var _copyBtn = document.getElementById('gitViewerCopyBtn');
+        var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
+        if (_fullscreenBtn) _fullscreenBtn.style.display = '';
 
         if (gitViewerLabel) gitViewerLabel.textContent = '变更详情';
         // 如果是挂载工作区，显示路径时带上 @xxx/ 前缀
@@ -861,6 +867,12 @@
     // ---- Diff Viewer：关闭，恢复原始视图 ----
     function closeDiffViewer() {
         if (!gitDiffViewer) return;
+
+        // 如果当前在全屏状态，退出全屏
+        if (document.fullscreenElement === gitDiffViewer && document.exitFullscreen) {
+            document.exitFullscreen().catch(function(e){});
+        }
+
         gitDiffViewer.style.display = 'none';
         diffViewerActive = false;
 
@@ -884,6 +896,37 @@
 
     if (gitViewerClose) {
         gitViewerClose.addEventListener('click', closeDiffViewer);
+    }
+
+    // ---- 全屏功能 ----
+    var gitViewerFullscreen = document.getElementById('gitViewerFullscreen');
+    if (gitViewerFullscreen) {
+        gitViewerFullscreen.addEventListener('click', function() {
+            if (!document.fullscreenElement) {
+                if (gitDiffViewer.requestFullscreen) {
+                    gitDiffViewer.requestFullscreen().catch(function(e) {
+                        console.warn('[gitdiff] fullscreen error', e);
+                    });
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().catch(function(e) {
+                        console.warn('[gitdiff] exit fullscreen error', e);
+                    });
+                }
+            }
+        });
+
+        // 监听全屏状态变化，更新图标
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement === gitDiffViewer) {
+                gitViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4M4 10h6V4m10 10h-6v6"/></svg>';
+                gitViewerFullscreen.title = '退出全屏';
+            } else {
+                gitViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+                gitViewerFullscreen.title = '全屏';
+            }
+        });
     }
 
     // ESC 关闭 diff viewer
