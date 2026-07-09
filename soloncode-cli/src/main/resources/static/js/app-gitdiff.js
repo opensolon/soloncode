@@ -412,6 +412,9 @@
                 + '</div>';
         }
 
+        // 检测是否为 .md 文件
+        var isMdFile = /\.md$/i.test(filePath || fileName || "");
+
         // 信息栏
         var infoBar = '<div class="file-view-info">'
             + '<span>' + escapeHtml(fileName || '') + '</span>'
@@ -420,11 +423,15 @@
             + '<span class="file-view-info-sep">|</span>'
             + '<span>' + formatSize(fileSize || 0) + '</span>'
             + (lang ? '<span class="file-view-info-sep">|</span><span>' + escapeHtml(lang) + '</span>' : '')
+            + '<span class="file-view-copy-group">'
+            + (isMdFile ? '<span class="file-view-md-toggle" title="切换视图">视图</span>' : '')
             + '<span class="file-view-copy-btn" title="复制文件内容">复制</span>'
+            + '</span>'
             + '</div>';
 
         gitViewerContent.innerHTML = infoBar
-            + '<div class="file-view-code' + (lang ? ' hljs-language-' + lang : '') + '">' + codeHtml + '</div>';
+            + '<div class="file-view-code' + (lang ? ' hljs-language-' + lang : '') + '">' + codeHtml + '</div>'
+            + (isMdFile ? '<div class="file-view-md-frame-wrap" style="display:none;"><iframe class="file-view-md-frame" sandbox="allow-scripts"></iframe></div>' : '');
 
         // 如果有 hljs 且能识别语言，对代码区进行语法高亮
         if (lang && typeof hljs !== 'undefined') {
@@ -469,6 +476,50 @@
             })(content, copyBtn);
         }
 
+        // Markdown 视图切换按钮
+        if (isMdFile) {
+            var mdToggle = gitViewerContent.querySelector('.file-view-md-toggle');
+            var mdFrameWrap = gitViewerContent.querySelector('.file-view-md-frame-wrap');
+            var codeBlock = gitViewerContent.querySelector('.file-view-code');
+            var mdRenderedFlag = false;
+
+            if (mdToggle && mdFrameWrap && codeBlock) {
+                (function(content, toggle, wrap, code) {
+                    toggle.addEventListener('click', function() {
+                        if (wrap.style.display === 'none') {
+                            // 切换到"视图"模式
+                            code.style.display = 'none';
+                            wrap.style.display = 'block';
+
+                            // 调整 iframe 高度
+                            var iframe = wrap.querySelector('iframe');
+                            if (iframe) {
+                                var headerHeight = gitViewerContent.querySelector('.file-view-info').offsetHeight || 36;
+                                var availHeight = gitViewerContent.clientHeight - headerHeight - 8;
+                                if (availHeight < 300) availHeight = 300;
+                                iframe.style.height = availHeight + 'px';
+                            }
+
+                            // 首次切换渲染 MD
+                            if (!mdRenderedFlag && iframe) {
+                                var mdHtml = renderMdForPreview(content);
+                                var frameDoc = buildMdPreviewDocument(mdHtml);
+                                iframe.srcdoc = frameDoc;
+                                mdRenderedFlag = true;
+                            }
+
+                            toggle.textContent = '源码';
+                        } else {
+                            // 切换回"源码"模式
+                            code.style.display = 'block';
+                            wrap.style.display = 'none';
+                            toggle.textContent = '视图';
+                        }
+                    });
+                })(content, mdToggle, mdFrameWrap, codeBlock);
+            }
+        }
+
         gitViewerContent.scrollTop = 0;
     }
 
@@ -484,6 +535,91 @@
         document.body.removeChild(ta);
         btn.textContent = '已复制';
         setTimeout(function() { btn.textContent = '复制'; }, 1500);
+    }
+
+    // Markdown 辅助函数（用于 iframe 视图预览）
+    function renderMdForPreview(text) {
+        if (typeof marked === 'undefined') return escapeHtml(text || '');
+        try {
+            var savedOpts = {};
+            // 尝试保存当前全局配置
+            if (marked.defaults) {
+                savedOpts.breaks = marked.defaults.breaks;
+                savedOpts.gfm = marked.defaults.gfm;
+                savedOpts.renderer = marked.defaults.renderer;
+            }
+            // 设置为预览模式
+            marked.setOptions({ breaks: true, gfm: true, renderer: null });
+            var html = marked.parse(text || '');
+            // 恢复全局配置
+            if (marked.defaults) {
+                marked.setOptions(savedOpts);
+            }
+            return html;
+        } catch(e) {
+            return escapeHtml(text || '');
+        }
+    }
+
+    function buildMdPreviewDocument(mdHtml) {
+        return '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
+            + '<meta charset="utf-8">\n'
+            + '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+            + '<style>\n'
+            + '  * { margin: 0; padding: 0; box-sizing: border-box; }\n'
+            + '  body {\n'
+            + '    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;\n'
+            + '    font-size: 15px;\n'
+            + '    line-height: 1.7;\n'
+            + '    color: #24292e;\n'
+            + '    padding: 24px 32px;\n'
+            + '    max-width: 960px;\n'
+            + '    margin: 0 auto;\n'
+            + '    background: #ffffff;\n'
+            + '  }\n'
+            + '  h1, h2, h3, h4 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }\n'
+            + '  h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }\n'
+            + '  h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }\n'
+            + '  h3 { font-size: 1.25em; }\n'
+            + '  p, ul, ol, blockquote, table, pre { margin-bottom: 16px; }\n'
+            + '  ul, ol { padding-left: 2em; }\n'
+            + '  li { margin: 0.25em 0; }\n'
+            + '  a { color: #0366d6; text-decoration: none; }\n'
+            + '  a:hover { text-decoration: underline; }\n'
+            + '  code {\n'
+            + '    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n'
+            + '    font-size: 13px;\n'
+            + '    background: #f6f8fa;\n'
+            + '    padding: 2px 6px;\n'
+            + '    border-radius: 3px;\n'
+            + '  }\n'
+            + '  pre {\n'
+            + '    background: #f6f8fa;\n'
+            + '    padding: 16px;\n'
+            + '    border-radius: 6px;\n'
+            + '    overflow-x: auto;\n'
+            + '  }\n'
+            + '  pre code {\n'
+            + '    background: none;\n'
+            + '    padding: 0;\n'
+            + '    font-size: 13px;\n'
+            + '    line-height: 1.5;\n'
+            + '  }\n'
+            + '  blockquote {\n'
+            + '    border-left: 4px solid #dfe2e5;\n'
+            + '    padding: 0 16px;\n'
+            + '    color: #6a737d;\n'
+            + '  }\n'
+            + '  img { max-width: 100%; }\n'
+            + '  table { border-collapse: collapse; width: 100%; }\n'
+            + '  th, td { border: 1px solid #dfe2e5; padding: 6px 13px; }\n'
+            + '  th { background: #f6f8fa; font-weight: 600; }\n'
+            + '  hr { border: none; border-top: 1px solid #eaecef; margin: 24px 0; }\n'
+            + '  ::-webkit-scrollbar { width: 6px; height: 6px; }\n'
+            + '  ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }\n'
+            + '</style>\n</head>\n<body>\n'
+            + mdHtml + '\n'
+            + '</body>\n</html>';
     }
 
     // ---- Diff Viewer：打开内联 diff（在 main-area 内）----
