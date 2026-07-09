@@ -1,7 +1,8 @@
 (function () {
-    if (window.__studioNavigationGuardInstalled) {
+    if (window.__studioBridgeInstalled || window.__studioNavigationGuardInstalled) {
         return;
     }
+    window.__studioBridgeInstalled = true;
     window.__studioNavigationGuardInstalled = true;
 
     var nativeOpen = window.open;
@@ -15,9 +16,19 @@
         isStudioPageEnabled = false;
     }
 
-    function dispatchStudioNavigationBlocked(payload) {
-        var eventName = "studio-blocked-navigation";
+    function studioLog(message, detail) {
+        try {
+            if (detail !== undefined) {
+                console.log("[studio] " + message, detail);
+            } else {
+                console.log("[studio] " + message);
+            }
+        } catch (e) {
+            // ignore console failures
+        }
+    }
 
+    function dispatchStudioMessage(eventName, payload) {
         try {
             var customEvent = new CustomEvent(eventName, { detail: payload });
             window.dispatchEvent(customEvent);
@@ -47,12 +58,29 @@
                 // ignore cross-window failures
             }
         }
+
+        studioLog("message dispatched", {
+            type: eventName,
+            payload: payload
+        });
+    }
+
+    function dispatchStudioNavigationBlocked(payload) {
+        dispatchStudioMessage("studio-blocked-navigation", payload);
     }
 
     function bindStudioNavigationBlockedListener() {
         try {
             window.addEventListener("message", function (event) {
-                console.log("[studio] raw message:", event.origin, event.data);
+                var data = event && event.data ? event.data : null;
+                if (!data || typeof data.type !== "string" || data.type.indexOf("studio-") !== 0) {
+                    return;
+                }
+
+                studioLog("message received", {
+                    origin: event.origin,
+                    data: data
+                });
             });
         } catch (e) {
             // ignore listener setup failures
@@ -65,18 +93,90 @@
                     return;
                 }
 
-                console.log("[studio] blocked navigation:", payload.source, payload.url);
+                studioLog("navigation event received", payload);
             });
         } catch (e) {
             // ignore listener setup failures
         }
     }
 
+    function getStudioTaskName(sess) {
+        var sessionId = sess && sess.sessionId ? sess.sessionId : window.SESSION_ID;
+
+        try {
+            if (window.chatHistory && sessionId) {
+                for (var i = 0; i < window.chatHistory.length; i += 1) {
+                    if (window.chatHistory[i] && window.chatHistory[i].sessionId === sessionId) {
+                        return window.chatHistory[i].label || "";
+                    }
+                }
+            }
+        } catch (e) {
+            // ignore task name lookup failures
+        }
+
+        try {
+            var activeLabel = document.querySelector("#historyList .sidebar-item.active .sidebar-item-label");
+            if (activeLabel) {
+                return activeLabel.textContent || "";
+            }
+        } catch (e) {
+            // ignore active label lookup failures
+        }
+
+        return "";
+    }
+
+    function dispatchStudioTaskLifecycle(action, source, sess) {
+        var payload = {
+            action: action,
+            source: source,
+            taskName: getStudioTaskName(sess),
+            sessionId: sess && sess.sessionId ? sess.sessionId : window.SESSION_ID,
+            timestamp: Date.now()
+        };
+
+        dispatchStudioMessage("studio-task-lifecycle", payload);
+    }
+
+    function bindStudioTaskLifecycle() {
+        if (typeof window.sendWithFormDataGrouped === "function") {
+            var nativeSendWithFormDataGrouped = window.sendWithFormDataGrouped;
+            window.sendWithFormDataGrouped = function (sess, text, filesToSend) {
+                dispatchStudioTaskLifecycle("start", "send", sess);
+                return nativeSendWithFormDataGrouped.apply(this, arguments);
+            };
+        }
+
+        if (typeof window.handleHitlResponse === "function") {
+            var nativeHandleHitlResponse = window.handleHitlResponse;
+            window.handleHitlResponse = function (sess, action) {
+                dispatchStudioTaskLifecycle("start", "hitl-" + action, sess);
+                return nativeHandleHitlResponse.apply(this, arguments);
+            };
+        }
+
+        if (typeof window.finishStream === "function") {
+            var nativeFinishStream = window.finishStream;
+            window.finishStream = function (sess) {
+                var result = nativeFinishStream.apply(this, arguments);
+                dispatchStudioTaskLifecycle("end", "finish-stream", sess);
+                return result;
+            };
+        }
+
+        window._notifyTaskComplete = function () {};
+        studioLog("task lifecycle bridge installed");
+    }
+
     bindStudioNavigationBlockedListener();
 
     if (!isStudioPageEnabled) {
+        studioLog("inactive, missing studio=true");
         return;
     }
+
+    studioLog("active");
 
     function isAllowedUrl(url) {
         if (!url) {
@@ -192,7 +292,6 @@
         };
 
         dispatchStudioNavigationBlocked(payload);
-        console.log("[studio] blocked navigation:", source, url);
 
         if (typeof window.onStudioNavigationBlocked === "function") {
             window.onStudioNavigationBlocked(url, source);
@@ -261,6 +360,6 @@
         true
     );
 
-    bindStudioNavigationBlockedListener();
+    bindStudioTaskLifecycle();
     bindAnchorObserver();
 })();
