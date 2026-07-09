@@ -518,9 +518,12 @@
                                 iframe.style.height = availHeight + 'px';
                             }
 
-                            // 首次切换渲染 MD
                             if (!mdRenderedFlag && iframe) {
                                 var mdHtml = renderMdForPreview(content);
+                                // 应用语法高亮到代码块
+                                if (typeof hljs !== 'undefined') {
+                                    mdHtml = applyMdHighlight(mdHtml);
+                                }
                                 var frameDoc = buildMdPreviewDocument(mdHtml);
                                 iframe.srcdoc = frameDoc;
                                 mdRenderedFlag = true;
@@ -592,6 +595,19 @@
         }
     }
 
+    function applyMdHighlight(mdHtml) {
+        return mdHtml.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, function(match, lang, code) {
+            try {
+                // 解码 HTML 实体
+                var decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+                var result = hljs.highlight(decoded, { language: lang, ignoreIllegals: true });
+                return '<pre><code class="language-' + lang + ' hljs">' + result.value + '</code></pre>';
+            } catch(e) {
+                return match;
+            }
+        });
+    }
+
     function buildMdPreviewDocument(mdHtml) {
         return '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
             + '<meta charset="utf-8">\n'
@@ -636,6 +652,24 @@
             + '    font-size: 13px;\n'
             + '    line-height: 1.5;\n'
             + '  }\n'
+            // highlight.js 高亮样式（GitHub Light 主题）
+            + '  pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}\n'
+            + '  .hljs{color:#24292e;background:#fff}\n'
+            + '  .hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}\n'
+            + '  .hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}\n'
+            + '  .hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}\n'
+            + '  .hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}\n'
+            + '  .hljs-built_in,.hljs-symbol{color:#e36209}\n'
+            + '  .hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}\n'
+            + '  .hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}\n'
+            + '  .hljs-subst{color:#24292e}\n'
+            + '  .hljs-section{color:#005cc5;font-weight:700}\n'
+            + '  .hljs-bullet{color:#735c0f}\n'
+            + '  .hljs-emphasis{color:#24292e;font-style:italic}\n'
+            + '  .hljs-strong{color:#24292e;font-weight:700}\n'
+            + '  .hljs-addition{color:#22863a;background-color:#f0fff4}\n'
+            + '  .hljs-deletion{color:#b31d28;background-color:#ffeef0}\n'
+            + '  '
             + '  blockquote {\n'
             + '    border-left: 4px solid #dfe2e5;\n'
             + '    padding: 0 16px;\n'
