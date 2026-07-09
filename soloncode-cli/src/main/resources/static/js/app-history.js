@@ -134,7 +134,7 @@ function updateHistoryUI() {
                 html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
             }
             html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
-                + '<button class="sidebar-item-fork" title="分叉（复制）对话"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.25 2.25 0 1 1-1.5 0v-2.128h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"/></svg></button>'
+                + '<button class="sidebar-item-fork" title="复制对话"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.25 2.25 0 1 1-1.5 0v-2.128h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"/></svg></button>'
                 + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
                 + '</div>';
         }
@@ -198,9 +198,9 @@ function forkSession(idx) {
     var entry = chatHistory[idx];
     if (!entry) return;
 
-    layer.confirm('分叉当前对话为一个新会话？\n原会话消息将被完整复制。', {
-        title: '分叉对话',
-        btn: ['分叉', '取消'],
+    layer.confirm('将当前对话完整复制一份作为新对话，\n原对话不受影响，你可以在此基础上继续提问。', {
+        title: '复制对话',
+        btn: ['复制', '取消'],
         icon: 3,
         offset: '120px'
     }, function(confirmIdx) {
@@ -221,20 +221,20 @@ function forkSession(idx) {
                 if (newIdx >= 0) selectSession(newIdx);
 
                 if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg('已分叉为新对话', { icon: 1, time: 2000, offset: '120px' });
+                    layer.msg('复制对话成功', { icon: 1, time: 2000, offset: '120px' });
                 }
             } catch (e) {
                 if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg('分叉对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+                    layer.msg('复制对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
                 } else {
-                    alert('分叉对话失败，请重试');
+                    alert('复制对话失败，请重试');
                 }
             }
         }).fail(function() {
             if (typeof layer !== 'undefined' && layer.msg) {
-                layer.msg('分叉对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+                layer.msg('复制对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
             } else {
-                alert('分叉对话失败，请重试');
+                alert('复制对话失败，请重试');
             }
         });
     });
