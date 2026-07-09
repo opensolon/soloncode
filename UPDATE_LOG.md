@@ -1,6 +1,6 @@
 ### v2026.7.9
 
-* 添加 soloncode 挂载文件监听，实时通知文件变化
+* 添加 soloncode web 挂载文件监听，实时通知文件变化
 * 优化 soloncode web 消息渲染，避免 html 输出破坏界面
 * 调整 soloncode web 上传文件统一放到 ".uploads" 目录下
 * 细节优化

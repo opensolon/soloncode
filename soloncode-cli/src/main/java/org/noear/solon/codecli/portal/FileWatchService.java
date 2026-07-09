@@ -4,6 +4,7 @@ import org.noear.snack4.ONode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
@@ -150,16 +151,23 @@ public class FileWatchService {
 
             // 异步执行所有根目录的目录树注册，避免阻塞主线程
             Thread initThread = new Thread(() -> {
-                try {
-                    for (WatchRoot root : watchRoots) {
-                        registerTree(root.path);
-                        LOG.info("[FileWatchService] registered root: {} -> {}", root.id, root.path);
+                for (WatchRoot root : watchRoots) {
+                    try {
+                        if (Files.exists(root.path)) {
+                            registerTree(root.path);
+                            LOG.info("[FileWatchService] registered root: {} -> {}", root.id, root.path);
+                        } else {
+                            LOG.warn("[FileWatchService] root path not exists, skip: {} -> {}", root.id, root.path);
+                        }
+                    } catch (Exception e) {
+                        // 单个根注册失败不影响其他根和后续轮询启动
+                        LOG.error("[FileWatchService] registerTree failed for root '{}': {}", root.id, e.getMessage(), e);
                     }
-                    scheduler.submit(this::pollEvents);
-                    LOG.info("[FileWatchService] started for {} roots", watchRoots.size());
-                } catch (Exception e) {
-                    LOG.error("[FileWatchService] start failed: {}", e.getMessage(), e);
                 }
+
+                // 无论是否有根注册失败，都启动事件轮询
+                scheduler.submit(this::pollEvents);
+                LOG.info("[FileWatchService] started for {} roots", watchRoots.size());
             }, "file-watch-service-init");
             initThread.setDaemon(true);
             initThread.start();
@@ -198,6 +206,12 @@ public class FileWatchService {
                 }
                 return FileVisitResult.CONTINUE;
             }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                // 某个文件/目录无访问权限时跳过，不让异常中断整个注册流程
+                return FileVisitResult.CONTINUE;
+            }
         });
     }
 
@@ -217,8 +231,8 @@ public class FileWatchService {
      * 轮询 WatchService 事件，捕获文件变更并触发防抖推送
      */
     private void pollEvents() {
-        try {
-            while (!Thread.currentThread().isInterrupted()) {
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
                 WatchKey key = watchService.take();
                 Path dir = (Path) key.watchable();
 
@@ -251,11 +265,13 @@ public class FileWatchService {
 
                 key.reset();
                 flushChanges();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                // 单个事件处理异常不杀掉整个轮询线程
+                LOG.error("[FileWatchService] poll error: {}", e.getMessage(), e);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            LOG.error("[FileWatchService] poll error: {}", e.getMessage());
         }
     }
 
