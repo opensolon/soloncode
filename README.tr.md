@@ -30,8 +30,8 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 
 Yapılandırma (kurulumdan sonra mutlaka düzenlenmelidir):
 
-* Kurulum dizini: `~/soloncode/bin/`
-* `~/soloncode/config.yml` yapılandırma dosyasını bulup `models` yapılandırmasını düzenleyin (öncelikle)
+* Kurulum dizini: `~/.soloncode/bin/`
+* `~/.soloncode/config.yml` yapılandırma dosyasını bulup `models` yapılandırmasını düzenleyin (öncelikle)
 * `models` yapılandırma seçenekleri için bkz: [Model Yapılandırması ve İstek Seçenekleri](https://solon.noear.org/article/1087)
 
 ## Çalıştırma
