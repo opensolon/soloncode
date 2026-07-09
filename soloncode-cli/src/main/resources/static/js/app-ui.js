@@ -273,6 +273,13 @@ function createMarkdownRenderer() {
         return '<a href="' + escapeHtmlAttr(safeHref) + '" target="_blank" rel="noopener noreferrer"' + safeTitle + '>' + safeText + '</a>';
     };
 
+    // 防止原始 HTML 标签破坏页面布局：转义 < 和 >，避免被浏览器解析为 DOM 元素
+    // marked v15 中 renderer 方法接收 token 对象，需通过 .text 获取原始内容
+    renderer.html = function (token) {
+        var text = (token && typeof token === 'object' ? (token.text || token.raw || '') : (token || ''));
+        return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    };
+
     return renderer;
 }
 

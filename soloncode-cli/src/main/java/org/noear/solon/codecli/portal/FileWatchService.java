@@ -155,7 +155,7 @@ public class FileWatchService {
                         registerTree(root.path);
                         LOG.info("[FileWatchService] registered root: {} -> {}", root.id, root.path);
                     }
-                    scheduler.submit(FileWatchService.this::pollEvents);
+                    scheduler.submit(this::pollEvents);
                     LOG.info("[FileWatchService] started for {} roots", watchRoots.size());
                 } catch (Exception e) {
                     LOG.error("[FileWatchService] start failed: {}", e.getMessage(), e);

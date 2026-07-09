@@ -1477,37 +1477,9 @@
         });
         return false;
     }
-    // 新提示音：叮叮咚（三角波，穿透力更强）
-    window._playChime = function() {
-        try {
-            var ctx = new (window.AudioContext || window.webkitAudioContext)();
-            var now = ctx.currentTime;
-            // 频率：E5(659) -> G5(784) -> C6(1047) — 上行三和弦，有完成感
-            var notes = [
-                { freq: 659.25, start: 0, dur: 0.08, type: 'triangle' },
-                { freq: 783.99, start: 0.12, dur: 0.08, type: 'triangle' },
-                { freq: 1046.50, start: 0.22, dur: 0.28, type: 'triangle' }
-            ];
-            notes.forEach(function(n) {
-                var osc = ctx.createOscillator();
-                var gain = ctx.createGain();
-                osc.type = n.type;
-                osc.frequency.value = n.freq;
-                var t = now + n.start;
-                gain.gain.setValueAtTime(0, t);
-                gain.gain.linearRampToValueAtTime(0.35, t + 0.02);
-                gain.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(t);
-                osc.stop(t + n.dur);
-            });
-        } catch(e) {}
-    };
-    // 通知函数
+    // 通知函数（仅桌面通知，不播放声音）
     window._notifyTaskComplete = function() {
         if (document.hasFocus && document.hasFocus()) return;
-        // window._playChime();  // 已取消声音提醒
         if (window._notifyPerm === 'granted') {
             try {
                 var n = new Notification('SolonCode', {
@@ -1521,15 +1493,6 @@
             } catch(e) {}
         }
     };
-    // 页面加载时先不请求权限，避免干扰用户操作
-    // 当页面首次切到后台（用户离开页面）时再请求通知权限
-    var _permRequested = false;
-    document.addEventListener('visibilitychange', function() {
-        if (document.hidden && !_permRequested && window._notifyPerm === 'default') {
-            _permRequested = true;
-            _requestNotifyPerm();
-        }
-    });
 })();
 </script>
 
