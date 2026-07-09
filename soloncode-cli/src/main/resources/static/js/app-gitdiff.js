@@ -502,7 +502,12 @@
         diffViewerActive = true;
 
         if (gitViewerLabel) gitViewerLabel.textContent = '变更详情';
-        if (gitViewerFile) gitViewerFile.textContent = path;
+        // 如果是挂载工作区，显示路径时带上 @xxx/ 前缀
+        var displayDiffPath = path;
+        if (gitWorkspace !== 'workspace') {
+            displayDiffPath = gitWorkspace + '/' + displayDiffPath;
+        }
+        if (gitViewerFile) gitViewerFile.textContent = displayDiffPath;
 
         // 判断是否是目录（以 / 结尾）
         var isDir = path.endsWith('/');
@@ -511,7 +516,7 @@
             // 目录：显示提示信息，不调用 diff 接口
             if (gitViewerContent) {
                 gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
-                    + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(path) + '</div>'
+                    + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(displayDiffPath) + '</div>'
                     + '<div>这是一个目录，暂无可查看的文本差异。</div>'
                     + '</div>';
             }

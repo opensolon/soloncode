@@ -427,28 +427,52 @@
 
         var changes = chunk.changes;
         var affectedDirs = {};
-        changes.forEach(function(path) {
-            var lastSlash = path.lastIndexOf('/');
-            var parentDir = lastSlash > 0 ? path.substring(0, lastSlash) : '';
-            affectedDirs[parentDir] = true;
+
+        changes.forEach(function(change) {
+            // 直接取结构化字段 {wsId, path}
+            var wsId = change.wsId || 'workspace';
+            var relPath = change.path || '';
+
+            var lastSlash = relPath.lastIndexOf('/');
+            var parentDir = lastSlash > 0 ? relPath.substring(0, lastSlash) : '';
+
+            if (!affectedDirs[wsId]) {
+                affectedDirs[wsId] = {};
+            }
+            affectedDirs[wsId][parentDir] = true;
         });
 
-        Object.keys(affectedDirs).forEach(function(dirPath) {
-            refreshDirectory(dirPath);
+        Object.keys(affectedDirs).forEach(function(wsId) {
+            var dirs = affectedDirs[wsId];
+            Object.keys(dirs).forEach(function(dirPath) {
+                refreshDirectory(dirPath, wsId);
+            });
         });
 
         showFilerChangeIndicator();
     }
 
-    function refreshDirectory(dirPath) {
+    function refreshDirectory(dirPath, wsId) {
         if (!dirPath) {
             smartRefreshRoot();
             return;
         }
 
         if (!$treeEl.length) return;
+
+        wsId = wsId || 'workspace';
+
+        // 找到所属的工作区根节点
+        var $wsRoot = $treeEl.find('.filer-node[data-workspace-id="' + CSS.escape(wsId) + '"]');
+        if (!$wsRoot.length) {
+            // 工作区根节点不存在（可能还未加载），标记整个树为脏
+            smartRefreshRoot();
+            return;
+        }
+
+        // 在工作区子树下查找目标目录节点
         var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
-        var $nodeEl = $treeEl.find(selector);
+        var $nodeEl = $wsRoot.find(selector);
         if (!$nodeEl.length) return;
 
         var $childrenEl = $nodeEl.children('.filer-node-children');
@@ -461,7 +485,6 @@
         }
 
         var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
-        var wsId = getNodeWorkspaceId($nodeEl);
 
         var url = '/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1';
         if (wsId !== 'workspace') {
