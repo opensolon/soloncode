@@ -1,3 +1,7 @@
+### v2026.7.10
+
+添加 soloncode web mcp json 字符串导入方式
+
 ### v2026.7.9
 
 * 添加 soloncode web 挂载文件监听，实时通知文件变化
