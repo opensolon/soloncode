@@ -36,6 +36,25 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
     color: var(--color-text-primary);
     background: rgba(127,127,127,0.15);
 }
+.sidebar-item-fork {
+    display: none;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 14px;
+    align-items: center;
+    justify-content: center;
+    margin-left: 4px;
+    padding: 0;
+    transition: all 0.15s;
+}
+.sidebar-item:hover .sidebar-item-fork { display: flex; }
+.sidebar-item-fork:hover { background: var(--bg-danger-subtle); color: var(--accent); }
 .sidebar-rename-input {
     flex: 1;
     background: var(--color-bg-primary);

@@ -263,6 +263,65 @@ public class WebController {
     }
 
     /**
+     * Fork（分叉）会话：将源会话的所有消息历史和自定义标签复制到一个新会话。
+     * <p>新会话拥有独立的 sessionId 与目录，不影响源会话的消息流。
+     * 复制完成后需刷新前端会话列表并切换到新会话以加载历史消息。
+     * 注意：循环任务和会话级 IM 绑定不复制，避免误触发新的循环执行。</p>
+     *
+     * @param sessionId 源会话 ID（必须以 web- 前缀开头并符合命名规范）
+     * @return 包含新会话 sessionId 的结果对象
+     * @throws Exception 文件复制异常
+     */
+    @Post
+    @Mapping("/web/chat/sessions/fork")
+    public Result<Map> forkSession(@Param("sessionId") String sessionId) throws Exception {
+        if (!isValidSessionId(sessionId)) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+
+        Path sessionsRoot = Paths.get(engine.getWorkspace(), engine.getHarnessSessions()).toAbsolutePath().normalize();
+        Path sourcePath = sessionsRoot.resolve(sessionId).normalize();
+        File sourceDir = sourcePath.toFile();
+
+        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
+            return Result.failure(404, "Source session not found");
+        }
+        // 防止路径穿越：确保解析后的目录仍在 sessions 根目录之内
+        if (!sourcePath.startsWith(sessionsRoot)) {
+            return Result.failure(400, "Invalid session path");
+        }
+
+        // 生成唯一新 sessionId（短 ID 形式），避免与既有会话冲突
+        String basePrefix = "web-";
+        String newSessionId;
+        for (int i = 0; i < 16; i++) {
+            String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            newSessionId = basePrefix + suffix;
+            File targetDir = new File(sessionsRoot.toFile(), newSessionId);
+            if (!targetDir.exists()) {
+                if (!targetDir.mkdirs()) {
+                    return Result.failure(500, "Failed to create forked session directory");
+                }
+                File sourceMarker = new File(sourceDir, sessionId + ".messages.ndjson");
+                File targetMarker = new File(targetDir, newSessionId + ".messages.ndjson");
+                if (sourceMarker.exists()) {
+                    Files.copy(sourceMarker.toPath(), targetMarker.toPath());
+                }
+                // 复制自定义 label.txt（如有），便于延续原标题风格
+                File sourceLabel = new File(sourceDir, "label.txt");
+                if (sourceLabel.exists()) {
+                    Files.copy(sourceLabel.toPath(),
+                            new File(targetDir, "label.txt").toPath());
+                }
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("sessionId", newSessionId);
+                return Result.succeed(data);
+            }
+        }
+        return Result.failure(500, "Failed to allocate unique sessionId");
+    }
+
+    /**
      * 重命名会话标签。
      * <p>在会话目录下写入 label.txt 文件保存自定义标签，标签最大长度 50 字符。</p>
      *

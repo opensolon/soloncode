@@ -96,6 +96,13 @@ $(historyList).on('click', function(e) {
         if (!isNaN(idx)) startRename(idx);
         return;
     }
+    var $forkBtn = $target.closest('.sidebar-item-fork');
+    if ($forkBtn.length) {
+        e.stopPropagation();
+        var idx = parseInt($forkBtn.closest('.sidebar-item').attr('data-idx'));
+        if (!isNaN(idx)) forkSession(idx);
+        return;
+    }
     var $item = $target.closest('.sidebar-item');
     if ($item.length) {
         var idx = parseInt($item.attr('data-idx'));
@@ -127,6 +134,7 @@ function updateHistoryUI() {
                 html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
             }
             html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
+                + '<button class="sidebar-item-fork" title="分叉（复制）对话"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M6 8.5v7"/><path d="M8.2 6h7.6"/><path d="M11 12c0-3 3-4 5-4"/></svg></button>'
                 + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
                 + '</div>';
         }
@@ -179,6 +187,56 @@ function startRename(idx) {
     $input.on('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); $input[0].blur(); }
         if (e.key === 'Escape') { $input.val(currentLabel); $input[0].blur(); }
+    });
+}
+
+/**
+ * 分叉会话：调用服务端把源会话的消息历史复制到一个新的 sessionId，
+ * 然后在本地历史列表中创建新条目并自动切换过去。
+ */
+function forkSession(idx) {
+    var entry = chatHistory[idx];
+    if (!entry) return;
+
+    layer.confirm('分叉当前对话为一个新会话？\n原会话消息将被完整复制。', {
+        title: '分叉对话',
+        btn: ['分叉', '取消'],
+        icon: 3,
+        offset: '120px'
+    }, function(confirmIdx) {
+        layer.close(confirmIdx);
+        $.post('/web/chat/sessions/fork', { sessionId: entry.sessionId }, function(resp) {
+            try {
+                if (!resp || resp.code !== 200 || !resp.data || !resp.data.sessionId) {
+                    throw new Error('Invalid response');
+                }
+                var newId = resp.data.sessionId;
+                ensureChatInHistory(newId, '分叉的对话', true);
+                rememberActiveSession(newId);
+
+                var newIdx = -1;
+                for (var i = 0; i < chatHistory.length; i++) {
+                    if (chatHistory[i].sessionId === newId) { newIdx = i; break; }
+                }
+                if (newIdx >= 0) selectSession(newIdx);
+
+                if (typeof layer !== 'undefined' && layer.msg) {
+                    layer.msg('已分叉为新对话', { icon: 1, time: 2000, offset: '120px' });
+                }
+            } catch (e) {
+                if (typeof layer !== 'undefined' && layer.msg) {
+                    layer.msg('分叉对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+                } else {
+                    alert('分叉对话失败，请重试');
+                }
+            }
+        }).fail(function() {
+            if (typeof layer !== 'undefined' && layer.msg) {
+                layer.msg('分叉对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+            } else {
+                alert('分叉对话失败，请重试');
+            }
+        });
     });
 }
 
