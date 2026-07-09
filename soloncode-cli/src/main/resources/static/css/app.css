@@ -1768,48 +1768,41 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .file-view-info-sep {
     opacity: 0.3;
 }
-.file-view-copy-btn {
-    margin-left: auto;
-    margin-right: 8px;
-    padding: 2px 10px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    user-select: none;
+/* 文件查看器 header 操作按钮组 */
+.git-viewer-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     flex-shrink: 0;
 }
-.file-view-copy-btn:hover {
+
+/* 操作按钮（MD 切换、复制） */
+.git-viewer-action-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.git-viewer-action-btn:hover {
     background: var(--bg-hover);
+    color: var(--text-primary);
 }
 
-/* 右侧按钮组（视图切换 + 复制） */
+/* 右侧按钮组（视图切换 + 复制） — 已废弃，按钮移至 header */
 .file-view-copy-group {
     margin-left: auto;
     display: flex;
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
-}
-.file-view-copy-group .file-view-copy-btn {
-    margin-left: 0;
-}
-
-/* Markdown 视图切换按钮 */
-.file-view-md-toggle {
-    padding: 2px 10px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    user-select: none;
-}
-.file-view-md-toggle:hover {
-    background: var(--bg-hover);
 }
 
 /* iframe 包裹容器：当切换视图时显示 */

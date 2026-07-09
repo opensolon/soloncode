@@ -1,6 +1,7 @@
 ### v2026.7.10
 
-添加 soloncode web mcp json 字符串导入方式
+* 添加 soloncode web mcp json 字符串导入方式
+* 添加 soloncode web 文件详情支持 md 视图模式
 
 ### v2026.7.9
 

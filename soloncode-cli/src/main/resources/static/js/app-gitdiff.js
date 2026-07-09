@@ -423,10 +423,6 @@
             + '<span class="file-view-info-sep">|</span>'
             + '<span>' + formatSize(fileSize || 0) + '</span>'
             + (lang ? '<span class="file-view-info-sep">|</span><span>' + escapeHtml(lang) + '</span>' : '')
-            + '<span class="file-view-copy-group">'
-            + (isMdFile ? '<span class="file-view-md-toggle" title="切换视图">视图</span>' : '')
-            + '<span class="file-view-copy-btn" title="复制文件内容">复制</span>'
-            + '</span>'
             + '</div>';
 
         gitViewerContent.innerHTML = infoBar
@@ -457,33 +453,51 @@
             }
         }
 
-        // 复制按钮
-        var copyBtn = gitViewerContent.querySelector('.file-view-copy-btn');
+        // ---- 操作 header 中的按钮 ----
+        var mdToggleBtn = document.getElementById('gitViewerMdToggle');
+        var copyBtn = document.getElementById('gitViewerCopyBtn');
+
+        // 显示/隐藏 MD 切换按钮
+        if (mdToggleBtn) {
+            mdToggleBtn.style.display = isMdFile ? '' : 'none';
+        }
+
+        // 复制按钮事件
         if (copyBtn) {
             (function(rawContent, btn) {
-                btn.addEventListener('click', function() {
+                // 移除旧事件监听（通过克隆替换方式）
+                var newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+
+                newBtn.addEventListener('click', function() {
                     if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(rawContent).then(function() {
-                            btn.textContent = '已复制';
-                            setTimeout(function() { btn.textContent = '复制'; }, 1500);
+                            showCopyFeedback(newBtn);
                         }).catch(function() {
-                            fallbackCopy(rawContent, btn);
+                            fallbackCopy(rawContent, newBtn);
                         });
                     } else {
-                        fallbackCopy(rawContent, btn);
+                        fallbackCopy(rawContent, newBtn);
                     }
                 });
+
+                // 更新全局引用
+                copyBtn = newBtn;
             })(content, copyBtn);
         }
 
-        // Markdown 视图切换按钮
-        if (isMdFile) {
-            var mdToggle = gitViewerContent.querySelector('.file-view-md-toggle');
+        // MD 切换按钮事件
+        if (isMdFile && mdToggleBtn) {
             var mdFrameWrap = gitViewerContent.querySelector('.file-view-md-frame-wrap');
             var codeBlock = gitViewerContent.querySelector('.file-view-code');
             var mdRenderedFlag = false;
 
-            if (mdToggle && mdFrameWrap && codeBlock) {
+            if (mdFrameWrap && codeBlock) {
+                // 移除旧事件监听
+                var newToggle = mdToggleBtn.cloneNode(true);
+                mdToggleBtn.parentNode.replaceChild(newToggle, mdToggleBtn);
+                mdToggleBtn = newToggle;
+
                 (function(content, toggle, wrap, code) {
                     toggle.addEventListener('click', function() {
                         if (wrap.style.display === 'none') {
@@ -508,15 +522,20 @@
                                 mdRenderedFlag = true;
                             }
 
-                            toggle.textContent = '源码';
+                            // 切换 SVG 图标为"代码"图标
+                            toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
+                            toggle.title = '查看源码';
                         } else {
                             // 切换回"源码"模式
                             code.style.display = 'block';
                             wrap.style.display = 'none';
-                            toggle.textContent = '视图';
+
+                            // 切换 SVG 图标为"眼睛"图标
+                            toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+                            toggle.title = '预览 Markdown';
                         }
                     });
-                })(content, mdToggle, mdFrameWrap, codeBlock);
+                })(content, mdToggleBtn, mdFrameWrap, codeBlock);
             }
         }
 
@@ -533,8 +552,16 @@
         ta.select();
         try { document.execCommand('copy'); } catch(e) {}
         document.body.removeChild(ta);
-        btn.textContent = '已复制';
-        setTimeout(function() { btn.textContent = '复制'; }, 1500);
+        showCopyFeedback(btn);
+    }
+
+    // 复制成功反馈（SVG 图标切换为勾选再恢复）
+    function showCopyFeedback(btn) {
+        var origHtml = btn.innerHTML;
+        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(function() {
+            btn.innerHTML = origHtml;
+        }, 1500);
     }
 
     // Markdown 辅助函数（用于 iframe 视图预览）
