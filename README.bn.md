@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a> এবং জাভা দিয়ে তৈরি একটি ওপেন-সোর্স কোডিং এজেন্ট (Java8 থেকে Java26 রানটাইম পরিবেশ সমর্থিত)</p>
-<p>সর্বশেষ সংস্করণ: v2026.7.8</p>
+<p>সর্বশেষ সংস্করণ: v2026.7.9</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -46,7 +46,7 @@ soloncode web 0
 
 ```bash
 demo@MacBook-Pro ~ % soloncode cli
-SolonCode v2026.7.8 PID-87950 Model:deepseek-v4-flash
+SolonCode v2026.7.9 PID-87950 Model:deepseek-v4-flash
 /Users/demo
 Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
@@ -58,7 +58,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.7.8 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.9 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
 Web interface: http://localhost:50488/
