@@ -303,7 +303,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .md-content hr { border: none; border-top: 1px solid var(--border-color); margin: 14px 0; }
 
 /* Tool Card */
-.tool-card { margin: 10px 0; border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; transition: border-color 0.2s; }
+.tool-card { margin: 10px 0; border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; background: var(--bg-primary); transition: border-color 0.2s; }
 .tool-card-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; transition: background 0.15s; font-size: 13px; overflow: hidden; }
 .tool-card-header:hover { background: var(--bg-hover); }
 .tool-status-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; transition: all 0.3s; }
@@ -415,7 +415,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .thinking-group .thinking-block { margin: 0; border: none; border-radius: 0; }
 .thinking-group .thinking-block-body { border-bottom: none; }
 .thinking-group:has(.tool-card) .thinking-block-body { border-bottom: 1px solid var(--thinking-block-border); }
-.thinking-group .tool-card { margin: 0; border: none; border-radius: 0; border-top: 1px solid var(--border-color); }
+.thinking-group .tool-card { margin: 0; border: none; border-radius: 0; border-top: 1px solid var(--border-color); border-left: 3px solid var(--thinking-block-border); background: var(--bg-primary); }
 
 /* Bottom Input */
 .input-wrap { padding: 12px 24px 22px; flex-shrink: 0; }
