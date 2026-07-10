@@ -456,7 +456,18 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
         // 新的思考开始，清除旧分组引用
         sess.thinkingGroupEl = null;
         removeThinking(sess);
+        // ★ 强制结束旧思考块，避免复用子代理的思考块（带 agent-badge）
+        finishThinkingBlock(sess);
         ensureThinkingBlock(sess);
+
+        // ★ 如果存在 task-group，将最终答案的思考块移到最后
+        //   避免最终答案的思考块出现在 task-group 上方
+        if (sess.currentBubbleEl) {
+            var $taskGroups = $(sess.currentBubbleEl.parentNode).find('.task-group');
+            if ($taskGroups.length > 0) {
+                $($taskGroups.last()).after(sess.thinkingBlockEl);
+            }
+        }
 
         // 如果有 reasonId，立即将思考块包裹到分组容器中
         if (reasonId) {
@@ -1070,9 +1081,26 @@ function appendContentChunk(sess, text, append, reasonId, taskId) {
                 finishThinkingBlock(sess, _rid);
             }
         }
+
+        // ★ 保存最终答案的 thinkingGroup 引用，稍后用于移动位置
+        var finalThinkingGroup = sess.thinkingGroupEl;
+
         finishThinkingBlock(sess);
         sess.thinkingGroupEl = null;
         sess.reasonGroups = {};
+
+        // ★ 如果存在 task-group，将最终答案的思考块和文本移到最后
+        //   避免最终答案出现在 task-group 上方（排版错乱）
+        if (sess.currentBubbleEl) {
+            var $taskGroups = $(sess.currentBubbleEl.parentNode).find('.task-group');
+            if ($taskGroups.length > 0) {
+                var lastTaskGroup = $taskGroups.last();
+                if (finalThinkingGroup) {
+                    $(lastTaskGroup).after(finalThinkingGroup);
+                }
+                $(lastTaskGroup).after(sess.currentBubbleEl);
+            }
+        }
     }
     // 有 reasonId 且存在对应分组 → 文本渲染在分组内（思考块与工具卡片之间）
     if (reasonId && sess.reasonGroups[reasonId] && sess.reasonGroups[reasonId].groupEl) {
