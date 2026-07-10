@@ -999,6 +999,12 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, reasonId, a
         var icon = $(pc).find('.tool-status-icon')[0];
         if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
 
+        // ★ 确保复用卡片也在正确的 task-group 内（与下方非 pending 分支逻辑一致）
+        if (taskId && !$(pc).parent().closest('.task-group').length) {
+            var taskGroup = ensureTaskGroup(sess, taskId, taskDescription, agentName);
+            $(taskGroup).find('.task-group-body').append(pc);
+        }
+
         if (window._todoChunkHandlers) { /* todo 由 streaming 层单独处理，这里不重复 */ }
         sess.reasonBuffer = '';
         var pcMd = $('<div>').addClass('md-content')[0];
@@ -1153,7 +1159,10 @@ function appendContentChunk(sess, text, append, reasonId, taskId) {
             if ($taskGroups.length > 0) {
                 var lastTaskGroup = $taskGroups.last();
                 // 从 DOM 中查找最后完成的 reason-group，不依赖已清空的引用
-                var $lastThinkingGroup = $(sess.currentBubbleEl.parentNode).find('.reason-group').last();
+                // ★ 排除嵌套在 task-group 内部的 reason-group，避免拔出子代理的推理内容
+                var $lastThinkingGroup = $(sess.currentBubbleEl.parentNode).find('.reason-group').filter(function() {
+                    return !$(this).closest('.task-group').length;
+                }).last();
                 if ($lastThinkingGroup.length > 0) {
                     $(lastTaskGroup).after($lastThinkingGroup);
                 }
