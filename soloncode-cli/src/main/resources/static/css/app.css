@@ -416,7 +416,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .thinking-group .thinking-block-body { border-bottom: none; }
 .thinking-group:has(.tool-card) .thinking-block-body { border-bottom: 1px solid var(--thinking-block-border); }
 .thinking-group .tool-card { margin: 0; border: none; border-radius: 0; border-top: 1px solid var(--border-color); border-left: 3px solid var(--thinking-block-border); background: var(--bg-primary); }
-.thinking-group > .reason-group-text { padding: 8px 14px; font-size: 14px; line-height: 1.7; color: var(--text-primary); }
+.thinking-group > .reason-group-text { padding: 8px 14px; font-size: 14px; line-height: 1.7; color: var(--text-primary); background: var(--bg-primary); }
 
 /* Sub-agent: accent-colored left border for thinking block and tool card */
 .thinking-group .thinking-block.is-subagent { border-left-color: var(--accent); }
