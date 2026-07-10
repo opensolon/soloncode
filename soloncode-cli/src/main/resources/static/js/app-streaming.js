@@ -235,7 +235,7 @@ function finishStream(sess) {
     for (var _rid in sess.reasonGroups) {
         var group = sess.reasonGroups[_rid];
         if (group.thinkingBlockEl && group.thinkingBuffer) {
-            var bodyMdEl = $(group.thinkingBlockEl).find('.thinking-block-body .md-content')[0];
+            var bodyMdEl = $(group.thinkingBlockEl).find('.reason-group-think-body .md-content')[0];
             if (bodyMdEl) {
                 $(bodyMdEl).html(renderMd(group.thinkingBuffer));
                 if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(bodyMdEl);

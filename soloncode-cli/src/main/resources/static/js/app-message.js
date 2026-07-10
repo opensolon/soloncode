@@ -15,6 +15,7 @@ var DELETE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" st
 function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt, sourceLabel) {
     var row = $('<div>').addClass('msg-row user')[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
+    row.setAttribute('data-session-id', sess.sessionId);
     row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="msg-actions"><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button><button class="user-del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button></div></div>';
     var bubble = $(row).find('.msg-bubble')[0];
 
@@ -112,6 +113,23 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
     if (sess.sessionId === activeSessionId && document.contains(sess.container)) scrollToBottom(true);
 }
 
+/* 刷新用户消息的时间戳，在编辑/重发时调用 */
+function refreshUserMessageTime(container, sessionId) {
+    $(container).find('.msg-row.user').each(function() {
+        var timeEl = $(this).find('.msg-time')[0];
+        if (timeEl && !$(timeEl).data('refreshed')) {
+            $(timeEl).data('refreshed', true);
+            // 仅更新纯文本节点（时间），保留来源标签
+            var textNodes = Array.from(timeEl.childNodes).filter(function(n) {
+                return n.nodeType === Node.TEXT_NODE;
+            });
+            if (textNodes.length > 0) {
+                textNodes[0].textContent = formatMsgTime(Date.now());
+            }
+        }
+    });
+}
+
 function appendSystemNotice(sess, text) {
     var row = $('<div>').addClass('msg-row system-notice')[0];
     row.innerHTML = '<div class="system-notice-bubble">' + escapeHtml(text) + '</div>';
@@ -127,6 +145,7 @@ function ensureAssistantBubble(sess) {
         if (sess.currentRunId) {
             row.setAttribute('data-run-id', sess.currentRunId);
         }
+        row.setAttribute('data-session-id', sess.sessionId);
         row.innerHTML = '<div class="msg-bubble"><div class="md-content"></div>'
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
@@ -233,26 +252,26 @@ function ensureThinkingBlock(sess) {
     if (!sess.thinkingBlockEl) {
         ensureAssistantBubble(sess);
         var parent = sess.currentBubbleEl.parentNode;
-        var block = $('<div>').addClass('thinking-block streaming expanded')[0];
+        var block = $('<div>').addClass('reason-group-think streaming expanded')[0];
         // 存储当前 runId，用于后续删除同一运行的消息
         if (sess.currentRunId) {
             block.setAttribute('data-run-id', sess.currentRunId);
         }
-        block.innerHTML = '<div class="thinking-block-header">'
-            + '<span class="thinking-block-label">思考</span>'
+        block.innerHTML = '<div class="reason-group-think-header">'
+            + '<span class="reason-group-think-label">思考</span>'
             + '<span class="thinking-timer-wrap" style="margin-left:4px">'
             + '<span class="thinking-current-timer">0s</span>'
             + '</span>'
-            + '<i class="layui-icon layui-icon-right thinking-block-toggle"></i>'
+            + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i>'
             + '</div>'
-            + '<div class="thinking-block-body"><div class="md-content"></div></div>';
+            + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
         $(sess.currentBubbleEl).before(block);
-        $(block).find('.thinking-block-header').on('click', function() {
+        $(block).find('.reason-group-think-header').on('click', function() {
             $(block).toggleClass('expanded');
         });
         sess.thinkingBlockEl = block;
-        sess.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
-        sess.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
+        sess.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
+        sess.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
         sess.thinkingBuffer = '';
         var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
         startThinkingTimerDual(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan, null);
@@ -285,6 +304,8 @@ function finishThinkingBlock(sess, reasonId) {
             sess.thinkingBuffer = '';
             return;
         }
+        // 保存计时起始时间，防止 stopThinkingTimer 清空后引用丢失
+        var blockStartTime = sess.thinkingBlockStartTime;
         stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
         if (group.reasonRafId) {
             cancelAnimationFrame(group.reasonRafId);
@@ -294,17 +315,19 @@ function finishThinkingBlock(sess, reasonId) {
             }
         }
         if (group.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(group.thinkingBodyMdEl);
+        // 检查思考块内容是否超出高度
+        if (group.thinkingBodyWrapEl) { checkOverflow(group.thinkingBodyWrapEl, 300); }
         $(group.thinkingBlockEl).removeClass('streaming');
         if (window.cliPrintSimplified !== false) {
             $(group.thinkingBlockEl).removeClass('expanded');
         }
         var elapsed = '';
-        if (sess.thinkingBlockStartTime) {
-            elapsed = ' (' + Math.floor((Date.now() - sess.thinkingBlockStartTime) / 1000) + 's)';
+        if (blockStartTime) {
+            elapsed = ' (' + Math.floor((Date.now() - blockStartTime) / 1000) + 's)';
         }
-        var label = $(group.thinkingBlockEl).find('.thinking-block-label')[0];
+        var label = $(group.thinkingBlockEl).find('.reason-group-think-label')[0];
         if (label) $(label).text('思考' + elapsed);
-        $(group.thinkingBlockEl).find('.thinking-block-dots').remove();
+        $(group.thinkingBlockEl).find('.reason-group-think-dots').remove();
         $(group.thinkingBlockEl).find('.thinking-timer-wrap').remove();
 
         // ★ 清空组内引用 + 顶层引用，防止 finishStream 再次包裹
@@ -332,6 +355,8 @@ function finishThinkingBlock(sess, reasonId) {
             }
         }
         if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
+        // 检查思考块内容是否超出高度
+        if (sess.thinkingBodyWrapEl) { checkOverflow(sess.thinkingBodyWrapEl, 300); }
         $(sess.thinkingBlockEl).removeClass('streaming');
         if (window.cliPrintSimplified !== false) {
             $(sess.thinkingBlockEl).removeClass('expanded');
@@ -340,18 +365,18 @@ function finishThinkingBlock(sess, reasonId) {
         if (sess.thinkingBlockStartTime) {
             elapsed = ' (' + Math.floor((Date.now() - sess.thinkingBlockStartTime) / 1000) + 's)';
         }
-        var label = $(sess.thinkingBlockEl).find('.thinking-block-label')[0];
+        var label = $(sess.thinkingBlockEl).find('.reason-group-think-label')[0];
         if (label) $(label).text('思考' + elapsed);
-        $(sess.thinkingBlockEl).find('.thinking-block-dots').remove();
+        $(sess.thinkingBlockEl).find('.reason-group-think-dots').remove();
         $(sess.thinkingBlockEl).find('.thinking-timer-wrap').remove();
 
         // 将思考块包裹在分组容器中，后续工具调用将追加到该分组内
-        // ★ 防止重复包裹：如果 thinking-block 已在 thinking-group 内，跳过
+        // ★ 防止重复包裹：如果 reason-group-think 已在 reason-group 内，跳过
         var thinkBlockEl = sess.thinkingBlockEl;
-        if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('thinking-group')) {
+        if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('reason-group')) {
             sess.thinkingGroupEl = thinkBlockEl.parentNode;
         } else {
-            var group = $('<div>').addClass('thinking-group')[0];
+            var group = $('<div>').addClass('reason-group')[0];
             if (sess.currentRunId) {
                 group.setAttribute('data-run-id', sess.currentRunId);
             }
@@ -369,7 +394,7 @@ function finishThinkingBlock(sess, reasonId) {
 
 /**
  * 确保 task-group 容器存在，用于 multitask 并行输出时将同一子代理的所有 chunk 归组展示。
- * task-group 包裹 thinking-group 和 tool-card，使同一任务实例的输出在视觉上归入同一区块。
+ * task-group 包裹 reason-group 和 tool-card，使同一任务实例的输出在视觉上归入同一区块。
  * 包含可折叠头部（标题 + agent badge + 折叠箭头），默认展开。
  */
 function ensureTaskGroup(sess, taskId, taskDescription, agentName) {
@@ -417,8 +442,8 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
             removeThinking(sess);
             ensureThinkingBlock(sess);
             var thinkBlockEl = sess.thinkingBlockEl;
-            // ★ 防止重复包裹：如果已在 thinking-group 内，复用父容器
-            if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('thinking-group')) {
+            // ★ 防止重复包裹：如果已在 reason-group 内，复用父容器
+            if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('reason-group')) {
                 var newGroup = thinkBlockEl.parentNode;
                 sess.thinkingGroupEl = newGroup;
                 sess.reasonGroups[reasonId] = {
@@ -430,7 +455,7 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
                     reasonRafId: null
                 };
             } else {
-                var newGroup = $('<div>').addClass('thinking-group')[0];
+                var newGroup = $('<div>').addClass('reason-group')[0];
                 if (sess.currentRunId) {
                     newGroup.setAttribute('data-run-id', sess.currentRunId);
                 }
@@ -472,8 +497,8 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
         // 如果有 reasonId，立即将思考块包裹到分组容器中
         if (reasonId) {
             var thinkBlockEl = sess.thinkingBlockEl;
-            // ★ 防止重复包裹：如果 thinking-block 已在 thinking-group 内，复用父容器
-            if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('thinking-group')) {
+            // ★ 防止重复包裹：如果 reason-group-think 已在 reason-group 内，复用父容器
+            if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('reason-group')) {
                 var group = thinkBlockEl.parentNode;
                 sess.thinkingGroupEl = group;
                 sess.reasonGroups[reasonId] = {
@@ -485,7 +510,7 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
                     reasonRafId: null
                 };
             } else {
-                var group = $('<div>').addClass('thinking-group')[0];
+                var group = $('<div>').addClass('reason-group')[0];
                 if (sess.currentRunId) {
                     group.setAttribute('data-run-id', sess.currentRunId);
                 }
@@ -504,7 +529,7 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
         }
     }
 
-    // Task group wrapping：将 thinking-group 移入 task-group（如果 taskId 存在）
+    // Task group wrapping：将 reason-group 移入 task-group（如果 taskId 存在）
     if (taskId && sess.thinkingGroupEl) {
         var taskGroup = ensureTaskGroup(sess, taskId, taskDescription, agentName);
         if (!$(sess.thinkingGroupEl).parent().is(taskGroup)) {
@@ -520,9 +545,9 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
 
     // 子代理标记：添加 agent badge + is-subagent class
     if (agentName && sess.thinkingBlockEl) {
-        var header = $(sess.thinkingBlockEl).find('.thinking-block-header')[0];
+        var header = $(sess.thinkingBlockEl).find('.reason-group-think-header')[0];
         if (header && !$(header).find('.agent-badge').length) {
-            $(header).find('.thinking-block-label').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
+            $(header).find('.reason-group-think-label').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
         }
         $(sess.thinkingBlockEl).addClass('is-subagent');
     }
@@ -785,9 +810,27 @@ function renderToolBody(bodyEl, toolName, text, args) {
     if (typeof renderer === 'function') {
         try {
             if (renderer(bodyEl, text, args)) return true;
-        } catch(e) {}
+        } catch(e) {
+            console.warn('[toolRenderer] renderer "' + toolName + '" threw:', e);
+        }
     }
     return false;
+}
+
+/* 检查容器内容是否超出高度，若超出则添加溢出指示器 */
+function checkOverflow(el, maxHeight) {
+    if (!el) return;
+    var hasOverflow = el.scrollHeight > maxHeight;
+    $(el).toggleClass('has-overflow', hasOverflow);
+    if (hasOverflow && !el._overflowBtn) {
+        el._overflowBtn = true;
+        $(el).on('click', function(e) {
+            if (e.target === el || $(e.target).parents().is(el)) {
+                $(el).toggleClass('expand-all');
+                $(el).removeClass('has-overflow');
+            }
+        });
+    }
 }
 
 /* 抽取：把 args 对象格式化为短字符串（供卡片头部 tool-args 展示）。
@@ -884,7 +927,10 @@ function appendActionStartChunk(sess, toolName, args, toolTitle, reasonId, agent
     }
 
     // 多槽 map：按 callId 存储 pending 卡片，确保同一 reasonId 下多个同名工具调用互不串扰
-    var key = callId || reasonId || '__default';
+    // 计数器保证同一 reasonId 下多个工具调用 key 唯一，防止后一个覆盖前一个
+    if (!sess._toolCallSeq) sess._toolCallSeq = 0;
+    var seq = ++sess._toolCallSeq;
+    var key = (callId || reasonId || '__default') + ':' + seq;
     if (!sess.pendingToolCards) sess.pendingToolCards = {};
     sess.pendingToolCards[key] = { card: card, started: true };
 
@@ -904,7 +950,20 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, reasonId, a
     }
 
     // 多槽 map：优先按 callId 查找 pending 卡片（精确匹配），fallback 到 reasonId（兼容旧流）
+    // 注意: key 拼接方式必须与 appendActionStartChunk 保持一致（包含 seq 后缀）
     var key = callId || reasonId || '__default';
+    // 尝试精确匹配（含 seq 后缀），匹配不到则 fallback 到原始 key
+    var pending = (sess.pendingToolCards || {})[key];
+    if (!pending) {
+        // 尝试遍历匹配：找第一个以 key: 开头的 pending 卡片
+        for (var _k in sess.pendingToolCards || {}) {
+            if (_k === key || _k.startsWith(key + ':')) {
+                pending = sess.pendingToolCards[_k];
+                key = _k;
+                break;
+            }
+        }
+    }
     var pending = (sess.pendingToolCards || {})[key];
 
     // 如果按 callId 查到且是主动创建的（started=true），直接复用
@@ -934,6 +993,7 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, reasonId, a
             pcBody.removeAttribute('style');
             pcBody.innerHTML = '';
             if (!renderToolBody(pcBody, toolName, text, args)) { pcBody.textContent = text || ''; }
+            checkOverflow(pcBody, 200);
         }
         // 标记卡片完成态
         var icon = $(pc).find('.tool-status-icon')[0];
@@ -1036,10 +1096,10 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, reasonId, a
     }
 
     // 工具结果渲染：委托注册表分发，未命中专用 renderer 则纯文本兜底
-    var toolBody = $(card).find('.tool-card-body')[0];
     if (!renderToolBody(toolBody, toolName, text, args)) {
         toolBody.textContent = text || '';
     }
+    checkOverflow(toolBody, 200);
 
     $(card).find('.tool-card-header').on('click', function() {
         $(card).toggleClass('expanded');
@@ -1082,21 +1142,20 @@ function appendContentChunk(sess, text, append, reasonId, taskId) {
             }
         }
 
-        // ★ 保存最终答案的 thinkingGroup 引用，稍后用于移动位置
-        var finalThinkingGroup = sess.thinkingGroupEl;
-
+        // ★ 先完成所有思考块关闭，再通过 DOM 查找移动，避免引用失效
         finishThinkingBlock(sess);
         sess.thinkingGroupEl = null;
         sess.reasonGroups = {};
 
-        // ★ 如果存在 task-group，将最终答案的思考块和文本移到最后
-        //   避免最终答案出现在 task-group 上方（排版错乱）
+        // ★ 通过 DOM 重新查找最后完成的 reason-group，将其移到 task-group 之后
         if (sess.currentBubbleEl) {
             var $taskGroups = $(sess.currentBubbleEl.parentNode).find('.task-group');
             if ($taskGroups.length > 0) {
                 var lastTaskGroup = $taskGroups.last();
-                if (finalThinkingGroup) {
-                    $(lastTaskGroup).after(finalThinkingGroup);
+                // 从 DOM 中查找最后完成的 reason-group，不依赖已清空的引用
+                var $lastThinkingGroup = $(sess.currentBubbleEl.parentNode).find('.reason-group').last();
+                if ($lastThinkingGroup.length > 0) {
+                    $(lastTaskGroup).after($lastThinkingGroup);
                 }
                 $(lastTaskGroup).after(sess.currentBubbleEl);
             }
@@ -1113,10 +1172,18 @@ function appendContentChunk(sess, text, append, reasonId, taskId) {
             var $taskGroup = $(groupEl).closest('.task-group');
             if ($taskGroup.length > 0) {
                 $taskGroup.before(groupEl);
-                // 如果 task-group 空了，移除空容器
+                // 如果 task-group 空了，移除空容器（带渐隐过渡）
                 var $body = $taskGroup.find('.task-group-body');
                 if ($body.children().length === 0) {
-                    $taskGroup.remove();
+                    $taskGroup.addClass('fade-out');
+                    setTimeout(function() {
+                        // 延迟后再次检查，避免流式渲染中误删
+                        if ($taskGroup.find('.task-group-body').children().length === 0) {
+                            $taskGroup.remove();
+                        } else {
+                            $taskGroup.removeClass('fade-out');
+                        }
+                    }, 300);
                 }
             }
         }
@@ -1396,7 +1463,7 @@ function calcServerCount(container, startRow) {
             var textEl = $(r).find('.user-msg-text')[0];
             if (textEl) {
                 var raw = textEl.getAttribute('data-md-raw') || textEl.innerText;
-                if (raw.trim().startsWith('/')) continue;
+                if (raw.trim().startsWith('/') && /^\/[a-zA-Z][a-zA-Z0-9_-]*(\s.*)?$/.test(raw.trim())) continue;
             }
         }
         // 系统通知也可能无记录，但删除按钮不存在于系统通知上，无需处理
