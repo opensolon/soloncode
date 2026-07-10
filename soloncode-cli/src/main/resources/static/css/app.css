@@ -237,8 +237,8 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .messages-inner { max-width: 820px; margin: 0 auto; padding: 28px 24px 12px; }
 
 /* Message */
-.msg-row { display: flex; margin-bottom: 28px; gap: 0; animation: msg-in 0.25s ease-out; }
-@keyframes msg-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.msg-row { display: flex; margin-bottom: 28px; gap: 0; animation: msg-fade-in 0.2s ease-out; }
+@keyframes msg-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .msg-row.user { justify-content: flex-end; }
 .msg-row.assistant { justify-content: flex-start; }
 .msg-row.system-notice { justify-content: center; margin-bottom: 20px; }
@@ -247,7 +247,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 
 .msg-bubble { max-width: 75%; line-height: 1.75; word-break: break-word; }
 .msg-row.user .msg-bubble { max-width: 100%; background: var(--bg-user-msg); color: var(--text-user-msg); padding: 12px 18px; border-radius: 20px 20px 4px 20px; font-size: 14px; }
-.msg-row.assistant .msg-bubble { max-width: 92%; min-width: 92%; }
+.msg-row.assistant .msg-bubble { max-width: 92%; min-width: 92%; padding-bottom: 12px; }
 /* 宽度约束放在列容器上，避免气泡百分比相对塌缩列计算导致被挤成窄高条 */
 .msg-row.user .user-msg-col { max-width: 75%; }
 .msg-row.user.wide-user .user-msg-col { max-width: 92%; }
@@ -411,7 +411,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .reason-group-think-dots span:nth-child(3) { animation-delay: 0.4s; }
 
 /* Thinking Group: wraps thinking block + subsequent tool calls */
-.reason-group { margin: 0 0 12px; border: 1px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
+.reason-group { margin: 0; border: 1px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
 .reason-group .reason-group-think { margin: 0; border: none; border-radius: 0; }
 .reason-group .reason-group-think-body { border-bottom: none; }
 .reason-group:has(.tool-card) .reason-group-think-body { border-bottom: 1px solid var(--reason-group-think-border); }
@@ -427,7 +427,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .reason-group-think-header .agent-badge { font-size: 9px; line-height: 15px; padding: 0 5px; }
 
 /* Task group: wraps reason-group + tool-cards for multitask subagent output */
-.task-group { margin: 0 0 12px; border: 1px solid var(--border-color); border-left: 4px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
+.task-group { margin: 0; border: 1px solid var(--border-color); border-left: 4px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
 
 .task-group-header { display: flex; align-items: center; gap: 6px; padding: 8px 12px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-primary); background: var(--bg-primary); border-bottom: 1px solid var(--border-color); transition: background 0.15s; }
 .task-group-header:hover { background: var(--bg-hover); }

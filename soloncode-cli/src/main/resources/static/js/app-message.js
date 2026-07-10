@@ -251,7 +251,12 @@ function ensureAssistantBubble(sess) {
 function ensureThinkingBlock(sess) {
     if (!sess.thinkingBlockEl) {
         ensureAssistantBubble(sess);
-        var parent = sess.currentBubbleEl.parentNode;
+        // 预创建 reason-group 容器，避免后续 finishThinkingBlock 包裹 thinkBlock 造成 DOM 移动
+        var group = $('<div>').addClass('reason-group')[0];
+        // 存储当前 runId，用于后续删除同一运行的消息
+        if (sess.currentRunId) {
+            group.setAttribute('data-run-id', sess.currentRunId);
+        }
         var block = $('<div>').addClass('reason-group-think streaming expanded')[0];
         // 存储当前 runId，用于后续删除同一运行的消息
         if (sess.currentRunId) {
@@ -265,11 +270,13 @@ function ensureThinkingBlock(sess) {
             + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i>'
             + '</div>'
             + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
-        $(sess.currentBubbleEl).before(block);
+        $(group).append(block);
+        $(sess.currentBubbleEl).before(group);
         $(block).find('.reason-group-think-header').on('click', function() {
             $(block).toggleClass('expanded');
         });
         sess.thinkingBlockEl = block;
+        sess.thinkingGroupEl = group;
         sess.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
         sess.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
         sess.thinkingBuffer = '';
@@ -370,20 +377,8 @@ function finishThinkingBlock(sess, reasonId) {
         $(sess.thinkingBlockEl).find('.reason-group-think-dots').remove();
         $(sess.thinkingBlockEl).find('.thinking-timer-wrap').remove();
 
-        // 将思考块包裹在分组容器中，后续工具调用将追加到该分组内
-        // ★ 防止重复包裹：如果 reason-group-think 已在 reason-group 内，跳过
-        var thinkBlockEl = sess.thinkingBlockEl;
-        if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('reason-group')) {
-            sess.thinkingGroupEl = thinkBlockEl.parentNode;
-        } else {
-            var group = $('<div>').addClass('reason-group')[0];
-            if (sess.currentRunId) {
-                group.setAttribute('data-run-id', sess.currentRunId);
-            }
-            $(thinkBlockEl).before(group);
-            $(group).append(thinkBlockEl);
-            sess.thinkingGroupEl = group;
-        }
+        // reason-group 已在 ensureThinkingBlock 中预创建，无需再做 DOM 包裹
+        sess.thinkingGroupEl = sess.thinkingBlockEl.parentNode;
 
         sess.thinkingBlockEl = null;
         sess.thinkingBodyMdEl = null;
@@ -442,25 +437,9 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
             removeThinking(sess);
             ensureThinkingBlock(sess);
             var thinkBlockEl = sess.thinkingBlockEl;
-            // ★ 防止重复包裹：如果已在 reason-group 内，复用父容器
-            if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('reason-group')) {
+            // thinkBlock 已在 ensureThinkingBlock 中预创建在 reason-group 内
+            if (thinkBlockEl && thinkBlockEl.parentNode) {
                 var newGroup = thinkBlockEl.parentNode;
-                sess.thinkingGroupEl = newGroup;
-                sess.reasonGroups[reasonId] = {
-                    groupEl: newGroup,
-                    thinkingBlockEl: sess.thinkingBlockEl,
-                    thinkingBodyMdEl: sess.thinkingBodyMdEl,
-                    thinkingBodyWrapEl: sess.thinkingBodyWrapEl,
-                    thinkingBuffer: '',
-                    reasonRafId: null
-                };
-            } else {
-                var newGroup = $('<div>').addClass('reason-group')[0];
-                if (sess.currentRunId) {
-                    newGroup.setAttribute('data-run-id', sess.currentRunId);
-                }
-                $(thinkBlockEl).before(newGroup);
-                $(newGroup).append(thinkBlockEl);
                 sess.thinkingGroupEl = newGroup;
                 sess.reasonGroups[reasonId] = {
                     groupEl: newGroup,
@@ -494,28 +473,11 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
             }
         }
 
-        // 如果有 reasonId，立即将思考块包裹到分组容器中
+        // 如果有 reasonId，thinkBlock 已在 ensureThinkingBlock 中预创建在 reason-group 内
         if (reasonId) {
             var thinkBlockEl = sess.thinkingBlockEl;
-            // ★ 防止重复包裹：如果 reason-group-think 已在 reason-group 内，复用父容器
-            if (thinkBlockEl.parentNode && $(thinkBlockEl).parent().hasClass('reason-group')) {
+            if (thinkBlockEl && thinkBlockEl.parentNode) {
                 var group = thinkBlockEl.parentNode;
-                sess.thinkingGroupEl = group;
-                sess.reasonGroups[reasonId] = {
-                    groupEl: group,
-                    thinkingBlockEl: sess.thinkingBlockEl,
-                    thinkingBodyMdEl: sess.thinkingBodyMdEl,
-                    thinkingBodyWrapEl: sess.thinkingBodyWrapEl,
-                    thinkingBuffer: '',
-                    reasonRafId: null
-                };
-            } else {
-                var group = $('<div>').addClass('reason-group')[0];
-                if (sess.currentRunId) {
-                    group.setAttribute('data-run-id', sess.currentRunId);
-                }
-                $(thinkBlockEl).before(group);
-                $(group).append(thinkBlockEl);
                 sess.thinkingGroupEl = group;
                 sess.reasonGroups[reasonId] = {
                     groupEl: group,
