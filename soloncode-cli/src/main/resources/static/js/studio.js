@@ -176,7 +176,33 @@
         return;
     }
 
+    function applyStudioAppearance() {
+        var hiddenControlIds = ["themeBtn", "welcomeVoiceBtn", "chatVoiceBtn"];
+        for (var i = 0; i < hiddenControlIds.length; i += 1) {
+            var control = document.getElementById(hiddenControlIds[i]);
+            if (control) {
+                control.style.display = "none";
+            }
+        }
+
+        document.body.setAttribute("data-theme", "light");
+
+        if (typeof window.currentTheme !== "undefined") {
+            window.currentTheme = "light";
+        }
+        if (typeof window.applyHljsTheme === "function") {
+            window.applyHljsTheme("light");
+        }
+        if (typeof window.updateThemeIcon === "function") {
+            window.updateThemeIcon();
+        }
+        if (typeof window.mermaid !== "undefined") {
+            window.mermaid.initialize({ theme: "default" });
+        }
+    }
+
     studioLog("active");
+    applyStudioAppearance();
 
     function isAllowedUrl(url) {
         if (!url) {
