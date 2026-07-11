@@ -24,6 +24,7 @@ import org.noear.solon.ai.agent.react.intercept.ContextSizeChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.*;
+import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -35,6 +36,7 @@ import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.codecli.command.builtin.GoalTalent;
+import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -150,10 +152,53 @@ public class WebStreamBuilder {
         //记录最新的选择
         session.attrs().put("_agent_selected_tmp", agent.name());
 
+        // 会话级推理水平：从 context 读取并注入 Prompt + options
+        // auto 时不注入 effort，交给模型 defaultOptions / Agent Builder / 供应商
+        String sessionEffort = ReasoningEffortSupport.getSessionEffort(session);
+        ReasoningEffortSupport.ModelCapability cap = null;
+        try {
+            ChatConfig fullConfig = null;
+            if (chatModel != null && chatModel.getConfig() != null) {
+                // 1) 引擎精确查找（含 defaultOptions）
+                String key = chatModel.getConfig().getNameOrModel();
+                if (Assert.isNotEmpty(key)) {
+                    fullConfig = engine.getModelOrNil(key);
+                    if (fullConfig == null) {
+                        fullConfig = ReasoningEffortSupport.findEngineConfig(engine.getModels(), key);
+                    }
+                }
+                if (fullConfig == null && Assert.isNotEmpty(chatModel.getConfig().getModel())) {
+                    fullConfig = engine.getModelOrNil(chatModel.getConfig().getModel());
+                    if (fullConfig == null) {
+                        fullConfig = ReasoningEffortSupport.findEngineConfig(
+                                engine.getModels(), chatModel.getConfig().getModel());
+                    }
+                }
+                if (fullConfig == null && Assert.isNotEmpty(chatModel.getConfig().getName())) {
+                    fullConfig = engine.getModelOrNil(chatModel.getConfig().getName());
+                }
+            }
+            if (fullConfig != null) {
+                cap = ReasoningEffortSupport.resolveCapability(fullConfig);
+            } else if (chatModel != null && chatModel.getConfig() != null) {
+                // 2) 回退：name/model/standard 启发式
+                cap = ReasoningEffortSupport.resolveCapability(
+                        chatModel.getConfig().getName(),
+                        chatModel.getConfig().getModel(),
+                        chatModel.getConfig().getStandardOrProvider(),
+                        null);
+            }
+        } catch (Throwable ignored) {
+        }
+        final String effectiveEffort = ReasoningEffortSupport.resolveEffectiveEffort(
+                null, sessionEffort, cap, false);
+        ReasoningEffortSupport.applyToPrompt(prompt, effectiveEffort);
+
         return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.chatModel(chatModel);
+                    ReasoningEffortSupport.applyToOptions(o, effectiveEffort);
 
                     if (Assert.isNotEmpty(sessionCwd)) {
                         o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);

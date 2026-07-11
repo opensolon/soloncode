@@ -629,7 +629,7 @@ function renderHighlightedFile(bodyEl, text, args) {
     if (lang && typeof hljs !== 'undefined') {
         try {
             var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
-            bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;background:var(--bg-code, #f5f5f5);line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
+            bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
             return true;
         } catch(e) {
             return false;

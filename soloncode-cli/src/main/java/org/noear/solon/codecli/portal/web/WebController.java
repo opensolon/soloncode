@@ -28,6 +28,7 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.portal.web.service.FileService;
 import org.noear.solon.codecli.portal.web.service.GitService;
+import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
@@ -361,12 +362,12 @@ public class WebController {
     }
 
     /**
-     * 查询可用 AI 模型列表及当前选中模型。
+     * 查询可用 AI 模型列表及当前选中模型、推理水平。
      * <p>从引擎配置中获取所有可用模型，若指定了 sessionId 则返回该会话当前选中的模型，
-     * 否则返回引擎默认主模型。</p>
+     * 否则返回引擎默认主模型。每项附带 supportsReasoning / reasoningEfforts 等能力字段。</p>
      *
      * @param sessionId 可选的会话 ID，用于获取该会话当前选中的模型
-     * @return 包含 list（模型列表）和 selected（当前选中模型名）的结果对象
+     * @return 包含 list、selected、reasoningEffort 的结果对象
      * @throws Exception 会话查询异常
      */
     @Get
@@ -382,6 +383,9 @@ public class WebController {
                 item.put("name", config.getNameOrModel());
                 item.put("description", config.getDescriptionOrModel());
                 item.put("contextLength", config.getContextLength());
+                item.put("standard", config.getStandardOrProvider());
+                ReasoningEffortSupport.ModelCapability cap = ReasoningEffortSupport.resolveCapability(config);
+                item.putAll(ReasoningEffortSupport.toCapabilityMap(cap));
                 list.add(item);
             }
         }
@@ -393,46 +397,59 @@ public class WebController {
 
         data.put("list", list);
 
+        String selected = "";
+        String reasoningEffort = null;
+        
         if (Assert.isNotEmpty(list)) {
             if (Assert.isNotEmpty(sessionId)) {
                 AgentSession session = engine.getSession(sessionId);
-                String selected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
-
+                selected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+                
                 if (selected != null) {
                     selected = engine.getModelOrDef(selected).getNameOrModel();
                 } else {
                     selected = engine.getModelOrDef(null).getNameOrModel();
                 }
-
-                data.put("selected", selected);
+                
+                reasoningEffort = ReasoningEffortSupport.getSessionEffort(session);
             } else {
-                data.put("selected", engine.getModelOrDef(null).getNameOrModel());
+                selected = engine.getModelOrDef(null).getNameOrModel();
             }
-        } else {
-            data.put("selected", "");
         }
-
+            
+        data.put("selected", selected);
+        data.put("reasoningEffort", reasoningEffort == null ? "" : reasoningEffort);
+        
         return Result.succeed(data);
     }
 
     /**
-     * 切换指定会话的 AI 模型。
-     * <p>将目标模型名称写入会话上下文并更新快照，后续该会话的 AI 交互将使用新模型。</p>
+     * 切换指定会话的 AI 模型 / 推理水平。
+     * <p>将选项写入会话上下文并更新快照，后续该会话的 AI 交互将使用新配置。</p>
      *
-     * @param sessionId 会话 ID
-     * @param modelName 目标模型名称
+     * @param sessionId        会话 ID
+     * @param modelName        目标模型名称（可选，仅改 effort 时可省略）
+     * @param reasoningEffort  推理水平 low|medium|high|max|auto（可选）
      * @return 操作结果
      * @throws Exception 会话操作异常
      */
     @Post
     @Mapping("/web/chat/models/select")
-    public Result models_select(@Param("sessionId") String sessionId, @Param("modelName") String modelName) throws Exception {
+    public Result models_select(@Param("sessionId") String sessionId,
+                                @Param(value = "modelName", required = false) String modelName,
+                                @Param(value = "reasoningEffort", required = false) String reasoningEffort) throws Exception {
         AgentSession session = engine.getSession(sessionId);
-
-        session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
-
+    
+        if (Assert.isNotEmpty(modelName)) {
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+        }
+        
+        // reasoningEffort 参数出现即写入（含空串表示 auto 清除）
+        boolean effortProvided = reasoningEffort != null;
+        ReasoningEffortSupport.putSessionEffort(session, reasoningEffort, effortProvided);
+        
         session.updateSnapshot();
-
+        
         return Result.succeed();
     }
 
@@ -644,7 +661,7 @@ public class WebController {
 
     /**
      * 聊天输入入口：解析请求参数后路由到 WebGate 处理。
-     * <p>接收用户输入的文本消息、附件文件、模型选择和会话标识，
+     * <p>接收用户输入的文本消息、附件文件、模型选择、推理选项和会话标识，
      * 经安全校验后委派给 {@link WebGate#onChatInput} 进行异步 AI 处理。
      * AI 处理结果通过 WebSocket 实时推送到前端，本接口仅返回简单成功响应。</p>
      *
@@ -657,19 +674,21 @@ public class WebController {
      * @return 操作结果（AI 结果通过 WebSocket 推送）
      */
     @Mapping("/web/chat/input")
-    public Result chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentTypes[], String model, String sessionId) {
+    public Result chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentTypes[],
+                             String model, String sessionId,
+                             @Param(value = "reasoningEffort", required = false) String reasoningEffort) {
         try {
             if (sessionId == null || sessionId.isEmpty()) {
                 sessionId = ctx.headerOrDefault("X-Session-Id", "web");
             }
             String sessionCwd = ctx.header("X-Session-Cwd");
-
+            
             if (!isValidSessionId(sessionId)) {
                 ctx.status(400);
                 ctx.output("Invalid Session ID");
                 return null;
             }
-
+            
             if (Assert.isNotEmpty(sessionCwd)) {
                 if (sessionCwd.contains("..")) {
                     ctx.status(400);
@@ -677,12 +696,13 @@ public class WebController {
                     return null;
                 }
             }
-
+            
             String hitlAction = ctx.param("hitlAction");
-
+            
             // 路由到 WebGate 处理（AI 结果通过 WebSocket 推送到前端）
-            webGate.onChatInput(sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null);
-
+            webGate.onChatInput(sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null,
+                    reasoningEffort);
+                    
             // 返回简单 JSON，前端通过 WebSocket 接收 AI 结果
             return Result.succeed();
         } catch (Throwable e) {

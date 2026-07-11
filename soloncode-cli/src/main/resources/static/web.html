@@ -97,6 +97,20 @@
                                 <input type="text" class="model-search-input" placeholder="搜索模型..."/>
                             </div>
                             <div class="model-dropdown-items"></div>
+                            <div class="model-dropdown-footer">
+                                <div class="model-option-row model-reasoning-row" style="display:none">
+                                    <div class="model-option-main">
+                                        <span class="model-option-label">推理</span>
+                                        <div class="model-option-pills" data-kind="reasoning">
+                                            <button type="button" data-effort="auto" title="跟随模型或供应商默认，通常最省心">默认</button>
+                                            <button type="button" data-effort="low" title="更快更省，适合简单问答">快速</button>
+                                            <button type="button" data-effort="medium" title="均衡表现，日常任务推荐">均衡</button>
+                                            <button type="button" data-effort="high" title="更仔细分析，适合难问题">深入</button>
+                                            <button type="button" data-effort="max" title="最强思考，通常最慢也更费额度">最强</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <button class="attach-btn" id="welcomeAttachBtn" title="添加文件附件">
@@ -168,6 +182,20 @@
                                     <input type="text" class="model-search-input" placeholder="搜索模型..."/>
                                 </div>
                                 <div class="model-dropdown-items"></div>
+                                <div class="model-dropdown-footer">
+                                    <div class="model-option-row model-reasoning-row" style="display:none">
+                                        <div class="model-option-main">
+                                            <span class="model-option-label">推理</span>
+                                            <div class="model-option-pills" data-kind="reasoning">
+                                                <button type="button" data-effort="auto" title="跟随模型或供应商默认，通常最省心">默认</button>
+                                                <button type="button" data-effort="low" title="更快更省，适合简单问答">快速</button>
+                                                <button type="button" data-effort="medium" title="均衡表现，日常任务推荐">均衡</button>
+                                                <button type="button" data-effort="high" title="更仔细分析，适合难问题">深入</button>
+                                                <button type="button" data-effort="max" title="最强思考，通常最慢也更费额度">最强</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <button class="attach-btn" id="chatAttachBtn" title="添加文件附件">
@@ -887,6 +915,7 @@
                                         </button>
                                     </div>
                                     <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"thinking":{"type":"enabled"},"reasoning_effort":"high"}'></textarea>
+                                    <div class="form-hint">会话模型选择器中的「深度」会覆盖此处；选「默认」则使用本配置或供应商默认。</div>
                                 </div>
                                 <div class="form-actions" style="justify-content:space-between">
                                     <label class="llm-default-checkbox">

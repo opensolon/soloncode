@@ -138,6 +138,10 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
     formData.append('input', text);
     formData.append('sessionId', sess.sessionId);
     if (model) formData.append('model', model);
+    if (typeof getSelectedReasoning === 'function') {
+        var effort = getSelectedReasoning();
+        if (effort) formData.append('reasoningEffort', effort);
+    }
     for (var i = 0; i < filesToSend.length; i++) {
         formData.append('attachments', filesToSend[i].file, filesToSend[i].name);
         formData.append('attachmentTypes', filesToSend[i].attachmentsType || 'file');

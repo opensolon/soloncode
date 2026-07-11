@@ -32,6 +32,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
@@ -236,15 +237,37 @@ public class WebGate extends SimpleWebSocketListener {
      * @param attachments     上传的文件附件数组（可为 null）
      * @param attachmentTypes 附件类型数组，与 attachments 一一对应（如 "image"）
      * @param hitlAction      HITL 操作类型，取值 "approve" 或 "reject"（可为 null）
+     * @param source          消息来源通道标识
+     * @param reasoningEffort 请求级推理水平（可选，写入会话后由 StreamBuilder 注入）
      */
     public void onChatInput(String sessionId,
                             String sessionCwd,
                             String input, String selectedModel,
                             UploadedFile[] attachments, String[] attachmentTypes,
                             String hitlAction, String source) {
+        onChatInput(sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
+                hitlAction, source, null);
+    }
+    
+    /**
+     * 用户聊天输入入口（含推理选项）。
+     */
+    public void onChatInput(String sessionId,
+                            String sessionCwd,
+                            String input, String selectedModel,
+                            UploadedFile[] attachments, String[] attachmentTypes,
+                            String hitlAction, String source,
+                            String reasoningEffort) {
         AgentSession session = null;
         try {
             session = engine.getSession(sessionId);
+            
+            // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）
+            if (Assert.isNotEmpty(selectedModel)) {
+                session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
+            }
+            boolean effortProvided = reasoningEffort != null;
+            ReasoningEffortSupport.putSessionEffort(session, reasoningEffort, effortProvided);
 
             String agentName = null;
             String currentInput = input;
