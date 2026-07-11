@@ -1,4 +1,4 @@
-### v2026.7.10
+### v2026.7.11
 
 * 添加 soloncode web mcp json 字符串导入方式
 * 添加 soloncode web 文件详情支持 md 视图模式和全屏模式
