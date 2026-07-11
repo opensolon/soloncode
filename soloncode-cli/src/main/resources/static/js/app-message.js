@@ -1149,7 +1149,7 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, reasonId, a
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
-function appendContentChunk(sess, text, append, reasonId, taskId, taskDescription) {
+function appendContentChunk(sess, text, append, reasonId, agentName, taskId, taskDescription) {
     // 没有 reasonId 的文本块属于最终回答，关闭思考块并清除分组引用
     if (!reasonId) {
         // ★ 先关闭所有未关闭的 reasonGroups，其 thinkingBlockEl 会被清空
@@ -1181,6 +1181,12 @@ function appendContentChunk(sess, text, append, reasonId, taskId, taskDescriptio
                 $(lastTaskGroup).after(sess.currentBubbleEl);
             }
         }
+    }
+    // 仅包含 <think> 标签或空字符串的带 reasonId chunk 不创建分组，
+    // 避免流式过程中出现空的 reason-group。
+    var clean = clearThinkTags(text || '');
+    if (reasonId && (!clean || !clean.trim())) {
+        return;
     }
     // BUG 1 修复：有 reasonId 但分组不存在时，自动创建 reason-group（不含思考块）
     if (reasonId && (!sess.reasonGroups[reasonId] || !sess.reasonGroups[reasonId].groupEl)) {
@@ -1231,7 +1237,6 @@ function appendContentChunk(sess, text, append, reasonId, taskId, taskDescriptio
             group.groupContentEl = contentEl;
             group.groupBuffer = '';
         }
-        var clean = clearThinkTags(text);
         group.groupBuffer = append ? group.groupBuffer + clean : clean;
         if (!group.groupRafId) {
             group.groupRafId = requestAnimationFrame(function() {
@@ -1247,7 +1252,6 @@ function appendContentChunk(sess, text, append, reasonId, taskId, taskDescriptio
     }
 
     // 无 reasonId 或没有对应分组 → 正常渲染到主气泡
-    var clean = clearThinkTags(text);
     sess.reasonBuffer = append ? sess.reasonBuffer + clean : clean;
     if (!sess.contentRafId) {
         sess.contentRafId = requestAnimationFrame(function() {

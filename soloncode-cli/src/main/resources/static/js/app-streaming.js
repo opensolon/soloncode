@@ -190,10 +190,10 @@ function onWebChunk(sess, chunk) {
             case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
             case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription); break;
-            case 'text':   finishPendingTool(sess); appendContentChunk(sess, chunk.text, true, chunk.reasonId, chunk.taskId, chunk.taskDescription); break;
+            case 'text':   finishPendingTool(sess); appendContentChunk(sess, chunk.text, true, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription); break;
             case 'action_end': appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription, chunk.callId); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
             case 'action_start': appendActionStartChunk(sess, chunk.toolName, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription, chunk.callId); break;
-            case 'agent':  finishPendingTool(sess); appendContentChunk(sess, chunk.text, false, chunk.reasonId, chunk.taskId); break;
+            case 'agent':  finishPendingTool(sess); appendContentChunk(sess, chunk.text, false, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription); break;
             case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
             case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
             case 'trace':  finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
@@ -311,6 +311,19 @@ function finishStream(sess) {
     if (doneRow) {
         $(doneRow).find('.msg-bubble .md-content').each(function() {
             if (!this.getAttribute('data-md-raw') && (!this.innerText || !this.innerText.trim()) && !$(this).children().length) {
+                $(this).remove();
+            }
+        });
+        // md-content 清理后回收没有任何内容的 reason-group，避免留下空白边框。
+        // 使用 children 而不是 text 判断，确保包含工具卡片或思考块的分组不会被误删。
+        $(doneRow).find('.reason-group').each(function() {
+            if (!$(this).children().length) {
+                $(this).remove();
+            }
+        });
+        // 空 task-group 仅可能由上一步移除最后一个 reason-group 产生，随即一并回收。
+        $(doneRow).find('.task-group').each(function() {
+            if (!$(this).find('.task-group-body').children().length) {
                 $(this).remove();
             }
         });

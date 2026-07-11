@@ -275,24 +275,18 @@ public class WebStreamBuilder {
     /**
      * 处理推理阶段的 chunk
      *
-     * <p>在非工具调用且存在内容时，根据消息是否处于 thinking 状态分别映射为：
-     * <ul>
-     *   <li>thinking 状态 → {@link WebChunk#ofReason(String)} 思维链输出（供前端折叠展示推理过程）</li>
-     *   <li>非 thinking → {@link WebChunk#ofText(String)} 常规文本输出</li>
-     * </ul>
-     * 否则返回空 chunk。</p>
-     *
      * @param chunk 推理阶段的 chunk 数据
      * @return 映射后的 WebChunk，或 {@link WebChunk#EMPTY}
      */
     private WebChunk onReasonChunk(ReasonChunk chunk, String taskAgentName) {
-        if (!chunk.isToolCalls() && chunk.hasContent()) {
+        if (!chunk.isToolCalls() && Assert.isNotEmpty(chunk.getContent())) {
             WebChunk wc;
             if (chunk.getMessage().isThinking()) {
                 wc = WebChunk.ofReason(chunk.getContent());
             } else {
                 wc = WebChunk.ofText(chunk.getContent());
             }
+
             wc.setReasonId(chunk.getReasonId());
 
             // 子代理标记：下游前端据此识别 chunk 归属
