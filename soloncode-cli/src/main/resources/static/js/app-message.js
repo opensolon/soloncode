@@ -260,8 +260,10 @@ function createTaskGroupElement(sess, segment) {
     var titleText = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
     var badgeHtml = segment.agentName ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>' : '';
     var header = $('<div>').addClass('task-group-header')[0];
-    header.setAttribute('role', 'button'); header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'false'); header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
+    var initiallyExpanded = false;
+    header.setAttribute('aria-expanded', String(initiallyExpanded));
+    header.setAttribute('aria-label', initiallyExpanded ? '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u5c55\u5f00' : '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
+    if (initiallyExpanded) $(group).addClass('expanded');
     header.innerHTML = '<span class="task-group-title">' + escapeHtml(titleText) + '</span>' + badgeHtml
         + '<span class="task-group-update-indicator" aria-hidden="true"></span>'
         + '<i class="layui-icon layui-icon-right task-group-toggle"></i>';
@@ -280,29 +282,45 @@ function createTaskGroupElement(sess, segment) {
     return { groupEl: group, bodyEl: body };
 }
 
-/* 只由可见流事件调用。lane 变化即开始一个新展示段，绝不回写旧 task-group。 */
+/* 为 taskId 保持唯一的 task-group；主代理输出仍按连续流片段追加，避免任务组重复创建。 */
 function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
     ensureAssistantBubble(sess);
-    var laneKey = taskId ? 'task:' + taskId : 'main';
-    var current = sess.currentStreamSegment;
-    if (current && current.laneKey === laneKey) return current;
-    var segment = { id: 'stream-' + (++sess.streamSegmentSeq), laneKey: laneKey, taskId: taskId || null,
-        taskDescription: taskDescription || null, agentName: agentName || null, bodyEl: null, groupEl: null, reasonEntries: {} };
     if (taskId) {
-        var task = createTaskGroupElement(sess, segment);
-        segment.groupEl = task.groupEl; segment.bodyEl = task.bodyEl;
-        sess.taskGroups[segment.id] = task.groupEl;
+        var taskSegment = sess.taskSegments[taskId];
+        if (taskSegment) {
+            if (!taskSegment.taskDescription && taskDescription) taskSegment.taskDescription = taskDescription;
+            if (!taskSegment.agentName && agentName) taskSegment.agentName = agentName;
+            sess.currentStreamSegment = taskSegment;
+            sess.lastStreamLaneKey = taskSegment.laneKey;
+            return taskSegment;
+        }
+        taskSegment = { id: 'task-' + (++sess.streamSegmentSeq), laneKey: 'task:' + taskId, taskId: taskId,
+            taskDescription: taskDescription || null, agentName: agentName || null, bodyEl: null, groupEl: null, reasonEntries: {} };
+        var task = createTaskGroupElement(sess, taskSegment);
+        taskSegment.groupEl = task.groupEl;
+        taskSegment.bodyEl = task.bodyEl;
+        sess.taskGroups[taskId] = task.groupEl;
+        sess.taskSegments[taskId] = taskSegment;
         insertBeforeActions(sess, task.groupEl);
-    } else {
-        var main = $('<div>').addClass('main-stream-segment')[0];
-        main.setAttribute('data-stream-segment-id', segment.id);
-        if (sess.currentRunId) main.setAttribute('data-run-id', sess.currentRunId);
-        segment.groupEl = main; segment.bodyEl = main;
-        insertBeforeActions(sess, main);
+        sess.streamSegments.push(taskSegment);
+        sess.currentStreamSegment = taskSegment;
+        sess.lastStreamLaneKey = taskSegment.laneKey;
+        return taskSegment;
     }
+
+    var current = sess.currentStreamSegment;
+    if (current && !current.taskId) return current;
+    var segment = { id: 'main-' + (++sess.streamSegmentSeq), laneKey: 'main', taskId: null,
+        taskDescription: null, agentName: null, bodyEl: null, groupEl: null, reasonEntries: {} };
+    var main = $('<div>').addClass('main-stream-segment')[0];
+    main.setAttribute('data-stream-segment-id', segment.id);
+    if (sess.currentRunId) main.setAttribute('data-run-id', sess.currentRunId);
+    segment.groupEl = main;
+    segment.bodyEl = main;
+    insertBeforeActions(sess, main);
     sess.streamSegments.push(segment);
     sess.currentStreamSegment = segment;
-    sess.lastStreamLaneKey = laneKey;
+    sess.lastStreamLaneKey = segment.laneKey;
     return segment;
 }
 
@@ -469,7 +487,7 @@ function finishThinkingBlock(sess, reasonId) {
 /**
  * 确保 task-group 容器存在，用于 multitask 并行输出时将同一子代理的所有 chunk 归组展示。
  * task-group 包裹 reason-group 和 tool-card，使同一任务实例的输出在视觉上归入同一区块。
- * 包含可折叠头部（标题 + agent badge + 折叠箭头），默认收起，仅由用户按需展开。
+ * 包含可折叠头部（标题 + agent badge + 折叠箭头），默认展开状态由 cliPrintSimplified 配置决定。
  */
 function markTaskGroupUpdated(sess, segment) {
     if (!segment || !segment.groupEl || !segment.taskId || $(segment.groupEl).hasClass('expanded')) return;

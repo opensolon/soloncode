@@ -53,8 +53,9 @@ function SessionState(sessionId) {
     this.userMsgCounter = 0;
     this.reasonGroups = {};  // streamSegmentId::reasonId → { groupEl, thinkingBlockEl }
     this.thinkingGroupEl = null;
-    this.taskGroups = {};  // streamSegmentId → task-group DOM
-    // 流事件的展示段：taskId/reasonId 只表达归属；段才表达实际到达顺序。
+    this.taskGroups = {};  // taskId → task-group DOM
+    this.taskSegments = {}; // taskId → 聚合输出段；同一任务始终复用同一个 task-group
+    // 流事件的主代理展示段。taskId/reasonId 用于归属，主代理段用于保留连续主输出的顺序。
     this.streamSegments = [];
     this.currentStreamSegment = null;
     this.lastStreamLaneKey = null;
@@ -142,6 +143,7 @@ function resetStreamState(sess) {
     sess.thinkingBuffer = '';
     sess.thinkingGroupEl = null;
     sess.taskGroups = {};
+    sess.taskSegments = {};
     sess.streamSegments = [];
     sess.currentStreamSegment = null;
     sess.lastStreamLaneKey = null;
