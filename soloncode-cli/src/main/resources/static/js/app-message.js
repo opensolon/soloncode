@@ -296,7 +296,7 @@ function ensureThinkingBlock(sess, reasonId) {
  * 如果对应的 reason-group 不存在，则自动创建裸容器。
  * 已存在则直接返回，不重复创建。
  */
-function ensureReasonGroup(sess, reasonId) {
+function ensureReasonGroup(sess, reasonId, taskId) {
     if (!reasonId) return null;
     if (sess.reasonGroups[reasonId] && sess.reasonGroups[reasonId].groupEl) {
         // 兼容已创建但尚未带标识的旧分组，始终以当前映射的 reasonId 回填。
@@ -309,7 +309,14 @@ function ensureReasonGroup(sess, reasonId) {
     if (sess.currentRunId) {
         group.setAttribute('data-run-id', sess.currentRunId);
     }
-    $(sess.currentBubbleEl).before(group);
+    if (taskId) {
+        // 子代理的裸 reason-group 直接创建在对应任务组内，避免工具卡片迁移后遗留空分组。
+        var taskGroup = ensureTaskGroup(sess, taskId);
+        $(taskGroup).find('.task-group-body').append(group);
+    } else {
+        // 主代理内容必须排在所有已创建子任务组之后，不能因新的 reasonId 回到气泡开头。
+        insertMainContentAfterTaskGroups(sess, group);
+    }
     sess.reasonGroups[reasonId] = {
         groupEl: group,
         thinkingBlockEl: null,
@@ -380,6 +387,26 @@ function insertBeforeActions(sess, el) {
         if (content) { $(content).append(el); return; }
     }
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
+}
+
+function insertMainContentAfterTaskGroups(sess, el) {
+    var bubble = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-bubble')[0] : null;
+    var content = bubble ? $(bubble).children('.msg-content')[0] : null;
+    if (!content) {
+        insertBeforeActions(sess, el);
+        return;
+    }
+
+    // 仅查看 msg-content 的直属任务组，避免匹配任务组内部的任意嵌套节点。
+    var $taskGroups = $(content).children('.task-group');
+    if ($taskGroups.length > 0) {
+        $taskGroups.last().after(el);
+    } else if (sess.currentBubbleEl && sess.currentBubbleEl.parentNode === content) {
+        // 没有子任务时维持既有顺序：reason-group 位于默认正文节点之前。
+        $(sess.currentBubbleEl).before(el);
+    } else {
+        insertBeforeActions(sess, el);
+    }
 }
 
 function finishThinkingBlock(sess, reasonId) {
@@ -593,13 +620,9 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
         finishThinkingBlock(sess);
         ensureThinkingBlock(sess, reasonId);
 
-        // ★ 如果存在 task-group，将最终答案的思考块移到最后
-        //   避免最终答案的思考块出现在 task-group 上方
-        if (sess.currentBubbleEl && sess.thinkingGroupEl) {
-            var $taskGroups = $(sess.currentBubbleEl.parentNode).find('.task-group');
-            if ($taskGroups.length > 0) {
-                $($taskGroups.last()).after(sess.thinkingGroupEl);
-            }
+        // 主代理思考组位于所有已创建的子任务组之后；子代理随后会归入自己的 task-group。
+        if (!taskId && sess.thinkingGroupEl) {
+            insertMainContentAfterTaskGroups(sess, sess.thinkingGroupEl);
         }
 
         // 如果有 reasonId，thinkBlock 已在 ensureThinkingBlock 中预创建在 reason-group 内
@@ -1034,7 +1057,7 @@ function appendActionStartChunk(sess, toolName, args, toolTitle, reasonId, agent
 
     // BUG 2 修复：有 reasonId 但分组不存在时，自动创建 reason-group（不含思考块）
     if (reasonId && (!sess.reasonGroups[reasonId] || !sess.reasonGroups[reasonId].groupEl)) {
-        ensureReasonGroup(sess, reasonId);
+        ensureReasonGroup(sess, reasonId, taskId);
     }
     // 根据 reasonId 查找分组，将工具卡片追加到正确的位置
     var groupEl = null;
@@ -1068,7 +1091,7 @@ function appendActionStartChunk(sess, toolName, args, toolTitle, reasonId, agent
 function appendActionEndChunk(sess, toolName, text, args, toolTitle, reasonId, agentName, taskId, taskDescription, callId) {
     // BUG 3 修复：有 reasonId 但分组不存在时，自动创建 reason-group（不含思考块）
     if (reasonId && (!sess.reasonGroups[reasonId] || !sess.reasonGroups[reasonId].groupEl)) {
-        ensureReasonGroup(sess, reasonId);
+        ensureReasonGroup(sess, reasonId, taskId);
     }
     // 根据 reasonId 查找分组容器
     function getGroupEl() {
@@ -1271,7 +1294,7 @@ function appendContentChunk(sess, text, append, reasonId, agentName, taskId, tas
     }
     // BUG 1 修复：有 reasonId 但分组不存在时，自动创建 reason-group（不含思考块）
     if (reasonId && (!sess.reasonGroups[reasonId] || !sess.reasonGroups[reasonId].groupEl)) {
-        ensureReasonGroup(sess, reasonId);
+        ensureReasonGroup(sess, reasonId, taskId);
     }
     // 有 reasonId 且存在对应分组 → 文本渲染在分组内（思考块与工具卡片之间）
     if (reasonId && sess.reasonGroups[reasonId] && sess.reasonGroups[reasonId].groupEl) {
@@ -1283,7 +1306,8 @@ function appendContentChunk(sess, text, append, reasonId, agentName, taskId, tas
         if (!taskId && $(groupEl).hasClass('reason-group')) {
             var $taskGroup = $(groupEl).closest('.task-group');
             if ($taskGroup.length > 0) {
-                $taskGroup.before(groupEl);
+                // 主代理内容必须位于全部 task-group 之后，不能插回当前 task-group 之前。
+                insertMainContentAfterTaskGroups(sess, groupEl);
                 // 如果 task-group 空了，移除空容器（带渐隐过渡）
                 var $body = $taskGroup.find('.task-group-body');
                 if ($body.children().length === 0) {
