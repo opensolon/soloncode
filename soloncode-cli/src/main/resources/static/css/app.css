@@ -253,6 +253,9 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
    task-group、msg-trace、chunk-error 等）都在 msg-content 内，
    与 msg-time、msg-actions 物理隔离。间距规则只作用于 msg-content 直系子节点。 */
 .msg-content { display: block; }
+/* 主代理流式片段的直属内容按统一节奏排列；内部 task-group 保持自身的紧凑结构。 */
+.main-stream-segment { display: flex; flex-direction: column; gap: 10px; }
+.main-stream-segment > * { margin: 0; }
 .msg-row.assistant .msg-bubble > .msg-content > *:not(.inline-thinking) {
     margin-top: 0;
     margin-bottom: 10px;

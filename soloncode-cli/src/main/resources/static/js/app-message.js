@@ -343,13 +343,20 @@ function ensureReasonGroup(sess, segment, reasonId) {
 
 function ensureThinkingBlockInGroup(sess, group) {
     if (group.thinkingBlockEl) return group.thinkingBlockEl;
-    var block = $('<div>').addClass('reason-group-think streaming expanded')[0];
-    block.innerHTML = '<div class="reason-group-think-header"><span class="reason-group-think-label">思考</span>'
+    // 仅 task-group 本身固定收起；其内部和外部的思考块都遵循“工具调用显示简化”配置。
+    var initiallyExpanded = window.cliPrintSimplified === false;
+    var block = $('<div>').addClass('reason-group-think streaming')[0];
+    if (initiallyExpanded) $(block).addClass('expanded');
+    block.innerHTML = '<div class="reason-group-think-header" aria-expanded="' + initiallyExpanded + '"><span class="reason-group-think-label">思考</span>'
         + '<span class="thinking-timer-wrap" style="margin-left:4px"><span class="thinking-current-timer">0s</span></span>'
         + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i></div>'
         + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
     $(group.groupEl).append(block);
-    $(block).find('.reason-group-think-header').on('click', function() { $(block).toggleClass('expanded'); });
+    $(block).find('.reason-group-think-header').on('click', function() {
+        var expanded = !$(block).hasClass('expanded');
+        $(block).toggleClass('expanded', expanded);
+        this.setAttribute('aria-expanded', String(expanded));
+    });
     group.thinkingBlockEl = block;
     group.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
     group.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
@@ -487,7 +494,7 @@ function finishThinkingBlock(sess, reasonId) {
 /**
  * 确保 task-group 容器存在，用于 multitask 并行输出时将同一子代理的所有 chunk 归组展示。
  * task-group 包裹 reason-group 和 tool-card，使同一任务实例的输出在视觉上归入同一区块。
- * 包含可折叠头部（标题 + agent badge + 折叠箭头），默认展开状态由 cliPrintSimplified 配置决定。
+ * task-group 始终默认收起，由用户手动展开；收起期间以新增输出标识提示。
  */
 function markTaskGroupUpdated(sess, segment) {
     if (!segment || !segment.groupEl || !segment.taskId || $(segment.groupEl).hasClass('expanded')) return;
@@ -839,6 +846,7 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
     if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
     var argsStr = formatToolArgsStr(args);
     var card = $('<div>').addClass('tool-card')[0];
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
     if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
     card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon loading"></span><span class="tool-name">'
         + escapeHtml(toolTitle || toolName || 'tool') + '</span>' + (argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '')
@@ -859,6 +867,7 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
         if (!segment) segment = ensureStreamSegment(sess, null, null, null);
         var group = ensureReasonGroup(sess, segment, reasonId);
         card = $('<div>').addClass('tool-card')[0];
+        if (window.cliPrintSimplified === false) $(card).addClass('expanded');
         card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon done"><i class="layui-icon layui-icon-ok" style="font-size:12px"></i></span><span class="tool-name">'
             + escapeHtml(toolTitle || toolName || 'tool') + '</span><i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
         $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
@@ -1042,7 +1051,8 @@ function appendHitlCard(sess, toolName, command) {
 
     // 采用 tool-card 视觉体系：审批通过后原地复用为工具结果卡片
     var argsHtml = command ? '<span class="tool-args">' + escapeHtml(command) + '</span>' : '';
-    var card = $('<div>').addClass('tool-card hitl-pending expanded')[0];
+    var card = $('<div>').addClass('tool-card hitl-pending')[0];
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
     // 存储当前 runId，用于后续删除同一运行的消息
     if (sess.currentRunId) {
         card.setAttribute('data-run-id', sess.currentRunId);
