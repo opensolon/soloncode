@@ -269,14 +269,37 @@ function finishStream(sess) {
 
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
 
-    // 显示助手消息时间戳
-    setAssistantTime(sess, sess._lastCreatedAt || Date.now());
+    // 保存行引用（currentBubbleEl 可能在后续清理中被移除）
+    var doneRow = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-row')[0] : null;
+
+    // 条件显示助手消息时间戳：仅当有实际文本输出时才显示
+    var hasTextOutput = !!(sess.reasonBuffer && sess.reasonBuffer.trim());
+    if (!hasTextOutput && doneRow) {
+        $(doneRow).find('.msg-bubble .md-content').each(function() {
+            if (this.getAttribute('data-md-raw') || (this.innerText && this.innerText.trim())) {
+                hasTextOutput = true;
+                return false;
+            }
+        });
+    }
+    if (hasTextOutput) {
+        setAssistantTime(sess, sess._lastCreatedAt || Date.now());
+    }
     sess._lastCreatedAt = null;
 
-    // 流式结束，显示复制按钮（流式过程中被隐藏）
-    if (sess.currentBubbleEl) {
-        var doneRow = $(sess.currentBubbleEl).closest('.msg-row')[0];
-        if (doneRow) $(doneRow).find('.msg-actions').show();
+    // 流式结束：切换 class 并显示操作按钮
+    if (doneRow) {
+        $(doneRow).removeClass('streaming').addClass('done');
+        $(doneRow).find('.msg-actions').show();
+    }
+
+    // 清理空的 md-content 节点（无 data-md-raw 且无文本内容且无子元素）
+    if (doneRow) {
+        $(doneRow).find('.msg-bubble .md-content').each(function() {
+            if (!this.getAttribute('data-md-raw') && (!this.innerText || !this.innerText.trim()) && !$(this).children().length) {
+                $(this).remove();
+            }
+        });
     }
 
     // 清除客户端计时（已由 trace 类型的服务端耗时替代）

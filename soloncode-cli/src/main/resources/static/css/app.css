@@ -249,15 +249,18 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .msg-row.user .msg-bubble { max-width: 100%; background: var(--bg-user-msg); color: var(--text-user-msg); padding: 12px 18px; border-radius: 20px 20px 4px 20px; font-size: 14px; }
 .msg-row.assistant .msg-bubble { max-width: 92%; min-width: 92%; padding-bottom: 12px; }
 
-/* 流式消息块之间的间距统一（作用于 msg-bubble 内的直接子元素）
-   包括：.md-content（文本）、.tool-card（工具卡片）、.reason-group（思考组）、
-   .reason-group-think（思考块）、.chunk-error（错误块）等。
-   排除底部的 .msg-time（时间戳）、.msg-actions（操作按钮）和 .inline-thinking（等待指示器）。 */
-.msg-row.assistant .msg-bubble > *:not(.msg-time):not(.msg-actions):not(.inline-thinking) {
+/* 流式消息内容包裹层：所有内容元素（md-content、tool-card、reason-group、
+   task-group、msg-trace、chunk-error 等）都在 msg-content 内，
+   与 msg-time、msg-actions 物理隔离。间距规则只作用于 msg-content 直系子节点。 */
+.msg-content { display: block; }
+.msg-row.assistant .msg-bubble > .msg-content > *:not(.inline-thinking) {
     margin-top: 0;
     margin-bottom: 10px;
 }
-.msg-row.assistant .msg-bubble > *:last-child {
+.msg-row.assistant .msg-bubble > .msg-content > .msg-trace {
+    margin-top: 4px;
+}
+.msg-row.assistant .msg-bubble > .msg-content > *:not(.inline-thinking):last-child {
     margin-bottom: 0;
 }
 /* 宽度约束放在列容器上，避免气泡百分比相对塌缩列计算导致被挤成窄高条 */

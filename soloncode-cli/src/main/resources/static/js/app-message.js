@@ -140,13 +140,13 @@ function appendSystemNotice(sess, text) {
 function ensureAssistantBubble(sess) {
     if (!sess.currentBubbleEl) {
         removeThinking(sess);
-        var row = $('<div>').addClass('msg-row assistant')[0];
+        var row = $('<div>').addClass('msg-row assistant ' + (sess.isStreaming ? 'streaming' : 'done'))[0];
         // 存储当前 runId，用于后续删除同一运行的消息
         if (sess.currentRunId) {
             row.setAttribute('data-run-id', sess.currentRunId);
         }
         row.setAttribute('data-session-id', sess.sessionId);
-        row.innerHTML = '<div class="msg-bubble"><div class="md-content"></div>'
+        row.innerHTML = '<div class="msg-bubble"><div class="msg-content"><div class="md-content"></div></div>'
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
             + '<button class="user-copy-btn copy-btn" title="复制">' + COPY_SVG + '</button>'
@@ -165,7 +165,7 @@ function ensureAssistantBubble(sess) {
         var bubbleEl = $(row).find('.msg-bubble')[0];
         $(copyBtn).on('click', function() {
             var md = '';
-            var blocks = $(bubbleEl).children('.md-content');
+            var blocks = $(bubbleEl).find('.md-content');
             for (var bi = blocks.length - 1; bi >= 0; bi--) {
                 var raw = blocks[bi].getAttribute('data-md-raw');
                 if (raw != null && raw.trim()) { md = raw; break; }
@@ -365,6 +365,12 @@ function insertBeforeActions(sess, el) {
     // 若存在常驻的内联等待指示器，新内容应插在其上方，保证指示器始终在气泡底部。
     var anchor = (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) ? sess.inlineThinkingEl : null;
     if (anchor) { $(anchor).before(el); return; }
+    // 插入到 msg-content 容器末尾（内容元素与 msg-time/msg-actions 物理隔离）
+    var bubble = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-bubble')[0] : null;
+    if (bubble) {
+        var content = $(bubble).children('.msg-content')[0];
+        if (content) { $(content).append(el); return; }
+    }
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
 }
 
@@ -1291,6 +1297,7 @@ function appendCommandOutput(sess, text) {
     mdEl.innerHTML = renderMd(text);
     if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
     insertBeforeActions(sess, mdEl);
+    sess.currentBubbleEl = mdEl;
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
@@ -1365,6 +1372,11 @@ function ensureInlineThinking(sess) {
         + '<span class="thinking-current-timer">0s</span>'
         + '</span>';
     sess.inlineThinkingEl = el;
+    var bubble = $(sess.currentBubbleEl).closest('.msg-bubble')[0];
+    if (bubble) {
+        var content = $(bubble).children('.msg-content')[0];
+        if (content) { $(content).append(el); return el; }
+    }
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
     return el;
 }
