@@ -1197,6 +1197,14 @@ function postModelSelect(payload) {
             if (this.id !== selectorId) $(this).removeClass('open');
         });
         $selector.toggleClass('open');
+        if ($selector.hasClass('open')) {
+            requestAnimationFrame(function() {
+                var activeItem = $dropdown.find('.model-dropdown-items .model-dropdown-item.active').get(0);
+                if (activeItem) {
+                    activeItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }
+            });
+        }
     });
 
     $dropdown.on('click', function(e) {
