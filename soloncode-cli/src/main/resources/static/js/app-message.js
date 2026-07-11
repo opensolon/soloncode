@@ -248,123 +248,95 @@ function ensureAssistantBubble(sess) {
     return sess.currentBubbleEl;
 }
 
-function ensureThinkingBlock(sess, reasonId) {
-    if (!sess.thinkingBlockEl) {
-        ensureAssistantBubble(sess);
-        // 预创建 reason-group 容器，避免后续 finishThinkingBlock 包裹 thinkBlock 造成 DOM 移动
-        var group = $('<div>').addClass('reason-group')[0];
-        // reasonId 必须使用触发当前思考块创建的流式消息值，不能从会话状态推断。
-        if (reasonId) {
-            group.setAttribute('data-reason-id', reasonId);
-        }
-        // 存储当前 runId，用于后续删除同一运行的消息
-        if (sess.currentRunId) {
-            group.setAttribute('data-run-id', sess.currentRunId);
-        }
-        var block = $('<div>').addClass('reason-group-think streaming expanded')[0];
-        // 存储当前 runId，用于后续删除同一运行的消息
-        if (sess.currentRunId) {
-            block.setAttribute('data-run-id', sess.currentRunId);
-        }
-        block.innerHTML = '<div class="reason-group-think-header">'
-            + '<span class="reason-group-think-label">思考</span>'
-            + '<span class="thinking-timer-wrap" style="margin-left:4px">'
-            + '<span class="thinking-current-timer">0s</span>'
-            + '</span>'
-            + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i>'
-            + '</div>'
-            + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
-        $(group).append(block);
-        $(sess.currentBubbleEl).before(group);
-        $(block).find('.reason-group-think-header').on('click', function() {
-            $(block).toggleClass('expanded');
-        });
-        sess.thinkingBlockEl = block;
-        sess.thinkingGroupEl = group;
-        sess.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
-        sess.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
-        sess.thinkingBuffer = '';
-        var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
-        startThinkingTimerDual(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan, null);
-    }
-    return sess.thinkingBlockEl;
+function streamReasonKey(segment, reasonId) {
+    return segment.id + '::' + reasonId;
 }
 
-/**
- * 确保指定 reasonId 的 reason-group 容器存在（不含思考块）。
- * 任何携带 reasonId 的数据（text/action_start/action_end）到达时，
- * 如果对应的 reason-group 不存在，则自动创建裸容器。
- * 已存在则直接返回，不重复创建。
- */
-function ensureReasonGroup(sess, reasonId, taskId) {
-    if (!reasonId) return null;
-    if (sess.reasonGroups[reasonId] && sess.reasonGroups[reasonId].groupEl) {
-        // 兼容已创建但尚未带标识的旧分组，始终以当前映射的 reasonId 回填。
-        sess.reasonGroups[reasonId].groupEl.setAttribute('data-reason-id', reasonId);
-        return sess.reasonGroups[reasonId];
+function createTaskGroupElement(sess, segment) {
+    var group = $('<div>').addClass('task-group')[0];
+    group.setAttribute('data-task-id', segment.taskId);
+    group.setAttribute('data-stream-segment-id', segment.id);
+    if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
+    var titleText = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
+    var badgeHtml = segment.agentName ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>' : '';
+    var header = $('<div>').addClass('task-group-header')[0];
+    header.setAttribute('role', 'button'); header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'false'); header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
+    header.innerHTML = '<span class="task-group-title">' + escapeHtml(titleText) + '</span>' + badgeHtml
+        + '<span class="task-group-update-indicator" aria-hidden="true"></span>'
+        + '<i class="layui-icon layui-icon-right task-group-toggle"></i>';
+    function toggle() {
+        var expanded = !$(group).hasClass('expanded');
+        $(group).toggleClass('expanded', expanded);
+        header.setAttribute('aria-expanded', String(expanded));
+        if (expanded) { $(group).removeClass('has-new-output'); header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u5c55\u5f00'); }
+        else header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
     }
+    $(header).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    var body = $('<div>').addClass('task-group-body')[0];
+    $(group).append(header).append(body);
+    return { groupEl: group, bodyEl: body };
+}
+
+/* 只由可见流事件调用。lane 变化即开始一个新展示段，绝不回写旧 task-group。 */
+function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
     ensureAssistantBubble(sess);
+    var laneKey = taskId ? 'task:' + taskId : 'main';
+    var current = sess.currentStreamSegment;
+    if (current && current.laneKey === laneKey) return current;
+    var segment = { id: 'stream-' + (++sess.streamSegmentSeq), laneKey: laneKey, taskId: taskId || null,
+        taskDescription: taskDescription || null, agentName: agentName || null, bodyEl: null, groupEl: null, reasonEntries: {} };
+    if (taskId) {
+        var task = createTaskGroupElement(sess, segment);
+        segment.groupEl = task.groupEl; segment.bodyEl = task.bodyEl;
+        sess.taskGroups[segment.id] = task.groupEl;
+        insertBeforeActions(sess, task.groupEl);
+    } else {
+        var main = $('<div>').addClass('main-stream-segment')[0];
+        main.setAttribute('data-stream-segment-id', segment.id);
+        if (sess.currentRunId) main.setAttribute('data-run-id', sess.currentRunId);
+        segment.groupEl = main; segment.bodyEl = main;
+        insertBeforeActions(sess, main);
+    }
+    sess.streamSegments.push(segment);
+    sess.currentStreamSegment = segment;
+    sess.lastStreamLaneKey = laneKey;
+    return segment;
+}
+
+function ensureReasonGroup(sess, segment, reasonId) {
+    if (!reasonId || !segment) return null;
+    var key = streamReasonKey(segment, reasonId);
+    if (segment.reasonEntries[reasonId]) return segment.reasonEntries[reasonId];
     var group = $('<div>').addClass('reason-group')[0];
     group.setAttribute('data-reason-id', reasonId);
-    if (sess.currentRunId) {
-        group.setAttribute('data-run-id', sess.currentRunId);
-    }
-    if (taskId) {
-        // 子代理的裸 reason-group 直接创建在对应任务组内，避免工具卡片迁移后遗留空分组。
-        var taskGroup = ensureTaskGroup(sess, taskId);
-        $(taskGroup).find('.task-group-body').append(group);
-    } else {
-        // 主代理内容必须排在所有已创建子任务组之后，不能因新的 reasonId 回到气泡开头。
-        insertMainContentAfterTaskGroups(sess, group);
-    }
-    sess.reasonGroups[reasonId] = {
-        groupEl: group,
-        thinkingBlockEl: null,
-        thinkingBodyMdEl: null,
-        thinkingBodyWrapEl: null,
-        thinkingBuffer: '',
-        groupContentEl: null,
-        groupBuffer: '',
-        reasonRafId: null,
-        groupRafId: null
-    };
-    sess.thinkingGroupEl = group;
-    return sess.reasonGroups[reasonId];
+    group.setAttribute('data-reason-segment-key', key);
+    if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
+    $(segment.bodyEl).append(group);
+    var entry = { groupEl: group, thinkingBlockEl: null, thinkingBodyMdEl: null, thinkingBodyWrapEl: null,
+        thinkingBuffer: '', reasonRafId: null, groupContentEl: null, groupBuffer: '', groupRafId: null,
+        textRuns: [], activeTextRun: null, activeKind: null };
+    segment.reasonEntries[reasonId] = entry;
+    sess.reasonGroups[key] = entry;
+    return entry;
 }
 
-/**
- * 在已有的 reason-group 容器内创建思考块（reason-group-think）。
- * 用于 appendReasonChunk 复用已关闭的 reasonId 场景：
- * 不创建新的 reason-group，而是在原 group 内追加新的思考块。
- */
-function ensureThinkingBlockInGroup(sess, groupEl) {
-    if (!sess.thinkingBlockEl) {
-        ensureAssistantBubble(sess);
-        var block = $('<div>').addClass('reason-group-think streaming expanded')[0];
-        if (sess.currentRunId) {
-            block.setAttribute('data-run-id', sess.currentRunId);
-        }
-        block.innerHTML = '<div class="reason-group-think-header">'
-            + '<span class="reason-group-think-label">思考</span>'
-            + '<span class="thinking-timer-wrap" style="margin-left:4px">'
-            + '<span class="thinking-current-timer">0s</span>'
-            + '</span>'
-            + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i>'
-            + '</div>'
-            + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
-        $(groupEl).append(block);
-        $(block).find('.reason-group-think-header').on('click', function() {
-            $(block).toggleClass('expanded');
-        });
-        sess.thinkingBlockEl = block;
-        sess.thinkingGroupEl = groupEl;
-        sess.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
-        sess.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
-        sess.thinkingBuffer = '';
-        var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
-        startThinkingTimerDual(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan, null);
-    }
-    return sess.thinkingBlockEl;
+function ensureThinkingBlockInGroup(sess, group) {
+    if (group.thinkingBlockEl) return group.thinkingBlockEl;
+    var block = $('<div>').addClass('reason-group-think streaming expanded')[0];
+    block.innerHTML = '<div class="reason-group-think-header"><span class="reason-group-think-label">思考</span>'
+        + '<span class="thinking-timer-wrap" style="margin-left:4px"><span class="thinking-current-timer">0s</span></span>'
+        + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i></div>'
+        + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
+    $(group.groupEl).append(block);
+    $(block).find('.reason-group-think-header').on('click', function() { $(block).toggleClass('expanded'); });
+    group.thinkingBlockEl = block;
+    group.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
+    group.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
+    group.thinkingStartTime = Date.now();
+    return block;
 }
 
 function setAssistantTime(sess, ts) {
@@ -499,206 +471,35 @@ function finishThinkingBlock(sess, reasonId) {
  * task-group 包裹 reason-group 和 tool-card，使同一任务实例的输出在视觉上归入同一区块。
  * 包含可折叠头部（标题 + agent badge + 折叠箭头），默认收起，仅由用户按需展开。
  */
-function ensureTaskGroup(sess, taskId, taskDescription, agentName) {
-    if (!taskId) return null;
-    if (sess.taskGroups[taskId]) return sess.taskGroups[taskId];
-
-    ensureAssistantBubble(sess);
-    var group = $('<div>').addClass('task-group')[0];
-    group.setAttribute('data-task-id', taskId);
-    if (sess.currentRunId) {
-        group.setAttribute('data-run-id', sess.currentRunId);
-    }
-
-    var titleText = taskDescription || agentName || '\u5b50\u4efb\u52a1';
-    var badgeHtml = agentName ? '<span class="agent-badge">' + escapeHtml(agentName) + '</span>' : '';
-
-    var header = $('<div>').addClass('task-group-header')[0];
-    header.setAttribute('role', 'button');
-    header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'false');
-    header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
-    header.innerHTML = '<span class="task-group-title">' + escapeHtml(titleText) + '</span>'
-        + badgeHtml
-        + '<span class="task-group-update-indicator" aria-hidden="true"></span>'
-        + '<i class="layui-icon layui-icon-right task-group-toggle"></i>';
-    function toggleTaskGroup() {
-        var expanded = !$(group).hasClass('expanded');
-        $(group).toggleClass('expanded', expanded);
-        header.setAttribute('aria-expanded', String(expanded));
-        if (expanded) {
-            $(group).removeClass('has-new-output');
-            header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u5c55\u5f00');
-        } else {
-            header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
-        }
-    }
-    $(header).on('click', function(e) {
-        e.stopPropagation();
-        toggleTaskGroup();
-    }).on('keydown', function(e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggleTaskGroup();
-        }
-    });
-
-    var body = $('<div>').addClass('task-group-body')[0];
-    $(group).append(header);
-    $(group).append(body);
-
-    insertBeforeActions(sess, group);
-    sess.taskGroups[taskId] = group;
-    return group;
-}
-
-/* 收起的子任务收到新的流式输出时，仅更新头部提示，不改变用户选择的展开状态。 */
-function markTaskGroupUpdated(sess, taskId) {
-    if (!taskId || !sess.taskGroups[taskId]) return;
-    var group = sess.taskGroups[taskId];
-    if ($(group).hasClass('expanded')) return;
-    $(group).addClass('has-new-output');
-    var header = $(group).find('.task-group-header')[0];
-    if (header) header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u6709\u65b0\u7684\u8f93\u51fa\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+function markTaskGroupUpdated(sess, segment) {
+    if (!segment || !segment.groupEl || !segment.taskId || $(segment.groupEl).hasClass('expanded')) return;
+    $(segment.groupEl).addClass('has-new-output');
+    var header = $(segment.groupEl).find('.task-group-header')[0];
+    if (header) header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u6709\u65b0\u8f93\u51fa\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
 }
 
 function clearThinkTags(text) {
     return text.replace(/<\s*\/?think\s*>/gi, '');
 }
 
-function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescription) {
-    // 纯 <think> 标签没有内容语义，可直接忽略；纯空白分片中的换行则是 Markdown
-    // 结构的一部分。分组尚未创建时先暂存，等首个可见分片到达后一起写入，
-    // 这样既不会丢换行，也不会因只有空白的流创建空 reason-group。
+function appendReasonChunk(sess, segment, text, reasonId, agentName) {
     var clean = clearThinkTags(text || '');
     if (!clean) return;
-    if (reasonId) {
-        sess.pendingReasonWhitespace = sess.pendingReasonWhitespace || {};
-        if (!sess.reasonGroups[reasonId] && !clean.trim()) {
-            sess.pendingReasonWhitespace[reasonId] = (sess.pendingReasonWhitespace[reasonId] || '') + clean;
-            return;
-        }
-        if (sess.pendingReasonWhitespace[reasonId]) {
-            clean = sess.pendingReasonWhitespace[reasonId] + clean;
-            delete sess.pendingReasonWhitespace[reasonId];
-        }
-    } else if (!sess.thinkingBlockEl && !clean.trim()) {
-        sess.pendingThinkingWhitespace = (sess.pendingThinkingWhitespace || '') + clean;
-        return;
-    } else if (sess.pendingThinkingWhitespace) {
-        clean = sess.pendingThinkingWhitespace + clean;
-        sess.pendingThinkingWhitespace = '';
+    var group = ensureReasonGroup(sess, segment, reasonId);
+    if (!group) return;
+    group.activeKind = 'reason';
+    var block = ensureThinkingBlockInGroup(sess, group);
+    if (agentName) {
+        $(block).addClass('is-subagent');
+        var label = $(block).find('.reason-group-think-label')[0];
+        if (label && !$(label).next('.agent-badge').length) $(label).after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
     }
-
-    if (reasonId && sess.reasonGroups[reasonId]) {
-        // 复用已有 reasonId 的思考块（同一轮次的新思考片段继续追加）
-        var group = sess.reasonGroups[reasonId];
-        // reason-group 的标识始终绑定创建它的该条消息 reasonId。
-        group.groupEl.setAttribute('data-reason-id', reasonId);
-        if (!group.thinkingBlockEl) {
-            // 思考块已被 finishThinkingBlock 关闭，在原 reason-group 内创建新思考块
-            // BUG 9 修复：复用已有 groupEl，避免创建新 reason-group 导致旧 DOM 孤立
-            sess.thinkingGroupEl = group.groupEl;
-            removeThinking(sess);
-            ensureThinkingBlockInGroup(sess, group.groupEl);
-            group.thinkingBlockEl = sess.thinkingBlockEl;
-            group.thinkingBodyMdEl = sess.thinkingBodyMdEl;
-            group.thinkingBodyWrapEl = sess.thinkingBodyWrapEl;
-            group.thinkingBuffer = '';
-            group.reasonRafId = null;
-        } else {
-            sess.thinkingBlockEl = group.thinkingBlockEl;
-            sess.thinkingBodyMdEl = group.thinkingBodyMdEl;
-            sess.thinkingBodyWrapEl = group.thinkingBodyWrapEl;
-            sess.thinkingGroupEl = group.groupEl;
-        }
-    } else {
-        // 新的思考开始，清除旧分组引用
-        sess.thinkingGroupEl = null;
-        removeThinking(sess);
-        // ★ 强制结束旧思考块，避免复用子代理的思考块（带 agent-badge）
-        finishThinkingBlock(sess);
-        ensureThinkingBlock(sess, reasonId);
-
-        // 主代理思考组位于所有已创建的子任务组之后；子代理随后会归入自己的 task-group。
-        if (!taskId && sess.thinkingGroupEl) {
-            insertMainContentAfterTaskGroups(sess, sess.thinkingGroupEl);
-        }
-
-        // 如果有 reasonId，thinkBlock 已在 ensureThinkingBlock 中预创建在 reason-group 内
-        if (reasonId) {
-            var group = sess.thinkingGroupEl;
-            if (group) {
-                group.setAttribute('data-reason-id', reasonId);
-                sess.reasonGroups[reasonId] = {
-                    groupEl: group,
-                    thinkingBlockEl: sess.thinkingBlockEl,
-                    thinkingBodyMdEl: sess.thinkingBodyMdEl,
-                    thinkingBodyWrapEl: sess.thinkingBodyWrapEl,
-                    thinkingBuffer: '',
-                    reasonRafId: null
-                };
-            }
-        }
-    }
-
-    // Task group wrapping：将 reason-group 移入 task-group（如果 taskId 存在）
-    if (taskId && sess.thinkingGroupEl) {
-        var taskGroup = ensureTaskGroup(sess, taskId, taskDescription, agentName);
-        if (!$(sess.thinkingGroupEl).parent().is(taskGroup)) {
-            $(taskGroup).find('.task-group-body').append(sess.thinkingGroupEl);
-            // 更新 reasonGroups 中的 groupEl 引用
-            for (var _rid in sess.reasonGroups) {
-                if (sess.reasonGroups[_rid].groupEl === sess.thinkingGroupEl) {
-                    sess.reasonGroups[_rid].groupEl = sess.thinkingGroupEl;
-                }
-            }
-        }
-    }
-
-    // 子代理标记：添加 agent badge + is-subagent class
-    if (agentName && sess.thinkingBlockEl) {
-        var header = $(sess.thinkingBlockEl).find('.reason-group-think-header')[0];
-        if (header && !$(header).find('.agent-badge').length) {
-            $(header).find('.reason-group-think-label').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
-        }
-        $(sess.thinkingBlockEl).addClass('is-subagent');
-    }
-
-    // Use per-reasonId buffer and RAF ID to prevent interleaving issues
-    if (reasonId && sess.reasonGroups[reasonId]) {
-        var group = sess.reasonGroups[reasonId];
-        if (!group.thinkingBuffer) group.thinkingBuffer = '';
-        group.thinkingBuffer += clean;
-        if (!group.reasonRafId) {
-            group.reasonRafId = requestAnimationFrame(function() {
-                group.reasonRafId = null;
-                if (!group.thinkingBlockEl) return;
-                if (group.thinkingBodyMdEl) {
-                    group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer);
-                }
-                if (group.thinkingBodyWrapEl) {
-                    group.thinkingBodyWrapEl.scrollTop = group.thinkingBodyWrapEl.scrollHeight;
-                }
-                if (sess.sessionId === activeSessionId) scrollToBottom();
-            });
-        }
-    } else {
-        sess.thinkingBuffer += clean;
-        if (!sess.reasonRafId) {
-            sess.reasonRafId = requestAnimationFrame(function() {
-                sess.reasonRafId = null;
-                if (!sess.thinkingBlockEl) return;
-                if (sess.thinkingBodyMdEl) {
-                    sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
-                }
-                if (sess.thinkingBodyWrapEl) {
-                    sess.thinkingBodyWrapEl.scrollTop = sess.thinkingBodyWrapEl.scrollHeight;
-                }
-                if (sess.sessionId === activeSessionId) scrollToBottom();
-            });
-        }
-    }
+    group.thinkingBuffer += clean;
+    if (!group.reasonRafId) group.reasonRafId = requestAnimationFrame(function() {
+        group.reasonRafId = null;
+        if (group.thinkingBodyMdEl) group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer);
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+    });
 }
 
 function finishPendingTool(sess) {
@@ -1015,371 +816,66 @@ function findPendingToolCard(sess, callId, reasonId) {
 /* action_start：工具调用前（来源引擎 ActionChunk）提前渲染 loading 卡片骨架。
    存为 pendingToolCards，待 action_end（ObservationChunk 结果）到达时由
    appendActionEndChunk 复用此卡片填充结果体并转完成态。 */
-function appendActionStartChunk(sess, toolName, args, toolTitle, reasonId, agentName, taskId, taskDescription, callId) {
-    // 如果提供了 reasonId，先结束该推理轮次的思考块（如果有的话）
-    if (reasonId) {
-        finishThinkingBlock(sess, reasonId);
-    } else {
-        finishThinkingBlock(sess);
-    }
-
-    ensureAssistantBubble(sess);
-
+function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reasonId, agentName, callId) {
+    var group = ensureReasonGroup(sess, segment, reasonId);
+    if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
     var argsStr = formatToolArgsStr(args);
-    var argsHtml = argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '';
-
     var card = $('<div>').addClass('tool-card')[0];
-    // 存储当前 runId，用于后续删除同一运行的消息
-    if (sess.currentRunId) {
-        card.setAttribute('data-run-id', sess.currentRunId);
-    }
-    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
-    card.innerHTML = '<div class="tool-card-header">'
-        + '<span class="tool-status-icon loading"></span>'
-        + '<span class="tool-name">' + escapeHtml(toolTitle || toolName || 'tool') + '</span>'
-        + argsHtml
-        + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
-        + '</div>'
-        + '<div class="tool-card-body"></div>';
-
-    // 子代理标记：添加 agent badge + is-subagent class
-    if (agentName) {
-        $(card).addClass('is-subagent');
-        var nameEl = $(card).find('.tool-name')[0];
-        if (nameEl && !$(nameEl).next('.agent-badge').length) {
-            $(nameEl).after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
-        }
-    }
-
-    $(card).find('.tool-card-header').on('click', function() {
-        $(card).toggleClass('expanded');
-    });
-
-    // BUG 2 修复：有 reasonId 但分组不存在时，自动创建 reason-group（不含思考块）
-    if (reasonId && (!sess.reasonGroups[reasonId] || !sess.reasonGroups[reasonId].groupEl)) {
-        ensureReasonGroup(sess, reasonId, taskId);
-    }
-    // 根据 reasonId 查找分组，将工具卡片追加到正确的位置
-    var groupEl = null;
-    if (reasonId && sess.reasonGroups[reasonId]) {
-        groupEl = sess.reasonGroups[reasonId].groupEl;
-    } else {
-        groupEl = sess.thinkingGroupEl;
-    }
-
-    if (groupEl && $(groupEl).hasClass('reason-group')) {
-        $(groupEl).append(card);
-    } else {
-        insertBeforeActions(sess, card);
-    }
-
-    // 如果 taskId 存在且卡片未在 task-group 内，移入 task-group
-    if (taskId && !$(card).parent().closest('.task-group').length) {
-        var taskGroup = ensureTaskGroup(sess, taskId, taskDescription, agentName);
-        $(taskGroup).find('.task-group-body').append(card);
-    }
-
-    // 有 callId 时以其作为唯一键精确关联 action_end；缺失时仅保留旧流兼容键。
-    registerPendingToolCard(sess, card, callId, reasonId);
-
-    // 同时存储 callId 到卡片元素，方便 debug
+    if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
+    card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon loading"></span><span class="tool-name">'
+        + escapeHtml(toolTitle || toolName || 'tool') + '</span>' + (argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '')
+        + '<i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
+    if (agentName) { $(card).addClass('is-subagent'); $(card).find('.tool-name').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>'); }
+    $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+    if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
     if (callId) card.setAttribute('data-call-id', callId);
-
+    registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
-function appendActionEndChunk(sess, toolName, text, args, toolTitle, reasonId, agentName, taskId, taskDescription, callId) {
-    // BUG 3 修复：有 reasonId 但分组不存在时，自动创建 reason-group（不含思考块）
-    if (reasonId && (!sess.reasonGroups[reasonId] || !sess.reasonGroups[reasonId].groupEl)) {
-        ensureReasonGroup(sess, reasonId, taskId);
+function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, reasonId, agentName, callId) {
+    var pendingMatch = findPendingToolCard(sess, callId, null);
+    var card = pendingMatch.pending && pendingMatch.pending.started ? pendingMatch.pending.card : null;
+    if (card) delete sess.pendingToolCards[pendingMatch.key];
+    if (!card) {
+        if (!segment) segment = ensureStreamSegment(sess, null, null, null);
+        var group = ensureReasonGroup(sess, segment, reasonId);
+        card = $('<div>').addClass('tool-card')[0];
+        card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon done"><i class="layui-icon layui-icon-ok" style="font-size:12px"></i></span><span class="tool-name">'
+            + escapeHtml(toolTitle || toolName || 'tool') + '</span><i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
+        $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+        if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
     }
-    // 根据 reasonId 查找分组容器
-    function getGroupEl() {
-        if (reasonId && sess.reasonGroups[reasonId]) {
-            return sess.reasonGroups[reasonId].groupEl;
-        }
-        return sess.thinkingGroupEl;
-    }
-
-    // 有 callId 时只允许精确关联同一次 action_start，绝不能退化为 reasonId 或工具名匹配。
-    // 无 callId 的旧流才按同一 reasonId 的先入先出顺序做有限兼容。
-    var pendingMatch = findPendingToolCard(sess, callId, reasonId);
-    var key = pendingMatch.key;
-    var pending = pendingMatch.pending;
-    // 复用分支：若该工具卡由 action_start 提前创建（loading 中），直接填充结果体并转完成态，避免重复建卡
-    if (pending && pending.started) {
-        var pc = pending.card;
-        delete sess.pendingToolCards[key];
-        var pcArgsStr = formatToolArgsStr(args);
-        $(pc).find('.tool-name').text(toolTitle || toolName || 'tool');
-        // 子代理标记（如 pending 卡已由 action_start 添加则跳过）
-        if (agentName && !$(pc).find('.agent-badge').length) {
-            $(pc).addClass('is-subagent');
-            var nameEl = $(pc).find('.tool-name')[0];
-            if (nameEl) {
-                $(nameEl).after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
-            }
-        }
-        var pcArgsEl = $(pc).find('.tool-args')[0];
-        if (pcArgsStr) {
-            if (pcArgsEl) { pcArgsEl.textContent = pcArgsStr; }
-            else { $('<span>').addClass('tool-args').text(pcArgsStr).insertAfter($(pc).find('.tool-name')); }
-        }
-        var pcBody = $(pc).find('.tool-card-body')[0];
-        if (pcBody) {
-            pcBody.removeAttribute('style');
-            pcBody.innerHTML = '';
-            if (!renderToolBody(pcBody, toolName, text, args)) { pcBody.textContent = text || ''; }
-            checkOverflow(pcBody, 200);
-        }
-        // 标记卡片完成态
-        var icon = $(pc).find('.tool-status-icon')[0];
-        if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
-
-        // ★ 确保复用卡片也在正确的 task-group 内（与下方非 pending 分支逻辑一致）
-        if (taskId && !$(pc).parent().closest('.task-group').length) {
-            var taskGroup = ensureTaskGroup(sess, taskId, taskDescription, agentName);
-            $(taskGroup).find('.task-group-body').append(pc);
-        }
-
-        if (window._todoChunkHandlers) { /* todo 由 streaming 层单独处理，这里不重复 */ }
-        sess.reasonBuffer = '';
-        sess.nextContentBlock = true;
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-        return;
-    }
-
-    // 如果提供了 reasonId，先结束该推理轮次的思考块（如果有的话）
-    if (reasonId) {
-        finishThinkingBlock(sess, reasonId);
-    }
-
-    ensureAssistantBubble(sess);
-
-    // BUG 14 修复：统一使用 formatToolArgsStr，删除重复的 formatArgValue 定义
-    var argsStr = formatToolArgsStr(args);
-    var argsHtml = argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '';
-
-    // 复用分支：若刚批准过 HITL，结果渲染进同一张审批卡片，避免出现两张卡
-    if (sess.approvedToolCard) {
-        var rc = sess.approvedToolCard;
-        sess.approvedToolCard = null;
-        $(rc).find('.tool-name').text(toolTitle || toolName || 'tool');
-        var rcArgsEl = $(rc).find('.tool-args')[0];
-        if (argsStr) {
-            if (rcArgsEl) { rcArgsEl.textContent = argsStr; }
-            else { $('<span>').addClass('tool-args').text(argsStr).insertAfter($(rc).find('.tool-name')); }
-        }
-        var rcBody = $(rc).find('.tool-card-body')[0];
-        if (rcBody) {
-            rcBody.removeAttribute('style');
-            rcBody.innerHTML = '';
-            if (!renderToolBody(rcBody, toolName, text, args)) { rcBody.textContent = text || ''; }
-        }
-        if (window.cliPrintSimplified === false) $(rc).addClass('expanded');
-        else $(rc).removeClass('expanded');
-        sess.pendingToolCard = rc;
-        sess.reasonBuffer = '';
-        sess.nextContentBlock = true;
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-        return;
-    }
-
-    var card = $('<div>').addClass('tool-card')[0];
-    // 存储当前 runId，用于后续删除同一运行的消息
-    if (sess.currentRunId) {
-        card.setAttribute('data-run-id', sess.currentRunId);
-    }
-    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
-    card.innerHTML = '<div class="tool-card-header">'
-        + '<span class="tool-status-icon done"><i class="layui-icon layui-icon-ok" style="font-size:12px"></i></span>'
-        + '<span class="tool-name">' + escapeHtml(toolTitle || toolName || 'tool') + '</span>'
-        + argsHtml
-        + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
-        + '</div>'
-        + '<div class="tool-card-body"></div>';
-
-    // 子代理标记：添加 agent badge + is-subagent class
-    if (agentName) {
-        $(card).addClass('is-subagent');
-        var nameEl = $(card).find('.tool-name')[0];
-        if (nameEl && !$(nameEl).next('.agent-badge').length) {
-            $(nameEl).after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
-        }
-    }
-
-    // BUG 4 修复：补全 toolBody 变量声明
-    var toolBody = $(card).find('.tool-card-body')[0];
-    // 工具结果渲染：委托注册表分发，未命中专用 renderer 则纯文本兜底
-    if (!renderToolBody(toolBody, toolName, text, args)) {
-        toolBody.textContent = text || '';
-    }
-    checkOverflow(toolBody, 200);
-
-    $(card).find('.tool-card-header').on('click', function() {
-        $(card).toggleClass('expanded');
-    });
-
-    // 根据 reasonId 查找分组，将工具卡片追加到正确的位置
-    var groupEl = getGroupEl();
-    if (groupEl && $(groupEl).hasClass('reason-group')) {
-        $(groupEl).append(card);
-    } else {
-        insertBeforeActions(sess, card);
-    }
-
-    // 如果 taskId 存在且卡片未在 task-group 内，移入 task-group
-    if (taskId && !$(card).parent().closest('.task-group').length) {
-        var taskGroup = ensureTaskGroup(sess, taskId, taskDescription, agentName);
-        $(taskGroup).find('.task-group-body').append(card);
-    }
-    // 未收到对应 action_start 的 action_end 已是终态，不应再登记为 pending，
-    // 否则后续同名工具调用可能错误改变这张历史卡片的状态。
+    var body = $(card).find('.tool-card-body')[0];
+    if (body) { body.innerHTML = ''; if (!renderToolBody(body, toolName, text, args)) body.textContent = text || ''; checkOverflow(body, 200); }
+    var icon = $(card).find('.tool-status-icon')[0];
+    if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
     if (callId) card.setAttribute('data-call-id', callId);
-
-    sess.reasonBuffer = '';
-    sess.nextContentBlock = true;
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
-function appendContentChunk(sess, text, append, reasonId, agentName, taskId, taskDescription) {
-    // 没有 reasonId 的文本块属于最终回答，关闭思考块并清除分组引用
-    if (!reasonId) {
-        // ★ 先关闭所有未关闭的 reasonGroups，其 thinkingBlockEl 会被清空
-        //   确保后续旧式 finishThinkingBlock(sess) 不会重复包裹
-        for (var _rid in sess.reasonGroups) {
-            if (sess.reasonGroups[_rid].thinkingBlockEl) {
-                finishThinkingBlock(sess, _rid);
-            }
-        }
-
-        // ★ 先完成所有思考块关闭，再通过 DOM 查找移动，避免引用失效
-        finishThinkingBlock(sess);
-        sess.thinkingGroupEl = null;
-        sess.reasonGroups = {};
-
-        // ★ 通过 DOM 重新查找最后完成的 reason-group，将其移到 task-group 之后
-        if (sess.currentBubbleEl) {
-            var $taskGroups = $(sess.currentBubbleEl.parentNode).find('.task-group');
-            if ($taskGroups.length > 0) {
-                var lastTaskGroup = $taskGroups.last();
-                // 从 DOM 中查找最后完成的 reason-group，不依赖已清空的引用
-                // ★ 排除嵌套在 task-group 内部的 reason-group，避免拔出子代理的推理内容
-                var $lastThinkingGroup = $(sess.currentBubbleEl.parentNode).find('.reason-group').filter(function() {
-                    return !$(this).closest('.task-group').length;
-                }).last();
-                if ($lastThinkingGroup.length > 0) {
-                    $(lastTaskGroup).after($lastThinkingGroup);
-                }
-                $(lastTaskGroup).after(sess.currentBubbleEl);
-            }
-        }
-    }
-    // 纯 <think> 标签没有内容语义；纯空白分片中的换行属于 Markdown 结构。
-    // 对尚未创建的分组先暂存空白，首个可见分片到达后再原样拼接，避免
-    // 丢失段落/标题边界，同时不会为始终只有空白的流创建 reason-group。
+function appendContentChunk(sess, segment, text, append, reasonId) {
     var clean = clearThinkTags(text || '');
     if (!clean) return;
-    if (reasonId) {
-        sess.pendingGroupWhitespace = sess.pendingGroupWhitespace || {};
-        var hasReasonGroup = sess.reasonGroups[reasonId] && sess.reasonGroups[reasonId].groupEl;
-        if (!hasReasonGroup && !clean.trim()) {
-            sess.pendingGroupWhitespace[reasonId] = (sess.pendingGroupWhitespace[reasonId] || '') + clean;
-            return;
-        }
-        if (sess.pendingGroupWhitespace[reasonId]) {
-            clean = sess.pendingGroupWhitespace[reasonId] + clean;
-            delete sess.pendingGroupWhitespace[reasonId];
-        }
+    var group = ensureReasonGroup(sess, segment, reasonId);
+    if (!group) return;
+    // 仅连续 text chunk 复用同一节点；工具/思考出现后必建新 text run，保持真实时序。
+    var run = group.activeTextRun;
+    if (group.activeKind !== 'text' || !run) {
+        run = { el: $('<div>').addClass('md-content reason-group-text')[0], buffer: '', rafId: null };
+        group.textRuns.push(run);
+        group.activeTextRun = run;
+        group.groupContentEl = run.el;
+        $(group.groupEl).append(run.el);
     }
-    // BUG 1 修复：有 reasonId 但分组不存在时，自动创建 reason-group（不含思考块）
-    if (reasonId && (!sess.reasonGroups[reasonId] || !sess.reasonGroups[reasonId].groupEl)) {
-        ensureReasonGroup(sess, reasonId, taskId);
-    }
-    // 有 reasonId 且存在对应分组 → 文本渲染在分组内（思考块与工具卡片之间）
-    if (reasonId && sess.reasonGroups[reasonId] && sess.reasonGroups[reasonId].groupEl) {
-        var group = sess.reasonGroups[reasonId];
-        var groupEl = group.groupEl;
-
-        // ★ 如果文本 chunk 没有 taskId，但 groupEl 当前在 task-group 内，移出
-        //   避免无 taskId 的文本被误包入子代理分组
-        if (!taskId && $(groupEl).hasClass('reason-group')) {
-            var $taskGroup = $(groupEl).closest('.task-group');
-            if ($taskGroup.length > 0) {
-                // 主代理内容必须位于全部 task-group 之后，不能插回当前 task-group 之前。
-                insertMainContentAfterTaskGroups(sess, groupEl);
-                // 如果 task-group 空了，移除空容器（带渐隐过渡）
-                var $body = $taskGroup.find('.task-group-body');
-                if ($body.children().length === 0) {
-                    $taskGroup.addClass('fade-out');
-                    setTimeout(function() {
-                        // 延迟后再次检查，避免流式渲染中误删
-                        if ($taskGroup.find('.task-group-body').children().length === 0) {
-                            $taskGroup.remove();
-                        } else {
-                            $taskGroup.removeClass('fade-out');
-                        }
-                    }, 300);
-                }
-            }
-        }
-        // ★ 如果文本 chunk 有 taskId，但 groupEl 当前不在 task-group 内，移入
-        //   确保子代理输出的文本也归入其 task-group
-        if (taskId && !$(groupEl).closest('.task-group').length && $(groupEl).hasClass('reason-group')) {
-            var taskGroup = ensureTaskGroup(sess, taskId, taskDescription, agentName);
-            $(taskGroup).find('.task-group-body').append(groupEl);
-        }
-        // 确保组内文本容器存在
-        if (!group.groupContentEl) {
-            var contentEl = $('<div>').addClass('md-content reason-group-text')[0];
-            // 插入到思考块之后、工具卡片之前（或末尾）
-            var firstTool = $(groupEl).find('.tool-card').first()[0];
-            if (firstTool) {
-                $(firstTool).before(contentEl);
-            } else {
-                $(groupEl).append(contentEl);
-            }
-            group.groupContentEl = contentEl;
-            group.groupBuffer = '';
-        }
-        group.groupBuffer = append ? group.groupBuffer + clean : clean;
-        if (!group.groupRafId) {
-            group.groupRafId = requestAnimationFrame(function() {
-                group.groupRafId = null;
-                if (!group.groupContentEl) return;
-                // 流式过程中仅渲染 Markdown，跳过代码高亮和复制按钮以避免每帧全量重建 DOM；
-                // 这两项在 finishStream 中会做最终的完整处理。
-                group.groupContentEl.innerHTML = renderMd(group.groupBuffer);
-                if (sess.sessionId === activeSessionId) scrollToBottom();
-            });
-        }
-        return;
-    }
-
-    // 无 reasonId 或没有对应分组 → 正常渲染到主气泡。
-    // 工具结果后不预创建空的 md-content；收到下一条实际分片时再建立内容块。
-    if (sess.nextContentBlock) {
-        var nextContentEl = $('<div>').addClass('md-content')[0];
-        insertBeforeActions(sess, nextContentEl);
-        sess.currentBubbleEl = nextContentEl;
-        sess.reasonBuffer = '';
-        sess.nextContentBlock = false;
-    }
-    sess.reasonBuffer = append ? sess.reasonBuffer + clean : clean;
-    if (!sess.contentRafId) {
-        sess.contentRafId = requestAnimationFrame(function() {
-            var el = ensureAssistantBubble(sess);
-            // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
-            // 避免复制到被工具调用切开的中间片段。
-            // 流式过程中仅渲染 Markdown，跳过代码高亮和复制按钮以避免每帧全量重建 DOM；
-            // 这两项在 finishStream 中会做最终的完整处理。
-            el.innerHTML = renderMd(sess.reasonBuffer);
-
-            sess.contentRafId = null;
-
-            if (sess.sessionId === activeSessionId) scrollToBottom();
-        });
-    }
+    group.activeKind = 'text';
+    run.buffer = append ? run.buffer + clean : clean;
+    group.groupBuffer = run.buffer;
+    if (!run.rafId) run.rafId = requestAnimationFrame(function() {
+        run.rafId = null;
+        if (run.el) run.el.innerHTML = renderMd(run.buffer);
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+    });
 }
 
 function appendErrorChunk(sess, text) {

@@ -186,21 +186,27 @@ function onWebChunk(sess, chunk) {
             sess.currentSourceLabel = chunk.sourceLabel;
         }
 
+        // action_end 若能用 callId 找到已展示的 loading 卡，只原位更新该卡；它不应凭空创建新段。
+        // 未收到 action_start 的终态事件才需要在当前到达位置创建一个段。
+        var visualTypes = { reason: 1, text: 1, agent: 1, action_start: 1 };
+        var actionEndNeedsSegment = chunk.type === 'action_end' && !findPendingToolCard(sess, chunk.callId, null).pending;
+        var segment = (visualTypes[chunk.type] || actionEndNeedsSegment)
+            ? ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName) : null;
         switch (chunk.type) {
             case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
-            case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription); break;
-            case 'text':   finishPendingTool(sess); appendContentChunk(sess, chunk.text, true, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription); break;
-            case 'action_end': appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription, chunk.callId); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
-            case 'action_start': appendActionStartChunk(sess, chunk.toolName, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription, chunk.callId); break;
-            case 'agent':  finishPendingTool(sess); appendContentChunk(sess, chunk.text, false, chunk.reasonId, chunk.agentName, chunk.taskId, chunk.taskDescription); break;
-            case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
-            case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
-            case 'trace':  finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
+            case 'reason': appendReasonChunk(sess, segment, chunk.text, chunk.reasonId, chunk.agentName); break;
+            case 'text': appendContentChunk(sess, segment, chunk.text, true, chunk.reasonId); break;
+            case 'action_end': appendActionEndChunk(sess, segment, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
+            case 'action_start': appendActionStartChunk(sess, segment, chunk.toolName, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); break;
+            case 'agent': appendContentChunk(sess, segment, chunk.text, false, chunk.reasonId); break;
+            case 'error': finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
+            case 'hitl': finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
+            case 'trace': finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
             case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
         }
         // task-group 一律由用户控制展开状态；收起时的新输出只在头部显示提示。
-        if (chunk.taskId) markTaskGroupUpdated(sess, chunk.taskId);
+        if (segment && segment.taskId) markTaskGroupUpdated(sess, segment);
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
         }, 1000);
@@ -253,7 +259,18 @@ function finishStream(sess) {
     // 渲染 reason-group 文本内容（groupBuffer），应用代码高亮、复制按钮、Mermaid
     for (var _rid in sess.reasonGroups) {
         var group = sess.reasonGroups[_rid];
-        if (group.groupContentEl && group.groupBuffer) {
+        if (group.textRuns && group.textRuns.length) {
+            for (var ri = 0; ri < group.textRuns.length; ri++) {
+                var run = group.textRuns[ri];
+                if (run.rafId) { cancelAnimationFrame(run.rafId); run.rafId = null; }
+                if (run.el && run.buffer) {
+                    $(run.el).html(renderMd(run.buffer));
+                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(run.el);
+                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(run.el);
+                    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(run.el);
+                }
+            }
+        } else if (group.groupContentEl && group.groupBuffer) {
             $(group.groupContentEl).html(renderMd(group.groupBuffer));
             if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(group.groupContentEl);
             if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(group.groupContentEl);

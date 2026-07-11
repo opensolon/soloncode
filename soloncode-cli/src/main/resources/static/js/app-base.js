@@ -51,9 +51,14 @@ function SessionState(sessionId) {
     this.thinkingBlockStartTime = null;
     this.messageStartTime = null;
     this.userMsgCounter = 0;
-    this.reasonGroups = {};  // reasonId → { groupEl, thinkingBlockEl }
+    this.reasonGroups = {};  // streamSegmentId::reasonId → { groupEl, thinkingBlockEl }
     this.thinkingGroupEl = null;
-    this.taskGroups = {};  // taskId → { groupEl }
+    this.taskGroups = {};  // streamSegmentId → task-group DOM
+    // 流事件的展示段：taskId/reasonId 只表达归属；段才表达实际到达顺序。
+    this.streamSegments = [];
+    this.currentStreamSegment = null;
+    this.lastStreamLaneKey = null;
+    this.streamSegmentSeq = 0;
 }
 
 var sessionMap = {};
@@ -137,6 +142,10 @@ function resetStreamState(sess) {
     sess.thinkingBuffer = '';
     sess.thinkingGroupEl = null;
     sess.taskGroups = {};
+    sess.streamSegments = [];
+    sess.currentStreamSegment = null;
+    sess.lastStreamLaneKey = null;
+    sess.streamSegmentSeq = 0;
     // Cancel per-reasonId RAF IDs before clearing
     for (var _rid in sess.reasonGroups) {
         if (sess.reasonGroups[_rid].reasonRafId) {
