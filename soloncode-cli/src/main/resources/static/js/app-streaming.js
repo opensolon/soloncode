@@ -220,6 +220,10 @@ function finishStream(sess) {
             cancelAnimationFrame(sess.reasonGroups[_rid].reasonRafId);
             sess.reasonGroups[_rid].reasonRafId = null;
         }
+        if (sess.reasonGroups[_rid].groupRafId) {
+            cancelAnimationFrame(sess.reasonGroups[_rid].groupRafId);
+            sess.reasonGroups[_rid].groupRafId = null;
+        }
     }
 
     // 2. 立即把 Buffer 内容渲染出来
@@ -242,6 +246,16 @@ function finishStream(sess) {
                 if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(bodyMdEl);
                 if (typeof processMermaidBlocks === 'function') processMermaidBlocks(bodyMdEl);
             }
+        }
+    }
+    // 渲染 reason-group 文本内容（groupBuffer），应用代码高亮、复制按钮、Mermaid
+    for (var _rid in sess.reasonGroups) {
+        var group = sess.reasonGroups[_rid];
+        if (group.groupContentEl && group.groupBuffer) {
+            $(group.groupContentEl).html(renderMd(group.groupBuffer));
+            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(group.groupContentEl);
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(group.groupContentEl);
+            if (typeof processMermaidBlocks === 'function') processMermaidBlocks(group.groupContentEl);
         }
     }
     if (sess.thinkingBlockEl && sess.thinkingBuffer) {

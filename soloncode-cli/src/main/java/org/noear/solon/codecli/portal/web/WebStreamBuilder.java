@@ -162,9 +162,10 @@ public class WebStreamBuilder {
                 .stream()
                 .map(chunk -> {
                     // 子代理任务包装解包：TaskWrapChuck 携带 taskAgentName/isMultitask
+                    String runId = null;
                     String taskAgentName = null;
                     String taskId = null;
-                    String taskDescription= null;
+                    String taskDescription = null;
                     boolean isMultitask = false;
                     if (chunk instanceof TaskWrapChuck) {
                         TaskWrapChuck twc = (TaskWrapChuck) chunk;
@@ -173,7 +174,7 @@ public class WebStreamBuilder {
                                 twc.getRealChunk() instanceof ObservationChunk ||
                                 twc.getRealChunk() instanceof ReasonChunk) {
                             // RunStartChunk
-
+                            runId = twc.getParentRunId();
                             taskId = twc.getTaskId();
                             taskAgentName = twc.getTaskAgentName();
                             taskDescription = twc.getTaskDescription();
@@ -199,10 +200,15 @@ public class WebStreamBuilder {
                         webChunk = onFinalChunk(session, (ReActChunk) chunk);
                     }
 
-                    if(webChunk == null || webChunk == WebChunk.EMPTY) {
+                    if (webChunk == null || webChunk == WebChunk.EMPTY) {
                         return WebChunk.EMPTY;
                     } else {
-                        webChunk.setRunId(chunk.getRunId());
+                        if (runId != null) {
+                            webChunk.setRunId(runId);
+                        } else {
+                            webChunk.setRunId(chunk.getRunId());
+                        }
+
                         if (taskAgentName != null) {
                             webChunk.setAgentName(taskAgentName);
                         }
@@ -239,7 +245,7 @@ public class WebStreamBuilder {
     }
 
 
-    public WebChunk onContextSizeChunk(ChatModel chatModel, ContextSizeChunk chunk){
+    public WebChunk onContextSizeChunk(ChatModel chatModel, ContextSizeChunk chunk) {
         WebChunk wc = new WebChunk();
         wc.setType("context_size");
         wc.setSessionId(chunk.getSession().getSessionId());
@@ -247,7 +253,7 @@ public class WebStreamBuilder {
         wc.setText(String.valueOf(chunk.getMessageCount()));
 
         long contextLength = chatModel.getConfig().getContextLength();
-        if(contextLength == 0){
+        if (contextLength == 0) {
             contextLength = 128_000; //默认
         }
 
@@ -373,7 +379,7 @@ public class WebStreamBuilder {
      * @return 映射后的 WebChunk（含工具信息），或 {@link WebChunk#EMPTY}（内部工具或无名称时）
      */
     private WebChunk onObservationChunk(ObservationChunk chunk, String taskAgentName) {
-        if(chunk.getError() != null){
+        if (chunk.getError() != null) {
             return WebChunk.EMPTY;
         }
 
@@ -533,7 +539,7 @@ public class WebStreamBuilder {
      * </ol></p>
      *
      * @param session Agent 会话，用于获取会话ID和已选择的代理名称
-     * @param chunk 思考轮次的 chunk 数据，包含助手消息和追踪信息
+     * @param chunk   思考轮次的 chunk 数据，包含助手消息和追踪信息
      * @return 映射后的 WebChunk（多任务并行时有内容），或 {@link WebChunk#EMPTY}
      */
     private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk chunk, String taskAgentName, boolean isMultitask) {

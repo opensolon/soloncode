@@ -311,7 +311,8 @@ function ensureReasonGroup(sess, reasonId) {
         thinkingBuffer: '',
         groupContentEl: null,
         groupBuffer: '',
-        reasonRafId: null
+        reasonRafId: null,
+        groupRafId: null
     };
     sess.thinkingGroupEl = group;
     return sess.reasonGroups[reasonId];
@@ -1232,11 +1233,16 @@ function appendContentChunk(sess, text, append, reasonId, taskId, taskDescriptio
         }
         var clean = clearThinkTags(text);
         group.groupBuffer = append ? group.groupBuffer + clean : clean;
-        group.groupContentEl.innerHTML = renderMd(group.groupBuffer);
-        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(group.groupContentEl);
-        if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(group.groupContentEl);
-        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(group.groupContentEl);
-        if (sess.sessionId === activeSessionId) scrollToBottom();
+        if (!group.groupRafId) {
+            group.groupRafId = requestAnimationFrame(function() {
+                group.groupRafId = null;
+                if (!group.groupContentEl) return;
+                // 流式过程中仅渲染 Markdown，跳过代码高亮和复制按钮以避免每帧全量重建 DOM；
+                // 这两项在 finishStream 中会做最终的完整处理。
+                group.groupContentEl.innerHTML = renderMd(group.groupBuffer);
+                if (sess.sessionId === activeSessionId) scrollToBottom();
+            });
+        }
         return;
     }
 
