@@ -470,14 +470,14 @@ function finishThinkingBlock(sess, reasonId) {
 /**
  * 确保 task-group 容器存在，用于 multitask 并行输出时将同一子代理的所有 chunk 归组展示。
  * task-group 包裹 reason-group 和 tool-card，使同一任务实例的输出在视觉上归入同一区块。
- * 包含可折叠头部（标题 + agent badge + 折叠箭头），默认展开。
+ * 包含可折叠头部（标题 + agent badge + 折叠箭头），默认收起，仅由用户按需展开。
  */
 function ensureTaskGroup(sess, taskId, taskDescription, agentName) {
     if (!taskId) return null;
     if (sess.taskGroups[taskId]) return sess.taskGroups[taskId];
 
     ensureAssistantBubble(sess);
-    var group = $('<div>').addClass('task-group expanded')[0];
+    var group = $('<div>').addClass('task-group')[0];
     group.setAttribute('data-task-id', taskId);
     if (sess.currentRunId) {
         group.setAttribute('data-run-id', sess.currentRunId);
@@ -487,12 +487,33 @@ function ensureTaskGroup(sess, taskId, taskDescription, agentName) {
     var badgeHtml = agentName ? '<span class="agent-badge">' + escapeHtml(agentName) + '</span>' : '';
 
     var header = $('<div>').addClass('task-group-header')[0];
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'false');
+    header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
     header.innerHTML = '<span class="task-group-title">' + escapeHtml(titleText) + '</span>'
         + badgeHtml
+        + '<span class="task-group-update-indicator" aria-hidden="true"></span>'
         + '<i class="layui-icon layui-icon-right task-group-toggle"></i>';
+    function toggleTaskGroup() {
+        var expanded = !$(group).hasClass('expanded');
+        $(group).toggleClass('expanded', expanded);
+        header.setAttribute('aria-expanded', String(expanded));
+        if (expanded) {
+            $(group).removeClass('has-new-output');
+            header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u5c55\u5f00');
+        } else {
+            header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
+        }
+    }
     $(header).on('click', function(e) {
         e.stopPropagation();
-        $(group).toggleClass('expanded');
+        toggleTaskGroup();
+    }).on('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleTaskGroup();
+        }
     });
 
     var body = $('<div>').addClass('task-group-body')[0];
@@ -502,6 +523,16 @@ function ensureTaskGroup(sess, taskId, taskDescription, agentName) {
     insertBeforeActions(sess, group);
     sess.taskGroups[taskId] = group;
     return group;
+}
+
+/* 收起的子任务收到新的流式输出时，仅更新头部提示，不改变用户选择的展开状态。 */
+function markTaskGroupUpdated(sess, taskId) {
+    if (!taskId || !sess.taskGroups[taskId]) return;
+    var group = sess.taskGroups[taskId];
+    if ($(group).hasClass('expanded')) return;
+    $(group).addClass('has-new-output');
+    var header = $(group).find('.task-group-header')[0];
+    if (header) header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u6709\u65b0\u7684\u8f93\u51fa\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
 }
 
 function clearThinkTags(text) {

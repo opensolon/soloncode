@@ -445,10 +445,13 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .task-group { margin: 0; border: 1px solid var(--border-color); border-left: 4px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
 
 .task-group-header { display: flex; align-items: center; gap: 6px; padding: 8px 12px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-primary); background: var(--bg-primary); border-bottom: 1px solid var(--border-color); transition: background 0.15s; }
+.task-group-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .task-group-header:hover { background: var(--bg-hover); }
 .task-group-header .agent-badge { margin-left: 0; font-size: 9px; line-height: 15px; padding: 0 5px; }
 .task-group-header .agent-badge::before { content: none; }
 .task-group-title { flex: 1; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-group-update-indicator { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); flex-shrink: 0; }
+.task-group.has-new-output .task-group-update-indicator { display: inline-block; }
 .task-group-toggle { transition: transform 0.2s; font-size: 16px !important; color: var(--text-tertiary); flex-shrink: 0; }
 .task-group.expanded .task-group-toggle { transform: rotate(90deg); }
 .task-group-body { display: block; }

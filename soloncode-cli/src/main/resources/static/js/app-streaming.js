@@ -199,6 +199,8 @@ function onWebChunk(sess, chunk) {
             case 'trace':  finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
             case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
         }
+        // task-group 一律由用户控制展开状态；收起时的新输出只在头部显示提示。
+        if (chunk.taskId) markTaskGroupUpdated(sess, chunk.taskId);
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
         }, 1000);
