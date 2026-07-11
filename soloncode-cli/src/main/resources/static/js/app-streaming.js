@@ -314,8 +314,16 @@ function finishStream(sess) {
                 $(this).remove();
             }
         });
-        // md-content 清理后回收没有任何内容的 reason-group，避免留下空白边框。
-        // 使用 children 而不是 text 判断，确保包含工具卡片或思考块的分组不会被误删。
+        // 先移除没有实际内容的思考块外壳。仅按 reason-group 的直接子节点数判断，
+        // 会把包含空 reason-group-think 的分组误判为非空而残留。
+        $(doneRow).find('.reason-group > .reason-group-think').each(function() {
+            var body = $(this).find('.reason-group-think-body')[0];
+            var hasContent = body && ((body.innerText && body.innerText.trim()) || $(body).children().length);
+            if (!hasContent) {
+                $(this).remove();
+            }
+        });
+        // 回收没有任何实际子内容的 reason-group，避免留下空白边框。
         $(doneRow).find('.reason-group').each(function() {
             if (!$(this).children().length) {
                 $(this).remove();

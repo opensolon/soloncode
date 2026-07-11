@@ -248,11 +248,15 @@ function ensureAssistantBubble(sess) {
     return sess.currentBubbleEl;
 }
 
-function ensureThinkingBlock(sess) {
+function ensureThinkingBlock(sess, reasonId) {
     if (!sess.thinkingBlockEl) {
         ensureAssistantBubble(sess);
         // 预创建 reason-group 容器，避免后续 finishThinkingBlock 包裹 thinkBlock 造成 DOM 移动
         var group = $('<div>').addClass('reason-group')[0];
+        // reasonId 必须使用触发当前思考块创建的流式消息值，不能从会话状态推断。
+        if (reasonId) {
+            group.setAttribute('data-reason-id', reasonId);
+        }
         // 存储当前 runId，用于后续删除同一运行的消息
         if (sess.currentRunId) {
             group.setAttribute('data-run-id', sess.currentRunId);
@@ -295,10 +299,13 @@ function ensureThinkingBlock(sess) {
 function ensureReasonGroup(sess, reasonId) {
     if (!reasonId) return null;
     if (sess.reasonGroups[reasonId] && sess.reasonGroups[reasonId].groupEl) {
+        // 兼容已创建但尚未带标识的旧分组，始终以当前映射的 reasonId 回填。
+        sess.reasonGroups[reasonId].groupEl.setAttribute('data-reason-id', reasonId);
         return sess.reasonGroups[reasonId];
     }
     ensureAssistantBubble(sess);
     var group = $('<div>').addClass('reason-group')[0];
+    group.setAttribute('data-reason-id', reasonId);
     if (sess.currentRunId) {
         group.setAttribute('data-run-id', sess.currentRunId);
     }
@@ -502,9 +509,16 @@ function clearThinkTags(text) {
 }
 
 function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescription) {
+    // 推理流会单独发送 <think> / </think> 标签。必须在创建任何 DOM 前过滤，
+    // 否则纯标签或空白 chunk 会留下只有外壳的 reason-group。
+    var clean = clearThinkTags(text || '');
+    if (!clean.trim()) return;
+
     if (reasonId && sess.reasonGroups[reasonId]) {
         // 复用已有 reasonId 的思考块（同一轮次的新思考片段继续追加）
         var group = sess.reasonGroups[reasonId];
+        // reason-group 的标识始终绑定创建它的该条消息 reasonId。
+        group.groupEl.setAttribute('data-reason-id', reasonId);
         if (!group.thinkingBlockEl) {
             // 思考块已被 finishThinkingBlock 关闭，在原 reason-group 内创建新思考块
             // BUG 9 修复：复用已有 groupEl，避免创建新 reason-group 导致旧 DOM 孤立
@@ -528,7 +542,7 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
         removeThinking(sess);
         // ★ 强制结束旧思考块，避免复用子代理的思考块（带 agent-badge）
         finishThinkingBlock(sess);
-        ensureThinkingBlock(sess);
+        ensureThinkingBlock(sess, reasonId);
 
         // ★ 如果存在 task-group，将最终答案的思考块移到最后
         //   避免最终答案的思考块出现在 task-group 上方
@@ -543,6 +557,7 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
         if (reasonId) {
             var group = sess.thinkingGroupEl;
             if (group) {
+                group.setAttribute('data-reason-id', reasonId);
                 sess.reasonGroups[reasonId] = {
                     groupEl: group,
                     thinkingBlockEl: sess.thinkingBlockEl,
@@ -582,7 +597,7 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
     if (reasonId && sess.reasonGroups[reasonId]) {
         var group = sess.reasonGroups[reasonId];
         if (!group.thinkingBuffer) group.thinkingBuffer = '';
-        group.thinkingBuffer += clearThinkTags(text);
+        group.thinkingBuffer += clean;
         if (!group.reasonRafId) {
             group.reasonRafId = requestAnimationFrame(function() {
                 group.reasonRafId = null;
@@ -597,7 +612,7 @@ function appendReasonChunk(sess, text, reasonId, agentName, taskId, taskDescript
             });
         }
     } else {
-        sess.thinkingBuffer += clearThinkTags(text);
+        sess.thinkingBuffer += clean;
         if (!sess.reasonRafId) {
             sess.reasonRafId = requestAnimationFrame(function() {
                 sess.reasonRafId = null;
