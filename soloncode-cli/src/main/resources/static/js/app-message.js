@@ -421,20 +421,44 @@ function createTaskGroupElement(sess, segment) {
         + '<span class="task-group-meta"' + metaTitleAttr + (metaText ? '' : ' style="display:none"') + '>' + escapeHtml(metaText) + '</span>'
         + '<span class="task-group-update-indicator" aria-hidden="true"></span>'
         + '</div>';
+    // 左侧灰边透明热区：视觉零改动，整高可点展开/收起
+    var rail = $('<div>').addClass('task-group-rail')[0];
+    rail.setAttribute('role', 'button');
+    rail.setAttribute('tabindex', '0');
+    rail.setAttribute('title', '展开');
+    rail.setAttribute('aria-label', '展开子任务');
     function toggle() {
         var expanded = !$(group).hasClass('expanded');
         segment.userToggled = true;
         $(group).toggleClass('expanded', expanded);
         header.setAttribute('aria-expanded', String(expanded));
-        if (expanded) $(group).removeClass('has-new-output');
+        if (expanded) {
+            $(group).removeClass('has-new-output');
+        } else {
+            // 长内容收起后，若 group 顶部已离开视口，滚回可见，避免空白跳变
+            requestAnimationFrame(function() {
+                var wrap = document.querySelector('.messages-wrap');
+                if (!wrap || !document.contains(group)) return;
+                var gr = group.getBoundingClientRect();
+                var wr = wrap.getBoundingClientRect();
+                if (gr.top < wr.top || gr.top > wr.bottom) {
+                    group.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            });
+        }
         header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, expanded));
+        rail.setAttribute('title', expanded ? '收起' : '展开');
+        rail.setAttribute('aria-label', expanded ? '收起子任务' : '展开子任务');
     }
     $(header).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
     });
+    $(rail).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
     var body = $('<div>').addClass('task-group-body')[0];
     body.id = bodyId;
-    $(group).append(header).append(body);
+    $(group).append(rail).append(header).append(body);
     return { groupEl: group, bodyEl: body };
 }
 
