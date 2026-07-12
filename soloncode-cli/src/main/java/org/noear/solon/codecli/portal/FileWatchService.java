@@ -70,8 +70,8 @@ public class FileWatchService {
     /** 标记 start() 是否已执行，决定 addRoot 时是否需要立即注册目录树 */
     private volatile boolean started = false;
 
-    /** 待推送的变更路径集合（去重、线程安全） */
-    private final Set<ChangeEntry> changedPaths = ConcurrentHashMap.newKeySet();
+    /** 待推送的变更（按 wsId+path 去重合并，线程安全） */
+    private final ConcurrentHashMap<String, ChangeEntry> changedPaths = new ConcurrentHashMap<>();
 
     /**
      * 监听根节点 —— 包含工作区标识、真实路径、独立的处理器列表及关联的 WatchKey 列表
@@ -101,15 +101,25 @@ public class FileWatchService {
     }
 
     /**
-     * 变更条目 —— 包含工作区标识和相对路径
+     * 变更条目 —— 包含工作区标识、相对路径、事件类型与节点类型
      */
     public static class ChangeEntry {
         public final String wsId;
         public final String path;
+        /** create / delete / modify */
+        public final String kind;
+        /** file / directory；delete 时可能为 null */
+        public final String type;
 
         public ChangeEntry(String wsId, String path) {
+            this(wsId, path, "modify", null);
+        }
+
+        public ChangeEntry(String wsId, String path, String kind, String type) {
             this.wsId = wsId;
             this.path = path;
+            this.kind = kind != null ? kind : "modify";
+            this.type = type;
         }
 
         @Override
@@ -117,12 +127,15 @@ public class FileWatchService {
             if (this == o) return true;
             if (!(o instanceof ChangeEntry)) return false;
             ChangeEntry that = (ChangeEntry) o;
-            return wsId.equals(that.wsId) && path.equals(that.path);
+            return wsId.equals(that.wsId)
+                    && path.equals(that.path)
+                    && kind.equals(that.kind)
+                    && Objects.equals(type, that.type);
         }
 
         @Override
         public int hashCode() {
-            return 31 * wsId.hashCode() + path.hashCode();
+            return Objects.hash(wsId, path, kind, type);
         }
     }
 
@@ -312,8 +325,10 @@ public class FileWatchService {
                     // 相对于根的路径
                     String relativePath = root.path.relativize(fullPath).toString().replace('\\', '/');
 
-                    // 记录结构化变更条目
-                    changedPaths.add(new ChangeEntry(root.id, relativePath));
+                    // 记录结构化变更条目（同路径合并为净效果）
+                    String kind = toChangeKind(event.kind());
+                    String nodeType = resolveNodeType(fullPath, kind);
+                    putChange(new ChangeEntry(root.id, relativePath, kind, nodeType));
 
                     // 新增目录时，递归注册其子目录监听
                     if (event.kind() == ENTRY_CREATE && fullPath.toFile().isDirectory()) {
@@ -358,7 +373,7 @@ public class FileWatchService {
     private void flushChanges() {
         if (changedPaths.isEmpty()) return;
 
-        Set<ChangeEntry> batch = new LinkedHashSet<>(changedPaths);
+        List<ChangeEntry> batch = new ArrayList<>(changedPaths.values());
         changedPaths.clear();
 
         // 按 wsId 分组
@@ -392,8 +407,8 @@ public class FileWatchService {
      * <pre>{
      *   "type": "filer_change",
      *   "changes": [
-     *     {"wsId": "workspace", "path": "src/Foo.java"},
-     *     {"wsId": "@solon-ai", "path": "src/main/java/Bar.java"}
+     *     {"wsId": "workspace", "path": "src/Foo.java", "kind": "create", "type": "file"},
+     *     {"wsId": "@solon-ai", "path": "src/main/java/Bar.java", "kind": "delete", "type": "file"}
      *   ],
      *   "createdAt": 1716153600000
      * }</pre>
@@ -401,9 +416,14 @@ public class FileWatchService {
     public static String buildFrontendJson(List<ChangeEntry> changes) {
         ONode changesNode = new ONode().asArray();
         for (ChangeEntry entry : changes) {
-            changesNode.add(new ONode()
+            ONode item = new ONode()
                     .set("wsId", entry.wsId)
-                    .set("path", entry.path));
+                    .set("path", entry.path)
+                    .set("kind", entry.kind);
+            if (entry.type != null) {
+                item.set("type", entry.type);
+            }
+            changesNode.add(item);
         }
 
         return new ONode()
@@ -411,5 +431,80 @@ public class FileWatchService {
                 .set("changes", changesNode)
                 .set("createdAt", System.currentTimeMillis())
                 .toJson();
+    }
+
+    private static String changeKey(String wsId, String path) {
+        return wsId + "\0" + path;
+    }
+
+    private static String toChangeKind(WatchEvent.Kind<?> kind) {
+        if (kind == ENTRY_CREATE) return "create";
+        if (kind == ENTRY_DELETE) return "delete";
+        return "modify";
+    }
+
+    private static String resolveNodeType(Path fullPath, String kind) {
+        if ("delete".equals(kind)) {
+            return null;
+        }
+        try {
+            return Files.isDirectory(fullPath) ? "directory" : "file";
+        } catch (Exception e) {
+            return "file";
+        }
+    }
+
+    /**
+     * 合并同路径变更，保留对树结构有意义的净效果：
+     * create+modify=create，create+delete=取消，delete+create=create。
+     */
+    private void putChange(ChangeEntry entry) {
+        String key = changeKey(entry.wsId, entry.path);
+        for (;;) {
+            ChangeEntry existing = changedPaths.get(key);
+            if (existing == null) {
+                if (changedPaths.putIfAbsent(key, entry) == null) {
+                    return;
+                }
+                continue;
+            }
+            ChangeEntry merged = mergeChange(existing, entry);
+            if (merged == null) {
+                if (changedPaths.remove(key, existing)) {
+                    return;
+                }
+                continue;
+            }
+            if (changedPaths.replace(key, existing, merged)) {
+                return;
+            }
+        }
+    }
+
+    static ChangeEntry mergeChange(ChangeEntry oldEntry, ChangeEntry newEntry) {
+        if (oldEntry == null) return newEntry;
+        if (newEntry == null) return oldEntry;
+
+        String oldKind = oldEntry.kind;
+        String newKind = newEntry.kind;
+
+        if ("create".equals(oldKind) && "delete".equals(newKind)) {
+            return null;
+        }
+        if ("delete".equals(oldKind) && "create".equals(newKind)) {
+            return newEntry;
+        }
+        if ("delete".equals(newKind)) {
+            return new ChangeEntry(newEntry.wsId, newEntry.path, "delete",
+                    newEntry.type != null ? newEntry.type : oldEntry.type);
+        }
+        if ("create".equals(newKind)) {
+            return newEntry;
+        }
+        // newKind == modify
+        if ("create".equals(oldKind) || "delete".equals(oldKind)) {
+            return oldEntry;
+        }
+        return newEntry;
     }
 }

@@ -159,22 +159,116 @@
     syncToggleBtnPosition();
     initResize();
 
-    // ---- 收集当前已展开的目录路径集合 ----
-    function collectExpandedPaths() {
-        var paths = {};
-        if (!$treeEl.length) return paths;
-        $treeEl.find('.filer-node-children.open').each(function() {
-            var $parent = $(this).parent();
-            var dataPath = $parent.attr('data-path');
-            if (dataPath) {
-                paths[dataPath] = true;
-            }
+    // ---- 展开状态：收集 / 排序 / 串行恢复 ----
+
+    /** 路径按深度从浅到深排序，保证父目录先于子目录恢复 */
+    function sortPathsByDepth(paths) {
+        return (paths || []).slice().sort(function(a, b) {
+            var da = a ? a.split('/').length : 0;
+            var db = b ? b.split('/').length : 0;
+            if (da !== db) return da - db;
+            if (a === b) return 0;
+            return a < b ? -1 : 1;
         });
-        return paths;
     }
 
-    /** 加载工作区列表作为树的根节点 */
+    /**
+     * 收集当前展开状态，按工作区分组。
+     * 返回: { [wsId]: { root: boolean, dirs: string[] } }
+     * 无工作区节点的 fallback 树使用 wsId = '__flat__'
+     */
+    function collectExpandedState() {
+        var state = {};
+        if (!$treeEl.length) return state;
+
+        var $wsNodes = $treeEl.children('.filer-node[data-workspace-id]');
+        if ($wsNodes.length) {
+            $wsNodes.each(function() {
+                var $ws = $(this);
+                var wsId = $ws.attr('data-workspace-id') || 'workspace';
+                var entry = {
+                    root: $ws.children('.filer-node-children').hasClass('open'),
+                    dirs: []
+                };
+                var dirMap = {};
+                $ws.find('.filer-node > .filer-node-children.open').each(function() {
+                    var $parent = $(this).parent();
+                    if ($parent[0] === $ws[0]) return;
+                    var dataPath = $parent.attr('data-path');
+                    if (dataPath && !dirMap[dataPath]) {
+                        dirMap[dataPath] = true;
+                        entry.dirs.push(dataPath);
+                    }
+                });
+                state[wsId] = entry;
+            });
+            return state;
+        }
+
+        // fallback：扁平树（无工作区根节点）
+        var dirs = [];
+        var dirMap = {};
+        $treeEl.find('.filer-node > .filer-node-children.open').each(function() {
+            var dataPath = $(this).parent().attr('data-path');
+            if (dataPath && !dirMap[dataPath]) {
+                dirMap[dataPath] = true;
+                dirs.push(dataPath);
+            }
+        });
+        state['__flat__'] = { root: true, dirs: dirs };
+        return state;
+    }
+
+    /** 在指定作用域内，按深度串行恢复展开目录 */
+    function restoreExpandedPathsSequential($scope, paths, wsId, index, done) {
+        if (!$scope || !$scope.length || !paths || index >= paths.length) {
+            if (done) done();
+            return;
+        }
+
+        var path = paths[index];
+        var selector = '.filer-node[data-path="' + CSS.escape(path) + '"]';
+        var $nodeEl = $scope.find(selector).first();
+        if (!$nodeEl.length) {
+            // 目录可能已被删除，跳过
+            restoreExpandedPathsSequential($scope, paths, wsId, index + 1, done);
+            return;
+        }
+
+        var $childrenEl = $nodeEl.children('.filer-node-children');
+        var $arrow = $nodeEl.children('.filer-node-row').find('.filer-arrow');
+        if (!$childrenEl.length) {
+            restoreExpandedPathsSequential($scope, paths, wsId, index + 1, done);
+            return;
+        }
+
+        var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
+        $childrenEl.addClass('open');
+        $arrow.addClass('open');
+        $nodeEl.removeAttr('data-dirty');
+
+        var url = '/web/chat/filer/tree?path=' + encodeURIComponent(path) + '&depth=1';
+        if (wsId && wsId !== 'workspace' && wsId !== '__flat__') {
+            url += '&workspace=' + encodeURIComponent(wsId);
+        }
+
+        $.get(url, function(res) {
+            var subData = (res && res.data) ? res.data : [];
+            renderTree(subData, $childrenEl, indent + 1);
+            restoreExpandedPathsSequential($scope, paths, wsId, index + 1, done);
+        }).fail(function() {
+            console.error('[filer] restore expand error', path);
+            restoreExpandedPathsSequential($scope, paths, wsId, index + 1, done);
+        });
+    }
+
+    /** 加载工作区列表作为树的根节点；若树已存在则走智能刷新以保留展开状态 */
     function loadTree() {
+        if ($treeEl.length && $treeEl.children().length) {
+            smartRefreshRoot();
+            return;
+        }
+
         $.get('/web/chat/filer/workspaces', function(res) {
             var wsList = (res && res.data) ? res.data : [];
             if ($treeEl.length) {
@@ -415,7 +509,7 @@
         $container.append($nodeEl);
     }
 
-    // ---- 文件变更实时同步 ----
+    // ---- 文件变更实时同步（增量增删，不整层重绘） ----
     function onFilerChange(chunk) {
         if (!chunk || !chunk.changes || chunk.changes.length === 0) return;
 
@@ -425,112 +519,262 @@
             return;
         }
 
-        var changes = chunk.changes;
-        var affectedDirs = {};
-
-        changes.forEach(function(change) {
-            // 直接取结构化字段 {wsId, path}
-            var wsId = change.wsId || 'workspace';
-            var relPath = change.path || '';
-
-            var lastSlash = relPath.lastIndexOf('/');
-            var parentDir = lastSlash > 0 ? relPath.substring(0, lastSlash) : '';
-
-            if (!affectedDirs[wsId]) {
-                affectedDirs[wsId] = {};
-            }
-            affectedDirs[wsId][parentDir] = true;
+        var changes = chunk.changes.slice();
+        // 先删后增，避免同批次 rename 场景下路径冲突
+        changes.sort(function(a, b) {
+            var ka = kindPriority(a && a.kind);
+            var kb = kindPriority(b && b.kind);
+            if (ka !== kb) return ka - kb;
+            var pa = (a && a.path) || '';
+            var pb = (b && b.path) || '';
+            // 删除时先删更深路径，创建时先建更浅路径
+            var da = pa ? pa.split('/').length : 0;
+            var db = pb ? pb.split('/').length : 0;
+            if (ka === 0) return db - da;
+            if (ka === 2) return da - db;
+            return pa < pb ? -1 : (pa > pb ? 1 : 0);
         });
 
-        Object.keys(affectedDirs).forEach(function(wsId) {
-            var dirs = affectedDirs[wsId];
-            Object.keys(dirs).forEach(function(dirPath) {
-                refreshDirectory(dirPath, wsId);
-            });
+        changes.forEach(function(change) {
+            applyFilerChange(change);
         });
 
         showFilerChangeIndicator();
     }
 
-    function refreshDirectory(dirPath, wsId) {
-        if (!dirPath) {
-            smartRefreshRoot();
+    function kindPriority(kind) {
+        if (kind === 'delete') return 0;
+        if (kind === 'modify') return 1;
+        if (kind === 'create') return 2;
+        // 兼容旧事件（无 kind）：按修改处理
+        return 1;
+    }
+
+    function applyFilerChange(change) {
+        if (!change) return;
+        var wsId = change.wsId || 'workspace';
+        var relPath = change.path || '';
+        if (!relPath) return;
+
+        var kind = change.kind || 'modify';
+        var nodeType = change.type || null;
+
+        if (kind === 'delete') {
+            removeTreeNode(wsId, relPath);
             return;
         }
+        if (kind === 'create') {
+            ensureTreeNode(wsId, relPath, nodeType || 'file');
+            return;
+        }
+        // modify：文件内容变化不影响树结构；若节点尚未出现则补建
+        if (nodeType === 'directory') {
+            // 目录修改通常来自子项变化，树结构本身不需要处理
+            return;
+        }
+        // 兼容旧后端（无 kind）：节点不存在时尝试补建，存在则不动
+        ensureTreeNode(wsId, relPath, nodeType || 'file');
+    }
 
-        if (!$treeEl.length) return;
-
+    function getWorkspaceRoot(wsId) {
+        if (!$treeEl.length) return $();
         wsId = wsId || 'workspace';
+        var $ws = $treeEl.children('.filer-node[data-workspace-id="' + CSS.escape(wsId) + '"]').first();
+        if ($ws.length) return $ws;
+        // fallback 扁平树（无工作区根）
+        return $treeEl;
+    }
 
-        // 找到所属的工作区根节点
-        var $wsRoot = $treeEl.find('.filer-node[data-workspace-id="' + CSS.escape(wsId) + '"]');
-        if (!$wsRoot.length) {
-            // 工作区根节点不存在（可能还未加载），标记整个树为脏
-            smartRefreshRoot();
+    function getParentDir(relPath) {
+        if (!relPath) return '';
+        var idx = relPath.lastIndexOf('/');
+        return idx > 0 ? relPath.substring(0, idx) : '';
+    }
+
+    function getBaseName(relPath) {
+        if (!relPath) return '';
+        var idx = relPath.lastIndexOf('/');
+        return idx >= 0 ? relPath.substring(idx + 1) : relPath;
+    }
+
+    function findNodeInWorkspace($wsRoot, relPath) {
+        if (!$wsRoot || !$wsRoot.length || !relPath) return $();
+        // 在作用域内查找（工作区子树或扁平树根），保留深层节点
+        return $wsRoot.find('.filer-node[data-path="' + CSS.escape(relPath) + '"]').first();
+    }
+
+    function getChildrenContainer($wsRoot, parentDir) {
+        if (!$wsRoot || !$wsRoot.length) return $();
+        if (!parentDir) {
+            // 工作区根的一级列表，或扁平树根
+            if ($wsRoot.is($treeEl)) return $wsRoot;
+            return $wsRoot.children('.filer-node-children');
+        }
+        var $parentNode = findNodeInWorkspace($wsRoot, parentDir);
+        if (!$parentNode.length) return $();
+        return $parentNode.children('.filer-node-children');
+    }
+
+    function removeTreeNode(wsId, relPath) {
+        var $wsRoot = getWorkspaceRoot(wsId);
+        if (!$wsRoot.length) return;
+
+        var $node = findNodeInWorkspace($wsRoot, relPath);
+        if ($node.length) {
+            $node.remove();
             return;
         }
 
-        // 在工作区子树下查找目标目录节点
-        var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
-        var $nodeEl = $wsRoot.find(selector);
-        if (!$nodeEl.length) return;
+        // 节点未渲染：若父目录已展开则无需处理；未展开则标脏，下次展开重拉
+        var parentDir = getParentDir(relPath);
+        if (!parentDir) return;
+        var $parentNode = findNodeInWorkspace($wsRoot, parentDir);
+        if ($parentNode.length) {
+            var $children = $parentNode.children('.filer-node-children');
+            if ($children.length && !$children.hasClass('open')) {
+                $parentNode.attr('data-dirty', '1');
+            }
+        }
+    }
 
-        var $childrenEl = $nodeEl.children('.filer-node-children');
+    function ensureTreeNode(wsId, relPath, nodeType) {
+        var $wsRoot = getWorkspaceRoot(wsId);
+        if (!$wsRoot.length) return;
+
+        // 工作区根节点本身不在这里创建
+        if ($wsRoot.is($treeEl) === false && !$wsRoot.children('.filer-node-children').hasClass('open')) {
+            // 工作区未展开：展开时会重新拉一级列表
+            return;
+        }
+
+        // 已存在则跳过（保留展开状态）
+        var $existing = findNodeInWorkspace($wsRoot, relPath);
+        if ($existing.length) return;
+
+        var parentDir = getParentDir(relPath);
+        var $childrenEl = getChildrenContainer($wsRoot, parentDir);
         if (!$childrenEl.length) return;
 
-        var isExpanded = $childrenEl.hasClass('open');
-        if (!isExpanded) {
-            $nodeEl.attr('data-dirty', '1');
+        // 父目录未展开：只标脏，下次展开再拉真实列表
+        if (parentDir) {
+            var $parentNode = findNodeInWorkspace($wsRoot, parentDir);
+            if ($parentNode.length) {
+                var $pc = $parentNode.children('.filer-node-children');
+                if ($pc.length && !$pc.hasClass('open')) {
+                    $parentNode.attr('data-dirty', '1');
+                    return;
+                }
+            } else {
+                // 父节点不在 DOM：无法插入
+                return;
+            }
+        } else if (!$childrenEl.hasClass('open') && !$wsRoot.is($treeEl)) {
             return;
         }
 
-        var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
-
-        var url = '/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1';
-        if (wsId !== 'workspace') {
-            url += '&workspace=' + encodeURIComponent(wsId);
+        // 父容器已展开并有内容，或是根级列表：直接插入
+        // 若根级已展开但还没加载 children，触发一次轻量加载而不是整树刷新
+        if (!parentDir && !$wsRoot.is($treeEl) && $childrenEl.hasClass('open') && !$childrenEl.children().length) {
+            loadChildrenInto($childrenEl, '', wsId, 1);
+            return;
         }
 
-        $.get(url, function(res) {
-            var subData = (res && res.data) ? res.data : [];
-            var expandedPaths = {};
-            $childrenEl.find('.filer-node-children.open').each(function() {
-                var $parent = $(this).parent();
-                var dataPath = $parent.attr('data-path');
-                if (dataPath) {
-                    expandedPaths[dataPath] = true;
-                }
-            });
-            renderTree(subData, $childrenEl, indent + 1);
-            Object.keys(expandedPaths).forEach(function(expandedPath) {
-                var expSelector = '.filer-node[data-path="' + CSS.escape(expandedPath) + '"]';
-                var $expNodeEl = $childrenEl.find(expSelector);
-                if ($expNodeEl.length) {
-                    var $expChildrenEl = $expNodeEl.children('.filer-node-children');
-                    var $expArrow = $expNodeEl.children('.filer-node-row').find('.filer-arrow');
-                    var expIndent = parseInt($expNodeEl.attr('data-indent') || '0', 10);
-                    if ($expChildrenEl.length) {
-                        $expChildrenEl.addClass('open');
-                        $expArrow.addClass('open');
+        var name = getBaseName(relPath);
+        var indent;
+        if (!parentDir) {
+            indent = $wsRoot.is($treeEl) ? 0 : 1;
+        } else {
+            var $parentNode2 = findNodeInWorkspace($wsRoot, parentDir);
+            indent = parseInt($parentNode2.attr('data-indent') || '0', 10) + 1;
+        }
 
-                        var expUrl = '/web/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1';
-                        if (wsId !== 'workspace') {
-                            expUrl += '&workspace=' + encodeURIComponent(wsId);
-                        }
-                        $.get(expUrl, function(res2) {
-                            var subData2 = (res2 && res2.data) ? res2.data : [];
-                            renderTree(subData2, $expChildrenEl, expIndent + 1);
-                        });
-                    }
-                }
-            });
+        var node = {
+            name: name,
+            path: relPath,
+            type: nodeType === 'directory' ? 'directory' : 'file'
+        };
+        insertNodeSorted($childrenEl, node, indent);
+    }
+
+    function loadChildrenInto($childrenEl, dirPath, wsId, indent) {
+        if (!$childrenEl || !$childrenEl.length) return;
+        var url = '/web/chat/filer/tree?depth=1';
+        if (dirPath) {
+            url = '/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1';
+        }
+        if (wsId && wsId !== 'workspace' && wsId !== '__flat__') {
+            url += (url.indexOf('?') >= 0 ? '&' : '?') + 'workspace=' + encodeURIComponent(wsId);
+        }
+        $.get(url, function(res) {
+            var data = (res && res.data) ? res.data : [];
+            // 仅当容器仍为空时填充，避免覆盖用户后续展开
+            if (!$childrenEl.children().length) {
+                renderTree(data, $childrenEl, indent);
+            }
         }).fail(function(jqXHR, textStatus, error) {
-            console.error('[filer] refresh error', dirPath, error);
+            console.error('[filer] load children error', dirPath, error);
         });
     }
 
+    /** 按目录优先、名称字典序插入节点，不触碰其他节点 */
+    function insertNodeSorted($container, node, indent) {
+        if (!$container || !$container.length || !node) return;
+
+        // 再次防重
+        var exists = $container.children('.filer-node[data-path="' + CSS.escape(node.path) + '"]').length > 0;
+        if (exists) return;
+
+        var $children = $container.children('.filer-node');
+        var insertBefore = null;
+        $children.each(function() {
+            if (insertBefore) return;
+            var $n = $(this);
+            var t = $n.attr('data-type') || 'file';
+            var p = $n.attr('data-path') || '';
+            var name = getBaseName(p);
+            var nodeIsDir = node.type === 'directory';
+            var otherIsDir = t === 'directory';
+            if (nodeIsDir && !otherIsDir) {
+                insertBefore = $n;
+                return;
+            }
+            if (!nodeIsDir && otherIsDir) {
+                return;
+            }
+            if (name.localeCompare(node.name, undefined, { sensitivity: 'base' }) > 0) {
+                insertBefore = $n;
+            }
+        });
+
+        // appendNode 总是 append；这里先 append 再移动，或临时容器
+        var $tmp = $('<div>');
+        appendNode(node, $tmp, indent);
+        var $newNode = $tmp.children().first();
+        if (!$newNode.length) return;
+        if (insertBefore && insertBefore.length) {
+            $newNode.insertBefore(insertBefore);
+        } else {
+            $container.append($newNode);
+        }
+    }
+
+    /** 收集某个节点子树内已展开的目录路径（不含自身） */
+    function collectExpandedDirsUnder($scope) {
+        var expandedDirs = [];
+        var dirMap = {};
+        if (!$scope || !$scope.length) return expandedDirs;
+        $scope.find('.filer-node > .filer-node-children.open').each(function() {
+            var dataPath = $(this).parent().attr('data-path');
+            if (dataPath && !dirMap[dataPath]) {
+                dirMap[dataPath] = true;
+                expandedDirs.push(dataPath);
+            }
+        });
+        return sortPathsByDepth(expandedDirs);
+    }
+
     function smartRefreshRoot() {
-        var expandedPaths = collectExpandedPaths();
+        var expandedState = collectExpandedState();
 
         // 重新加载工作区列表（可能有新增/删除的挂载）
         $.get('/web/chat/filer/workspaces', function(res) {
@@ -539,61 +783,88 @@
 
             $treeEl.html('');
             wsList.forEach(function(ws) {
-                // 之前展开的工作区保持展开
-                if (expandedPaths[ws.name] && ws.type === 'workspace') {
-                    // workspace 根节点不支持 expanded 标记，暂时忽略
-                }
                 appendWorkspaceNode(ws, $treeEl, 0);
             });
 
-            // 对之前已展开的工作区，重新加载其文件树
-            // 注意：expandedPaths 存的是 ws.name，需要匹配
-            wsList.forEach(function(ws) {
-                if (expandedPaths[ws.name]) {
-                    var sel = '.filer-node[data-path="' + CSS.escape(ws.name) + '"]';
-                    var $wn = $treeEl.find(sel);
-                    if ($wn.length) {
-                        var $wc = $wn.children('.filer-node-children');
-                        var $wa = $wn.children('.filer-node-row').find('.filer-arrow');
-                        if ($wc.length) {
-                            $wc.addClass('open');
-                            $wa.addClass('open');
-                            var url = '/web/chat/filer/tree?depth=1';
-                            if (ws.id !== 'workspace') {
-                                url += '&workspace=' + encodeURIComponent(ws.id);
-                            }
-                            $.get(url, function(res2) {
-                                var data2 = (res2 && res2.data) ? res2.data : [];
-                                renderTree(data2, $wc, 1);
-                            });
-                        }
-                    }
+            // 串行恢复每个已展开工作区及其深层目录，避免并发重绘互相覆盖
+            var wsIndex = 0;
+            function restoreNextWorkspace() {
+                if (wsIndex >= wsList.length) return;
+                var ws = wsList[wsIndex++];
+                var entry = expandedState[ws.id];
+                if (!entry || !entry.root) {
+                    restoreNextWorkspace();
+                    return;
+                }
+
+                var $wn = $treeEl.find('.filer-node[data-workspace-id="' + CSS.escape(ws.id) + '"]').first();
+                if (!$wn.length) {
+                    restoreNextWorkspace();
+                    return;
+                }
+
+                var $wc = $wn.children('.filer-node-children');
+                var $wa = $wn.children('.filer-node-row').find('.filer-arrow');
+                if (!$wc.length) {
+                    restoreNextWorkspace();
+                    return;
+                }
+
+                $wc.addClass('open');
+                $wa.addClass('open');
+
+                var url = '/web/chat/filer/tree?depth=1';
+                if (ws.id !== 'workspace') {
+                    url += '&workspace=' + encodeURIComponent(ws.id);
+                }
+
+                $.get(url, function(res2) {
+                    var data2 = (res2 && res2.data) ? res2.data : [];
+                    renderTree(data2, $wc, 1);
+                    var dirs = sortPathsByDepth(entry.dirs || []);
+                    restoreExpandedPathsSequential($wn, dirs, ws.id, 0, restoreNextWorkspace);
+                }).fail(function() {
+                    console.error('[filer] smart refresh workspace error', ws.id);
+                    restoreNextWorkspace();
+                });
+            }
+            restoreNextWorkspace();
+        }).fail(function() {
+            // fallback：扁平树恢复
+            var flatEntry = expandedState['__flat__'] || { dirs: [] };
+            var allDirs = sortPathsByDepth(flatEntry.dirs || []);
+            // 兼容：若此前是工作区模式，把各 ws 的 dirs 合并
+            Object.keys(expandedState).forEach(function(key) {
+                if (key === '__flat__') return;
+                var entry = expandedState[key];
+                if (entry && entry.dirs) {
+                    entry.dirs.forEach(function(p) {
+                        if (allDirs.indexOf(p) < 0) allDirs.push(p);
+                    });
                 }
             });
-        }).fail(function() {
-            // fallback
+            allDirs = sortPathsByDepth(allDirs);
+
             $.get('/web/chat/filer/tree?depth=1', function(res) {
                 var newData = (res && res.data) ? res.data : [];
                 if (!$treeEl.length) return;
                 $treeEl.html('');
+
+                // 根级目录若在展开列表中，先标 expanded 以便 appendNode 打开容器
+                var rootExpanded = {};
+                allDirs.forEach(function(p) {
+                    if (p && p.indexOf('/') < 0) rootExpanded[p] = true;
+                });
                 newData.forEach(function(node) {
-                    if (expandedPaths[node.path] && node.type === 'directory') {
+                    if (node.type === 'directory' && rootExpanded[node.path]) {
                         node.expanded = true;
                     }
                     appendNode(node, $treeEl, 0);
                 });
-                Object.keys(expandedPaths).forEach(function(dirPath) {
-                    var selector = '.filer-node[data-path="' + CSS.escape(dirPath) + '"]';
-                    var $nodeEl = $treeEl.find(selector);
-                    if (!$nodeEl.length) return;
-                    var $childrenEl = $nodeEl.children('.filer-node-children');
-                    if (!$childrenEl.length) return;
-                    var indent = parseInt($nodeEl.attr('data-indent') || '0', 10);
-                    $.get('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1', function(res2) {
-                        var subData = (res2 && res2.data) ? res2.data : [];
-                        renderTree(subData, $childrenEl, indent + 1);
-                    });
-                });
+
+                // 根级 expanded 只打开了容器，子节点需按 depth=1 拉数据；
+                // 统一走串行恢复（含根级与深层）
+                restoreExpandedPathsSequential($treeEl, allDirs, 'workspace', 0);
             });
         });
     }

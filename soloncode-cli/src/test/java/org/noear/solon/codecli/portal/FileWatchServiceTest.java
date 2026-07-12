@@ -372,8 +372,8 @@ public class FileWatchServiceTest {
     @Test
     public void testBuildFrontendJson() {
         List<ChangeEntry> changes = java.util.Arrays.asList(
-                new ChangeEntry("workspace", "src/Foo.java"),
-                new ChangeEntry("@mount1", "bar.txt")
+                new ChangeEntry("workspace", "src/Foo.java", "create", "file"),
+                new ChangeEntry("@mount1", "bar.txt", "delete", "file")
         );
 
         String json = FileWatchService.buildFrontendJson(changes);
@@ -382,9 +382,35 @@ public class FileWatchServiceTest {
         assertTrue(json.contains("\"type\":\"filer_change\""), "JSON should contain type field");
         assertTrue(json.contains("\"wsId\":\"workspace\""), "JSON should contain first wsId");
         assertTrue(json.contains("\"path\":\"src/Foo.java\""), "JSON should contain first path");
+        assertTrue(json.contains("\"kind\":\"create\""), "JSON should contain create kind");
         assertTrue(json.contains("\"wsId\":\"@mount1\""), "JSON should contain second wsId");
         assertTrue(json.contains("\"path\":\"bar.txt\""), "JSON should contain second path");
+        assertTrue(json.contains("\"kind\":\"delete\""), "JSON should contain delete kind");
         assertTrue(json.contains("\"createdAt\""), "JSON should contain createdAt");
+    }
+
+    /**
+     * 测试：同路径变更合并为净效果
+     */
+    @Test
+    public void testMergeChange() {
+        ChangeEntry create = new ChangeEntry("ws", "a.txt", "create", "file");
+        ChangeEntry modify = new ChangeEntry("ws", "a.txt", "modify", "file");
+        ChangeEntry delete = new ChangeEntry("ws", "a.txt", "delete", "file");
+
+        ChangeEntry createThenModify = FileWatchService.mergeChange(create, modify);
+        assertNotNull(createThenModify);
+        assertEquals("create", createThenModify.kind);
+
+        assertNull(FileWatchService.mergeChange(create, delete), "create+delete should cancel");
+
+        ChangeEntry deleteThenCreate = FileWatchService.mergeChange(delete, create);
+        assertNotNull(deleteThenCreate);
+        assertEquals("create", deleteThenCreate.kind);
+
+        ChangeEntry modifyThenDelete = FileWatchService.mergeChange(modify, delete);
+        assertNotNull(modifyThenDelete);
+        assertEquals("delete", modifyThenDelete.kind);
     }
 
     /**
@@ -392,14 +418,16 @@ public class FileWatchServiceTest {
      */
     @Test
     public void testChangeEntryEquals() {
-        ChangeEntry a = new ChangeEntry("ws", "path/to/file");
-        ChangeEntry b = new ChangeEntry("ws", "path/to/file");
-        ChangeEntry c = new ChangeEntry("ws", "other/file");
-        ChangeEntry d = new ChangeEntry("other", "path/to/file");
+        ChangeEntry a = new ChangeEntry("ws", "path/to/file", "modify", "file");
+        ChangeEntry b = new ChangeEntry("ws", "path/to/file", "modify", "file");
+        ChangeEntry c = new ChangeEntry("ws", "other/file", "modify", "file");
+        ChangeEntry d = new ChangeEntry("other", "path/to/file", "modify", "file");
+        ChangeEntry e = new ChangeEntry("ws", "path/to/file", "create", "file");
 
-        assertEquals(a, b, "same wsId+path should be equal");
+        assertEquals(a, b, "same fields should be equal");
         assertEquals(a.hashCode(), b.hashCode(), "hashCode should match");
         assertNotEquals(a, c, "different path should not be equal");
         assertNotEquals(a, d, "different wsId should not be equal");
+        assertNotEquals(a, e, "different kind should not be equal");
     }
 }
