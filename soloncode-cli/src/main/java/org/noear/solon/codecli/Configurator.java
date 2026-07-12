@@ -35,6 +35,7 @@ import org.noear.solon.codecli.portal.web.WebChannel;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.codecli.portal.web.WebSettingsController;
 import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
 import org.noear.solon.core.util.JavaUtil;
@@ -70,23 +71,26 @@ public class Configurator {
     AgentSettings agentSettings;
 
     @Inject
+    SessionManager sessionManager;
+
+    @Inject
     ModelsAdapterManager modelProviderFactory;
 
     private LoopScheduler loopScheduler;
 
     @Bean
-    public HarnessEngine agentRuntime(AgentSettings settings) throws Exception {
-        String workspace = AgentFlags.getUserDir();
-        Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
+    public SessionManager sessionManager() {
+        return new SessionManager();
+    }
 
-        // 会话数据存到全局目录 ~/.soloncode/sessions/<sessionId>/
-        AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, Paths.get(workspace, AgentFlags.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
-
+    @Bean
+    public HarnessEngine agentRuntime(AgentSettings settings, SessionManager sessionManager) throws Exception {
         String stealthIdentity = "<!--\n" +
                 "  @poweredby: soloncode\n" +
-                "  @build: "+ AgentFlags.getVersion() + "\n" +
+                "  @build: " + AgentFlags.getVersion() + "\n" +
                 "-->\n\n";
+
+        String workspace = AgentFlags.getUserDir();
 
         HarnessEngine engine = HarnessEngine.of(workspace, AgentFlags.getHarnessHome())
                 .userAgent(settings.getGeneral().getUserAgent())
@@ -94,7 +98,7 @@ public class Configurator {
                 .maxTurns(settings.getGeneral().getMaxTurns())
                 .autoRethink(settings.getGeneral().getAutoRethink())
                 .sessionWindowSize(settings.getGeneral().getSessionWindowSize())
-                .sessionProvider(sessionProvider)
+                .sessionProvider(sessionManager)
                 .compressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getSummaryWindowToken())
                 .compressionModel(settings.getGeneral().getSummaryModel())
                 .memoryEnabled(settings.getGeneral().getMemoryEnabled())
@@ -176,7 +180,7 @@ public class Configurator {
         return engine;
     }
 
-    private void addServers(HarnessEngine engine){
+    private void addServers(HarnessEngine engine) {
         for (Map.Entry<String, McpServerDo> entry : agentSettings.getMcpServers().entrySet()) {
             engine.addMcpServer(entry.getKey(), entry.getValue());
         }
@@ -239,12 +243,12 @@ public class Configurator {
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
                 runDesktopServe(agentRuntime, agentSettings, cliShell);
-                runWebServe(agentRuntime, agentSettings, null);
+                runWebServe(agentRuntime, agentSettings, null, sessionManager);
                 return;
             }
 
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
-                runWebServe(agentRuntime, agentSettings, cliShell);
+                runWebServe(agentRuntime, agentSettings, cliShell, sessionManager);
                 openBrowser();
                 return;
             }
@@ -287,7 +291,7 @@ public class Configurator {
     }
 
 
-    private void runWebServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
+    private void runWebServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell, SessionManager sessionManager) {
         //web ws gate
         WebGate webGate = new WebGate(agentRuntime, settings);
         WebSocketRouter.getInstance().of("/web/gate", webGate);
@@ -300,7 +304,7 @@ public class Configurator {
                 .addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
 
         //web
-        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
+        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler, sessionManager));
         Solon.app().router().add(webController);
 
         WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);
@@ -345,7 +349,7 @@ public class Configurator {
         }
     }
 
-    private void openBrowser(){
+    private void openBrowser() {
         String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
 
         RunUtil.async(() -> {

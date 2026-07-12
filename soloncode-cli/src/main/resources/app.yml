@@ -4,6 +4,14 @@ server.request:
   maxBodySize: 2mb
   maxFileSize: 2mb
 
+server.http:
+  coreThreads: 2
+  maxThreads: 16
+
+solon.threads:
+  parallelPoolSize: 4
+  scheduledPoolSize: 4
+
 solon.app:
   name: "soloncode"
   title: "SolonCode"

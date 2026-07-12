@@ -28,6 +28,7 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.portal.web.service.FileService;
 import org.noear.solon.codecli.portal.web.service.GitService;
+import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -87,6 +88,8 @@ public class WebController {
     /** 循环调度器，用于恢复和管理 Web 端的定时/循环 AI 任务 */
     private final LoopScheduler loopScheduler;
 
+    private final SessionManager sessionManager;
+
     /** Git 业务逻辑服务，封装工作区 Git 操作 */
     private final GitService gitService;
 
@@ -100,10 +103,12 @@ public class WebController {
      * @param webGate       WebSocket 推送网关
      * @param loopScheduler 循环任务调度器，可为 null（无循环任务场景）
      */
-    public WebController(HarnessEngine engine, WebGate webGate, LoopScheduler loopScheduler) {
+    public WebController(HarnessEngine engine, WebGate webGate, LoopScheduler loopScheduler, SessionManager sessionManager) {
         this.engine = engine;
         this.webGate = webGate;
         this.loopScheduler = loopScheduler;
+        this.sessionManager = sessionManager;
+
         this.gitService = new GitService(engine.getWorkspace(), engine);
         this.fileService = new FileService(engine.getWorkspace(), engine);
 
@@ -253,6 +258,10 @@ public class WebController {
             return Result.failure();
         }
 
+        //内存删除
+        sessionManager.removeSession(sessionId);
+
+        //文件删除
         Path sessionPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File sessionDir = sessionPath.toFile();
 
