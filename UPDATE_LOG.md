@@ -2,7 +2,8 @@
 
 * 优化 soloncode web 会话删除逻辑（同时删掉内存）
 * 优化 soloncode web 线程配置
-
+* 优化 soloncode web 线程池配置
+* 细节优化
 
 ### v2026.7.12
 
