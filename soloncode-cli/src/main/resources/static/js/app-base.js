@@ -50,6 +50,11 @@ function SessionState(sessionId) {
     this.thinkingBlockTimerId = null;
     this.thinkingBlockStartTime = null;
     this.messageStartTime = null;
+    // Context 条本轮总计时：发送起算，finishStream 定格
+    this.roundStartedAt = null;
+    this.roundEndedAt = null;
+    this.contextTokens = null;
+    this.contextLength = null;
     this.userMsgCounter = 0;
     this.reasonGroups = {};  // streamSegmentId::reasonId → { groupEl, thinkingBlockEl }
     this.thinkingGroupEl = null;
@@ -131,7 +136,6 @@ function scrollToBottom(force) {
 }
 
 function resetStreamState(sess) {
-    if (typeof stopTaskGroupElapsedTimer === 'function') stopTaskGroupElapsedTimer(sess);
     sess.currentBubbleEl = null;
     sess.nextContentBlock = false;
     sess.pendingToolStarted = false;

@@ -292,22 +292,11 @@ function updateTaskGroupStatusIcon(segment) {
     }
 }
 
-/** 当前 task 总耗时：createdAt → finishedAt（运行中则到 now） */
-function formatTaskGroupElapsed(segment) {
-    if (!segment || !segment.createdAt) return '';
-    var endAt = segment.finishedAt || Date.now();
-    var secs = Math.max(0, Math.floor((endAt - segment.createdAt) / 1000));
-    return secs + 's';
-}
-
-/** L1 右侧：12s · 5 tools（当前 task 总耗时 + tool 计数） */
+/** L1 右侧：仅 tool 计数（整轮耗时放 Context 条） */
 function formatTaskGroupStats(segment) {
     if (!segment) return '';
-    var parts = [];
-    var elapsed = formatTaskGroupElapsed(segment);
-    if (elapsed) parts.push(elapsed);
-    if (segment.toolCount > 0) parts.push(segment.toolCount + ' tools');
-    return parts.join(' \u00b7 ');
+    if (segment.toolCount > 0) return segment.toolCount + ' tools';
+    return '';
 }
 
 /** L2：仅最近 toolName + args（running/done/error 均保留，方便收起回顾） */
@@ -358,40 +347,6 @@ function scheduleTaskGroupMetaUpdate(segment) {
     });
 }
 
-/** 共享 1s 计时：只刷新仍在 running 的 task-group L1 总耗时 */
-function ensureTaskGroupElapsedTimer(sess) {
-    if (!sess || sess._taskGroupElapsedTimerId) return;
-    sess._taskGroupElapsedTimerId = setInterval(function() {
-        tickTaskGroupElapsed(sess);
-    }, 1000);
-}
-
-function tickTaskGroupElapsed(sess) {
-    if (!sess || !sess.taskSegments) {
-        stopTaskGroupElapsedTimer(sess);
-        return;
-    }
-    var hasRunning = false;
-    for (var taskId in sess.taskSegments) {
-        if (!Object.prototype.hasOwnProperty.call(sess.taskSegments, taskId)) continue;
-        var segment = sess.taskSegments[taskId];
-        if (!segment || !segment.groupEl) continue;
-        if (segment.status === 'done' || segment.status === 'error') continue;
-        hasRunning = true;
-        // 计时 tick 直接写 DOM，不走 rAF，避免秒数显示滞后
-        updateTaskGroupMeta(segment);
-    }
-    if (!hasRunning) stopTaskGroupElapsedTimer(sess);
-}
-
-function stopTaskGroupElapsedTimer(sess) {
-    if (!sess) return;
-    if (sess._taskGroupElapsedTimerId) {
-        clearInterval(sess._taskGroupElapsedTimerId);
-        sess._taskGroupElapsedTimerId = null;
-    }
-}
-
 function setTaskGroupStatus(segment, status) {
     if (!segment || !segment.groupEl || !status) return;
     // error 优先；done 不覆盖 error
@@ -403,7 +358,6 @@ function setTaskGroupStatus(segment, status) {
     segment.status = status;
     segment.updatedAt = Date.now();
     if (status === 'done' || status === 'error') {
-        // 定格当前 task 总耗时（createdAt → finishedAt）
         segment.finishedAt = segment.finishedAt || Date.now();
     }
     $(segment.groupEl).removeClass('is-running is-done is-error');
@@ -458,8 +412,6 @@ function finalizeTaskGroups(sess) {
             scheduleTaskGroupMetaUpdate(segment);
         }
     }
-    // 流结束：停止 running 总耗时刷新
-    stopTaskGroupElapsedTimer(sess);
 }
 
 /**
@@ -474,15 +426,6 @@ function applyTaskDoneChunk(sess, chunk) {
 
     var status = (chunk.status === 'error') ? 'error' : 'done';
 
-    // 后端 elapsedSeconds 可用于定格耗时（createdAt 缺失时按 now 回推）
-    if (chunk.elapsedSeconds != null && !segment.finishedAt) {
-        var secs = Math.max(0, Number(chunk.elapsedSeconds) || 0);
-        segment.finishedAt = Date.now();
-        if (!segment.createdAt) {
-            segment.createdAt = segment.finishedAt - secs * 1000;
-        }
-    }
-
     if (status === 'error' && chunk.text) {
         // 异常正文写入 task-group，避免只有图标没有原因
         appendErrorChunkToSegment(sess, segment, chunk.text);
@@ -490,20 +433,6 @@ function applyTaskDoneChunk(sess, chunk) {
         setTaskGroupStatus(segment, 'error');
     } else {
         setTaskGroupStatus(segment, status);
-    }
-
-    // 若已无 running 任务，提前停掉共享计时器
-    if (sess.taskSegments) {
-        var hasRunning = false;
-        for (var tid in sess.taskSegments) {
-            if (!Object.prototype.hasOwnProperty.call(sess.taskSegments, tid)) continue;
-            var seg = sess.taskSegments[tid];
-            if (seg && seg.groupEl && seg.status !== 'done' && seg.status !== 'error') {
-                hasRunning = true;
-                break;
-            }
-        }
-        if (!hasRunning) stopTaskGroupElapsedTimer(sess);
     }
 }
 
@@ -635,8 +564,6 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
         insertBeforeActions(sess, task.groupEl);
         sess.streamSegments.push(taskSegment);
         sess.currentStreamSegment = taskSegment;
-        // 启动共享 1s 计时，L1 stats 展示该 task 自 createdAt 起的总耗时
-        ensureTaskGroupElapsedTimer(sess);
         return taskSegment;
     }
 
@@ -813,7 +740,6 @@ function markTaskGroupUpdated(sess, segment) {
     // 已 task_done 的终态不再被后续迟到 chunk 打回 running
     if (segment.status !== 'error' && segment.status !== 'done') {
         setTaskGroupStatus(segment, 'running');
-        ensureTaskGroupElapsedTimer(sess);
     } else {
         scheduleTaskGroupMetaUpdate(segment);
     }

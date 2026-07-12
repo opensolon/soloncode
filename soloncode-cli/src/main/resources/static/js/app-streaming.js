@@ -95,6 +95,7 @@ function sendMessage() {
     setBtnStopMode();
     resetStreamState(sess);
     showThinking(sess);
+    if (typeof startRoundElapsed === 'function') startRoundElapsed(sess);
 
     sendWithFormData(sess, text, filesToSend);
 }
@@ -126,6 +127,7 @@ function sendCommandSilent(cmdText, onBeforeSend) {
     setBtnStopMode();
     resetStreamState(sess);
     showThinking(sess);
+    if (typeof startRoundElapsed === 'function') startRoundElapsed(sess);
 
     sendWithFormDataGrouped(sess, cmdText, []);
 }
@@ -156,6 +158,8 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
     }
     resetStreamState(sess);
     showThinking(sess);
+    // 兜底起表（外部推送 / 未走 sendMessage 的入口）；已 start 则不重置
+    if (typeof startRoundElapsed === 'function') startRoundElapsed(sess);
 
     $.ajax({
         url: SSE_ENDPOINT,
@@ -214,7 +218,7 @@ function onWebChunk(sess, chunk) {
             case 'task_done': if (typeof applyTaskDoneChunk === 'function') applyTaskDoneChunk(sess, chunk); break;
             case 'hitl': finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
             case 'trace': finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
-            case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
+            case 'context_size': if (typeof updateContextIndicator === 'function') updateContextIndicator(chunk, sess); break;
         }
         // task-group 展开状态尊重用户操作；有输出时刷新状态图标与 meta。
         // task_done 已自行结算状态，不再 mark 回 running。
@@ -316,6 +320,8 @@ function finishStream(sess) {
 
     // 结算全部 task-group：非 error → done（绿勾）；error 保留红叉
     if (typeof finalizeTaskGroups === 'function') finalizeTaskGroups(sess);
+    // 本轮总计时定格（Context 条）
+    if (typeof stopRoundElapsed === 'function') stopRoundElapsed(sess);
 
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
 
@@ -402,6 +408,14 @@ function finishStream(sess) {
         sess.pendingToolStarted = false;
         sess.approvedToolCard = null;
         sess.userMsgCounter = 0;
+        // 清空后不再展示上轮 Context / 总计时
+        sess.roundStartedAt = null;
+        sess.roundEndedAt = null;
+        sess.contextTokens = null;
+        sess.contextLength = null;
+        if (sess.sessionId === activeSessionId && typeof resetContextIndicator === 'function') {
+            resetContextIndicator();
+        }
     }
 
     // resetStreamState 会清空 buffer，所以必须在上面强刷完后再调
@@ -515,6 +529,8 @@ function connectWebGate() {
                 }
                 resetStreamState(sess2);
                 showThinking(sess2);
+                // 外部通道（Loop/IM 等）推流：按首包起算本轮总计时
+                if (typeof startRoundElapsed === 'function') startRoundElapsed(sess2);
             }
             onWebChunk(sess2, chunk);
         } catch(e) {

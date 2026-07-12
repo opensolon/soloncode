@@ -2460,5 +2460,8 @@ pre:hover .code-copy-btn { opacity: 1; }
     user-select: none;
     white-space: nowrap;
 }
+.context-status-elapsed {
+    margin-left: 0.35em;
+}
 
 
