@@ -895,18 +895,18 @@ var modelList = [];        // [{name, desc, supportsReasoning, reasoningEfforts,
     var sessionReasoningMap = {}; // { sessionId: effort|'' } — 与 model 相同，仅会话
 
 var EFFORT_LABELS = {
-    auto: '默认',
-    low: '快速',
-    medium: '均衡',
-    high: '深入',
-    max: '最强'
+    auto: 'auto',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max'
 };
 var EFFORT_HINTS = {
-    auto: '更深更准，通常更慢更费',
+    auto: '跟随模型或供应商默认，通常最省心',
     low: '更快更省，适合简单问答',
     medium: '均衡表现，日常任务推荐',
     high: '更仔细分析，适合难问题',
-    max: '最强思考，通常最慢也更费'
+    max: '最强思考，通常最慢也更费额度'
 };
 
 // Get the effective selected model for current context
@@ -1034,7 +1034,7 @@ function buildTriggerLabel(modelName, effort, showDepth) {
         ? (modelName.length > 18 ? modelName.substring(0, 18) + '...' : modelName)
         : '默认模型';
     parts.push(displayName);
-    // 支持深度调节时始终展示档位，auto 显示「默认」以便发现
+    // 支持推理强度调节时始终展示档位，auto 显示英文词以便发现
     if (showDepth) {
         parts.push((effort && EFFORT_LABELS[effort]) || EFFORT_LABELS.auto);
     }
@@ -1046,10 +1046,10 @@ function buildTriggerTitle(modelName, effort, showDepth) {
     bits.push('模型: ' + (modelName || '默认'));
     if (showDepth) {
         if (effort && EFFORT_LABELS[effort]) {
-            bits.push('深度: ' + EFFORT_LABELS[effort]);
+            bits.push('推理强度: ' + EFFORT_LABELS[effort]);
             if (EFFORT_HINTS[effort]) bits.push(EFFORT_HINTS[effort]);
         } else {
-            bits.push('深度: 默认（跟随模型/供应商）');
+            bits.push('推理强度: auto（跟随模型/供应商）');
         }
     }
     return bits.join(' · ');

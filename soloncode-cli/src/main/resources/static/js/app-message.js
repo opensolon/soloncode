@@ -252,32 +252,188 @@ function streamReasonKey(segment, reasonId) {
     return segment.id + '::' + reasonId;
 }
 
+function buildTaskGroupAriaLabel(segment, expanded) {
+    var title = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
+    var stateLabel = expanded ? '\u5df2\u5c55\u5f00' : '\u5df2\u6536\u8d77';
+    if (segment.status === 'error') {
+        return title + ' \u5931\u8d25\uff0c' + stateLabel + (expanded ? '' : '\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+    }
+    if (segment.status === 'done') {
+        return title + ' \u5df2\u5b8c\u6210\uff0c' + stateLabel;
+    }
+    if (!expanded && segment.groupEl && $(segment.groupEl).hasClass('has-new-output')) {
+        return title + ' \u6709\u65b0\u8f93\u51fa\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b';
+    }
+    return title + ' \u8be6\u60c5\uff0c' + stateLabel;
+}
+
+function formatTaskGroupMeta(segment) {
+    if (!segment) return '';
+    var parts = [];
+    if (segment.status === 'error') {
+        parts.push('\u5931\u8d25');
+        if (segment.errorCount > 0) parts.push(segment.errorCount + ' err');
+    } else if (segment.status === 'done') {
+        parts.push('\u5df2\u5b8c\u6210');
+        if (segment.createdAt) {
+            var endAt = segment.finishedAt || Date.now();
+            var secs = Math.max(0, Math.floor((endAt - segment.createdAt) / 1000));
+            parts.push(secs + 's');
+        }
+    } else {
+        parts.push('\u8fd0\u884c\u4e2d');
+    }
+    if (segment.toolCount > 0) parts.push(segment.toolCount + ' tools');
+    // lastActionLabel 易变长，不进主文案，改由 updateTaskGroupMeta 挂 tooltip
+    return parts.join(' \u00b7 ');
+}
+
+function updateTaskGroupMeta(segment) {
+    if (!segment || !segment.groupEl) return;
+    var metaEl = $(segment.groupEl).find('.task-group-meta')[0];
+    if (!metaEl) return;
+    var text = formatTaskGroupMeta(segment);
+    $(metaEl).text(text);
+    metaEl.style.display = text ? '' : 'none';
+    // 最近动作仅作 tooltip，避免 L2 被 path/参数扯长
+    if (segment.lastActionLabel) {
+        metaEl.setAttribute('title', segment.lastActionLabel);
+    } else {
+        metaEl.removeAttribute('title');
+    }
+    var header = $(segment.groupEl).find('.task-group-header')[0];
+    if (header) {
+        header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, $(segment.groupEl).hasClass('expanded')));
+    }
+}
+
+function scheduleTaskGroupMetaUpdate(segment) {
+    if (!segment || !segment.taskId) return;
+    if (segment._metaRafId) return;
+    segment._metaRafId = requestAnimationFrame(function() {
+        segment._metaRafId = null;
+        updateTaskGroupMeta(segment);
+    });
+}
+
+function setTaskGroupStatus(segment, status) {
+    if (!segment || !segment.groupEl || !status) return;
+    // error 优先；done 不覆盖 error
+    if (segment.status === 'error' && status !== 'error') return;
+    if (segment.status === status && status !== 'running') {
+        scheduleTaskGroupMetaUpdate(segment);
+        return;
+    }
+    segment.status = status;
+    segment.updatedAt = Date.now();
+    if (status === 'done' || status === 'error') {
+        segment.finishedAt = segment.finishedAt || Date.now();
+    }
+    $(segment.groupEl).removeClass('is-running is-done is-error');
+    $(segment.groupEl).addClass('is-' + status);
+    scheduleTaskGroupMetaUpdate(segment);
+}
+
+function recordTaskGroupToolStart(segment, toolName, toolTitle, args) {
+    if (!segment || !segment.taskId) return;
+    segment.toolCount = (segment.toolCount || 0) + 1;
+    segment.hasPendingTools = (segment.hasPendingTools || 0) + 1;
+    segment.lastToolName = toolTitle || toolName || null;
+    var label = toolTitle || toolName || 'tool';
+    if (args && typeof args === 'object') {
+        var hint = args.path || args.file_path || args.pattern || args.command || args.query || args.url || args.name;
+        if (typeof hint === 'string' && hint) {
+            var shortHint = hint.length > 24 ? hint.substring(0, 21) + '...' : hint;
+            label = (toolName || toolTitle || 'tool') + ' ' + shortHint;
+        }
+    }
+    if (label.length > 36) label = label.substring(0, 33) + '...';
+    segment.lastActionLabel = label;
+    segment.updatedAt = Date.now();
+    if (segment.status !== 'error') setTaskGroupStatus(segment, 'running');
+    else scheduleTaskGroupMetaUpdate(segment);
+}
+
+function recordTaskGroupToolEnd(segment) {
+    if (!segment || !segment.taskId) return;
+    segment.hasPendingTools = Math.max(0, (segment.hasPendingTools || 0) - 1);
+    segment.updatedAt = Date.now();
+    scheduleTaskGroupMetaUpdate(segment);
+}
+
+function recordTaskGroupReason(segment) {
+    if (!segment || !segment.taskId) return;
+    segment.reasonCount = (segment.reasonCount || 0) + 1;
+    segment.updatedAt = Date.now();
+    if (segment.status !== 'error') setTaskGroupStatus(segment, 'running');
+    else scheduleTaskGroupMetaUpdate(segment);
+}
+
+function finalizeTaskGroups(sess) {
+    if (!sess || !sess.taskSegments) return;
+    for (var taskId in sess.taskSegments) {
+        if (!Object.prototype.hasOwnProperty.call(sess.taskSegments, taskId)) continue;
+        var segment = sess.taskSegments[taskId];
+        if (!segment || !segment.groupEl) continue;
+        if (segment.status !== 'error') setTaskGroupStatus(segment, 'done');
+        else {
+            segment.finishedAt = segment.finishedAt || Date.now();
+            scheduleTaskGroupMetaUpdate(segment);
+        }
+        // 流结束后清掉“新输出”语义，error 保留 is-error 强提示样式
+        $(segment.groupEl).removeClass('has-new-output');
+        var header = $(segment.groupEl).find('.task-group-header')[0];
+        if (header) header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, $(segment.groupEl).hasClass('expanded')));
+    }
+}
+
 function createTaskGroupElement(sess, segment) {
-    var group = $('<div>').addClass('task-group')[0];
+    var group = $('<div>').addClass('task-group is-running')[0];
     group.setAttribute('data-task-id', segment.taskId);
     group.setAttribute('data-stream-segment-id', segment.id);
     if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
+    // L1 固定身份：title + agent-badge + toggle(右)；L2 动态状态 + 更新点。
+    // 有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。
     var titleText = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
-    var badgeHtml = segment.agentName ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>' : '';
+    var agentHtml = (segment.taskDescription && segment.agentName)
+        ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>'
+        : '';
     var header = $('<div>').addClass('task-group-header')[0];
-    var initiallyExpanded = false;
-    header.setAttribute('aria-expanded', String(initiallyExpanded));
-    header.setAttribute('aria-label', initiallyExpanded ? '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u5c55\u5f00' : '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
-    if (initiallyExpanded) $(group).addClass('expanded');
-    header.innerHTML = '<span class="task-group-title">' + escapeHtml(titleText) + '</span>' + badgeHtml
+    // task-group 本级一律默认收起（单/多任务相同），展开由用户手动触发
+    var bodyId = 'task-body-' + segment.id;
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'false');
+    header.setAttribute('aria-controls', bodyId);
+    header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, false));
+    var metaText = formatTaskGroupMeta(segment);
+    var metaTitleAttr = segment.lastActionLabel
+        ? ' title="' + escapeHtmlAttr(segment.lastActionLabel) + '"'
+        : '';
+    // L1 = title + badge + toggle(右，与 tool-card/think 一致)；L2 = meta + 更新点
+    header.innerHTML =
+        '<div class="task-group-row task-group-row-main">'
+        + '<span class="task-group-title" title="' + escapeHtmlAttr(titleText) + '">' + escapeHtml(titleText) + '</span>'
+        + agentHtml
+        + '<i class="layui-icon layui-icon-right task-group-toggle"></i>'
+        + '</div>'
+        + '<div class="task-group-row task-group-row-sub">'
+        + '<span class="task-group-meta"' + metaTitleAttr + (metaText ? '' : ' style="display:none"') + '>' + escapeHtml(metaText) + '</span>'
         + '<span class="task-group-update-indicator" aria-hidden="true"></span>'
-        + '<i class="layui-icon layui-icon-right task-group-toggle"></i>';
+        + '</div>';
     function toggle() {
         var expanded = !$(group).hasClass('expanded');
+        segment.userToggled = true;
         $(group).toggleClass('expanded', expanded);
         header.setAttribute('aria-expanded', String(expanded));
-        if (expanded) { $(group).removeClass('has-new-output'); header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u5c55\u5f00'); }
-        else header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u8be6\u60c5\uff0c\u5df2\u6536\u8d77');
+        if (expanded) $(group).removeClass('has-new-output');
+        header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, expanded));
     }
     $(header).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
     });
     var body = $('<div>').addClass('task-group-body')[0];
+    body.id = bodyId;
     $(group).append(header).append(body);
     return { groupEl: group, bodyEl: body };
 }
@@ -288,14 +444,35 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
     if (taskId) {
         var taskSegment = sess.taskSegments[taskId];
         if (taskSegment) {
+            // 标题首次确定后不再变更（后续 description 仅补内存字段，不刷新 DOM）
             if (!taskSegment.taskDescription && taskDescription) taskSegment.taskDescription = taskDescription;
             if (!taskSegment.agentName && agentName) taskSegment.agentName = agentName;
             sess.currentStreamSegment = taskSegment;
-            sess.lastStreamLaneKey = taskSegment.laneKey;
             return taskSegment;
         }
-        taskSegment = { id: 'task-' + (++sess.streamSegmentSeq), laneKey: 'task:' + taskId, taskId: taskId,
-            taskDescription: taskDescription || null, agentName: agentName || null, bodyEl: null, groupEl: null, reasonEntries: {} };
+        var now = Date.now();
+        taskSegment = {
+            id: 'task-' + (++sess.streamSegmentSeq),
+            laneKey: 'task:' + taskId,
+            taskId: taskId,
+            taskDescription: taskDescription || null,
+            agentName: agentName || null,
+            bodyEl: null,
+            groupEl: null,
+            reasonEntries: {},
+            status: 'running',
+            userToggled: false,
+            createdAt: now,
+            updatedAt: now,
+            finishedAt: null,
+            toolCount: 0,
+            reasonCount: 0,
+            errorCount: 0,
+            lastToolName: null,
+            lastActionLabel: null,
+            hasPendingTools: 0,
+            _metaRafId: null
+        };
         var task = createTaskGroupElement(sess, taskSegment);
         taskSegment.groupEl = task.groupEl;
         taskSegment.bodyEl = task.bodyEl;
@@ -304,7 +481,6 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
         insertBeforeActions(sess, task.groupEl);
         sess.streamSegments.push(taskSegment);
         sess.currentStreamSegment = taskSegment;
-        sess.lastStreamLaneKey = taskSegment.laneKey;
         return taskSegment;
     }
 
@@ -320,7 +496,6 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
     insertBeforeActions(sess, main);
     sess.streamSegments.push(segment);
     sess.currentStreamSegment = segment;
-    sess.lastStreamLaneKey = segment.laneKey;
     return segment;
 }
 
@@ -384,26 +559,6 @@ function insertBeforeActions(sess, el) {
         if (content) { $(content).append(el); return; }
     }
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
-}
-
-function insertMainContentAfterTaskGroups(sess, el) {
-    var bubble = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-bubble')[0] : null;
-    var content = bubble ? $(bubble).children('.msg-content')[0] : null;
-    if (!content) {
-        insertBeforeActions(sess, el);
-        return;
-    }
-
-    // 仅查看 msg-content 的直属任务组，避免匹配任务组内部的任意嵌套节点。
-    var $taskGroups = $(content).children('.task-group');
-    if ($taskGroups.length > 0) {
-        $taskGroups.last().after(el);
-    } else if (sess.currentBubbleEl && sess.currentBubbleEl.parentNode === content) {
-        // 没有子任务时维持既有顺序：reason-group 位于默认正文节点之前。
-        $(sess.currentBubbleEl).before(el);
-    } else {
-        insertBeforeActions(sess, el);
-    }
 }
 
 function finishThinkingBlock(sess, reasonId) {
@@ -492,15 +647,21 @@ function finishThinkingBlock(sess, reasonId) {
 }
 
 /**
- * 确保 task-group 容器存在，用于 multitask 并行输出时将同一子代理的所有 chunk 归组展示。
- * task-group 包裹 reason-group 和 tool-card，使同一任务实例的输出在视觉上归入同一区块。
- * task-group 始终默认收起，由用户手动展开；收起期间以新增输出标识提示。
+ * 收起态 task-group 的新输出提示；同时刷新 meta 摘要。
+ * 展开状态始终尊重用户手动切换（userToggled），不在此处强制展开。
  */
 function markTaskGroupUpdated(sess, segment) {
-    if (!segment || !segment.groupEl || !segment.taskId || $(segment.groupEl).hasClass('expanded')) return;
+    if (!segment || !segment.groupEl || !segment.taskId) return;
+    segment.updatedAt = Date.now();
+    if (segment.status !== 'error' && segment.status !== 'done') {
+        setTaskGroupStatus(segment, 'running');
+    } else {
+        scheduleTaskGroupMetaUpdate(segment);
+    }
+    if ($(segment.groupEl).hasClass('expanded')) return;
     $(segment.groupEl).addClass('has-new-output');
     var header = $(segment.groupEl).find('.task-group-header')[0];
-    if (header) header.setAttribute('aria-label', '\u5b50\u4efb\u52a1\u6709\u65b0\u8f93\u51fa\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+    if (header) header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, false));
 }
 
 function clearThinkTags(text) {
@@ -518,6 +679,11 @@ function appendReasonChunk(sess, segment, text, reasonId, agentName) {
         $(block).addClass('is-subagent');
         var label = $(block).find('.reason-group-think-label')[0];
         if (label && !$(label).next('.agent-badge').length) $(label).after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
+    }
+    // 每个 reason-group 首次进入思考时计一次，避免同一 reason 流式重复累加
+    if (segment && segment.taskId && !group._taskReasonCounted) {
+        group._taskReasonCounted = true;
+        recordTaskGroupReason(segment);
     }
     group.thinkingBuffer += clean;
     if (!group.reasonRafId) group.reasonRafId = requestAnimationFrame(function() {
@@ -856,7 +1022,16 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
     if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
     if (callId) card.setAttribute('data-call-id', callId);
     registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
+    if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
     if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+function resolveTaskSegmentFromCard(sess, card) {
+    if (!sess || !card || !sess.taskSegments) return null;
+    var group = $(card).closest('.task-group')[0];
+    if (!group) return null;
+    var taskId = group.getAttribute('data-task-id');
+    return (taskId && sess.taskSegments[taskId]) || null;
 }
 
 function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, reasonId, agentName, callId) {
@@ -872,12 +1047,21 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
             + escapeHtml(toolTitle || toolName || 'tool') + '</span><i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
         $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
         if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
+        // 无 action_start 的终态卡也计入 task 摘要
+        if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
     }
     var body = $(card).find('.tool-card-body')[0];
     if (body) { body.innerHTML = ''; if (!renderToolBody(body, toolName, text, args)) body.textContent = text || ''; checkOverflow(body, 200); }
     var icon = $(card).find('.tool-status-icon')[0];
     if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
     if (callId) card.setAttribute('data-call-id', callId);
+    // 优先用 chunk 上的 task segment；若 action_end 缺 taskId，则从已挂载的 tool-card 反查归属
+    var taskSegment = (segment && segment.taskId) ? segment : resolveTaskSegmentFromCard(sess, card);
+    if (taskSegment) {
+        recordTaskGroupToolEnd(taskSegment);
+        // onWebChunk 仅在 segment.taskId 时 mark；此处覆盖 action_end 无 taskId 的反查场景
+        if (!segment || !segment.taskId) markTaskGroupUpdated(sess, taskSegment);
+    }
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
@@ -905,7 +1089,34 @@ function appendContentChunk(sess, segment, text, append, reasonId) {
     });
 }
 
-function appendErrorChunk(sess, text) {
+function appendErrorChunkToSegment(sess, segment, text) {
+    if (!segment || !segment.bodyEl) {
+        appendErrorChunk(sess, text);
+        return;
+    }
+    var errEl = $('<div>').addClass('chunk-error').text(text)[0];
+    $(segment.bodyEl).append(errEl);
+    segment.errorCount = (segment.errorCount || 0) + 1;
+    segment.updatedAt = Date.now();
+    setTaskGroupStatus(segment, 'error');
+    // 强提示但不自动展开
+    if (!$(segment.groupEl).hasClass('expanded')) {
+        $(segment.groupEl).addClass('has-new-output');
+    }
+    var header = $(segment.groupEl).find('.task-group-header')[0];
+    if (header) header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, $(segment.groupEl).hasClass('expanded')));
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+function appendErrorChunk(sess, text, taskId, taskDescription, agentName) {
+    // 仅显式 taskId 才归入 task-group；无 taskId 一律挂气泡根级，绝不弱归属
+    if (taskId) {
+        var segment = ensureStreamSegment(sess, taskId, taskDescription, agentName);
+        if (segment && segment.taskId) {
+            appendErrorChunkToSegment(sess, segment, text);
+            return;
+        }
+    }
     ensureAssistantBubble(sess);
     var errEl = $('<div>').addClass('chunk-error').text(text)[0];
     insertBeforeActions(sess, errEl);

@@ -58,7 +58,6 @@ function SessionState(sessionId) {
     // 流事件的主代理展示段。taskId/reasonId 用于归属，主代理段用于保留连续主输出的顺序。
     this.streamSegments = [];
     this.currentStreamSegment = null;
-    this.lastStreamLaneKey = null;
     this.streamSegmentSeq = 0;
 }
 
@@ -146,7 +145,6 @@ function resetStreamState(sess) {
     sess.taskSegments = {};
     sess.streamSegments = [];
     sess.currentStreamSegment = null;
-    sess.lastStreamLaneKey = null;
     sess.streamSegmentSeq = 0;
     // Cancel per-reasonId RAF IDs before clearing
     for (var _rid in sess.reasonGroups) {

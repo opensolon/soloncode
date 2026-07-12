@@ -221,6 +221,7 @@ public class Configurator {
 
         if (AgentFlags.FLAG_VERSION.equals(flag)) {
             System.out.println(Solon.cfg().appTitle() + " " + AgentFlags.getVersion());
+            Solon.stop();  // 退出进程
             return;
         }
 

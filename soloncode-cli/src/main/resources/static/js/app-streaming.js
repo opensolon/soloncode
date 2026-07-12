@@ -192,10 +192,16 @@ function onWebChunk(sess, chunk) {
 
         // action_end 若能用 callId 找到已展示的 loading 卡，只原位更新该卡；它不应凭空创建新段。
         // 未收到 action_start 的终态事件才需要在当前到达位置创建一个段。
+        // 但 task 摘要统计仍需拿到既有 task segment（有 taskId 时复用，不新建）。
         var visualTypes = { reason: 1, text: 1, agent: 1, action_start: 1 };
         var actionEndNeedsSegment = chunk.type === 'action_end' && !findPendingToolCard(sess, chunk.callId, null).pending;
-        var segment = (visualTypes[chunk.type] || actionEndNeedsSegment)
-            ? ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName) : null;
+        var segment = null;
+        if (visualTypes[chunk.type] || actionEndNeedsSegment) {
+            segment = ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName);
+        } else if (chunk.type === 'action_end' && chunk.taskId && sess.taskSegments[chunk.taskId]) {
+            segment = sess.taskSegments[chunk.taskId];
+            sess.currentStreamSegment = segment;
+        }
         switch (chunk.type) {
             case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
@@ -204,17 +210,19 @@ function onWebChunk(sess, chunk) {
             case 'action_end': appendActionEndChunk(sess, segment, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
             case 'action_start': appendActionStartChunk(sess, segment, chunk.toolName, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); break;
             case 'agent': appendContentChunk(sess, segment, chunk.text, false, chunk.reasonId); break;
-            case 'error': finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
+            case 'error': finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text, chunk.taskId, chunk.taskDescription, chunk.agentName); break;
             case 'hitl': finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
             case 'trace': finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
             case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
         }
-        // task-group 一律由用户控制展开状态；收起时的新输出只在头部显示提示。
+        // task-group 展开状态尊重用户操作；收起时仅头部提示新输出并刷新 meta。
         if (segment && segment.taskId) markTaskGroupUpdated(sess, segment);
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
         }, 1000);
-    } catch (e) {}
+    } catch (e) {
+        console.warn('[onWebChunk]', e);
+    }
 }
 
 function finishStream(sess) {
@@ -303,6 +311,9 @@ function finishStream(sess) {
     finishThinkingBlock(sess);
     finishPendingTool(sess);
     sess.approvedToolCard = null;
+
+    // 结算全部 task-group：非 error → done；清理“新输出”蓝点语义
+    if (typeof finalizeTaskGroups === 'function') finalizeTaskGroups(sess);
 
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
 
