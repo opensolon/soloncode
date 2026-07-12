@@ -254,6 +254,10 @@ function streamReasonKey(segment, reasonId) {
 
 function buildTaskGroupAriaLabel(segment, expanded) {
     var title = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
+    // 双字段时补读 agent，避免仅读 description 丢失「谁在跑」
+    if (segment.taskDescription && segment.agentName) {
+        title = segment.taskDescription + '\uff0c' + segment.agentName;
+    }
     var stateLabel = expanded ? '\u5df2\u5c55\u5f00' : '\u5df2\u6536\u8d77';
     var stats = formatTaskGroupStats(segment);
     var action = formatTaskGroupMeta(segment);
@@ -460,12 +464,16 @@ function createTaskGroupElement(sess, segment) {
     group.setAttribute('data-task-id', segment.taskId);
     group.setAttribute('data-stream-segment-id', segment.id);
     if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
-    // L1：状态图标(22px) + title + stats + agent-badge + toggle(右)；L2：最近 tool 动作。
+    // L1：状态图标(22px) + title(文本+可选 agent-badge 贴字) + stats + toggle(右)；L2：最近 tool 动作。
     // 有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。
     var titleText = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
     var agentHtml = (segment.taskDescription && segment.agentName)
         ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>'
         : '';
+    // hover：双字段时补全身份（badge 可能被窄屏裁进 max-width）
+    var titleAttr = (segment.taskDescription && segment.agentName)
+        ? titleText + '\uff08' + segment.agentName + '\uff09'
+        : titleText;
     var header = $('<div>').addClass('task-group-header')[0];
     // task-group 本级一律默认收起（单/多任务相同），展开由用户手动触发
     var bodyId = 'task-body-' + segment.id;
@@ -482,13 +490,16 @@ function createTaskGroupElement(sess, segment) {
     var metaTitleAttr = metaText
         ? ' title="' + escapeHtmlAttr(metaText) + '"'
         : '';
-    // L1：22px 图标 + 标题 + 耗时/计数；L2：仅最近动作（无则隐藏整行）
+    // L1：22px 图标 + 标题簇(文字 ellipsis + 贴字 badge) + 耗时/计数 + toggle
+    // L2：仅最近动作（无则隐藏整行）
     header.innerHTML =
         '<div class="task-group-row task-group-row-main">'
         + '<span class="tool-status-icon loading" aria-hidden="true"></span>'
-        + '<span class="task-group-title" title="' + escapeHtmlAttr(titleText) + '">' + escapeHtml(titleText) + '</span>'
-        + '<span class="task-group-stats"' + statsTitleAttr + (statsText ? '' : ' style="display:none"') + '>' + escapeHtml(statsText) + '</span>'
+        + '<span class="task-group-title" title="' + escapeHtmlAttr(titleAttr) + '">'
+        + '<span class="task-group-title-text">' + escapeHtml(titleText) + '</span>'
         + agentHtml
+        + '</span>'
+        + '<span class="task-group-stats"' + statsTitleAttr + (statsText ? '' : ' style="display:none"') + '>' + escapeHtml(statsText) + '</span>'
         + '<i class="layui-icon layui-icon-right task-group-toggle"></i>'
         + '</div>'
         + '<div class="task-group-row task-group-row-sub"' + (metaText ? '' : ' style="display:none"') + '>'

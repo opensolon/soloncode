@@ -453,7 +453,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .task-group-rail:focus-visible { outline: none; }
 .task-group:has(.task-group-rail:hover) { border-left-color: var(--text-tertiary); }
 
-/* Header 两行：L1 图标(22px)+title+stats+badge+toggle；L2 最近 tool 动作 */
+/* Header 两行：L1 图标(22px)+title(文本+贴字 badge)+stats+toggle；L2 最近 tool 动作 */
 .task-group-header { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-primary); background: var(--bg-primary); border-bottom: 1px solid var(--border-color); transition: background 0.15s; }
 .task-group-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .task-group-header:hover { background: var(--bg-hover); }
@@ -465,12 +465,14 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 /* toggle 右侧，与 tool-card / reason-group-think 一致 */
 .task-group-toggle { margin-left: auto; transition: transform 0.2s; font-size: 14px !important; color: var(--text-secondary); flex-shrink: 0; }
 .task-group.expanded .task-group-toggle { transform: rotate(90deg); }
-.task-group-title { flex: 1; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* title 为小 flex 簇：只缩文字，badge 贴字且尽量常显 */
+.task-group-title { flex: 1; min-width: 0; display: flex; align-items: center; overflow: hidden; font-weight: 500; }
+.task-group-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* L1 统计：本 task 总耗时 + tool 数；tabular-nums 避免秒数跳动 */
 .task-group-stats { flex-shrink: 0; font-size: 11px; font-weight: 400; color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.2; }
 .task-group.is-error .task-group-stats { color: var(--error-text); }
-/* header 内 badge：略收一档，认得出且不压标题 */
-.task-group-header .agent-badge { flex-shrink: 0; margin-left: 0; font-size: 9px; line-height: 15px; padding: 0 5px; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+/* header 内 badge：贴在 title 文字后（margin-left 6px）；略收一档 */
+.task-group-header .agent-badge { flex-shrink: 0; margin-left: 6px; font-size: 9px; line-height: 15px; padding: 0 5px; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
 /* L2：最近 toolName + args；字号与 .tool-args 一致，宽度不够时 CSS ellipsis */
 .task-group-meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; color: var(--text-tertiary); line-height: 1.2; }
 .task-group.is-error .task-group-meta { color: var(--error-text); }
