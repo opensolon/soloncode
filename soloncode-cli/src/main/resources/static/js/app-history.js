@@ -890,10 +890,9 @@ $chatHistoryPanel.on('click', function(e) {
 
 /* ===== Model Selector ===== */
 var modelList = [];        // [{name, desc, supportsReasoning, reasoningEfforts, ...}]
-var modelsLoaded = false;  // whether model list has been fetched
-var sessionModelMap = {};  // { sessionId: selectedModelName }
-var sessionReasoningMap = {}; // { sessionId: effort|'' }
-var lastPreferredEffort = ''; // sticky across models when supported
+    var modelsLoaded = false;  // whether model list has been fetched
+    var sessionModelMap = {};  // { sessionId: selectedModelName } — 仅会话，无全局
+    var sessionReasoningMap = {}; // { sessionId: effort|'' } — 与 model 相同，仅会话
 
 var EFFORT_LABELS = {
     auto: '默认',
@@ -977,7 +976,7 @@ function getCurrentModelMeta() {
             var selected = data.selected || '';
             var effort = data.reasoningEffort || '';
     
-            // Store selected model per session
+            // Store selected model / effort per session only (no global sticky)
             if (sessionId) {
                 sessionModelMap[sessionId] = selected;
                 sessionReasoningMap[sessionId] = effort;
@@ -985,7 +984,6 @@ function getCurrentModelMeta() {
                 sessionModelMap['_default'] = selected;
                 sessionReasoningMap['_default'] = effort;
             }
-            if (effort) lastPreferredEffort = effort;
             
             // Only parse list once (it's the same for all sessions)
             if (!modelsLoaded) {
@@ -1021,7 +1019,6 @@ function getCurrentModelMeta() {
                 var data = resp.data || {};
                 sessionModelMap[sessionId] = data.selected || '';
                 sessionReasoningMap[sessionId] = data.reasoningEffort || '';
-                if (data.reasoningEffort) lastPreferredEffort = data.reasoningEffort;
                 renderModelUI();
             } catch (e) {}
         });
@@ -1143,45 +1140,46 @@ function postModelSelect(payload) {
         
         function selectModel(modelName) {
     var sid = getSessionKey();
+    // 与 model selected 一致：effort 只跟当前会话，不跨会话/全局 sticky
+    // 切换模型时：若目标支持推理，则保留本会话当前档（含 auto）；否则清空
+    var prevEffort = getSelectedReasoning();
+
     sessionModelMap[sid] = modelName;
-        
+
     var meta = null;
     for (var i = 0; i < modelList.length; i++) {
         if (modelList[i].name === modelName) { meta = modelList[i]; break; }
     }
-                
+
     var effort = '';
     if (meta && meta.supportsReasoning) {
-        // sticky user 档 clamp；无 sticky 则 auto（不写 default 为 user）
-        effort = clampEffortForModel(lastPreferredEffort || '', meta);
+        effort = clampEffortForModel(prevEffort || '', meta);
     } else {
-        // 不支持：清空会话 effort，保留 sticky
         effort = '';
     }
     sessionReasoningMap[sid] = effort;
-        
+
     renderModelUI();
-    
+
     var data = { sessionId: sid, modelName: modelName };
     data.reasoningEffort = effort || '';
     postModelSelect(data);
 }
 
-    function selectReasoning(effort) {
+function selectReasoning(effort) {
     var sid = getSessionKey();
     var meta = getCurrentModelMeta();
     var normalized = (effort === 'auto' || !effort) ? '' : effort;
     var clamped = normalized ? clampEffortForModel(normalized, meta) : '';
+    // 仅写会话，无全局 sticky（与 model selected 相同机制）
     sessionReasoningMap[sid] = clamped || '';
-    if (clamped) lastPreferredEffort = clamped;
-    // auto：清 session，保留 sticky 供切回支持模型
     renderModelUI();
     postModelSelect({
         sessionId: sid,
         modelName: getSelectedModel(),
         reasoningEffort: clamped || ''
     });
-    }
+}
     
         // Toggle dropdown open/close
         function initModelSelector(selectorId, currentId, dropdownId) {
