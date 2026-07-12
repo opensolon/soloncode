@@ -3,6 +3,8 @@
 * 优化 soloncode web 会话删除逻辑（同时删掉内存）
 * 优化 soloncode web 线程配置
 * 优化 soloncode web 线程池配置
+* 优化 soloncode web 子代理任务分组体验
+* 修复 soloncode web 文件树展开后，可能会收回的问题（被刷新了）。新案改为动态删增
 * 细节优化
 
 ### v2026.7.12
