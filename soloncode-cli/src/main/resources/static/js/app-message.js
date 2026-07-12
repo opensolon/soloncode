@@ -261,10 +261,25 @@ function buildTaskGroupAriaLabel(segment, expanded) {
     if (segment.status === 'done') {
         return title + ' \u5df2\u5b8c\u6210\uff0c' + stateLabel;
     }
-    if (!expanded && segment.groupEl && $(segment.groupEl).hasClass('has-new-output')) {
-        return title + ' \u6709\u65b0\u8f93\u51fa\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b';
+    return title + ' \u8fd0\u884c\u4e2d\uff0c' + stateLabel + (expanded ? '' : '\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+}
+
+/** 与 tool-card 同系的 22px 状态圆点：running 转圈 / done 绿勾 / error 红叉 */
+function updateTaskGroupStatusIcon(segment) {
+    if (!segment || !segment.groupEl) return;
+    var icon = $(segment.groupEl).find('.task-group-row-main > .tool-status-icon')[0];
+    if (!icon) return;
+    var status = segment.status || 'running';
+    if (status === 'done') {
+        icon.className = 'tool-status-icon done';
+        icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>';
+    } else if (status === 'error') {
+        icon.className = 'tool-status-icon reject';
+        icon.innerHTML = '<i class="layui-icon layui-icon-close" style="font-size:12px"></i>';
+    } else {
+        icon.className = 'tool-status-icon loading';
+        icon.innerHTML = '';
     }
-    return title + ' \u8be6\u60c5\uff0c' + stateLabel;
 }
 
 function formatTaskGroupMeta(segment) {
@@ -331,6 +346,7 @@ function setTaskGroupStatus(segment, status) {
     }
     $(segment.groupEl).removeClass('is-running is-done is-error');
     $(segment.groupEl).addClass('is-' + status);
+    updateTaskGroupStatusIcon(segment);
     scheduleTaskGroupMetaUpdate(segment);
 }
 
@@ -375,15 +391,13 @@ function finalizeTaskGroups(sess) {
         if (!Object.prototype.hasOwnProperty.call(sess.taskSegments, taskId)) continue;
         var segment = sess.taskSegments[taskId];
         if (!segment || !segment.groupEl) continue;
+        // 非 error → done（绿勾）；error 保留红叉与 is-error 左边框
         if (segment.status !== 'error') setTaskGroupStatus(segment, 'done');
         else {
             segment.finishedAt = segment.finishedAt || Date.now();
+            updateTaskGroupStatusIcon(segment);
             scheduleTaskGroupMetaUpdate(segment);
         }
-        // 流结束后清掉“新输出”语义，error 保留 is-error 强提示样式
-        $(segment.groupEl).removeClass('has-new-output');
-        var header = $(segment.groupEl).find('.task-group-header')[0];
-        if (header) header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, $(segment.groupEl).hasClass('expanded')));
     }
 }
 
@@ -392,7 +406,7 @@ function createTaskGroupElement(sess, segment) {
     group.setAttribute('data-task-id', segment.taskId);
     group.setAttribute('data-stream-segment-id', segment.id);
     if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
-    // L1 固定身份：title + agent-badge + toggle(右)；L2 动态状态 + 更新点。
+    // L1：状态图标(22px) + title + agent-badge + toggle(右)；L2：meta 摘要。
     // 有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。
     var titleText = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
     var agentHtml = (segment.taskDescription && segment.agentName)
@@ -410,16 +424,16 @@ function createTaskGroupElement(sess, segment) {
     var metaTitleAttr = segment.lastActionLabel
         ? ' title="' + escapeHtmlAttr(segment.lastActionLabel) + '"'
         : '';
-    // L1 = title + badge + toggle(右，与 tool-card/think 一致)；L2 = meta + 更新点
+    // L1 与 tool-card 对齐：左侧 22px 状态圆点；L2 仅 meta
     header.innerHTML =
         '<div class="task-group-row task-group-row-main">'
+        + '<span class="tool-status-icon loading" aria-hidden="true"></span>'
         + '<span class="task-group-title" title="' + escapeHtmlAttr(titleText) + '">' + escapeHtml(titleText) + '</span>'
         + agentHtml
         + '<i class="layui-icon layui-icon-right task-group-toggle"></i>'
         + '</div>'
         + '<div class="task-group-row task-group-row-sub">'
         + '<span class="task-group-meta"' + metaTitleAttr + (metaText ? '' : ' style="display:none"') + '>' + escapeHtml(metaText) + '</span>'
-        + '<span class="task-group-update-indicator" aria-hidden="true"></span>'
         + '</div>';
     // 左侧灰边透明热区：视觉零改动，整高可点展开/收起
     var rail = $('<div>').addClass('task-group-rail')[0];
@@ -432,9 +446,7 @@ function createTaskGroupElement(sess, segment) {
         segment.userToggled = true;
         $(group).toggleClass('expanded', expanded);
         header.setAttribute('aria-expanded', String(expanded));
-        if (expanded) {
-            $(group).removeClass('has-new-output');
-        } else {
+        if (!expanded) {
             // 长内容收起后，若 group 顶部已离开视口，滚回可见，避免空白跳变
             requestAnimationFrame(function() {
                 var wrap = document.querySelector('.messages-wrap');
@@ -671,8 +683,9 @@ function finishThinkingBlock(sess, reasonId) {
 }
 
 /**
- * 收起态 task-group 的新输出提示；同时刷新 meta 摘要。
+ * 子任务有新输出时刷新状态与 meta。
  * 展开状态始终尊重用户手动切换（userToggled），不在此处强制展开。
+ * 状态由 L1 的 tool-status-icon 表达（转圈/勾/叉），不再使用更新点。
  */
 function markTaskGroupUpdated(sess, segment) {
     if (!segment || !segment.groupEl || !segment.taskId) return;
@@ -682,10 +695,6 @@ function markTaskGroupUpdated(sess, segment) {
     } else {
         scheduleTaskGroupMetaUpdate(segment);
     }
-    if ($(segment.groupEl).hasClass('expanded')) return;
-    $(segment.groupEl).addClass('has-new-output');
-    var header = $(segment.groupEl).find('.task-group-header')[0];
-    if (header) header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, false));
 }
 
 function clearThinkTags(text) {
@@ -1122,13 +1131,8 @@ function appendErrorChunkToSegment(sess, segment, text) {
     $(segment.bodyEl).append(errEl);
     segment.errorCount = (segment.errorCount || 0) + 1;
     segment.updatedAt = Date.now();
+    // error → 红叉 + is-error 左边框；不自动展开
     setTaskGroupStatus(segment, 'error');
-    // 强提示但不自动展开
-    if (!$(segment.groupEl).hasClass('expanded')) {
-        $(segment.groupEl).addClass('has-new-output');
-    }
-    var header = $(segment.groupEl).find('.task-group-header')[0];
-    if (header) header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, $(segment.groupEl).hasClass('expanded')));
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 

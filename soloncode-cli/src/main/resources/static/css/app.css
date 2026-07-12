@@ -453,13 +453,14 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .task-group-rail:focus-visible { outline: none; }
 .task-group:has(.task-group-rail:hover) { border-left-color: var(--text-tertiary); }
 
-/* Header 两行：L1 固定身份（title + badge + toggle右），L2 动态状态（meta + 更新点） */
+/* Header 两行：L1 状态图标(22px) + title + badge + toggle右；L2 meta 摘要 */
 .task-group-header { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-primary); background: var(--bg-primary); border-bottom: 1px solid var(--border-color); transition: background 0.15s; }
 .task-group-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .task-group-header:hover { background: var(--bg-hover); }
 .task-group-row { display: flex; align-items: center; min-width: 0; }
-.task-group-row-main { gap: 8px; }
-.task-group-row-sub { gap: 8px; justify-content: space-between; }
+/* L1 gap 与 tool-card-header 对齐，容纳 22px tool-status-icon */
+.task-group-row-main { gap: 10px; }
+.task-group-row-sub { gap: 8px; }
 /* toggle 右侧，与 tool-card / reason-group-think 一致 */
 .task-group-toggle { margin-left: auto; transition: transform 0.2s; font-size: 14px !important; color: var(--text-secondary); flex-shrink: 0; }
 .task-group.expanded .task-group-toggle { transform: rotate(90deg); }
@@ -468,11 +469,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .task-group-header .agent-badge { flex-shrink: 0; margin-left: 0; font-size: 9px; line-height: 15px; padding: 0 5px; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
 .task-group-meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; color: var(--text-tertiary); line-height: 1.2; font-variant-numeric: tabular-nums; }
 .task-group.is-error .task-group-meta { color: var(--error-text); }
-.task-group-update-indicator { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); flex-shrink: 0; }
-.task-group.has-new-output .task-group-update-indicator { display: inline-block; }
-/* 失败且收起：终态也保留红点强提示（不依赖 has-new-output，避免 finish 清蓝点后丢失失败指示） */
-.task-group.is-error:not(.expanded) .task-group-update-indicator { display: inline-block; background: var(--error-text); box-shadow: 0 0 0 2px var(--error-bg); }
-.task-group.is-error.has-new-output .task-group-update-indicator { background: var(--error-text); box-shadow: 0 0 0 2px var(--error-bg); }
+/* 状态由 L1 的 .tool-status-icon 表达（loading/done/reject），不再使用更新点 */
 .task-group-body { display: block; }
 .task-group:not(.expanded) .task-group-body { display: none; }
 

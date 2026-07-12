@@ -215,7 +215,7 @@ function onWebChunk(sess, chunk) {
             case 'trace': finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
             case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
         }
-        // task-group 展开状态尊重用户操作；收起时仅头部提示新输出并刷新 meta。
+        // task-group 展开状态尊重用户操作；有输出时刷新状态图标与 meta。
         if (segment && segment.taskId) markTaskGroupUpdated(sess, segment);
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
@@ -312,7 +312,7 @@ function finishStream(sess) {
     finishPendingTool(sess);
     sess.approvedToolCard = null;
 
-    // 结算全部 task-group：非 error → done；清理“新输出”蓝点语义
+    // 结算全部 task-group：非 error → done（绿勾）；error 保留红叉
     if (typeof finalizeTaskGroups === 'function') finalizeTaskGroups(sess);
 
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
