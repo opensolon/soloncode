@@ -41,6 +41,21 @@ function sendMessage() {
     /* Block only if the active session is currently streaming */
     if (activeSessionId && sessionMap[activeSessionId] && sessionMap[activeSessionId].isStreaming) return;
 
+    /* /clear 命令：先发送到服务端清后端数据，流结束后再清前端 UI */
+    if (text === '/clear') {
+        clearInput();
+        clearAttachmentPreview();
+        if (!inChatMode) switchToChatMode();
+        setActiveSession(SESSION_ID);
+        var clearSess = sessionMap[SESSION_ID];
+        if (clearSess) {
+            clearSess._pendingClear = true;
+            sendCommandSilent('/clear', null);
+        }
+        chatInput.focus();
+        return;
+    }
+
     var filesToSend = pendingFiles.slice(); // snapshot
 
     // Build display text
@@ -80,6 +95,7 @@ function sendMessage() {
     setBtnStopMode();
     resetStreamState(sess);
     showThinking(sess);
+    if (typeof startRoundElapsed === 'function') startRoundElapsed(sess);
 
     sendWithFormData(sess, text, filesToSend);
 }
@@ -111,6 +127,7 @@ function sendCommandSilent(cmdText, onBeforeSend) {
     setBtnStopMode();
     resetStreamState(sess);
     showThinking(sess);
+    if (typeof startRoundElapsed === 'function') startRoundElapsed(sess);
 
     sendWithFormDataGrouped(sess, cmdText, []);
 }
@@ -123,6 +140,10 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
     formData.append('input', text);
     formData.append('sessionId', sess.sessionId);
     if (model) formData.append('model', model);
+    if (typeof getSelectedReasoning === 'function') {
+        var effort = getSelectedReasoning();
+        if (effort) formData.append('reasoningEffort', effort);
+    }
     for (var i = 0; i < filesToSend.length; i++) {
         formData.append('attachments', filesToSend[i].file, filesToSend[i].name);
         formData.append('attachmentTypes', filesToSend[i].attachmentsType || 'file');
@@ -137,6 +158,8 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
     }
     resetStreamState(sess);
     showThinking(sess);
+    // 兜底起表（外部推送 / 未走 sendMessage 的入口）；已 start 则不重置
+    if (typeof startRoundElapsed === 'function') startRoundElapsed(sess);
 
     $.ajax({
         url: SSE_ENDPOINT,
@@ -166,23 +189,46 @@ function onWebChunk(sess, chunk) {
             sess.currentRunId = chunk.runId;
         }
 
+        // 捕获消息来源标识，用于 AI 回复气泡的来源标签显示
+        if (chunk.sourceLabel && !sess.currentSourceLabel) {
+            sess.currentSourceLabel = chunk.sourceLabel;
+        }
+
+        // action_end 若能用 callId 找到已展示的 loading 卡，只原位更新该卡；它不应凭空创建新段。
+        // 未收到 action_start 的终态事件才需要在当前到达位置创建一个段。
+        // 但 task 摘要统计仍需拿到既有 task segment（有 taskId 时复用，不新建）。
+        var visualTypes = { reason: 1, text: 1, agent: 1, action_start: 1 };
+        var actionEndNeedsSegment = chunk.type === 'action_end' && !findPendingToolCard(sess, chunk.callId, null).pending;
+        var segment = null;
+        if (visualTypes[chunk.type] || actionEndNeedsSegment) {
+            segment = ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName);
+        } else if (chunk.type === 'action_end' && chunk.taskId && sess.taskSegments[chunk.taskId]) {
+            segment = sess.taskSegments[chunk.taskId];
+            sess.currentStreamSegment = segment;
+        }
         switch (chunk.type) {
             case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
-            case 'reason': finishPendingTool(sess); appendReasonChunk(sess, chunk.text); break;
-            case 'text':   finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, true); break;
-            case 'action_end': finishThinkingBlock(sess); appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
-            case 'action_start': finishThinkingBlock(sess); appendActionStartChunk(sess, chunk.toolName, chunk.args, chunk.toolTitle); break;
-            case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); appendContentChunk(sess, chunk.text, false); break;
-            case 'error':  finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text); break;
-            case 'hitl':   finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
-            case 'trace':  finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
-            case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
+            case 'reason': appendReasonChunk(sess, segment, chunk.text, chunk.reasonId, chunk.agentName); break;
+            case 'text': appendContentChunk(sess, segment, chunk.text, true, chunk.reasonId); break;
+            case 'action_end': appendActionEndChunk(sess, segment, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
+            case 'action_start': appendActionStartChunk(sess, segment, chunk.toolName, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); break;
+            case 'agent': appendContentChunk(sess, segment, chunk.text, false, chunk.reasonId); break;
+            case 'error': finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text, chunk.taskId, chunk.taskDescription, chunk.agentName); break;
+            case 'task_done': if (typeof applyTaskDoneChunk === 'function') applyTaskDoneChunk(sess, chunk); break;
+            case 'hitl': finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
+            case 'trace': finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
+            case 'context_size': if (typeof updateContextIndicator === 'function') updateContextIndicator(chunk, sess); break;
         }
+        // task-group 展开状态尊重用户操作；有输出时刷新状态图标与 meta。
+        // task_done 已自行结算状态，不再 mark 回 running。
+        if (segment && segment.taskId && chunk.type !== 'task_done') markTaskGroupUpdated(sess, segment);
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
         }, 1000);
-    } catch (e) {}
+    } catch (e) {
+        console.warn('[onWebChunk]', e);
+    }
 }
 
 function finishStream(sess) {
@@ -194,6 +240,17 @@ function finishStream(sess) {
     // 1. 取消还没跑的动画帧
     if (sess.contentRafId) { cancelAnimationFrame(sess.contentRafId); sess.contentRafId = null; }
     if (sess.reasonRafId) { cancelAnimationFrame(sess.reasonRafId); sess.reasonRafId = null; }
+    // Cancel per-reasonId RAF IDs
+    for (var _rid in sess.reasonGroups) {
+        if (sess.reasonGroups[_rid].reasonRafId) {
+            cancelAnimationFrame(sess.reasonGroups[_rid].reasonRafId);
+            sess.reasonGroups[_rid].reasonRafId = null;
+        }
+        if (sess.reasonGroups[_rid].groupRafId) {
+            cancelAnimationFrame(sess.reasonGroups[_rid].groupRafId);
+            sess.reasonGroups[_rid].groupRafId = null;
+        }
+    }
 
     // 2. 立即把 Buffer 内容渲染出来
     if (sess.reasonBuffer) {
@@ -204,7 +261,40 @@ function finishStream(sess) {
         if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
         if (typeof processMermaidBlocks === 'function') processMermaidBlocks(el);
     }
-    // 如果有思考中的内容，也刷一下
+    // 如果有思考中的内容，也刷一下（含 per-reasonId 分组）
+    for (var _rid in sess.reasonGroups) {
+        var group = sess.reasonGroups[_rid];
+        if (group.thinkingBlockEl && group.thinkingBuffer) {
+            var bodyMdEl = $(group.thinkingBlockEl).find('.reason-group-think-body .md-content')[0];
+            if (bodyMdEl) {
+                $(bodyMdEl).html(renderMd(group.thinkingBuffer));
+                if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(bodyMdEl);
+                if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(bodyMdEl);
+                if (typeof processMermaidBlocks === 'function') processMermaidBlocks(bodyMdEl);
+            }
+        }
+    }
+    // 渲染 reason-group 文本内容（groupBuffer），应用代码高亮、复制按钮、Mermaid
+    for (var _rid in sess.reasonGroups) {
+        var group = sess.reasonGroups[_rid];
+        if (group.textRuns && group.textRuns.length) {
+            for (var ri = 0; ri < group.textRuns.length; ri++) {
+                var run = group.textRuns[ri];
+                if (run.rafId) { cancelAnimationFrame(run.rafId); run.rafId = null; }
+                if (run.el && run.buffer) {
+                    $(run.el).html(renderMd(run.buffer));
+                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(run.el);
+                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(run.el);
+                    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(run.el);
+                }
+            }
+        } else if (group.groupContentEl && group.groupBuffer) {
+            $(group.groupContentEl).html(renderMd(group.groupBuffer));
+            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(group.groupContentEl);
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(group.groupContentEl);
+            if (typeof processMermaidBlocks === 'function') processMermaidBlocks(group.groupContentEl);
+        }
+    }
     if (sess.thinkingBlockEl && sess.thinkingBuffer) {
         if (sess.thinkingBodyMdEl) {
             $(sess.thinkingBodyMdEl).html(renderMd(sess.thinkingBuffer));
@@ -217,25 +307,115 @@ function finishStream(sess) {
 
     removeThinking(sess);
     purgeInlineThinking(sess);
+    // 关闭所有未完成的 reasonId 分组思考块，确保它们被正确收尾
+    // 避免 finishThinkingBlock(sess) 对已分组的思考块第二次包裹
+    for (var _rid in sess.reasonGroups) {
+        if (sess.reasonGroups[_rid].thinkingBlockEl) {
+            finishThinkingBlock(sess, _rid);
+        }
+    }
     finishThinkingBlock(sess);
     finishPendingTool(sess);
     sess.approvedToolCard = null;
 
+    // 结算全部 task-group：非 error → done（绿勾）；error 保留红叉
+    if (typeof finalizeTaskGroups === 'function') finalizeTaskGroups(sess);
+    // 本轮总计时定格（Context 条）
+    if (typeof stopRoundElapsed === 'function') stopRoundElapsed(sess);
+
     if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
 
-    // 显示助手消息时间戳
-    setAssistantTime(sess, sess._lastCreatedAt || Date.now());
+    // 保存行引用（currentBubbleEl 可能在后续清理中被移除）
+    var doneRow = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-row')[0] : null;
+
+    // 条件显示助手消息时间戳：仅当有实际文本输出时才显示
+    var hasTextOutput = !!(sess.reasonBuffer && sess.reasonBuffer.trim());
+    if (!hasTextOutput && doneRow) {
+        $(doneRow).find('.msg-bubble .md-content').each(function() {
+            if (this.getAttribute('data-md-raw') || (this.innerText && this.innerText.trim())) {
+                hasTextOutput = true;
+                return false;
+            }
+        });
+    }
+    if (hasTextOutput) {
+        setAssistantTime(sess, sess._lastCreatedAt || Date.now());
+    }
     sess._lastCreatedAt = null;
 
-    // 流式结束，显示复制按钮（流式过程中被隐藏）
-    if (sess.currentBubbleEl) {
-        var doneRow = $(sess.currentBubbleEl).closest('.msg-row')[0];
-        if (doneRow) $(doneRow).find('.msg-actions').show();
+    // 流式结束：切换 class 并显示操作按钮
+    if (doneRow) {
+        $(doneRow).removeClass('streaming').addClass('done');
+        $(doneRow).find('.msg-actions').show();
+    }
+
+    // 清理未落到任何实际内容块的前置空白缓存：这些空白没有对应的服务端正文，
+    // 不应创建 DOM；已关联到正文的空白此前会原样拼回 buffer，绝不 trim。
+    sess.pendingReasonWhitespace = {};
+    sess.pendingGroupWhitespace = {};
+    sess.pendingThinkingWhitespace = '';
+
+    // 清理空的 md-content 节点（无 data-md-raw、无实际文本、无子元素）。
+    // trim 仅用于判断 DOM 是否可回收，不会回写或修改服务端流式内容。
+    if (doneRow) {
+        $(doneRow).find('.msg-bubble .md-content').each(function() {
+            if (!this.getAttribute('data-md-raw') && (!this.innerText || !this.innerText.trim()) && !$(this).children().length) {
+                $(this).remove();
+            }
+        });
+        // 先移除没有实际内容的思考块外壳。仅按 reason-group 的直接子节点数判断，
+        // 会把包含空 reason-group-think 的分组误判为非空而残留。
+        $(doneRow).find('.reason-group > .reason-group-think').each(function() {
+            var body = $(this).find('.reason-group-think-body')[0];
+            var hasContent = body && ((body.textContent && /\S/.test(body.textContent)) || $(body).children().length);
+            if (!hasContent) {
+                $(this).remove();
+            }
+        });
+        // 回收没有任何实际子内容的 reason-group，避免留下空白边框。
+        $(doneRow).find('.reason-group').each(function() {
+            if (!$(this).children().length) {
+                $(this).remove();
+            }
+        });
+        // 空 task-group 仅可能由上一步移除最后一个 reason-group 产生，随即一并回收。
+        $(doneRow).find('.task-group').each(function() {
+            if (!$(this).find('.task-group-body').children().length) {
+                $(this).remove();
+            }
+        });
     }
 
     // 清除客户端计时（已由 trace 类型的服务端耗时替代）
     if (sess.messageStartTime) {
         sess.messageStartTime = null;
+    }
+
+    // 清除消息来源标识，避免污染下一条流式响应
+    sess.currentSourceLabel = null;
+
+    // /clear 命令处理完毕：清空前端对话 UI
+    if (sess._pendingClear) {
+        sess._pendingClear = false;
+        $(sess.container).empty();
+        sess.currentBubbleEl = null;
+        sess.reasonBuffer = '';
+        sess.thinkingBuffer = '';
+        sess.thinkingBlockEl = null;
+        sess.thinkingBodyMdEl = null;
+        sess.thinkingBodyWrapEl = null;
+        sess.pendingToolCard = null;
+        sess.pendingToolStarted = false;
+        sess.approvedToolCard = null;
+        sess.userMsgCounter = 0;
+        // 清空后不再展示上轮 Context / 总计时
+        sess.roundStartedAt = null;
+        sess.roundEndedAt = null;
+        sess.contextTokens = null;
+        sess.contextLength = null;
+        if (sess.sessionId === activeSessionId && typeof resetContextIndicator === 'function') {
+            resetContextIndicator();
+        }
     }
 
     // resetStreamState 会清空 buffer，所以必须在上面强刷完后再调
@@ -251,6 +431,9 @@ function finishStream(sess) {
 
     // 刷新任务面板
     if (window.loadTodos) window.loadTodos();
+
+    // 任务完成通知（页面在后台时弹通知 + 播放提示音）
+    setTimeout(window._notifyTaskComplete, 500);
 }
 
 /* ===== WebSocket 单连接 ===== */
@@ -327,7 +510,7 @@ function connectWebGate() {
                 if (typeof ensureChatInHistory === 'function') {
                     ensureChatInHistory(sid, chunk.text, true);
                 }
-                appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt);
+                appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt, chunk.sourceLabel);
                 if (userSess.sessionId === activeSessionId) {
                     if (!inChatMode) switchToChatMode();
                     scrollToBottom(true);
@@ -346,6 +529,8 @@ function connectWebGate() {
                 }
                 resetStreamState(sess2);
                 showThinking(sess2);
+                // 外部通道（Loop/IM 等）推流：按首包起算本轮总计时
+                if (typeof startRoundElapsed === 'function') startRoundElapsed(sess2);
             }
             onWebChunk(sess2, chunk);
         } catch(e) {
@@ -471,9 +656,10 @@ function showWechatModal() {
     wechatModalOverlay = $('<div>').addClass('wechat-modal-overlay').html(
         '<div class="wechat-modal">'
         + '<div class="wechat-modal-title">微信扫码绑定</div>'
-        + '<div class="wechat-modal-subtitle">用微信扫描二维码，当前会话将同步到微信</div>'
+        + '<div class="wechat-modal-subtitle">用微信扫描二维码，授权后自动完成绑定</div>'
         + '<div class="wechat-qr-wrap" id="wechatQrWrap"><span style="color:#999;font-size:13px">加载中...</span></div>'
         + '<div class="wechat-status" id="wechatQrStatus">等待扫码...</div>'
+        + '<div class="im-bind-hint">绑定后即可在微信上与 SolonCode 对话</div>'
         + '<button class="wechat-modal-close" id="wechatModalClose">取消</button>'
         + '</div>'
     );
@@ -602,8 +788,14 @@ function showFeishuModal() {
     if (feishuModalOverlay) return;
 
     feishuModalOverlay = $('<div>').addClass('im-bind-modal-overlay').html(
-        '<div class="im-bind-modal">'
+        '<div class="im-bind-modal" style="min-width:360px">'
         + '<div class="im-bind-modal-title" style="color:#3370ff">飞书绑定</div>'
+        + '<div class="im-bind-tabs">'
+        + '  <button class="im-bind-tab active" data-tab="qrcode">扫码绑定</button>'
+        + '  <button class="im-bind-tab" data-tab="credential">手动输入</button>'
+        + '</div>'
+        /* === 手动输入 Tab === */
+        + '<div class="im-bind-tab-content" id="feishuTabCredential" style="display:none">'
         + '<div class="im-bind-modal-subtitle">输入飞书应用的 App ID 和 App Secret，连接后请在飞书上发消息给机器人完成自动绑定</div>'
         + '<div class="im-bind-input-group">'
         + '  <label class="im-bind-input-label">App ID</label>'
@@ -615,17 +807,42 @@ function showFeishuModal() {
         + '</div>'
         + '<div class="im-bind-status" id="feishuBindStatus">&nbsp;</div>'
         + '<button class="im-bind-confirm-btn feishu" id="feishuBindConfirmBtn">连接</button>'
-        + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
         + '<div class="im-bind-hint">提示：请在飞书开放平台（<a href="https://open.feishu.cn/" target="_blank">open.feishu.cn</a>）创建企业自建应用，开启机器人能力，事件订阅选择 WebSocket 长连接模式，然后复制 App ID 和 App Secret 到这里。</div>'
+        + '</div>'
+        /* === 扫码绑定 Tab === */
+        + '<div class="im-bind-tab-content" id="feishuTabQrcode">'
+        + '<div class="im-bind-modal-subtitle">使用飞书扫描二维码，授权后自动完成绑定</div>'
+        + '<div class="feishu-qr-wrap" id="feishuQrWrap"><span class="feishu-qr-loading">正在获取二维码...</span></div>'
+        + '<div class="im-bind-status" id="feishuQrStatus">&nbsp;</div>'
+        + '<button class="im-bind-confirm-btn feishu" id="feishuQrRefreshBtn" style="display:none">刷新二维码</button>'
+        + '<div class="im-bind-hint">绑定后即可在飞书上与 SolonCode 对话</div>'
+        + '</div>'
+        + '<button class="im-bind-modal-close" id="feishuModalClose">取消</button>'
         + '</div>'
     );
     $('body').append(feishuModalOverlay);
+
+    // Tab切换
+    feishuModalOverlay.find('.im-bind-tab').on('click', function() {
+        var tab = $(this).data('tab');
+        feishuModalOverlay.find('.im-bind-tab').removeClass('active');
+        $(this).addClass('active');
+        feishuModalOverlay.find('.im-bind-tab-content').hide();
+        $('#feishuTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).show();
+        if (tab === 'qrcode') {
+            startFeishuQrBinding();
+        }
+    });
 
     $('#feishuModalClose').on('click', closeFeishuModal);
     feishuModalOverlay.on('click', function(e) {
         if ($(e.target).is(feishuModalOverlay)) closeFeishuModal();
     });
 
+    // 默认扫码 tab，自动获取二维码
+    startFeishuQrBinding();
+
+    /* ---- 手动输入 Tab 逻辑 ---- */
     var $appIdInput = $('#feishuAppIdInput');
     var $appSecretInput = $('#feishuAppSecretInput');
     var $statusEl = $('#feishuBindStatus');
@@ -682,6 +899,15 @@ function showFeishuModal() {
         });
     });
 
+    // Enter key to confirm
+    $appIdInput.add($appSecretInput).on('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            $confirmBtn.click();
+        }
+    });
+
+    /* ---- 手动输入绑定轮询逻辑 ---- */
     function startFeishuPoll() {
         if (feishuPollTimer) clearInterval(feishuPollTimer);
         var dotCount = 0;
@@ -694,7 +920,6 @@ function showFeishuModal() {
                 try {
                     var data = resp.data || {};
                     if (data.bound) {
-                        // 绑定成功！
                         clearInterval(feishuPollTimer);
                         feishuPollTimer = null;
                         $statusEl.text('绑定成功！').removeClass('error').addClass('scanned');
@@ -709,12 +934,93 @@ function showFeishuModal() {
         }, 2000);
     }
 
-    // Enter key to confirm
-    $appIdInput.add($appSecretInput).on('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            $confirmBtn.click();
+    /* ---- 扫码绑定 Tab 逻辑 ---- */
+    function startFeishuQrBinding() {
+        var $qrWrap = $('#feishuQrWrap');
+        var $qrStatus = $('#feishuQrStatus');
+        var $refreshBtn = $('#feishuQrRefreshBtn');
+
+        $qrStatus.text('').removeClass('error scanned');
+        $refreshBtn.hide();
+
+        $.ajax({
+            url: '/web/chat/feishu/qrcode?sessionId=' + encodeURIComponent(activeSessionId),
+            method: 'POST',
+            dataType: 'json'
+        }).done(function(resp) {
+            if (resp.code !== 200 || !resp.data) {
+                var errMsg = resp.message || '获取二维码失败';
+                $qrWrap.html('<span style="font-size:13px;color:#666">' + escapeHtml(errMsg) + '</span>');
+                $qrStatus.text(errMsg).addClass('error');
+                $refreshBtn.show();
+                return;
+            }
+            var qrUrl = resp.data.qrUrl;
+            $qrWrap.html('');
+            if (qrUrl) {
+                try {
+                    new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
+                    $qrStatus.text('请使用飞书 App 扫码').removeClass('error scanned');
+                } catch(e) {
+                    $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                }
+            }
+            // 开始轮询扫码状态
+            startFeishuQrPoll();
+        }).fail(function(jqXhr) {
+            $qrWrap.html('<span style="font-size:13px;color:#666">网络请求失败</span>');
+            $qrStatus.text('网络请求失败').addClass('error');
+            $refreshBtn.show();
+        });
+    }
+
+    function startFeishuQrPoll() {
+        if (feishuPollTimer) clearInterval(feishuPollTimer);
+        var dotCount = 0;
+        feishuPollTimer = setInterval(function() {
+            $.get('/web/chat/feishu/qrcode/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+                try {
+                    var data = resp.data || {};
+                    var $qrStatus = $('#feishuQrStatus');
+                    if (!$qrStatus.length) return;
+
+                    var status = data.status;
+                    if (status === 'waiting') {
+                        dotCount = (dotCount + 1) % 4;
+                        var dots = '.'.repeat(dotCount);
+                        $qrStatus.text('等待扫码' + dots).removeClass('error scanned');
+                    } else if (status === 'success') {
+                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        setTimeout(function() {
+                            closeFeishuModal();
+                            updateFeishuUI();
+                            switchToChatMode();
+                        }, 1200);
+                    } else if (status === 'failed') {
+                        $qrStatus.text(data.message || '绑定失败').addClass('error');
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        $('#feishuQrRefreshBtn').show();
+                    } else if (status === 'error') {
+                        $qrStatus.text(data.message || '查询状态失败').addClass('error');
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        $('#feishuQrRefreshBtn').show();
+                    }
+                } catch(e) {}
+            }, 'json');
+        }, 2000);
+    }
+
+    // 刷新二维码
+    $('#feishuQrRefreshBtn').on('click', function() {
+        if (feishuPollTimer) {
+            clearInterval(feishuPollTimer);
+            feishuPollTimer = null;
         }
+        startFeishuQrBinding();
     });
 }
 
@@ -734,6 +1040,8 @@ var dingtalkHeaderBtn = $('#dingtalkHeaderBtn');
 var dingtalkHeaderLabel = $('#dingtalkHeaderLabel');
 var dingtalkModalOverlay = null;
 var dingtalkPollTimer = null;
+var dingtalkStatusTimer = null;
+var dingtalkBindCheckTimer = null;
 
 function updateDingTalkUI() {
     if (!activeSessionId) return;
@@ -741,11 +1049,53 @@ function updateDingTalkUI() {
         try {
             var data = resp.data || {};
             var bound = !!data.bound;
-            dingtalkHeaderBtn.toggleClass('bound', bound);
-            dingtalkHeaderLabel.text(bound ? '已连接' : '');
-            dingtalkHeaderBtn.attr('title', bound ? '钉钉已绑定（点击解绑）' : '钉钉绑定');
+            var pending = !!data.pending;
+            if (bound && !pending) {
+                // 完全绑定（用户已在钉上发过消息）
+                dingtalkHeaderBtn.toggleClass('bound', true).removeClass('pending');
+                dingtalkHeaderLabel.text('已连接');
+                dingtalkHeaderBtn.attr('title', '钉钉已绑定（点击解绑）');
+            } else if (bound && pending) {
+                // 半绑定（扫码成功，等待用户发第一条消息）
+                dingtalkHeaderBtn.toggleClass('pending', true).removeClass('bound');
+                dingtalkHeaderLabel.text('连接中...');
+                dingtalkHeaderBtn.attr('title', '等待用户在钉钉上发消息完成绑定');
+            } else {
+                dingtalkHeaderBtn.removeClass('bound pending');
+                dingtalkHeaderLabel.text('');
+                dingtalkHeaderBtn.attr('title', '钉钉绑定');
+            }
         } catch(e) {}
     }, 'json');
+}
+
+/**
+ * 后台轮询钉钉绑定状态。
+ * 扫码绑定成功后，等待用户给钉钉机器人发消息完成真正绑定，
+ * 一旦检测到 bound=true 自动更新按钮为"已连接"（无需刷新页面）。
+ */
+function startDingtalkStatusPoll() {
+    if (dingtalkStatusTimer) return;
+    dingtalkStatusTimer = setInterval(function() {
+        if (!activeSessionId) {
+            clearInterval(dingtalkStatusTimer);
+            dingtalkStatusTimer = null;
+            return;
+        }
+        $.get('/web/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+            try {
+                var data = resp.data || {};
+                // 只在完全绑定（pending=false）时才停止轮询
+                if (data.bound && !data.pending) {
+                    clearInterval(dingtalkStatusTimer);
+                    dingtalkStatusTimer = null;
+                    dingtalkHeaderBtn.toggleClass('bound', true).removeClass('pending');
+                    dingtalkHeaderLabel.text('已连接');
+                    dingtalkHeaderBtn.attr('title', '钉钉已绑定（点击解绑）');
+                }
+            } catch(e) {}
+        }, 'json');
+    }, 3000);
 }
 
 // Page load: refresh status
@@ -771,9 +1121,15 @@ function showDingTalkModal() {
     if (dingtalkModalOverlay) return;
 
     dingtalkModalOverlay = $('<div>').addClass('im-bind-modal-overlay').html(
-        '<div class="im-bind-modal">'
+        '<div class="im-bind-modal" style="min-width:360px">'
         + '<div class="im-bind-modal-title" style="color:#0089FF">钉钉绑定</div>'
-        + '<div class="im-bind-modal-subtitle">输入钉钉机器人应用的 AppKey 和 AppSecret，连接后请在钉钉上发消息给机器人完成自动绑定</div>'
+        + '<div class="im-bind-tabs">'
+        + '  <button class="im-bind-tab active" data-tab="qrcode">扫码绑定</button>'
+        + '  <button class="im-bind-tab" data-tab="credential">手动输入</button>'
+        + '</div>'
+        /* === 手动输入 Tab === */
+        + '<div class="im-bind-tab-content" id="dingtalkTabCredential" style="display:none">'
+        + '<div class="im-bind-modal-subtitle">输入钉钉应用的 AppKey 和 AppSecret，连接后请在钉钉上发消息给机器人完成自动绑定</div>'
         + '<div class="im-bind-input-group">'
         + '  <label class="im-bind-input-label">AppKey（Client ID）</label>'
         + '  <input class="im-bind-input" id="dingtalkAppKeyInput" placeholder="钉钉开放平台 → 应用 → 凭据 → AppKey" />'
@@ -784,19 +1140,42 @@ function showDingTalkModal() {
         + '</div>'
         + '<div class="im-bind-status" id="dingtalkBindStatus">&nbsp;</div>'
         + '<button class="im-bind-confirm-btn dingtalk" id="dingtalkBindConfirmBtn">连接</button>'
-        + '<button class="im-bind-modal-close" id="dingtalkModalClose">取消</button>'
         + '<div class="im-bind-hint">提示：请在钉钉开放平台（<a href="https://open.dingtalk.com/" target="_blank">open.dingtalk.com</a>）创建企业内部应用，开启机器人能力，消息接收模式选择 Stream，然后复制 AppKey 和 AppSecret 到这里。</div>'
+        + '</div>'
+        /* === 扫码绑定 Tab === */
+        + '<div class="im-bind-tab-content" id="dingtalkTabQrcode">'
+        + '<div class="im-bind-modal-subtitle">使用钉钉扫描二维码，授权后自动完成绑定</div>'
+        + '<div class="feishu-qr-wrap" id="dingtalkQrWrap"><span class="feishu-qr-loading">正在获取二维码...</span></div>'
+        + '<div class="im-bind-status" id="dingtalkQrStatus">&nbsp;</div>'
+        + '<button class="im-bind-confirm-btn dingtalk" id="dingtalkQrRefreshBtn" style="display:none">刷新二维码</button>'
+        + '<div class="im-bind-hint">绑定后即可在钉钉上与 SolonCode 对话</div>'
+        + '</div>'
+        + '<button class="im-bind-modal-close" id="dingtalkModalClose">取消</button>'
         + '</div>'
     );
     $('body').append(dingtalkModalOverlay);
 
-    var $modalContent = dingtalkModalOverlay.find('.im-bind-modal');
+    // Tab切换
+    dingtalkModalOverlay.find('.im-bind-tab').on('click', function() {
+        var tab = $(this).data('tab');
+        dingtalkModalOverlay.find('.im-bind-tab').removeClass('active');
+        $(this).addClass('active');
+        dingtalkModalOverlay.find('.im-bind-tab-content').hide();
+        $('#dingtalkTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).show();
+        if (tab === 'qrcode') {
+            startDingtalkQrBinding();
+        }
+    });
 
     $('#dingtalkModalClose').on('click', closeDingTalkModal);
     dingtalkModalOverlay.on('click', function(e) {
         if ($(e.target).is(dingtalkModalOverlay)) closeDingTalkModal();
     });
 
+    // 默认扫码 tab，自动获取二维码
+    startDingtalkQrBinding();
+
+    /* ---- 手动输入 Tab 逻辑 ---- */
     var $appKeyInput = $('#dingtalkAppKeyInput');
     var $appSecretInput = $('#dingtalkAppSecretInput');
     var $statusEl = $('#dingtalkBindStatus');
@@ -887,12 +1266,127 @@ function showDingTalkModal() {
             $confirmBtn.click();
         }
     });
+
+    /* ---- 扫码绑定 Tab 逻辑 ---- */
+    function startDingtalkQrBinding() {
+        var $qrWrap = $('#dingtalkQrWrap');
+        var $qrStatus = $('#dingtalkQrStatus');
+        var $refreshBtn = $('#dingtalkQrRefreshBtn');
+
+        // 防止已在轮询中再次触发
+        if ($qrWrap.find('canvas').length > 0) return;
+
+        $qrStatus.text('').removeClass('error scanned');
+        $refreshBtn.hide();
+
+        $.ajax({
+            url: '/web/chat/dingtalk/qrcode?sessionId=' + encodeURIComponent(activeSessionId),
+            method: 'POST',
+            dataType: 'json'
+        }).done(function(resp) {
+            if (resp.code !== 200 || !resp.data) {
+                var errMsg = resp.message || '获取二维码失败';
+                $qrWrap.html('<span style="font-size:13px;color:#666">' + escapeHtml(errMsg) + '</span>');
+                $qrStatus.text(errMsg).addClass('error');
+                $refreshBtn.show();
+                return;
+            }
+            var qrUrl = resp.data.qrUrl;
+            $qrWrap.html('');
+            if (qrUrl) {
+                try {
+                    new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
+                    $qrStatus.text('请使用钉钉 App 扫码').removeClass('error scanned');
+                } catch(e) {
+                    $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                }
+            }
+            // 开始轮询扫码状态
+            startDingtalkQrPoll();
+        }).fail(function(jqXhr) {
+            $qrWrap.html('<span style="font-size:13px;color:#666">网络请求失败</span>');
+            $qrStatus.text('网络请求失败').addClass('error');
+            $refreshBtn.show();
+        });
+    }
+
+    function startDingtalkQrPoll() {
+        if (dingtalkPollTimer) clearInterval(dingtalkPollTimer);
+        var dotCount = 0;
+        dingtalkPollTimer = setInterval(function() {
+            $.get('/web/chat/dingtalk/qrcode/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+                try {
+                    var data = resp.data || {};
+                    var $qrStatus = $('#dingtalkQrStatus');
+                    if (!$qrStatus.length) return;
+
+                    var status = data.status;
+                    if (status === 'waiting') {
+                        dotCount = (dotCount + 1) % 4;
+                        var dots = '.'.repeat(dotCount);
+                        $qrStatus.text('等待扫码' + dots).removeClass('error scanned');
+                    } else if (status === 'success') {
+                        clearInterval(dingtalkPollTimer);
+                        dingtalkPollTimer = null;
+                        $qrStatus.text('扫码成功！请在钉钉上给机器人发送任意消息完成绑定').removeClass('error').addClass('scanned');
+                        $('#dingtalkQrRefreshBtn').hide();
+                        // 遮罩层变透明、不阻断页面交互，弹窗保持可见等待真正绑定
+                        dingtalkModalOverlay.css({ pointerEvents: 'none', background: 'transparent' });
+                        dingtalkModalOverlay.find('.im-bind-modal').css('pointerEvents', 'auto');
+                        // 开始轮询真正绑定状态
+                        dingtalkBindCheckTimer = setInterval(function() {
+                            $.get('/web/chat/dingtalk/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+                                try {
+                                    var data = resp.data || {};
+                                    // bound=true + pending=false 表示用户已在钉钉上发消息完成了绑定
+                                    if (data.bound && !data.pending) {
+                                        clearInterval(dingtalkBindCheckTimer);
+                                        dingtalkBindCheckTimer = null;
+                                        $qrStatus.text('绑定成功！').removeClass('error').addClass('scanned');
+                                        setTimeout(function() {
+                                            closeDingTalkModal();
+                                            updateDingTalkUI();
+                                            switchToChatMode();
+                                            startDingtalkStatusPoll();
+                                        }, 800);
+                                    }
+                                } catch(e) {}
+                            }, 'json');
+                        }, 2000);
+                    } else if (status === 'failed') {
+                        $qrStatus.text(data.message || '绑定失败').addClass('error');
+                        clearInterval(dingtalkPollTimer);
+                        dingtalkPollTimer = null;
+                        $('#dingtalkQrRefreshBtn').show();
+                    } else if (status === 'error') {
+                        $qrStatus.text(data.message || '查询状态失败').addClass('error');
+                        clearInterval(dingtalkPollTimer);
+                        dingtalkPollTimer = null;
+                        $('#dingtalkQrRefreshBtn').show();
+                    }
+                } catch(e) {}
+            }, 'json');
+        }, 2000);
+    }
+
+    // 刷新二维码
+    $('#dingtalkQrRefreshBtn').on('click', function() {
+        if (dingtalkPollTimer) {
+            clearInterval(dingtalkPollTimer);
+            dingtalkPollTimer = null;
+        }
+        startDingtalkQrBinding();
+    });
 }
 
 function closeDingTalkModal() {
     if (dingtalkPollTimer) {
         clearInterval(dingtalkPollTimer);
         dingtalkPollTimer = null;
+    }
+    if (dingtalkBindCheckTimer) {
+        clearInterval(dingtalkBindCheckTimer);
+        dingtalkBindCheckTimer = null;
     }
     if (dingtalkModalOverlay) {
         dingtalkModalOverlay.remove();

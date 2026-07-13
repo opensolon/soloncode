@@ -5,7 +5,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$VERSION = "v2026.6.24"
+$VERSION = "v2026.7.13"
 $PACKAGE_URL = "https://gitee.com/opensolon/soloncode/releases/download/$VERSION/soloncode-cli-bin-$VERSION.tar.gz"
 $TEMP_DIR = Join-Path $env:TEMP "soloncode-install"
 
@@ -57,13 +57,13 @@ try {
     # Set environment variable to tell install.ps1 not to wait
     $env:SOLONCODE_SETUP = "1"
     
-    # Execute the installer script
-    & $installPath
+    # Set environment variable to pass the source directory (because $MyInvocation.MyCommand.Definition
+    # doesn't work correctly when script is executed via Get-Content | Invoke-Expression)
+    $env:SOLONCODE_INSTALL_DIR = $installDir
     
-    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
-        Write-Error "Installer failed with exit code: $LASTEXITCODE"
-        throw "Installation failed"
-    }
+    # Execute the installer script via Invoke-Expression to bypass execution policy
+    # Using & triggers PowerShell's execution policy check (Restricted), causing "禁止运行脚本" error
+    Get-Content -Path $installPath -Raw | Invoke-Expression
 
     # Refresh PATH for current session
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')

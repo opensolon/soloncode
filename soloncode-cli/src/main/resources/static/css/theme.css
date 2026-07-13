@@ -85,8 +85,8 @@
     --thinking-dot: #4f6ef7;
     --tag-bg: #f3f4f8;
     --tag-border: #e5e7eb;
-    --thinking-block-bg: #f8f9fc;
-    --thinking-block-border: #e0e3eb;
+    --reason-group-think-bg: #f8f9fc;
+    --reason-group-think-border: #e0e3eb;
 }
 
 /* ===== Dark Theme ===== */
@@ -161,8 +161,8 @@
     --thinking-dot: #6b8aff;
     --tag-bg: #22223a;
     --tag-border: #333355;
-    --thinking-block-bg: #1a1a30;
-    --thinking-block-border: #2a2a44;
+    --reason-group-think-bg: #1a1a30;
+    --reason-group-think-border: #2a2a44;
 }
 
 /* ===== Accessibility ===== */
@@ -233,7 +233,7 @@
         --thinking-dot: #6b8aff;
         --tag-bg: #22223a;
         --tag-border: #333355;
-        --thinking-block-bg: #1a1a30;
-        --thinking-block-border: #2a2a44;
+        --reason-group-think-bg: #1a1a30;
+        --reason-group-think-border: #2a2a44;
     }
 }

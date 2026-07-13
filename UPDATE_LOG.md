@@ -1,9 +1,100 @@
+### v2026.7.13
+
+* 优化 soloncode web 会话删除逻辑（同时删掉内存）
+* 优化 soloncode web 线程配置
+* 优化 soloncode web 线程池配置
+* 优化 soloncode web 子代理任务分组体验
+* 修复 soloncode web 文件树展开后，可能会收回的问题（被刷新了）。新案改为动态删增
+* 细节优化
+
+### v2026.7.12
+
+* 添加 soloncode web 模型选择器推理水平（自动/快速/均衡/深入/最强）
+* 优化 soloncode web 子代理任务分组体验（收起时，有任务运行状态；展开时，可点左侧边收起）
+* 细节优化
+
+### v2026.7.11
+
+* 添加 soloncode web mcp json 字符串导入方式
+* 添加 soloncode web 文件详情支持 md 视图模式和全屏模式
+* 添加 soloncode web 流式消息分组：思考与工具分组，子代理任务分组
+* 添加 soloncode web 输入面板技能搜索
+* 细节优化
+
+### v2026.7.9
+
+* 添加 soloncode web 挂载文件监听，实时通知文件变化
+* 添加 soloncode web 对话分叉（复制）功能
+* 优化 soloncode web 消息渲染，避免 html 输出破坏界面
+* 调整 soloncode web 上传文件统一放到 ".uploads" 目录下
+* 细节优化
+
+### v2026.7.8
+
+* 添加 soloncode web 多工作区支持（基于文件类型的挂载，实现自然的跨区协同工作）
+* 细节优化
+
+### v2026.7.7
+
+* 添加 soloncode web 对话消息删除功能
+* 优化 soloncode 上下文压缩算法
+* 优化 soloncode hitl 实现
+* 优化 soloncode permission 实现
+* 优化 soloncode web 跨域处理
+* 优化 soloncode web 附件显示
+* 细节优化
+
+### v2026.7.3
+
+* 修复 soloncode web mcp 不能检测的问题
+* 修复 soloncode 安装通过 Invoke-Expression 绕过执行策略以解决 PowerShell 脚本禁止运行错误
+
+### v2026.7.1
+
+* 添加 soloncode web 设置/供应商 模型“全选”“反选”
+* 优化 soloncode web md 链接渲染改为新窗口打开
+* 优化 soloncode web 适配studio，优化超链接跳转机制
+* 细节优化
+
+### v2026.6.28
+
+* 添加 soloncode web clear 命令执行后的前端清理
+* 优化 soloncode web 设置/供应商 同步细节
+* 优化 soloncode web 设置/日志选择、接口规范选择器的表单样式
+* 优化 soloncode serve 启动时打印
+* 细节优化
+
+### v2026.6.27
+
+* 优化 soloncode web 钉钉与微信绑定
+* 优化 soloncode web mcp 编辑提示
+* 优化 soloncode web 循环任务编辑提示
+* 细节优化
+
+### v2026.6.26
+
+* 添加 soloncode web 用户消息来源显示（飞书、Web）
+* 优化 soloncode web 钉钉推送标题显示
+* 优化 soloncode web 模型选择框架
+* 修复 soloncode web 重启后钉钉不能直接收消息的问题
+* 细节优化
+
+### v2026.6.25
+
+* 添加 soloncode web 设置/通用/日志保存
+* 添加 soloncode web 飞书扫码绑定
+* 添加 soloncode web 钉钉扫码绑定
+* 优化 soloncode loop goal 完成识别（改为 tool 单一机制，之前还有消息标识）
+* 优化 soloncode loop goal 移除 maxIterations 限制（严格使用预算机制）
+* 修复 soloncode web 添加供应商时，没有同步输入面板的模型选择
+* 修复 soloncode web 附件显示不正常的问题
+* 细节优化
 
 ### v2026.6.24
 
 * 新增 soloncode /interpret 命令（支持跨会话中断）
 * 添加 soloncode /continue 命令 sessionId 参数支持（支持跨会话继续）
-* 添加 soloncode StopLoop 拦截器
+* 添加 soloncode StopLoopInterceptor 拦截器（A->A->A 或 A->B->A->B ...频繁做相同的事）
 * 添加 soloncode web 输入面板的模型选择添加搜索功能
 * 添加 soloncode web 对话消息 mermaid 渲染支持
 * 添加 soloncode web WWW-Authenticate 认证
@@ -12,6 +103,7 @@
 * 优化 soloncode web 面板拖拽性能；延迟消息流代码高亮；为滚动区域和面板添加contain布局
 * 优化 soloncode web 任务面板数据显示
 * 优化 soloncode web mac 组合输入法的兼容性
+* 优化 soloncode 上下文压缩算法
 * 重构 soloncode loop goal 实现
 * 细节优化
 

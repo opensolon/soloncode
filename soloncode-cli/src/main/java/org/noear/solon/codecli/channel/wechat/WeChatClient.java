@@ -18,7 +18,7 @@ package org.noear.solon.codecli.channel.wechat;
 import org.noear.snack4.ONode;
 import org.noear.solon.net.http.HttpResponse;
 import org.noear.solon.net.http.HttpUtils;
-import org.noear.solon.net.http.impl.HttpSslSupplierAny;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -300,7 +300,6 @@ public class WeChatClient {
 
     private static String httpGet(String urlStr) throws Exception {
         HttpUtils http = HttpUtils.http(urlStr)
-                .ssl(HttpSslSupplierAny.getInstance())
                 .timeout(10, 10, 15)
                 .header(HEADER_CONTENT_TYPE, "application/json")
                 .header(HEADER_UIN, generateUin())
@@ -318,7 +317,6 @@ public class WeChatClient {
 
     private static String httpPost(String urlStr, String jsonBody, String botToken) throws Exception {
         HttpUtils http = HttpUtils.http(urlStr)
-                .ssl(HttpSslSupplierAny.getInstance())
                 .timeout(10, 10, 45)  // getupdates 长轮询需要较长超时
                 .header(HEADER_CONTENT_TYPE, "application/json")
                 .header(HEADER_AUTH_TYPE, "ilink_bot_token")

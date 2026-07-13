@@ -39,13 +39,13 @@ import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
-import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
+import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.command.builtin.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.portal.web.model.ModelApiUrl;
+import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
@@ -208,9 +208,18 @@ public class WsGate extends SimpleWebSocketListener {
             // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();
             ChatModel chatModel = engine.getModelOrMain(modelName);
-            String reasoningEffort = normalizeReasoningEffort(req.getReasoningEffort());
-
+            
             session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+            if (req.getReasoningEffort() != null) {
+                ReasoningEffortSupport.putSessionEffort(session,
+                        req.getReasoningEffort(), true);
+            }
+            // 请求显式 effort 优先；否则用会话 context
+            final String reasoningEffort = ReasoningEffortSupport.resolveEffectiveEffort(
+                    req.getReasoningEffort(),
+                    ReasoningEffortSupport.getSessionEffort(session),
+                    null,
+                    req.getReasoningEffort() != null);
 
             // 模式处理：根据前端 mode 字段配置 session 行为
             String mode = req.getMode();
@@ -391,7 +400,9 @@ public class WsGate extends SimpleWebSocketListener {
         }
 
         ONode node = new ONode().set("type", "action_start")
-                .set("sessionId", finalSessionId);
+                .set("sessionId", finalSessionId)
+                .set("reasonId", chunk.getReasonId())
+                .set("callId", chunk.getCallId());
 
         if (engine.getName().equals(chunk.getAgentName())) {
             node.set("toolName", chunk.getToolName());
@@ -421,7 +432,9 @@ public class WsGate extends SimpleWebSocketListener {
         }
 
         ONode node = new ONode().set("type", "action_end")
-                .set("sessionId", finalSessionId);
+                .set("sessionId", finalSessionId)
+                .set("reasonId", chunk.getReasonId())
+                .set("callId", chunk.getCallId());
 
         if (engine.getName().equals(chunk.getAgentName())) {
             node.set("toolName", chunk.getToolName());
@@ -475,13 +488,16 @@ public class WsGate extends SimpleWebSocketListener {
             String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
             ChatModel chatModel = engine.getModelOrMain(modelName);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
-
+            String reasoningEffort = ReasoningEffortSupport.getSessionEffort(session);
+            
             Prompt hitlPrompt = Prompt.of().attrPut("start_time", System.currentTimeMillis());
-
+            applyReasoningEffort(hitlPrompt, reasoningEffort);
+            
             Disposable disposable = engine.prompt(hitlPrompt)
                     .session(session)
                     .options(o -> {
                         o.chatModel(chatModel);
+                        applyReasoningEffort(o, reasoningEffort);
                         if (Assert.isNotEmpty(cwd)) {
                             o.toolContextPut(HarnessEngine.ATTR_CWD, cwd);
                         }
@@ -554,8 +570,8 @@ public class WsGate extends SimpleWebSocketListener {
                 String existModel = currentConfig == null ? null : currentConfig.getNameOrModel();
                 String existProvider = currentConfig == null ? null : currentConfig.getStandardOrProvider();
                 String finalApiUrlInput = apiUrl != null ? apiUrl : existApiUrl;
-                String normalizedProvider = ModelApiUrl.normalizeStandard(provider != null ? provider : existProvider, finalApiUrlInput);
-                String normalizedApiUrl = finalApiUrlInput == null ? null : ModelApiUrl.normalizeChatApiUrl(finalApiUrlInput, normalizedProvider);
+                String normalizedProvider = provider != null ? provider : existProvider;
+                String normalizedApiUrl = finalApiUrlInput;
                 String finalApiKey = apiKey != null ? apiKey : existApiKey;
                 String finalModel = model != null ? model : existModel;
 
@@ -637,34 +653,12 @@ public class WsGate extends SimpleWebSocketListener {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
-    private String normalizeReasoningEffort(String value) {
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.trim().toLowerCase();
-        if (normalized.isEmpty() || "auto".equals(normalized)) {
-            return null;
-        }
-        if ("low".equals(normalized) || "medium".equals(normalized) || "high".equals(normalized) || "max".equals(normalized)) {
-            return normalized;
-        }
-        return null;
-    }
-
     private void applyReasoningEffort(Prompt prompt, String reasoningEffort) {
-        if (Assert.isEmpty(reasoningEffort)) {
-            return;
-        }
-        prompt.attrPut("reasoning_effort", reasoningEffort);
-        prompt.attrPut("reasoningEffort", reasoningEffort);
+        ReasoningEffortSupport.applyToPrompt(prompt, reasoningEffort);
     }
 
     private void applyReasoningEffort(ReActOptionsAmend options, String reasoningEffort) {
-        if (Assert.isEmpty(reasoningEffort)) {
-            return;
-        }
-        options.optionSet("reasoning_effort", reasoningEffort);
-        options.optionSet("reasoningEffort", reasoningEffort);
+        ReasoningEffortSupport.applyToOptions(options, reasoningEffort);
     }
 
     /**

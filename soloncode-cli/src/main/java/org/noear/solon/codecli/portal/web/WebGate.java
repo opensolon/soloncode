@@ -24,7 +24,6 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.content.Contents;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.content.TextBlock;
-import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -32,8 +31,8 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
-import org.noear.solon.codecli.command.builtin.LoopExecutionResult;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
@@ -50,6 +49,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -237,15 +237,37 @@ public class WebGate extends SimpleWebSocketListener {
      * @param attachments     上传的文件附件数组（可为 null）
      * @param attachmentTypes 附件类型数组，与 attachments 一一对应（如 "image"）
      * @param hitlAction      HITL 操作类型，取值 "approve" 或 "reject"（可为 null）
+     * @param source          消息来源通道标识
+     * @param reasoningEffort 请求级推理水平（可选，写入会话后由 StreamBuilder 注入）
      */
     public void onChatInput(String sessionId,
                             String sessionCwd,
                             String input, String selectedModel,
                             UploadedFile[] attachments, String[] attachmentTypes,
-                            String hitlAction) {
+                            String hitlAction, String source) {
+        onChatInput(sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
+                hitlAction, source, null);
+    }
+    
+    /**
+     * 用户聊天输入入口（含推理选项）。
+     */
+    public void onChatInput(String sessionId,
+                            String sessionCwd,
+                            String input, String selectedModel,
+                            UploadedFile[] attachments, String[] attachmentTypes,
+                            String hitlAction, String source,
+                            String reasoningEffort) {
         AgentSession session = null;
         try {
             session = engine.getSession(sessionId);
+            
+            // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）
+            if (Assert.isNotEmpty(selectedModel)) {
+                session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
+            }
+            boolean effortProvided = reasoningEffort != null;
+            ReasoningEffortSupport.putSessionEffort(session, reasoningEffort, effortProvided);
 
             String agentName = null;
             String currentInput = input;
@@ -279,6 +301,7 @@ public class WebGate extends SimpleWebSocketListener {
 
             // Handle file upload
             List<ImageBlock> imageBlocks = new ArrayList<>();
+            List<String> imageFileNames = new ArrayList<>();
             List<String> fileAttachments = new ArrayList<>();
 
             if (attachments != null) {
@@ -287,7 +310,10 @@ public class WebGate extends SimpleWebSocketListener {
                     String fileName = attachment.getName();
                     if (fileName != null && !fileName.contains("..") && !fileName.contains("/") && !fileName.contains("\\")) {
                         String ext = "." + attachment.getExtension();
-                        Path savePath = Paths.get(engine.getWorkspace(), fileName).toAbsolutePath().normalize();
+                        Path uploadDir = Paths.get(engine.getWorkspace(), ".uploads").toAbsolutePath().normalize();
+                        Files.createDirectories(uploadDir);
+                        Path savePath = uploadDir.resolve(fileName).toAbsolutePath().normalize();
+                        fileName = ".uploads/" + fileName;
 
                         if (savePath.startsWith(Paths.get(engine.getWorkspace()).toAbsolutePath().normalize())) {
                             Files.copy(attachment.getContent(), savePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -297,6 +323,7 @@ public class WebGate extends SimpleWebSocketListener {
                                 String base64 = Base64.getEncoder().encodeToString(bytes);
                                 String mime = extensionToMime(ext);
                                 imageBlocks.add(ImageBlock.ofBase64(base64, mime));
+                                imageFileNames.add(fileName);
                             } else {
                                 fileAttachments.add(fileName);
                             }
@@ -336,9 +363,16 @@ public class WebGate extends SimpleWebSocketListener {
                     for (ImageBlock block : imageBlocks) {
                         contents.addBlock(block);
                     }
-                    prompt = Prompt.of(new UserMessage(contents));
+                    // 构建附件元数据（含图片文件名），供历史消息恢复时前端渲染文件名标签
+                    String attachMeta = buildAttachmentMeta(imageFileNames);
+                    UserMessage userMsg = new UserMessage(contents).addMetadata("source", source);
+                    if (attachMeta != null) {
+                        userMsg.addMetadata("attachments", attachMeta);
+                    }
+                    prompt = Prompt.of(userMsg);
                 } else {
-                    prompt = Prompt.of(currentInput);
+                    // 文件附件已在 currentInput 前缀写入文件名（[附件: xxx]），ndjson 有记录
+                    prompt = Prompt.of(ChatMessage.ofUser(currentInput).addMetadata("source", source));
                 }
 
                 // 流式处理：输出通过 WebSocket 推送
@@ -594,7 +628,7 @@ public class WebGate extends SimpleWebSocketListener {
      *
      * @param sessionId 会话标识
      * @param input     用户输入文本
-     * @param source    调用来源标识（用于日志记录，如 "WeChat"）
+     * @param source    调用来源标识（用于日志记录，如 "WeChat"），同时用于标记消息来源通道
      */
     public void safeChatInput(String sessionId, String input, String source) {
         try {
@@ -606,7 +640,7 @@ public class WebGate extends SimpleWebSocketListener {
                     String cmdName = parts.get(0).toLowerCase();
                     if ("interrupt".equals(cmdName) || "exit".equals(cmdName)) {
                         emitToClient(sessionId, WebChunk.ofUserInput(input, source));
-                        onChatInput(sessionId, null, input, null, null, null, null);
+                        onChatInput(sessionId, null, input, null, null, null, null, source);
                         return;
                     }
                 }
@@ -622,7 +656,7 @@ public class WebGate extends SimpleWebSocketListener {
         // 先推送用户消息到前端，确保对话记录中显示用户侧消息
         emitToClient(sessionId, WebChunk.ofUserInput(input, source));
 
-        onChatInput(sessionId, null, input, null, null, null, null);
+        onChatInput(sessionId, null, input, null, null, null, null, source);
     }
 
 
@@ -651,17 +685,6 @@ public class WebGate extends SimpleWebSocketListener {
             return null;
         }
 
-        List<ChatMessage> messageList = session.getMessages();
-        if(Assert.isNotEmpty(messageList)) {
-            //如果最新的消息里有 GOAL_ACHIEVED，说明任务完成了
-            ChatMessage message = messageList.get(messageList.size() - 1);
-            if (message instanceof AssistantMessage) {
-                if (message.getContent().contains(LoopExecutionResult.GOAL_ACHIEVED)) {
-                    return message.getContent();
-                }
-            }
-        }
-
         emitToClient(sessionId, WebChunk.ofUserInput(input, source));
 
         String agentName = null;
@@ -676,7 +699,8 @@ public class WebGate extends SimpleWebSocketListener {
             }
         }
 
-        return performAgentTaskSync(session, null, Prompt.of(currentInput), null, agentName);
+        ChatMessage chatMessage = ChatMessage.ofUser(currentInput).addMetadata("source", source);
+        return performAgentTaskSync(session, null, Prompt.of(chatMessage), null, agentName);
     }
 
 
@@ -722,6 +746,29 @@ public class WebGate extends SimpleWebSocketListener {
             default:
                 return "image/png";
         }
+    }
+
+    /**
+     * 构建附件元数据 JSON 数组字符串（用于存入 ndjson metadata.attachments）。
+     *
+     * @param imageFileNames 图片文件名列表（已校验安全的文件名）
+     * @return JSON 数组字符串，如 [{"name":"photo.jpg","type":"image"}]；列表为空则返回 null
+     */
+    private static String buildAttachmentMeta(List<String> imageFileNames) {
+        if (imageFileNames == null || imageFileNames.isEmpty()) {
+            return null;
+        }
+        // 手动构建 JSON 避免依赖 ONode 序列化细节
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < imageFileNames.size(); i++) {
+            if (i > 0) sb.append(",");
+            String name = imageFileNames.get(i);
+            // 简单转义双引号和反斜杠（文件名已校验无 / \ ..）
+            String escaped = name.replace("\\", "\\\\").replace("\"", "\\\"");
+            sb.append("{\"name\":\"").append(escaped).append("\",\"type\":\"image\"}");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     // ═══════════════════════════════════════════════════════════════

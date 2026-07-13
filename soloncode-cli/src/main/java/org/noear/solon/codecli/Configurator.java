@@ -18,7 +18,6 @@ import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
-import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.ManagerExtension;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
@@ -36,20 +35,19 @@ import org.noear.solon.codecli.portal.web.WebChannel;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.codecli.portal.web.WebSettingsController;
 import org.noear.solon.codecli.portal.web.WebGate;
-import org.noear.solon.codecli.portal.web.WebStreamBuilder;
+import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
 import org.noear.solon.core.util.JavaUtil;
 import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.net.websocket.WebSocketRouter;
-import org.noear.solon.codecli.portal.web.model.ModelsAdapterManager;
+import org.noear.solon.codecli.config.models.ModelsAdapterManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -73,26 +71,34 @@ public class Configurator {
     AgentSettings agentSettings;
 
     @Inject
+    SessionManager sessionManager;
+
+    @Inject
     ModelsAdapterManager modelProviderFactory;
 
     private LoopScheduler loopScheduler;
 
     @Bean
-    public HarnessEngine agentRuntime(AgentSettings settings) throws Exception {
-        String workspace = AgentFlags.getUserDir();
-        Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
+    public SessionManager sessionManager() {
+        return new SessionManager();
+    }
 
-        // 会话数据存到全局目录 ~/.soloncode/sessions/<sessionId>/
-        AgentSessionProvider sessionProvider = (sessionId) -> sessionMap.computeIfAbsent(sessionId, key ->
-                new FileAgentSession(key, Paths.get(workspace, AgentFlags.getHarnessSessions()).resolve(key).normalize().toFile().toString()));
+    @Bean
+    public HarnessEngine agentRuntime(AgentSettings settings, SessionManager sessionManager) throws Exception {
+        String stealthIdentity = "<!--\n" +
+                "  @poweredby: soloncode\n" +
+                "  @build: " + AgentFlags.getVersion() + "\n" +
+                "-->\n\n";
+
+        String workspace = AgentFlags.getUserDir();
 
         HarnessEngine engine = HarnessEngine.of(workspace, AgentFlags.getHarnessHome())
                 .userAgent(settings.getGeneral().getUserAgent())
-                .systemPrompt(AgentFlags.getAgentsMd())
+                .systemPrompt(stealthIdentity + AgentFlags.getAgentsMd())
                 .maxTurns(settings.getGeneral().getMaxTurns())
                 .autoRethink(settings.getGeneral().getAutoRethink())
                 .sessionWindowSize(settings.getGeneral().getSessionWindowSize())
-                .sessionProvider(sessionProvider)
+                .sessionProvider(sessionManager)
                 .compressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getSummaryWindowToken())
                 .compressionModel(settings.getGeneral().getSummaryModel())
                 .memoryEnabled(settings.getGeneral().getMemoryEnabled())
@@ -174,7 +180,7 @@ public class Configurator {
         return engine;
     }
 
-    private void addServers(HarnessEngine engine){
+    private void addServers(HarnessEngine engine) {
         for (Map.Entry<String, McpServerDo> entry : agentSettings.getMcpServers().entrySet()) {
             engine.addMcpServer(entry.getKey(), entry.getValue());
         }
@@ -219,6 +225,7 @@ public class Configurator {
 
         if (AgentFlags.FLAG_VERSION.equals(flag)) {
             System.out.println(Solon.cfg().appTitle() + " " + AgentFlags.getVersion());
+            Solon.stop();  // 退出进程
             return;
         }
 
@@ -235,12 +242,14 @@ public class Configurator {
             }
 
             if (AgentFlags.FLAG_SERVE.equals(flag)) { // java -jar soloncode.jar server // soloncode server
-                runServe(agentRuntime, agentSettings, cliShell);
+                runDesktopServe(agentRuntime, agentSettings, cliShell);
+                runWebServe(agentRuntime, agentSettings, null, sessionManager);
                 return;
             }
 
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
-                runWeb(agentRuntime, agentSettings, cliShell);
+                runWebServe(agentRuntime, agentSettings, cliShell, sessionManager);
+                openBrowser();
                 return;
             }
 
@@ -270,59 +279,37 @@ public class Configurator {
         }
     }
 
-    private void runServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
+    private void runDesktopServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
         //serve ws gate
         WebSocketRouter.getInstance().of("/ws", new WsGate(agentRuntime, settings));
-        WebGate webGate = new WebGate(agentRuntime, settings);
-        WebSocketRouter.getInstance().of("/web/gate", webGate);
 
         //serve web controller
-        BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, modelProviderFactory));
+        BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, settings, modelProviderFactory));
         Solon.app().router().add(webBean);
-        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
-        Solon.app().router().add(webController);
-
-        //注册第三方渠道（HTTP 端点 + 后台线程）
-        WebStreamBuilder streamBuilder = new WebStreamBuilder(agentRuntime);
-        WebChannel webChannel = new WebChannel(agentRuntime, webGate);
-        // 将渠道绑定到 streamBuilder，使 IM 回复能同步
-        for (Channel ch : Collections.singletonList(webChannel.getWeChatLink())) {
-            streamBuilder.bind(ch);
-        }
-        streamBuilder.bind(webChannel.getFeishuLink());
-        streamBuilder.bind(webChannel.getDingTalkLink());
-        BeanWrap channelBean = Solon.context().wrapAndPut(WebChannel.class, webChannel);
-        Solon.app().router().add(channelBean);
-        RunUtil.async(webChannel);
-
-        try {
-            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
-            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
-            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
-            workspaceWatcher.start();
-        } catch (Exception e) {
-            // watcher startup failure should not block serve mode
-        }
-
-        //settings controller
-        WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);
-        BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
-        Solon.app().router().add(webSettingsController);
 
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
     }
 
 
-    private void runWeb(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
+    private void runWebServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell, SessionManager sessionManager) {
         //web ws gate
         WebGate webGate = new WebGate(agentRuntime, settings);
         WebSocketRouter.getInstance().of("/web/gate", webGate);
 
+        // 初始化文件监听服务（提前创建，以便 WebSettingsController 引用）
+        Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
+        FileWatchService fileWatchService = new FileWatchService();
+        // 默认工作区 → 前端广播
+        fileWatchService.addRoot("workspace", workspacePath)
+                .addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+
         //web
-        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler));
+        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler, sessionManager));
         Solon.app().router().add(webController);
 
         WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);
+        settingsController.setFileWatchService(fileWatchService);
+        settingsController.setWebGate(webGate);
         BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
         Solon.app().router().add(webSettingsController);
 
@@ -332,25 +319,42 @@ public class Configurator {
         // 启动微信通道
         RunUtil.async((Runnable) webChannel.get());
 
-        // 启动工作区文件变化监听
-        try {
-            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
-            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
-            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
-            workspaceWatcher.start();
-        } catch (Exception e) {
-            // watcher 启动失败不影响主流程
+        // 遍历所有挂载点，按类型分配不同的处理器
+        for (MountDir mount : agentRuntime.getMounts()) {
+            if (!mount.isEnabled()) continue;
+
+            FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
+
+            switch (mount.getType()) {
+                case FILES:
+                    // FILES 挂载 → 前端广播
+                    root.addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+                    break;
+                case SKILLS:
+                    // SKILLS 挂载 → 触发技能刷新
+                    root.addHandler(changes -> agentRuntime.getSkillProvider().refreshByGroup(mount.getAlias()));
+                    break;
+                case AGENTS:
+                    // AGENTS 挂载 → 触发代理刷新
+                    root.addHandler(changes -> agentRuntime.getAgentManager().refreshByMountAlias(mount.getAlias()));
+                    break;
+            }
         }
 
-        if (cliShell == null) {
-            return;
+        fileWatchService.start();
+
+        if (cliShell != null) {
+            String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
+            cliShell.printWelcome("Web interface: " + url);
         }
+    }
+
+    private void openBrowser() {
+        String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
 
         RunUtil.async(() -> {
             try {
                 Thread.sleep(500);
-
-                String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
 
                 if (JavaUtil.IS_WINDOWS) {
                     new ProcessBuilder("cmd", "/c", "start", url.replace("&", "^&")).start();
@@ -360,9 +364,7 @@ public class Configurator {
                     new ProcessBuilder("xdg-open", url).start();
                 }
 
-                if (cliShell != null) {
-                    cliShell.printWelcome("Web interface: " + url);
-                }
+
             } catch (Throwable e) { // 使用 Throwable 捕获更全面
                 LOG.warn("Failed to open browser: {}", e.getMessage());
             }

@@ -97,6 +97,20 @@
                                 <input type="text" class="model-search-input" placeholder="搜索模型..."/>
                             </div>
                             <div class="model-dropdown-items"></div>
+                            <div class="model-dropdown-footer">
+                                <div class="model-option-row model-reasoning-row" style="display:none">
+                                    <div class="model-option-main">
+                                        <span class="model-option-label">推理强度</span>
+                                        <div class="model-option-pills" data-kind="reasoning">
+                                            <button type="button" data-effort="auto" title="跟随模型或供应商默认，通常最省心">auto</button>
+                                            <button type="button" data-effort="low" title="更快更省，适合简单问答">low</button>
+                                            <button type="button" data-effort="medium" title="均衡表现，日常任务推荐">medium</button>
+                                            <button type="button" data-effort="high" title="更仔细分析，适合难问题">high</button>
+                                            <button type="button" data-effort="max" title="最强思考，通常最慢也更费额度">max</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <button class="attach-btn" id="welcomeAttachBtn" title="添加文件附件">
@@ -141,7 +155,7 @@
             <!-- Per-session containers are added here dynamically -->
         </div>
         <div class="input-wrap">
-            <div class="context-status" id="chatContextStatus" style="display:none"><span class="context-status-text">Context: -- / -- (--%)</span></div>
+            <div class="context-status" id="chatContextStatus" style="display:none"><span class="context-status-text">Context: -- / -- (--%)</span><span class="context-status-elapsed" style="display:none"></span></div>
             <div class="input-box" id="chatDropZone">
                 <div class="drop-overlay" id="chatDropOverlay">
                     <div class="drop-overlay-content">
@@ -168,6 +182,20 @@
                                     <input type="text" class="model-search-input" placeholder="搜索模型..."/>
                                 </div>
                                 <div class="model-dropdown-items"></div>
+                                <div class="model-dropdown-footer">
+                                    <div class="model-option-row model-reasoning-row" style="display:none">
+                                        <div class="model-option-main">
+                                            <span class="model-option-label">推理强度</span>
+                                            <div class="model-option-pills" data-kind="reasoning">
+                                                <button type="button" data-effort="auto" title="跟随模型或供应商默认，通常最省心">auto</button>
+                                                <button type="button" data-effort="low" title="更快更省，适合简单问答">low</button>
+                                                <button type="button" data-effort="medium" title="均衡表现，日常任务推荐">medium</button>
+                                                <button type="button" data-effort="high" title="更仔细分析，适合难问题">high</button>
+                                                <button type="button" data-effort="max" title="最强思考，通常最慢也更费额度">max</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <button class="attach-btn" id="chatAttachBtn" title="添加文件附件">
@@ -215,9 +243,20 @@
                 <span class="git-viewer-sep">/</span>
                 <span class="git-viewer-file" id="gitViewerFile"></span>
             </div>
-            <button class="git-viewer-close" id="gitViewerClose" title="关闭 (Esc)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+            <div class="git-viewer-header-actions">
+                <button class="git-viewer-action-btn" id="gitViewerMdToggle" title="预览 Markdown" style="display:none">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button class="git-viewer-action-btn" id="gitViewerCopyBtn" title="复制文件内容">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button class="git-viewer-action-btn" id="gitViewerFullscreen" title="全屏">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+                <button class="git-viewer-close" id="gitViewerClose" title="关闭 (Esc)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
         </div>
         <pre class="git-viewer-content" id="gitViewerContent"></pre>
     </div>
@@ -267,10 +306,26 @@
                 </button>
             </div>
             <div class="filer-panel-tree" id="filerTree"></div>
+            <div class="filer-mount-hint" id="filerMountHint">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                <span>添加文件类型挂载</span>
+            </div>
         </div>
 
         <!-- Tab Content: Git Diff -->
         <div class="filer-tab-content" id="tabContentGitdiff">
+            <!-- 审查工作区选择器（自定义下拉） -->
+            <div class="git-workspace-bar" id="gitWorkspaceBar">
+                <div class="git-workspace-selector" id="gitWorkspaceSelector">
+                    <div class="git-workspace-current" id="gitWorkspaceCurrent" title="切换工作区">
+                        <span class="git-workspace-name" id="gitWorkspaceName">加载中...</span>
+                        <i class="layui-icon layui-icon-down git-workspace-arrow"></i>
+                    </div>
+                    <div class="git-workspace-dropdown" id="gitWorkspaceDropdown">
+                        <div class="git-workspace-dropdown-items" id="gitWorkspaceDropdownItems"></div>
+                    </div>
+                </div>
+            </div>
             <!-- 状态1：Git 不可用 -->
             <div class="git-unavailable" id="gitUnavailable" style="display:none">
                 <div class="git-empty-icon">
@@ -544,11 +599,11 @@
                                 </div>
                             </div>
 
-                            <!-- ============ 配置卡片: 访问认证 ============ -->
+                            <!-- ============ 配置卡片: 安全访问 ============ -->
                             <div class="general-card">
                                 <div class="general-card-header">
                                     <div class="general-card-text">
-                                        <div class="general-card-title">访问认证</div>
+                                        <div class="general-card-title">安全访问</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
@@ -561,7 +616,7 @@
                                         <div class="general-field" style="flex:1">
                                             <label class="general-field-label">密码</label>
                                             <input type="password" class="general-input" id="generalWebAuthPass"
-                                                   placeholder="留空=不启用"/>
+                                                   placeholder="留空=不启用" autocomplete="new-password"/>
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm">
@@ -663,17 +718,10 @@
                                                    id="generalLoopMaxConsecutiveErrors" placeholder="默认 3"/>
                                         </div>
                                         <div class="general-field">
-                                            <label class="general-field-label">暂停超时放弃（小时）</label>
-                                            <input type="text" inputmode="numeric" class="general-input"
-                                                   id="generalLoopPauseAutoAbandonHours" placeholder="默认 24"/>
-                                        </div>
-                                        <div class="general-field">
                                             <label class="general-field-label">预算警告百分比</label>
                                             <input type="text" inputmode="numeric" class="general-input"
                                                    id="generalLoopBudgetWarningPercent" placeholder="默认 70"/>
                                         </div>
-                                    </div>
-                                    <div class="general-field-row settings-gap-top-md">
                                         <div class="general-field">
                                             <label class="general-field-label">预算紧急百分比</label>
                                             <input type="text" inputmode="numeric" class="general-input"
@@ -695,7 +743,43 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- ============ 配置卡片: 日志 ============ -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title">日志保存</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label">日志级别</label>
+                                            <select class="general-input form-select-custom" id="generalLogLevel">
+                                                <option value="">默认 (DEBUG)</option>
+                                                <option value="TRACE">TRACE</option>
+                                                <option value="DEBUG">DEBUG</option>
+                                                <option value="INFO">INFO</option>
+                                                <option value="WARN">WARN</option>
+                                                <option value="ERROR">ERROR</option>
+                                            </select>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">单文件大小限制</label>
+                                            <input type="text" class="general-input" id="generalLogFileMaxSize" placeholder="10MB（默认）"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label">存档周期（天）</label>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalLogMaxHistory" placeholder="30（默认）"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm">
+                                        日志级别可运行时实时生效；文件大小限制和存档周期重启后生效
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+
                         <div class="form-actions form-actions-end settings-actions-spacious">
                             <button class="btn-primary" id="generalSaveBtn">保存</button>
                         </div>
@@ -709,7 +793,6 @@
                                 <span class="settings-section-title">工具权限</span>
                                 <div class="settings-section-desc">管理全局工具访问权限，默认启用所有工具，可勾选禁用特定工具</div>
                             </div>
-                            <button class="btn-secondary" id="permissionAdvancedBtn">高级模式</button>
                         </div>
 
                         <div class="permission-container">
@@ -717,22 +800,7 @@
                             <!-- 工具列表 -->
                             <div class="permission-tools-list" id="permissionToolsList"></div>
 
-                            <!-- 高级模式（文本输入） -->
-                            <div class="permission-advanced" id="permissionAdvanced" style="display:none">
-                                <div class="general-card">
-                                    <div class="general-card-header">
-                                        <div class="general-card-text">
-                                            <div class="general-card-title">禁用工具（黑名单）</div>
-                                        </div>
-                                    </div>
-                                    <div class="general-card-body">
-                                        <div class="general-field">
-                                            <textarea class="general-input" id="permissionDisallowedTools" rows="6" style="resize:vertical;font-family:monospace;line-height:1.6" placeholder="bash&#10;write"></textarea>
-                                        </div>
-                                        <div class="general-toggle-desc settings-gap-top-sm">每行一个匹配模式，不支持通配符</div>
-                                    </div>
-                                </div>
-                            </div>
+                            <!-- 高级模式已移除 -->
                         </div>
 
                         <div class="form-actions form-actions-end settings-actions-spacious">
@@ -786,6 +854,7 @@
                                 <div class="form-group">
                                     <label>作用域</label>
                                     <input type="hidden" id="llmScope" value="user"/>
+                                    <input type="hidden" id="llmProvider" value=""/>
                                     <div class="settings-scope-toggle" data-target="llmScope">
                                         <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
                                         <button class="settings-scope-btn" data-scope="workspace" type="button">工作区（本地）</button>
@@ -793,7 +862,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label>接口规范</label>
-                                    <select id="llmStandard">
+                                    <select id="llmStandard" class="form-select-custom">
                                         <option value="">FullUrl / 完整地址（自动检测）</option>
                                         <option value="openai">OpenAI Chat Completions BaseUrl / 兼容接口</option>
                                         <option value="openai-responses">OpenAI Responses BaseUrl / 兼容接口</option>
@@ -846,6 +915,7 @@
                                         </button>
                                     </div>
                                     <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"thinking":{"type":"enabled"},"reasoning_effort":"high"}'></textarea>
+                                    <div class="form-hint">会话模型选择器中的「推理强度」会覆盖此处；选 auto 则使用本配置或供应商默认。</div>
                                 </div>
                                 <div class="form-actions" style="justify-content:space-between">
                                     <label class="llm-default-checkbox">
@@ -952,7 +1022,7 @@
                                     <div class="form-hint">文件所在的本地目录路径（支持 './' 工作区路径和 '~/' 用户目录路径）</div>
                                 </div>
                                 <div class="form-group" id="mountsWriteableGroup">
-                                    <label>开放写权限</label>
+                                    <label>开放 “写” 权限</label>
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="mountsWriteable"/>
                                         <span class="toggle-slider"></span>
@@ -1007,10 +1077,16 @@
                                     <div class="settings-section-desc">管理外部工具服务器，扩展文件、数据库、浏览器等工具能力</div>
                                 </div>
                                 <div class="mcp-header-actions">
-                                    <button class="settings-add-btn" id="mcpImportBtn" title="从 JSON 文件导入 MCP 服务器配置">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                        导入
-                                    </button>
+                                    <div class="mcp-import-menu-wrap">
+                                        <button class="settings-add-btn" id="mcpImportBtn" title="导入 MCP 服务器配置">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                            导入
+                                        </button>
+                                        <div class="mcp-import-menu" id="mcpImportMenu">
+                                            <button type="button" class="mcp-import-menu-item" data-action="file">导入 JSON 文件</button>
+                                            <button type="button" class="mcp-import-menu-item" data-action="string">导入 JSON 字符串</button>
+                                        </div>
+                                    </div>
                                     <input type="file" id="mcpImportFileInput" accept=".json" style="display:none;"/>
                                     <button class="settings-add-btn" id="mcpAddBtn">+ 添加服务器</button>
                                 </div>
@@ -1063,11 +1139,11 @@
                                 <div class="mcp-config-stdio" id="mcpConfigStdio">
                                     <div class="form-group">
                                         <label>命令 <span class="required">*</span></label>
-                                        <input type="text" id="mcpCommand" placeholder="npx -y @modelcontextprotocol/server-filesystem /path"/>
+                                        <input type="text" id="mcpCommand" placeholder="npx"/>
                                     </div>
                                     <div class="form-group">
                                         <label>参数（每行一个）</label>
-                                        <textarea id="mcpArgs" rows="3" placeholder="/path/to/dir&#10;--option value"></textarea>
+                                        <textarea id="mcpArgs" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/path"></textarea>
                                     </div>
                                     <div class="form-group">
                                         <label>环境变量（KEY=VALUE，每行一个）</label>
@@ -1345,7 +1421,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label>接口规范</label>
-                                    <select id="providerStandard">
+                                    <select id="providerStandard" class="form-select-custom">
                                         <option value="openai">OpenAI Chat Completions BaseUrl / 兼容接口</option>
                                         <option value="openai-responses">OpenAI Responses BaseUrl / 兼容接口</option>
                                         <option value="anthropic">Anthropic BaseUrl / 兼容接口</option>
@@ -1357,24 +1433,42 @@
                                 </div>
                                 <div class="form-group">
                                     <label>API 密钥</label>
-<input type="password" id="providerApiKey" placeholder="sk-xxx" autocomplete="new-password"/>
+                                    <div class="password-input-group">
+                                        <input type="password" id="providerApiKey" placeholder="sk-xxx" autocomplete="new-password"/>
+                                        <button class="password-toggle" id="providerApiKeyToggle" title="显示/隐藏">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <div class="form-group-header">
                                         <label>模型管理</label>
                                         <div class="provider-model-header-actions">
+                                            <div class="provider-model-menu-wrap">
+                                                <button class="provider-model-icon-btn" id="providerModelsSelectToggle" title="批量选择模型">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list-checks-icon lucide-list-checks"><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/></svg>
+                                                </button>
+                                                <div class="provider-model-menu" id="providerModelsActionMenu">
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsSelectAll">全选</button>
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsSelectNone">全不选</button>
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsInvert">反选</button>
+                                                </div>
+                                            </div>
                                             <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                             </button>
                                             <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                                             </button>
+                                            <button class="provider-model-icon-btn" id="providerClearModelsBtn" title="清空模型列表">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-1 2h14l-1 14H4L3 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/><line x1="18" y1="11" x2="18" y2="17"/></svg>
+                                            </button>
                                         </div>
                                     </div>
                                     <div class="provider-models-list" id="providerModelsList"></div>
                                     <div class="provider-models-empty" id="providerModelsEmpty">点击右侧 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加模型，或 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 从 API 拉取</div>
                                 </div>
-                                
+
                                 <div class="form-actions form-actions-end">
                                     <button class="btn-primary" id="providerSaveBtn">保存</button>
                                 </div>
@@ -1417,6 +1511,37 @@
     }).catch(function () { /* ignore */ });
 </script>
 
+<!-- ===== 任务完成通知工具函数（需在 app-*.js 之前定义） ===== -->
+<script>
+(function() {
+    window._notifyPerm = Notification.permission;
+    function _requestNotifyPerm() {
+        if (window._notifyPerm === 'granted') return true;
+        if (window._notifyPerm === 'denied') return false;
+        Notification.requestPermission().then(function(p) {
+            window._notifyPerm = p;
+        });
+        return false;
+    }
+    // 通知函数（仅桌面通知，不播放声音）
+    window._notifyTaskComplete = function() {
+        if (document.hasFocus && document.hasFocus()) return;
+        if (window._notifyPerm === 'granted') {
+            try {
+                var n = new Notification('SolonCode', {
+                    body: 'AI 任务已完成',
+                    icon: '/img/favicon.png',
+                    tag: 'soloncode-task-done',
+                    requireInteraction: false
+                });
+                n.onclick = function() { window.focus(); this.close(); };
+                setTimeout(function() { n.close(); }, 5000);
+            } catch(e) {}
+        }
+    };
+})();
+</script>
+
 <script src="/js/app-base.js"></script>
 <script src="/js/app-ui.js"></script>
 <script src="/js/app-history.js"></script>
@@ -1437,5 +1562,7 @@
 <script src="/js/app-settings-providers.js"></script>
 <script src="/js/app-settings-skill.js"></script>
 <script src="/js/app-loop.js"></script>
+    <script src="/js/studio.js"></script>
+
 </body>
 </html>

@@ -19,7 +19,6 @@ import lombok.Getter;
 import org.noear.snack4.ONode;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -50,8 +49,6 @@ public class LoopTask {
     private static final TaskType DEFAULT_TYPE = TaskType.HEARTBEAT;
     private static final int MIN_INTERVAL = 0; // 0 = 即时模式（goal 专用）
     private static final int MAX_INTERVAL = 1440; // 24h
-    private static final int EXPIRE_DAYS = 7;
-    private static final int DEFAULT_MAX_ITERATIONS = 20;
 
     // ---- 核心调度字段 ----
     private final String id;
@@ -59,13 +56,11 @@ public class LoopTask {
     private final int intervalMinutes;
     private final String cron;
     private final Instant createdAt;
-    private final Instant expireAt;
     private final boolean autoInterval;
     private final TaskType type;  // 任务类型（LOOP / GOAL），方便识别
 
     // ---- Loop Engineering 扩展字段 ----
     private GoalState goalState;             // Goal 状态模型（P0）
-    private final int maxIterations;         // 最大迭代次数
     private final boolean runNow;            // 注册后立即执行首次（initialDelay=0）
     private Long maxTokens;            // Token 预算（null = 不限制）
     private Long maxDurationMs;        // 时间预算毫秒（null = 不限制）
@@ -90,14 +85,14 @@ public class LoopTask {
      * 固定间隔构造
      */
     public LoopTask(String prompt, int intervalMinutes) {
-        this(prompt, intervalMinutes, null, null, null, false);
+        this(prompt, intervalMinutes, null, null, false);
     }
 
     /**
      * cron 表达式构造
      */
     public LoopTask(String prompt, String cron) {
-        this(prompt, 0, cron, null, null, false);
+        this(prompt, 0, cron, null, false);
     }
 
 
@@ -105,9 +100,9 @@ public class LoopTask {
      * 全参数构造（由 Builder、copyWithUpdate 调用）
      */
     LoopTask(String id, String prompt, int intervalMinutes, String cron,
-                     Instant createdAt, Instant expireAt, boolean autoInterval,
+                     Instant createdAt, boolean autoInterval,
                      boolean enabled,
-                     int maxIterations, boolean runNow, Long maxTokens, Long maxDurationMs,
+                     boolean runNow, Long maxTokens, Long maxDurationMs,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration,
                      TaskType type) {
         this.id = id;
@@ -115,10 +110,8 @@ public class LoopTask {
         this.intervalMinutes = intervalMinutes;
         this.cron = cron;
         this.createdAt = createdAt;
-        this.expireAt = expireAt;
         this.autoInterval = autoInterval;
         this.enabled = enabled;
-        this.maxIterations = maxIterations;
         this.runNow = runNow;
         this.maxTokens = maxTokens;
         this.maxDurationMs = maxDurationMs;
@@ -136,27 +129,17 @@ public class LoopTask {
     }
 
     /**
-     * 便捷构造（固定间隔 + 扩展参数）
-     */
-    public LoopTask(String prompt, int intervalMinutes, String cron,
-                    TaskType type, Integer maxIterations) {
-        this(prompt, intervalMinutes, cron, type, maxIterations, false);
-    }
-
-    /**
      * 便捷构造（固定间隔 + 扩展参数 + runNow）
      */
     public LoopTask(String prompt, int intervalMinutes, String cron,
-                    TaskType type, Integer maxIterations, boolean runNow) {
+                    TaskType type, boolean runNow) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
         // 间隔钒在 [MIN_INTERVAL, MAX_INTERVAL]，不存在 0 间隔；goal 模式通过 fixedDelay 串行调度逐轮触发
         this.intervalMinutes = Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, intervalMinutes));
         this.cron = cron;
         this.createdAt = Instant.now();
-        this.expireAt = createdAt.plus(EXPIRE_DAYS, ChronoUnit.DAYS);
         this.autoInterval = false;
-        this.maxIterations = maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS;
         this.runNow = runNow;
         this.currentIteration = 0;
         this.enabled = true;
@@ -172,7 +155,7 @@ public class LoopTask {
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
                                     TaskType type,
-                                    Integer maxIterations, Boolean runNow,
+                                    Boolean runNow,
                                     Long maxTokens, Long maxDurationMs) {
         // 使用新类型（如果提供），否则保留原类型
         TaskType newType = type != null ? type : this.type;
@@ -183,10 +166,8 @@ public class LoopTask {
                 Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, intervalMinutes)),
                 cron,
                 this.createdAt,
-                this.expireAt,
                 this.autoInterval,
                 this.enabled,
-                maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
                 runNow != null ? runNow : this.runNow,
                 maxTokens != null ? maxTokens : this.maxTokens,
                 maxDurationMs != null ? maxDurationMs : this.maxDurationMs,
@@ -197,14 +178,16 @@ public class LoopTask {
                 newType
         );
         task.running = false;
+        // ★ 保留原始 GoalState 运行时状态（consumedTokens、status、startEpochMs 等）
+        //    同时更新 condition 和 maxTokens 以反映新 prompt 和预算
+        if (this.goalState != null) {
+            task.goalState = this.goalState;
+            task.goalState.setCondition(task.getPrompt());
+            if (task.getMaxTokens() != null) {
+                task.goalState.setMaxTokens(task.getMaxTokens());
+            }
+        }
         return task;
-    }
-
-    /**
-     * 是否已过期
-     */
-    public boolean isExpired() {
-        return Instant.now().isAfter(expireAt);
     }
 
     /**
@@ -218,7 +201,7 @@ public class LoopTask {
      * 是否仍处于活跃状态（未取消且未过期）
      */
     public boolean isActive() {
-        return !cancelled && !isExpired();
+        return !cancelled;
     }
 
     /**
@@ -272,12 +255,6 @@ public class LoopTask {
         return ++currentIteration;
     }
 
-    /**
-     * 是否已达到最大迭代次数
-     */
-    public boolean isMaxIterationsReached() {
-        return maxIterations > 0 && currentIteration >= maxIterations;
-    }
 
     /**
      * 是否为 goal 模式（有目标条件定义）
@@ -352,11 +329,10 @@ public class LoopTask {
             node.set("cron", cron);
         }
         node.set("createdAt", createdAt.toString());
-        node.set("expireAt", expireAt.toString());
         node.set("autoInterval", autoInterval);
         node.set("cancelled", cancelled);
-        node.set("running", running);
         node.set("enabled", enabled);
+        // running 是瞬态运行时锁，不持久化 — restore() 时兜底解锁
         node.set("type", type.name());
 
         // 运行时状态
@@ -370,7 +346,6 @@ public class LoopTask {
 
         // Loop Engineering 扩展字段
 
-        if (maxIterations != DEFAULT_MAX_ITERATIONS) node.set("maxIterations", maxIterations);
         if (runNow) node.set("runNow", true);
 
         // ★ P0: 写入 GoalState
@@ -407,8 +382,6 @@ public class LoopTask {
         boolean enabledVal = node.getOrNull("enabled") != null
                 ? node.get("enabled").getBoolean() : true;
 
-        int maxIterationsVal = node.getOrNull("maxIterations") != null
-                ? node.get("maxIterations").getInt() : DEFAULT_MAX_ITERATIONS;
         int currentIterationVal = node.getOrNull("currentIteration") != null
                 ? node.get("currentIteration").getInt() : 0;
 
@@ -443,10 +416,8 @@ public class LoopTask {
                 node.get("intervalMinutes").getInt(),
                 cronVal,
                 Instant.parse(node.get("createdAt").getString()),
-                Instant.parse(node.get("expireAt").getString()),
                 node.get("autoInterval").getBoolean(),
                 enabledVal,
-                maxIterationsVal,
                 runNowVal,
                 maxTokensVal,
                 maxDurationMsVal,
@@ -466,6 +437,9 @@ public class LoopTask {
         // 恢复运行时兜底字段
         task.stagnationCount = stagnationCountVal;
         task.consecutiveErrors = consecutiveErrorsVal;
+
+        // running 是瞬态锁，反序列化后始终为 false
+        // （kill -9 场景兜底：若有 future 的注册逻辑需显式调用 finish()）
 
         return task;
     }

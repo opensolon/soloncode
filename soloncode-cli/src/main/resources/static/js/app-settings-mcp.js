@@ -64,7 +64,7 @@
                 var type = item.type || 'stdio';
                 var detail = type === 'stdio' ? (item.command || '') : (item.url || '');
                 var icon = iconMap[type] || 'M';
-                html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
+                html += '<div class="mcp-server-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
@@ -309,6 +309,7 @@
     function mcpToggleServer(name, enabled) {
         postJson('/web/settings/mcp/servers/toggle', { name: name, enabled: enabled }, function (resp) {
             if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadMcpList(); }
+            else { loadMcpList(); }
         });
     }
 
@@ -689,10 +690,106 @@
     
     // ==================== 入口事件绑定 ====================
     
-    // 导入按钮点击事件
-    $('#mcpImportBtn').on('click', function () {
-        $('#mcpImportFileInput').trigger('click');
+    // 导入按钮 - 切换下拉菜单
+    $('#mcpImportBtn').on('click', function (e) {
+        e.stopPropagation();
+        $('#mcpImportMenu').toggleClass('show');
     });
+    
+    // 点击页面其他区域关闭下拉菜单
+    $(document).on('click', function () {
+        $('#mcpImportMenu').removeClass('show');
+    });
+    
+    // 下拉菜单项点击事件
+    $('#mcpImportMenu').on('click', '.mcp-import-menu-item', function (e) {
+        e.stopPropagation();
+        $('#mcpImportMenu').removeClass('show');
+        var action = $(this).attr('data-action');
+        if (action === 'file') {
+            $('#mcpImportFileInput').trigger('click');
+        } else if (action === 'string') {
+            showImportStringDialog();
+        }
+    });
+    
+    /**
+     * 显示导入 JSON 字符串对话框
+     */
+    function showImportStringDialog() {
+        var dialogHtml = '<div class="import-overlay" id="importStringOverlay">'
+            + '<div class="import-dialog">'
+            + '<div class="import-dialog-header">'
+            + '<span class="import-dialog-title">导入 JSON 字符串</span>'
+            + '<button class="import-dialog-close" id="importStringClose">&times;</button>'
+            + '</div>'
+            + '<div class="import-dialog-body">'
+            + '<div class="import-summary">粘贴 MCP 服务器配置 JSON 字符串，支持以下格式：</div>'
+            + '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;line-height:1.8;">'
+            + '<span class="import-string-code">{"mcpServers": {...}}</span> Claude Desktop / Cursor 格式<br/>'
+            + '<span class="import-string-code">{"mcp": {...}}</span> OpenCode 格式<br/>'
+            + '<span class="import-string-code">{"format":"mcp","servers":{...}}</span> 标准格式'
+            + '</div>'
+            + '<textarea class="import-string-textarea" id="importStringInput" placeholder="在此粘贴 JSON 字符串..." spellcheck="false"></textarea>'
+            + '<div class="import-string-hint">粘贴后点击「解析」进行预览，确认后再批量添加</div>'
+            + '</div>'
+            + '<div class="import-dialog-footer">'
+            + '<button class="btn-secondary" id="importStringCancel">取消</button>'
+            + '<button class="btn-primary" id="importStringConfirm">解析</button>'
+            + '</div>'
+            + '</div>'
+            + '</div>';
+        
+        $('body').append(dialogHtml);
+        
+        var $overlay = $('#importStringOverlay');
+        
+        // 关闭事件
+        $('#importStringClose, #importStringCancel').on('click', function () {
+            $overlay.remove();
+        });
+        
+        // 确认 - 创建虚拟文件并使用现有导入流程
+        $('#importStringConfirm').on('click', function () {
+            var jsonStr = $('#importStringInput').val().trim();
+            if (!jsonStr) {
+                showToast('请输入 JSON 字符串', 'error');
+                return;
+            }
+            
+            // 验证 JSON 格式
+            try {
+                JSON.parse(jsonStr);
+            } catch (e) {
+                showToast('JSON 格式无效，请检查后重试', 'error');
+                return;
+            }
+            
+            // 关闭字符串对话框
+            $overlay.remove();
+            
+            // 创建虚拟文件并触发现有导入流程
+            try {
+                var blob = new Blob([jsonStr], { type: 'application/json' });
+                var file = new File([blob], 'import.json', { type: 'application/json' });
+                
+                var dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                $('#mcpImportFileInput')[0].files = dataTransfer.files;
+                $('#mcpImportFileInput').trigger('change');
+            } catch (e) {
+                showToast('处理 JSON 字符串失败: ' + e.message, 'error');
+            }
+        });
+        
+        // 点击遮罩关闭
+        $overlay.on('click', function (e) {
+            if (e.target === this) $overlay.remove();
+        });
+        
+        // 自动聚焦
+        setTimeout(function () { $('#importStringInput').focus(); }, 100);
+    }
     
     /**
      * 文件选择变化事件 — 将文件上传到后端解析

@@ -28,6 +28,50 @@
     var gitViewerClose = document.getElementById('gitViewerClose');
     // main-area 子视图引用
     var welcomeView = document.getElementById('welcomeView');
+
+    // ---- 多工作区状态 ----
+    var gitWorkspace = 'workspace';
+    var gitWritableWorkspaces = [];
+
+    function gitUrl(basePath, params) {
+        var query = params || '';
+        if (gitWorkspace !== 'workspace') {
+            query += (query ? '&' : '') + 'workspace=' + encodeURIComponent(gitWorkspace);
+        }
+        return basePath + (query ? '?' + query : '');
+    }
+
+    function loadGitWorkspaces() {
+        fetch('/web/chat/filer/workspaces')
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                var all = (res && res.data) ? res.data : [];
+                // 只保留可写的
+                gitWritableWorkspaces = all.filter(function(ws) { return ws.writeable; });
+                renderGitWorkspaceBar(gitWritableWorkspaces);
+                var exists = gitWritableWorkspaces.some(function(ws) { return ws.id === gitWorkspace; });
+                if (!exists) {
+                    gitWorkspace = 'workspace';
+                }
+                loadGitStatus();
+            });
+    }
+
+    function renderGitWorkspaceBar(list) {
+        var $selector = document.getElementById('gitWorkspaceSelector');
+        var $name = document.getElementById('gitWorkspaceName');
+        var $items = document.getElementById('gitWorkspaceDropdownItems');
+        if (!$selector || !$name || !$items) return;
+        var currentLabel = '';
+        var html = '';
+        list.forEach(function(ws) {
+            var label = ws.name || ws.id;
+            if (ws.id === gitWorkspace) currentLabel = label;
+            html += '<div class="git-workspace-dropdown-item" data-workspace="' + ws.id + '">' + escapeHtml(label) + '</div>';
+        });
+        $items.innerHTML = html;
+        $name.textContent = currentLabel || '工作区';
+    }
     var chatView = document.getElementById('chatView');
 
     // ---- 状态 ----
@@ -92,7 +136,7 @@
 
     // ---- 加载 Git 状态 ----
     function loadGitStatus() {
-        fetch('/web/chat/git/status')
+        fetch(gitUrl('/web/chat/git/status'))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var data = (res && res.data) ? res.data : {};
@@ -297,9 +341,29 @@
         gitDiffViewer.style.display = 'flex';
         diffViewerActive = true;
 
-        // 更新 header
+        // 从路径中解析工作区前缀：@xxx/xxx
+        var fileWorkspace = 'workspace';
+        var apiPath = path;
+        var displayPath = path;
+        if (path && path.charAt(0) === '@') {
+            var slashIdx = path.indexOf('/');
+            if (slashIdx > 1) {
+                fileWorkspace = path.substring(0, slashIdx);
+                apiPath = path.substring(slashIdx + 1);
+                // displayPath 保持原样（含 @xxx/ 前缀）
+            }
+        } else {
+            // 无 @ 前缀时，回退到全局工作区状态
+            fileWorkspace = window.activeFilerWorkspace || 'workspace';
+            // 如果全局状态是挂载工作区，displayPath 也要补上 @xxx/ 前缀
+            if (fileWorkspace !== 'workspace') {
+                displayPath = fileWorkspace + '/' + displayPath;
+            }
+        }
+
+        // 更新 header（显示带工作区前缀的路径）
         if (gitViewerLabel) gitViewerLabel.textContent = '文件内容';
-        if (gitViewerFile) gitViewerFile.textContent = path;
+        if (gitViewerFile) gitViewerFile.textContent = displayPath;
 
         // 清理操作栏
         var oldActions = gitDiffViewer.querySelector('.git-viewer-actions');
@@ -307,7 +371,11 @@
 
         if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">加载中...</div>';
 
-        fetch('/web/chat/filer/read?path=' + encodeURIComponent(path))
+        var readUrl = '/web/chat/filer/read?path=' + encodeURIComponent(apiPath);
+        if (fileWorkspace !== 'workspace') {
+            readUrl += '&workspace=' + encodeURIComponent(fileWorkspace);
+        }
+        fetch(readUrl)
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
@@ -328,6 +396,20 @@
     function renderFileContent(content, fileName, fileSize, filePath) {
         if (!gitViewerContent) return;
 
+        // 重置 MD 切换按钮为初始状态（源码态），应对切换文件时图标未复位的问题
+        var _mdToggleReset = document.getElementById('gitViewerMdToggle');
+        if (_mdToggleReset) {
+            _mdToggleReset.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+            _mdToggleReset.title = '预览 Markdown';
+        }
+        // 显示复制按钮（可能在审查详情中被隐藏）
+        var _copyBtnReset = document.getElementById('gitViewerCopyBtn');
+        if (_copyBtnReset) _copyBtnReset.style.display = '';
+
+        // 显示全屏按钮（可能在审查详情中被隐藏）
+        var _fullscreenReset = document.getElementById('gitViewerFullscreen');
+        if (_fullscreenReset) _fullscreenReset.style.display = '';
+
         var lang = guessLang(filePath || fileName);
         var lines = (content || '').split('\n');
         var totalLines = lines.length;
@@ -344,19 +426,12 @@
                 + '</div>';
         }
 
-        // 信息栏
-        var infoBar = '<div class="file-view-info">'
-            + '<span>' + escapeHtml(fileName || '') + '</span>'
-            + '<span class="file-view-info-sep">|</span>'
-            + '<span>' + totalLines + ' 行</span>'
-            + '<span class="file-view-info-sep">|</span>'
-            + '<span>' + formatSize(fileSize || 0) + '</span>'
-            + (lang ? '<span class="file-view-info-sep">|</span><span>' + escapeHtml(lang) + '</span>' : '')
-            + '<span class="file-view-copy-btn" title="复制文件内容">复制</span>'
-            + '</div>';
+        // 检测是否为 .md 文件
+        var isMdFile = /\.md$/i.test(filePath || fileName || "");
 
-        gitViewerContent.innerHTML = infoBar
-            + '<div class="file-view-code' + (lang ? ' hljs-language-' + lang : '') + '">' + codeHtml + '</div>';
+        gitViewerContent.innerHTML = ''
+            + '<div class="file-view-code' + (lang ? ' hljs-language-' + lang : '') + '">' + codeHtml + '</div>'
+            + (isMdFile ? '<div class="file-view-md-frame-wrap" style="display:none;"><iframe class="file-view-md-frame" sandbox="allow-scripts"></iframe></div>' : '');
 
         // 如果有 hljs 且能识别语言，对代码区进行语法高亮
         if (lang && typeof hljs !== 'undefined') {
@@ -382,23 +457,93 @@
             }
         }
 
-        // 复制按钮
-        var copyBtn = gitViewerContent.querySelector('.file-view-copy-btn');
+        // ---- 操作 header 中的按钮 ----
+        var mdToggleBtn = document.getElementById('gitViewerMdToggle');
+        var copyBtn = document.getElementById('gitViewerCopyBtn');
+
+        // 显示/隐藏 MD 切换按钮
+        if (mdToggleBtn) {
+            mdToggleBtn.style.display = isMdFile ? '' : 'none';
+        }
+
+        // 复制按钮事件
         if (copyBtn) {
             (function(rawContent, btn) {
-                btn.addEventListener('click', function() {
+                // 移除旧事件监听（通过克隆替换方式）
+                var newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+
+                newBtn.addEventListener('click', function() {
                     if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(rawContent).then(function() {
-                            btn.textContent = '已复制';
-                            setTimeout(function() { btn.textContent = '复制'; }, 1500);
+                            showCopyFeedback(newBtn);
                         }).catch(function() {
-                            fallbackCopy(rawContent, btn);
+                            fallbackCopy(rawContent, newBtn);
                         });
                     } else {
-                        fallbackCopy(rawContent, btn);
+                        fallbackCopy(rawContent, newBtn);
                     }
                 });
+
+                // 更新全局引用
+                copyBtn = newBtn;
             })(content, copyBtn);
+        }
+
+        // MD 切换按钮事件
+        if (isMdFile && mdToggleBtn) {
+            var mdFrameWrap = gitViewerContent.querySelector('.file-view-md-frame-wrap');
+            var codeBlock = gitViewerContent.querySelector('.file-view-code');
+            var mdRenderedFlag = false;
+
+            if (mdFrameWrap && codeBlock) {
+                // 移除旧事件监听
+                var newToggle = mdToggleBtn.cloneNode(true);
+                mdToggleBtn.parentNode.replaceChild(newToggle, mdToggleBtn);
+                mdToggleBtn = newToggle;
+
+                (function(content, toggle, wrap, code) {
+                    toggle.addEventListener('click', function() {
+                        if (wrap.style.display === 'none') {
+                            // 切换到"视图"模式
+                            code.style.display = 'none';
+                            wrap.style.display = 'block';
+
+                            // 调整 iframe 高度
+                            var iframe = wrap.querySelector('iframe');
+                            if (iframe) {
+                                var headerHeight = 8;
+                                var availHeight = gitViewerContent.clientHeight - headerHeight - 8;
+                                if (availHeight < 300) availHeight = 300;
+                                iframe.style.height = availHeight + 'px';
+                            }
+
+                            if (!mdRenderedFlag && iframe) {
+                                var mdHtml = renderMdForPreview(content);
+                                // 应用语法高亮到代码块
+                                if (typeof hljs !== 'undefined') {
+                                    mdHtml = applyMdHighlight(mdHtml);
+                                }
+                                var frameDoc = buildMdPreviewDocument(mdHtml);
+                                iframe.srcdoc = frameDoc;
+                                mdRenderedFlag = true;
+                            }
+
+                            // 切换 SVG 图标为"代码"图标
+                            toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
+                            toggle.title = '查看源码';
+                        } else {
+                            // 切换回"源码"模式
+                            code.style.display = 'block';
+                            wrap.style.display = 'none';
+
+                            // 切换 SVG 图标为"眼睛"图标
+                            toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+                            toggle.title = '预览 Markdown';
+                        }
+                    });
+                })(content, mdToggleBtn, mdFrameWrap, codeBlock);
+            }
         }
 
         gitViewerContent.scrollTop = 0;
@@ -414,8 +559,132 @@
         ta.select();
         try { document.execCommand('copy'); } catch(e) {}
         document.body.removeChild(ta);
-        btn.textContent = '已复制';
-        setTimeout(function() { btn.textContent = '复制'; }, 1500);
+        showCopyFeedback(btn);
+    }
+
+    // 复制成功反馈（SVG 图标切换为勾选再恢复）
+    function showCopyFeedback(btn) {
+        var origHtml = btn.innerHTML;
+        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(function() {
+            btn.innerHTML = origHtml;
+        }, 1500);
+    }
+
+    // Markdown 辅助函数（用于 iframe 视图预览）
+    function renderMdForPreview(text) {
+        if (typeof marked === 'undefined') return escapeHtml(text || '');
+        try {
+            var savedOpts = {};
+            // 尝试保存当前全局配置
+            if (marked.defaults) {
+                savedOpts.breaks = marked.defaults.breaks;
+                savedOpts.gfm = marked.defaults.gfm;
+                savedOpts.renderer = marked.defaults.renderer;
+            }
+            // 设置为预览模式
+            marked.setOptions({ breaks: true, gfm: true, renderer: null });
+            var html = marked.parse(text || '');
+            // 恢复全局配置
+            if (marked.defaults) {
+                marked.setOptions(savedOpts);
+            }
+            return html;
+        } catch(e) {
+            return escapeHtml(text || '');
+        }
+    }
+
+    function applyMdHighlight(mdHtml) {
+        return mdHtml.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, function(match, lang, code) {
+            try {
+                // 解码 HTML 实体
+                var decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+                var result = hljs.highlight(decoded, { language: lang, ignoreIllegals: true });
+                return '<pre><code class="language-' + lang + ' hljs">' + result.value + '</code></pre>';
+            } catch(e) {
+                return match;
+            }
+        });
+    }
+
+    function buildMdPreviewDocument(mdHtml) {
+        return '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
+            + '<meta charset="utf-8">\n'
+            + '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+            + '<style>\n'
+            + '  * { margin: 0; padding: 0; box-sizing: border-box; }\n'
+            + '  body {\n'
+            + '    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;\n'
+            + '    font-size: 15px;\n'
+            + '    line-height: 1.7;\n'
+            + '    color: #24292e;\n'
+            + '    padding: 24px 32px;\n'
+            + '    max-width: 960px;\n'
+            + '    margin: 0 auto;\n'
+            + '    background: #ffffff;\n'
+            + '  }\n'
+            + '  h1, h2, h3, h4 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }\n'
+            + '  h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }\n'
+            + '  h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }\n'
+            + '  h3 { font-size: 1.25em; }\n'
+            + '  p, ul, ol, blockquote, table, pre { margin-bottom: 16px; }\n'
+            + '  ul, ol { padding-left: 2em; }\n'
+            + '  li { margin: 0.25em 0; }\n'
+            + '  a { color: #0366d6; text-decoration: none; }\n'
+            + '  a:hover { text-decoration: underline; }\n'
+            + '  code {\n'
+            + '    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n'
+            + '    font-size: 13px;\n'
+            + '    background: #f6f8fa;\n'
+            + '    padding: 2px 6px;\n'
+            + '    border-radius: 3px;\n'
+            + '  }\n'
+            + '  pre {\n'
+            + '    background: #f6f8fa;\n'
+            + '    padding: 16px;\n'
+            + '    border-radius: 6px;\n'
+            + '    overflow-x: auto;\n'
+            + '  }\n'
+            + '  pre code {\n'
+            + '    background: none;\n'
+            + '    padding: 0;\n'
+            + '    font-size: 13px;\n'
+            + '    line-height: 1.5;\n'
+            + '  }\n'
+            // highlight.js 高亮样式（GitHub Light 主题）
+            + '  pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}\n'
+            + '  .hljs{color:#24292e;background:#fff}\n'
+            + '  .hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}\n'
+            + '  .hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}\n'
+            + '  .hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}\n'
+            + '  .hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}\n'
+            + '  .hljs-built_in,.hljs-symbol{color:#e36209}\n'
+            + '  .hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}\n'
+            + '  .hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}\n'
+            + '  .hljs-subst{color:#24292e}\n'
+            + '  .hljs-section{color:#005cc5;font-weight:700}\n'
+            + '  .hljs-bullet{color:#735c0f}\n'
+            + '  .hljs-emphasis{color:#24292e;font-style:italic}\n'
+            + '  .hljs-strong{color:#24292e;font-weight:700}\n'
+            + '  .hljs-addition{color:#22863a;background-color:#f0fff4}\n'
+            + '  .hljs-deletion{color:#b31d28;background-color:#ffeef0}\n'
+            + '  '
+            + '  blockquote {\n'
+            + '    border-left: 4px solid #dfe2e5;\n'
+            + '    padding: 0 16px;\n'
+            + '    color: #6a737d;\n'
+            + '  }\n'
+            + '  img { max-width: 100%; }\n'
+            + '  table { border-collapse: collapse; width: 100%; }\n'
+            + '  th, td { border: 1px solid #dfe2e5; padding: 6px 13px; }\n'
+            + '  th { background: #f6f8fa; font-weight: 600; }\n'
+            + '  hr { border: none; border-top: 1px solid #eaecef; margin: 24px 0; }\n'
+            + '  ::-webkit-scrollbar { width: 6px; height: 6px; }\n'
+            + '  ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }\n'
+            + '</style>\n</head>\n<body>\n'
+            + mdHtml + '\n'
+            + '</body>\n</html>';
     }
 
     // ---- Diff Viewer：打开内联 diff（在 main-area 内）----
@@ -433,8 +702,21 @@
         gitDiffViewer.style.display = 'flex';
         diffViewerActive = true;
 
+        // 审查详情模式：隐藏"视图"和"复制"按钮（全屏按钮保留）
+        var _mdToggle = document.getElementById('gitViewerMdToggle');
+        var _copyBtn = document.getElementById('gitViewerCopyBtn');
+        var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
+        if (_mdToggle) _mdToggle.style.display = 'none';
+        if (_copyBtn) _copyBtn.style.display = 'none';
+        if (_fullscreenBtn) _fullscreenBtn.style.display = '';
+
         if (gitViewerLabel) gitViewerLabel.textContent = '变更详情';
-        if (gitViewerFile) gitViewerFile.textContent = path;
+        // 如果是挂载工作区，显示路径时带上 @xxx/ 前缀
+        var displayDiffPath = path;
+        if (gitWorkspace !== 'workspace') {
+            displayDiffPath = gitWorkspace + '/' + displayDiffPath;
+        }
+        if (gitViewerFile) gitViewerFile.textContent = displayDiffPath;
 
         // 判断是否是目录（以 / 结尾）
         var isDir = path.endsWith('/');
@@ -443,7 +725,7 @@
             // 目录：显示提示信息，不调用 diff 接口
             if (gitViewerContent) {
                 gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
-                    + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(path) + '</div>'
+                    + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(displayDiffPath) + '</div>'
                     + '<div>这是一个目录，暂无可查看的文本差异。</div>'
                     + '</div>';
             }
@@ -453,7 +735,7 @@
 
         if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">加载中...</div>';
 
-        fetch('/web/chat/git/diff?path=' + encodeURIComponent(path))
+        fetch(gitUrl('/web/chat/git/diff', 'path=' + encodeURIComponent(path)))
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
@@ -493,7 +775,7 @@
             addBtn.addEventListener('click', function() {
                 addBtn.disabled = true;
                 addBtn.textContent = '添加中...';
-                fetch('/web/chat/git/stage', {
+        fetch(gitUrl('/web/chat/git/stage'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -526,7 +808,7 @@
             unstageBtn.addEventListener('click', function() {
                 unstageBtn.disabled = true;
                 unstageBtn.textContent = '移出中...';
-                fetch('/web/chat/git/unstage', {
+        fetch(gitUrl('/web/chat/git/unstage'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -619,6 +901,12 @@
     // ---- Diff Viewer：关闭，恢复原始视图 ----
     function closeDiffViewer() {
         if (!gitDiffViewer) return;
+
+        // 如果当前在全屏状态，退出全屏
+        if (document.fullscreenElement === gitDiffViewer && document.exitFullscreen) {
+            document.exitFullscreen().catch(function(e){});
+        }
+
         gitDiffViewer.style.display = 'none';
         diffViewerActive = false;
 
@@ -642,6 +930,37 @@
 
     if (gitViewerClose) {
         gitViewerClose.addEventListener('click', closeDiffViewer);
+    }
+
+    // ---- 全屏功能 ----
+    var gitViewerFullscreen = document.getElementById('gitViewerFullscreen');
+    if (gitViewerFullscreen) {
+        gitViewerFullscreen.addEventListener('click', function() {
+            if (!document.fullscreenElement) {
+                if (gitDiffViewer.requestFullscreen) {
+                    gitDiffViewer.requestFullscreen().catch(function(e) {
+                        console.warn('[gitdiff] fullscreen error', e);
+                    });
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().catch(function(e) {
+                        console.warn('[gitdiff] exit fullscreen error', e);
+                    });
+                }
+            }
+        });
+
+        // 监听全屏状态变化，更新图标
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement === gitDiffViewer) {
+                gitViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4M4 10h6V4m10 10h-6v6"/></svg>';
+                gitViewerFullscreen.title = '退出全屏';
+            } else {
+                gitViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+                gitViewerFullscreen.title = '全屏';
+            }
+        });
     }
 
     // ESC 关闭 diff viewer
@@ -675,7 +994,7 @@
             // 获取当前会话的 sessionId
             var currentSessionId = (typeof activeSessionId !== 'undefined') ? activeSessionId : '';
 
-            fetch('/web/chat/git/summary', {
+        fetch(gitUrl('/web/chat/git/summary'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'sessionId=' + encodeURIComponent(currentSessionId)
@@ -738,7 +1057,7 @@
             gitCommitBtn.disabled = true;
             gitCommitBtn.innerHTML = '<span style="opacity:0.7">提交中...</span>';
 
-            fetch('/web/chat/git/commit', {
+        fetch(gitUrl('/web/chat/git/commit'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: msg, files: files })
@@ -791,7 +1110,7 @@
             gitInitBtn.textContent = '初始化中...';
 
             var doCommit = gitInitCommit && gitInitCommit.checked;
-            fetch('/web/chat/git/init?initialCommit=' + (doCommit ? 'true' : 'false'), { method: 'POST' })
+        fetch(gitUrl('/web/chat/git/init', 'initialCommit=' + (doCommit ? 'true' : 'false')), { method: 'POST' })
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
                     if (res && res.code === 200) {
@@ -850,13 +1169,50 @@
         return div.innerHTML;
     }
 
+    // ---- 工作区切换事件（自定义下拉）----
+    document.addEventListener('click', function(e) {
+        var $selector = document.getElementById('gitWorkspaceSelector');
+        if (!$selector) return;
+        var $current = document.getElementById('gitWorkspaceCurrent');
+        var $dropdown = document.getElementById('gitWorkspaceDropdown');
+
+        // 点击 current 切换打开/关闭
+        if ($current && $current.contains(e.target)) {
+            e.stopPropagation();
+            $selector.classList.toggle('open');
+            return;
+        }
+
+        // 点击 dropdown item 选择工作区
+        var $item = $(e.target).closest('.git-workspace-dropdown-item');
+        if ($item.length) {
+            e.stopPropagation();
+            var ws = $item.attr('data-workspace');
+            if (ws && ws !== gitWorkspace) {
+                gitWorkspace = ws;
+                // 更新显示名称
+                var $name = document.getElementById('gitWorkspaceName');
+                if ($name) $name.textContent = $item.text();
+                loadGitStatus();
+            }
+            $selector.classList.remove('open');
+            return;
+        }
+
+        // 点击外部关闭
+        if ($selector.classList.contains('open') && !$selector.contains(e.target)) {
+            $selector.classList.remove('open');
+        }
+    });
+
     // ---- 初始化 ----
-    loadGitStatus();
+    loadGitWorkspaces();
     // 每60秒兜底刷新
     setInterval(loadGitStatus, 60000);
 
     // 暴露全局（供 app-filer.js / app-message.js 调用）
     window.loadGitStatus = loadGitStatus;
+    window.loadGitWorkspaces = loadGitWorkspaces;
     window.openFileViewer = openFileViewer;
     window.closeDiffViewer = closeDiffViewer;
     window.guessLang = guessLang;

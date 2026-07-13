@@ -83,7 +83,7 @@
 .form-row-3col .form-group { flex: 1; min-width: 0; }
 .form-group label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
 .form-group .required { color: #ef4444; }
-.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-primary); font-size: 13px; outline: none; transition: border-color 0.2s; font-family: inherit; box-sizing: border-box; }
+.form-group input, .form-group select:not(.form-select-custom), .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-primary); font-size: 13px; outline: none; transition: border-color 0.2s; font-family: inherit; box-sizing: border-box; }
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .btn-primary { padding: 8px 20px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-size: 13px; cursor: pointer; transition: opacity 0.15s; }
@@ -207,6 +207,8 @@
 .mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
 .mcp-server-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .mcp-server-item:active { transform: scale(0.997); }
+.mcp-server-item.disabled { opacity: 0.5; }
+.mcp-server-item.disabled .mcp-server-icon { opacity: 0.5; }
 .mcp-server-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 .mcp-server-info { flex: 1; min-width: 0; }
 .mcp-server-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
@@ -297,6 +299,49 @@
 /* MCP header 区域按钮组 */
 .mcp-header-actions { display: flex; gap: 6px; align-items: center; }
 
+/* MCP 导入下拉菜单 */
+.mcp-import-menu-wrap {
+    position: relative;
+    display: inline-block;
+}
+
+.mcp-import-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 160px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    z-index: 1000;
+    padding: 4px;
+}
+
+.mcp-import-menu.show {
+    display: block;
+}
+
+.mcp-import-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.mcp-import-menu-item:hover {
+    background: var(--hover-bg, rgba(128,128,128,0.1));
+}
+
 /* ===== Skills Tab ===== */
 .skills-search-bar { padding: 0 0 14px 0; display: flex; gap: 6px; align-items: stretch; }
 .skills-market-wrap { position: relative; display: flex; align-items: center; flex-shrink: 0; }
@@ -304,6 +349,29 @@
 .skills-market-select { padding: 7px 26px 7px 28px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 12px; font-weight: 500; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; transition: border-color 0.2s, box-shadow 0.2s; }
 .skills-market-select:hover { border-color: var(--accent); }
 .skills-market-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 59,130,246), 0.15); }
+
+/* 通用自定义 select 样式（用于日志级别、接口规范等原生 select） */
+.form-select-custom {
+    padding: 7px 26px 7px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-input-box);
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+    box-sizing: border-box;
+    width: 100%;
+}
+.form-select-custom:hover { border-color: var(--accent); }
+.form-select-custom:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 59,130,246), 0.15); }
 .skills-search-input-wrap { position: relative; display: flex; align-items: center; flex: 1; }
 .skills-search-icon { position: absolute; left: 10px; color: var(--text-secondary); pointer-events: none; }
 .skills-search-input-wrap input { width: 100%; padding: 7px 32px 7px 30px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; outline: none; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
@@ -457,6 +525,16 @@
     transition: border-color 0.2s, box-shadow 0.2s;
     box-sizing: border-box;
     font-family: inherit;
+}
+/* general-input 用在 select 上时，应用自定义下拉箭头样式 */
+.general-input:is(select) {
+    padding: 7px 26px 7px 12px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    cursor: pointer;
 }
 .general-input:focus {
     border-color: var(--accent);
@@ -871,6 +949,46 @@ select[disabled] {
     gap: 4px;
 }
 
+.provider-model-menu-wrap {
+    position: relative;
+}
+
+.provider-model-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    display: none;
+    min-width: 96px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.provider-model-menu.show {
+    display: block;
+}
+
+.provider-model-menu-item {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.provider-model-menu-item:hover {
+    background: var(--bg-hover);
+}
+
 .provider-model-icon-btn {
     display: flex;
     align-items: center;
@@ -1240,3 +1358,42 @@ select[disabled] {
     padding: 12px 20px;
     border-top: 1px solid var(--border-color);
 }
+
+/* ==================== 导入 JSON 字符串对话框 ==================== */
+.import-string-textarea {
+    width: 100%;
+    min-height: 200px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary, #f8f9fa);
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+.import-string-textarea:focus {
+    border-color: var(--accent, #3b82f6);
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+}
+.import-string-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 8px;
+    line-height: 1.5;
+}
+.import-string-code {
+    display: inline-block;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 11px;
+    padding: 1px 5px;
+    background: var(--bg-secondary, #f0f0f0);
+    border-radius: 4px;
+    color: var(--accent, #3b82f6);
+    border: 1px solid var(--border-color);
+}
+

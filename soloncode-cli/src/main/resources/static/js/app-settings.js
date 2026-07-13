@@ -196,4 +196,10 @@
         else if (targetTab === 'lsp') { if (mod('_settingsLsp')) mod('_settingsLsp').load(); }
         else if (targetTab === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
     }
+
+    // 全局打开设置 tab 入口（供 app-filer.js 调用）
+    window.openSettingsTab = function(tab) {
+        $overlay.css('display', 'flex');
+        $('.settings-tab[data-tab="' + tab + '"]').click();
+    };
 })();

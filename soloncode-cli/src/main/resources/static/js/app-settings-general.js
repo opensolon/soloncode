@@ -68,6 +68,11 @@
                 // Web 访问认证
                 $('#generalWebAuthUser').val(d.webAuthUser || '');
                 $('#generalWebAuthPass').val(d.webAuthPass || '');
+
+                // 日志
+                $('#generalLogLevel').val(d.logLevel || '');
+                $('#generalLogFileMaxSize').val(d.logFileMaxSize || '');
+                $('#generalLogMaxHistory').val(d.logMaxHistory != null ? d.logMaxHistory : '');
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
 
@@ -79,7 +84,6 @@
                 $('#generalLoopDefaultMaxDuration').val(d.defaultMaxDurationMinutes != null && d.defaultMaxDurationMinutes > 0 ? d.defaultMaxDurationMinutes : '');
                 $('#generalLoopStagnationThreshold').val(d.stagnationThreshold != null ? d.stagnationThreshold : '');
                 $('#generalLoopMaxConsecutiveErrors').val(d.maxConsecutiveErrors != null ? d.maxConsecutiveErrors : '');
-                $('#generalLoopPauseAutoAbandonHours').val(d.pauseAutoAbandonHours != null ? d.pauseAutoAbandonHours : '');
                 $('#generalLoopBudgetWarningPercent').val(d.budgetWarningPercent != null ? d.budgetWarningPercent : '');
                 $('#generalLoopBudgetCriticalPercent').val(d.budgetCriticalPercent != null ? d.budgetCriticalPercent : '');
                 $('#generalLoopValidatorEnabled').prop('checked', d.validatorEnabled !== false);
@@ -108,7 +112,10 @@
             lspEnabled: $('#generalLspEnabled').is(':checked'),
             cliPrintSimplified: $('#generalCliPrintSimplified').is(':checked'),
             webAuthUser: $('#generalWebAuthUser').val().trim() || null,
-            webAuthPass: $('#generalWebAuthPass').val().trim() || null
+            webAuthPass: $('#generalWebAuthPass').val().trim() || null,
+            logLevel: $('#generalLogLevel').val().trim() || null,
+            logFileMaxSize: $('#generalLogFileMaxSize').val().trim() || null,
+            logMaxHistory: parseNumStr($('#generalLogMaxHistory').val().trim())
         };
 
         $generalSaveBtn.prop('disabled', true);
@@ -128,7 +135,6 @@
             defaultMaxDurationMinutes: parseNumStr($('#generalLoopDefaultMaxDuration').val().trim()) || 0,
             stagnationThreshold: parseNumStr($('#generalLoopStagnationThreshold').val().trim()),
             maxConsecutiveErrors: parseNumStr($('#generalLoopMaxConsecutiveErrors').val().trim()),
-            pauseAutoAbandonHours: parseNumStr($('#generalLoopPauseAutoAbandonHours').val().trim()),
             budgetWarningPercent: parseNumStr($('#generalLoopBudgetWarningPercent').val().trim()),
             budgetCriticalPercent: parseNumStr($('#generalLoopBudgetCriticalPercent').val().trim()),
             validatorEnabled: $('#generalLoopValidatorEnabled').is(':checked')

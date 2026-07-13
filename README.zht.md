@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>基於 Solon AI 與 Java 實現的開源編碼智能體（支援 Java8 到 Java26 環境啟動）</p>
-<p>最新版本：v2026.6.24</p>
+<p>最新版本：v2026.7.13</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -28,35 +28,39 @@ curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 irm https://solon.noear.org/soloncode/setup.ps1 | iex
 ```
 
-修改設定（安裝後，必須先修改設定）：
+修改設定（新用戶推薦先用 Web 設定頁配置：）：
 
-* 安裝後的目錄：`~/soloncode/bin/`
-* 找到 `~/soloncode/config.yml` 設定檔，（主要）修改 `models` 設定
-* `models` 設定項，可參考：《模型設定與請求選項》
+```
+soloncode web 0
+```
+
+進入頁面後打開"設定 -> 大語言模型"，添加模型並測試連接。
+
+<img height="260" src="SETTINGS-LLM.png">
 
 ## 執行
 
-在控制台「任意」目錄（即工作區）下，執行 `soloncode`（CLI 互動）或者 `soloncode web 0`（Web 互動）命令即可。
+在控制台「任意」目錄（即工作區）下，執行 `soloncode cli`（CLI 互動）或者 `soloncode web 0`（Web 互動）命令即可。
 
-* `soloncode`（CLI 互動）
+* `soloncode cli`（CLI 互動）
 
 ```bash
-demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.24 PID-74080 Model:deepseek-v4-flash
-/path/demo
-Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
+demo@MacBook-Pro ~ % soloncode cli
+SolonCode v2026.7.13 PID-87950 Model:deepseek-v4-flash
+/Users/demo
+Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
 User
-> 
+❯ 
 ```
 
 * `soloncode web 0`（Web 互動）
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.24 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.13 PID-73617 Model:deepseek-v4-flash
 /path/demo
-2026-05-20 09:35
+2026-07-09 11:26
 Web interface: http://localhost:50488/
 ```
 

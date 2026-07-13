@@ -27,6 +27,7 @@
                 <include>AGENTS.md</include>
                 <include>install.sh</include>
                 <include>install.ps1</include>
+                <include>install.cmd</include>
             </includes>
         </fileSet>
 
@@ -37,6 +38,7 @@
             <includes>
                 <include>uninstall.sh</include>
                 <include>uninstall.ps1</include>
+                <include>uninstall.cmd</include>
             </includes>
         </fileSet>
 

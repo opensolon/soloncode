@@ -29,6 +29,7 @@ function SessionState(sessionId) {
     this.eventSource = null;
     this.isStreaming = false;
     this.currentBubbleEl = null;
+    this.nextContentBlock = false;
     this.reasonBuffer = '';
     this.thinkingBlockEl = null;
     this.thinkingBodyMdEl = null;
@@ -49,7 +50,20 @@ function SessionState(sessionId) {
     this.thinkingBlockTimerId = null;
     this.thinkingBlockStartTime = null;
     this.messageStartTime = null;
+    // Context 条本轮总计时：发送起算，finishStream 定格
+    this.roundStartedAt = null;
+    this.roundEndedAt = null;
+    this.contextTokens = null;
+    this.contextLength = null;
     this.userMsgCounter = 0;
+    this.reasonGroups = {};  // streamSegmentId::reasonId → { groupEl, thinkingBlockEl }
+    this.thinkingGroupEl = null;
+    this.taskGroups = {};  // taskId → task-group DOM
+    this.taskSegments = {}; // taskId → 聚合输出段；同一任务始终复用同一个 task-group
+    // 流事件的主代理展示段。taskId/reasonId 用于归属，主代理段用于保留连续主输出的顺序。
+    this.streamSegments = [];
+    this.currentStreamSegment = null;
+    this.streamSegmentSeq = 0;
 }
 
 var sessionMap = {};
@@ -123,12 +137,30 @@ function scrollToBottom(force) {
 
 function resetStreamState(sess) {
     sess.currentBubbleEl = null;
+    sess.nextContentBlock = false;
     sess.pendingToolStarted = false;
+    sess.pendingToolCards = {};
     sess.reasonBuffer = '';
     sess.thinkingBlockEl = null;
     sess.thinkingBodyMdEl = null;
     sess.thinkingBodyWrapEl = null;
     sess.thinkingBuffer = '';
+    sess.thinkingGroupEl = null;
+    sess.taskGroups = {};
+    sess.taskSegments = {};
+    sess.streamSegments = [];
+    sess.currentStreamSegment = null;
+    sess.streamSegmentSeq = 0;
+    // Cancel per-reasonId RAF IDs before clearing
+    for (var _rid in sess.reasonGroups) {
+        if (sess.reasonGroups[_rid].reasonRafId) {
+            cancelAnimationFrame(sess.reasonGroups[_rid].reasonRafId);
+        }
+    }
+    sess.reasonGroups = {};
+    sess.pendingReasonWhitespace = {};
+    sess.pendingGroupWhitespace = {};
+    sess.pendingThinkingWhitespace = '';
     if (sess.contentRafId) { cancelAnimationFrame(sess.contentRafId); sess.contentRafId = null; }
     if (sess.reasonRafId) { cancelAnimationFrame(sess.reasonRafId); sess.reasonRafId = null; }
 }

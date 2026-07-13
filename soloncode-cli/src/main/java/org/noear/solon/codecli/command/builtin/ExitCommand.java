@@ -53,7 +53,7 @@ public class ExitCommand implements Command {
 
         Thread exitThread = new Thread(() -> System.exit(0));
         exitThread.start();
-        RunUtil.runAndTry(()->Thread.sleep(5000)); // 5秒后强制退出
-        Runtime.getRuntime().halt(1);  // 立即终止，不执行hooks
+        RunUtil.runAndTry(() -> Thread.sleep(5000)); // 5秒后强制退出
+        Runtime.getRuntime().halt(0);  // 统一退出码 0，不执行 ShutdownHook
     }
 }

@@ -20,34 +20,31 @@ import lombok.Getter;
 /**
  * Loop 任务单轮执行结果。
  *
- * <p>用于承载单代理执行的结构化结果，避免仅依赖字符串判断
- * goal 完成状态。</p>
+ * <p>用于承载单代理执行的结构化结果。</p>
+ *
+ * <p>Goal 完成判定由 {@code goal_update(complete)} 工具调用驱动，
+ * 通过 {@link GoalState#getStatus()} 状态检测。</p>
  *
  * @author noear
  * @since 3.9.1
  */
 @Getter
 public class LoopExecutionResult {
-    public static final String GOAL_ACHIEVED = "[GOAL_ACHIEVED]";
-
     private final boolean submitted;
     private final boolean completed;
     private final boolean hasToolCalls;   // R6: 真实工具调用标记
     private final long tokensUsed;        // G2: 本轮回合 token 消耗
 
-    private final boolean goalAchieved;
-
     private final String finalResult;
     private final String errorMessage;
 
     private LoopExecutionResult(boolean submitted, boolean completed, boolean hasToolCalls,
-                                long tokensUsed, boolean goalAchieved,
+                                long tokensUsed,
                                 String finalResult, String errorMessage) {
         this.submitted = submitted;
         this.completed = completed;
         this.hasToolCalls = hasToolCalls;
         this.tokensUsed = tokensUsed;
-        this.goalAchieved = goalAchieved;
         this.finalResult = finalResult;
         this.errorMessage = errorMessage;
     }
@@ -64,7 +61,6 @@ public class LoopExecutionResult {
                 text != null,
                 hasToolCalls,
                 tokens,
-                containsGoalAchieved(text),
                 text,
                 null);
     }
@@ -82,21 +78,18 @@ public class LoopExecutionResult {
                 text != null,
                 hasToolCalls,
                 tokensUsed,
-                containsGoalAchieved(text),
                 text,
                 null);
     }
 
     public static LoopExecutionResult submittedOnly() {
-        return new LoopExecutionResult(true, false, false, 0, false, null, null);
+        return new LoopExecutionResult(true, false, false, 0, null, null);
     }
 
     public static LoopExecutionResult error(String errorMessage) {
-        return new LoopExecutionResult(true, true, false, 0, false,
+        return new LoopExecutionResult(true, true, false, 0,
                 errorMessage != null ? "error: " + errorMessage : "error", errorMessage);
     }
 
-    private static boolean containsGoalAchieved(String text) {
-        return text != null && text.contains(GOAL_ACHIEVED);
-    }
+
 }

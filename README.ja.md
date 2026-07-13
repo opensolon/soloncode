@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a>とJavaで構築されたオープンソースのコーディングエージェント（Java8からJava26のランタイム環境をサポート）</p>
-<p>最新バージョン: v2026.6.24</p>
+<p>最新バージョン: v2026.7.13</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -28,35 +28,39 @@ curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 irm https://solon.noear.org/soloncode/setup.ps1 | iex
 ```
 
-設定（インストール後に必ず変更してください）：
+設定（新規ユーザーは最初にWeb設定ページを使用することをお勧めします）：
 
-* インストールディレクトリ: `~/soloncode/bin/`
-* `~/soloncode/config.yml` 設定ファイルを開き、`models` 設定を変更してください（主な設定項目）
-* `models` の設定オプションについては、[モデル設定とリクエストオプション](https://solon.noear.org/article/1087)を参照してください
+```
+soloncode web 0
+```
+
+ページに入ったら「設定 -> 大規模言語モデル」を開き、モデルを追加して接続をテストしてください。
+
+<img height="260" src="SETTINGS-LLM.png">
 
 ## 実行
 
-コンソールの任意のディレクトリ（ワークスペース）で、`soloncode`（CLI対話）または `soloncode web 0`（Web対話）コマンドを実行してください。
+コンソールの任意のディレクトリ（ワークスペース）で、`soloncode cli`（CLI対話）または `soloncode web 0`（Web対話）コマンドを実行してください。
 
-* `soloncode`（CLI対話）
+* `soloncode cli`（CLI対話）
 
 ```bash
-demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.24 PID-74080 Model:deepseek-v4-flash
-/path/demo
-Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
+demo@MacBook-Pro ~ % soloncode cli
+SolonCode v2026.7.13 PID-87950 Model:deepseek-v4-flash
+/Users/demo
+Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
 User
-> 
+❯ 
 ```
 
 * `soloncode web 0`（Web対話）
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.24 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.13 PID-73617 Model:deepseek-v4-flash
 /path/demo
-2026-05-20 09:35
+2026-07-09 11:26
 Web interface: http://localhost:50488/
 ```
 

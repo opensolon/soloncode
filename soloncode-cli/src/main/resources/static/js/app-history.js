@@ -8,6 +8,10 @@
 /* 自定义 composing 标志，替代 e.isComposing（macOS 输入法组合态下 Enter 时序问题） */
 var composing = false;
 
+function isInputComposing(event) {
+    return composing || !!(event && (event.isComposing || event.keyCode === 229));
+}
+
 var ACTIVE_SESSION_KEY = 'soloncode-active-session';
 function rememberActiveSession(sessionId) {
     try { if (sessionId) localStorage.setItem(ACTIVE_SESSION_KEY, sessionId); } catch (e) {}
@@ -92,6 +96,13 @@ $(historyList).on('click', function(e) {
         if (!isNaN(idx)) startRename(idx);
         return;
     }
+    var $forkBtn = $target.closest('.sidebar-item-fork');
+    if ($forkBtn.length) {
+        e.stopPropagation();
+        var idx = parseInt($forkBtn.closest('.sidebar-item').attr('data-idx'));
+        if (!isNaN(idx)) forkSession(idx);
+        return;
+    }
     var $item = $target.closest('.sidebar-item');
     if ($item.length) {
         var idx = parseInt($item.attr('data-idx'));
@@ -123,6 +134,7 @@ function updateHistoryUI() {
                 html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
             }
             html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
+                + '<button class="sidebar-item-fork" title="复制对话"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.25 2.25 0 1 1-1.5 0v-2.128h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"/></svg></button>'
                 + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
                 + '</div>';
         }
@@ -175,6 +187,56 @@ function startRename(idx) {
     $input.on('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); $input[0].blur(); }
         if (e.key === 'Escape') { $input.val(currentLabel); $input[0].blur(); }
+    });
+}
+
+/**
+ * 分叉会话：调用服务端把源会话的消息历史复制到一个新的 sessionId，
+ * 然后在本地历史列表中创建新条目并自动切换过去。
+ */
+function forkSession(idx) {
+    var entry = chatHistory[idx];
+    if (!entry) return;
+
+    layer.confirm('将当前对话完整复制一份作为新对话，\n原对话不受影响，你可以在此基础上继续提问。', {
+        title: '复制对话',
+        btn: ['复制', '取消'],
+        icon: 3,
+        offset: '120px'
+    }, function(confirmIdx) {
+        layer.close(confirmIdx);
+        $.post('/web/chat/sessions/fork', { sessionId: entry.sessionId }, function(resp) {
+            try {
+                if (!resp || resp.code !== 200 || !resp.data || !resp.data.sessionId) {
+                    throw new Error('Invalid response');
+                }
+                var newId = resp.data.sessionId;
+                ensureChatInHistory(newId, resp.data.name || newId, true);
+                rememberActiveSession(newId);
+
+                var newIdx = -1;
+                for (var i = 0; i < chatHistory.length; i++) {
+                    if (chatHistory[i].sessionId === newId) { newIdx = i; break; }
+                }
+                if (newIdx >= 0) selectSession(newIdx);
+
+                if (typeof layer !== 'undefined' && layer.msg) {
+                    layer.msg('复制对话成功', { icon: 1, time: 2000, offset: '120px' });
+                }
+            } catch (e) {
+                if (typeof layer !== 'undefined' && layer.msg) {
+                    layer.msg('复制对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+                } else {
+                    alert('复制对话失败，请重试');
+                }
+            }
+        }).fail(function() {
+            if (typeof layer !== 'undefined' && layer.msg) {
+                layer.msg('复制对话失败，请重试', { icon: 2, time: 3000, offset: '120px' });
+            } else {
+                alert('复制对话失败，请重试');
+            }
+        });
     });
 }
 
@@ -251,7 +313,7 @@ function loadMessages(sess) {
                 var m = msgs[i];
                 if (m.role === 'USER') {
                     resetStreamState(sess);
-                    appendUserMessage(sess, m.content, null, null, m.createdAt);
+                    appendUserMessage(sess, m.content, null, m.attachments, m.createdAt, m.sourceLabel);
                 } else if (m.role === 'ASSISTANT') {
                     var isConsecutive = (i > 0 && msgs[i - 1].role === 'ASSISTANT');
                     if (!isConsecutive) resetStreamState(sess);
@@ -338,6 +400,13 @@ function showCmdComplete(inputEl, completeEl, prefix) {
     cmdVisibleItems = [];
     var html = '';
 
+    // Add search bar for skills
+    if (filterType === 'skill') {
+        html += '<div class="cmd-complete-search">'
+            + '<input type="text" class="cmd-search-input" placeholder="搜索技能..." autocomplete="off" />'
+            + '</div>';
+    }
+
     for (var i = 0; i < commandList.length; i++) {
         var cmd = commandList[i];
         // Filter by type based on trigger
@@ -360,6 +429,50 @@ function showCmdComplete(inputEl, completeEl, prefix) {
     cmdTrigger = trigger;
     cmdActiveIndex = -1;
     $(completeEl).html(html).addClass('show');
+
+    // Bind search for skills
+    if (filterType === 'skill') {
+        var $searchInput = $(completeEl).find('.cmd-search-input');
+        if ($searchInput.length) {
+            $searchInput.on('input', function() {
+                var q = this.value.trim().toLowerCase();
+                var $items = $(completeEl).find('.cmd-complete-item');
+                var newVisible = [];
+                $items.each(function() {
+                    var $item = $(this);
+                    var name = $item.find('.cmd-name').text().toLowerCase().replace(/^\$/, '');
+                    if (!q || name.indexOf(q) >= 0) {
+                        $item.show();
+                        newVisible.push(cmdVisibleItems[parseInt($item.attr('data-index'))]);
+                    } else {
+                        $item.hide();
+                    }
+                });
+                cmdVisibleItems = newVisible;
+                $items.filter(':visible').each(function(i) {
+                    $(this).attr('data-index', i);
+                });
+                cmdActiveIndex = -1;
+                $items.removeClass('active');
+            });
+            $searchInput.on('mousedown', function(e) {
+                e.stopPropagation();
+            });
+            $searchInput.on('click', function(e) {
+                e.stopPropagation();
+            });
+            $searchInput.on('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    hideCmdComplete();
+                    inputEl.focus();
+                    e.stopPropagation();
+                    e.preventDefault();
+                    return;
+                }
+                e.stopPropagation();
+            });
+        }
+    }
 }
 
 function hideCmdComplete() {
@@ -374,11 +487,11 @@ function applyCmdSelection(inputEl, completeEl) {
     if (cmdActiveIndex >= 0 && cmdActiveIndex < cmdVisibleItems.length) {
         var cmd = cmdVisibleItems[cmdActiveIndex];
         var trigger = cmdTrigger || '/';
-        
+
         // 找到当前输入框中的命令前缀位置
         var val = inputEl.value;
         var prefixPos = -1;
-        
+
         // 查找最近的命令前缀（/、@ 或 $）
         for (var i = val.length - 1; i >= 0; i--) {
             var ch = val.charAt(i);
@@ -387,22 +500,22 @@ function applyCmdSelection(inputEl, completeEl) {
                 break;
             }
         }
-        
+
         if (prefixPos >= 0) {
             // 替换前缀及其后面的内容
             var textBefore = val.substring(0, prefixPos);
             var textAfter = val.substring(prefixPos);
-            
+
             // 找到前缀后面的空格位置（如果有）
             var spaceIndex = textAfter.indexOf(' ');
             var argsStr = '';
             if (spaceIndex >= 0) {
                 argsStr = textAfter.substring(spaceIndex);
             }
-            
+
             // 构建新的值（命令/技能/子代理名称后追加空格）
             inputEl.value = textBefore + trigger + cmd.name + ' ' + argsStr;
-            
+
             // 更新光标位置到命令和空格后面
             var newCursorPos = textBefore.length + trigger.length + cmd.name.length + 1;
             inputEl.setSelectionRange(newCursorPos, newCursorPos);
@@ -411,7 +524,7 @@ function applyCmdSelection(inputEl, completeEl) {
             inputEl.value = trigger + cmd.name + ' ' + val;
             inputEl.setSelectionRange(trigger.length + cmd.name.length + 1, trigger.length + cmd.name.length + 1);
         }
-        
+
         autoResize(inputEl);
     }
     hideCmdComplete();
@@ -497,14 +610,14 @@ function triggerCmdComplete(inputEl, completeEl, prefix) {
     var cursorPos = inputEl.selectionStart;
     var textBefore = inputEl.value.substring(0, cursorPos);
     var textAfter = inputEl.value.substring(cursorPos);
-    
+
     // 在光标位置插入前缀（命令/子代理/技能符号后追加空格）
     inputEl.value = textBefore + prefix + ' ' + textAfter;
-    
+
     // 更新光标位置到前缀和空格后面
     var newCursorPos = cursorPos + prefix.length + 1;
     inputEl.setSelectionRange(newCursorPos, newCursorPos);
-    
+
     inputEl.focus();
     showCmdComplete(inputEl, completeEl, prefix);
 }
@@ -539,14 +652,14 @@ $(chatInput).on('compositionend', function() { composing = false; });
 // Keyboard navigation for command completion
 $(welcomeInput).on('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
-    if (composing) return;
+    if (isInputComposing(e)) return;
     var handled = navigateCmdComplete(e, welcomeInput, $welcomeCmdComplete[0]);
     if (handled) return;
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); sendMessage(); }
 });
 $(chatInput).on('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
-    if (composing) return;
+    if (isInputComposing(e)) return;
     // 优先级1：命令补全导航
     var handled = navigateCmdComplete(e, chatInput, $chatCmdComplete[0]);
     if (handled) return;
@@ -776,9 +889,25 @@ $chatHistoryPanel.on('click', function(e) {
 });
 
 /* ===== Model Selector ===== */
-var modelList = [];        // [{name, desc}, ...] (shared, only loaded once)
-var modelsLoaded = false;  // whether model list has been fetched
-var sessionModelMap = {};  // { sessionId: selectedModelName }
+var modelList = [];        // [{name, desc, supportsReasoning, reasoningEfforts, ...}]
+    var modelsLoaded = false;  // whether model list has been fetched
+    var sessionModelMap = {};  // { sessionId: selectedModelName } — 仅会话，无全局
+    var sessionReasoningMap = {}; // { sessionId: effort|'' } — 与 model 相同，仅会话
+
+var EFFORT_LABELS = {
+    auto: 'auto',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max'
+};
+var EFFORT_HINTS = {
+    auto: '跟随模型或供应商默认，通常最省心',
+    low: '更快更省，适合简单问答',
+    medium: '均衡表现，日常任务推荐',
+    high: '更仔细分析，适合难问题',
+    max: '最强思考，通常最慢也更费额度'
+};
 
 // Get the effective selected model for current context
 function getSelectedModel() {
@@ -786,58 +915,110 @@ function getSelectedModel() {
         return sessionModelMap[activeSessionId];
     }
     return sessionModelMap['_default'] || '';
+    }
+
+function getSessionKey() {
+    return activeSessionId || SESSION_ID || '_default';
+    }
+
+function getSelectedReasoning() {
+    var sid = getSessionKey();
+    if (sessionReasoningMap[sid] !== undefined) return sessionReasoningMap[sid] || '';
+    return sessionReasoningMap['_default'] || '';
+    }
+
+function getCurrentModelMeta() {
+    var name = getSelectedModel();
+    for (var i = 0; i < modelList.length; i++) {
+        if (modelList[i].name === name) return modelList[i];
+    }
+    return null;
 }
 
-// Load model list (once) + selected model for given session
-function loadModels(sessionId, callback) {
+    function clampEffortForModel(effort, meta) {
+    if (!effort) return '';
+    if (!meta || !meta.supportsReasoning) return '';
+    var list = meta.reasoningEfforts || [];
+    if (!list.length) return effort;
+    if (list.indexOf(effort) >= 0) return effort;
+    var order = ['max', 'high', 'medium', 'low'];
+    var start = order.indexOf(effort);
+    if (start < 0) start = 0;
+    for (var i = start; i < order.length; i++) {
+        if (list.indexOf(order[i]) >= 0) return order[i];
+    }
+    for (var j = start - 1; j >= 0; j--) {
+        if (list.indexOf(order[j]) >= 0) return order[j];
+    }
+    return '';
+    }
+        
+    function parseModelItem(raw) {
+    return {
+        name: raw.name || raw.model,
+        desc: raw.description,
+        contextLength: raw.contextLength || 0,
+        standard: raw.standard || '',
+        supportsReasoning: !!raw.supportsReasoning,
+        reasoningEfforts: raw.reasoningEfforts || [],
+        defaultReasoningEffort: raw.defaultReasoningEffort || ''
+    };
+        }
+        
+        // Load model list (once) + selected model for given session
+        function loadModels(sessionId, callback) {
     var url = '/web/chat/models';
     if (sessionId) url += '?sessionId=' + encodeURIComponent(sessionId);
-
+        
     $.get(url, function(resp) {
         try {
             var data = resp.data || {};
             var selected = data.selected || '';
-
-            // Store selected model per session
+            var effort = data.reasoningEffort || '';
+    
+            // Store selected model / effort per session only (no global sticky)
             if (sessionId) {
                 sessionModelMap[sessionId] = selected;
+                sessionReasoningMap[sessionId] = effort;
             } else {
                 sessionModelMap['_default'] = selected;
+                sessionReasoningMap['_default'] = effort;
             }
-
+            
             // Only parse list once (it's the same for all sessions)
             if (!modelsLoaded) {
                 modelList = [];
                 var list = data.list || [];
                 for (var i = 0; i < list.length; i++) {
-                    modelList.push({ name: list[i].name || list[i].model, desc: list[i].description, contextLength: list[i].contextLength || 0 });
+                    modelList.push(parseModelItem(list[i]));
                 }
                 modelsLoaded = true;
             }
-
+            
             renderModelUI();
             if (callback) callback();
         } catch (e) {
             console.error('Failed to parse models:', e);
         }
     });
-}
-
-function reloadModels(callback) {
+                    }
+                
+                function reloadModels(callback) {
     modelsLoaded = false;
     loadModels(activeSessionId || null, callback);
-}
-
-// Refresh model UI for a specific session using local cache (no network request)
-function refreshSessionModel(sessionId) {
+            }
+            
+        // Refresh model UI for a specific session using local cache (no network request)
+            function refreshSessionModel(sessionId) {
     if (!sessionId) return;
     // If we haven't seen this session's model yet, fetch it from backend
     if (!sessionModelMap[sessionId]) {
         var url = '/web/chat/models?sessionId=' + encodeURIComponent(sessionId);
         $.get(url, function(resp) {
             try {
-                var data = resp.data;
+                var data = resp.data || {};
                 sessionModelMap[sessionId] = data.selected || '';
+                sessionReasoningMap[sessionId] = data.reasoningEffort || '';
                 renderModelUI();
             } catch (e) {}
         });
@@ -845,25 +1026,71 @@ function refreshSessionModel(sessionId) {
         // Already cached — just re-render UI
         renderModelUI();
     }
+                }
+                
+function buildTriggerLabel(modelName, effort, showDepth) {
+    var parts = [];
+    var displayName = modelName
+        ? (modelName.length > 18 ? modelName.substring(0, 18) + '...' : modelName)
+        : '默认模型';
+    parts.push(displayName);
+    // 支持推理强度调节时始终展示档位，auto 显示英文词以便发现
+    if (showDepth) {
+        parts.push((effort && EFFORT_LABELS[effort]) || EFFORT_LABELS.auto);
+    }
+    return parts.join(' · ');
 }
 
+function buildTriggerTitle(modelName, effort, showDepth) {
+    var bits = [];
+    bits.push('模型: ' + (modelName || '默认'));
+    if (showDepth) {
+        if (effort && EFFORT_LABELS[effort]) {
+            bits.push('推理强度: ' + EFFORT_LABELS[effort]);
+            if (EFFORT_HINTS[effort]) bits.push(EFFORT_HINTS[effort]);
+        } else {
+            bits.push('推理强度: auto（跟随模型/供应商）');
+        }
+    }
+    return bits.join(' · ');
+}
+    
 function renderModelUI() {
     var $chatName = $('#chatModelName');
     var $welcomeName = $('#welcomeModelName');
     var $chatDropdown = $('#chatModelDropdown');
     var $welcomeDropdown = $('#welcomeModelDropdown');
-
+    
     var currentModel = getSelectedModel();
-    var displayName = currentModel.length > 24 ? currentModel.substring(0, 24) + '...' : currentModel;
-    $chatName.text(displayName || '默认模型');
-    $welcomeName.text(displayName || '默认模型');
-
+    var userEffort = getSelectedReasoning(); // session user only ('' = auto)
+    var meta = getCurrentModelMeta();
+    // 与后端 ReasoningEffortSupport.resolveForUi 对齐：user > auto
+    var displayEffort = '';
+        
+    if (meta && meta.supportsReasoning) {
+        if (userEffort) {
+            displayEffort = clampEffortForModel(userEffort, meta);
+        } else {
+            displayEffort = ''; // auto — do not paint default as selected
+        }
+    } else {
+        displayEffort = '';
+    }
+    
+    var showDepth = !!(meta && meta.supportsReasoning);
+    var label = buildTriggerLabel(currentModel, displayEffort, showDepth);
+    var title = buildTriggerTitle(currentModel, displayEffort, showDepth);
+    $chatName.text(label);
+    $welcomeName.text(label);
+    $('#chatModelCurrent').attr('title', title);
+    $('#welcomeModelCurrent').attr('title', title);
+    
     var html = '';
     for (var i = 0; i < modelList.length; i++) {
         var m = modelList[i];
         var cls = m.name === currentModel ? ' active' : '';
         var ctxLen = m.contextLength ? (m.contextLength >= 1000000 && m.contextLength % 1000000 === 0 ? (m.contextLength / 1000000) + 'm' : (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength)) : '';
-        html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
+        html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">' 
             + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
             + (m.desc ? '<span class="model-item-desc">' + escapeHtml(m.desc) + '</span>' : '')
             + '</div>';
@@ -875,29 +1102,92 @@ function renderModelUI() {
     $welcomeDropdown.find('.model-search-input').val('');
     $chatDropdown.find('.model-dropdown-items').children().show();
     $welcomeDropdown.find('.model-dropdown-items').children().show();
+    
+    renderModelOptionRows($chatDropdown, meta, userEffort);
+    renderModelOptionRows($welcomeDropdown, meta, userEffort);
+    }
+    
+function renderModelOptionRows($dropdown, meta, userEffort) {
+    var $reasonRow = $dropdown.find('.model-reasoning-row');
+    if (meta && meta.supportsReasoning) {
+        $reasonRow.show();
+        var allowed = meta.reasoningEfforts && meta.reasoningEfforts.length
+            ? meta.reasoningEfforts
+            : ['low', 'medium', 'high', 'max'];
+        $reasonRow.find('button[data-effort]').each(function() {
+            var e = $(this).attr('data-effort');
+            if (e === 'auto') {
+                $(this).show().toggleClass('active', !userEffort);
+                return;
+            }
+            var ok = allowed.indexOf(e) >= 0;
+            var isUser = ok && userEffort && e === userEffort;
+            $(this).toggle(ok).toggleClass('active', !!isUser);
+        });
+        var hintKey = userEffort || 'auto';
+        var hint = EFFORT_HINTS[hintKey] || EFFORT_HINTS.auto;
+        $reasonRow.find('.model-option-hint').text(hint);
+    } else {
+        $reasonRow.hide();
+    }
 }
 
-function selectModel(modelName) {
-    var sid = activeSessionId || SESSION_ID;
+function postModelSelect(payload) {
+    return $.post('/web/chat/models/select', payload).fail(function(err) {
+        console.error('Failed to select model options on server:', err);
+    });
+    }
+        
+        function selectModel(modelName) {
+    var sid = getSessionKey();
+    // 与 model selected 一致：effort 只跟当前会话，不跨会话/全局 sticky
+    // 切换模型时：若目标支持推理，则保留本会话当前档（含 auto）；否则清空
+    var prevEffort = getSelectedReasoning();
+
     sessionModelMap[sid] = modelName;
+
+    var meta = null;
+    for (var i = 0; i < modelList.length; i++) {
+        if (modelList[i].name === modelName) { meta = modelList[i]; break; }
+    }
+
+    var effort = '';
+    if (meta && meta.supportsReasoning) {
+        effort = clampEffortForModel(prevEffort || '', meta);
+    } else {
+        effort = '';
+    }
+    sessionReasoningMap[sid] = effort;
+
     renderModelUI();
 
-    // 立即通知服务端绑定模型选择，确保不走 /web/chat/input 的命令（如 /git、循环任务等）也能感知到模型变更
-    $.post('/web/chat/models/select', {
-        sessionId: sid,
-        modelName: modelName
-    }).fail(function(err) {
-        console.error('Failed to select model on server:', err);
-    });
+    var data = { sessionId: sid, modelName: modelName };
+    data.reasoningEffort = effort || '';
+    postModelSelect(data);
 }
 
-// Toggle dropdown open/close
-function initModelSelector(selectorId, currentId, dropdownId) {
+function selectReasoning(effort) {
+    var sid = getSessionKey();
+    var meta = getCurrentModelMeta();
+    var normalized = (effort === 'auto' || !effort) ? '' : effort;
+    var clamped = normalized ? clampEffortForModel(normalized, meta) : '';
+    // 仅写会话，无全局 sticky（与 model selected 相同机制）
+    sessionReasoningMap[sid] = clamped || '';
+    renderModelUI();
+    postModelSelect({
+        sessionId: sid,
+        modelName: getSelectedModel(),
+        reasoningEffort: clamped || ''
+    });
+}
+    
+        // Toggle dropdown open/close
+        function initModelSelector(selectorId, currentId, dropdownId) {
     var $selector = $('#' + selectorId);
     var $current = $('#' + currentId);
     var $dropdown = $('#' + dropdownId);
     if (!$selector.length || !$current.length || !$dropdown.length) return;
-
+    
     $current.on('click', function(e) {
         e.stopPropagation();
         // Close all other selectors
@@ -905,9 +1195,26 @@ function initModelSelector(selectorId, currentId, dropdownId) {
             if (this.id !== selectorId) $(this).removeClass('open');
         });
         $selector.toggleClass('open');
+        if ($selector.hasClass('open')) {
+            requestAnimationFrame(function() {
+                var activeItem = $dropdown.find('.model-dropdown-items .model-dropdown-item.active').get(0);
+                if (activeItem) {
+                    activeItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }
+            });
+        }
     });
 
     $dropdown.on('click', function(e) {
+        var $pill = $(e.target).closest('.model-option-pills button');
+        if ($pill.length) {
+            e.stopPropagation();
+            e.preventDefault();
+            var effort = $pill.attr('data-effort');
+            if (effort) selectReasoning(effort);
+            return;
+        }
+    
         var $item = $(e.target).closest('.model-dropdown-item');
         if (!$item.length) return;
         e.stopPropagation();
@@ -917,21 +1224,21 @@ function initModelSelector(selectorId, currentId, dropdownId) {
         }
         $selector.removeClass('open');
     });
-}
-
-// Close all dropdowns on outside click
-$(document).on('click', function(e) {
-    // Don't close if clicking inside model search area
-    if ($(e.target).closest('.model-search-input, .model-search-wrap').length) return;
+    }
+    
+    // Close all dropdowns on outside click
+    $(document).on('click', function(e) {
+    // Don't close if clicking inside model search area or option footer
+    if ($(e.target).closest('.model-search-input, .model-search-wrap, .model-dropdown-footer').length) return;
     $('.model-selector.open').removeClass('open');
-});
-
-// Model search filtering
+        });
+        
+    // Model search filtering
 function initModelSearch(dropdownId) {
     var $dropdown = $('#' + dropdownId);
     var $searchInput = $dropdown.find('.model-search-input');
     if (!$searchInput.length) return;
-
+    
     $searchInput.on('input', function() {
         var query = $(this).val().toLowerCase().trim();
         var $items = $dropdown.find('.model-dropdown-items').children();
@@ -945,14 +1252,15 @@ function initModelSearch(dropdownId) {
         });
     });
 }
-
-initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
-initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
-initModelSearch('chatModelDropdown');
-initModelSearch('welcomeModelDropdown');
-
-window.reloadModels = reloadModels;
-window.loadModels = loadModels;
-
-// Initial load (no specific session, get default selected)
+    
+        initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
+        initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
+            initModelSearch('chatModelDropdown');
+            initModelSearch('welcomeModelDropdown');
+            
+            window.reloadModels = reloadModels;
+            window.loadModels = loadModels;
+            window.getSelectedReasoning = getSelectedReasoning;
+            
+        // Initial load (no specific session, get default selected)
 loadModels(null);

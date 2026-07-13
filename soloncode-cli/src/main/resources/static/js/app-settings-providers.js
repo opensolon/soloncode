@@ -1,6 +1,6 @@
 /**
  * 供应商设置管理模块
- * 
+ *
  * 负责供应商的增删改查、模型列表拉取等功能
  */
 ;(function () {
@@ -43,6 +43,19 @@
         // 拉取模型列表
         $('#providerFetchModelsBtn').on('click', function () {
             fetchModels();
+        });
+
+        // 清空模型列表
+        $('#providerClearModelsBtn').on('click', function () {
+            if (fetchedModels.length === 0) return;
+            layui.layer.confirm('确定清空当前模型列表吗？手动添加的模型也会一并清除。', {
+                btn: ['清空', '取消'],
+                icon: 3
+            }, function (index) {
+                layui.layer.close(index);
+                fetchedModels = [];
+                renderModelsList();
+            });
         });
 
         // 手动添加模型
@@ -91,6 +104,43 @@
             toggleProviderModel(modelId, enabled, llmName, isSynced);
         });
 
+        // 批量选择菜单
+        $('#providerModelsSelectToggle').on('click', function (e) {
+            e.stopPropagation();
+            $('#providerModelsActionMenu').toggleClass('show');
+        });
+
+        $(document).on('click', function (e) {
+            if ($(e.target).closest('.provider-model-menu-wrap').length === 0) {
+                $('#providerModelsActionMenu').removeClass('show');
+            }
+        });
+
+        $('#providerModelsSelectAll, #providerModelsSelectNone, #providerModelsInvert').on('click', function () {
+            var action = this.id;
+            var changed = false;
+
+            $modelsList.find('.provider-model-toggle').each(function () {
+                var $toggle = $(this);
+                var nextChecked = $toggle.prop('checked');
+
+                if (action === 'providerModelsSelectAll') {
+                    nextChecked = true;
+                } else if (action === 'providerModelsSelectNone') {
+                    nextChecked = false;
+                } else if (action === 'providerModelsInvert') {
+                    nextChecked = !$toggle.prop('checked');
+                }
+
+                if ($toggle.prop('checked') !== nextChecked) {
+                    changed = true;
+                    $toggle.prop('checked', nextChecked).trigger('change');
+                }
+            });
+
+            $('#providerModelsActionMenu').removeClass('show');
+        });
+
         // 作用域切换
         $('.settings-scope-toggle').on('click', '.settings-scope-btn', function () {
             var $toggle = $(this).closest('.settings-scope-toggle');
@@ -133,8 +183,8 @@
 
     function renderProviderItem(provider) {
         var modelsCount = (provider.models || []).length;
-        
-        return '<div class="mcp-server-item" data-name="' + provider.name + '">' +
+
+        return '<div class="mcp-server-item' + (provider.enabled === false ? ' disabled' : '') + '" data-name="' + provider.name + '">' +
             '<div class="mcp-server-icon">P</div>' +
             '<div class="mcp-server-info">' +
                 '<div class="mcp-server-name">' + provider.name + ' <span class="settings-inline-tag">[' + (provider.standard || 'openai') + ']</span></div>' +
@@ -168,10 +218,10 @@
         $('#providerStandard').val(provider ? provider.standard : 'openai');
         $('#providerApiUrl').val(provider ? provider.apiUrl : '');
         $('#providerApiKey').val(provider ? provider.apiKey : '');
-        $('#providerScope').val(provider ? (provider.scope || 'global') : 'global');
-        
+        $('#providerScope').val(provider ? (provider.scope || 'user') : 'user');
+
         // 设置作用域按钮状态
-        var scope = provider ? (provider.scope || 'global') : 'global';
+        var scope = provider ? (provider.scope || 'user') : 'user';
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn').removeClass('active');
         $('.settings-scope-toggle[data-target="providerScope"] .settings-scope-btn[data-scope="' + scope + '"]').addClass('active');
 
@@ -557,6 +607,10 @@
                     if (window._settingsLlm) {
                         window._settingsLlm.load();
                     }
+                    // 通知聊天组件刷新模型下拉列表
+                    if (typeof window.reloadModels === 'function') {
+                        window.reloadModels();
+                    }
                 }
             }
         });
@@ -597,9 +651,15 @@
             success: function (res) {
                 if (res.code === 200) {
                     layui.layer.msg(enabled ? '供应商已启用' : '供应商已禁用', { icon: 1 });
+                    // 刷新供应商列表 UI（更新 disabled 样式）
+                    loadProvidersList();
                     // 刷新 LLM 模型列表（供应商禁用时关联模型会禁用）
                     if (window._settingsLlm) {
                         window._settingsLlm.load();
+                    }
+                    // 通知聊天组件刷新模型下拉列表
+                    if (typeof window.reloadModels === 'function') {
+                        window.reloadModels();
                     }
                 } else {
                     layui.layer.msg(res.msg || '操作失败', { icon: 2 });
@@ -619,6 +679,18 @@
         loadList: loadProvidersList,
         showList: showList
     };
+
+    // Provider API Key 显示切换
+    $(document).on('click', '#providerApiKeyToggle', function () {
+        var $input = $('#providerApiKey');
+        if ($input.attr('type') === 'password') {
+            $input.attr('type', 'text');
+            $(this).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>');
+        } else {
+            $input.attr('type', 'password');
+            $(this).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>');
+        }
+    });
 
     // 自动初始化
     $(document).ready(function () {

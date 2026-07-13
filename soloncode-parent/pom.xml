@@ -7,13 +7,13 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solon-parent</artifactId>
-        <version>4.0.3-SNAPSHOT</version>
+        <version>4.0.4-SNAPSHOT</version>
         <relativePath />
     </parent>
 
     <artifactId>soloncode-parent</artifactId>
     <name>${project.artifactId}</name>
-    <version>2026.6.24</version>
+    <version>2026.7.13</version>
     <packaging>pom</packaging>
 
     <properties>

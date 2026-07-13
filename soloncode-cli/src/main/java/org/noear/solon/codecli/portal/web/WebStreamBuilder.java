@@ -19,20 +19,24 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.RunStartChunk;
 import org.noear.solon.ai.agent.react.intercept.ContextSizeChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.*;
+import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
+import org.noear.solon.ai.harness.agent.TaskWrapChuck;
 import org.noear.solon.ai.talents.cli.TerminalTalent;
 import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.codecli.command.builtin.GoalTalent;
+import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,10 +152,53 @@ public class WebStreamBuilder {
         //记录最新的选择
         session.attrs().put("_agent_selected_tmp", agent.name());
 
+        // 会话级推理水平：从 context 读取并注入 Prompt + options
+        // auto 时不注入 effort，交给模型 defaultOptions / Agent Builder / 供应商
+        String sessionEffort = ReasoningEffortSupport.getSessionEffort(session);
+        ReasoningEffortSupport.ModelCapability cap = null;
+        try {
+            ChatConfig fullConfig = null;
+            if (chatModel != null && chatModel.getConfig() != null) {
+                // 1) 引擎精确查找（含 defaultOptions）
+                String key = chatModel.getConfig().getNameOrModel();
+                if (Assert.isNotEmpty(key)) {
+                    fullConfig = engine.getModelOrNil(key);
+                    if (fullConfig == null) {
+                        fullConfig = ReasoningEffortSupport.findEngineConfig(engine.getModels(), key);
+                    }
+                }
+                if (fullConfig == null && Assert.isNotEmpty(chatModel.getConfig().getModel())) {
+                    fullConfig = engine.getModelOrNil(chatModel.getConfig().getModel());
+                    if (fullConfig == null) {
+                        fullConfig = ReasoningEffortSupport.findEngineConfig(
+                                engine.getModels(), chatModel.getConfig().getModel());
+                    }
+                }
+                if (fullConfig == null && Assert.isNotEmpty(chatModel.getConfig().getName())) {
+                    fullConfig = engine.getModelOrNil(chatModel.getConfig().getName());
+                }
+            }
+            if (fullConfig != null) {
+                cap = ReasoningEffortSupport.resolveCapability(fullConfig);
+            } else if (chatModel != null && chatModel.getConfig() != null) {
+                // 2) 回退：name/model/standard 启发式
+                cap = ReasoningEffortSupport.resolveCapability(
+                        chatModel.getConfig().getName(),
+                        chatModel.getConfig().getModel(),
+                        chatModel.getConfig().getStandardOrProvider(),
+                        null);
+            }
+        } catch (Throwable ignored) {
+        }
+        final String effectiveEffort = ReasoningEffortSupport.resolveEffectiveEffort(
+                null, sessionEffort, cap, false);
+        ReasoningEffortSupport.applyToPrompt(prompt, effectiveEffort);
+
         return agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.chatModel(chatModel);
+                    ReasoningEffortSupport.applyToOptions(o, effectiveEffort);
 
                     if (Assert.isNotEmpty(sessionCwd)) {
                         o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
@@ -159,25 +206,70 @@ public class WebStreamBuilder {
                 })
                 .stream()
                 .map(chunk -> {
+                    // 子代理任务包装解包：TaskWrapChuck 携带 taskAgentName/isMultitask
+                    String runId = null;
+                    String taskAgentName = null;
+                    String taskId = null;
+                    String taskDescription = null;
+                    boolean isMultitask = false;
+                    if (chunk instanceof TaskWrapChuck) {
+                        TaskWrapChuck twc = (TaskWrapChuck) chunk;
+                        if (twc.getRealChunk() instanceof ContextSizeChunk ||
+                                twc.getRealChunk() instanceof ActionChunk ||
+                                twc.getRealChunk() instanceof ObservationChunk ||
+                                twc.getRealChunk() instanceof ReasonChunk ||
+                                twc.getRealChunk() instanceof ReActChunk) {
+                            // RunStartChunk
+                            runId = twc.getParentRunId();
+                            taskId = twc.getTaskId();
+                            taskAgentName = twc.getTaskAgentName();
+                            taskDescription = twc.getTaskDescription();
+                            isMultitask = twc.isMultitask();
+                            chunk = twc.getRealChunk();
+
+                            if (chunk instanceof ReActChunk) {
+                                // 子代理 ReAct 结束：发 task_done，让前端立刻结算该 task-group
+                                // （主流转 done 仍会 finalize 兜底，但并行任务不必互相等待）
+                                return onTaskDoneChunk((ReActChunk) chunk, runId, taskId,
+                                        taskAgentName, taskDescription);
+                            }
+
+                        } else {
+                            return WebChunk.EMPTY;
+                        }
+                    }
+
                     WebChunk webChunk = null;
                     if (chunk instanceof ContextSizeChunk) {
                         webChunk = onContextSizeChunk(chatModel, (ContextSizeChunk) chunk);
                     } else if (chunk instanceof ReasonChunk) {
-                        webChunk = onReasonChunk((ReasonChunk) chunk);
+                        webChunk = onReasonChunk((ReasonChunk) chunk, taskAgentName);
                     } else if (chunk instanceof ThoughtChunk) {
-                        webChunk = onThoughtChunk(session, (ThoughtChunk) chunk);
+                        webChunk = onThoughtChunk(session, (ThoughtChunk) chunk, taskAgentName, isMultitask);
                     } else if (chunk instanceof ActionChunk) {
-                        webChunk = onActionStartChunk((ActionChunk) chunk);
+                        webChunk = onActionChunk((ActionChunk) chunk, taskAgentName);
                     } else if (chunk instanceof ObservationChunk) {
-                        webChunk = onObservationChunk((ObservationChunk) chunk);
+                        webChunk = onObservationChunk((ObservationChunk) chunk, taskAgentName);
                     } else if (chunk instanceof ReActChunk) {
                         webChunk = onFinalChunk(session, (ReActChunk) chunk);
                     }
 
-                    if(webChunk == null || webChunk == WebChunk.EMPTY) {
+                    if (webChunk == null || webChunk == WebChunk.EMPTY) {
                         return WebChunk.EMPTY;
                     } else {
-                        webChunk.setRunId(chunk.getRunId());
+                        if (runId != null) {
+                            webChunk.setRunId(runId);
+                        } else {
+                            webChunk.setRunId(chunk.getRunId());
+                        }
+
+                        if (taskAgentName != null) {
+                            webChunk.setAgentName(taskAgentName);
+                        }
+                        if (taskId != null) {
+                            webChunk.setTaskId(taskId);
+                            webChunk.setTaskDescription(taskDescription);
+                        }
                         return webChunk;
                     }
                 })
@@ -207,7 +299,7 @@ public class WebStreamBuilder {
     }
 
 
-    public WebChunk onContextSizeChunk(ChatModel chatModel, ContextSizeChunk chunk){
+    public WebChunk onContextSizeChunk(ChatModel chatModel, ContextSizeChunk chunk) {
         WebChunk wc = new WebChunk();
         wc.setType("context_size");
         wc.setSessionId(chunk.getSession().getSessionId());
@@ -215,7 +307,7 @@ public class WebStreamBuilder {
         wc.setText(String.valueOf(chunk.getMessageCount()));
 
         long contextLength = chatModel.getConfig().getContextLength();
-        if(contextLength == 0){
+        if (contextLength == 0) {
             contextLength = 128_000; //默认
         }
 
@@ -237,23 +329,26 @@ public class WebStreamBuilder {
     /**
      * 处理推理阶段的 chunk
      *
-     * <p>在非工具调用且存在内容时，根据消息是否处于 thinking 状态分别映射为：
-     * <ul>
-     *   <li>thinking 状态 → {@link WebChunk#ofReason(String)} 思维链输出（供前端折叠展示推理过程）</li>
-     *   <li>非 thinking → {@link WebChunk#ofText(String)} 常规文本输出</li>
-     * </ul>
-     * 否则返回空 chunk。</p>
-     *
      * @param chunk 推理阶段的 chunk 数据
      * @return 映射后的 WebChunk，或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onReasonChunk(ReasonChunk chunk) {
-        if (!chunk.isToolCalls() && chunk.hasContent()) {
+    private WebChunk onReasonChunk(ReasonChunk chunk, String taskAgentName) {
+        if (!chunk.isToolCalls() && Assert.isNotEmpty(chunk.getContent())) {
+            WebChunk wc;
             if (chunk.getMessage().isThinking()) {
-                return WebChunk.ofReason(chunk.getContent());
+                wc = WebChunk.ofReason(chunk.getContent());
             } else {
-                return WebChunk.ofText(chunk.getContent());
+                wc = WebChunk.ofText(chunk.getContent());
             }
+
+            wc.setReasonId(chunk.getReasonId());
+
+            // 子代理标记：下游前端据此识别 chunk 归属
+            if (taskAgentName != null) {
+                wc.setAgentName(taskAgentName);
+            }
+
+            return wc;
         }
 
         return WebChunk.EMPTY;
@@ -270,7 +365,7 @@ public class WebStreamBuilder {
      * @param chunk 工具调用开始的 chunk 数据
      * @return 映射后的 WebChunk（含工具名与参数），或 {@link WebChunk#EMPTY}（内部工具或无名称时）
      */
-    private WebChunk onActionStartChunk(ActionChunk chunk) {
+    private WebChunk onActionChunk(ActionChunk chunk, String taskAgentName) {
         if (Assert.isEmpty(chunk.getToolName())) {
             return WebChunk.EMPTY;
         }
@@ -303,7 +398,18 @@ public class WebStreamBuilder {
         // edit 开始阶段即重建 diff，让 loading 骨架卡也能预览改动
         fillEditDiff(args);
 
-        return WebChunk.ofActionStart(toolName, toolTitle, args);
+        WebChunk wc = WebChunk.ofActionStart(toolName, toolTitle, args);
+        wc.setReasonId(chunk.getReasonId());
+
+        // 传入 callId 供前端精确配对工具卡片
+        wc.setCallId(chunk.getCallId());
+
+        // 子代理标记
+        if (taskAgentName != null) {
+            wc.setAgentName(taskAgentName);
+        }
+
+        return wc;
     }
 
 
@@ -320,8 +426,8 @@ public class WebStreamBuilder {
      * @param chunk 工具调用结束的 chunk 数据
      * @return 映射后的 WebChunk（含工具信息），或 {@link WebChunk#EMPTY}（内部工具或无名称时）
      */
-    private WebChunk onObservationChunk(ObservationChunk chunk) {
-        if(chunk.getError() != null){
+    private WebChunk onObservationChunk(ObservationChunk chunk, String taskAgentName) {
+        if (chunk.getError() != null) {
             return WebChunk.EMPTY;
         }
 
@@ -369,6 +475,16 @@ public class WebStreamBuilder {
                 // edit：入参为结构化 edits 列表（无 diff 字段），在此由结构化参数重建 git diff 文本写入 args.diff，
                 // text 保留工具真实返回（成功提示/错误信息）作为「输出」，由前端 edit 渲染器两段式展示。
                 fillEditDiff(webChunk.getArgs());
+            }
+
+            webChunk.setReasonId(chunk.getReasonId());
+
+            // 传入 callId 供前端精确配对工具卡片
+            webChunk.setCallId(chunk.getCallId());
+
+            // 子代理标记
+            if (taskAgentName != null) {
+                webChunk.setAgentName(taskAgentName);
             }
 
             return webChunk;
@@ -471,12 +587,14 @@ public class WebStreamBuilder {
      * </ol></p>
      *
      * @param session Agent 会话，用于获取会话ID和已选择的代理名称
-     * @param chunk 思考轮次的 chunk 数据，包含助手消息和追踪信息
+     * @param chunk   思考轮次的 chunk 数据，包含助手消息和追踪信息
      * @return 映射后的 WebChunk（多任务并行时有内容），或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk chunk) {
+    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk chunk, String taskAgentName, boolean isMultitask) {
+        ReActTrace trace = chunk.getTrace();
         String sessionId = session.getSessionId();
         String resultContent = chunk.getAssistantMessage().getResultContent();
+        Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
 
         if (Assert.isNotEmpty(resultContent)) {
             // 向所有已绑定的 IM 通道回复
@@ -498,13 +616,83 @@ public class WebStreamBuilder {
             }
 
 
-            if (chunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
+            if (isMultitask) {
                 // 仅在多任务并行且有内容时输出
-                return WebChunk.ofText("\n" + resultContent);
+                WebChunk wc = WebChunk.ofText("\n" + resultContent);
+                wc.setReasonId(chunk.getReasonId());
+
+                // 子代理标记
+                if (taskAgentName != null) {
+                    wc.setAgentName(taskAgentName);
+                }
+
+                return wc;
             }
         }
 
+        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
+        if (totalTokens != null) {
+            session.attrs().put("_loop_last_total_tokens", totalTokens);
+        }
+
         return WebChunk.EMPTY;
+    }
+
+    /**
+     * 处理子代理任务结束（TaskWrapChuck 内层为 ReActChunk）。
+     *
+     * <p>产出 {@code task_done} WebChunk，携带 taskId 与 status（done/error）。
+     * 前端据此将对应 task-group 立即标为绿勾/红叉，不必等主会话整流转 done。
+     * 异常时附带错误文本，供 task-group 内展示。</p>
+     *
+     * @param chunk           子代理最终 ReActChunk
+     * @param runId           父 runId（主会话 run）
+     * @param taskId          子任务 id
+     * @param taskAgentName   子代理名
+     * @param taskDescription 子任务描述（task-group 标题）
+     * @return task_done 类型 WebChunk
+     */
+    private WebChunk onTaskDoneChunk(ReActChunk chunk, String runId, String taskId,
+                                     String taskAgentName, String taskDescription) {
+        boolean abnormal = chunk.isAbnormal();
+        WebChunk wc = WebChunk.ofTaskDone(abnormal ? "error" : "done");
+
+        if (runId != null) {
+            wc.setRunId(runId);
+        } else if (chunk.getRunId() != null) {
+            wc.setRunId(chunk.getRunId());
+        }
+        if (taskId != null) {
+            wc.setTaskId(taskId);
+            wc.setTaskDescription(taskDescription);
+        }
+        if (taskAgentName != null) {
+            wc.setAgentName(taskAgentName);
+        }
+
+        // 异常时把内容带给前端，写入 task-group 错误区；正常完成不重复推最终正文
+        // （multitask 的结果文本已由 ThoughtChunk 路径输出）
+        if (abnormal) {
+            String errText = chunk.getContent();
+            if (Assert.isNotEmpty(errText)) {
+                errText = errText.replaceAll("(?s)<\\s*/?think\\s*>", "");
+                wc.setText(errText);
+            }
+        }
+
+        // 附带耗时，便于前端定格 task 总耗时（秒）
+        try {
+            ReActTrace trace = chunk.getTrace();
+            if (trace != null) {
+                long startMs = trace.getBeginTimeMs();
+                if (startMs > 0) {
+                    wc.setElapsedSeconds(Duration.ofMillis(System.currentTimeMillis() - startMs).getSeconds());
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        return wc;
     }
 
     /**
@@ -536,6 +724,11 @@ public class WebStreamBuilder {
         String finalAnswer = chunk.getContent();
         if (finalAnswer != null) {
             finalAnswer = finalAnswer.replaceAll("(?s)<\\s*/?think\\s*>", "");
+        }
+
+        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
+        if (totalTokens != null) {
+            session.attrs().put("_loop_last_total_tokens", totalTokens);
         }
 
         return WebChunk.ofTrace(model, totalTokens, elapsedSeconds, finalAnswer);

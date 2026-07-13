@@ -59,7 +59,6 @@
                 prompt: '从昨天 0 点到今天 8 点间的所有提交中提取变更摘要（按文件分类），检查是否存在以下风险：未处理的错误、硬编码密钥、SQL 注入隐患、内存泄漏、逻辑漏洞。输出包含风险等级（高/中/低）的汇总报告',
                 cron: '0 9 * * *',
                 type: 'HEARTBEAT',
-                maxIterations: 20,
                 runNow: false
             }
         },
@@ -72,7 +71,6 @@
                 prompt: '回顾当天所有对话记录，按以下维度提取关键信息：1）技术决策（架构选型、依赖引入、配置变更）2）用户偏好（编码风格、命名习惯、工具偏好）3）重要约束（性能要求、兼容性限制、安全规范）4）待办事项（遗留问题、后续计划）。将提炼后的信息整理为结构化记忆条目存入长期记忆',
                 cron: '0 22 * * *',
                 type: 'HEARTBEAT',
-                maxIterations: 10,
                 runNow: false
             }
         },
@@ -97,7 +95,6 @@
                 prompt: '检查项目 CI 的最新构建状态（包括编译、测试、lint、打包等阶段）。如有失败阶段，按以下流程诊断：1）定位失败日志的关键错误行 2）分析根因（代码变更/环境问题/配置错误）3）给出修复建议。如连续 3 次检查同一问题未修复，标记为阻塞',
                 intervalMinutes: 30,
                 type: 'HEARTBEAT',
-                maxIterations: 20,
                 runNow: false
             }
         },
@@ -110,7 +107,6 @@
                 prompt: '扫描项目所有直接和传递依赖，检查：1）已知安全漏洞（CVE）及其严重程度 2）版本是否过时（最新稳定版 vs 当前版本）3）依赖间的兼容性冲突。汇总为依赖健康报告，标注每个问题的建议操作（升级/降级/替换/忽略）',
                 intervalMinutes: 60,
                 type: 'HEARTBEAT',
-                maxIterations: 10,
                 runNow: false
             }
         },
@@ -196,11 +192,30 @@
         BLOCKED: '已阻塞'
     };
 
-    // 生成 goal 状态标签
-    function renderGoalBadge(g) {
-        if (!g) return '';
-        var label = GOAL_STATUS_LABEL[g.status] || g.status;
-        return '<span class="loop-goal-badge">' + label + '</span>';
+    // ========== 统一状态解析（合并 running / goal 两套机制）==========
+    // 无论任务是 HEARTBEAT 还是 GOAL，都通过此函数获取单一状态
+    function resolveTaskState(t) {
+        // 终态/禁用态优先
+        if (t.cancelled) return { text: '已取消', cls: 'cancelled' };
+        if (!t.enabled) return { text: '已停用', cls: 'disabled' };
+
+        // Goal 任务：以 goal.status 为唯一依据（running 在其面前是冗余的）
+        if (t.goal && t.goal.status) {
+            var label = GOAL_STATUS_LABEL[t.goal.status] || t.goal.status;
+            // 将 goal 状态映射到已有的 CSS 语义（部分复用，部分新增）
+            var clsMap = {
+                PURSUING: 'running',
+                PAUSED: 'paused',
+                ACHIEVED: 'achieved',
+                BLOCKED: 'cancelled',
+                BUDGET_LIMITED: 'cancelled'
+            };
+            return { text: label, cls: clsMap[t.goal.status] || 'ready' };
+        }
+
+        // Heartbeat 任务：使用 running 标记
+        if (t.running) return { text: '运行中', cls: 'running' };
+        return { text: '就绪', cls: 'ready' };
     }
 
     // ========== 面板开关 ==========
@@ -309,8 +324,8 @@
     }
 
     function buildListItem(t) {
-        var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
-        var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
+        // ★ 统一通过 resolveTaskState 获取状态，不再分别读 running / goal
+        var state = resolveTaskState(t);
         var scheduleText = t.cron ? ('cron: ' + t.cron) : ('每' + t.intervalMinutes + '分钟');
 
         // 标签
@@ -326,26 +341,19 @@
             lastInfo += '<span class="loop-item-meta">第' + t.currentIteration + '次</span>';
         }
 
-        // Goal 行内标签
-        var goalInlineHtml = '';
-        var g = t.goal;
-        if (g) {
-            var label = GOAL_STATUS_LABEL[g.status] || g.status;
-            goalInlineHtml = '<span class="loop-item-goal-inline">' + label + '</span>';
-        }
-
-        // 拼装完整 item
-        var runningStatusHtml = (statusClass === 'running' || statusClass === 'cancelled')
-            ? '<span class="loop-item-status ' + statusClass + '">' + statusText + '</span>'
+        // ★ 统一的状态标签：Goal 任务始终展示（PAUSED/ACHIEVED/BLOCKED 等都是有信息量的状态）
+        //   Heartbeat 任务为减少视觉噪音，仅在运行/取消时展示
+        var showBadge = (t.goal && t.goal.status) || state.cls === 'running' || state.cls === 'cancelled';
+        var statusHtml = showBadge
+            ? '<span class="loop-item-status ' + state.cls + '">' + state.text + '</span>'
             : '';
 
         var html = '<div class="loop-item" data-id="' + t.id + '">';
         html += '<div class="loop-item-row">';
-        html += '<span class="loop-item-dot ' + statusClass + '"></span>';
+        html += '<span class="loop-item-dot ' + state.cls + '"></span>';
         html += '<span class="loop-item-name">#' + escapeHtml(t.id) + '</span>';
-        html += goalInlineHtml;
         html += '<span class="loop-item-schedule">' + scheduleText + '</span>';
-        html += runningStatusHtml;
+        html += statusHtml;
         if (tags.length) html += '<span class="loop-item-tags">' + tags.join('') + '</span>';
         html += '<div class="loop-item-actions">';
         if (!t.cancelled) {
@@ -498,9 +506,9 @@
         html += '<label class="loop-radio"><input type="radio" name="loopScheduleType" value="cron"/> Cron 表达式</label>';
         html += '<input type="text" class="loop-input loop-input-sm" id="loopFormCron" placeholder="0 */5 * * * ?"/>';
         html += '<span class="loop-cron-hint">示例:</span> ';
-        html += '<a class="loop-cron-link" data-cron="0 */2 * * *">每2小时</a>';
-        html += '<a class="loop-cron-link" data-cron="0 22 * * *">每天22点</a> ';
-        html += '<a class="loop-cron-link" data-cron="0 0 * * 1">每周一</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 0 */2 * * ?">每2小时</a>';
+        html += '<a class="loop-cron-link" data-cron="0 0 22 * * ?">每天22点</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 0 0 * * 1">每周一</a> ';
         html += '</div>';
         html += '</div>';
         html += '</div>';  // 结束 loop-form-schedule
@@ -536,7 +544,6 @@
         // 操作按钮（在 loop-form 外部，固定在面板底部）
         html += '<div class="loop-form-actions">';
         html += '<button class="loop-btn-secondary" id="loopFormCancelBtn">取消</button>';
-        html += '<button class="loop-btn-secondary" id="loopFormTriggerBtn" style="display:' + (loopEditId ? 'inline-block' : 'none') + '">测试运行</button>';
         html += '<button class="loop-btn-primary" id="loopFormSaveBtn">保存</button>';
         html += '</div>';
 
@@ -559,18 +566,13 @@
                 var t = (res && res.data) ? res.data : null;
                 if (t) {
                     fillFormData(t);
-                    var statusText = t.cancelled ? '已取消' : (!t.enabled ? '已停用' : (t.running ? '运行中' : '就绪'));
-                    var statusClass = t.cancelled ? 'cancelled' : (!t.enabled ? 'disabled' : (t.running ? 'running' : 'ready'));
+                    // ★ 统一通过 resolveTaskState 获取状态
+                    var state = resolveTaskState(t);
                     var $title = $p.find('.loop-panel-title');
-                    $title.html('编辑循环 #' + escapeHtml(editTaskId) +
-                        ' <span class="loop-item-status ' + statusClass + '" style="margin-left:6px;font-size:11px">' + statusText + '</span>' +
-                        (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : ''));
-                    // 如果有 goal 且非初始态，显示当前状态
-                    var g = t.goal;
-                    if (g) {
-                        var badge = renderGoalBadge(g);
-                        $title.append(' ' + badge);
-                    }
+                    var titleHtml = '编辑循环 #' + escapeHtml(editTaskId) +
+                        ' <span class="loop-item-status ' + state.cls + '" style="margin-left:6px;font-size:11px">' + state.text + '</span>' +
+                        (t.currentIteration > 0 ? '<span class="loop-item-meta" style="margin-left:6px">已执行' + t.currentIteration + '次</span>' : '');
+                    $title.html(titleHtml);
                 } else if (res !== null) {
                     showToast('未找到任务数据', 'error');
                 }
@@ -788,16 +790,7 @@
             }
         });
 
-        // 测试运行
-        $panel.find('#loopFormTriggerBtn').on('click', function() {
-            if (loopEditId) {
-                loopApi('trigger', { taskId: loopEditId }, function() {
-                    showToast('已触发执行', 'success');
-                    if (typeof switchToChatMode === 'function') switchToChatMode();
-                    hideLoopPanel();
-                });
-            }
-        });
+
     }
 
     // ========== 公开 API ==========

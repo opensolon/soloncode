@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p><a href="https://github.com/opensolon/solon-ai">Solon AI</a> এবং জাভা দিয়ে তৈরি একটি ওপেন-সোর্স কোডিং এজেন্ট (Java8 থেকে Java26 রানটাইম পরিবেশ সমর্থিত)</p>
-<p>সর্বশেষ সংস্করণ: v2026.6.24</p>
+<p>সর্বশেষ সংস্করণ: v2026.7.13</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -28,35 +28,39 @@ curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 irm https://solon.noear.org/soloncode/setup.ps1 | iex
 ```
 
-কনফিগারেশন (ইনস্টলেশনের পর অবশ্যই পরিবর্তন করতে হবে):
+কনফিগারেশন (নতুন ব্যবহারকারীদের প্রথমে ওয়েব সেটিংস পৃষ্ঠা ব্যবহার করে কনফিগার করার পরামর্শ দেওয়া হয়):
 
-* ইনস্টলেশন ডিরেক্টরি: `~/soloncode/bin/`
-* `~/soloncode/config.yml` কনফিগারেশন ফাইলটি খুঁজে বের করুন এবং `models` কনফিগারেশন পরিবর্তন করুন (প্রধানত)
-* `models` কনফিগারেশন বিকল্পের জন্য, দেখুন: [মডেল কনফিগারেশন এবং অনুরোধ বিকল্প](https://solon.noear.org/article/1087)
+```bash
+soloncode web 0
+```
+
+পৃষ্ঠায় প্রবেশ করার পর "সেটিংস -> বড় ভাষার মডেল (LLM)" খুলুন, একটি মডেল যোগ করুন এবং সংযোগ পরীক্ষা করুন।
+
+<img height="260" src="SETTINGS-LLM.png">
 
 ## চলমান
 
-কনসোলে যেকোনো ডিরেক্টরি থেকে `soloncode` (CLI ইন্টারেক্টিভ) অথবা `soloncode web 0` (Web ইন্টারেক্টিভ) কমান্ড চালান (অর্থাৎ, আপনার ওয়ার্কস্পেস)।
+কনসোলে যেকোনো ডিরেক্টরি থেকে `soloncode cli` (CLI ইন্টারেক্টিভ) অথবা `soloncode web 0` (Web ইন্টারেক্টিভ) কমান্ড চালান (অর্থাৎ, আপনার ওয়ার্কস্পেস)।
 
 * `soloncode` (CLI ইন্টারেক্টিভ)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.24 PID-74080 Model:deepseek-v4-flash
-/path/demo
-Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
+demo@MacBook-Pro ~ % soloncode cli
+SolonCode v2026.7.13 PID-87950 Model:deepseek-v4-flash
+/Users/demo
+Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
 User
-> 
+❯ 
 ```
 
 * `soloncode web 0` (Web ইন্টারেক্টিভ)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.24 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.13 PID-73617 Model:deepseek-v4-flash
 /path/demo
-2026-05-20 09:35
+2026-07-09 11:26
 Web interface: http://localhost:50488/
 ```
 

@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Ένας ανοιχτού κώδικα πράκτορας κωδικοποίησης βασισμένος στο <a href="https://github.com/opensolon/solon-ai">Solon AI</a> και Java (υποστηρίζει περιβάλλοντα εκτέλεσης Java8 έως Java26)</p>
-<p>Τελευταία Έκδοση: v2026.6.24</p>
+<p>Τελευταία Έκδοση: v2026.7.13</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -28,35 +28,39 @@ curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 irm https://solon.noear.org/soloncode/setup.ps1 | iex
 ```
 
-Διαμόρφωση (πρέπει να τροποποιηθεί μετά την εγκατάσταση):
+Διαμόρφωση (οι νέοι χρήστες συνιστάται να διαμορφώσουν πρώτα μέσω της σελίδας ρυθμίσεων Web):
 
-* Κατάλογος εγκατάστασης: `~/soloncode/bin/`
-* Εντοπίστε το αρχείο διαμόρφωσης `~/soloncode/config.yml` και τροποποιήστε τη διαμόρφωση `models` (κυρίως)
-* Για τις επιλογές διαμόρφωσης του `models`, ανατρέξτε στο: [Διαμόρφωση Μοντέλου και Επιλογές Αιτημάτων](https://solon.noear.org/article/1087)
+```
+soloncode web 0
+```
+
+Μόλις μπείτε στη σελίδα, ανοίξτε "Ρυθμίσεις -> LLM", προσθέστε ένα μοντέλο και ελέγξτε τη σύνδεση.
+
+<img height="260" src="SETTINGS-LLM.png">
 
 ## Εκτέλεση
 
-Εκτελέστε την εντολή `soloncode` (CLI διαδραστικό) ή `soloncode web 0` (Web διαδραστικό) από οποιονδήποτε κατάλογο στην κονσόλα (δηλαδή, τον χώρο εργασίας σας).
+Εκτελέστε την εντολή `soloncode cli` (CLI διαδραστικό) ή `soloncode web 0` (Web διαδραστικό) από οποιονδήποτε κατάλογο στην κονσόλα (δηλαδή, τον χώρο εργασίας σας).
 
-* `soloncode` (CLI διαδραστικό)
+* `soloncode cli` (CLI διαδραστικό)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.24 PID-74080 Model:deepseek-v4-flash
-/path/demo
-Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
+demo@MacBook-Pro ~ % soloncode cli
+SolonCode v2026.7.13 PID-87950 Model:deepseek-v4-flash
+/Users/demo
+Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
 User
-> 
+❯ 
 ```
 
 * `soloncode web 0` (Web διαδραστικό)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.24 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.13 PID-73617 Model:deepseek-v4-flash
 /path/demo
-2026-05-20 09:35
+2026-07-09 11:26
 Web interface: http://localhost:50488/
 ```
 

@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>เอเจนต์การเขียนโค้ดโอเพ่นซอร์สที่สร้างด้วย <a href="https://github.com/opensolon/solon-ai">Solon AI</a> และ Java (รองรับสภาพแวดล้อมรันไทม์ Java8 ถึง Java26)</p>
-<p>เวอร์ชันล่าสุด: v2026.6.24</p>
+<p>เวอร์ชันล่าสุด: v2026.7.13</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -28,35 +28,39 @@ curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 irm https://solon.noear.org/soloncode/setup.ps1 | iex
 ```
 
-การตั้งค่า (ต้องแก้ไขหลังจากการติดตั้ง):
+การตั้งค่า (แนะนำให้ผู้ใช้ใหม่ตั้งค่าผ่านหน้าเว็บตั้งค่าก่อน):
 
-* ไดเรกทอรีการติดตั้ง: `~/soloncode/bin/`
-* ค้นหาไฟล์การตั้งค่า `~/soloncode/config.yml` และแก้ไขการตั้งค่า `models` (หลัก)
-* สำหรับตัวเลือกการตั้งค่า `models` โปรดดูที่: [การตั้งค่าโมเดลและตัวเลือกคำขอ](https://solon.noear.org/article/1087)
+```
+soloncode web 0
+```
+
+เมื่อเข้าสู่หน้าแล้ว ให้เปิด "การตั้งค่า -> โมเดลภาษาขนาดใหญ่ (LLM)" เพิ่มโมเดลและทดสอบการเชื่อมต่อ
+
+<img height="260" src="SETTINGS-LLM.png">
 
 ## การทำงาน
 
-รันคำสั่ง `soloncode` (CLI แบบโต้ตอบ) หรือ `soloncode web 0` (Web แบบโต้ตอบ) จากไดเรกทอรีใดก็ได้ในคอนโซล (กล่าวคือ พื้นที่ทำงานของคุณ)
+รันคำสั่ง `soloncode cli` (CLI แบบโต้ตอบ) หรือ `soloncode web 0` (Web แบบโต้ตอบ) จากไดเรกทอรีใดก็ได้ในคอนโซล (กล่าวคือ พื้นที่ทำงานของคุณ)
 
-* `soloncode` (CLI แบบโต้ตอบ)
+* `soloncode cli` (CLI แบบโต้ตอบ)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.24 PID-74080 Model:deepseek-v4-flash
-/path/demo
-Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
+demo@MacBook-Pro ~ % soloncode cli
+SolonCode v2026.7.13 PID-87950 Model:deepseek-v4-flash
+/Users/demo
+Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
 User
-> 
+❯ 
 ```
 
 * `soloncode web 0` (Web แบบโต้ตอบ)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.24 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.13 PID-73617 Model:deepseek-v4-flash
 /path/demo
-2026-05-20 09:35
+2026-07-09 11:26
 Web interface: http://localhost:50488/
 ```
 

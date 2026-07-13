@@ -53,7 +53,7 @@
                 var badges = '<span class="settings-inline-tag">[lsp]</span>';
                 if (item.scope === 'workspace') badges += ' <span class="mounts-scope-badge scope-workspace">工作区</span>';
                 if (installed) badges += ' <span class="skill-installed-badge">已安装</span>';
-                html += '<div class="mcp-server-item" data-name="' + escapeAttr(name) + '">'
+                html += '<div class="mcp-server-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="mcp-server-icon">L</div>'
                     + '<div class="mcp-server-info">'
                     + '<div class="mcp-server-name">' + escapeHtml(name) + ' ' + badges + '</div>'
@@ -140,6 +140,7 @@
     function lspToggleServer(name, enabled) {
         postJson('/web/settings/lsp/servers/toggle', { name: name, enabled: enabled }, function (resp) {
             if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadLspList(); }
+            else { loadLspList(); }
         });
     }
 

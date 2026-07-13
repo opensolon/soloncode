@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>Un agente de codificación de código abierto construido con <a href="https://github.com/opensolon/solon-ai">Solon AI</a> y Java (compatible con entornos de ejecución Java8 a Java26)</p>
-<p>Última versión: v2026.6.24</p>
+<p>Última versión: v2026.7.13</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -28,35 +28,39 @@ curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 irm https://solon.noear.org/soloncode/setup.ps1 | iex
 ```
 
-Configuración (debe modificarse después de la instalación):
+Configuración (se recomienda a los nuevos usuarios configurar primero a través de la página web de configuración):
 
-* Directorio de instalación: `~/soloncode/bin/`
-* Localice el archivo de configuración `~/soloncode/config.yml` y modifique la configuración de `models` (principalmente)
-* Para las opciones de configuración de `models`, consulte: [Configuración del modelo y opciones de solicitud](https://solon.noear.org/article/1087)
+```
+soloncode web 0
+```
+
+Una vez en la página, abra "Configuración -> LLM", agregue un modelo y pruebe la conexión.
+
+<img height="260" src="SETTINGS-LLM.png">
 
 ## Ejecución
 
-Ejecute el comando `soloncode` (CLI interactivo) o `soloncode web 0` (Web interactivo) desde cualquier directorio en la consola (es decir, su espacio de trabajo).
+Ejecute el comando `soloncode cli` (CLI interactivo) o `soloncode web 0` (Web interactivo) desde cualquier directorio en la consola (es decir, su espacio de trabajo).
 
-* `soloncode` (CLI interactivo)
+* `soloncode cli` (CLI interactivo)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.24 PID-74080 Model:deepseek-v4-flash
-/path/demo
-Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
+demo@MacBook-Pro ~ % soloncode cli
+SolonCode v2026.7.13 PID-87950 Model:deepseek-v4-flash
+/Users/demo
+Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
 User
-> 
+❯ 
 ```
 
 * `soloncode web 0` (Web interactivo)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.24 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.13 PID-73617 Model:deepseek-v4-flash
 /path/demo
-2026-05-20 09:35
+2026-07-09 11:26
 Web interface: http://localhost:50488/
 ```
 

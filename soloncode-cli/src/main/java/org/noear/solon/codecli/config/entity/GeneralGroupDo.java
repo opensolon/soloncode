@@ -72,10 +72,20 @@ public class GeneralGroupDo implements Serializable {
     //是否启用 Goal 模式（Codex CLI 对齐的长任务目标模式）
     private Boolean goalsEnabled; // true
 
+
     //===================
 
     //Web 访问认证用户名（登录页用，留空则不启用）
     private String webAuthUser;
     //Web 访问认证密码（登录页用，留空则不启用）
     private String webAuthPass;
+
+    //===================
+
+    //日志级别 (TRACE/DEBUG/INFO/WARN/ERROR)
+    private String logLevel;
+    //日志文件大小限制，如 "10MB"
+    private String logFileMaxSize;
+    //日志存档保留周期（天）
+    private Integer logMaxHistory;
 }

@@ -134,7 +134,6 @@ public class LoopCommand implements Command {
         int intervalMinutes = 5; // default
         String cronExpr = null;
         boolean runNow = false;
-        Integer maxIterations = null;
         LoopTask.TaskType taskType = LoopTask.TaskType.HEARTBEAT;
 
         int promptStartIndex = 0;
@@ -178,13 +177,9 @@ public class LoopCommand implements Command {
                     String key = flag.substring(0, colonIdx);
                     String val = flag.substring(colonIdx + 1);
                     switch (key) {
-                        case "max-iter":
-                            try {
-                                maxIterations = Integer.parseInt(val);
-                            } catch (NumberFormatException e) {
-                                ctx.println(ctx.color(RED + "Invalid --max-iter value: " + val + RESET));
-                                return;
-                            }
+                        case "max-tokens":
+                        case "max-duration":
+                            ctx.println(ctx.color(YELLOW + "Warning: --" + key + " is only applicable to '/loop goal'" + RESET));
                             break;
                         default:
                             ctx.println(ctx.color(YELLOW + "Unknown flag: --" + key + RESET));
@@ -214,17 +209,13 @@ public class LoopCommand implements Command {
         // Create task
         LoopTask task = new LoopTask(
                 prompt, intervalMinutes, cronExpr,
-                taskType, maxIterations, runNow
+                taskType, runNow
         );
-
-        // 初始化状态目录（用 task 生成的 ID）
-        LoopStateManager.init(workspace, task.getId(), prompt);
 
         try {
             scheduler.schedule(sessionId, task);
         } catch (IllegalStateException e) {
             ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
-            LoopStateManager.cleanup(workspace, task.getId());
             return;
         }
 
@@ -242,12 +233,9 @@ public class LoopCommand implements Command {
         if (runNow) {
             ctx.println(ctx.color("  " + MAGENTA + "Run Now:" + RESET + " first execution immediately"));
         }
-        if (maxIterations != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
-        }
+
 
         ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
-        ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
     }
 
     /**
@@ -257,7 +245,6 @@ public class LoopCommand implements Command {
      * prompt 即目标任务描述，type=GOAL，runNow=true，interval=0（调度器自动转 5 秒安全网）。</p>
      */
     private void doScheduleGoal(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
-        Integer maxIterations = null;
         Long maxTokens = null;
         Long maxDurationMs = null;
         StringBuilder promptBuilder = new StringBuilder();
@@ -275,14 +262,7 @@ public class LoopCommand implements Command {
                     String key = flag.substring(0, colonIdx);
                     String val = flag.substring(colonIdx + 1);
                     switch (key) {
-                        case "max-iter":
-                            try {
-                                maxIterations = Integer.parseInt(val);
-                            } catch (NumberFormatException e) {
-                                ctx.println(ctx.color(RED + "Invalid --max-iter value: " + val + RESET));
-                                return;
-                            }
-                            break;
+
                         case "max-tokens":
                             try {
                                 maxTokens = Long.parseLong(val);
@@ -317,7 +297,7 @@ public class LoopCommand implements Command {
         if (prompt.isEmpty()) {
             ctx.println(ctx.color(RED + "Usage: /loop goal <objective>" + RESET));
             ctx.println(ctx.color(DIM + "  /loop goal fix auth module" + RESET));
-            ctx.println(ctx.color(DIM + "  /loop goal --max-iter:10 fix lint" + RESET));
+
             return;
         }
 
@@ -330,12 +310,7 @@ public class LoopCommand implements Command {
                 ctx.println(ctx.color(DIM + "  Use /loop stop " + t.getId() + " first to replace the goal." + RESET));
                 return;
             }
-            if (t.isGoalMode()
-                    && t.getGoalState().getStatus() == GoalState.Status.PAUSED
-                    && t.getGoalState().isAbandoned()) {
-                ctx.println(ctx.color(YELLOW + "Abandoned goal '" + t.getId() + "' (" + t.getGoalState().getCondition() + ") auto-cleaned." + RESET));
-                scheduler.remove(sessionId, t);
-            }
+            
         }
 
         // 创建任务：★ 显式使用 LoopTask.TaskType.GOAL
@@ -344,7 +319,6 @@ public class LoopCommand implements Command {
                 0,            // intervalMinutes = 0（调度器自动转 5 秒安全网）
                 null,         // cron
                 LoopTask.TaskType.GOAL,  // type = GOAL
-                maxIterations,
                 true          // runNow = true（立即执行首次）
         );
 
@@ -361,14 +335,10 @@ public class LoopCommand implements Command {
             task.setMaxDurationMs(loopCfg.getDefaultMaxDurationMsOrDefault());
         }
 
-        // 初始化状态目录
-        LoopStateManager.init(workspace, task.getId(), prompt);
-
         try {
             scheduler.schedule(sessionId, task);
         } catch (IllegalStateException e) {
             ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
-            LoopStateManager.cleanup(workspace, task.getId());
             return;
         }
 
@@ -376,11 +346,18 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(GREEN + "Goal task registered:" + RESET));
         ctx.println(ctx.color("  " + BOLD + "ID:" + RESET + " " + task.getId()));
         ctx.println(ctx.color("  " + BOLD + "Objective:" + RESET + " " + prompt));
-        if (maxIterations != null) {
-            ctx.println(ctx.color("  " + MAGENTA + "Max Iterations:" + RESET + " " + maxIterations));
+
+        if (maxTokens != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Tokens:" + RESET + " " + maxTokens));
+        } else if (loopCfg.getDefaultMaxTokensOrDefault() > 0) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Tokens:" + RESET + " " + loopCfg.getDefaultMaxTokensOrDefault()));
+        }
+        if (maxDurationMs != null) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Duration:" + RESET + " " + (maxDurationMs / 60000) + "m"));
+        } else if (loopCfg.getDefaultMaxDurationMsOrDefault() > 0) {
+            ctx.println(ctx.color("  " + MAGENTA + "Max Duration:" + RESET + " " + (loopCfg.getDefaultMaxDurationMsOrDefault() / 60000) + "m"));
         }
         ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
-        ctx.println(ctx.color(DIM + "  Expires: " + task.getExpireAt() + RESET));
     }
 
     private void doList(CommandContext ctx, String sessionId) {
@@ -444,7 +421,7 @@ public class LoopCommand implements Command {
                 if (t.isRunNow()) {
                     line.append(" ").append(MAGENTA).append("[now]").append(RESET);
                 }
-                line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append("/").append(t.getMaxIterations()).append(RESET);
+                line.append(" ").append(DIM).append("iter:").append(t.getCurrentIteration()).append(RESET);
             }
 
             line.append(" ").append(DIM).append(t.getPrompt()).append(RESET);
@@ -623,7 +600,7 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "Goal:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal fix auth module                (goal mode, runs immediately)" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal write a readme.md              (goal mode, runs immediately)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop goal --max-iter:10 fix lint         (goal with max iterations)" + RESET));
+        ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "Goal lifecycle:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop pause <id>                          (pause a goal task)" + RESET));

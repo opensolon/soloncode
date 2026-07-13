@@ -251,7 +251,39 @@ $('#chatImageInput').on('change', function(e) {
 });
 
 /* ===== Marked ===== */
-if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true }); }
+function escapeHtmlAttr(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function createMarkdownRenderer() {
+    var renderer = new marked.Renderer();
+
+    renderer.link = function (token) {
+        var href = token && typeof token === 'object' ? token.href : token;
+        var title = token && typeof token === 'object' ? token.title : '';
+        var text = token && typeof token === 'object' ? token.text : '';
+        var safeHref = href || '';
+        var safeTitle = title ? ' title="' + escapeHtmlAttr(title) + '"' : '';
+        var safeText = text || '';
+
+        return '<a href="' + escapeHtmlAttr(safeHref) + '" target="_blank" rel="noopener noreferrer"' + safeTitle + '>' + safeText + '</a>';
+    };
+
+    // 防止原始 HTML 标签破坏页面布局：转义 < 和 >，避免被浏览器解析为 DOM 元素
+    // marked v15 中 renderer 方法接收 token 对象，需通过 .text 获取原始内容
+    renderer.html = function (token) {
+        var text = (token && typeof token === 'object' ? (token.text || token.raw || '') : (token || ''));
+        return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    };
+
+    return renderer;
+}
+
+if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true, renderer: createMarkdownRenderer() }); }
 var _mdCache = new Map();
 var _MD_CACHE_MAX = 100;
 function renderMd(text) {

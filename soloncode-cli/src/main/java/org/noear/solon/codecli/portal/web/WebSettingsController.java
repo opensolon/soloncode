@@ -49,11 +49,13 @@ import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.config.entity.ProviderDo;
-import org.noear.solon.codecli.portal.web.model.ModelApiUrl;
-import org.noear.solon.codecli.portal.web.model.ModelInfo;
-import org.noear.solon.codecli.portal.web.model.ModelsAdapter;
-import org.noear.solon.codecli.portal.web.model.ModelsAdapterManager;
-import org.noear.solon.codecli.portal.web.model.ModelSpecService;
+import org.noear.solon.codecli.config.models.ModelApiUrl;
+import org.noear.solon.codecli.config.models.ModelInfo;
+import org.noear.solon.codecli.config.models.ModelsAdapter;
+import org.noear.solon.codecli.config.models.ModelsAdapterManager;
+import org.noear.solon.codecli.config.models.ModelSpecService;
+import org.noear.solon.codecli.portal.FileWatchService;
+import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.handle.Context;
@@ -65,6 +67,7 @@ import org.slf4j.LoggerFactory;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
+import java.net.*;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,6 +75,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Web 设置控制器 —— SolonCode Web UI 的设置管理 HTTP 入口。
@@ -126,6 +130,16 @@ public class WebSettingsController {
     private final AgentSettings settings;
 
     /**
+     * 文件变更监听服务（由 Configurator 注入，用于动态挂载管理）
+     */
+    private FileWatchService fileWatchService;
+
+    /**
+     * Web 网关（用于前端 WebSocket 广播）
+     */
+    private WebGate webGate;
+
+    /**
      * 构造函数：使用容器注入的 AgentSettings。
      *
      * @param engine   AI Agent 执行引擎
@@ -167,6 +181,41 @@ public class WebSettingsController {
         this.marketManager = marketManager;
         this.modelProviderFactory = modelProviderFactory;
         this.modelSpecService = modelSpecService;
+    }
+
+    /**
+     * 注册挂载点的文件监听（根据类型分配不同的处理器）
+     */
+    private void registerMountWatch(MountDir mount) {
+        if (fileWatchService == null || !mount.isEnabled()) return;
+
+        FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
+
+        switch (mount.getType()) {
+            case FILES:
+                root.addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+                break;
+            case SKILLS:
+                root.addHandler(changes -> engine.getSkillProvider().refreshByGroup(mount.getAlias()));
+                break;
+            case AGENTS:
+                root.addHandler(changes -> engine.getAgentManager().refreshByMountAlias(mount.getAlias()));
+                break;
+        }
+    }
+
+    /**
+     * 设置 FileWatchService（由 Configurator 注入）
+     */
+    public void setFileWatchService(FileWatchService fileWatchService) {
+        this.fileWatchService = fileWatchService;
+    }
+
+    /**
+     * 设置 WebGate（由 Configurator 注入）
+     */
+    public void setWebGate(WebGate webGate) {
+        this.webGate = webGate;
     }
 
     // ==================== 配置持久化 ====================
@@ -226,6 +275,20 @@ public class WebSettingsController {
             engine.getMcpGatewayTalent().setEnabled(settings.getGeneral().getMcpEnabled());
             engine.getOpenApiGatewayTalent().setEnabled(settings.getGeneral().getOpenApiEnabled());
             engine.getLspTalent().setEnabled(settings.getGeneral().getLspEnabled());
+
+            // 动态应用日志级别
+            if (tmp.hasKey("logLevel") && !tmp.get("logLevel").isNull()) {
+                String logLevel = tmp.get("logLevel").getString();
+                if (logLevel != null && !logLevel.isEmpty()) {
+                    ch.qos.logback.classic.Level level = ch.qos.logback.classic.Level.toLevel(logLevel, null);
+                    if (level != null) {
+                        ch.qos.logback.classic.Logger rootLogger =
+                                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(
+                                        org.slf4j.Logger.ROOT_LOGGER_NAME);
+                        rootLogger.setLevel(level);
+                    }
+                }
+            }
         }
 
         saveSettings();
@@ -394,11 +457,9 @@ public class WebSettingsController {
         }
 
         try {
-            String normalizedStandard = ModelApiUrl.normalizeStandard(standard, apiUrl);
-            String normalizedApiUrl = ModelApiUrl.normalizeChatApiUrl(apiUrl, normalizedStandard);
-            ChatModel chatModel = ChatModel.of(normalizedApiUrl)
+            ChatModel chatModel = ChatModel.of(apiUrl)
                     .apiKey(apiKey)
-                    .standard(normalizedStandard)
+                    .standard(standard)
                     .model(model)
                     .userAgent(settings.getGeneral().getUserAgent())
                     .build();
@@ -463,6 +524,14 @@ public class WebSettingsController {
     public Result llmModelsUpdate(@Param("originalName") String originalName, @Body ModelDo config, boolean isDefaultModel) throws Exception {
         if (Assert.isEmpty(originalName)) {
             return Result.failure("originalName is required");
+        }
+
+        // 编辑时保持 provider 关联（防止前端遗漏 provider 字段）
+        if (config.getProvider() == null) {
+            ChatConfig oldConfig = settings.getModels().get(originalName);
+            if (oldConfig != null && oldConfig.getProvider() != null) {
+                config.setProvider(oldConfig.getProvider());
+            }
         }
 
         // 先移除旧配置
@@ -765,9 +834,9 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/mcp/servers/check")
-    public Result mcpServersCheck(Context ctx) {
+    public Result mcpServersCheck(@Body String json) {
         try {
-            ONode root = ONode.ofJson(ctx.body());
+            ONode root = ONode.ofJson(json);
             String type = root.get("type").getString();
             if (type == null || type.isEmpty()) type = "stdio";
 
@@ -825,10 +894,22 @@ public class WebSettingsController {
                 }
 
                 McpClientProvider client = builder.build();
+                AtomicReference<Throwable> errorRef = new AtomicReference<>();
                 try {
                     // 通过 getTools() 触发 MCP 初始化握手，验证连接有效性
-                    client.getTools();
+                    client.getClient().listTools()
+                            .doOnError(err -> {
+                                errorRef.set(err);
+                            })
+                            .block();
+
                     return Result.succeed("连接成功：MCP 初始化握手完成（" + type + "）");
+                } catch (Exception e) {
+                    if (errorRef.get() != null) {
+                        throw errorRef.get();
+                    } else {
+                        throw e;
+                    }
                 } finally {
                     client.close();
                 }
@@ -841,7 +922,7 @@ public class WebSettingsController {
             return Result.failure("连接超时，请检查地址是否可达");
         } catch (java.io.IOException e) {
             return Result.failure("连接失败: " + e.getMessage());
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return Result.failure("检测失败: " + e.getMessage());
         }
     }
@@ -1153,8 +1234,8 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/add")
-    public Result openapiServersAdd(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
+    public Result openapiServersAdd(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
         String name = root.get("name").getString();
         String apiBaseUrl = root.get("apiBaseUrl").getString();
 
@@ -1175,7 +1256,14 @@ public class WebSettingsController {
 
         ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(apiBaseUrl);
-        source.setDocUrl(root.get("docUrl").getString());
+        String docUrl = root.get("docUrl").getString();
+        if (Assert.isNotEmpty(docUrl)) {
+            String ssrfError = validateExternalUrl(docUrl);
+            if (ssrfError != null) {
+                return Result.failure("文档地址 " + ssrfError);
+            }
+            source.setDocUrl(docUrl);
+        }
         source.setScope(scope);
         if (root.hasKey("headers")) {
             Map<String, String> headersMap = new LinkedHashMap<>();
@@ -1202,8 +1290,8 @@ public class WebSettingsController {
      */
     @Post
     @Mapping("/web/settings/openapi/servers/update")
-    public Result openapiServersUpdate(Context ctx) throws Exception {
-        ONode root = ONode.ofJson(ctx.body());
+    public Result openapiServersUpdate(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json);
         String name = root.get("name").getString();
         String originalName = root.get("originalName").getString();
 
@@ -1236,7 +1324,15 @@ public class WebSettingsController {
         }
         ApiSourceDo source = new ApiSourceDo();
         source.setApiBaseUrl(root.hasKey("apiBaseUrl") ? root.get("apiBaseUrl").getString() : existing.getApiBaseUrl());
-        source.setDocUrl(root.hasKey("docUrl") ? root.get("docUrl").getString() : existing.getDocUrl());
+        // 文档地址 SSRF 校验
+        String docUrlVal = root.hasKey("docUrl") ? root.get("docUrl").getString() : existing.getDocUrl();
+        if (Assert.isNotEmpty(docUrlVal)) {
+            String ssrfError = validateExternalUrl(docUrlVal);
+            if (ssrfError != null) {
+                return Result.failure("文档地址 " + ssrfError);
+            }
+            source.setDocUrl(docUrlVal);
+        }
         source.setScope(scope);
         if (root.hasKey("headers")) {
             Map<String, String> headersMap = new LinkedHashMap<>();
@@ -1327,6 +1423,12 @@ public class WebSettingsController {
                 return Result.failure("API 文档地址不能为空");
             }
 
+            // SSRF 防护：校验 URL 合法性
+            String ssrfError = validateExternalUrl(sourceDo.getDocUrl());
+            if (ssrfError != null) {
+                return Result.failure(ssrfError);
+            }
+
             // 构建HTTP连接测试
             java.net.URL url = new java.net.URL(sourceDo.getDocUrl());
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
@@ -1358,6 +1460,57 @@ public class WebSettingsController {
             return Result.failure("连接失败: " + e.getMessage());
         } catch (Exception e) {
             return Result.failure("检测失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * SSRF 防护：校验外部 URL 是否合法，防止访问内部网络
+     *
+     * @param urlStr 待校验的 URL 字符串
+     * @return null 表示合法，非 null 为错误描述
+     */
+    private String validateExternalUrl(String urlStr) {
+        if (Assert.isEmpty(urlStr)) {
+            return "URL 不能为空";
+        }
+
+        try {
+            URL url = new URL(urlStr);
+            String protocol = url.getProtocol();
+            if (!"http".equals(protocol) && !"https".equals(protocol)) {
+                return "仅支持 http/https 协议";
+            }
+
+            String host = url.getHost();
+            if (host == null || host.isEmpty()) {
+                return "URL 缺少主机名";
+            }
+
+            // 拒绝内部主机名
+            String hostLower = host.toLowerCase();
+            if (hostLower.equals("localhost") ||
+                    hostLower.equals("127.0.0.1") ||
+                    hostLower.equals("::1") ||
+                    hostLower.equals("[::1]") ||
+                    hostLower.endsWith(".local") ||
+                    hostLower.endsWith(".localhost")) {
+                return "不允许访问内部网络地址";
+            }
+
+            // 尝试解析 IP 并拒绝私有地址段
+            InetAddress inet = InetAddress.getByName(host);
+            if (inet.isLoopbackAddress() ||
+                    inet.isSiteLocalAddress() ||
+                    inet.isLinkLocalAddress()) {
+                return "不允许访问内部网络地址";
+            }
+
+            return null;
+        } catch (MalformedURLException e) {
+            return "URL 格式错误: " + e.getMessage();
+        } catch (UnknownHostException e) {
+            // 无法解析的主机名不阻止（可能临时不可达），直接放行
+            return null;
         }
     }
 
@@ -1824,7 +1977,7 @@ public class WebSettingsController {
             }
             // 防御性：补回前端可能遗漏的手动模型
             if (existing.getModels() != null) {
-                java.util.Set<String> newModelIds = new java.util.HashSet<>();
+                Set<String> newModelIds = new HashSet<>();
                 for (ModelInfo mi : models) {
                     newModelIds.add(mi.getId());
                 }
@@ -1902,8 +2055,7 @@ public class WebSettingsController {
 
         try {
             // 使用 ModelsAdapterManager 获取对应的提供商
-            String normalizedStandard = ModelApiUrl.normalizeStandard(standard, apiUrl);
-            ModelsAdapter provider = modelProviderFactory.getProvider(normalizedStandard);
+            ModelsAdapter provider = modelProviderFactory.getAdapter(standard);
             String baseUrl = provider.deriveBaseUrl(apiUrl);
             
             // 构建请求头
@@ -1913,8 +2065,11 @@ public class WebSettingsController {
             }
             
             // 调用提供商获取模型列表
-            List<ModelInfo> models = provider.fetchModels(baseUrl, headers, apiKey);
-            
+            List<ModelInfo> models = provider.fetchModels(settings.getGeneral().getUserAgent(), baseUrl, headers, apiKey);
+
+            // 按 id 排序，保证每次返回顺序一致
+            models.sort(Comparator.comparing(ModelInfo::getId, Comparator.nullsLast(String::compareTo)));
+
             // 转换为前端需要的格式
             List<Map<String, Object>> modelList = new ArrayList<>();
             for (ModelInfo model : models) {
@@ -2013,12 +2168,12 @@ public class WebSettingsController {
                 syncCount++;
             } else {
                 // 模型已存在，检查是否需要同步状态
-                ModelDo existingModel = (ModelDo) settings.getModels().get(modelName);
-                if (providerName.equals(existingModel.getProvider())) {
-                    if (existingModel.isVisibled() != provider.isEnabled()) {
-                        existingModel.setVisibled(provider.isEnabled());
-                        syncCount++;
-                    }
+                ModelDo existingModel = settings.getModels().get(modelName);
+                if (existingModel != null) { //providerName.equals(existingModel.getProvider())
+                    syncCount++;
+
+                    existingModel.setVisibled(provider.isEnabled());
+
                     // 更新 contextLength：优先 maxInputTokens，其次 maxTokens，最后从 models.json 查询
                     long newContextLength = 0;
                     if (modelInfo.getMaxInputTokens() != null && modelInfo.getMaxInputTokens() > 0) {
@@ -2034,8 +2189,12 @@ public class WebSettingsController {
                     }
                     if (newContextLength > 0 && existingModel.getContextLength() != newContextLength) {
                         existingModel.setContextLength(newContextLength);
-                        syncCount++;
                     }
+
+                    existingModel.setStandard(provider.getStandard());
+                    existingModel.setApiUrl(provider.getApiUrl());
+                    existingModel.setApiKey(provider.getApiKey());
+                    existingModel.setScope(provider.getScope());
                 }
             }
         }
@@ -2258,6 +2417,13 @@ public class WebSettingsController {
                 .path(path)
                 .writeable(writeable)
                 .build());
+
+        // 同步注册文件监听
+        MountDir newMount = engine.getMount(alias);
+        if (newMount != null) {
+            registerMountWatch(newMount);
+        }
+
         return Result.succeed("添加成功");
     }
 
@@ -2319,6 +2485,16 @@ public class WebSettingsController {
         }
 
         saveSettings();
+
+        // 同步文件监听：启用时注册，停用时移除
+        if (fileWatchService != null) {
+            if (Boolean.TRUE.equals(enabled)) {
+                registerMountWatch(mountDir);
+            } else {
+                fileWatchService.removeRoot(alias);
+            }
+        }
+
         LOG.info("[Settings] Mount toggled: {} -> {}", alias, enabled);
         return Result.succeed();
     }
@@ -2341,6 +2517,12 @@ public class WebSettingsController {
         settings.getMountPools().remove(alias);
         saveSettings();
         engine.removeMount(alias);
+
+        // 同步移除文件监听
+        if (fileWatchService != null) {
+            fileWatchService.removeRoot(alias);
+        }
+
         return Result.succeed("移除成功");
     }
 
@@ -2560,6 +2742,11 @@ public class WebSettingsController {
      * 递归删除目录
      */
     private void deleteRecursively(Path path) throws Exception {
+        // 跳过符号链接，只删除链接本身不跟随
+        if (Files.isSymbolicLink(path)) {
+            Files.delete(path);
+            return;
+        }
         if (Files.isDirectory(path)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
                 for (Path child : stream) deleteRecursively(child);

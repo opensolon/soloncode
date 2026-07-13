@@ -48,16 +48,11 @@ public class WeChatLink implements Channel, Runnable {
      */
     private final Map<String, WeChatBinding> bindings = new ConcurrentHashMap<>();
 
+
     /**
      * sessionId -> PollWorker
      */
     private final Map<String, Future<?>> pollWorkers = new ConcurrentHashMap<>();
-
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4, r -> {
-        Thread t = new Thread(r, "wechat-poll");
-        t.setDaemon(true);
-        return t;
-    });
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
@@ -170,14 +165,13 @@ public class WeChatLink implements Channel, Runnable {
         for (String sid : new ArrayList<>(pollWorkers.keySet())) {
             stopPolling(sid);
         }
-        scheduler.shutdownNow();
         LOG.info("[WeChat] Link stopped");
     }
 
     private void startPolling(String sessionId) {
         stopPolling(sessionId); // 防止重复
 
-        Future<?> future = scheduler.scheduleWithFixedDelay(() -> {
+        Future<?> future = RunUtil.timer().scheduleWithFixedDelay(() -> {
             if (!running.get()) return;
             try {
                 pollOnce(sessionId);
@@ -261,14 +255,13 @@ public class WeChatLink implements Channel, Runnable {
                 WeChatClient.sendTyping(binding.botToken, fromUserId, binding.typingTicket, 2);
             }
         }
+
+        // 持久化更新后的凭据（cursor, lastContextToken, lastFromUserId）
+        credentialStore.save(bindings);
     }
 
     @Override
     public void sendReply(String sessionId, String reply, boolean isFinal) {
-        if(isFinal == false){
-            return;
-        }
-
         WeChatBinding binding = bindings.get(sessionId);
         if (binding == null) {
             return;
@@ -278,12 +271,20 @@ public class WeChatLink implements Channel, Runnable {
             return;
         }
 
-        RunUtil.runAndTry(() -> {
-            sendReplyDo(binding, reply);
-        });
+        sendReplyDo(binding, reply);
     }
 
     private void sendReplyDo(WeChatBinding binding, String reply) {
+        // 发送前调用 getconfig 刷新 typing_ticket，可能延长 context_token 生命周期
+        try {
+            String freshTicket = WeChatClient.getConfig(binding.botToken, binding.lastFromUserId, binding.lastContextToken);
+            if (freshTicket != null) {
+                binding.typingTicket = freshTicket;
+            }
+        } catch (Exception e) {
+            LOG.warn("[WeChat] pre-send getconfig failed, using cached token: {}", e.getMessage());
+        }
+
         // 清理 markdown 标记，微信不渲染 markdown
         String cleanReply = reply
                 .replaceAll("`{3}[\\s\\S]*?`{3}", "") // 去掉代码块
@@ -301,7 +302,6 @@ public class WeChatLink implements Channel, Runnable {
         if (cleanReply.length() <= maxLen) {
             WeChatClient.sendMessage(binding.botToken, binding.lastFromUserId, binding.lastContextToken, cleanReply);
         } else {
-            // 分段发送
             int pos = 0;
             int part = 1;
             while (pos < cleanReply.length()) {

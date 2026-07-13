@@ -121,10 +121,7 @@ public class App {
         app.enableHttp(true);
         app.enableWebSocket(true);
         // 允许跨域（桌面端前端通过 localhost 访问 CLI 后端）
-        app.router().filter(new CrossFilter().pathPatterns("/version").allowedOrigins("*"));
-        app.router().filter(new CrossFilter().pathPatterns("/ws").allowedOrigins("*"));
-        app.router().filter(new CrossFilter().pathPatterns("/chat/**").allowedOrigins("*"));
-        app.router().filter(new CrossFilter().pathPatterns("/web/**").allowedOrigins("*"));
+        app.router().filter(new CrossFilter());
     }
 
     private static void enabledAcp(SolonApp app, AgentProperties c) {

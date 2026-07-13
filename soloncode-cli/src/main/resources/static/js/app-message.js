@@ -8,17 +8,22 @@ var OK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 /* 重新运行（循环箭头）与继续运行（快进）图标 */
 var RERUN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
 var CONTINUE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>';
+/* 删除图标 */
+var DELETE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
 /* ===== Message Rendering (Session-Aware) ===== */
-function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt) {
+function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt, sourceLabel) {
     var row = $('<div>').addClass('msg-row user')[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
-    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button></div>';
+    row.setAttribute('data-session-id', sess.sessionId);
+    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="msg-actions"><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button><button class="user-del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button></div></div>';
     var bubble = $(row).find('.msg-bubble')[0];
+
+    // 来源标签（仅非空且非 "Web" 时显示；会在时间戳左侧追加）
 
     // Multiple images
     if (imageDataUrls && imageDataUrls.length > 0) {
-        var imgWrap = $('<div>').attr('style', 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;')[0];
+        var imgWrap = $('<div>').addClass('user-attach-imgs')[0];
         for (var i = 0; i < imageDataUrls.length; i++) {
             var img = $('<img>').attr('src', imageDataUrls[i].dataUrl || imageDataUrls[i])
                 .attr('style', 'max-height:120px;max-width:200px;border-radius:8px;object-fit:cover;')[0];
@@ -27,13 +32,14 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         $(bubble).append(imgWrap);
     }
 
-    // Multiple file attachments
+    // Multiple file / image attachment tags（来自实时上传的 {name,size,type} 或历史元数据 {name,type}）
     if (fileAttachments && fileAttachments.length > 0) {
         for (var j = 0; j < fileAttachments.length; j++) {
-            var tag = $('<div>').attr('style', 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);border-radius:6px;margin-bottom:6px;font-size:13px;color:#fff;')[0];
-            tag.innerHTML = '<span>📎</span>'
-                + '<span style="font-weight:500">' + escapeHtml(fileAttachments[j].name) + '</span>'
-                + '<span style="opacity:0.7;font-size:11px">(' + formatFileSize(fileAttachments[j].size) + ')</span>';
+            var att = fileAttachments[j];
+            var tag = $('<div>').addClass('user-attach-file')[0];
+            var sizeHtml = att.size != null ? '<span class="user-attach-file-size">(' + formatFileSize(att.size) + ')</span>' : '';
+            tag.innerHTML = '<span class="user-attach-file-name">' + escapeHtml(att.name) + '</span>'
+                + sizeHtml;
             $(bubble).append(tag);
         }
     }
@@ -67,15 +73,61 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         }
     });
 
+    var delBtn = $(row).find('.user-del-btn')[0];
+    $(delBtn).on('click', function() {
+        layer.confirm('确认删除此消息及之后的所有消息？此操作不可撤销。', {
+            title: '确认删除',
+            btn: ['删除', '取消'],
+            icon: 3,
+            offset: '120px'
+        }, function(index) {
+            var rows = $(sess.container).find('.msg-row');
+            var idx = rows.index(row);
+            if (idx < 0) { layer.close(index); return; }
+            // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
+            var serverCount = calcServerCount(sess.container, row);
+            $.post('/web/chat/rewind', {
+                sessionId: sess.sessionId,
+                count: serverCount
+            });
+            // 前端删所有可视行（含命令消息的无记录行），保持界面干净
+            handleRewind(sess, rows.length - idx);
+            layer.close(index);
+        });
+    });
+
     // 时间戳（实时发送不传 createdAt 时兜底为当前时间，与历史加载行为一致）
     var msgTime = createdAt || Date.now();
-    var timeEl = $('<div>').addClass('msg-time').text(formatMsgTime(msgTime))[0];
+    var timeEl = $('<div>').addClass('msg-time')[0];
+    // 来源标签放在时间左侧，同样浅色
+    if (sourceLabel && sourceLabel !== 'Web') {
+        var srcSpan = $('<span>').addClass('msg-source-label').text(sourceLabel)[0];
+        $(timeEl).append(srcSpan);
+    }
+    timeEl.appendChild(document.createTextNode(formatMsgTime(msgTime)));
     $(bubble).append(timeEl);
 
     addImageLightbox(bubble);
     $(sess.container).append(row);
     // 容器不在 DOM 树中（如 loadMessages 的临时容器阶段）时跳过滚动，避免无效回流
     if (sess.sessionId === activeSessionId && document.contains(sess.container)) scrollToBottom(true);
+}
+
+/* 刷新用户消息的时间戳，在编辑/重发时调用 */
+function refreshUserMessageTime(container, sessionId) {
+    $(container).find('.msg-row.user').each(function() {
+        var timeEl = $(this).find('.msg-time')[0];
+        if (timeEl && !$(timeEl).data('refreshed')) {
+            $(timeEl).data('refreshed', true);
+            // 仅更新纯文本节点（时间），保留来源标签
+            var textNodes = Array.from(timeEl.childNodes).filter(function(n) {
+                return n.nodeType === Node.TEXT_NODE;
+            });
+            if (textNodes.length > 0) {
+                textNodes[0].textContent = formatMsgTime(Date.now());
+            }
+        }
+    });
 }
 
 function appendSystemNotice(sess, text) {
@@ -88,20 +140,24 @@ function appendSystemNotice(sess, text) {
 function ensureAssistantBubble(sess) {
     if (!sess.currentBubbleEl) {
         removeThinking(sess);
-        var row = $('<div>').addClass('msg-row assistant')[0];
+        var row = $('<div>').addClass('msg-row assistant ' + (sess.isStreaming ? 'streaming' : 'done'))[0];
         // 存储当前 runId，用于后续删除同一运行的消息
         if (sess.currentRunId) {
             row.setAttribute('data-run-id', sess.currentRunId);
         }
-        row.innerHTML = '<div class="msg-bubble"><div class="md-content"></div>'
+        row.setAttribute('data-session-id', sess.sessionId);
+        row.innerHTML = '<div class="msg-bubble"><div class="msg-content"><div class="md-content"></div></div>'
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
             + '<button class="user-copy-btn copy-btn" title="复制">' + COPY_SVG + '</button>'
             + '<button class="user-copy-btn rerun-btn" title="重新运行">' + RERUN_SVG + '</button>'
             + '<button class="user-copy-btn continue-btn" title="继续运行">' + CONTINUE_SVG + '</button>'
+            + '<button class="user-copy-btn del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button>'
             + '</div></div>';
         $(sess.container).append(row);
         sess.currentBubbleEl = $(row).find('.md-content')[0];
+
+        // AI 回复不显示来源标签
         var copyBtn = $(row).find('.copy-btn')[0];
         // 复制目标为「最终答案」：统一从 .md-content 的 data-md-raw 读取。
         // 历史消息与流式结束后后端写入的最终答案都带该属性；流式接收过程中不写，故复制不到中间片段。
@@ -109,7 +165,7 @@ function ensureAssistantBubble(sess) {
         var bubbleEl = $(row).find('.msg-bubble')[0];
         $(copyBtn).on('click', function() {
             var md = '';
-            var blocks = $(bubbleEl).children('.md-content');
+            var blocks = $(bubbleEl).find('.md-content');
             for (var bi = blocks.length - 1; bi >= 0; bi--) {
                 var raw = blocks[bi].getAttribute('data-md-raw');
                 if (raw != null && raw.trim()) { md = raw; break; }
@@ -159,6 +215,28 @@ function ensureAssistantBubble(sess) {
         }
         if (rerunBtn) $(rerunBtn).on('click', function() { triggerCommand('/rerun', true); });
         if (continueBtn) $(continueBtn).on('click', function() { triggerCommand('/continue', false); });
+        var delBtn = $(row).find('.del-btn')[0];
+        if (delBtn) $(delBtn).on('click', function() {
+            layer.confirm('确认删除此消息及之后的所有消息？此操作不可撤销。', {
+                title: '确认删除',
+                btn: ['删除', '取消'],
+                icon: 3,
+                offset: '120px'
+            }, function(index) {
+                var rows = $(sess.container).find('.msg-row');
+                var idx = rows.index(row);
+                if (idx < 0) { layer.close(index); return; }
+                // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
+                var serverCount = calcServerCount(sess.container, row);
+                $.post('/web/chat/rewind', {
+                    sessionId: sess.sessionId,
+                    count: serverCount
+                });
+                // 前端删所有可视行（含命令消息的无记录行），保持界面干净
+                handleRewind(sess, rows.length - idx);
+                layer.close(index);
+            });
+        });
         // 流式输出过程中隐藏复制按钮，待 finishStream 收尾后再显示；
         // 非流式（历史加载）保持原有显示逻辑。
         if (sess.isStreaming) {
@@ -170,35 +248,378 @@ function ensureAssistantBubble(sess) {
     return sess.currentBubbleEl;
 }
 
-function ensureThinkingBlock(sess) {
-    if (!sess.thinkingBlockEl) {
-        ensureAssistantBubble(sess);
-        var parent = sess.currentBubbleEl.parentNode;
-        var block = $('<div>').addClass('thinking-block streaming expanded')[0];
-        // 存储当前 runId，用于后续删除同一运行的消息
-        if (sess.currentRunId) {
-            block.setAttribute('data-run-id', sess.currentRunId);
-        }
-        block.innerHTML = '<div class="thinking-block-header">'
-            + '<span class="thinking-block-label">思考中</span>'
-            + '<span class="thinking-timer-wrap" style="margin-left:4px">'
-            + '<span class="thinking-current-timer">0s</span>'
-            + '</span>'
-            + '<i class="layui-icon layui-icon-right thinking-block-toggle"></i>'
-            + '</div>'
-            + '<div class="thinking-block-body"><div class="md-content"></div></div>';
-        $(sess.currentBubbleEl).before(block);
-        $(block).find('.thinking-block-header').on('click', function() {
-            $(block).toggleClass('expanded');
-        });
-        sess.thinkingBlockEl = block;
-        sess.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
-        sess.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
-        sess.thinkingBuffer = '';
-        var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
-        startThinkingTimerDual(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan, null);
+function streamReasonKey(segment, reasonId) {
+    return segment.id + '::' + reasonId;
+}
+
+function buildTaskGroupAriaLabel(segment, expanded) {
+    var title = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
+    // 双字段时补读 agent，避免仅读 description 丢失「谁在跑」
+    if (segment.taskDescription && segment.agentName) {
+        title = segment.taskDescription + '\uff0c' + segment.agentName;
     }
-    return sess.thinkingBlockEl;
+    var stateLabel = expanded ? '\u5df2\u5c55\u5f00' : '\u5df2\u6536\u8d77';
+    var stats = formatTaskGroupStats(segment);
+    var action = formatTaskGroupMeta(segment);
+    var detailParts = [];
+    if (stats) detailParts.push(stats);
+    if (action) detailParts.push(action);
+    var detail = detailParts.length ? detailParts.join(' \u00b7 ') + '\uff0c' : '';
+    if (segment.status === 'error') {
+        return title + ' \u5931\u8d25\uff0c' + detail + stateLabel + (expanded ? '' : '\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+    }
+    if (segment.status === 'done') {
+        return title + ' \u5df2\u5b8c\u6210\uff0c' + detail + stateLabel;
+    }
+    return title + ' \u8fd0\u884c\u4e2d\uff0c' + detail + stateLabel + (expanded ? '' : '\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+}
+
+/** 与 tool-card 同系的 22px 状态圆点：running 转圈 / done 绿勾 / error 红叉 */
+function updateTaskGroupStatusIcon(segment) {
+    if (!segment || !segment.groupEl) return;
+    var icon = $(segment.groupEl).find('.task-group-row-main > .tool-status-icon')[0];
+    if (!icon) return;
+    var status = segment.status || 'running';
+    if (status === 'done') {
+        icon.className = 'tool-status-icon done';
+        icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>';
+    } else if (status === 'error') {
+        icon.className = 'tool-status-icon reject';
+        icon.innerHTML = '<i class="layui-icon layui-icon-close" style="font-size:12px"></i>';
+    } else {
+        icon.className = 'tool-status-icon loading';
+        icon.innerHTML = '';
+    }
+}
+
+/** L1 右侧：仅 tool 计数（整轮耗时放 Context 条） */
+function formatTaskGroupStats(segment) {
+    if (!segment) return '';
+    if (segment.toolCount > 0) return segment.toolCount + ' tools';
+    return '';
+}
+
+/** L2：仅最近 toolName + args（running/done/error 均保留，方便收起回顾） */
+function formatTaskGroupMeta(segment) {
+    if (!segment) return '';
+    return segment.lastActionLabel || '';
+}
+
+function updateTaskGroupMeta(segment) {
+    if (!segment || !segment.groupEl) return;
+    var $g = $(segment.groupEl);
+
+    var statsText = formatTaskGroupStats(segment);
+    var statsEl = $g.find('.task-group-stats')[0];
+    if (statsEl) {
+        $(statsEl).text(statsText);
+        statsEl.style.display = statsText ? '' : 'none';
+        if (statsText) statsEl.setAttribute('title', statsText);
+        else statsEl.removeAttribute('title');
+    }
+
+    var actionText = formatTaskGroupMeta(segment);
+    var metaEl = $g.find('.task-group-meta')[0];
+    if (metaEl) {
+        $(metaEl).text(actionText);
+        metaEl.style.display = actionText ? '' : 'none';
+        // 主文案可被 ellipsis 截断；title 挂完整 L2，方便 hover 看全
+        if (actionText) metaEl.setAttribute('title', actionText);
+        else metaEl.removeAttribute('title');
+    }
+
+    // 无最近动作时隐藏 L2 整行，避免空白缝
+    var subRow = $g.find('.task-group-row-sub')[0];
+    if (subRow) subRow.style.display = actionText ? '' : 'none';
+
+    var header = $g.find('.task-group-header')[0];
+    if (header) {
+        header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, $g.hasClass('expanded')));
+    }
+}
+
+function scheduleTaskGroupMetaUpdate(segment) {
+    if (!segment || !segment.taskId) return;
+    if (segment._metaRafId) return;
+    segment._metaRafId = requestAnimationFrame(function() {
+        segment._metaRafId = null;
+        updateTaskGroupMeta(segment);
+    });
+}
+
+function setTaskGroupStatus(segment, status) {
+    if (!segment || !segment.groupEl || !status) return;
+    // error 优先；done 不覆盖 error
+    if (segment.status === 'error' && status !== 'error') return;
+    if (segment.status === status && status !== 'running') {
+        scheduleTaskGroupMetaUpdate(segment);
+        return;
+    }
+    segment.status = status;
+    segment.updatedAt = Date.now();
+    if (status === 'done' || status === 'error') {
+        segment.finishedAt = segment.finishedAt || Date.now();
+    }
+    $(segment.groupEl).removeClass('is-running is-done is-error');
+    $(segment.groupEl).addClass('is-' + status);
+    updateTaskGroupStatusIcon(segment);
+    scheduleTaskGroupMetaUpdate(segment);
+}
+
+function recordTaskGroupToolStart(segment, toolName, toolTitle, args) {
+    if (!segment || !segment.taskId) return;
+    segment.toolCount = (segment.toolCount || 0) + 1;
+    segment.hasPendingTools = (segment.hasPendingTools || 0) + 1;
+    segment.lastToolName = toolTitle || toolName || null;
+    // L2 文案对齐 tool-card：name + formatToolArgsStr；宽度不够由 CSS ellipsis 处理
+    var name = toolTitle || toolName || 'tool';
+    var argsStr = formatToolArgsStr(args);
+    segment.lastActionLabel = argsStr ? (name + ' ' + argsStr) : name;
+    segment.updatedAt = Date.now();
+    // 已 task_done 的终态不因迟到 action_start 打回 running
+    if (segment.status !== 'error' && segment.status !== 'done') setTaskGroupStatus(segment, 'running');
+    else scheduleTaskGroupMetaUpdate(segment);
+}
+
+function recordTaskGroupToolEnd(segment) {
+    if (!segment || !segment.taskId) return;
+    segment.hasPendingTools = Math.max(0, (segment.hasPendingTools || 0) - 1);
+    segment.updatedAt = Date.now();
+    scheduleTaskGroupMetaUpdate(segment);
+}
+
+function recordTaskGroupReason(segment) {
+    if (!segment || !segment.taskId) return;
+    segment.reasonCount = (segment.reasonCount || 0) + 1;
+    segment.updatedAt = Date.now();
+    // 已 task_done 的终态不因迟到 reason 打回 running
+    if (segment.status !== 'error' && segment.status !== 'done') setTaskGroupStatus(segment, 'running');
+    else scheduleTaskGroupMetaUpdate(segment);
+}
+
+function finalizeTaskGroups(sess) {
+    if (!sess || !sess.taskSegments) return;
+    for (var taskId in sess.taskSegments) {
+        if (!Object.prototype.hasOwnProperty.call(sess.taskSegments, taskId)) continue;
+        var segment = sess.taskSegments[taskId];
+        if (!segment || !segment.groupEl) continue;
+        // 非 error → done（绿勾）；error 保留红叉与 is-error 左边框
+        // 已由 task_done 提前结算的 segment 会走 status 短路，只刷新 meta
+        if (segment.status !== 'error') setTaskGroupStatus(segment, 'done');
+        else {
+            segment.finishedAt = segment.finishedAt || Date.now();
+            updateTaskGroupStatusIcon(segment);
+            scheduleTaskGroupMetaUpdate(segment);
+        }
+    }
+}
+
+/**
+ * 处理后端 task_done WebChunk：子代理任务结束时立即结算对应 task-group。
+ * status=error → 红叉（可附带错误文本）；其它 → 绿勾。
+ * 不依赖主流 done；主流 finalizeTaskGroups 仍作兜底。
+ */
+function applyTaskDoneChunk(sess, chunk) {
+    if (!sess || !chunk || !chunk.taskId) return;
+    var segment = ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName);
+    if (!segment || !segment.taskId) return;
+
+    var status = (chunk.status === 'error') ? 'error' : 'done';
+
+    if (status === 'error' && chunk.text) {
+        // 异常正文写入 task-group，避免只有图标没有原因
+        appendErrorChunkToSegment(sess, segment, chunk.text);
+        // appendErrorChunkToSegment 已 set error；再兜底一次状态
+        setTaskGroupStatus(segment, 'error');
+    } else {
+        setTaskGroupStatus(segment, status);
+    }
+}
+
+function createTaskGroupElement(sess, segment) {
+    var group = $('<div>').addClass('task-group is-running')[0];
+    group.setAttribute('data-task-id', segment.taskId);
+    group.setAttribute('data-stream-segment-id', segment.id);
+    if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
+    // L1：状态图标(22px) + title(文本+可选 agent-badge 贴字) + stats + toggle(右)；L2：最近 tool 动作。
+    // 有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。
+    var titleText = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
+    var agentHtml = (segment.taskDescription && segment.agentName)
+        ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>'
+        : '';
+    // hover：双字段时补全身份（badge 可能被窄屏裁进 max-width）
+    var titleAttr = (segment.taskDescription && segment.agentName)
+        ? titleText + '\uff08' + segment.agentName + '\uff09'
+        : titleText;
+    var header = $('<div>').addClass('task-group-header')[0];
+    // task-group 本级一律默认收起（单/多任务相同），展开由用户手动触发
+    var bodyId = 'task-body-' + segment.id;
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'false');
+    header.setAttribute('aria-controls', bodyId);
+    header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, false));
+    var statsText = formatTaskGroupStats(segment);
+    var statsTitleAttr = statsText
+        ? ' title="' + escapeHtmlAttr(statsText) + '"'
+        : '';
+    var metaText = formatTaskGroupMeta(segment);
+    var metaTitleAttr = metaText
+        ? ' title="' + escapeHtmlAttr(metaText) + '"'
+        : '';
+    // L1：22px 图标 + 标题簇(文字 ellipsis + 贴字 badge) + 耗时/计数 + toggle
+    // L2：仅最近动作（无则隐藏整行）
+    header.innerHTML =
+        '<div class="task-group-row task-group-row-main">'
+        + '<span class="tool-status-icon loading" aria-hidden="true"></span>'
+        + '<span class="task-group-title" title="' + escapeHtmlAttr(titleAttr) + '">'
+        + '<span class="task-group-title-text">' + escapeHtml(titleText) + '</span>'
+        + agentHtml
+        + '</span>'
+        + '<span class="task-group-stats"' + statsTitleAttr + (statsText ? '' : ' style="display:none"') + '>' + escapeHtml(statsText) + '</span>'
+        + '<i class="layui-icon layui-icon-right task-group-toggle"></i>'
+        + '</div>'
+        + '<div class="task-group-row task-group-row-sub"' + (metaText ? '' : ' style="display:none"') + '>'
+        + '<span class="task-group-meta"' + metaTitleAttr + (metaText ? '' : ' style="display:none"') + '>' + escapeHtml(metaText) + '</span>'
+        + '</div>';
+    // 左侧灰边透明热区：视觉零改动，整高可点展开/收起
+    var rail = $('<div>').addClass('task-group-rail')[0];
+    rail.setAttribute('role', 'button');
+    rail.setAttribute('tabindex', '0');
+    rail.setAttribute('title', '展开');
+    rail.setAttribute('aria-label', '展开子任务');
+    function toggle() {
+        var expanded = !$(group).hasClass('expanded');
+        segment.userToggled = true;
+        $(group).toggleClass('expanded', expanded);
+        header.setAttribute('aria-expanded', String(expanded));
+        if (!expanded) {
+            // 长内容收起后，若 group 顶部已离开视口，滚回可见，避免空白跳变
+            requestAnimationFrame(function() {
+                var wrap = document.querySelector('.messages-wrap');
+                if (!wrap || !document.contains(group)) return;
+                var gr = group.getBoundingClientRect();
+                var wr = wrap.getBoundingClientRect();
+                if (gr.top < wr.top || gr.top > wr.bottom) {
+                    group.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            });
+        }
+        header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, expanded));
+        rail.setAttribute('title', expanded ? '收起' : '展开');
+        rail.setAttribute('aria-label', expanded ? '收起子任务' : '展开子任务');
+    }
+    $(header).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    $(rail).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    var body = $('<div>').addClass('task-group-body')[0];
+    body.id = bodyId;
+    $(group).append(rail).append(header).append(body);
+    return { groupEl: group, bodyEl: body };
+}
+
+/* 为 taskId 保持唯一的 task-group；主代理输出仍按连续流片段追加，避免任务组重复创建。 */
+function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
+    ensureAssistantBubble(sess);
+    if (taskId) {
+        var taskSegment = sess.taskSegments[taskId];
+        if (taskSegment) {
+            // 标题首次确定后不再变更（后续 description 仅补内存字段，不刷新 DOM）
+            if (!taskSegment.taskDescription && taskDescription) taskSegment.taskDescription = taskDescription;
+            if (!taskSegment.agentName && agentName) taskSegment.agentName = agentName;
+            sess.currentStreamSegment = taskSegment;
+            return taskSegment;
+        }
+        var now = Date.now();
+        taskSegment = {
+            id: 'task-' + (++sess.streamSegmentSeq),
+            laneKey: 'task:' + taskId,
+            taskId: taskId,
+            taskDescription: taskDescription || null,
+            agentName: agentName || null,
+            bodyEl: null,
+            groupEl: null,
+            reasonEntries: {},
+            status: 'running',
+            userToggled: false,
+            createdAt: now,
+            updatedAt: now,
+            finishedAt: null,
+            toolCount: 0,
+            reasonCount: 0,
+            errorCount: 0,
+            lastToolName: null,
+            lastActionLabel: null,
+            hasPendingTools: 0,
+            _metaRafId: null
+        };
+        var task = createTaskGroupElement(sess, taskSegment);
+        taskSegment.groupEl = task.groupEl;
+        taskSegment.bodyEl = task.bodyEl;
+        sess.taskGroups[taskId] = task.groupEl;
+        sess.taskSegments[taskId] = taskSegment;
+        insertBeforeActions(sess, task.groupEl);
+        sess.streamSegments.push(taskSegment);
+        sess.currentStreamSegment = taskSegment;
+        return taskSegment;
+    }
+
+    var current = sess.currentStreamSegment;
+    if (current && !current.taskId) return current;
+    var segment = { id: 'main-' + (++sess.streamSegmentSeq), laneKey: 'main', taskId: null,
+        taskDescription: null, agentName: null, bodyEl: null, groupEl: null, reasonEntries: {} };
+    var main = $('<div>').addClass('main-stream-segment')[0];
+    main.setAttribute('data-stream-segment-id', segment.id);
+    if (sess.currentRunId) main.setAttribute('data-run-id', sess.currentRunId);
+    segment.groupEl = main;
+    segment.bodyEl = main;
+    insertBeforeActions(sess, main);
+    sess.streamSegments.push(segment);
+    sess.currentStreamSegment = segment;
+    return segment;
+}
+
+function ensureReasonGroup(sess, segment, reasonId) {
+    if (!reasonId || !segment) return null;
+    var key = streamReasonKey(segment, reasonId);
+    if (segment.reasonEntries[reasonId]) return segment.reasonEntries[reasonId];
+    var group = $('<div>').addClass('reason-group')[0];
+    group.setAttribute('data-reason-id', reasonId);
+    group.setAttribute('data-reason-segment-key', key);
+    if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
+    $(segment.bodyEl).append(group);
+    var entry = { groupEl: group, thinkingBlockEl: null, thinkingBodyMdEl: null, thinkingBodyWrapEl: null,
+        thinkingBuffer: '', reasonRafId: null, groupContentEl: null, groupBuffer: '', groupRafId: null,
+        textRuns: [], activeTextRun: null, activeKind: null };
+    segment.reasonEntries[reasonId] = entry;
+    sess.reasonGroups[key] = entry;
+    return entry;
+}
+
+function ensureThinkingBlockInGroup(sess, group) {
+    if (group.thinkingBlockEl) return group.thinkingBlockEl;
+    // 仅 task-group 本身固定收起；其内部和外部的思考块都遵循“工具调用显示简化”配置。
+    var initiallyExpanded = window.cliPrintSimplified === false;
+    var block = $('<div>').addClass('reason-group-think streaming')[0];
+    if (initiallyExpanded) $(block).addClass('expanded');
+    block.innerHTML = '<div class="reason-group-think-header" aria-expanded="' + initiallyExpanded + '"><span class="reason-group-think-label">思考</span>'
+        + '<span class="thinking-timer-wrap" style="margin-left:4px"><span class="thinking-current-timer">0s</span></span>'
+        + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i></div>'
+        + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
+    $(group.groupEl).append(block);
+    $(block).find('.reason-group-think-header').on('click', function() {
+        var expanded = !$(block).hasClass('expanded');
+        $(block).toggleClass('expanded', expanded);
+        this.setAttribute('aria-expanded', String(expanded));
+    });
+    group.thinkingBlockEl = block;
+    group.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
+    group.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
+    group.thinkingStartTime = Date.now();
+    return block;
 }
 
 function setAssistantTime(sess, ts) {
@@ -214,10 +635,65 @@ function insertBeforeActions(sess, el) {
     // 若存在常驻的内联等待指示器，新内容应插在其上方，保证指示器始终在气泡底部。
     var anchor = (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) ? sess.inlineThinkingEl : null;
     if (anchor) { $(anchor).before(el); return; }
+    // 插入到 msg-content 容器末尾（内容元素与 msg-time/msg-actions 物理隔离）
+    var bubble = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-bubble')[0] : null;
+    if (bubble) {
+        var content = $(bubble).children('.msg-content')[0];
+        if (content) { $(content).append(el); return; }
+    }
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
 }
 
-function finishThinkingBlock(sess) {
+function finishThinkingBlock(sess, reasonId) {
+    // 如果指定了 reasonId，只结束该 reasonId 对应的思考块
+    if (reasonId && sess.reasonGroups[reasonId]) {
+        var group = sess.reasonGroups[reasonId];
+        if (!group.thinkingBlockEl) {
+            // 思考块已被处理（如双重回调），直接返回
+            sess.thinkingBuffer = '';
+            return;
+        }
+        // 保存计时起始时间，防止 stopThinkingTimer 清空后引用丢失
+        var blockStartTime = sess.thinkingBlockStartTime;
+        stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
+        if (group.reasonRafId) {
+            cancelAnimationFrame(group.reasonRafId);
+            group.reasonRafId = null;
+            if (group.thinkingBodyMdEl) {
+                group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer || '');
+            }
+        }
+        if (group.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(group.thinkingBodyMdEl);
+        // 检查思考块内容是否超出高度
+        if (group.thinkingBodyWrapEl) { checkOverflow(group.thinkingBodyWrapEl, 300); }
+        $(group.thinkingBlockEl).removeClass('streaming');
+        if (window.cliPrintSimplified !== false) {
+            $(group.thinkingBlockEl).removeClass('expanded');
+        }
+        var elapsed = '';
+        if (blockStartTime) {
+            elapsed = ' (' + Math.floor((Date.now() - blockStartTime) / 1000) + 's)';
+        }
+        var label = $(group.thinkingBlockEl).find('.reason-group-think-label')[0];
+        if (label) $(label).text('思考' + elapsed);
+        $(group.thinkingBlockEl).find('.reason-group-think-dots').remove();
+        $(group.thinkingBlockEl).find('.thinking-timer-wrap').remove();
+
+        // ★ 清空组内引用 + 顶层引用，防止 finishStream 再次包裹
+        group.thinkingBlockEl = null;
+        group.thinkingBodyMdEl = null;
+        group.thinkingBodyWrapEl = null;
+        group.groupContentEl = null;
+        group.groupBuffer = '';
+        group.thinkingBuffer = '';
+        sess.thinkingBlockEl = null;
+        sess.thinkingBodyMdEl = null;
+        sess.thinkingBodyWrapEl = null;
+        sess.thinkingBuffer = '';
+        return;
+    }
+
+    // 旧式逻辑（无 reasonId 时）：结束当前 thinkingBlockEl 并包裹分组
     if (sess.thinkingBlockEl) {
         stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
         if (sess.reasonRafId) {
@@ -228,6 +704,8 @@ function finishThinkingBlock(sess) {
             }
         }
         if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
+        // 检查思考块内容是否超出高度
+        if (sess.thinkingBodyWrapEl) { checkOverflow(sess.thinkingBodyWrapEl, 300); }
         $(sess.thinkingBlockEl).removeClass('streaming');
         if (window.cliPrintSimplified !== false) {
             $(sess.thinkingBlockEl).removeClass('expanded');
@@ -236,10 +714,14 @@ function finishThinkingBlock(sess) {
         if (sess.thinkingBlockStartTime) {
             elapsed = ' (' + Math.floor((Date.now() - sess.thinkingBlockStartTime) / 1000) + 's)';
         }
-        var label = $(sess.thinkingBlockEl).find('.thinking-block-label')[0];
-        if (label) $(label).text('思考结束' + elapsed);
-        $(sess.thinkingBlockEl).find('.thinking-block-dots').remove();
+        var label = $(sess.thinkingBlockEl).find('.reason-group-think-label')[0];
+        if (label) $(label).text('思考' + elapsed);
+        $(sess.thinkingBlockEl).find('.reason-group-think-dots').remove();
         $(sess.thinkingBlockEl).find('.thinking-timer-wrap').remove();
+
+        // reason-group 已在 ensureThinkingBlock 中预创建，无需再做 DOM 包裹
+        sess.thinkingGroupEl = sess.thinkingBlockEl.parentNode;
+
         sess.thinkingBlockEl = null;
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
@@ -247,36 +729,68 @@ function finishThinkingBlock(sess) {
     }
 }
 
+/**
+ * 子任务有新输出时刷新状态与 meta。
+ * 展开状态始终尊重用户手动切换（userToggled），不在此处强制展开。
+ * 状态由 L1 的 tool-status-icon 表达（转圈/勾/叉），不再使用更新点。
+ */
+function markTaskGroupUpdated(sess, segment) {
+    if (!segment || !segment.groupEl || !segment.taskId) return;
+    segment.updatedAt = Date.now();
+    // 已 task_done 的终态不再被后续迟到 chunk 打回 running
+    if (segment.status !== 'error' && segment.status !== 'done') {
+        setTaskGroupStatus(segment, 'running');
+    } else {
+        scheduleTaskGroupMetaUpdate(segment);
+    }
+}
+
 function clearThinkTags(text) {
     return text.replace(/<\s*\/?think\s*>/gi, '');
 }
 
-function appendReasonChunk(sess, text) {
-    removeThinking(sess);
-    ensureThinkingBlock(sess);
-    sess.thinkingBuffer += clearThinkTags(text);
-    if (!sess.reasonRafId) {
-        sess.reasonRafId = requestAnimationFrame(function() {
-            sess.reasonRafId = null;
-            if (!sess.thinkingBlockEl) return;
-            if (sess.thinkingBodyMdEl) {
-                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
-            }
-            if (sess.thinkingBodyWrapEl) {
-                sess.thinkingBodyWrapEl.scrollTop = sess.thinkingBodyWrapEl.scrollHeight;
-            }
-            if (sess.sessionId === activeSessionId) scrollToBottom();
-        });
+function appendReasonChunk(sess, segment, text, reasonId, agentName) {
+    var clean = clearThinkTags(text || '');
+    if (!clean) return;
+    var group = ensureReasonGroup(sess, segment, reasonId);
+    if (!group) return;
+    group.activeKind = 'reason';
+    var block = ensureThinkingBlockInGroup(sess, group);
+    if (agentName) {
+        $(block).addClass('is-subagent');
+        var label = $(block).find('.reason-group-think-label')[0];
+        if (label && !$(label).next('.agent-badge').length) $(label).after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>');
     }
+    // 每个 reason-group 首次进入思考时计一次，避免同一 reason 流式重复累加
+    if (segment && segment.taskId && !group._taskReasonCounted) {
+        group._taskReasonCounted = true;
+        recordTaskGroupReason(segment);
+    }
+    group.thinkingBuffer += clean;
+    if (!group.reasonRafId) group.reasonRafId = requestAnimationFrame(function() {
+        group.reasonRafId = null;
+        if (group.thinkingBodyMdEl) group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer);
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+    });
 }
 
 function finishPendingTool(sess) {
+    // 兼容旧单槽：标记并清除
     if (sess.pendingToolCard) {
         var icon = $(sess.pendingToolCard).find('.tool-status-icon')[0];
         if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
-
         sess.pendingToolCard = null;
     }
+    // 多槽 map：标记所有未完成的 pending 卡片为 done
+    for (var _key in sess.pendingToolCards) {
+        var pending = sess.pendingToolCards[_key];
+        if (pending && pending.card) {
+            var icon = $(pending.card).find('.tool-status-icon')[0];
+            if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
+        }
+        delete sess.pendingToolCards[_key];
+    }
+    sess.pendingToolCards = {};
 }
 
 /* ===== Tool Body Renderer Registry =====
@@ -362,7 +876,7 @@ function renderHighlightedFile(bodyEl, text, args) {
     if (lang && typeof hljs !== 'undefined') {
         try {
             var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
-            bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;background:var(--bg-code, #f5f5f5);line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
+            bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
             return true;
         } catch(e) {
             return false;
@@ -482,9 +996,27 @@ function renderToolBody(bodyEl, toolName, text, args) {
     if (typeof renderer === 'function') {
         try {
             if (renderer(bodyEl, text, args)) return true;
-        } catch(e) {}
+        } catch(e) {
+            console.warn('[toolRenderer] renderer "' + toolName + '" threw:', e);
+        }
     }
     return false;
+}
+
+/* 检查容器内容是否超出高度，若超出则添加溢出指示器 */
+function checkOverflow(el, maxHeight) {
+    if (!el) return;
+    var hasOverflow = el.scrollHeight > maxHeight;
+    $(el).toggleClass('has-overflow', hasOverflow);
+    if (hasOverflow && !el._overflowBtn) {
+        el._overflowBtn = true;
+        $(el).on('click', function(e) {
+            if (e.target === el || $(e.target).parents().is(el)) {
+                $(el).toggleClass('expand-all');
+                $(el).removeClass('has-overflow');
+            }
+        });
+    }
 }
 
 /* 抽取：把 args 对象格式化为短字符串（供卡片头部 tool-args 展示）。
@@ -517,183 +1049,150 @@ function formatToolArgsStr(args) {
     return argsStr;
 }
 
+/* 为工具调用注册 pending 卡片：有 callId 时必须以 callId 作为唯一键；
+ * 旧流缺少 callId 时才使用带序号的兼容键。 */
+function registerPendingToolCard(sess, card, callId, reasonId) {
+    if (!sess.pendingToolCards) sess.pendingToolCards = {};
+    var key;
+    if (callId) {
+        key = callId;
+    } else {
+        if (!sess._toolCallSeq) sess._toolCallSeq = 0;
+        key = '__legacy__:' + (reasonId || '__default') + ':' + (++sess._toolCallSeq);
+    }
+    sess.pendingToolCards[key] = { card: card, started: true };
+    return key;
+}
+
+/* 按 callId 精确查找 pending 卡片。缺少 callId 的旧流只能按同一 reasonId 的到达顺序兜底。 */
+function findPendingToolCard(sess, callId, reasonId) {
+    var cards = sess.pendingToolCards || {};
+    var key = null;
+    var pending = null;
+    if (callId) {
+        key = callId;
+        pending = cards[key];
+    } else {
+        var legacyPrefix = '__legacy__:' + (reasonId || '__default') + ':';
+        for (var candidateKey in cards) {
+            if (candidateKey.indexOf(legacyPrefix) === 0) {
+                key = candidateKey;
+                pending = cards[candidateKey];
+                break;
+            }
+        }
+    }
+    return { key: key, pending: pending };
+}
+
 /* action_start：工具调用前（来源引擎 ActionChunk）提前渲染 loading 卡片骨架。
-   存为 sess.pendingToolCard，待 action（ObservationChunk 结果）到达时由
+   存为 pendingToolCards，待 action_end（ObservationChunk 结果）到达时由
    appendActionEndChunk 复用此卡片填充结果体并转完成态。 */
-function appendActionStartChunk(sess, toolName, args, toolTitle) {
-    // 若已有未完成的 pending 卡（异常时序/重复 start），先收尾避免悬挂
-    finishPendingTool(sess);
-    ensureAssistantBubble(sess);
-
+function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reasonId, agentName, callId) {
+    var group = ensureReasonGroup(sess, segment, reasonId);
+    if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
     var argsStr = formatToolArgsStr(args);
-    var argsHtml = argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '';
-
     var card = $('<div>').addClass('tool-card')[0];
-    // 存储当前 runId，用于后续删除同一运行的消息
-    if (sess.currentRunId) {
-        card.setAttribute('data-run-id', sess.currentRunId);
-    }
     if (window.cliPrintSimplified === false) $(card).addClass('expanded');
-    card.innerHTML = '<div class="tool-card-header">'
-        + '<span class="tool-status-icon loading"></span>'
-        + '<span class="tool-name">' + escapeHtml(toolTitle || toolName || 'tool') + '</span>'
-        + argsHtml
-        + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
-        + '</div>'
-        + '<div class="tool-card-body"></div>';
-
-    $(card).find('.tool-card-header').on('click', function() {
-        $(card).toggleClass('expanded');
-    });
-
-    insertBeforeActions(sess, card);
-    sess.pendingToolCard = card;
-    // 标记该卡由 action_start 提前创建，等待结果填充
-    sess.pendingToolStarted = true;
+    if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
+    card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon loading"></span><span class="tool-name">'
+        + escapeHtml(toolTitle || toolName || 'tool') + '</span>' + (argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '')
+        + '<i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
+    if (agentName) { $(card).addClass('is-subagent'); $(card).find('.tool-name').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>'); }
+    $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+    if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
+    if (callId) card.setAttribute('data-call-id', callId);
+    registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
+    if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
-function appendActionEndChunk(sess, toolName, text, args, toolTitle) {
-    // 复用分支：若该工具卡由 action_start 提前创建（loading 中），直接填充结果体并转完成态，避免重复建卡
-    if (sess.pendingToolStarted && sess.pendingToolCard) {
-        var pc = sess.pendingToolCard;
-        sess.pendingToolStarted = false;
-        var pcArgsStr = formatToolArgsStr(args);
-        $(pc).find('.tool-name').text(toolTitle || toolName || 'tool');
-        var pcArgsEl = $(pc).find('.tool-args')[0];
-        if (pcArgsStr) {
-            if (pcArgsEl) { pcArgsEl.textContent = pcArgsStr; }
-            else { $('<span>').addClass('tool-args').text(pcArgsStr).insertAfter($(pc).find('.tool-name')); }
-        }
-        var pcBody = $(pc).find('.tool-card-body')[0];
-        if (pcBody) {
-            pcBody.removeAttribute('style');
-            pcBody.innerHTML = '';
-            if (!renderToolBody(pcBody, toolName, text, args)) { pcBody.textContent = text || ''; }
-        }
-        finishPendingTool(sess);
-        if (window._todoChunkHandlers) { /* todo 由 streaming 层单独处理，这里不重复 */ }
-        sess.reasonBuffer = '';
-        var pcMd = $('<div>').addClass('md-content')[0];
-        insertBeforeActions(sess, pcMd);
-        sess.currentBubbleEl = pcMd;
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-        return;
+function resolveTaskSegmentFromCard(sess, card) {
+    if (!sess || !card || !sess.taskSegments) return null;
+    var group = $(card).closest('.task-group')[0];
+    if (!group) return null;
+    var taskId = group.getAttribute('data-task-id');
+    return (taskId && sess.taskSegments[taskId]) || null;
+}
+
+function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, reasonId, agentName, callId) {
+    var pendingMatch = findPendingToolCard(sess, callId, null);
+    var card = pendingMatch.pending && pendingMatch.pending.started ? pendingMatch.pending.card : null;
+    if (card) delete sess.pendingToolCards[pendingMatch.key];
+    if (!card) {
+        if (!segment) segment = ensureStreamSegment(sess, null, null, null);
+        var group = ensureReasonGroup(sess, segment, reasonId);
+        card = $('<div>').addClass('tool-card')[0];
+        if (window.cliPrintSimplified === false) $(card).addClass('expanded');
+        card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon done"><i class="layui-icon layui-icon-ok" style="font-size:12px"></i></span><span class="tool-name">'
+            + escapeHtml(toolTitle || toolName || 'tool') + '</span><i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
+        $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+        if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
+        // 无 action_start 的终态卡也计入 task 摘要
+        if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
     }
-    finishPendingTool(sess);
-    ensureAssistantBubble(sess);
-
-    // 参考 CliShell 简化打印方式，将 args 拼接为短字符串
-    function formatArgValue(v) {
-        if (v === null) return 'null';
-        if (v === undefined) return 'undefined';
-        if (typeof v === 'string') return v.replace(/\n/g, ' ');
-        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-        if (Array.isArray(v)) return '[' + v.length + '项]';
-        if (typeof v === 'object') {
-            var keys = Object.keys(v);
-            if (keys.length === 0) return '{}';
-            if (keys.length > 3) return '{' + keys.slice(0, 2).join(',') + ',...}';
-            var inner = [];
-            keys.forEach(function(k) { inner.push(k + ':' + formatArgValue(v[k])); });
-            var s = '{' + inner.join(',') + '}';
-            return s.length > 30 ? '{' + keys.join(',') + '}' : s;
-        }
-        return String(v);
+    var body = $(card).find('.tool-card-body')[0];
+    if (body) { body.innerHTML = ''; if (!renderToolBody(body, toolName, text, args)) body.textContent = text || ''; checkOverflow(body, 200); }
+    var icon = $(card).find('.tool-status-icon')[0];
+    if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
+    if (callId) card.setAttribute('data-call-id', callId);
+    // 优先用 chunk 上的 task segment；若 action_end 缺 taskId，则从已挂载的 tool-card 反查归属
+    var taskSegment = (segment && segment.taskId) ? segment : resolveTaskSegmentFromCard(sess, card);
+    if (taskSegment) {
+        recordTaskGroupToolEnd(taskSegment);
+        // onWebChunk 仅在 segment.taskId 时 mark；此处覆盖 action_end 无 taskId 的反查场景
+        if (!segment || !segment.taskId) markTaskGroupUpdated(sess, taskSegment);
     }
-    var argsHtml = '';
-    if (args && typeof args === 'object') {
-        var parts = [];
-        var skipArgs = { diff: 1, content: 1, todos: 1 };
-        Object.keys(args).forEach(function(k) {
-            if (skipArgs[k]) return; parts.push(k + '=' + formatArgValue(args[k]));
-        });
-        var argsStr = parts.join(' ');
-        if (argsStr.length > 80) argsStr = argsStr.substring(0, 77) + '...';
-        if (argsStr) argsHtml = '<span class="tool-args">' + escapeHtml(argsStr) + '</span>';
-    }
-
-    // 复用分支：若刚批准过 HITL，结果渲染进同一张审批卡片，避免出现两张卡
-    if (sess.approvedToolCard) {
-        var rc = sess.approvedToolCard;
-        sess.approvedToolCard = null;
-        $(rc).find('.tool-name').text(toolTitle || toolName || 'tool');
-        var rcArgsEl = $(rc).find('.tool-args')[0];
-        if (argsStr) {
-            if (rcArgsEl) { rcArgsEl.textContent = argsStr; }
-            else { $('<span>').addClass('tool-args').text(argsStr).insertAfter($(rc).find('.tool-name')); }
-        }
-        var rcBody = $(rc).find('.tool-card-body')[0];
-        if (rcBody) {
-            rcBody.removeAttribute('style');
-            rcBody.innerHTML = '';
-            if (!renderToolBody(rcBody, toolName, text, args)) { rcBody.textContent = text || ''; }
-        }
-        if (window.cliPrintSimplified === false) $(rc).addClass('expanded');
-        else $(rc).removeClass('expanded');
-        sess.pendingToolCard = rc;
-        sess.reasonBuffer = '';
-        var rcMd = $('<div>').addClass('md-content')[0];
-        insertBeforeActions(sess, rcMd);
-        sess.currentBubbleEl = rcMd;
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-        return;
-    }
-
-    var card = $('<div>').addClass('tool-card')[0];
-    // 存储当前 runId，用于后续删除同一运行的消息
-    if (sess.currentRunId) {
-        card.setAttribute('data-run-id', sess.currentRunId);
-    }
-    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
-    card.innerHTML = '<div class="tool-card-header">'
-        + '<span class="tool-status-icon loading"></span>'
-        + '<span class="tool-name">' + escapeHtml(toolTitle || toolName || 'tool') + '</span>'
-        + argsHtml
-        + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
-        + '</div>'
-        + '<div class="tool-card-body"></div>';
-
-    // 工具结果渲染：委托注册表分发，未命中专用 renderer 则纯文本兜底
-    var toolBody = $(card).find('.tool-card-body')[0];
-    if (!renderToolBody(toolBody, toolName, text, args)) {
-        toolBody.textContent = text || '';
-    }
-
-    $(card).find('.tool-card-header').on('click', function() {
-        $(card).toggleClass('expanded');
-    });
-
-    insertBeforeActions(sess, card);
-    sess.pendingToolCard = card;
-
-    sess.reasonBuffer = '';
-    var newMd = $('<div>').addClass('md-content')[0];
-    insertBeforeActions(sess, newMd);
-    sess.currentBubbleEl = newMd;
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
-function appendContentChunk(sess, text, append) {
-    var clean = clearThinkTags(text);
-    sess.reasonBuffer = append ? sess.reasonBuffer + clean : clean;
-    if (!sess.contentRafId) {
-        sess.contentRafId = requestAnimationFrame(function() {
-            var el = ensureAssistantBubble(sess);
-            // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
-            // 避免复制到被工具调用切开的中间片段。
-            // 流式过程中仅渲染 Markdown，跳过代码高亮和复制按钮以避免每帧全量重建 DOM；
-            // 这两项在 finishStream 中会做最终的完整处理。
-            el.innerHTML = renderMd(sess.reasonBuffer);
-
-            sess.contentRafId = null;
-
-            if (sess.sessionId === activeSessionId) scrollToBottom();
-        });
+function appendContentChunk(sess, segment, text, append, reasonId) {
+    var clean = clearThinkTags(text || '');
+    if (!clean) return;
+    var group = ensureReasonGroup(sess, segment, reasonId);
+    if (!group) return;
+    // 仅连续 text chunk 复用同一节点；工具/思考出现后必建新 text run，保持真实时序。
+    var run = group.activeTextRun;
+    if (group.activeKind !== 'text' || !run) {
+        run = { el: $('<div>').addClass('md-content reason-group-text')[0], buffer: '', rafId: null };
+        group.textRuns.push(run);
+        group.activeTextRun = run;
+        group.groupContentEl = run.el;
+        $(group.groupEl).append(run.el);
     }
+    group.activeKind = 'text';
+    run.buffer = append ? run.buffer + clean : clean;
+    group.groupBuffer = run.buffer;
+    if (!run.rafId) run.rafId = requestAnimationFrame(function() {
+        run.rafId = null;
+        if (run.el) run.el.innerHTML = renderMd(run.buffer);
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+    });
 }
 
-function appendErrorChunk(sess, text) {
+function appendErrorChunkToSegment(sess, segment, text) {
+    if (!segment || !segment.bodyEl) {
+        appendErrorChunk(sess, text);
+        return;
+    }
+    var errEl = $('<div>').addClass('chunk-error').text(text)[0];
+    $(segment.bodyEl).append(errEl);
+    segment.errorCount = (segment.errorCount || 0) + 1;
+    segment.updatedAt = Date.now();
+    // error → 红叉 + is-error 左边框；不自动展开
+    setTaskGroupStatus(segment, 'error');
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+function appendErrorChunk(sess, text, taskId, taskDescription, agentName) {
+    // 仅显式 taskId 才归入 task-group；无 taskId 一律挂气泡根级，绝不弱归属
+    if (taskId) {
+        var segment = ensureStreamSegment(sess, taskId, taskDescription, agentName);
+        if (segment && segment.taskId) {
+            appendErrorChunkToSegment(sess, segment, text);
+            return;
+        }
+    }
     ensureAssistantBubble(sess);
     var errEl = $('<div>').addClass('chunk-error').text(text)[0];
     insertBeforeActions(sess, errEl);
@@ -703,8 +1202,10 @@ function appendErrorChunk(sess, text) {
 /* ===== Trace Badge ===== */
 function appendTraceBadge(sess, chunk) {
     ensureAssistantBubble(sess);
-    // 后端携带的最终答案为权威复制源，写到当前 .md-content 的 data-md-raw（与历史消息统一属性名），供复制按钮读取。
-    if (chunk.finalAnswer != null && sess.currentBubbleEl) {
+    // 后端携带的最终答案为权威复制源，写到实际承载正文的 .md-content。
+    // 工具结束后若尚未收到正文，nextContentBlock 表示当前节点仍是工具前的内容，
+    // 此时不能把最终答案错误挂到旧节点，更不能为 trace 预建空节点。
+    if (chunk.finalAnswer != null && sess.currentBubbleEl && !sess.nextContentBlock) {
         sess.currentBubbleEl.setAttribute('data-md-raw', chunk.finalAnswer);
     }
     function fmtK(n) {
@@ -731,6 +1232,7 @@ function appendCommandOutput(sess, text) {
     mdEl.innerHTML = renderMd(text);
     if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
     insertBeforeActions(sess, mdEl);
+    sess.currentBubbleEl = mdEl;
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
@@ -805,6 +1307,11 @@ function ensureInlineThinking(sess) {
         + '<span class="thinking-current-timer">0s</span>'
         + '</span>';
     sess.inlineThinkingEl = el;
+    var bubble = $(sess.currentBubbleEl).closest('.msg-bubble')[0];
+    if (bubble) {
+        var content = $(bubble).children('.msg-content')[0];
+        if (content) { $(content).append(el); return el; }
+    }
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
     return el;
 }
@@ -831,7 +1338,8 @@ function appendHitlCard(sess, toolName, command) {
 
     // 采用 tool-card 视觉体系：审批通过后原地复用为工具结果卡片
     var argsHtml = command ? '<span class="tool-args">' + escapeHtml(command) + '</span>' : '';
-    var card = $('<div>').addClass('tool-card hitl-pending expanded')[0];
+    var card = $('<div>').addClass('tool-card hitl-pending')[0];
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
     // 存储当前 runId，用于后续删除同一运行的消息
     if (sess.currentRunId) {
         card.setAttribute('data-run-id', sess.currentRunId);
@@ -910,6 +1418,30 @@ function handleHitlResponse(sess, action) {
         // 通过回调占位调用 finishStream（由 app-streaming.js 注册）
         if (onFinishStream) onFinishStream(sess);
     });
+}
+
+/* ===== Server Record Count =====
+ * 计算从 startRow 到末尾、在 ndjson 中有服务端记录的消息数量。
+ * 命令消息（以 / 开头）在 ndjson 中无记录，不计入，避免后端多删。 */
+function calcServerCount(container, startRow) {
+    var rows = $(container).find('.msg-row');
+    var idx = rows.index(startRow);
+    if (idx < 0) return 0;
+    var count = 0;
+    for (var i = idx; i < rows.length; i++) {
+        var r = rows[i];
+        // 用户消息中，以 / 开头的命令在 ndjson 中无记录，跳过
+        if ($(r).hasClass('user')) {
+            var textEl = $(r).find('.user-msg-text')[0];
+            if (textEl) {
+                var raw = textEl.getAttribute('data-md-raw') || textEl.innerText;
+                if (raw.trim().startsWith('/') && /^\/[a-zA-Z][a-zA-Z0-9_-]*(\s.*)?$/.test(raw.trim())) continue;
+            }
+        }
+        // 系统通知也可能无记录，但删除按钮不存在于系统通知上，无需处理
+        count++;
+    }
+    return count;
 }
 
 /* ===== Rewind Handling ===== */

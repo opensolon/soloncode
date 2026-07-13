@@ -5,8 +5,12 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
+import org.noear.solon.codecli.channel.dingtalk.DingTalkAppRegistration;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
+import org.noear.solon.codecli.channel.dingtalk.DingTalkQRBindManager;
+import org.noear.solon.codecli.channel.feishu.FeishuAppRegistration;
 import org.noear.solon.codecli.channel.feishu.FeishuLink;
+import org.noear.solon.codecli.channel.feishu.FeishuQRBindManager;
 import org.noear.solon.codecli.channel.wechat.WeChatClient;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.core.handle.Result;
@@ -25,7 +29,8 @@ import java.util.Map;
  * <ul>
  *   <li>微信（WeChat）—— 通过扫码登录方式绑定</li>
  *   <li>飞书（Feishu）—— 通过 App ID / App Secret 凭证方式绑定，基于 WebSocket Stream 通信</li>
- *   <li>钉钉（DingTalk）—— 通过 AppKey / AppSecret 凭证方式绑定，基于 Stream 通信</li>
+ *   <li>钉钉（DingTalk）—— 通过 AppKey / AppSecret 凭证方式绑定，基于 Stream 通信；<br/>
+ *       也支持通过二维码扫码绑定（Device Authorization Grant 流程）</li>
  * </ul>
  *
  * <p><b>架构位置：</b>
@@ -46,8 +51,14 @@ public class WebChannel implements Runnable{
     /** 钉钉通道适配器，负责 Stream 连接、会话绑定与消息转发 */
     private final DingTalkLink dingTalkLink;
 
+    /** 飞书扫码绑定管理器 */
+    private final FeishuQRBindManager feishuQRBindManager;
+
+    /** 钉钉扫码绑定管理器 */
+    private final DingTalkQRBindManager dingtalkQRBindManager;
+
     /**
-     * 构造函数：初始化三个通道适配器。
+     * 构造函数：初始化三个通道适配器和扫码绑定管理器。
      *
      * @param engine  AI 能力引擎，供各通道适配器调用模型能力
      * @param webGate Web 网关，提供公共配置与回调上下文
@@ -56,6 +67,8 @@ public class WebChannel implements Runnable{
         this.weChatLink = new WeChatLink(engine, webGate);
         this.feishuLink = new FeishuLink(engine, webGate);
         this.dingTalkLink = new DingTalkLink(engine, webGate);
+        this.feishuQRBindManager = new FeishuQRBindManager();
+        this.dingtalkQRBindManager = new DingTalkQRBindManager();
     }
 
     /**
@@ -231,6 +244,8 @@ public class WebChannel implements Runnable{
         if (feishuLink != null) {
             feishuLink.unbindSession(sessionId);
         }
+        // 清理可能的QR绑定会话
+        feishuQRBindManager.cancelQrBinding(sessionId);
         return Result.succeed();
     }
 
@@ -256,6 +271,109 @@ public class WebChannel implements Runnable{
             return Result.succeed(data);
         }
         return Result.succeed(feishuLink.getStreamStatus(sessionId));
+    }
+
+    /**
+     * 开始飞书扫码绑定。
+     *
+     * <p>通过 Device Authorization Grant 流程获取二维码 URL，
+     * 用户使用飞书 App 扫码并授权后自动完成绑定。</p>
+     *
+     * @param sessionId 当前会话标识
+     * @return 包含 qrUrl、expiresIn、interval 的结果
+     */
+    @Post
+    @Mapping("/web/chat/feishu/qrcode")
+    public Result<Map> feishuQrcode(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        try {
+            FeishuQRBindManager.BindStartResult result = feishuQRBindManager.startQrBinding(sessionId);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("qrUrl", result.qrUrl);
+            data.put("expiresIn", result.expiresIn);
+            data.put("interval", result.interval);
+            data.put("sessionId", sessionId);
+            return Result.succeed(data);
+        } catch (Exception e) {
+            return Result.failure("获取飞书二维码失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 轮询飞书扫码绑定状态。
+     *
+     * <p>当用户扫码授权成功后，自动获取 App ID、App Secret 和用户 openId，
+     * 并调用飞书通道完成会话绑定和 Stream 连接启动。</p>
+     *
+     * @param sessionId 当前会话标识
+     * @return 包含绑定状态的结果
+     */
+    @Get
+    @Mapping("/web/chat/feishu/qrcode/status")
+    public Result<Map> feishuQrcodeStatus(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        try {
+            FeishuAppRegistration.PollResult pollResult = feishuQRBindManager.pollQrBinding(sessionId);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+
+            if (pollResult.isSuccess()) {
+                // 扫码成功：自动绑定会话并启动 Stream 连接
+                String appId = pollResult.clientId;
+                String appSecret = pollResult.clientSecret;
+                String openId = pollResult.openId;
+
+                if (openId != null) {
+                    feishuLink.bindSession(sessionId, openId, appId, appSecret);
+                }
+
+                // 启动 WebSocket Stream 连接
+                feishuLink.startStream(appId, appSecret, sessionId);
+
+                data.put("status", "success");
+                data.put("bound", true);
+            } else if (pollResult.isWaiting()) {
+                data.put("status", "waiting");
+                data.put("message", pollResult.message);
+            } else if (pollResult.isSlowDown()) {
+                data.put("status", "waiting");
+                data.put("message", pollResult.message);
+            } else {
+                data.put("status", "failed");
+                data.put("message", pollResult.message);
+            }
+
+            return Result.succeed(data);
+        } catch (Exception e) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("status", "error");
+            data.put("message", e.getMessage());
+            return Result.succeed(data);
+        }
+    }
+
+    /**
+     * 取消飞书扫码绑定。
+     *
+     * @param sessionId 当前会话标识
+     * @return 操作结果
+     */
+    @Post
+    @Mapping("/web/chat/feishu/qrcode/cancel")
+    public Result feishuQrcodeCancel(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        feishuQRBindManager.cancelQrBinding(sessionId);
+        return Result.succeed();
     }
 
     // ==================== 钉钉（DingTalk）通道接口 ====================
@@ -338,6 +456,106 @@ public class WebChannel implements Runnable{
             return Result.succeed(data);
         }
         return Result.succeed(dingTalkLink.getStreamStatus(sessionId));
+    }
+
+    // ==================== 钉钉扫码绑定接口 ====================
+
+    /**
+     * 开始钉钉扫码绑定。
+     *
+     * <p>通过 Device Authorization Grant 流程获取二维码 URL，
+     * 用户使用钉钉 App 扫码并授权后自动完成绑定。</p>
+     *
+     * @param sessionId 当前会话标识
+     * @return 包含 qrUrl、expiresIn、interval 的结果
+     */
+    @Post
+    @Mapping("/web/chat/dingtalk/qrcode")
+    public Result<Map> dingtalkQrcode(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        try {
+            DingTalkQRBindManager.BindStartResult result = dingtalkQRBindManager.startQrBinding(sessionId);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("qrUrl", result.qrUrl);
+            data.put("expiresIn", result.expiresIn);
+            data.put("interval", result.interval);
+            data.put("sessionId", sessionId);
+            return Result.succeed(data);
+        } catch (Exception e) {
+            return Result.failure("获取钉钉二维码失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 轮询钉钉扫码绑定状态。
+     *
+     * <p>当用户扫码授权成功后，自动获取 AppKey 和 AppSecret，
+     * 并调用钉钉通道完成会话绑定和 Stream 连接启动。</p>
+     *
+     * @param sessionId 当前会话标识
+     * @return 包含绑定状态的结果
+     */
+    @Get
+    @Mapping("/web/chat/dingtalk/qrcode/status")
+    public Result<Map> dingtalkQrcodeStatus(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        try {
+            DingTalkAppRegistration.PollResult pollResult = dingtalkQRBindManager.pollQrBinding(sessionId);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+
+            if (pollResult.isSuccess()) {
+                // 扫码成功：自动使用获取到的 AppKey + AppSecret 启动 Stream 连接
+                String clientId = pollResult.clientId;
+                String clientSecret = pollResult.clientSecret;
+
+                if (clientId != null && clientSecret != null) {
+                    // 启动 Stream 连接（用户向机器人发消息后会自动完成绑定）
+                    dingTalkLink.startStream(clientId, clientSecret, sessionId);
+                }
+
+                data.put("status", "success");
+                data.put("bound", true);
+                data.put("clientId", clientId);
+            } else if (pollResult.isWaiting()) {
+                data.put("status", "waiting");
+                data.put("message", pollResult.message);
+            } else {
+                data.put("status", "failed");
+                data.put("message", pollResult.message);
+            }
+
+            return Result.succeed(data);
+        } catch (Exception e) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("status", "error");
+            data.put("message", e.getMessage());
+            return Result.succeed(data);
+        }
+    }
+
+    /**
+     * 取消钉钉扫码绑定。
+     *
+     * @param sessionId 当前会话标识
+     * @return 操作结果
+     */
+    @Post
+    @Mapping("/web/chat/dingtalk/qrcode/cancel")
+    public Result dingtalkQrcodeCancel(@Param("sessionId") String sessionId) {
+        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            return Result.failure("Invalid sessionId");
+        }
+
+        dingtalkQRBindManager.cancelQrBinding(sessionId);
+        return Result.succeed();
     }
 
     // ==================== 通道实例访问器 ====================

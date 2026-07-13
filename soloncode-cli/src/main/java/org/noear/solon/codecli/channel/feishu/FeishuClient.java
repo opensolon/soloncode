@@ -21,6 +21,9 @@ import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * 飞书 API 客户端
  *
@@ -35,52 +38,67 @@ public class FeishuClient {
     private static final String BASE_URL = "https://open.feishu.cn/open-apis";
 
     /**
-     * 缓存的 tenant_access_token
+     * 按 appId 隔离缓存的 tenant_access_token
      */
-    private static String cachedToken;
-    /**
-     * token 过期时间戳（毫秒）
-     */
-    private static long tokenExpireAt;
+    private static final Map<String, TokenEntry> tokenCache = new ConcurrentHashMap<>();
+
+    private static class TokenEntry {
+        final String token;
+        final long expireAt;
+
+        TokenEntry(String token, long expireAt) {
+            this.token = token;
+            this.expireAt = expireAt;
+        }
+    }
 
     /**
-     * 获取 tenant_access_token（自动缓存和刷新）
+     * 获取 tenant_access_token（自动缓存和刷新，按 appId 隔离）
      *
      * @param appId     飞书应用 app_id
      * @param appSecret 飞书应用 app_secret
      * @return tenant_access_token 或 null
      */
-    public static synchronized String getTenantAccessToken(String appId, String appSecret) {
+    public static String getTenantAccessToken(String appId, String appSecret) {
         long now = System.currentTimeMillis();
         // 提前 5 分钟刷新
-        if (cachedToken != null && tokenExpireAt > now + 300_000) {
-            return cachedToken;
+        TokenEntry entry = tokenCache.get(appId);
+        if (entry != null && entry.expireAt > now + 300_000) {
+            return entry.token;
         }
 
-        try {
-            ONode body = new ONode();
-            body.set("app_id", appId);
-            body.set("app_secret", appSecret);
-
-            String resp = httpPost(BASE_URL + "/auth/v3/tenant_access_token/internal", body.toJson(), null);
-            if (resp == null) return null;
-
-            ONode root = ONode.ofJson(resp);
-            int code = root.get("code").getInt();
-            if (code != 0) {
-                LOG.warn("[Feishu] getTenantAccessToken failed: code={}, msg={}", code, root.get("msg").getString());
-                return null;
+        synchronized (FeishuClient.class) {
+            // double-check
+            entry = tokenCache.get(appId);
+            if (entry != null && entry.expireAt > now + 300_000) {
+                return entry.token;
             }
 
-            cachedToken = root.get("tenant_access_token").getString();
-            int expire = root.get("expire").getInt();
-            tokenExpireAt = now + expire * 1000L;
+            try {
+                ONode body = new ONode();
+                body.set("app_id", appId);
+                body.set("app_secret", appSecret);
 
-            LOG.debug("[Feishu] Token refreshed, expires in {}s", expire);
-            return cachedToken;
-        } catch (Exception e) {
-            LOG.error("[Feishu] getTenantAccessToken error: {}", e.getMessage());
-            return null;
+                String resp = httpPost(BASE_URL + "/auth/v3/tenant_access_token/internal", body.toJson(), null);
+                if (resp == null) return null;
+
+                ONode root = ONode.ofJson(resp);
+                int code = root.get("code").getInt();
+                if (code != 0) {
+                    LOG.warn("[Feishu] getTenantAccessToken failed: code={}, msg={}", code, root.get("msg").getString());
+                    return null;
+                }
+
+                String token = root.get("tenant_access_token").getString();
+                int expire = root.get("expire").getInt();
+                tokenCache.put(appId, new TokenEntry(token, now + expire * 1000L));
+
+                LOG.debug("[Feishu] Token refreshed for app '{}', expires in {}s", appId, expire);
+                return token;
+            } catch (Exception e) {
+                LOG.error("[Feishu] getTenantAccessToken error: {}", e.getMessage());
+                return null;
+            }
         }
     }
 
@@ -102,7 +120,7 @@ public class FeishuClient {
 
             ONode content = new ONode();
             content.set("text", text);
-            body.set("content", content.toJson());
+            body.set("content", content.toJson()); //说明：这是规范要求，不能动
 
             String resp = httpPost(BASE_URL + "/im/v1/messages?receive_id_type=" + receiveIdType, body.toJson(), accessToken);
             if (resp == null) return null;
@@ -164,6 +182,61 @@ public class FeishuClient {
             return root.get("data").get("message_id").getString();
         } catch (Exception e) {
             LOG.error("[Feishu] sendPostMessage error: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 发送 Markdown 富文本消息（post + md tag）
+     *
+     * <p>飞书 post 格式支持 {@code tag: "md"}，可渲染完整 GFM Markdown（标题、加粗、
+     * 斜体、代码块、引用、列表、表格、任务列表等）。</p>
+     *
+     * <p>注意：{@code md} 标签独占一个段落，不能与其他标签（如 text、a）混排。</p>
+     *
+     * @param accessToken    tenant_access_token
+     * @param receiveIdType  接收者类型：open_id / user_id / chat_id
+     * @param receiveId      接收者 ID
+     * @param title          消息标题（显示在消息顶部，可选，传空字符串则无标题）
+     * @param mdBody         Markdown 文本内容
+     * @return message_id 或 null
+     */
+    public static String sendMdPostMessage(String accessToken, String receiveIdType,
+                                            String receiveId, String title, String mdBody) {
+        try {
+            ONode body = new ONode();
+            body.set("receive_id_type", receiveIdType);
+            body.set("receive_id", receiveId);
+            body.set("msg_type", "post");
+
+            // 构建 post 富文本，使用 md tag 渲染全量 Markdown
+            ONode postContent = new ONode();
+            ONode postBody = postContent.getOrNew("zh_cn");
+            postBody.set("title", title != null ? title : "");
+            ONode contentArray = postBody.getOrNew("content").asArray();
+            ONode lineArray = new ONode().asArray();
+            ONode mdNode = new ONode();
+            mdNode.set("tag", "md");
+            mdNode.set("text", mdBody);
+            lineArray.add(mdNode);
+            contentArray.add(lineArray);
+
+            body.set("content", postContent.toJson());
+
+            String resp = httpPost(BASE_URL + "/im/v1/messages?receive_id_type=" + receiveIdType,
+                    body.toJson(), accessToken);
+            if (resp == null) return null;
+
+            ONode root = ONode.ofJson(resp);
+            int code = root.get("code").getInt();
+            if (code != 0) {
+                LOG.warn("[Feishu] sendMdPostMessage failed: code={}, msg={}", code, root.get("msg").getString());
+                return null;
+            }
+
+            return root.get("data").get("message_id").getString();
+        } catch (Exception e) {
+            LOG.error("[Feishu] sendMdPostMessage error: {}", e.getMessage());
             return null;
         }
     }

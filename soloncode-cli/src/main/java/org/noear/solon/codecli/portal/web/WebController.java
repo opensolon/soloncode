@@ -26,6 +26,10 @@ import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.*;
+import org.noear.solon.codecli.portal.web.service.FileService;
+import org.noear.solon.codecli.portal.web.service.GitService;
+import org.noear.solon.codecli.session.SessionManager;
+import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
@@ -84,6 +88,8 @@ public class WebController {
     /** 循环调度器，用于恢复和管理 Web 端的定时/循环 AI 任务 */
     private final LoopScheduler loopScheduler;
 
+    private final SessionManager sessionManager;
+
     /** Git 业务逻辑服务，封装工作区 Git 操作 */
     private final GitService gitService;
 
@@ -97,12 +103,14 @@ public class WebController {
      * @param webGate       WebSocket 推送网关
      * @param loopScheduler 循环任务调度器，可为 null（无循环任务场景）
      */
-    public WebController(HarnessEngine engine, WebGate webGate, LoopScheduler loopScheduler) {
+    public WebController(HarnessEngine engine, WebGate webGate, LoopScheduler loopScheduler, SessionManager sessionManager) {
         this.engine = engine;
         this.webGate = webGate;
         this.loopScheduler = loopScheduler;
+        this.sessionManager = sessionManager;
+
         this.gitService = new GitService(engine.getWorkspace(), engine);
-        this.fileService = new FileService(engine.getWorkspace());
+        this.fileService = new FileService(engine.getWorkspace(), engine);
 
         // 注入 Web 端 Loop 任务执行器：同步等待本轮 AI 响应结束，捕获文本结果用于 goal 检测。
         if (loopScheduler != null) {
@@ -246,10 +254,14 @@ public class WebController {
     @Post
     @Mapping("/web/chat/sessions/delete")
     public Result deleteSession(@Param("sessionId") String sessionId) throws Exception {
-        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure();
         }
 
+        //内存删除
+        sessionManager.removeSession(sessionId);
+
+        //文件删除
         Path sessionPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId).toAbsolutePath().normalize();
         File sessionDir = sessionPath.toFile();
 
@@ -258,6 +270,69 @@ public class WebController {
         }
 
         return Result.succeed();
+    }
+
+    /**
+     * Fork（分叉）会话：将源会话的所有消息历史和自定义标签复制到一个新会话。
+     * <p>新会话拥有独立的 sessionId 与目录，不影响源会话的消息流。
+     * 复制完成后需刷新前端会话列表并切换到新会话以加载历史消息。
+     * 注意：循环任务和会话级 IM 绑定不复制，避免误触发新的循环执行。</p>
+     *
+     * @param sessionId 源会话 ID（必须以 web- 前缀开头并符合命名规范）
+     * @return 包含新会话 sessionId 的结果对象
+     * @throws Exception 文件复制异常
+     */
+    @Post
+    @Mapping("/web/chat/sessions/fork")
+    public Result<Map> forkSession(@Param("sessionId") String sessionId) throws Exception {
+        if (!isValidSessionId(sessionId)) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+
+        Path sessionsRoot = Paths.get(engine.getWorkspace(), engine.getHarnessSessions()).toAbsolutePath().normalize();
+        Path sourcePath = sessionsRoot.resolve(sessionId).normalize();
+        File sourceDir = sourcePath.toFile();
+
+        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
+            return Result.failure(404, "Source session not found");
+        }
+        // 防止路径穿越：确保解析后的目录仍在 sessions 根目录之内
+        if (!sourcePath.startsWith(sessionsRoot)) {
+            return Result.failure(400, "Invalid session path");
+        }
+
+        // 生成唯一新 sessionId（短 ID 形式），避免与既有会话冲突
+        String basePrefix = "web-";
+        String newSessionId;
+        for (int i = 0; i < 16; i++) {
+            String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            newSessionId = basePrefix + suffix;
+            File targetDir = new File(sessionsRoot.toFile(), newSessionId);
+            if (!targetDir.exists()) {
+                if (!targetDir.mkdirs()) {
+                    return Result.failure(500, "Failed to create forked session directory");
+                }
+                File sourceMarker = new File(sourceDir, sessionId + ".messages.ndjson");
+                File targetMarker = new File(targetDir, newSessionId + ".messages.ndjson");
+                if (sourceMarker.exists()) {
+                    Files.copy(sourceMarker.toPath(), targetMarker.toPath());
+                }
+                // 复制自定义 label.txt（如有），便于延续原标题风格
+                String name = newSessionId;
+                File sourceLabel = new File(sourceDir, "label.txt");
+                if (sourceLabel.exists()) {
+                    Files.copy(sourceLabel.toPath(),
+                            new File(targetDir, "label.txt").toPath());
+                    name = new String(java.nio.file.Files.readAllBytes(sourceLabel.toPath()), "UTF-8").trim();
+                    if (name.isEmpty()) name = newSessionId;
+                }
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("sessionId", newSessionId);
+                data.put("name", name);
+                return Result.succeed(data);
+            }
+        }
+        return Result.failure(500, "Failed to allocate unique sessionId");
     }
 
     /**
@@ -272,7 +347,7 @@ public class WebController {
     @Post
     @Mapping("/web/chat/sessions/rename")
     public Result renameSession(@Param("sessionId") String sessionId, @Param("label") String label) throws Exception {
-        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure();
         }
         if (label == null || label.trim().isEmpty()) {
@@ -296,12 +371,12 @@ public class WebController {
     }
 
     /**
-     * 查询可用 AI 模型列表及当前选中模型。
+     * 查询可用 AI 模型列表及当前选中模型、推理水平。
      * <p>从引擎配置中获取所有可用模型，若指定了 sessionId 则返回该会话当前选中的模型，
-     * 否则返回引擎默认主模型。</p>
+     * 否则返回引擎默认主模型。每项附带 supportsReasoning / reasoningEfforts 等能力字段。</p>
      *
      * @param sessionId 可选的会话 ID，用于获取该会话当前选中的模型
-     * @return 包含 list（模型列表）和 selected（当前选中模型名）的结果对象
+     * @return 包含 list、selected、reasoningEffort 的结果对象
      * @throws Exception 会话查询异常
      */
     @Get
@@ -317,6 +392,9 @@ public class WebController {
                 item.put("name", config.getNameOrModel());
                 item.put("description", config.getDescriptionOrModel());
                 item.put("contextLength", config.getContextLength());
+                item.put("standard", config.getStandardOrProvider());
+                ReasoningEffortSupport.ModelCapability cap = ReasoningEffortSupport.resolveCapability(config);
+                item.putAll(ReasoningEffortSupport.toCapabilityMap(cap));
                 list.add(item);
             }
         }
@@ -328,46 +406,59 @@ public class WebController {
 
         data.put("list", list);
 
+        String selected = "";
+        String reasoningEffort = null;
+        
         if (Assert.isNotEmpty(list)) {
             if (Assert.isNotEmpty(sessionId)) {
                 AgentSession session = engine.getSession(sessionId);
-                String selected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
-
+                selected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+                
                 if (selected != null) {
                     selected = engine.getModelOrDef(selected).getNameOrModel();
                 } else {
                     selected = engine.getModelOrDef(null).getNameOrModel();
                 }
-
-                data.put("selected", selected);
+                
+                reasoningEffort = ReasoningEffortSupport.getSessionEffort(session);
             } else {
-                data.put("selected", engine.getModelOrDef(null).getNameOrModel());
+                selected = engine.getModelOrDef(null).getNameOrModel();
             }
-        } else {
-            data.put("selected", "");
         }
-
+            
+        data.put("selected", selected);
+        data.put("reasoningEffort", reasoningEffort == null ? "" : reasoningEffort);
+        
         return Result.succeed(data);
     }
 
     /**
-     * 切换指定会话的 AI 模型。
-     * <p>将目标模型名称写入会话上下文并更新快照，后续该会话的 AI 交互将使用新模型。</p>
+     * 切换指定会话的 AI 模型 / 推理水平。
+     * <p>将选项写入会话上下文并更新快照，后续该会话的 AI 交互将使用新配置。</p>
      *
-     * @param sessionId 会话 ID
-     * @param modelName 目标模型名称
+     * @param sessionId        会话 ID
+     * @param modelName        目标模型名称（可选，仅改 effort 时可省略）
+     * @param reasoningEffort  推理水平 low|medium|high|max|auto（可选）
      * @return 操作结果
      * @throws Exception 会话操作异常
      */
     @Post
     @Mapping("/web/chat/models/select")
-    public Result models_select(@Param("sessionId") String sessionId, @Param("modelName") String modelName) throws Exception {
+    public Result models_select(@Param("sessionId") String sessionId,
+                                @Param(value = "modelName", required = false) String modelName,
+                                @Param(value = "reasoningEffort", required = false) String reasoningEffort) throws Exception {
         AgentSession session = engine.getSession(sessionId);
-
-        session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
-
+    
+        if (Assert.isNotEmpty(modelName)) {
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+        }
+        
+        // reasoningEffort 参数出现即写入（含空串表示 auto 清除）
+        boolean effortProvided = reasoningEffort != null;
+        ReasoningEffortSupport.putSessionEffort(session, reasoningEffort, effortProvided);
+        
         session.updateSnapshot();
-
+        
         return Result.succeed();
     }
 
@@ -398,10 +489,41 @@ public class WebController {
                     String content = node.get("content").getString();
 
                     if (role != null && content != null) {
+                        ONode metadata = node.get("metadata");
+                        String source = metadata.get("source").getString();
+
                         Map<String, Object> item = new LinkedHashMap<>();
                         item.put("role", role);
                         item.put("content", content);
                         item.put("createdAt", node.get("createdAt").getString());
+
+                        if (source != null) {
+                            item.put("source", source); //可能有 {source:xxx}
+                            item.put("sourceLabel", WebChunk.toSourceLabel(source));
+                        }
+
+                        // 解析附件元数据（图片文件名等），供历史消息恢复时渲染
+                        ONode attachMeta = metadata.get("attachments");
+                        if (attachMeta != null) {
+                            String attachStr = attachMeta.getString();
+                            if (attachStr != null && !attachStr.isEmpty()) {
+                                try {
+                                    ONode attachArr = ONode.ofJson(attachStr);
+                                    if (attachArr.isArray()) {
+                                        List<Map<String, String>> attachList = new ArrayList<>();
+                                        for (ONode a : attachArr.getArray()) {
+                                            Map<String, String> am = new LinkedHashMap<>();
+                                            am.put("name", a.get("name").getString());
+                                            am.put("type", a.get("type").getString());
+                                            attachList.add(am);
+                                        }
+                                        item.put("attachments", attachList);
+                                    }
+                                } catch (Exception ignored) {
+                                }
+                            }
+                        }
+
                         data.add(item);
                     }
                 }
@@ -421,7 +543,7 @@ public class WebController {
     @Post
     @Mapping("/web/chat/interrupt")
     public Result interruptSession(@Param("sessionId") String sessionId) {
-        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure();
         }
 
@@ -443,7 +565,7 @@ public class WebController {
     @Post
     @Mapping("/web/chat/rewind")
     public Result rewindSession(@Param("sessionId") String sessionId, @Param(value = "count", required = false) Integer count) throws Exception {
-        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure();
         }
         if (count == null || count <= 0) {
@@ -548,7 +670,7 @@ public class WebController {
 
     /**
      * 聊天输入入口：解析请求参数后路由到 WebGate 处理。
-     * <p>接收用户输入的文本消息、附件文件、模型选择和会话标识，
+     * <p>接收用户输入的文本消息、附件文件、模型选择、推理选项和会话标识，
      * 经安全校验后委派给 {@link WebGate#onChatInput} 进行异步 AI 处理。
      * AI 处理结果通过 WebSocket 实时推送到前端，本接口仅返回简单成功响应。</p>
      *
@@ -561,19 +683,21 @@ public class WebController {
      * @return 操作结果（AI 结果通过 WebSocket 推送）
      */
     @Mapping("/web/chat/input")
-    public Result chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentTypes[], String model, String sessionId) {
+    public Result chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentTypes[],
+                             String model, String sessionId,
+                             @Param(value = "reasoningEffort", required = false) String reasoningEffort) {
         try {
             if (sessionId == null || sessionId.isEmpty()) {
                 sessionId = ctx.headerOrDefault("X-Session-Id", "web");
             }
             String sessionCwd = ctx.header("X-Session-Cwd");
-
-            if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+            
+            if (!isValidSessionId(sessionId)) {
                 ctx.status(400);
                 ctx.output("Invalid Session ID");
                 return null;
             }
-
+            
             if (Assert.isNotEmpty(sessionCwd)) {
                 if (sessionCwd.contains("..")) {
                     ctx.status(400);
@@ -581,12 +705,13 @@ public class WebController {
                     return null;
                 }
             }
-
+            
             String hitlAction = ctx.param("hitlAction");
-
+            
             // 路由到 WebGate 处理（AI 结果通过 WebSocket 推送到前端）
-            webGate.onChatInput(sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction);
-
+            webGate.onChatInput(sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null,
+                    reasoningEffort);
+                    
             // 返回简单 JSON，前端通过 WebSocket 接收 AI 结果
             return Result.succeed();
         } catch (Throwable e) {
@@ -612,57 +737,77 @@ public class WebController {
      * @return 包含 gitAvailable、initialized、branch、changed、staged、untracked 的结果对象
      * @throws Exception Git 命令执行异常
      */
-    @Get
-    @Mapping("/web/chat/git/status")
-    public Result<Map> gitStatus() throws Exception {
-        return gitService.status();
-    }
 
     /**
-     * 初始化 Git 仓库。
-     * <p>在工作区执行 git init，自动生成 .gitignore 文件（仅当文件不存在时），
-     * 可选执行初始提交（initialCommit=true 时）。</p>
-     *
-     * @param initialCommit 是否执行初始提交，默认为 false
-     * @return 包含 initialized、branch 的结果对象
-     * @throws Exception Git 命令执行异常
+     * 执行带工作区切换的 Git 操作。
+     * <p>临时切换 gitService 的工作目录到指定挂载点，执行操作后恢复默认。</p>
      */
+    private Result<Map> withGitWorkspace(String workspaceId, GitOperation op) throws Exception {
+        File originalDir = gitService.getDefaultWorkspaceDir();
+        if (workspaceId != null && !workspaceId.isEmpty() && !"workspace".equals(workspaceId)) {
+            File targetDir = gitService.resolveGitDir(workspaceId);
+            gitService.setWorkspaceDir(targetDir);
+        }
+        try {
+            return op.execute();
+        } finally {
+            gitService.setWorkspaceDir(originalDir);
+        }
+    }
+
+    @FunctionalInterface
+    private interface GitOperation {
+        Result<Map> execute() throws Exception;
+    }
+
+    @Get
+    @Mapping("/web/chat/git/status")
+    public Result<Map> gitStatus(@Param(value = "workspace", required = false) String workspace) throws Exception {
+        return withGitWorkspace(workspace, () -> gitService.status());
+    }
+
     @Post
     @Mapping("/web/chat/git/init")
-    public Result<Map> gitInit(@Param(value = "initialCommit", required = false) Boolean initialCommit) throws Exception {
-        return gitService.init(initialCommit);
+    public Result<Map> gitInit(@Param(value = "workspace", required = false) String workspace,
+                               @Param(value = "initialCommit", required = false) Boolean initialCommit) throws Exception {
+        return withGitWorkspace(workspace, () -> gitService.init(initialCommit));
     }
 
     @Get
     @Mapping("/web/chat/git/diff")
-    public Result<Map> gitDiff(@Param(value = "path", required = false) String path) throws Exception {
-        return gitService.diff(path);
+    public Result<Map> gitDiff(@Param(value = "workspace", required = false) String workspace,
+                               @Param(value = "path", required = false) String path) throws Exception {
+        return withGitWorkspace(workspace, () -> gitService.diff(path));
     }
 
     @Post
     @Mapping("/web/chat/git/stage")
-    public Result<Map> gitStage(@Body String body) throws Exception {
+    public Result<Map> gitStage(@Body String body,
+                                @Param(value = "workspace", required = false) String workspace) throws Exception {
         String path = parseJsonPath(body);
-        return gitService.stage(path);
+        return withGitWorkspace(workspace, () -> gitService.stage(path));
     }
 
     @Post
     @Mapping("/web/chat/git/unstage")
-    public Result<Map> gitUnstage(@Body String body) throws Exception {
+    public Result<Map> gitUnstage(@Body String body,
+                                  @Param(value = "workspace", required = false) String workspace) throws Exception {
         String path = parseJsonPath(body);
-        return gitService.unstage(path);
+        return withGitWorkspace(workspace, () -> gitService.unstage(path));
     }
 
     @Get
     @Mapping("/web/chat/git/file-content")
-    public Result<Map> gitFileContent(@Param("path") String path,
+    public Result<Map> gitFileContent(@Param(value = "workspace", required = false) String workspace,
+                                      @Param("path") String path,
                                       @Param(value = "ref", required = false) String ref) throws Exception {
-        return gitService.fileContent(path, ref);
+        return withGitWorkspace(workspace, () -> gitService.fileContent(path, ref));
     }
 
     @Post
     @Mapping("/web/chat/git/commit")
-    public Result<Map> gitCommit(@Body String body) throws Exception {
+    public Result<Map> gitCommit(@Body String body,
+                                 @Param(value = "workspace", required = false) String workspace) throws Exception {
         String message = null;
         List<String> files = null;
         if (body != null && !body.trim().isEmpty()) {
@@ -684,17 +829,20 @@ public class WebController {
             } catch (Exception ignored) {
             }
         }
-        return gitService.commit(message, files);
+        final String finalMsg = message;
+        final List<String> finalFiles = files;
+        return withGitWorkspace(workspace, () -> gitService.commit(finalMsg, finalFiles));
     }
 
     @Post
     @Mapping("/web/chat/git/summary")
-    public Result<Map> gitSummary(@Param("sessionId") String sessionId,
-                                  @Param("paths") String paths) {
+    public Result<Map> gitSummary(@Param(value = "workspace", required = false) String workspace,
+                                  @Param("sessionId") String sessionId,
+                                  @Param("paths") String paths) throws Exception {
         if (sessionId == null || sessionId.isEmpty()) {
             return Result.failure(400, "sessionId is required");
         }
-        if (sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
 
@@ -716,7 +864,7 @@ public class WebController {
             }
         }
 
-        return gitService.summary(sessionId, files);
+        return withGitWorkspace(workspace, () -> gitService.summary(sessionId, files));
     }
 
     /**
@@ -750,7 +898,7 @@ public class WebController {
     @Get
     @Mapping("/web/chat/loop/list")
     public Result<List<Map>> loopList(@Param("sessionId") String sessionId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
 
@@ -781,7 +929,6 @@ public class WebController {
         if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
 
 
-        item.put("maxIterations", t.getMaxIterations());
         item.put("runNow", t.isRunNow());
 
         // ★ P1: 预算字段
@@ -814,7 +961,7 @@ public class WebController {
     @Mapping("/web/chat/loop/get")
     public Result<Map> loopGet(@Param("sessionId") String sessionId,
                                @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.trim().isEmpty()) {
@@ -838,13 +985,12 @@ public class WebController {
     public Result loopAdd(@Param("sessionId") String sessionId,
                           @Param("prompt") String prompt,
                           @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
-                          @Param(value = "cron", required = false) String cron,
-                          @Param(value = "type", required = false) String type,
-                           @Param(value = "maxIterations", required = false) Integer maxIterations,
-                          @Param(value = "runNow", required = false) Boolean runNow,
+                           @Param(value = "cron", required = false) String cron,
+                           @Param(value = "type", required = false) String type,
+                           @Param(value = "runNow", required = false) Boolean runNow,
                           @Param(value = "maxTokens", required = false) Long maxTokens,
                           @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (prompt == null || prompt.trim().isEmpty()) {
@@ -864,7 +1010,6 @@ public class WebController {
         LoopTask task = new LoopTask(
                 prompt, interval, cron,
                 taskType,
-                maxIterations,
                 runNow != null && runNow
         );
         // ★ P1: 预算字段
@@ -872,7 +1017,6 @@ public class WebController {
         if (maxDurationMs != null) task.setMaxDurationMs(maxDurationMs);
 
         try {
-            LoopStateManager.init(workspace, task.getId(), prompt);
             loopScheduler.schedule(sessionId, task);
         } catch (IllegalStateException e) {
             return Result.failure(400, e.getMessage());
@@ -893,11 +1037,10 @@ public class WebController {
                              @Param(value = "cron", required = false) String cron,
                              @Param(value = "type", required = false) String type,
                              @Param(value = "channelNotify", required = false) String channelNotify,
-                             @Param(value = "maxIterations", required = false) Integer maxIterations,
                              @Param(value = "runNow", required = false) Boolean runNow,
                              @Param(value = "maxTokens", required = false) Long maxTokens,
                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -921,7 +1064,6 @@ public class WebController {
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
                 newType,
-                maxIterations != null ? maxIterations : existing.getMaxIterations(),
                 runNow != null ? runNow : existing.isRunNow(),
                 maxTokens,
                 maxDurationMs
@@ -943,7 +1085,7 @@ public class WebController {
     @Mapping("/web/chat/loop/goal-pause")
     public Result loopGoalPause(@Param("sessionId") String sessionId,
                                 @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -974,7 +1116,7 @@ public class WebController {
     @Mapping("/web/chat/loop/goal-resume")
     public Result loopGoalResume(@Param("sessionId") String sessionId,
                                  @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -1006,7 +1148,7 @@ public class WebController {
     @Mapping("/web/chat/loop/goal-clear")
     public Result loopGoalClear(@Param("sessionId") String sessionId,
                                 @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -1032,7 +1174,7 @@ public class WebController {
     @Mapping("/web/chat/loop/goal-status")
     public Result<Map> loopGoalStatus(@Param("sessionId") String sessionId,
                                       @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -1068,7 +1210,7 @@ public class WebController {
     @Post
     @Mapping("/web/chat/loop/remove")
     public Result loopRemove(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -1090,7 +1232,7 @@ public class WebController {
     @Post
     @Mapping("/web/chat/loop/toggle")
     public Result loopToggle(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -1107,7 +1249,7 @@ public class WebController {
     @Post
     @Mapping("/web/chat/loop/trigger")
     public Result loopTrigger(@Param("sessionId") String sessionId, @Param("taskId") String taskId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
         if (taskId == null || taskId.isEmpty()) {
@@ -1123,14 +1265,39 @@ public class WebController {
     // ==================== 工具方法 ====================
 
     /**
+     * 校验 web 会话 ID 格式（白名单方式，防止路径遍历攻击）
+     *
+     * @param sessionId 会话 ID
+     * @return true 表示合法
+     */
+    private static boolean isValidSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            return false;
+        }
+        // Web session IDs 以 "web" 开头，只允许字母、数字、下划线、连字符和点
+        // 兼容无连字符的默认回退值 "web"（当请求未携带 X-Session-Id 时使用）
+        return sessionId.matches("^web(-[a-zA-Z0-9._-]+)?$");
+    }
+
+    /**
      * 递归删除目录及其所有子文件和子目录。
      *
      * @param dir 待删除的目录
      */
     private void deleteDirectory(File dir) {
+        // 入口处检测目录本身是否为符号链接，防止跟随链接误删外部文件
+        if (Files.isSymbolicLink(dir.toPath())) {
+            dir.delete(); // 仅删除符号链接本身，不跟随
+            return;
+        }
         File[] files = dir.listFiles();
         if (files != null) {
             for (File f : files) {
+                // 跳过符号链接，防止误删工作区外部的文件
+                if (Files.isSymbolicLink(f.toPath())) {
+                    f.delete(); // 仅删除符号链接本身，不跟随
+                    continue;
+                }
                 if (f.isDirectory()) {
                     deleteDirectory(f);
                 } else {
@@ -1177,7 +1344,7 @@ public class WebController {
     @Get
     @Mapping("/web/chat/todos")
     public Result<Map> todos(@Param("sessionId") String sessionId) {
-        if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
+        if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
 
@@ -1264,36 +1431,42 @@ public class WebController {
     // ==================== 文件浏览（委派给 FileService） ====================
 
     /**
+     * 列出可用工作区列表。
+     */
+    @Get
+    @Mapping("/web/chat/filer/workspaces")
+    public Result<List<Map>> fileWorkspaces() throws Exception {
+        return fileService.listWorkspaces();
+    }
+
+    /**
      * 工作区文件树浏览接口。
-     *
-     * @see FileService#tree(String, Integer)
      */
     @Get
     @Mapping("/web/chat/filer/tree")
-    public Result<List<Map>> fileTree(@Param(value = "path", required = false) String path,
+    public Result<List<Map>> fileTree(@Param(value = "workspace", required = false) String workspace,
+                                      @Param(value = "path", required = false) String path,
                                       @Param(value = "depth", required = false) Integer depth) throws Exception {
-        return fileService.tree(path, depth);
+        return fileService.tree(workspace, path, depth);
     }
 
     /**
      * 工作区文件搜索接口。
-     *
-     * @see FileService#search(String)
      */
     @Get
     @Mapping("/web/chat/filer/search")
-    public Result<List<Map>> fileSearch(@Param("keyword") String keyword) throws Exception {
-        return fileService.search(keyword);
+    public Result<List<Map>> fileSearch(@Param(value = "workspace", required = false) String workspace,
+                                        @Param("keyword") String keyword) throws Exception {
+        return fileService.search(workspace, keyword);
     }
 
     /**
      * 读取工作区文件内容接口。
-     *
-     * @see FileService#read(String)
      */
     @Get
     @Mapping("/web/chat/filer/read")
-    public Result<Map> fileRead(@Param("path") String path) throws Exception {
-        return fileService.read(path);
+    public Result<Map> fileRead(@Param(value = "workspace", required = false) String workspace,
+                                @Param("path") String path) throws Exception {
+        return fileService.read(workspace, path);
     }
 }

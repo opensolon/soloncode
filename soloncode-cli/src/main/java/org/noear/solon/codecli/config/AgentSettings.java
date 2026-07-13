@@ -15,6 +15,7 @@ import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -175,12 +176,28 @@ public class AgentSettings implements Serializable {
                 loop.setStagnationThreshold(cfg.getInt("soloncode.loop.stagnationThreshold", 3));
             if (loop.getMaxConsecutiveErrors() == null)
                 loop.setMaxConsecutiveErrors(cfg.getInt("soloncode.loop.maxConsecutiveErrors", 3));
-            if (loop.getPauseAutoAbandonHours() == null)
-                loop.setPauseAutoAbandonHours(cfg.getInt("soloncode.loop.pauseAutoAbandonHours", 24));
             if (loop.getValidatorEnabled() == null)
                 loop.setValidatorEnabled(cfg.getBool("soloncode.loop.validatorEnabled", true));
         } catch (Exception ignored) {
             // 非 Solon 环境时保持 null，便捷方法提供默认值
+        }
+
+        //-----------------------------------------------------
+
+        // logging: 从 app.yml 的 solon.logging.appender.file.* 回填默认值
+        try {
+            org.noear.solon.core.Props cfg = org.noear.solon.Solon.cfg();
+            if (general.getLogLevel() == null) {
+                general.setLogLevel(cfg.get("solon.logging.appender.file.level", "DEBUG"));
+            }
+            if (general.getLogFileMaxSize() == null) {
+                general.setLogFileMaxSize(cfg.get("solon.logging.appender.file.maxSize", "10MB"));
+            }
+            if (general.getLogMaxHistory() == null) {
+                general.setLogMaxHistory(cfg.getInt("solon.logging.appender.file.maxHistory", 30));
+            }
+        } catch (Exception ignored) {
+            // 非 Solon 环境时保持 null
         }
 
         //-----------------------------------------------------
@@ -301,15 +318,20 @@ public class AgentSettings implements Serializable {
             Path localFile = Paths.get(AgentFlags.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
             boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
 
+            // 原子写入：先写临时文件再原子移动，防止写入过程中崩溃导致文件损坏
             Files.createDirectories(globalFile.getParent());
-            Files.write(globalFile, getGlobalJson(isLocalAsGlobal).getBytes("UTF-8"));
+            Path globalTmp = globalFile.resolveSibling(globalFile.getFileName() + ".tmp");
+            Files.write(globalTmp, getGlobalJson(isLocalAsGlobal).getBytes("UTF-8"));
+            Files.move(globalTmp, globalFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             Files.deleteIfExists(globalFileOld); //有新配置后，去掉旧配置
 
 
             if (isLocalAsGlobal == false) {
                 //如果本地文件，不同于全局文件
                 Files.createDirectories(localFile.getParent());
-                Files.write(localFile, getLocalJson().getBytes("UTF-8"));
+                Path localTmp = localFile.resolveSibling(localFile.getFileName() + ".tmp");
+                Files.write(localTmp, getLocalJson().getBytes("UTF-8"));
+                Files.move(localTmp, localFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 Files.deleteIfExists(localFileOld); //有新配置后，去掉旧配置
             }
         } catch (Exception e) {

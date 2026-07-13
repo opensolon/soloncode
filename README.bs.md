@@ -1,7 +1,7 @@
 <div align="center">
 <h1>SolonCode</h1>
 <p>SolonCode je open-source kodirajući agent izgrađen s <a href="https://github.com/opensolon/solon-ai">Solon AI</a> i Javom (podržava Java8 do Java26 runtime okruženja)</p>
-<p>Najnovija verzija: v2026.6.24</p>
+<p>Najnovija verzija: v2026.7.13</p>
 <img height="260" src="SHOW.png" />
 <img height="260" src="SHOW2.png" />
 </div>
@@ -28,35 +28,39 @@ curl -fsSL https://solon.noear.org/soloncode/setup.sh | bash
 irm https://solon.noear.org/soloncode/setup.ps1 | iex
 ```
 
-Konfiguracija (mora se modificirati nakon instalacije):
+Konfiguracija (novim korisnicima se preporučuje da prvo konfigurišu putem Web stranice za postavke):
 
-* Instalacijski direktorij: `~/soloncode/bin/`
-* Pronađite konfiguracijsku datoteku `~/soloncode/config.yml` i modificirajte `models` konfiguraciju (primarno)
-* Za `models` konfiguracijske opcije, pogledajte: [Konfiguracija modela i opcije zahtjeva](https://solon.noear.org/article/1087)
+```bash
+soloncode web 0
+```
+
+Nakon ulaska na stranicu, otvorite "Postavke -> Veliki jezički model (LLM)", dodajte model i testirajte vezu.
+
+<img height="260" src="SETTINGS-LLM.png">
 
 ## Pokretanje
 
-Pokrenite naredbu `soloncode` (CLI interaktivno) ili `soloncode web 0` (Web interaktivno) iz bilo kojeg direktorija u konzoli (tj. vaš radni prostor).
+Pokrenite naredbu `soloncode cli` (CLI interaktivno) ili `soloncode web 0` (Web interaktivno) iz bilo kojeg direktorija u konzoli (tj. vaš radni prostor).
 
 * `soloncode` (CLI interaktivno)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode
-SolonCode v2026.6.24 PID-74080 Model:deepseek-v4-flash
-/path/demo
-Tips: (esc) interrupt | /(tab) ls command | @(tab) ls agent
+demo@MacBook-Pro ~ % soloncode cli
+SolonCode v2026.7.13 PID-87950 Model:deepseek-v4-flash
+/Users/demo
+Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
 User
-> 
+❯ 
 ```
 
 * `soloncode web 0` (Web interaktivno)
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.6.24 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.7.13 PID-73617 Model:deepseek-v4-flash
 /path/demo
-2026-05-20 09:35
+2026-07-09 11:26
 Web interface: http://localhost:50488/
 ```
 

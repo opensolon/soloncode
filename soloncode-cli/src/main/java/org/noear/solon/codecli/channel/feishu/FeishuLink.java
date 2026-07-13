@@ -25,8 +25,10 @@ import org.noear.java_websocket.client.SimpleWebSocketClient;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
+import org.noear.solon.codecli.channel.ChunkedSender;
 import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,15 +78,6 @@ public class FeishuLink implements Channel, Runnable {
      */
     private final Map<String, String> openIdToSession = new ConcurrentHashMap<>();
 
-    /**
-     * 消息处理调度器（单线程顺序处理）
-     */
-    private final ExecutorService messageExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "feishu-message");
-        t.setDaemon(true);
-        return t;
-    });
-
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public FeishuLink(HarnessEngine engine, WebGate webGate) {
@@ -126,7 +119,7 @@ public class FeishuLink implements Channel, Runnable {
             return;
         }
 
-        messageExecutor.execute(() -> {
+        RunUtil.async(() -> {
             try {
                 sendReplyDo(binding, reply);
             } catch (Exception e) {
@@ -207,7 +200,6 @@ public class FeishuLink implements Channel, Runnable {
             conn.stop();
         }
         connections.clear();
-        messageExecutor.shutdownNow();
         LOG.info("[Feishu] Link stopped");
     }
 
@@ -518,7 +510,7 @@ public class FeishuLink implements Channel, Runnable {
 
         final String finalSessionId = sessionId;
         final String finalText = text;
-        messageExecutor.execute(() -> {
+        RunUtil.async(() -> {
             try {
                 webGate.safeChatInput(finalSessionId, finalText, "Feishu");
             } catch (Exception e) {
@@ -538,29 +530,31 @@ public class FeishuLink implements Channel, Runnable {
                 return;
             }
 
-            // 清理 markdown 标记（飞书文本消息不渲染 markdown）
-            String cleanReply = cleanMarkdown(reply);
-            if (cleanReply.isEmpty()) {
-                cleanReply = reply;
-            }
+            final String fToken = token;
+            final String fOpenId = binding.openId;
 
-            // 飞书消息长度限制约 4000 字符
-            int maxLen = 4000;
-            if (cleanReply.length() <= maxLen) {
-                FeishuClient.sendMessage(token, "open_id", binding.openId, cleanReply);
-            } else {
-                int pos = 0;
-                int part = 1;
-                while (pos < cleanReply.length()) {
-                    int end = Math.min(pos + maxLen, cleanReply.length());
-                    String chunk = cleanReply.substring(pos, end);
-                    if (part > 1) {
-                        chunk = "(" + part + ") " + chunk;
-                    }
-                    FeishuClient.sendMessage(token, "open_id", binding.openId, chunk);
-                    pos = end;
-                    part++;
+            // ★ 不再 cleanMarkdown：直接以 Markdown 格式发送（飞书 post + md tag）
+            ChunkedSender.SendResult result = ChunkedSender.sendChunked(reply,
+                    ChunkedSender.Config.feishu(),
+                    (chunk, part) -> {
+                        String title = part > 1 ? "(" + part + ")" : "";
+                        String msgId = FeishuClient.sendMdPostMessage(fToken, "open_id", fOpenId, title, chunk);
+                        return msgId != null;
+                    });
+
+            // 如果全部失败，降级为纯文本发送
+            if (result.getFailedParts() == result.getTotalParts() && result.getTotalParts() > 0) {
+                LOG.warn("[Feishu] MD post failed, degrading to plain text for {} part(s)", result.getTotalParts());
+                String cleanReply = cleanMarkdown(reply);
+                if (cleanReply.isEmpty()) {
+                    cleanReply = reply;
                 }
+                ChunkedSender.sendChunked(cleanReply,
+                        ChunkedSender.Config.feishu(),
+                        (chunk, part) -> {
+                            String msgId = FeishuClient.sendMessage(fToken, "open_id", fOpenId, chunk);
+                            return msgId != null;
+                        });
             }
         } catch (Exception e) {
             LOG.error("[Feishu] sendReplyDo error: {}", e.getMessage(), e);
@@ -763,11 +757,6 @@ public class FeishuLink implements Channel, Runnable {
             stopHeartbeat();
             if (pingIntervalMs > 0) {
                 final int sid = serviceId;
-                heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                    Thread t = new Thread(r, "feishu-heartbeat");
-                    t.setDaemon(true);
-                    return t;
-                });
                 heartbeatFuture = heartbeatScheduler.scheduleAtFixedRate(() -> {
                     try {
                         if (wsClient != null && wsClient.isOpen()) {

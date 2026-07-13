@@ -21,6 +21,9 @@ import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * 钉钉 API 客户端
  *
@@ -42,45 +45,60 @@ public class DingTalkClient {
     private static final String NEW_API_BASE = "https://api.dingtalk.com";
 
     /**
-     * 缓存的 access_token
+     * 按 appKey 隔离缓存的 access_token
      */
-    private static String cachedToken;
-    /**
-     * token 过期时间戳（毫秒）
-     */
-    private static long tokenExpireAt;
+    private static final Map<String, TokenEntry> tokenCache = new ConcurrentHashMap<>();
+
+    private static class TokenEntry {
+        final String token;
+        final long expireAt;
+
+        TokenEntry(String token, long expireAt) {
+            this.token = token;
+            this.expireAt = expireAt;
+        }
+    }
 
     /**
-     * 获取 access_token（自动缓存和刷新）
+     * 获取 access_token（自动缓存和刷新，按 appKey 隔离）
      *
      * @param appKey    钉钉应用 AppKey（或 appKey）
      * @param appSecret 钉钉应用 AppSecret
      * @return access_token 或 null
      */
-    public static synchronized String getAccessToken(String appKey, String appSecret) {
+    public static String getAccessToken(String appKey, String appSecret) {
         long now = System.currentTimeMillis();
-        if (cachedToken != null && tokenExpireAt > now + 300_000) {
-            return cachedToken;
+        TokenEntry entry = tokenCache.get(appKey);
+        if (entry != null && entry.expireAt > now + 300_000) {
+            return entry.token;
         }
 
-        try {
-            ONode body = new ONode();
-            body.set("appKey", appKey);
-            body.set("appSecret", appSecret);
+        synchronized (DingTalkClient.class) {
+            // double-check
+            entry = tokenCache.get(appKey);
+            if (entry != null && entry.expireAt > now + 300_000) {
+                return entry.token;
+            }
 
-            String resp = httpPost(NEW_API_BASE + "/v1.0/oauth2/accessToken", body.toJson(), null);
-            if (resp == null) return null;
+            try {
+                ONode body = new ONode();
+                body.set("appKey", appKey);
+                body.set("appSecret", appSecret);
 
-            ONode root = ONode.ofJson(resp);
-            cachedToken = root.get("accessToken").getString();
-            int expire = root.get("expireIn").getInt();
-            tokenExpireAt = now + expire * 1000L;
+                String resp = httpPost(NEW_API_BASE + "/v1.0/oauth2/accessToken", body.toJson(), null);
+                if (resp == null) return null;
 
-            LOG.debug("[DingTalk] Token refreshed, expires in {}s", expire);
-            return cachedToken;
-        } catch (Exception e) {
-            LOG.error("[DingTalk] getAccessToken error: {}", e.getMessage());
-            return null;
+                ONode root = ONode.ofJson(resp);
+                String token = root.get("accessToken").getString();
+                int expire = root.get("expireIn").getInt();
+                tokenCache.put(appKey, new TokenEntry(token, now + expire * 1000L));
+
+                LOG.debug("[DingTalk] Token refreshed for app '{}', expires in {}s", appKey, expire);
+                return token;
+            } catch (Exception e) {
+                LOG.error("[DingTalk] getAccessToken error: {}", e.getMessage());
+                return null;
+            }
         }
     }
 
@@ -116,13 +134,14 @@ public class DingTalkClient {
             }
 
             ONode root = ONode.ofJson(resp);
-            // 检查是否有错误码
-            if (root.hasKey("code")) {
-                String code = root.get("code").getString();
-                if (code != null && !"0".equals(code) && !"SUCCESS".equalsIgnoreCase(code)) {
-                    LOG.warn("[DingTalk] sendSingleMessage failed: {}", resp);
-                    return false;
-                }
+            // 检查是否有错误码（钉钉可能在 "code" 或 "errcode" 字段中返回错误）
+            String errorCode = root.hasKey("code") ? root.get("code").getString() : null;
+            if (errorCode == null && root.hasKey("errcode")) {
+                errorCode = root.get("errcode").getString();
+            }
+            if (errorCode != null && !"0".equals(errorCode) && !"SUCCESS".equalsIgnoreCase(errorCode)) {
+                LOG.warn("[DingTalk] sendSingleMessage failed: {}", resp);
+                return false;
             }
 
             return true;
@@ -163,12 +182,14 @@ public class DingTalkClient {
             }
 
             ONode root = ONode.ofJson(resp);
-            if (root.hasKey("code")) {
-                String code = root.get("code").getString();
-                if (code != null && !"0".equals(code) && !"SUCCESS".equalsIgnoreCase(code)) {
-                    LOG.warn("[DingTalk] sendGroupMessage failed: {}", resp);
-                    return false;
-                }
+            // 检查是否有错误码（钉钉可能在 "code" 或 "errcode" 字段中返回错误）
+            String errorCode = root.hasKey("code") ? root.get("code").getString() : null;
+            if (errorCode == null && root.hasKey("errcode")) {
+                errorCode = root.get("errcode").getString();
+            }
+            if (errorCode != null && !"0".equals(errorCode) && !"SUCCESS".equalsIgnoreCase(errorCode)) {
+                LOG.warn("[DingTalk] sendGroupMessage failed: {}", resp);
+                return false;
             }
 
             return true;
@@ -179,23 +200,74 @@ public class DingTalkClient {
     }
 
     /**
-     * 通过 sessionWebhook 回复消息（替代 BotReplier）
+     * 从 Markdown 文本中提取通知标题
+     * <ul>
+     *     <li>取第一行，trim</li>
+     *     <li>去除 markdown 标题标记（# 开头）</li>
+     *     <li>最多 30 字符</li>
+     * </ul>
+     */
+    public static String extractTitle(String text) {
+        if (text == null || text.isEmpty()) {
+            return "SolonCode";
+        }
+        String firstLine = text.split("\\n", 2)[0].trim();
+        firstLine = firstLine.replaceAll("^#+\\s*", "");
+        if (firstLine.length() > 30) {
+            return firstLine.substring(0, 30) + "…";
+        }
+        return firstLine;
+    }
+
+    /**
+     * 发送单聊 Markdown 机器人消息（批量接口，但这里每次只发一个用户）
      *
-     * @param webhook sessionWebhook URL
-     * @param text    回复文本
+     * <p>使用 {@code msgKey: "sampleMarkdown"}，支持标题、加粗、斜体、列表、
+     * 引用、代码块等 Markdown 语法。</p>
+     *
+     * @param accessToken access_token
+     * @param robotCode   机器人编码
+     * @param userId      接收者 userId（staffId）
+     * @param title       消息标题（显示在消息头部，可选）
+     * @param mdText      Markdown 文本内容
      * @return true 发送成功
      */
-    public static boolean replyViaWebhook(String webhook, String text) {
+    public static boolean sendSingleMarkdownMessage(String accessToken, String robotCode, String userId,
+                                                     String title, String mdText) {
         try {
             ONode body = new ONode();
-            body.set("msgtype", "text");
-            ONode textNode = body.getOrNew("text");
-            textNode.set("content", text);
-            String resp = httpPost(webhook, body.toJson(), null);
+            body.set("robotCode", robotCode);
+
+            ONode userIds = body.getOrNew("userIds").asArray();
+            userIds.add(userId);
+
+            body.set("msgKey", "sampleMarkdown");
+
+            ONode msgParam = new ONode();
+            msgParam.set("title", title != null ? title : "");
+            msgParam.set("text", mdText);
+            body.set("msgParam", msgParam.toJson());
+
+            String resp = httpPost(NEW_API_BASE + "/v1.0/robot/oToMessages/batchSend", body.toJson(), accessToken);
             if (resp == null) return false;
+
+            if (resp.isEmpty()) {
+                return true;
+            }
+
+            ONode root = ONode.ofJson(resp);
+            String errorCode = root.hasKey("code") ? root.get("code").getString() : null;
+            if (errorCode == null && root.hasKey("errcode")) {
+                errorCode = root.get("errcode").getString();
+            }
+            if (errorCode != null && !"0".equals(errorCode) && !"SUCCESS".equalsIgnoreCase(errorCode)) {
+                LOG.warn("[DingTalk] sendSingleMarkdownMessage failed: {}", resp);
+                return false;
+            }
+
             return true;
         } catch (Exception e) {
-            LOG.error("[DingTalk] replyViaWebhook error: {}", e.getMessage());
+            LOG.error("[DingTalk] sendSingleMarkdownMessage error: {}", e.getMessage());
             return false;
         }
     }

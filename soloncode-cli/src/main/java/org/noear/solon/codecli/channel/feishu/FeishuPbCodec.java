@@ -322,10 +322,16 @@ public class FeishuPbCodec {
         int shift = 0;
         int pos = offset;
         while (true) {
+            if (pos >= data.length) {
+                throw new RuntimeException("Protobuf varint overflow: unexpected end of data");
+            }
             byte b = data[pos++];
             result |= (long) (b & 0x7F) << shift;
             if ((b & 0x80) == 0) break;
             shift += 7;
+            if (shift >= 64) {
+                throw new RuntimeException("Protobuf varint too long: exceeds 64 bits");
+            }
         }
         return result;
     }
@@ -343,8 +349,12 @@ public class FeishuPbCodec {
     private static int skipField(byte[] data, int pos, int wireType) {
         switch (wireType) {
             case 0: { // varint
-                while ((data[pos++] & 0x80) != 0) {}
-                return pos;
+                while (pos < data.length) {
+                    if ((data[pos++] & 0x80) == 0) {
+                        return pos;
+                    }
+                }
+                throw new RuntimeException("Protobuf varint field unterminated");
             }
             case 1: { // 64-bit fixed
                 return pos + 8;

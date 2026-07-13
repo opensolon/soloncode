@@ -1,5 +1,21 @@
 server.port: 4808
 
+server.request:
+  maxBodySize: 2mb
+  maxFileSize: 2mb
+
+server.http:
+  coreThreads: 2
+  maxThreads: 16
+
+solon.task:
+  execution:
+    pool:
+      size: 8
+  scheduling:
+    pool:
+      size:4
+
 solon.app:
   name: "soloncode"
   title: "SolonCode"
@@ -10,6 +26,9 @@ solon.logging.appender:
   file:
     level: DEBUG
     name: ".soloncode/logs/${solon.app.name}"
+    extension: ".log"
+    maxFileSize: "10 MB"
+    maxHistory: "7" #单位：天
 
 solon:
   logging:
