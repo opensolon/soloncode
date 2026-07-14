@@ -175,7 +175,7 @@ public class Configurator {
         engine.getCommandRegistry().register(
                 new LoopCommand(loopScheduler));
 
-        engine.addExtension(new ManagerExtension(engine, agentSettings));
+        engine.addExtension(new ManagerExtension(engine, agentSettings, loopScheduler));
 
         return engine;
     }
@@ -281,11 +281,11 @@ public class Configurator {
 
     private void runDesktopServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
         //serve ws gate
-        WebSocketRouter.getInstance().of("/ws", new WsGate(agentRuntime, settings));
+        WebSocketRouter.getInstance().of("/desktop/ws", new WsGate(agentRuntime, settings));
 
-        //serve web controller
-        BeanWrap webBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, settings, modelProviderFactory));
-        Solon.app().router().add(webBean);
+        //serve desktop controller
+        BeanWrap desktopBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, settings, modelProviderFactory));
+        Solon.app().router().add(desktopBean);
 
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
     }

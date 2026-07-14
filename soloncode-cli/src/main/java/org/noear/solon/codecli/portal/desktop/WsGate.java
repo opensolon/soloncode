@@ -60,6 +60,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Code CLI WebSocket 网关
@@ -185,6 +186,8 @@ public class WsGate extends SimpleWebSocketListener {
                             .set("text", "Invalid Session Cwd").toJson());
                     return;
                 }
+                // 桌面端切换项目或继续已有会话时，以本次请求的 cwd 覆盖旧会话工作区。
+                session.attrs().put(HarnessEngine.ATTR_CWD, cwd);
             }
 
             if (Assert.isEmpty(input)) {
@@ -194,15 +197,35 @@ public class WsGate extends SimpleWebSocketListener {
             String agentName = null;
             String currentInput = input;
 
-            if (input.startsWith("@")) {
-                int agentNameIdx = input.indexOf(" ");
-                if (agentNameIdx > 0) {
-                    agentName = input.substring(1, agentNameIdx);
-
-                    if (engine.getAgentManager().hasAgent(agentName)) {
-                        currentInput = currentInput.substring(agentNameIdx + 1);
+            String requestedAgent = req.getAgent();
+            if (Assert.isNotEmpty(requestedAgent) && !"default".equals(requestedAgent)) {
+                requestedAgent = requestedAgent.trim();
+                if (!isValidAgentName(requestedAgent) || !engine.getAgentManager().hasAgent(requestedAgent)) {
+                    socket.send(new ONode().set("type", "error")
+                            .set("sessionId", sessionId)
+                            .set("text", "Agent 不可用或已禁用")
+                            .toJson());
+                    return;
+                }
+                agentName = requestedAgent;
+                currentInput = removeLeadingAgentMention(currentInput, agentName);
+            } else if (input.startsWith("@")) {
+                int agentNameIdx = firstWhitespaceIndex(input);
+                if (agentNameIdx > 1) {
+                    String mentionedAgent = input.substring(1, agentNameIdx);
+                    if (isValidAgentName(mentionedAgent) && engine.getAgentManager().hasAgent(mentionedAgent)) {
+                        agentName = mentionedAgent;
+                        currentInput = input.substring(agentNameIdx).trim();
                     }
                 }
+            }
+
+            if (Assert.isEmpty(currentInput)) {
+                socket.send(new ONode().set("type", "error")
+                        .set("sessionId", sessionId)
+                        .set("text", "请输入发送给 Agent 的内容")
+                        .toJson());
+                return;
             }
 
             // 根据前端指定的 model 选择对应 ChatModel
@@ -290,6 +313,7 @@ public class WsGate extends SimpleWebSocketListener {
             applyReasoningEffort(prompt, reasoningEffort);
 
             String finalCwd = cwd;
+            AtomicBoolean terminalSent = new AtomicBoolean(false);
             Disposable disposable = engine.prompt(prompt)
                     .session(session)
                     .options(o -> {
@@ -305,7 +329,7 @@ public class WsGate extends SimpleWebSocketListener {
                         // ReActChunk 需要优先处理 metrics 收集（无论 hasContent 状态）
                         String msg = null;
                         if (chunk instanceof ReActChunk) {
-                            onReActChunk((ReActChunk) chunk, finalSessionId, socket);
+                            onReActChunk((ReActChunk) chunk, finalSessionId, socket, terminalSent);
                             return;
                         } else if (chunk instanceof ReasonChunk) {
                             msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
@@ -320,14 +344,11 @@ public class WsGate extends SimpleWebSocketListener {
                         if (Assert.isNotEmpty(msg)) {
                             socket.send(msg);
                         }
-                    }).doOnError(err -> {
-                        String msg = new ONode().set("type", "error")
-                                .set("sessionId", finalSessionId)
-                                .set("text", err.getMessage())
-                                .toJson();
-
-                        socket.send(msg);
-                    }).subscribe();
+                    })
+                    .doOnComplete(() -> sendDoneIfNeeded(socket, terminalSent, finalSessionId,
+                            chatModel.getConfig().getNameOrModel(), 0, 0))
+                    .doOnError(err -> sendErrorIfNeeded(socket, terminalSent, finalSessionId, err))
+                    .subscribe();
 
             Disposable old = (Disposable) session.attrs().put("disposable", disposable);
             if (old != null && !old.isDisposed()) {
@@ -340,19 +361,42 @@ public class WsGate extends SimpleWebSocketListener {
         }
     }
 
-    private void onReActChunk(ReActChunk chunk, String finalSessionId, WebSocket socket) {
+    private void onReActChunk(ReActChunk chunk, String finalSessionId, WebSocket socket,
+                              AtomicBoolean terminalSent) {
         ReActTrace trace = chunk.getTrace();
         Long start_time = trace.getOriginalPrompt().attrAs("start_time");
         long elapsed = start_time != null ? System.currentTimeMillis() - start_time : 0;
         long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : 0;
 
-        String msg2 = new ONode().set("type", "done")
-                .set("sessionId", finalSessionId)
-                .set("modelName", trace.getOptions().getChatModel().getNameOrModel())
-                .set("totalTokens", totalTokens)
-                .set("elapsedMs", elapsed).toJson();
+        sendDoneIfNeeded(socket, terminalSent, finalSessionId,
+                trace.getOptions().getChatModel().getNameOrModel(), totalTokens, elapsed);
+    }
 
-        socket.send(msg2);
+    private void sendDoneIfNeeded(WebSocket socket, AtomicBoolean terminalSent, String sessionId,
+                                  String modelName, long totalTokens, long elapsedMs) {
+        if (!terminalSent.compareAndSet(false, true)) {
+            return;
+        }
+
+        socket.send(new ONode().set("type", "done")
+                .set("sessionId", sessionId)
+                .set("modelName", modelName)
+                .set("totalTokens", totalTokens)
+                .set("elapsedMs", elapsedMs)
+                .toJson());
+    }
+
+    private void sendErrorIfNeeded(WebSocket socket, AtomicBoolean terminalSent, String sessionId,
+                                   Throwable error) {
+        if (!terminalSent.compareAndSet(false, true)) {
+            return;
+        }
+
+        String errorMessage = error.getMessage() != null ? error.getMessage() : error.getClass().getSimpleName();
+        socket.send(new ONode().set("type", "error")
+                .set("sessionId", sessionId)
+                .set("text", errorMessage)
+                .toJson());
     }
 
     private String onReasonChunk(ReasonChunk chunk, String finalSessionId) {
@@ -360,7 +404,7 @@ public class WsGate extends SimpleWebSocketListener {
             String content = chunk.getMessage().getContent();
             if (content != null && !content.isEmpty()) {
                 boolean isThinking = chunk.getMessage().isThinking();
-                String chunkTypeToSend = isThinking ? "think" : "reason";
+                String chunkTypeToSend = isThinking ? "think" : "text";
 
                 ONode node = new ONode().set("type", chunkTypeToSend)
                         .set("sessionId", finalSessionId)
@@ -493,6 +537,7 @@ public class WsGate extends SimpleWebSocketListener {
             Prompt hitlPrompt = Prompt.of().attrPut("start_time", System.currentTimeMillis());
             applyReasoningEffort(hitlPrompt, reasoningEffort);
             
+            AtomicBoolean terminalSent = new AtomicBoolean(false);
             Disposable disposable = engine.prompt(hitlPrompt)
                     .session(session)
                     .options(o -> {
@@ -506,7 +551,7 @@ public class WsGate extends SimpleWebSocketListener {
                     .doFinally(signal -> session.attrs().remove("disposable"))
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReActChunk) {
-                            onReActChunk((ReActChunk) chunk, sessionId, socket);
+                            onReActChunk((ReActChunk) chunk, sessionId, socket, terminalSent);
                             return;
                         }
                         String msg = null;
@@ -523,8 +568,9 @@ public class WsGate extends SimpleWebSocketListener {
                             socket.send(msg);
                         }
                     })
-                    .doOnError(err -> socket.send(new ONode().set("type", "error")
-                            .set("sessionId", sessionId).set("text", err.getMessage()).toJson()))
+                    .doOnComplete(() -> sendDoneIfNeeded(socket, terminalSent, sessionId,
+                            chatModel.getConfig().getNameOrModel(), 0, 0))
+                    .doOnError(err -> sendErrorIfNeeded(socket, terminalSent, sessionId, err))
                     .subscribe();
 
             session.attrs().put("disposable", disposable);
@@ -538,7 +584,7 @@ public class WsGate extends SimpleWebSocketListener {
         if (chunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             String content = chunk.getAssistantMessage().getResultContent();
             if (Assert.isNotEmpty(content)) {
-                ONode node = new ONode().set("type", "reason")
+                ONode node = new ONode().set("type", "text")
                         .set("sessionId", finalSessionId)
                         .set("text", "\n" + content);
 
@@ -653,6 +699,42 @@ public class WsGate extends SimpleWebSocketListener {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
+    private boolean isValidAgentName(String name) {
+        if (Assert.isEmpty(name)) return false;
+        int codePointCount = name.codePointCount(0, name.length());
+        if (codePointCount > 64) return false;
+
+        for (int offset = 0; offset < name.length(); ) {
+            int codePoint = name.codePointAt(offset);
+            if (!Character.isLetterOrDigit(codePoint) && codePoint != '-' && codePoint != '_') {
+                return false;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return true;
+    }
+
+    private int firstWhitespaceIndex(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isWhitespace(value.charAt(i))) return i;
+        }
+        return -1;
+    }
+
+    private String removeLeadingAgentMention(String input, String agentName) {
+        String mention = "@" + agentName;
+        if (!input.startsWith(mention)) return input;
+        if (input.length() > mention.length() && !Character.isWhitespace(input.charAt(mention.length()))) {
+            return input;
+        }
+
+        int contentStart = mention.length();
+        while (contentStart < input.length() && Character.isWhitespace(input.charAt(contentStart))) {
+            contentStart++;
+        }
+        return input.substring(contentStart);
+    }
+
     private void applyReasoningEffort(Prompt prompt, String reasoningEffort) {
         ReasoningEffortSupport.applyToPrompt(prompt, reasoningEffort);
     }
@@ -739,6 +821,7 @@ public class WsGate extends SimpleWebSocketListener {
                                       String sessionCwd, String input, String finalSessionId, String reasoningEffort) {
         Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
         applyReasoningEffort(prompt, reasoningEffort);
+        AtomicBoolean terminalSent = new AtomicBoolean(false);
         Disposable disposable = engine.prompt(prompt)
                 .session(session)
                 .options(o -> {
@@ -752,7 +835,7 @@ public class WsGate extends SimpleWebSocketListener {
                 .doFinally(signal -> session.attrs().remove("disposable"))
                 .doOnNext(chunk -> {
                     if (chunk instanceof ReActChunk) {
-                        onReActChunk((ReActChunk) chunk, finalSessionId, socket);
+                        onReActChunk((ReActChunk) chunk, finalSessionId, socket, terminalSent);
                         return;
                     }
                     String msg = null;
@@ -769,9 +852,9 @@ public class WsGate extends SimpleWebSocketListener {
                         socket.send(msg);
                     }
                 })
-                .doOnError(err -> socket.send(new ONode().set("type", "error")
-                        .set("sessionId", finalSessionId)
-                        .set("text", err.getMessage()).toJson()))
+                .doOnComplete(() -> sendDoneIfNeeded(socket, terminalSent, finalSessionId,
+                        chatModel.getConfig().getNameOrModel(), 0, 0))
+                .doOnError(err -> sendErrorIfNeeded(socket, terminalSent, finalSessionId, err))
                 .subscribe();
 
         Disposable old = (Disposable) session.attrs().put("disposable", disposable);

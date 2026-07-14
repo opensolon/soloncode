@@ -358,6 +358,32 @@ public class LoopScheduler {
         return new ArrayList<>(tasks);
     }
 
+    /**
+     * 获取所有已加载会话的循环任务快照。
+     *
+     * @return sessionId 到任务列表的映射，按 sessionId 排序
+     */
+    public Map<String, List<LoopTask>> listAll() {
+        Map<String, List<LoopTask>> result = new LinkedHashMap<>();
+        List<String> sessionIds = new ArrayList<>(sessionTasks.keySet());
+        Collections.sort(sessionIds);
+
+        for (String sessionId : sessionIds) {
+            List<LoopTask> tasks = sessionTasks.get(sessionId);
+            if (tasks == null) {
+                continue;
+            }
+
+            cleanExpired(sessionId, tasks);
+            List<LoopTask> snapshot = new ArrayList<>(tasks);
+            if (!snapshot.isEmpty()) {
+                result.put(sessionId, snapshot);
+            }
+        }
+
+        return result;
+    }
+
     // ==================== 批量停止 ====================
 
     public void stopAll(String sessionId) {
@@ -376,7 +402,11 @@ public class LoopScheduler {
 
     // ==================== 会话恢复 ====================
 
-    public void restore(String sessionId) {
+    public synchronized void restore(String sessionId) {
+        if (sessionTasks.containsKey(sessionId)) {
+            return;
+        }
+
         List<LoopTask> tasks = loadFromFile(sessionId);
         if (tasks == null || tasks.isEmpty()) return;
 
@@ -414,6 +444,26 @@ public class LoopScheduler {
 
         saveToFile(sessionId, alive);
         LOG.info("Restored {} loop tasks for session {}", alive.size(), sessionId);
+    }
+
+    /**
+     * 恢复会话目录中持久化的全部循环任务。
+     */
+    public void restoreAll() {
+        Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions());
+        if (!Files.isDirectory(sessionsPath)) {
+            return;
+        }
+
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(sessionsPath)) {
+            for (Path sessionPath : stream) {
+                if (Files.isDirectory(sessionPath) && Files.exists(sessionPath.resolve(TASKS_FILE))) {
+                    restore(sessionPath.getFileName().toString());
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to restore all loop tasks: {}", e.getMessage());
+        }
     }
 
     // ==================== IJobManager 注册 ====================
