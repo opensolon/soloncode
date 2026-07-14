@@ -577,6 +577,7 @@
                     showToast('未找到任务数据', 'error');
                 }
                 $p.find('.loop-input, .loop-checkbox input, select').prop('disabled', false);
+                $p.find('input[name=loopScheduleType]:checked').trigger('change');
                 $p.find('#loopFormSaveBtn').prop('disabled', false).text('保存');
             });
         }
