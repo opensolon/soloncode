@@ -388,12 +388,15 @@
 }
 
 .context-meter {
-  margin-left: auto;
   width: 20px;
   height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.context-meter.spacer {
+  margin-left: auto;
 }
 
 .context-meter-ring {
@@ -438,6 +441,13 @@
   overflow-y: auto;
   max-height: 180px;
   padding: 2px;
+}
+
+.autocomplete-empty {
+  padding: 14px 10px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  text-align: center;
 }
 
 .autocomplete-item {

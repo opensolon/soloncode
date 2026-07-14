@@ -85,6 +85,83 @@
   color: var(--cb-text-primary);
   background-color: var(--cb-vscode-list-hoverBackground);
 }
+
+.provider-model-select {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-model-row {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.provider-model-fetch {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  order: 0;
+}
+
+.provider-model-combo {
+  flex: 1 1 0;
+  min-width: 0;
+  order: 1;
+}
+
+.provider-model-dropdown {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 6px;
+  background-color: var(--cb-vscode-sideBar-background);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.provider-model-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cb-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.provider-model-option:hover,
+.provider-model-option.selected {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.provider-model-option-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.provider-model-option-owner {
+  flex: 0 0 auto;
+  color: var(--cb-text-secondary);
+  font-size: 11px;
+}
+
 .settings-menu-item.active {
   color: var(--cb-text-primary);
   background-color: var(--cb-vscode-list-hoverBackground);
@@ -401,6 +478,126 @@
   font-size: 12px;
   line-height: 1.5;
   min-height: 80px;
+}
+
+.settings-about-card {
+  margin: 8px 16px 14px;
+  padding: 16px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at top right, rgba(0, 122, 204, 0.14), transparent 36%),
+    var(--cb-vscode-input-background);
+}
+
+.settings-about-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--cb-text-primary);
+}
+
+.settings-about-version {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+}
+
+.settings-about-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--cb-text-secondary);
+}
+
+.settings-update-card {
+  margin: 8px 16px 14px;
+  padding: 14px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 8px;
+  background-color: var(--cb-vscode-input-background);
+}
+
+.settings-update-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.settings-update-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cb-text-primary);
+}
+
+.settings-update-desc {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  line-height: 1.5;
+}
+
+.settings-update-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin-bottom: 10px;
+}
+
+.settings-update-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-update-label {
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+  min-width: 72px;
+}
+
+.settings-update-value {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--cb-text-primary);
+}
+
+.settings-update-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #4ade80;
+  background-color: rgba(74, 222, 128, 0.14);
+}
+
+.settings-update-badge.warning {
+  color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.14);
+}
+
+.settings-update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 20px 0;
+}
+
+.settings-update-message {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--cb-text-secondary);
+}
+
+@media (max-width: 900px) {
+  .settings-update-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ==================== Skills 设置（分栏布局） ==================== */

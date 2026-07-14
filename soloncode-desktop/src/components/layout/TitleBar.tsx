@@ -22,6 +22,8 @@ interface TitleBarProps {
   onSaveAll?: () => void;
   editorVisible?: boolean;
   chatVisible?: boolean;
+  terminalVisible?: boolean;
+  gitPanelVisible?: boolean;
   onToggleEditor?: () => void;
   onToggleChat?: () => void;
   onToggleTerminal?: () => void;
@@ -42,6 +44,8 @@ export function TitleBar({
   onSaveAll,
   editorVisible,
   chatVisible,
+  terminalVisible,
+  gitPanelVisible,
   onToggleEditor,
   onToggleChat,
   onToggleTerminal,
@@ -212,45 +216,51 @@ export function TitleBar({
 
       {/* 右侧工具栏 */}
       <div className="title-bar-right" data-no-drag>
-        <button
-          className={`titlebar-btn${editorVisible ? ' active' : ''}`}
-          onClick={onToggleEditor}
-          title="显示/隐藏编辑器"
-        >
-          <Icon name="code" size={14} />
-          <span>编辑器</span>
-        </button>
-        <button
-          className={`titlebar-btn${chatVisible ? ' active' : ''}`}
-          onClick={onToggleChat}
-          title="显示/隐藏对话"
-        >
-          <Icon name="chat" size={14} />
-          <span>对话</span>
-        </button>
-        <button
-          className="titlebar-btn"
-          onClick={onToggleTerminal}
-          title="新开终端"
-        >
-          <Icon name="terminal" size={14} />
-          <span>终端</span>
-        </button>
-        <button
-          className="titlebar-btn"
-          onClick={onToggleGitPanel}
-          title="源代码管理"
-        >
-          <Icon name="git" size={14} />
-          <span>源代码</span>
-        </button>
-        <button
-          className="titlebar-btn"
-          onClick={onSwapPanels}
-          title="交换面板位置"
-        >
-          <Icon name="swap" size={14} />
-        </button>
+        <div className="titlebar-tools">
+          <button
+            className={`titlebar-btn${editorVisible ? ' active' : ''}`}
+            onClick={onToggleEditor}
+            title="显示/隐藏编辑器"
+            aria-pressed={editorVisible}
+          >
+            <Icon name="code" size={14} />
+            <span>编辑器</span>
+          </button>
+          <button
+            className={`titlebar-btn${chatVisible ? ' active' : ''}`}
+            onClick={onToggleChat}
+            title="显示/隐藏对话"
+            aria-pressed={chatVisible}
+          >
+            <Icon name="chat" size={14} />
+            <span>对话</span>
+          </button>
+          <button
+            className={`titlebar-btn${terminalVisible ? ' active' : ''}`}
+            onClick={onToggleTerminal}
+            title="显示/隐藏终端"
+            aria-pressed={terminalVisible}
+          >
+            <Icon name="terminal" size={14} />
+            <span>终端</span>
+          </button>
+          <button
+            className={`titlebar-btn${gitPanelVisible ? ' active' : ''}`}
+            onClick={onToggleGitPanel}
+            title="显示/隐藏源代码管理"
+            aria-pressed={gitPanelVisible}
+          >
+            <Icon name="git" size={14} />
+            <span>源代码</span>
+          </button>
+          <button
+            className="titlebar-btn titlebar-swap-btn"
+            onClick={onSwapPanels}
+            title="交换面板位置"
+          >
+            <Icon name="swap" size={14} />
+          </button>
+        </div>
 
         {/* 窗口控制按钮 */}
         <div className="window-controls">

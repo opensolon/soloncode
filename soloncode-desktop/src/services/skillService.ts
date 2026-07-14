@@ -4,6 +4,7 @@
 
 export interface MountPool {
   alias: string;
+  type: 'SKILLS' | 'AGENTS' | 'FILES';
   path: string;
   system: boolean;
 }
@@ -13,6 +14,12 @@ export interface PoolSkill {
   description: string;
   poolAlias: string;
   path?: string;
+}
+
+interface BackendPoolSkill {
+  name: string;
+  description: string;
+  realPath?: string;
 }
 
 export interface MarketInfo {
@@ -75,7 +82,16 @@ export const skillService = {
   },
 
   async getPoolSkills(port: number, alias: string): Promise<PoolSkill[]> {
-    return get<PoolSkill[]>(port, '/web/settings/mounts/skills', { alias });
+    const skills = await get<BackendPoolSkill[]>(port, '/web/settings/mounts/content', {
+      alias,
+      type: 'SKILLS',
+    });
+    return skills.map(skill => ({
+      name: skill.name,
+      description: skill.description,
+      poolAlias: alias,
+      path: skill.realPath,
+    }));
   },
 
   async removePoolSkill(port: number, alias: string, skillName: string): Promise<void> {

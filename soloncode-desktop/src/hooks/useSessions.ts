@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   getAllConversations, saveConversation, deleteConversation,
   updateConversation, saveLastSessionId, loadLastSessionId,
@@ -25,7 +25,8 @@ export function useSessions(
 ) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
-  const [pendingSessionProject, setPendingSessionProject] = useState<string | null>(null);
+  const [pendingSession, setPendingSession] = useState<Session | null>(null);
+  const resolvingSessionsRef = useRef<Map<string, Promise<string>>>(new Map());
 
   // 初始化加载会话
   useEffect(() => {
@@ -57,7 +58,7 @@ export function useSessions(
 
   // 保存最后会话
   useEffect(() => {
-    if (activeProjectPath && currentSessionId) {
+    if (activeProjectPath && currentSessionId && !currentSessionId.startsWith('temp-')) {
       saveLastSessionId(activeProjectPath, currentSessionId);
     }
   }, [activeProjectPath, currentSessionId]);
@@ -68,22 +69,13 @@ export function useSessions(
       return '';
     }
 
-    if (projectId && projectId !== UNLINKED_PROJECT) {
-      setPendingSessionProject(projectId);
-    } else {
-      setPendingSessionProject(null);
-    }
-
     const tempId = `temp-${Date.now()}`;
-    const workspacePath = projectId && projectId !== UNLINKED_PROJECT
-      ? projectId
-      : (activeProjectPath || UNLINKED_PROJECT);
+    const workspacePath = projectId === UNLINKED_PROJECT
+      ? UNLINKED_PROJECT
+      : (projectId || activeProjectPath || UNLINKED_PROJECT);
     const title = _title || '新会话';
     const timestamp = new Date().toISOString();
-    setSessions(prev => [
-      { id: tempId, title, timestamp, messageCount: 0, workspacePath },
-      ...prev.filter(s => s.id !== tempId),
-    ]);
+    setPendingSession({ id: tempId, title, timestamp, messageCount: 0, workspacePath });
     setCurrentSessionId(tempId);
     return tempId;
   }, [activeProjectPath, currentSessionId, sessions]);
@@ -91,50 +83,77 @@ export function useSessions(
   const handleDeleteSession = useCallback((id: string) => {
     const remaining = sessions.filter(s => s.id !== id);
     setSessions(remaining);
-    deleteConversation(id);
+    if (id.startsWith('temp-')) {
+      setPendingSession(current => current?.id === id ? null : current);
+    } else {
+      deleteConversation(id);
+    }
     if (currentSessionId === id) {
       setCurrentSessionId(remaining.length > 0 ? remaining[0].id : undefined);
     }
   }, [currentSessionId, sessions]);
 
-  const handleUpdateSessionTitle = useCallback((sessionId: string, title: string) => {
-    const wsPath = pendingSessionProject || activeProjectPath || UNLINKED_PROJECT;
-
-    setSessions(prev => {
-      const exists = prev.find(s => s.id === sessionId);
-
-      if (!sessionId.startsWith('temp-')) {
-        if (exists && exists.title === '新会话') {
-          updateConversation(sessionId, { title });
-          return prev.map(s =>
-            s.id === sessionId && s.title === '新会话' ? { ...s, title } : s
-          );
-        }
-        return prev;
+  const handleUpdateSessionTitle = useCallback(async (sessionId: string, title: string): Promise<string> => {
+    if (!sessionId.startsWith('temp-')) {
+      const exists = sessions.find(session => session.id === sessionId);
+      if (exists?.title === '新会话') {
+        await updateConversation(sessionId, { title });
+        setSessions(prev => prev.map(session =>
+          session.id === sessionId && session.title === '新会话'
+            ? { ...session, title }
+            : session
+        ));
       }
+      return sessionId;
+    }
 
-      // temp 会话：异步持久化后加入列表并替换为真实 ID
-      const sessionWsPath = exists?.workspacePath || wsPath;
-      saveConversation({ title, timestamp: exists?.timestamp || new Date().toLocaleString(), status: 'active', workspacePath: sessionWsPath }).then(async (dbId) => {
+    const resolving = resolvingSessionsRef.current.get(sessionId);
+    if (resolving) return resolving;
+
+    const pending = pendingSession?.id === sessionId ? pendingSession : null;
+    const sessionWsPath = pending?.workspacePath || activeProjectPath || UNLINKED_PROJECT;
+    const resolvePromise = (async () => {
+      try {
+        const dbId = await saveConversation({
+          title,
+          timestamp: pending?.timestamp || new Date().toISOString(),
+          status: 'active',
+          workspacePath: sessionWsPath,
+        });
         const realId = dbId.toString();
         await reassignMessages(sessionId, realId);
-        setSessions(p => {
-          if (p.find(s => s.id === sessionId)) {
-            return p.map(s => s.id === sessionId ? { ...s, id: realId, title, workspacePath: sessionWsPath, timestamp: new Date().toISOString() } : s);
-          }
-          return [{ id: realId, title, timestamp: new Date().toLocaleString(), messageCount: 0, workspacePath: sessionWsPath }, ...p];
-        });
-        setCurrentSessionId(current => current === sessionId ? realId : current);
-        options?.onSessionIdResolved?.(sessionId, realId);
-      });
+        const messageCount = await getMessageCount(realId);
+        const persistedSession: Session = {
+          id: realId,
+          title,
+          timestamp: new Date().toISOString(),
+          messageCount,
+          workspacePath: sessionWsPath,
+        };
 
-      if (exists) {
-        return prev.map(s => s.id === sessionId ? { ...s, title } : s);
+        setSessions(prev => [
+          persistedSession,
+          ...prev.filter(session => session.id !== sessionId && session.id !== realId),
+        ]);
+        setPendingSession(current => current?.id === sessionId ? null : current);
+        options?.onSessionIdResolved?.(sessionId, realId);
+
+        // 让发送方先把临时 ID 切换为真实 ID，再触发会话视图更新。
+        setTimeout(() => {
+          setCurrentSessionId(current => current === sessionId ? realId : current);
+        }, 0);
+        return realId;
+      } catch (err) {
+        console.error('[Sessions] 保存新会话失败:', err);
+        return sessionId;
+      } finally {
+        resolvingSessionsRef.current.delete(sessionId);
       }
-      return prev;
-    });
-    setPendingSessionProject(null);
-  }, [activeProjectPath, pendingSessionProject, options]);
+    })();
+
+    resolvingSessionsRef.current.set(sessionId, resolvePromise);
+    return resolvePromise;
+  }, [activeProjectPath, pendingSession, sessions, options]);
 
   const incrementSessionMessageCount = useCallback((sessionId: string, count = 1) => {
     setSessions(prev => prev.map(session =>
@@ -144,16 +163,29 @@ export function useSessions(
     ));
   }, []);
 
+  const remapProjectPath = useCallback((oldPath: string, newPath: string) => {
+    setSessions(prev => prev.map(session =>
+      session.workspacePath === oldPath
+        ? { ...session, workspacePath: newPath }
+        : session
+    ));
+    setPendingSession(current => current?.workspacePath === oldPath
+      ? { ...current, workspacePath: newPath }
+      : current
+    );
+  }, []);
+
   const currentConversation: Conversation = useMemo(() => {
     const session = sessions.find(s => s.id === currentSessionId);
+    const currentPendingSession = pendingSession?.id === currentSessionId ? pendingSession : undefined;
     return {
       id: currentSessionId,
-      title: session?.title || '新会话',
+      title: session?.title || currentPendingSession?.title || '新会话',
       timestamp: new Date().toLocaleString(),
       status: 'active',
-      workspacePath: session?.workspacePath,
+      workspacePath: session?.workspacePath || currentPendingSession?.workspacePath,
     };
-  }, [currentSessionId, sessions]);
+  }, [currentSessionId, pendingSession, sessions]);
 
   return {
     sessions,
@@ -165,6 +197,7 @@ export function useSessions(
     handleDeleteSession,
     handleUpdateSessionTitle,
     incrementSessionMessageCount,
+    remapProjectPath,
     restoreLastSession,
   };
 }

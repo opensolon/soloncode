@@ -249,7 +249,7 @@ detect_launch_method()
 设置面板 (ProviderModelSelect)
   → 用户填写 API 地址和密钥
   → 点击"获取模型"按钮
-  → 调用后端 /chat/models/fetch
+  → 调用后端 /desktop/chat/models/fetch
   → 模型列表持久化到 IndexedDB (provider.availableModels)
 
 聊天输入 (ChatInput)
@@ -272,13 +272,13 @@ detect_launch_method()
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/chat/models` | GET | 获取已注册模型列表 |
-| `/chat/models/fetch` | GET | 从供应商 API 获取可用模型 |
-| `/chat/models/add` | POST | 动态注册模型 |
-| `/chat/models/select` | POST | 选择当前使用的模型 |
-| `/chat/input` | POST/Multipart | 发送对话消息（SSE 流式响应） |
-| `/chat/sessions` | GET | 获取会话列表 |
-| `/ws` | WebSocket | WebSocket 连接 |
+| `/desktop/version` | GET | 获取桌面后端版本与工作区信息 |
+| `/desktop/chat/models/fetch` | GET | 从供应商 API 获取可用模型 |
+| `/desktop/chat/models/add` | POST | 动态注册模型 |
+| `/desktop/chat/models/select` | POST | 选择桌面端默认模型 |
+| `/desktop/chat/models/remove` | POST | 移除动态模型 |
+| `/desktop/ws` | WebSocket | 桌面端 WebSocket 连接 |
+| `/web/chat/*` | HTTP | WebController/WebChannel 提供的共享 Web 接口 |
 
 ## 项目结构
 

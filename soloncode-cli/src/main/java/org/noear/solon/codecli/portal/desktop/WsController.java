@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Ws Chat Controller
+ * Desktop Controller
  *
  * @author bai
  */
@@ -44,7 +44,7 @@ public class WsController {
      * 获取消息详细记录信息
      */
     @Get
-    @Mapping("/version")
+    @Mapping("/desktop/version")
     public Result<Map> version() {
         Map<String, String> data = new LinkedHashMap<>();
         data.put("version", AgentFlags.getVersion());
@@ -57,7 +57,7 @@ public class WsController {
      * 通过 ModelsAdapterManager 从远程 API 获取可用模型列表
      */
     @Get
-    @Mapping("/chat/models/fetch")
+    @Mapping("/desktop/chat/models/fetch")
     public Result<List<Map>> fetchModels(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("provider") String provider, @Param("model") String model) throws Exception {
         if (Assert.isEmpty(apiUrl)) {
             return Result.failure("apiUrl is required");
@@ -88,7 +88,21 @@ public class WsController {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", mi.getId());
             item.put("object", mi.getObject());
+            item.put("displayName", mi.getDisplayName());
             item.put("ownedBy", mi.getOwnedBy());
+            item.put("owned_by", mi.getOwnedBy());
+            item.put("type", mi.getType());
+            item.put("maxInputTokens", mi.getMaxInputTokens());
+            item.put("max_input_tokens", mi.getMaxInputTokens());
+            item.put("maxTokens", mi.getMaxTokens());
+            item.put("max_tokens", mi.getMaxTokens());
+            if (mi.getMaxInputTokens() != null && mi.getMaxInputTokens() > 0) {
+                item.put("contextLength", mi.getMaxInputTokens());
+                item.put("context_length", mi.getMaxInputTokens());
+            } else if (mi.getMaxTokens() != null && mi.getMaxTokens() > 0) {
+                item.put("contextLength", mi.getMaxTokens());
+                item.put("context_length", mi.getMaxTokens());
+            }
 
             ChatConfig config = new ChatConfig();
             config.setName(mi.getId());
@@ -110,7 +124,7 @@ public class WsController {
      * 动态添加模型配置
      */
     @Post
-    @Mapping("/chat/models/add")
+    @Mapping("/desktop/chat/models/add")
     public Result modelsAdd(Context ctx) throws Exception {
         ONode root = ONode.ofJson(ctx.body());
 
@@ -153,15 +167,34 @@ public class WsController {
         engine.removeModel(model);
         engine.addModel(config);
 
-        LOG.info("[Web] Model added: {}", name);
+        LOG.info("[Desktop] Model added: {}", name);
         return Result.succeed(name);
+    }
+
+    /**
+     * 选择桌面端默认使用的模型。
+     */
+    @Post
+    @Mapping("/desktop/chat/models/select")
+    public Result modelsSelect(@Param("modelName") String modelName) throws Exception {
+        if (Assert.isEmpty(modelName)) {
+            return Result.failure("modelName is required");
+        }
+
+        if (engine.getModelOrNil(modelName) == null) {
+            return Result.failure("Model not found: " + modelName);
+        }
+
+        engine.setDefaultModel(modelName);
+        LOG.info("[Desktop] Model selected: {}", modelName);
+        return Result.succeed();
     }
 
     /**
      * 动态移除模型配置
      */
     @Post
-    @Mapping("/chat/models/remove")
+    @Mapping("/desktop/chat/models/remove")
     public Result modelsRemove(@Param("modelName") String modelName) throws Exception {
         if (Assert.isEmpty(modelName)) {
             return Result.failure("modelName is required");
@@ -173,7 +206,7 @@ public class WsController {
 
         engine.removeModel(modelName);
 
-        LOG.info("[Web] Model removed: {}", modelName);
+        LOG.info("[Desktop] Model removed: {}", modelName);
         return Result.succeed();
     }
 }

@@ -22,7 +22,7 @@ export function ThinkBlock({ content, theme }: ThinkBlockProps) {
   return (
     <div className="think-block">
       <div className="think-header" onClick={() => setIsExpanded(!isExpanded)}>
-        <span className="think-title">思考</span>
+        <span className="think-title">思考中</span>
         <span className={`think-arrow ${isExpanded ? 'expanded' : ''}`}>▾</span>
       </div>
       {isExpanded && (

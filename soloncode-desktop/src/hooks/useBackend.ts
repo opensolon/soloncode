@@ -10,6 +10,8 @@ export function useBackend() {
   const [backendPort, setBackendPortState] = useState<number | null>(null);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('connecting');
   const wsRef = useRef<WebSocket | null>(null);
+  const startPromiseRef = useRef<Promise<void> | null>(null);
+  const startPortRef = useRef<number | null>(null);
   const lastConnectedAtRef = useRef<number>(0);
   const failedProbeCountRef = useRef<number>(0);
   const httpProbeInFlightRef = useRef(false);
@@ -21,6 +23,12 @@ export function useBackend() {
     setBackendPortState(port);
     setBackendStatus('connected');
     setChatBackendPort(port);
+  }, []);
+
+  const markDisconnected = useCallback(() => {
+    setBackendPortState(null);
+    setBackendStatus('disconnected');
+    setChatBackendPort(null);
   }, []);
 
   const markProbeFailed = useCallback(() => {
@@ -40,7 +48,7 @@ export function useBackend() {
       if (httpProbeInFlightRef.current) return;
       httpProbeInFlightRef.current = true;
       try {
-        const resp = await fetch(`http://localhost:${port}/version`, { cache: 'no-store' });
+        const resp = await fetch(`http://localhost:${port}/desktop/version`, { cache: 'no-store' });
         if (!disposed && resp.ok) {
           markConnected(port);
         } else if (!disposed) {
@@ -70,7 +78,7 @@ export function useBackend() {
       }
 
       try {
-        const ws = new WebSocket(`ws://localhost:${port}/ws`);
+        const ws = new WebSocket(`ws://localhost:${port}/desktop/ws`);
         wsRef.current = ws;
         ws.onopen = () => { if (!disposed) markConnected(port); };
         ws.onclose = () => { if (wsRef.current === ws) wsRef.current = null; };
@@ -100,42 +108,70 @@ export function useBackend() {
   }, [markConnected, markProbeFailed]);
 
   const startBackend = useCallback(async (cliPort: number, onSettingsUpdate?: (updater: (prev: any) => any) => void) => {
-    setBackendStatus('connecting');
-    fileService.writeLog(`Starting backend on port ${cliPort}`);
-
-    try {
-      const port = await backendService.start('', cliPort);
-      if (port) {
-        markConnected(port);
-
-        const cliConfig = await fileService.readGlobalChatModel();
-        if (cliConfig && cliConfig.apiUrl && onSettingsUpdate) {
-          onSettingsUpdate(prev => {
-            settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, prev.providers, cliConfig.provider, cliConfig.model)
-              .then(result => {
-                if (result) {
-                  onSettingsUpdate(p => {
-                    const updated = { ...p, providers: result.providers };
-                    if (result.activeProviderId) {
-                      updated.activeProviderId = result.activeProviderId;
-                    }
-                    settingsService.save(updated);
-                    return updated;
-                  });
-                }
-              });
-            return prev;
-          });
-        }
-      } else {
-        setBackendPortState(null);
-        setBackendStatus('disconnected');
-      }
-    } catch {
-      setBackendPortState(null);
-      setBackendStatus('disconnected');
+    if (startPromiseRef.current && startPortRef.current === cliPort) {
+      await fileService.writeLog(`Backend start already in flight on port ${cliPort}, reusing pending request`);
+      return startPromiseRef.current;
     }
-  }, [markConnected]);
+
+    setBackendStatus('connecting');
+    fileService.writeLog(`Starting backend flow on port ${cliPort}`);
+
+    const startPromise = (async () => {
+      try {
+        const port = await backendService.start('', cliPort);
+        if (port) {
+          markConnected(port);
+
+          const cliConfig = await fileService.readGlobalChatModel();
+          if (cliConfig && cliConfig.apiUrl && onSettingsUpdate) {
+            onSettingsUpdate(prev => {
+              const seeded = settingsService.ensureConfiguredProvider(prev.providers, cliConfig);
+              const baseSettings = seeded.changed
+                ? {
+                  ...prev,
+                  providers: seeded.providers,
+                  activeProviderId: prev.activeProviderId || seeded.providerId,
+                }
+                : prev;
+
+              if (seeded.changed) {
+                settingsService.save(baseSettings);
+              }
+
+              settingsService.fetchModelsFromBackend(port, cliConfig.apiUrl, cliConfig.apiKey, baseSettings.providers, cliConfig.provider, cliConfig.model)
+                .then(result => {
+                  if (result) {
+                    onSettingsUpdate(p => {
+                      const updated = { ...p, providers: result.providers };
+                      if (result.activeProviderId) {
+                        updated.activeProviderId = result.activeProviderId;
+                      }
+                      settingsService.save(updated);
+                      return updated;
+                    });
+                  }
+                });
+              return baseSettings;
+            });
+          }
+        } else {
+          markDisconnected();
+        }
+      } catch {
+        markDisconnected();
+      } finally {
+        if (startPromiseRef.current === startPromise) {
+          startPromiseRef.current = null;
+          startPortRef.current = null;
+        }
+      }
+    })();
+
+    startPromiseRef.current = startPromise;
+    startPortRef.current = cliPort;
+
+    return startPromise;
+  }, [markConnected, markDisconnected]);
 
   useEffect(() => { setChatBackendPort(backendPort); }, [backendPort]);
 

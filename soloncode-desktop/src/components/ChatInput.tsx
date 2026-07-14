@@ -42,20 +42,60 @@ function StartWorkPanel({ onNewProject, onOpenFolder }: { onNewProject?: () => v
   );
 }
 
-// 命令类型（从后端 /chat/hints 加载）
+// 命令类型（从 Web 控制器 /web/chat/hints 加载）
 interface CommandItem {
   name: string;
   description: string;
   type: string; // SYSTEM | CONFIG | AGENT
 }
 
-// 可用的智能体列表
-const AVAILABLE_AGENTS = [
-  { id: 'default', name: '助手', icon: 'bot', description: '通用编程助手' },
-  { id: 'explorer', name: '探索', icon: 'search', description: '探索代码库' },
-  { id: 'architect', name: '架构师', icon: 'code', description: '设计实现方案' },
-  { id: 'bash', name: '终端', icon: 'terminal', description: '执行命令' },
+const DEFAULT_COMMANDS: CommandItem[] = [
+  { name: 'loop', description: '查看或启动循环任务', type: 'SYSTEM' },
+  { name: 'clear', description: '清空当前对话上下文', type: 'SYSTEM' },
+  { name: 'compact', description: '压缩当前上下文', type: 'SYSTEM' },
+  { name: 'models', description: '查看可用模型', type: 'CONFIG' },
+  { name: 'help', description: '查看可用命令', type: 'SYSTEM' },
 ];
+
+function normalizeCommands(list: CommandItem[]) {
+  const map = new Map<string, CommandItem>();
+  for (const command of [...DEFAULT_COMMANDS, ...list]) {
+    const name = String(command.name || '').replace(/^\//, '').trim();
+    if (!name) continue;
+    map.set(name, {
+      name,
+      description: command.description || '',
+      type: command.type || 'SYSTEM',
+    });
+  }
+  return Array.from(map.values());
+}
+
+// 对话中可通过 @ 选择的真实 Agent。
+export interface ChatAgentOption {
+  name: string;
+  description?: string;
+  enabled: boolean;
+}
+
+function isValidAgentName(name: string) {
+  const trimmed = name.trim();
+  const length = Array.from(trimmed).length;
+  return length > 0 && length <= 64 && /^[\p{L}\p{N}_-]+$/u.test(trimmed);
+}
+
+function containsAgentMention(value: string, agentName: string) {
+  const token = `@${agentName}`;
+  let index = value.indexOf(token);
+  while (index >= 0) {
+    const before = index === 0 ? '' : value[index - 1];
+    const afterIndex = index + token.length;
+    const after = afterIndex >= value.length ? '' : value[afterIndex];
+    if ((!before || /\s/.test(before)) && (!after || /\s/.test(after))) return true;
+    index = value.indexOf(token, index + token.length);
+  }
+  return false;
+}
 
 // 上下文引用项
 interface ContextRef {
@@ -70,6 +110,7 @@ interface ChatInputProps {
   isLoading?: boolean;
   onStop?: () => void;
   availableFiles?: ContextRef[];
+  agents?: ChatAgentOption[];
   providers?: ModelProvider[];
   activeProviderId?: string;
   onModelChange?: (providerId: string) => void;
@@ -123,7 +164,7 @@ function estimateTokens(text: string) {
   return Math.ceil(text.length / 4);
 }
 
-export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, mode = 'default', onModeChange, baseContextTokens = 0, contextTokenLimit = 128000 }: ChatInputProps & { mode?: ChatMode; onModeChange?: (mode: ChatMode) => void }) {
+export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], agents = [], providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, mode = 'default', onModeChange, baseContextTokens = 0, contextTokenLimit = 128000 }: ChatInputProps & { mode?: ChatMode; onModeChange?: (mode: ChatMode) => void }) {
   // 从每个 provider 的 availableModels 展开为独立的可选模型
   const allModels = useMemo(() => {
     const result: ModelProvider[] = [];
@@ -149,13 +190,28 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     return result;
   }, [providers]);
 
+  const availableAgents = useMemo(() => {
+    const uniqueAgents = new Map<string, ChatAgentOption & { id: string; icon: string }>();
+    for (const agent of agents) {
+      const name = agent.name.trim();
+      if (!agent.enabled || !isValidAgentName(name) || uniqueAgents.has(name)) continue;
+      uniqueAgents.set(name, {
+        ...agent,
+        id: name,
+        name,
+        icon: 'bot',
+      });
+    }
+    return Array.from(uniqueAgents.values());
+  }, [agents]);
+
   const [userInput, setUserInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('soloncode-last-model') || '');
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
     const saved = localStorage.getItem('soloncode-reasoning-effort') as ReasoningEffort | null;
     return saved && REASONING_OPTIONS.some(item => item.key === saved) ? saved : 'medium';
   });
-  const [selectedAgent, setSelectedAgent] = useState('default');
+  const [selectedAgent, setSelectedAgent] = useState('');
   const [contexts, setContexts] = useState<ContextRef[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [workspaceFiles, setWorkspaceFiles] = useState<ContextRef[]>([]);
@@ -329,7 +385,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // 命令列表（从后端加载，缓存）
-  const [commands, setCommands] = useState<CommandItem[]>([]);
+  const [commands, setCommands] = useState<CommandItem[]>(DEFAULT_COMMANDS);
   const commandsLoadedRef = useRef(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -397,14 +453,17 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     if (commandsLoadedRef.current) return;
     const port = backendPort || 4808;
     try {
-      const resp = await fetch(`http://localhost:${port}/chat/hints`);
+      const resp = await fetch(`http://localhost:${port}/web/chat/hints`);
       if (resp.ok) {
         const json = await resp.json();
         const list: CommandItem[] = json.data || json;
-        setCommands(list);
+        setCommands(normalizeCommands(Array.isArray(list) ? list : []));
         commandsLoadedRef.current = true;
       }
-    } catch { /* ignore */ }
+    } catch {
+      setCommands(DEFAULT_COMMANDS);
+      commandsLoadedRef.current = true;
+    }
   }, [backendPort]);
 
   // 加载工作区文件列表（懒加载，首次输入 # 时触发）
@@ -450,8 +509,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       );
     }
     if (autocompleteType === 'agent') {
-      return AVAILABLE_AGENTS.filter(a =>
-        a.name.toLowerCase().includes(autocompleteQuery.toLowerCase())
+      const query = autocompleteQuery.toLocaleLowerCase();
+      return availableAgents.filter(agent =>
+        agent.name.toLocaleLowerCase().includes(query)
+        || (agent.description || '').toLocaleLowerCase().includes(query)
       );
     }
     if (autocompleteType === 'context') {
@@ -462,7 +523,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       return workspaceFiles.filter(f => f.name.toLowerCase().includes(query)).slice(0, 50);
     }
     return [];
-  }, [autocompleteType, autocompleteQuery, availableFiles, commands, workspaceFiles]);
+  }, [autocompleteType, autocompleteQuery, availableFiles, availableAgents, commands, workspaceFiles]);
 
   // 处理输入变化
   function handleInput(event: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -481,7 +542,9 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
 
     if (lastSlashIndex !== -1) {
       const afterSlash = textBeforeCursor.substring(lastSlashIndex + 1);
-      if (!afterSlash.includes(' ') && lastSlashIndex >= lastAtIndex && lastSlashIndex >= lastHashIndex) {
+      const beforeSlash = textBeforeCursor.substring(0, lastSlashIndex);
+      const isCommandPosition = beforeSlash.length === 0 || /\s$/.test(beforeSlash);
+      if (isCommandPosition && !afterSlash.includes(' ') && lastSlashIndex >= lastAtIndex && lastSlashIndex >= lastHashIndex) {
         triggerType = 'command';
         triggerIndex = lastSlashIndex;
         // 异步加载命令（首次）
@@ -490,7 +553,10 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     }
 
     if (!triggerType) {
-      if (lastAtIndex > lastHashIndex && lastAtIndex !== -1) {
+      const afterAt = lastAtIndex === -1 ? '' : textBeforeCursor.substring(lastAtIndex + 1);
+      const beforeAt = lastAtIndex <= 0 ? '' : textBeforeCursor.substring(0, lastAtIndex);
+      const isAgentPosition = lastAtIndex === 0 || /\s$/.test(beforeAt);
+      if (lastAtIndex > lastHashIndex && lastAtIndex !== -1 && isAgentPosition && !/\s/.test(afterAt)) {
         triggerType = 'agent';
         triggerIndex = lastAtIndex;
       } else if (lastHashIndex !== -1) {
@@ -510,6 +576,9 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
       setAutocompleteType(null);
     }
 
+    if (selectedAgent && !containsAgentMention(value, selectedAgent)) {
+      setSelectedAgent('');
+    }
     setUserInput(value);
   }
 
@@ -567,9 +636,9 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     }
 
     if (autocompleteType === 'agent') {
-      const agent = AVAILABLE_AGENTS.find(a => a.id === item.id || a.name === item.name);
+      const agent = availableAgents.find(a => a.id === item.id || a.name === item.name);
       if (agent) {
-        setSelectedAgent(agent.id);
+        setSelectedAgent(agent.name);
       }
     }
 
@@ -627,8 +696,11 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     }
   }
 
+  const canSend = Boolean(userInput.trim())
+    && (!selectedAgent || userInput.trim() !== `@${selectedAgent}`);
+
   function sendMessage() {
-    if (!userInput.trim()) return;
+    if (!canSend) return;
     const provider = allModels.find(p => p.id === selectedModel);
     onSend(userInput, {
       model: selectedModel,
@@ -641,6 +713,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
     setUserInput('');
     setContexts([]);
     setAttachments([]);
+    setSelectedAgent('');
     setShowAutocomplete(false);
   }
 
@@ -918,7 +991,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
               </span>
             )}
             <span
-              className="context-meter"
+              className="context-meter spacer"
               title={contextTitle}
               style={{ '--context-percent': `${contextPercent}%` } as React.CSSProperties}
             >
@@ -927,7 +1000,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
             <button
               type={isLoading && onStop ? 'button' : 'submit'}
               className={`send-stop-button${isLoading ? ' stopping' : ''}`}
-              disabled={!isLoading && !userInput.trim()}
+              disabled={!isLoading && !canSend}
               onClick={isLoading && onStop ? onStop : undefined}
               title={isLoading && onStop ? '停止生成' : '发送'}
             >
@@ -937,13 +1010,17 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], prov
         </form>
 
         {/* 自动完成下拉框 */}
-        {showAutocomplete && filteredOptions.length > 0 && (
+        {showAutocomplete && (
           <div className="autocomplete-dropdown" ref={autocompleteRef}>
             <div className="autocomplete-header">
               {autocompleteType === 'command' ? '命令' : autocompleteType === 'agent' ? '选择智能体' : '引用文件'}
             </div>
             <div className="autocomplete-list">
-              {filteredOptions.map((option, index) => (
+              {filteredOptions.length === 0 ? (
+                <div className="autocomplete-empty">
+                  {autocompleteType === 'command' && !commandsLoadedRef.current ? '加载命令中...' : '没有匹配项'}
+                </div>
+              ) : filteredOptions.map((option, index) => (
                 <div
                   key={option.id || (option as any).name}
                   className={`autocomplete-item${index === selectedIndex ? ' selected' : ''}`}

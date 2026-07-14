@@ -1913,30 +1913,9 @@ public class WebSettingsController {
         provider.setApiKey(root.get("apiKey").getString());
         provider.setEnabled(root.get("enabled").getBoolean(true));
         provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER);
+        provider.setModels(parseProviderModels(root));
 
         // 解析模型列表（直接存储 ModelInfo）
-        if (root.hasKey("models") && root.get("models").isArray()) {
-            List<ModelInfo> models = new ArrayList<>();
-            for (ONode modelNode : root.get("models").getArray()) {
-                ModelInfo modelInfo = new ModelInfo();
-                modelInfo.setId(modelNode.get("id").getString());
-                if (modelNode.hasKey("displayName")) {
-                    modelInfo.setDisplayName(modelNode.get("displayName").getString());
-                }
-                if (modelNode.hasKey("maxTokens")) {
-                    modelInfo.setMaxTokens(modelNode.get("maxTokens").getLong());
-                }
-                if (modelNode.hasKey("maxInputTokens")) {
-                    modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
-                }
-                if (modelNode.hasKey("manual")) {
-                    modelInfo.setManual(modelNode.get("manual").getBoolean());
-                }
-                models.add(modelInfo);
-            }
-            provider.setModels(models);
-        }
-
         settings.getProviders().put(name, provider);
         saveSettings();
         LOG.info("[Settings] Provider added: {}", name);
@@ -1978,8 +1957,8 @@ public class WebSettingsController {
 
         // 解析模型列表（直接存储 ModelInfo）
         if (root.hasKey("models") && root.get("models").isArray()) {
-            List<ModelInfo> models = new ArrayList<>();
-            for (ONode modelNode : root.get("models").getArray()) {
+            List<ModelInfo> models = parseProviderModels(root);
+            for (ONode modelNode : java.util.Collections.<ONode>emptyList()) {
                 ModelInfo modelInfo = new ModelInfo();
                 modelInfo.setId(modelNode.get("id").getString());
                 if (modelNode.hasKey("displayName")) {
@@ -2096,10 +2075,27 @@ public class WebSettingsController {
             for (ModelInfo model : models) {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("id", model.getId());
+                item.put("object", model.getObject());
+                item.put("created", model.getCreated());
+                item.put("ownedBy", model.getOwnedBy());
                 item.put("owned_by", model.getOwnedBy());
+                item.put("type", model.getType());
+                item.put("displayName", model.getDisplayName());
+                item.put("display_name", model.getDisplayName());
+                item.put("maxInputTokens", model.getMaxInputTokens());
+                item.put("max_input_tokens", model.getMaxInputTokens());
+                item.put("maxTokens", model.getMaxTokens());
+                item.put("max_tokens", model.getMaxTokens());
+                long contextLength = resolveContextLength(model);
+                if (contextLength > 0) {
+                    item.put("contextLength", contextLength);
+                    item.put("context_length", contextLength);
+                }
                 modelList.add(item);
             }
-            
+
+            modelList.sort((a, b) -> String.CASE_INSENSITIVE_ORDER.compare(String.valueOf(a.get("id")), String.valueOf(b.get("id"))));
+
         return Result.succeed(modelList);
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to fetch models: {}", e.getMessage());
@@ -2214,6 +2210,53 @@ public class WebSettingsController {
     /**
      * API 密钥脱敏处理
      */
+    private List<ModelInfo> parseProviderModels(ONode root) {
+        List<ModelInfo> models = new ArrayList<>();
+        if (root.hasKey("models") == false || root.get("models").isArray() == false) {
+            return models;
+        }
+
+        for (ONode modelNode : root.get("models").getArray()) {
+            ModelInfo modelInfo = new ModelInfo();
+            modelInfo.setId(modelNode.get("id").getString());
+            modelInfo.setOwnedBy(modelNode.get("ownedBy").getString(modelNode.get("owned_by").getString()));
+            modelInfo.setType(modelNode.get("type").getString());
+            modelInfo.setObject(modelNode.get("object").getString());
+            modelInfo.setCreated(modelNode.get("created").getLong());
+            modelInfo.setDisplayName(modelNode.get("displayName").getString(modelNode.get("display_name").getString()));
+            if (modelNode.hasKey("maxTokens")) {
+                modelInfo.setMaxTokens(modelNode.get("maxTokens").getLong());
+            }
+            if (modelNode.hasKey("maxInputTokens")) {
+                modelInfo.setMaxInputTokens(modelNode.get("maxInputTokens").getLong());
+            }
+            if (modelNode.hasKey("manual")) {
+                modelInfo.setManual(modelNode.get("manual").getBoolean());
+            }
+
+            if (Assert.isNotEmpty(modelInfo.getId())) {
+                models.add(modelInfo);
+            }
+        }
+
+        return models;
+    }
+
+    private long resolveContextLength(ModelInfo modelInfo) {
+        if (modelInfo == null || Assert.isEmpty(modelInfo.getId())) {
+            return 0;
+        }
+        if (modelInfo.getMaxInputTokens() != null && modelInfo.getMaxInputTokens() > 0) {
+            return modelInfo.getMaxInputTokens();
+        }
+        if (modelInfo.getMaxTokens() != null && modelInfo.getMaxTokens() > 0) {
+            return modelInfo.getMaxTokens();
+        }
+
+        Long contextLength = modelSpecService.getContextLength(modelInfo.getId());
+        return contextLength == null ? 0 : contextLength;
+    }
+
     private String maskApiKey(String apiKey) {
         if (apiKey == null || apiKey.isEmpty()) {
             return "";

@@ -2,7 +2,7 @@ import { Icon } from '../common/Icon';
 import type { Theme } from '../../types';
 import './ActivityBar.css';
 
-export type ActivityType = 'explorer' | 'git' | 'extensions' | 'sessions' | 'settings' | 'skills' | 'agents';
+export type ActivityType = 'explorer' | 'git' | 'extensions' | 'sessions' | 'automation' | 'settings' | 'skills' | 'agents';
 
 interface ActivityBarProps {
   activeActivity: ActivityType;
@@ -13,12 +13,13 @@ interface ActivityBarProps {
 
 interface ActivityItem {
   id: ActivityType;
-  icon: 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'settings' | 'skills' | 'agents';
+  icon: 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'automation' | 'settings' | 'skills' | 'agents';
   title: string;
 }
 
 const activities: ActivityItem[] = [
   { id: 'sessions', icon: 'sessions', title: '对话管理' },
+  { id: 'automation', icon: 'automation', title: '自动化' },
   { id: 'explorer', icon: 'explorer', title: '项目管理' },
   { id: 'skills', icon: 'skills', title: 'Skills' },
   { id: 'agents', icon: 'agents', title: 'Agents' },

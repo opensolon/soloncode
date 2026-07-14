@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import { Icon, type IconName } from '../common/Icon';
 import {
   type McpServerConfig,
@@ -13,8 +14,10 @@ import {
   PROVIDER_PRESETS,
   DEFAULT_PROMPTS,
   createProvider,
+  settingsService,
 } from '../../services/settingsService';
 import { fileService } from '../../services/fileService';
+import { updateService, type UpdateInfo } from '../../services/updateService';
 import './SettingsPanel.css';
 import './ChannelPanel.css';
 
@@ -25,7 +28,7 @@ export interface Settings extends GeneralSettings {
   agents: AgentConfig[];
 }
 
-type SettingsMenuKey = 'general' | 'permission' | 'mounts' | 'model' | 'channels' | 'mcp' | 'openapi' | 'lsp' | 'skills' | 'prompts' | 'logs';
+type SettingsMenuKey = 'general' | 'permission' | 'mounts' | 'model' | 'channels' | 'mcp' | 'openapi' | 'lsp' | 'skills' | 'prompts' | 'about' | 'logs';
 
 interface SettingsPanelProps {
   visible: boolean;
@@ -47,6 +50,7 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'openapi', icon: 'code', label: 'OpenAPI' },
   { key: 'lsp', icon: 'code', label: 'LSP' },
   { key: 'skills', icon: 'skills', label: 'Skills' },
+  { key: 'about', icon: 'info', label: '关于' },
   { key: 'prompts', icon: 'edit', label: 'AI 提示词' },
   ...(import.meta.env.DEV ? [{ key: 'logs' as SettingsMenuKey, icon: 'terminal' as IconName, label: '日志' }] : []),
 ];
@@ -61,6 +65,18 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
       setActiveMenu('general');
     }
   }, [visible, settings]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    settingsService.load()
+      .then(freshSettings => {
+        if (cancelled) return;
+        setLocalSettings(freshSettings);
+      })
+      .catch(err => console.warn('[SettingsPanel] reload settings failed:', err));
+    return () => { cancelled = true; };
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -165,7 +181,7 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
 
           <div className="settings-detail">
             {activeMenu === 'general' && (
-              <GeneralSettings settings={localSettings} updateSetting={updateSetting} />
+              <GeneralSettings settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
             )}
             {activeMenu === 'model' && (
               <ModelSettings
@@ -232,6 +248,9 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
                 onPromptChange={(key, value) => setLocalSettings(prev => ({ ...prev, [key]: value }))}
               />
             )}
+            {activeMenu === 'about' && (
+              <AboutSettings settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
+            )}
             {activeMenu === 'logs' && (
               <LogsSettings workspacePath={workspacePath} />
             )}
@@ -248,9 +267,173 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, ba
 }
 
 /* ==================== 常规设置 ==================== */
-function GeneralSettings({ settings, updateSetting }: {
+function AboutSettings({ settings, updateSetting, backendPort }: {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  backendPort?: number | null;
+}) {
+  const [desktopVersion, setDesktopVersion] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getVersion()
+      .then(version => {
+        if (!cancelled) setDesktopVersion(version);
+      })
+      .catch(err => {
+        console.warn('[SettingsPanel] read desktop version failed:', err);
+        if (!cancelled) setDesktopVersion('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="settings-section-content">
+      <div className="settings-about-card">
+        <div className="settings-about-name">SolonCode Desktop</div>
+        <div className="settings-about-version">{desktopVersion ? `v${desktopVersion}` : '版本读取中'}</div>
+        <div className="settings-about-desc">查看桌面端和后端版本，并管理自动检查更新。</div>
+      </div>
+      <UpdateSettings
+        settings={settings}
+        updateSetting={updateSetting}
+        backendPort={backendPort}
+        currentDesktopVersion={desktopVersion}
+      />
+    </div>
+  );
+}
+
+function UpdateSettings({ settings, updateSetting, backendPort, currentDesktopVersion }: {
+  settings: Settings;
+  updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  backendPort?: number | null;
+  currentDesktopVersion?: string;
+}) {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const loadUpdateInfo = useCallback(async (recordCheck = false) => {
+    setLoading(true);
+    try {
+      const info = await updateService.checkForUpdates(backendPort);
+      setUpdateInfo(info);
+      if (recordCheck) {
+        updateSetting('lastUpdateCheckAt', new Date().toISOString());
+      }
+      setMessage('');
+    } catch (err) {
+      console.warn('[SettingsPanel] update check failed:', err);
+      setMessage(err instanceof Error ? err.message : '版本检查失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort, updateSetting]);
+
+  useEffect(() => {
+    loadUpdateInfo(false);
+  }, [backendPort]);
+
+  const handleCheckAndUpdate = useCallback(async () => {
+    setLoading(true);
+    try {
+      const info = await updateService.checkForUpdates(backendPort);
+      setUpdateInfo(info);
+      updateSetting('lastUpdateCheckAt', new Date().toISOString());
+
+      if (!info.backendUpdateAvailable && !info.desktopUpdateAvailable) {
+        setMessage('当前已是最新版本');
+        return;
+      }
+
+      setMessage('检测到新版本，正在启动更新...');
+      await updateService.installUpdates(backendPort);
+    } catch (err) {
+      console.warn('[SettingsPanel] install update failed:', err);
+      setMessage(err instanceof Error ? err.message : '更新启动失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendPort, updateSetting]);
+
+  const latestDesktop = updateInfo?.latestDesktopVersion || '未检查';
+  const latestBackend = updateInfo?.latestBackendVersion || '未检查';
+  const desktopStatus = updateInfo ? (updateInfo.desktopUpdateAvailable ? '可更新' : '最新') : '未检查';
+  const backendStatus = updateInfo ? (updateInfo.backendUpdateAvailable ? '可更新' : '最新') : '未检查';
+
+  return (
+    <>
+      <div className="settings-section-title">版本更新</div>
+      <div className="settings-update-card">
+        <div className="settings-update-intro">
+          <div className="settings-update-name">SolonCode Desktop</div>
+          <div className="settings-update-desc">检查到新版本后，会先执行后端更新脚本，再下载并启动桌面端安装包。</div>
+        </div>
+
+        <div className="settings-update-grid">
+          <div className="settings-update-item">
+            <span className="settings-update-label">桌面端</span>
+            <span className="settings-update-value">{updateInfo?.currentDesktopVersion || currentDesktopVersion || '未知'}</span>
+            <span className={`settings-update-badge${updateInfo?.desktopUpdateAvailable ? ' warning' : ''}`}>{desktopStatus}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">桌面端最新</span>
+            <span className="settings-update-value">
+              {latestDesktop}
+              {updateInfo?.latestDesktopReleaseTag ? ` (${updateInfo.latestDesktopReleaseTag})` : ''}
+            </span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">后端</span>
+            <span className="settings-update-value">{updateInfo?.currentBackendVersion || '未连接'}</span>
+            <span className={`settings-update-badge${updateInfo?.backendUpdateAvailable ? ' warning' : ''}`}>{backendStatus}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">后端最新</span>
+            <span className="settings-update-value">{latestBackend}</span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">最近检查</span>
+            <span className="settings-update-value">
+              {settings.lastUpdateCheckAt ? new Date(settings.lastUpdateCheckAt).toLocaleString('zh-CN') : '从未检查'}
+            </span>
+          </div>
+          <div className="settings-update-item">
+            <span className="settings-update-label">安装包</span>
+            <span className="settings-update-value">{updateInfo?.desktopDownloadUrl || '暂无可用下载地址'}</span>
+          </div>
+        </div>
+
+        <SettingRow label="自动检查更新">
+          <input
+            type="checkbox"
+            checked={settings.autoCheckUpdates}
+            onChange={e => updateSetting('autoCheckUpdates', e.target.checked)}
+          />
+        </SettingRow>
+
+        <div className="settings-update-actions">
+          <button className="settings-btn cancel" onClick={() => loadUpdateInfo(true)} disabled={loading}>
+            {loading ? '检查中...' : '刷新版本信息'}
+          </button>
+          <button className="settings-btn save" onClick={handleCheckAndUpdate} disabled={loading}>
+            {loading ? '处理中...' : '检查并更新'}
+          </button>
+        </div>
+
+        {message && <div className="settings-update-message">{message}</div>}
+      </div>
+    </>
+  );
+}
+
+function GeneralSettings({ settings, updateSetting, backendPort }: {
+  settings: Settings;
+  updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  backendPort?: number | null;
 }) {
   return (
     <div className="settings-section-content">
@@ -279,8 +462,7 @@ function GeneralSettings({ settings, updateSetting }: {
       <SettingRow label="编辑器主题">
         <select className="setting-select" value={settings.editorTheme}
           onChange={e => updateSetting('editorTheme', e.target.value)}>
-          <option value="vs-dark">VS Dark</option>
-          <option value="light">VS Light</option>
+          <option value="auto">跟随全局主题</option>
           <option value="hc-black">High Contrast Dark</option>
           <option value="hc-light">High Contrast Light</option>
         </select>
@@ -575,14 +757,10 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
             />
           </SettingRow>
           <SettingRow label="上下文限制">
-            <input
-              type="number"
-              className="setting-input number"
+            <ContextLengthInput
+              providerId={activeProvider.id}
               value={activeProvider.contextLength || 128000}
-              onChange={e => onUpdateProvider(activeProvider.id, { contextLength: Math.max(1, parseInt(e.target.value, 10) || 128000) })}
-              min={1}
-              step={1000}
-              placeholder="128000"
+              onChange={contextLength => onUpdateProvider(activeProvider.id, { contextLength })}
             />
           </SettingRow>
           <SettingRow label="超时时间">
@@ -624,6 +802,7 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
   const models = provider.availableModels || [];
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   const handleFetch = useCallback(async () => {
     if (!provider.apiUrl) {
@@ -636,7 +815,7 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
     setError('');
 
     try {
-      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}&model=${encodeURIComponent(provider.model || '')}`;
+      const url = `http://localhost:${port}/desktop/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}&model=${encodeURIComponent(provider.model || '')}`;
       const resp = await fetch(url);
       if (!resp.ok) {
         setError('API地址或密钥不正确');
@@ -668,25 +847,46 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
   }, [backendPort, provider.apiUrl, provider.apiKey, provider.type, provider.model, onChange, onModelsLoaded]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-      <div style={{ display: 'flex', gap: '6px' }}>
-        <button className="mcp-add-btn" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+    <div className="provider-model-select">
+      <div className="provider-model-row">
+        <input
+          type="text"
+          className="setting-input provider-model-combo"
+          value={provider.model}
+          onChange={e => {
+            onChange(e.target.value);
+            setModelDropdownOpen(true);
+          }}
+          onFocus={() => setModelDropdownOpen(true)}
+          onBlur={() => setTimeout(() => setModelDropdownOpen(false), 120)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setModelDropdownOpen(false);
+          }}
+          placeholder="Model name"
+        />
+        {modelDropdownOpen && models.length > 0 && (
+          <div className="provider-model-dropdown">
+            {models.map(m => (
+              <button
+                type="button"
+                key={m.id}
+                className={`provider-model-option${m.id === provider.model ? ' selected' : ''}`}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => {
+                  onChange(m.id);
+                  setModelDropdownOpen(false);
+                }}
+              >
+                <span className="provider-model-option-id">{m.id}</span>
+                {m.ownedBy && <span className="provider-model-option-owner">{m.ownedBy}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+        <button className="mcp-add-btn provider-model-fetch"
           onClick={handleFetch} disabled={loading}>
           {loading ? '加载中...' : '获取模型'}
         </button>
-        {models.length > 0 ? (
-          <select className="setting-select" value={provider.model}
-            onChange={e => onChange(e.target.value)} style={{ flex: 1, minWidth: 0 }}>
-            <option value="">选择模型...</option>
-            {models.map(m => (
-              <option key={m.id} value={m.id}>{m.id}</option>
-            ))}
-          </select>
-        ) : (
-          <input type="text" className="setting-input" value={provider.model}
-            onChange={e => onChange(e.target.value)} placeholder="模型名称"
-            disabled={loading} style={{ flex: 1, minWidth: 0 }} />
-        )}
       </div>
       {error && <span style={{ fontSize: '11px', color: '#f87171' }}>{error}</span>}
       {models.length > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>已加载 {models.length} 个模型</span>}
@@ -1162,7 +1362,7 @@ function PromptsSettings({ skillPrompt, agentPrompt, gitPrompt, onPromptChange }
   const values: Record<PromptKey, string> = { skillPrompt, agentPrompt, gitPrompt };
   const items: { key: PromptKey; label: string; placeholder: string }[] = [
     { key: 'skillPrompt', label: 'Skill 生成提示词', placeholder: '请帮我创建一个名为「{name}」的 Skill...' },
-    { key: 'agentPrompt', label: 'Agent 生成提示词', placeholder: '请帮我创建一个名为「{name}」的 Agent...' },
+    { key: 'agentPrompt', label: 'Agent 生成提示词', placeholder: '请根据需求创建 Agent 并自动生成名称，支持 {description}...' },
     { key: 'gitPrompt', label: 'Git Commit 生成提示词', placeholder: '请根据以下 git diff 内容，生成一条简洁的 git commit message...' },
   ];
 
@@ -1295,6 +1495,25 @@ function ApiKeyInput({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 /* ==================== 渠道绑定设置 ==================== */
+type ChannelKind = 'wechat' | 'feishu' | 'dingtalk';
+type ChannelStatusPayload = {
+  bound?: boolean;
+  streamStarted?: boolean;
+  pending?: boolean;
+};
+
+function resolveChannelSessionId(sessionId?: string) {
+  return sessionId || 'default';
+}
+
+async function fetchChannelStatus(backendPort: number | null | undefined, channel: ChannelKind, sessionId?: string): Promise<ChannelStatusPayload | null> {
+  if (!backendPort) return null;
+  const sid = resolveChannelSessionId(sessionId);
+  const resp = await fetch(`http://localhost:${backendPort}/web/chat/${channel}/status?sessionId=${encodeURIComponent(sid)}`);
+  const data = await resp.json();
+  return data.data || null;
+}
+
 function ChannelSettings({ backendPort, sessionId }: { backendPort?: number | null; sessionId?: string }) {
   return (
     <div className="settings-section-content">
@@ -1314,39 +1533,78 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
   const [status, setStatus] = useState('');
   const [bound, setBound] = useState(false);
   const [loading, setLoading] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const data = await fetchChannelStatus(backendPort, 'wechat', sessionId);
+      setBound(!!data?.bound);
+      setStatus(data?.bound ? 'bound' : '');
+    } catch {
+      // 状态查询失败不阻断手动绑定。
+    }
+  }, [backendPort, sessionId]);
+
+  useEffect(() => {
+    checkStatus();
+    return stopPolling;
+  }, [checkStatus, stopPolling]);
 
   const fetchQR = useCallback(async () => {
     if (!backendPort) return;
+    stopPolling();
     setLoading(true);
     setStatus('scanning');
     try {
-      const sid = sessionId || 'default';
-      const resp = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode?sessionId=${encodeURIComponent(sid)}`);
+      const sid = resolveChannelSessionId(sessionId);
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/wechat/qrcode?sessionId=${encodeURIComponent(sid)}`);
       const data = await resp.json();
-      if (data.data?.qrcode_img_content) {
-        setQrCode(data.data.qrcode_img_content);
+      const qrToken = data.data?.qrcode;
+      const qrImage = data.data?.qrcode_img_content || data.data?.qrcode;
+      if (qrToken && qrImage) {
+        setQrCode(qrImage);
         setShowQR(true);
-        const poll = setInterval(async () => {
+        pollRef.current = setInterval(async () => {
           try {
-            const r = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(data.data.qrcode_img_content)}&sessionId=${encodeURIComponent(sid)}`);
+            const r = await fetch(`http://localhost:${backendPort}/web/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(qrToken)}&sessionId=${encodeURIComponent(sid)}`);
             const d = await r.json();
             if (d.data?.status === 'confirmed') {
-              clearInterval(poll);
+              stopPolling();
               setBound(true);
               setStatus('bound');
               setShowQR(false);
+            } else if (d.data?.status === 'scaned') {
+              setStatus('scanned');
+            } else if (d.data?.status === 'wait') {
+              setStatus('scanning');
             } else if (d.data?.status === 'error' || d.data?.status === 'expired') {
-              clearInterval(poll);
+              stopPolling();
               setStatus('expired');
               setShowQR(false);
             }
           } catch {
-            clearInterval(poll);
+            stopPolling();
             setStatus('error');
             setShowQR(false);
           }
         }, 2000);
-        setTimeout(() => { clearInterval(poll); setStatus('timeout'); setShowQR(false); }, 60000);
+        timeoutRef.current = setTimeout(() => {
+          stopPolling();
+          setStatus('timeout');
+          setShowQR(false);
+        }, 60000);
       } else {
         setStatus('error');
       }
@@ -1355,16 +1613,18 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
     } finally {
       setLoading(false);
     }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   const unbind = useCallback(async () => {
     if (!backendPort) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/wechat/unbind?sessionId=${encodeURIComponent(sessionId || 'default')}`, { method: 'POST' });
+      stopPolling();
+      await fetch(`http://localhost:${backendPort}/web/chat/wechat/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setStatus('');
+      setShowQR(false);
     } catch { /* ignore */ }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   return (
     <div className="channel-card">
@@ -1388,12 +1648,14 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
       </div>
       {status === 'error' && <p className="channel-error">获取二维码失败</p>}
       {status === 'timeout' && <p className="channel-error">二维码已过期，请重新获取</p>}
+      {status === 'expired' && <p className="channel-error">二维码已失效，请重新获取</p>}
+      {status === 'scanned' && <p className="channel-card-desc">已扫码，请在微信中确认</p>}
       {showQR && qrCode && (
-        <div className="qrcode-overlay" onClick={() => setShowQR(false)}>
+        <div className="qrcode-overlay" onClick={() => { stopPolling(); setStatus(''); setShowQR(false); }}>
           <div className="qrcode-modal" onClick={e => e.stopPropagation()}>
             <img src={qrCode} alt="微信二维码" className="qrcode-modal-img" />
             <p className="qrcode-modal-hint">请使用微信扫码关注</p>
-            <button className="qrcode-modal-close" onClick={() => setShowQR(false)}>
+            <button className="qrcode-modal-close" onClick={() => { stopPolling(); setStatus(''); setShowQR(false); }}>
               <Icon name="close" size={16} />
             </button>
           </div>
@@ -1410,32 +1672,90 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(false);
+  const [statusText, setStatusText] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const data = await fetchChannelStatus(backendPort, 'feishu', sessionId);
+      const nextBound = !!data?.bound;
+      setBound(nextBound);
+      if (nextBound) {
+        stopPolling();
+        setExpanded(false);
+        setAppId('');
+        setAppSecret('');
+        setStatusText('');
+      } else if (data?.pending || data?.streamStarted) {
+        setStatusText('连接已启动，请在飞书上发送消息完成绑定');
+      } else {
+        setStatusText('');
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }, [backendPort, sessionId, stopPolling]);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    pollRef.current = setInterval(() => {
+      refreshStatus();
+    }, 2000);
+  }, [refreshStatus, stopPolling]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshStatus().then(data => {
+      if (!cancelled && !data?.bound && (data?.pending || data?.streamStarted)) {
+        startPolling();
+      }
+    });
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+  }, [refreshStatus, startPolling, stopPolling]);
 
   const bind = useCallback(async () => {
     if (!backendPort || !appId || !appSecret) return;
     setLoading(true);
     setError('');
+    setStatusText('');
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/feishu/bind`, {
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/feishu/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `sessionId=${encodeURIComponent(sessionId || 'default')}&appId=${encodeURIComponent(appId)}&appSecret=${encodeURIComponent(appSecret)}`,
+        body: `sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}&appId=${encodeURIComponent(appId)}&appSecret=${encodeURIComponent(appSecret)}`,
       });
       const data = await resp.json();
-      if (data.code === 200) setBound(true);
-      else setError(data.description || '绑定失败');
+      if (data.code === 200) {
+        setStatusText('连接已启动，请在飞书上发送消息完成绑定');
+        startPolling();
+      } else {
+        setError(data.description || data.message || '绑定失败');
+      }
     } catch { setError('连接失败'); } finally { setLoading(false); }
-  }, [backendPort, sessionId, appId, appSecret]);
+  }, [backendPort, sessionId, appId, appSecret, startPolling]);
 
   const unbind = useCallback(async () => {
-    if (!backendPort || !sessionId) return;
+    if (!backendPort) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/feishu/unbind?sessionId=${encodeURIComponent(sessionId || 'default')}`, { method: 'POST' });
+      stopPolling();
+      await fetch(`http://localhost:${backendPort}/web/chat/feishu/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setAppId('');
       setAppSecret('');
+      setStatusText('');
     } catch { /* ignore */ }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   return (
     <div className="channel-card">
@@ -1445,7 +1765,7 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
         </div>
         <div className="channel-card-info">
           <span className="channel-card-name">飞书</span>
-          <span className="channel-card-desc">{bound ? '已绑定' : '输入机器人凭据绑定'}</span>
+          <span className="channel-card-desc">{bound ? '已绑定' : (statusText || '输入机器人凭据绑定')}</span>
         </div>
         <div className="channel-card-action">
           {bound ? (
@@ -1464,6 +1784,7 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
           <button className="channel-btn bind" onClick={bind} disabled={loading || !appId || !appSecret} style={{ alignSelf: 'flex-end' }}>
             {loading ? '绑定中...' : '确认绑定'}
           </button>
+          {statusText && <p className="channel-card-desc">{statusText}</p>}
           {error && <p className="channel-error">{error}</p>}
         </div>
       )}
@@ -1478,32 +1799,90 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(false);
+  const [statusText, setStatusText] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const data = await fetchChannelStatus(backendPort, 'dingtalk', sessionId);
+      const nextBound = !!data?.bound;
+      setBound(nextBound);
+      if (nextBound) {
+        stopPolling();
+        setExpanded(false);
+        setAppKey('');
+        setAppSecret('');
+        setStatusText('');
+      } else if (data?.pending || data?.streamStarted) {
+        setStatusText('连接已启动，请在钉钉上发送消息完成绑定');
+      } else {
+        setStatusText('');
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }, [backendPort, sessionId, stopPolling]);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    pollRef.current = setInterval(() => {
+      refreshStatus();
+    }, 2000);
+  }, [refreshStatus, stopPolling]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshStatus().then(data => {
+      if (!cancelled && !data?.bound && (data?.pending || data?.streamStarted)) {
+        startPolling();
+      }
+    });
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+  }, [refreshStatus, startPolling, stopPolling]);
 
   const bind = useCallback(async () => {
     if (!backendPort || !appKey || !appSecret) return;
     setLoading(true);
     setError('');
+    setStatusText('');
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/dingtalk/bind`, {
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/dingtalk/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `sessionId=${encodeURIComponent(sessionId || 'default')}&appKey=${encodeURIComponent(appKey)}&appSecret=${encodeURIComponent(appSecret)}`,
+        body: `sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}&appKey=${encodeURIComponent(appKey)}&appSecret=${encodeURIComponent(appSecret)}`,
       });
       const data = await resp.json();
-      if (data.code === 200) setBound(true);
-      else setError(data.description || '绑定失败');
+      if (data.code === 200) {
+        setStatusText('连接已启动，请在钉钉上发送消息完成绑定');
+        startPolling();
+      } else {
+        setError(data.description || data.message || '绑定失败');
+      }
     } catch { setError('连接失败'); } finally { setLoading(false); }
-  }, [backendPort, sessionId, appKey, appSecret]);
+  }, [backendPort, sessionId, appKey, appSecret, startPolling]);
 
   const unbind = useCallback(async () => {
-    if (!backendPort || !sessionId) return;
+    if (!backendPort) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/dingtalk/unbind?sessionId=${encodeURIComponent(sessionId || 'default')}`, { method: 'POST' });
+      stopPolling();
+      await fetch(`http://localhost:${backendPort}/web/chat/dingtalk/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setAppKey('');
       setAppSecret('');
+      setStatusText('');
     } catch { /* ignore */ }
-  }, [backendPort, sessionId]);
+  }, [backendPort, sessionId, stopPolling]);
 
   return (
     <div className="channel-card">
@@ -1513,7 +1892,7 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
         </div>
         <div className="channel-card-info">
           <span className="channel-card-name">钉钉</span>
-          <span className="channel-card-desc">{bound ? '已绑定' : '输入机器人凭据绑定'}</span>
+          <span className="channel-card-desc">{bound ? '已绑定' : (statusText || '输入机器人凭据绑定')}</span>
         </div>
         <div className="channel-card-action">
           {bound ? (
@@ -1532,10 +1911,88 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
           <button className="channel-btn bind" onClick={bind} disabled={loading || !appKey || !appSecret} style={{ alignSelf: 'flex-end' }}>
             {loading ? '绑定中...' : '确认绑定'}
           </button>
+          {statusText && <p className="channel-card-desc">{statusText}</p>}
           {error && <p className="channel-error">{error}</p>}
         </div>
       )}
     </div>
+  );
+}
+
+const CONTEXT_LENGTH_UNITS: Record<string, number> = {
+  k: 1_000,
+  m: 1_000_000,
+};
+
+function parseContextLength(value: string): number | null {
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*([km])?$/i);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  const multiplier = match[2] ? CONTEXT_LENGTH_UNITS[match[2].toLowerCase()] : 1;
+  const tokens = Math.round(amount * multiplier);
+  if (!Number.isSafeInteger(tokens) || tokens < 1) return null;
+  return tokens;
+}
+
+function formatContextLength(value: number): string {
+  const tokens = Math.max(1, Math.round(value));
+  if (tokens >= 1_000_000 && tokens % 1_000 === 0) {
+    return `${tokens / 1_000_000}M`;
+  }
+  if (tokens >= 1_000 && tokens % 1_000 === 0) {
+    return `${tokens / 1_000}K`;
+  }
+  return String(tokens);
+}
+
+function ContextLengthInput({ providerId, value, onChange }: {
+  providerId: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => formatContextLength(value));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setDraft(formatContextLength(value));
+    }
+  }, [providerId, value]);
+
+  const commit = () => {
+    const parsed = parseContextLength(draft);
+    if (parsed === null) {
+      setDraft(formatContextLength(value));
+      return;
+    }
+    if (parsed !== value) onChange(parsed);
+    setDraft(formatContextLength(parsed));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className="setting-input number"
+      value={draft}
+      onFocus={() => { focusedRef.current = true; }}
+      onChange={e => {
+        const next = e.target.value;
+        setDraft(next);
+        const parsed = parseContextLength(next);
+        if (parsed !== null && parsed !== value) onChange(parsed);
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit();
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      placeholder="128K / 1M / 128000"
+      title="支持 K、M 单位，例如 128K、1M 或 1.5M"
+    />
   );
 }
 

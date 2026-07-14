@@ -8,14 +8,17 @@ import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
 import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
+import { AutomationPanel } from './components/sidebar/AutomationPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
 import type { ChatReviewFile } from './components/ChatHeader';
-import { ChatView } from './components/ChatView';
+import { ChatView, type PromptCreationMode, type PromptCreationType } from './components/ChatView';
+import type { SendOptions } from './components/ChatInput';
 import { fileService } from './services/fileService';
 import { gitService } from './services/gitService';
 import { DEFAULT_PROMPTS, settingsService } from './services/settingsService';
+import { updateService } from './services/updateService';
 import { setBackendPort as setChatBackendPort, setWorkspacePath as setChatWorkspacePath, sendModelConfig } from './components/ChatView';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { startWindowDrag, startWindowResize } from './hooks/useWindowDrag';
@@ -23,9 +26,10 @@ import { useBackend } from './hooks/useBackend';
 import { useGit } from './hooks/useGit';
 import { useFileManager } from './hooks/useFileManager';
 import { useSessions } from './hooks/useSessions';
-import { UNLINKED_PROJECT, saveMessage, db } from './db';
+import { UNLINKED_PROJECT, addAutomation, saveMessage, db, type DbAutomation } from './db';
 import { useWorkspace } from './hooks/useWorkspace';
 import type { Conversation, Plugin, Theme } from './types';
+import type { GitFileStatus } from './services/gitService';
 import './App.css';
 
 const EditorPanel = lazy(() => import('./components/editor/EditorPanel').then(module => ({ default: module.EditorPanel })));
@@ -41,7 +45,9 @@ const plugins: Plugin[] = [];
 
 const defaultSettings: Settings = {
   theme: 'dark', fontSize: 14, language: 'zh-CN',
-  editorTheme: 'vs-dark',
+  autoCheckUpdates: false,
+  lastUpdateCheckAt: '',
+  editorTheme: 'auto',
   tabSize: 2, autoSave: true, formatOnSave: true,
   shell: 'bash', terminalFontSize: 14,
   providers: [], activeProviderId: '', maxSteps: 30,
@@ -132,6 +138,25 @@ function applyAppFontSize(fontSize: number) {
   document.documentElement.style.setProperty('--font-size-base', `${size}px`);
 }
 
+function normalizeEditorTheme(editorTheme?: string) {
+  if (editorTheme === 'vs-dark' || editorTheme === 'light' || !editorTheme) return 'auto';
+  return editorTheme;
+}
+
+function normalizeLoadedSettings(settings: Settings): Settings {
+  const enabledProviders = settings.providers.filter(provider => provider.enabled);
+  const hasActiveProvider = settings.activeProviderId
+    ? settings.providers.some(provider => provider.id === settings.activeProviderId)
+    : false;
+  return {
+    ...settings,
+    editorTheme: normalizeEditorTheme(settings.editorTheme),
+    activeProviderId: hasActiveProvider
+      ? settings.activeProviderId
+      : (enabledProviders[0]?.id || settings.providers[0]?.id || ''),
+  };
+}
+
 function parseDefaultOptions(value?: string): Record<string, unknown> | undefined {
   if (!value?.trim()) return undefined;
   try {
@@ -143,6 +168,76 @@ function parseDefaultOptions(value?: string): Record<string, unknown> | undefine
   }
 }
 
+function countDiffStats(diffText: string) {
+  return diffText.split('\n').reduce(
+    (stats, line) => {
+      if (line.startsWith('+++') || line.startsWith('---')) return stats;
+      if (line.startsWith('+')) stats.additions += 1;
+      if (line.startsWith('-')) stats.deletions += 1;
+      return stats;
+    },
+    { additions: 0, deletions: 0 }
+  );
+}
+
+type ReviewBaseline = Record<string, string>;
+
+function isDirectoryLikeReviewPath(path: string) {
+  const normalized = path.trim().replace(/\\/g, '/');
+  return normalized.length === 0 || normalized.endsWith('/');
+}
+
+function isReviewableGitStatus(status: GitFileStatus['status']) {
+  return status === 'modified' || status === 'added' || status === 'deleted' || status === 'untracked';
+}
+
+function isReviewableGitFile(file: GitFileStatus) {
+  return isReviewableGitStatus(file.status) && !isDirectoryLikeReviewPath(file.path);
+}
+
+function makeReviewSignature(file: GitFileStatus, stats: { additions: number; deletions: number }) {
+  return `${file.status}:${file.staged ? 'staged' : 'unstaged'}:+${stats.additions}:-${stats.deletions}`;
+}
+
+function toAbsoluteReviewPath(cwd: string, filePath: string) {
+  if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\\\')) {
+    return filePath;
+  }
+  const base = cwd.replace(/[\\/]+$/, '');
+  const relative = filePath.replace(/^[\\/]+/, '').replace(/\\/g, '/');
+  return `${base}/${relative}`;
+}
+
+async function resolveReviewStats(cwd: string, file: GitFileStatus) {
+  let stats = countDiffStats(await gitService.diffText(cwd, file.path));
+
+  if (stats.additions === 0 && stats.deletions === 0 && (file.status === 'added' || file.status === 'untracked')) {
+    try {
+      const content = await fileService.readFile(toAbsoluteReviewPath(cwd, file.path));
+      const normalized = content.replace(/\r\n/g, '\n');
+      stats = {
+        additions: normalized.length === 0 ? 0 : normalized.split('\n').length,
+        deletions: 0,
+      };
+    } catch {
+      // 保持 diff 结果，交给后续过滤处理
+    }
+  }
+
+  return stats;
+}
+
+function hasMeaningfulReviewChange(file: GitFileStatus, stats: { additions: number; deletions: number }) {
+  if (!isReviewableGitFile(file)) return false;
+  if (stats.additions > 0 || stats.deletions > 0) return true;
+  return file.status === 'deleted';
+}
+
+function createPromptTitle(prompt: string): string {
+  const oneLine = prompt.trim().replace(/\s+/g, ' ');
+  return oneLine.length > 28 ? `${oneLine.slice(0, 28)}...` : oneLine;
+}
+
 function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityType>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -150,15 +245,22 @@ function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string>('default');
-  const [aiCreatePrompt, setAiCreatePrompt] = useState<{
+  const [promptCreation, setPromptCreation] = useState<PromptCreationMode | null>(null);
+  const [aiCreateRefreshKey, setAiCreateRefreshKey] = useState(0);
+  const [automationRefreshKey, setAutomationRefreshKey] = useState(0);
+  const [automationPrompt, setAutomationPrompt] = useState<{
+    runId: string;
     prompt: string;
-    type: 'skill' | 'agent';
-    name: string;
+    modelId: string;
+    modelName: string;
+    reasoningEffort: DbAutomation['reasoningEffort'];
   } | null>(null);
   const [newSessionFromProject, setNewSessionFromProject] = useState(false);
   const [sessionRunStates, setSessionRunStates] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
   const [sessionReviewFiles, setSessionReviewFiles] = useState<Record<string, ChatReviewFile[]>>({});
   const resolvedSessionIdsRef = useRef<Record<string, string>>({});
+  const sessionReviewBaselinesRef = useRef<Record<string, ReviewBaseline>>({});
+  const sessionReviewBaselinePromisesRef = useRef<Record<string, Promise<void>>>({});
   const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('soloncode-theme') as Theme | null;
     const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -198,27 +300,47 @@ function App() {
   }, []);
 
   useEffect(() => {
-    settingsService.load().then(s => {
-      setSettings(s);
-      if (s.theme) {
-        setCurrentTheme(s.theme);
-        applyAppTheme(s.theme);
+    settingsService.load().then(async s => {
+      const normalizedSettings = normalizeLoadedSettings(s);
+      setSettings(normalizedSettings);
+      if (normalizedSettings.theme) {
+        setCurrentTheme(normalizedSettings.theme);
+        applyAppTheme(normalizedSettings.theme);
       }
-      applyAppFontSize(s.fontSize);
+      applyAppFontSize(normalizedSettings.fontSize);
+
+      try {
+        const discoveredAgents = await invoke<Array<{
+          name: string;
+          description: string;
+          path: string;
+          enabled: boolean;
+        }>>('list_agents');
+        setSettings(current => ({
+          ...current,
+          agents: discoveredAgents.map(agent => ({
+            ...agent,
+            source: 'discovered' as const,
+          })),
+        }));
+      } catch {
+        // Web 开发环境没有 Tauri 命令，继续使用已保存的 Agents。
+      }
     });
   }, []);
 
   const handleSettingsChange = useCallback((newSettings: Settings) => {
+    const normalizedSettings = normalizeLoadedSettings(newSettings);
     const prevActive = settings.providers.find(p => p.id === settings.activeProviderId);
-    const nextActive = newSettings.providers.find(p => p.id === newSettings.activeProviderId);
-    if (newSettings.theme) {
-      setCurrentTheme(newSettings.theme);
-      applyAppTheme(newSettings.theme);
+    const nextActive = normalizedSettings.providers.find(p => p.id === normalizedSettings.activeProviderId);
+    if (normalizedSettings.theme) {
+      setCurrentTheme(normalizedSettings.theme);
+      applyAppTheme(normalizedSettings.theme);
     }
-    applyAppFontSize(newSettings.fontSize);
-    setSettings(newSettings);
-    settingsService.save(newSettings);
-    settingsService.syncRuntimeSettings(newSettings.cliPort || 4808, newSettings);
+    applyAppFontSize(normalizedSettings.fontSize);
+    setSettings(normalizedSettings);
+    settingsService.save(normalizedSettings);
+    settingsService.syncRuntimeSettings(normalizedSettings.cliPort || 4808, normalizedSettings);
     if (nextActive && (
       !prevActive ||
       prevActive.apiUrl !== nextActive.apiUrl ||
@@ -229,7 +351,7 @@ function App() {
       prevActive.timeout !== nextActive.timeout ||
       prevActive.scope !== nextActive.scope ||
       prevActive.defaultOptions !== nextActive.defaultOptions ||
-      settings.activeProviderId !== newSettings.activeProviderId
+      settings.activeProviderId !== normalizedSettings.activeProviderId
     )) {
       sendModelConfig(nextActive);
     }
@@ -249,6 +371,7 @@ function App() {
     sessions, currentSessionId, setCurrentSessionId, currentConversation,
     handleNewSession, handleDeleteSession, handleUpdateSessionTitle,
     incrementSessionMessageCount,
+    remapProjectPath,
     restoreLastSession,
   } = useSessions(null, {
     onSessionIdResolved: (oldId, newId) => {
@@ -269,13 +392,21 @@ function App() {
         next[newId] = files;
         return next;
       });
+      if (sessionReviewBaselinesRef.current[oldId]) {
+        sessionReviewBaselinesRef.current[newId] = sessionReviewBaselinesRef.current[oldId];
+        delete sessionReviewBaselinesRef.current[oldId];
+      }
+      if (sessionReviewBaselinePromisesRef.current[oldId]) {
+        sessionReviewBaselinePromisesRef.current[newId] = sessionReviewBaselinePromisesRef.current[oldId];
+        delete sessionReviewBaselinePromisesRef.current[oldId];
+      }
     },
   });
 
   const {
     activeProjectPath, projectRefreshKey, projects, workspaceName,
-    setActiveProjectPath, refreshFileTree, openFolderByPath,
-    handleSetActiveProject, handleRemoveProject, handleCreateProject,
+    refreshFileTree, openFolderByPath,
+    handleSetActiveProject, handleRemoveProject, handlePinProject, handleRenameProject, handleCreateProject,
   } = useWorkspace({
     setOpenFiles, setActiveFilePath,
     setActiveActivity,
@@ -283,7 +414,20 @@ function App() {
     backendPortRef,
     setCurrentSessionId,
     restoreLastSession,
+    onProjectPathChanged: (oldPath, newPath) => {
+      remapProjectPath(oldPath, newPath);
+      setAutomationRefreshKey(prev => prev + 1);
+    },
   });
+
+  const chatWorkspacePath = useMemo(() => {
+    if (currentConversation.workspacePath === UNLINKED_PROJECT) return null;
+    return currentConversation.workspacePath || activeProjectPath;
+  }, [activeProjectPath, currentConversation.workspacePath]);
+
+  useEffect(() => {
+    setChatWorkspacePath(chatWorkspacePath);
+  }, [chatWorkspacePath]);
 
   const { gitStatus, diffLines, refreshGitStatus, setGitStatus } = useGit(activeProjectPath, activeFilePath, gitPanelVisible);
 
@@ -354,9 +498,15 @@ function App() {
 
   // 启动后端
   useEffect(() => {
+    let cancelled = false;
     const port = settings.cliPort || 4808;
     startBackend(port, (updater) => setSettings(updater)).then(async () => {
-      const runtimeSettings = await settingsService.loadRuntimeSettings(port);
+      if (cancelled) return;
+      const runtimeSettings = await settingsService.loadRuntimeSettings(
+        port,
+        settingsService.runtimeSettingsSections.core,
+      );
+      if (cancelled) return;
       if (!runtimeSettings) return;
       setSettings(prev => {
         const updated = { ...prev, ...runtimeSettings };
@@ -364,6 +514,9 @@ function App() {
         return updated;
       });
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 拖拽调整大小
@@ -372,9 +525,16 @@ function App() {
     const port = settings.cliPort || 4808;
     if (lastStartedCliPortRef.current === port) return;
     lastStartedCliPortRef.current = port;
+    let cancelled = false;
     startBackend(port, (updater) => setSettings(updater)).then(async () => {
+      if (cancelled) return;
       await settingsService.syncRuntimeSettings(port, settings);
-      const runtimeSettings = await settingsService.loadRuntimeSettings(port);
+      if (cancelled) return;
+      const runtimeSettings = await settingsService.loadRuntimeSettings(
+        port,
+        settingsService.runtimeSettingsSections.core,
+      );
+      if (cancelled) return;
       if (!runtimeSettings) return;
       setSettings(prev => {
         const updated = { ...prev, ...runtimeSettings };
@@ -382,6 +542,9 @@ function App() {
         return updated;
       });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [settings.cliPort, startBackend]);
 
   const [isResizing, setIsResizing] = useState<string | null>(null);
@@ -498,6 +661,33 @@ function App() {
     setDiffFiles(prev => ({ ...prev, [absPath]: original }));
   }, [activeProjectPath, handleFileSelect]);
 
+  const captureReviewBaseline = useCallback(async (sessionId: string, workspacePath?: string | null) => {
+    const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : activeProjectPath;
+    if (!cwd) {
+      delete sessionReviewBaselinesRef.current[sessionId];
+      delete sessionReviewBaselinePromisesRef.current[sessionId];
+      return;
+    }
+
+    const promise = (async () => {
+      const status = await gitService.status(cwd);
+      const files = status.files.filter(isReviewableGitFile);
+      const entries = await Promise.all(files.map(async file => {
+        const stats = await resolveReviewStats(cwd, file);
+        return [file.path, makeReviewSignature(file, stats)] as const;
+      }));
+      sessionReviewBaselinesRef.current[sessionId] = Object.fromEntries(entries);
+    })();
+    sessionReviewBaselinePromisesRef.current[sessionId] = promise;
+    try {
+      await promise;
+    } finally {
+      if (sessionReviewBaselinePromisesRef.current[sessionId] === promise) {
+        delete sessionReviewBaselinePromisesRef.current[sessionId];
+      }
+    }
+  }, [activeProjectPath]);
+
   const captureSessionReviewFiles = useCallback(async (sessionId: string, workspacePath?: string | null) => {
     const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : activeProjectPath;
     if (!cwd) {
@@ -506,16 +696,25 @@ function App() {
         delete next[sessionId];
         return next;
       });
+      delete sessionReviewBaselinesRef.current[sessionId];
       return;
     }
 
+    const resolvedSessionId = resolvedSessionIdsRef.current[sessionId] || sessionId;
+    await (sessionReviewBaselinePromisesRef.current[resolvedSessionId] || sessionReviewBaselinePromisesRef.current[sessionId]);
     await new Promise(resolve => setTimeout(resolve, 300));
     const status = await gitService.status(cwd);
-    const reviewFiles: ChatReviewFile[] = status.files
-      .filter(file => file.status === 'modified' || file.status === 'added' || file.status === 'deleted' || file.status === 'untracked')
-      .map(file => ({ path: file.path, status: file.status }));
+    const baseline = sessionReviewBaselinesRef.current[resolvedSessionId] || sessionReviewBaselinesRef.current[sessionId];
+    const changedFiles = status.files
+      .filter(isReviewableGitFile);
+    const reviewCandidates: Array<ChatReviewFile | null> = await Promise.all(changedFiles.map(async file => {
+      const stats = await resolveReviewStats(cwd, file);
+      if (!hasMeaningfulReviewChange(file, stats)) return null;
+      const signature = makeReviewSignature(file, stats);
+      return !baseline || baseline[file.path] === signature ? null : { path: file.path, status: file.status, ...stats };
+    }));
+    const reviewFiles = reviewCandidates.filter(Boolean) as ChatReviewFile[];
 
-    const resolvedSessionId = resolvedSessionIdsRef.current[sessionId] || sessionId;
     setSessionReviewFiles(prev => {
       const next = { ...prev };
       if (resolvedSessionId !== sessionId) delete next[sessionId];
@@ -523,22 +722,82 @@ function App() {
       else delete next[resolvedSessionId];
       return next;
     });
+    delete sessionReviewBaselinesRef.current[sessionId];
+    delete sessionReviewBaselinesRef.current[resolvedSessionId];
 
     if (cwd === activeProjectPath) {
       setGitStatus(status);
     }
   }, [activeProjectPath, setGitStatus]);
 
+  const handleDiscardReviewFile = useCallback(async (relPath: string) => {
+    if (!activeProjectPath || !currentSessionId) return;
+    await gitService.discard(activeProjectPath, [relPath]);
+    setDiffFiles(prev => {
+      const next = { ...prev };
+      delete next[activeProjectPath.replace(/\\/g, '/') + '/' + relPath];
+      return next;
+    });
+    setSessionReviewFiles(prev => {
+      const next = { ...prev };
+      const remaining = (next[currentSessionId] || []).filter(file => file.path !== relPath);
+      if (remaining.length > 0) next[currentSessionId] = remaining;
+      else delete next[currentSessionId];
+      return next;
+    });
+    const status = await gitService.status(activeProjectPath);
+    setGitStatus(status);
+  }, [activeProjectPath, currentSessionId, setGitStatus]);
+
   // Toast
   const [terminalVisible, setTerminalVisible] = useState(false);
   const [terminalMounted, setTerminalMounted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const autoUpdateCheckedRef = useRef(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(msg);
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
+
+  useEffect(() => {
+    if (!backendPort || !settings.autoCheckUpdates || autoUpdateCheckedRef.current) return;
+
+    const lastCheckedAt = settings.lastUpdateCheckAt ? Date.parse(settings.lastUpdateCheckAt) : NaN;
+    if (!Number.isNaN(lastCheckedAt) && Date.now() - lastCheckedAt < 12 * 60 * 60 * 1000) {
+      autoUpdateCheckedRef.current = true;
+      return;
+    }
+
+    autoUpdateCheckedRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const info = await updateService.checkForUpdates(backendPort);
+        if (cancelled) return;
+
+        const checkedAt = new Date().toISOString();
+        setSettings(prev => {
+          const updated = { ...prev, lastUpdateCheckAt: checkedAt };
+          settingsService.save(updated);
+          return updated;
+        });
+
+        if (info.backendUpdateAvailable || info.desktopUpdateAvailable) {
+          showToast('检测到新版本，正在启动更新...');
+          await updateService.installUpdates(backendPort);
+        }
+      } catch (err) {
+        console.warn('[App] auto update check failed:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [backendPort, settings.autoCheckUpdates, settings.lastUpdateCheckAt, showToast]);
 
   useEffect(() => {
     if (terminalVisible) setTerminalMounted(true);
@@ -553,14 +812,22 @@ function App() {
     setCurrentSessionId(id);
     const session = sessions.find(s => s.id === id);
     if (session?.workspacePath && session.workspacePath !== UNLINKED_PROJECT && session.workspacePath !== activeProjectPath) {
-      setActiveProjectPath(session.workspacePath);
+      void handleSetActiveProject(session.workspacePath);
     }
-  }, [sessions, activeProjectPath, setCurrentSessionId, setActiveProjectPath]);
+  }, [sessions, activeProjectPath, handleSetActiveProject, setCurrentSessionId]);
+
+  const handleCreateSessionInProject = useCallback((projectId?: string) => {
+    setNewSessionFromProject(true);
+    if (projectId && projectId !== UNLINKED_PROJECT && projectId !== activeProjectPath) {
+      void handleSetActiveProject(projectId);
+    }
+    return handleNewSession(projectId);
+  }, [activeProjectPath, handleNewSession, handleSetActiveProject]);
 
   const handleSyncSession = useCallback(async (sessionId: string) => {
     const port = backendPort || 4808;
     try {
-      const resp = await fetch(`http://localhost:${port}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`);
+      const resp = await fetch(`http://localhost:${port}/web/chat/messages?sessionId=${encodeURIComponent(sessionId)}`);
       if (!resp.ok) return;
       const json = await resp.json();
       const messages: Array<{ role: string; content: string }> = json.data || json;
@@ -596,21 +863,37 @@ function App() {
     setPanelState(prev => ({ ...prev, panelOrder: [...prev.panelOrder].reverse() }));
   }, []);
 
-  const handleCreateWithAI = useCallback((type: 'skill' | 'agent', name: string, description: string) => {
+  const handleStartPromptCreation = useCallback((type: PromptCreationType) => {
+    if (type === 'automation' && !activeProjectPath) {
+      showToast('请先选择一个项目');
+      return;
+    }
     setPanelState(prev => ({ ...prev, chatVisible: true }));
+    setSidebarCollapsed(false);
+    setAutomationPrompt(null);
+    setNewSessionFromProject(!!activeProjectPath);
 
-    const title = `创建 ${type === 'skill' ? 'Skill' : 'Agent'}: ${name}`;
-    handleNewSession(undefined, title);
+    const label = type === 'skill' ? 'Skill' : type === 'agent' ? 'Agent' : '自动化';
+    const sessionId = handleNewSession(type === 'automation' ? activeProjectPath! : undefined, `创建 ${label}`);
+    if (!sessionId) {
+      showToast(`无法进入${label}创建模式`);
+      return;
+    }
 
-    const template = type === 'skill' ? settings.skillPrompt : settings.agentPrompt;
-    const prompt = (template || '')
-      .replace(/\{name\}/g, name)
-      .replace(/\{description\}/g, description || name);
+    setPromptCreation({
+      id: `${type}-${Date.now()}`,
+      sessionId,
+      type,
+      template: type === 'skill' ? settings.skillPrompt : type === 'agent' ? settings.agentPrompt : undefined,
+    });
+  }, [activeProjectPath, handleNewSession, settings.agentPrompt, settings.skillPrompt]);
 
-    setAiCreatePrompt({ prompt, type, name });
-  }, [handleNewSession, settings.skillPrompt, settings.agentPrompt]);
-
-  const handleAiCreateComplete = useCallback(async (info: { type: 'skill' | 'agent'; name: string }) => {
+  const handleAiCreateComplete = useCallback(async (info: { type: 'skill' | 'agent'; name: string; error?: string }) => {
+    setPromptCreation(null);
+    if (info.error) {
+      showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 创建失败`);
+      return;
+    }
     try {
       if (info.type === 'skill') {
         const skills = await invoke<Array<{ name: string; description: string; path: string; enabled: boolean }>>('list_skills');
@@ -622,8 +905,77 @@ function App() {
       showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 已创建`);
     } catch (err) {
       console.error('[App] AI 创建完成刷新失败:', err);
+    } finally {
+      setAiCreateRefreshKey(current => current + 1);
     }
   }, []);
+
+  const handleCreateAutomationFromPrompt = useCallback(async (rawPrompt: string, options: SendOptions) => {
+    const prompt = rawPrompt.trim();
+    const creation = promptCreation?.type === 'automation' ? promptCreation : null;
+    const project = activeProjectPath
+      ? projects.find(item => item.id === activeProjectPath)
+      : undefined;
+    if (!creation || !activeProjectPath || !project) {
+      showToast('当前项目不可用，请重新进入自动化创建模式');
+      return;
+    }
+    if (!prompt || prompt.length > 10000) {
+      showToast(prompt ? '自动化提示词不能超过 10000 个字符' : '请输入自动化提示词');
+      return;
+    }
+    if (!options.model || !options.modelName) {
+      showToast('请先选择一个可用模型');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    try {
+      await addAutomation({
+        title: createPromptTitle(prompt),
+        prompt,
+        projectId: activeProjectPath,
+        projectName: project.name,
+        modelId: options.model,
+        modelName: options.modelName,
+        reasoningEffort: options.reasoningEffort,
+        createdAt: now,
+        updatedAt: now,
+        runCount: 0,
+      });
+      setPromptCreation(null);
+      setAutomationRefreshKey(current => current + 1);
+      if (creation.sessionId.startsWith('temp-')) handleDeleteSession(creation.sessionId);
+      setActiveActivity('automation');
+      showToast('自动化已创建');
+    } catch (err) {
+      console.error('[App] 创建自动化失败:', err);
+      showToast('创建自动化失败');
+    }
+  }, [activeProjectPath, handleDeleteSession, projects, promptCreation]);
+
+  const handleRunAutomation = useCallback(async (automation: DbAutomation) => {
+    const project = projects.find(item => item.id === automation.projectId);
+    if (!project) throw new Error(`项目已不在列表中：${automation.projectName}`);
+
+    await handleSetActiveProject(automation.projectId);
+    setPanelState(prev => ({ ...prev, chatVisible: true }));
+    setSidebarCollapsed(false);
+    setNewSessionFromProject(true);
+    setPromptCreation(null);
+
+    const sessionId = handleNewSession(automation.projectId, automation.title);
+    if (!sessionId) throw new Error('无法创建自动化会话');
+
+    setAutomationPrompt({
+      runId: `${automation.id || 'automation'}-${Date.now()}`,
+      prompt: automation.prompt,
+      modelId: automation.modelId,
+      modelName: automation.modelName,
+      reasoningEffort: automation.reasoningEffort,
+    });
+    setActiveActivity('sessions');
+  }, [handleNewSession, handleSetActiveProject, projects]);
 
   // 渲染侧边栏内容
   const renderSidebarContent = () => {
@@ -647,15 +999,28 @@ function App() {
             projects={projects} sessions={sessions} currentSessionId={currentSessionId} currentProjectId={activeProjectPath}
             backendPort={backendPort}
             sessionRunStates={sessionRunStates}
-            onSelectSession={handleSelectSession} onNewSession={(projectId?: string) => { setNewSessionFromProject(true); return handleNewSession(projectId); }} onDeleteSession={handleDeleteSession}
-            onAddProject={handleAddProject} onRemoveProject={handleRemoveProject}
+            onSelectSession={handleSelectSession} onNewSession={handleCreateSessionInProject} onDeleteSession={handleDeleteSession}
+            onCreateProject={handleCreateProject} onAddProject={handleAddProject} onRemoveProject={handleRemoveProject} onPinProject={handlePinProject} onRenameProject={(projectId, name) => {
+              void handleRenameProject(projectId, name).catch(err => {
+                showToast(err instanceof Error ? err.message : '重命名项目失败');
+              });
+            }}
             onSyncSession={handleSyncSession}
           />
         );
+      case 'automation':
+        return (
+          <AutomationPanel
+            projects={projects}
+            refreshKey={automationRefreshKey}
+            onCreateWithPrompt={() => handleStartPromptCreation('automation')}
+            onRunAutomation={handleRunAutomation}
+          />
+        );
       case 'skills':
-        return <SkillsPanel backendPort={backendPort} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('skill', name, desc)} />;
+        return <SkillsPanel backendPort={backendPort} refreshKey={aiCreateRefreshKey} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={() => handleStartPromptCreation('skill')} />;
       case 'agents':
-        return <AgentsPanel agents={settings.agents} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('agent', name, desc)} />;
+        return <AgentsPanel agents={settings.agents} refreshKey={aiCreateRefreshKey} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={() => handleStartPromptCreation('agent')} />;
       default:
         return null;
     }
@@ -671,7 +1036,7 @@ function App() {
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
           <Suspense fallback={<div className="panel-loading">Loading editor...</div>}>
-            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={settings.theme} editorTheme={settings.editorTheme} fontSize={settings.fontSize} tabSize={settings.tabSize} autoSave={settings.autoSave} formatOnSave={settings.formatOnSave} diffLines={diffLines} diffFiles={diffFiles} />
+            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={currentTheme} editorTheme={settings.editorTheme} fontSize={settings.fontSize} tabSize={settings.tabSize} autoSave={settings.autoSave} formatOnSave={settings.formatOnSave} diffLines={diffLines} diffFiles={diffFiles} />
           </Suspense>
           {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
@@ -683,16 +1048,26 @@ function App() {
       return (
         <div key="chat" className="panel-wrapper chat-wrapper" style={{ ...(bothVisible ? { flex: '1 1 auto' } : {}), '--input-max-width': `${inputWidth}%` } as React.CSSProperties}>
           <ChatView
-            currentConversation={currentConversation} plugins={plugins} workspacePath={activeProjectPath || undefined} projectName={workspaceName || undefined}
-            theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => { setNewSessionFromProject(false); return handleNewSession(undefined, title); }}
+            currentConversation={currentConversation} plugins={plugins} workspacePath={chatWorkspacePath || undefined} projectName={workspaceName || undefined}
+            theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => {
+              setNewSessionFromProject(!!activeProjectPath);
+              return handleNewSession(activeProjectPath || UNLINKED_PROJECT, title);
+            }}
             sessions={sessions} sessionRunStates={sessionRunStates} maxSteps={settings.maxSteps} onSelectSession={handleSelectSession}
-            providers={settings.providers} activeProviderId={settings.activeProviderId} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
+            providers={settings.providers} agents={settings.agents} activeProviderId={settings.activeProviderId} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
             activeFileName={activeFile?.name} activeFilePath={activeFilePath || undefined}
             onFileSelect={handleChatFileSelect}
             reviewFiles={currentSessionId ? (sessionReviewFiles[currentSessionId] || []) : []}
             onReviewFileSelect={handleDiffFileSelect}
+            onReviewFileDiscard={handleDiscardReviewFile}
             onNewProject={handleCreateProject} onOpenFolder={handleOpenFolder}
-            initialPrompt={aiCreatePrompt} onAiCreateComplete={handleAiCreateComplete}
+            promptCreation={promptCreation}
+            onCreateAutomationFromPrompt={handleCreateAutomationFromPrompt}
+            onAiCreateComplete={handleAiCreateComplete}
+            automationPrompt={automationPrompt}
+            onAutomationPromptConsumed={(runId) => {
+              setAutomationPrompt(current => current?.runId === runId ? null : current);
+            }}
             newSessionFromProject={newSessionFromProject}
             onSessionRunStateChange={(sessionId, status) => {
               setSessionRunStates(prev => ({ ...prev, [sessionId]: status }));
@@ -702,6 +1077,8 @@ function App() {
                   delete next[sessionId];
                   return next;
                 });
+                const session = sessions.find(item => item.id === sessionId);
+                captureReviewBaseline(sessionId, session?.workspacePath);
               }
               if (status === 'completed') {
                 const session = sessions.find(item => item.id === sessionId);
@@ -732,6 +1109,7 @@ function App() {
         onNewFile={() => handleNewFile()} onOpenFile={handleOpenFile} onOpenFolder={handleOpenFolder} onNewProject={handleCreateProject}
         onSave={handleSaveCurrentFile} onSaveAll={() => openFiles.forEach(f => handleFileSave(f.path))}
         editorVisible={panelState.editorVisible} chatVisible={panelState.chatVisible}
+        terminalVisible={terminalVisible} gitPanelVisible={gitPanelVisible}
         onToggleEditor={() => togglePanel('editor')} onToggleChat={() => togglePanel('chat')}
         onToggleTerminal={() => setTerminalVisible(v => !v)} onSwapPanels={swapPanels}
         onToggleGitPanel={() => setGitPanelVisible(v => !v)}
@@ -780,7 +1158,7 @@ function App() {
                     const modelName = specificModelId || activeProvider?.model || '';
 
                     return new Promise<string>((resolve, reject) => {
-                      const wsUrl = `ws://localhost:${backendPort}/ws?X-Session-Cwd=${encodeURIComponent(activeProjectPath)}`;
+                      const wsUrl = `ws://localhost:${backendPort}/desktop/ws?X-Session-Cwd=${encodeURIComponent(activeProjectPath)}`;
                       const ws = new WebSocket(wsUrl);
                       const timeout = setTimeout(() => { ws.close(); reject(new Error('生成超时')); }, 60000);
                       let text = '';

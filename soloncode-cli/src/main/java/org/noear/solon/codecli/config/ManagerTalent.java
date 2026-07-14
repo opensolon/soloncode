@@ -20,6 +20,8 @@ import org.noear.solon.ai.chat.talent.AbsTalent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.Param;
 
+import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.command.builtin.LoopTask;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
@@ -38,9 +40,31 @@ import java.util.Map;
 public class ManagerTalent extends AbsTalent {
     private final HarnessEngine engine;
     private final AgentSettings settings;
-    public ManagerTalent(HarnessEngine engine, AgentSettings settings) {
+    private final LoopTaskOperations loopTasks;
+
+    public ManagerTalent(HarnessEngine engine, AgentSettings settings, LoopScheduler loopScheduler) {
+        this(engine, settings, new LoopTaskOperations() {
+            @Override
+            public LoopTask schedule(String sessionId, LoopTask task) {
+                return loopScheduler.schedule(sessionId, task);
+            }
+
+            @Override
+            public LoopTask getTaskById(String sessionId, String taskId) {
+                return loopScheduler.getTaskById(sessionId, taskId);
+            }
+
+            @Override
+            public void remove(String sessionId, LoopTask task) {
+                loopScheduler.remove(sessionId, task);
+            }
+        });
+    }
+
+    ManagerTalent(HarnessEngine engine, AgentSettings settings, LoopTaskOperations loopTasks) {
         this.engine = engine;
         this.settings = settings;
+        this.loopTasks = loopTasks;
     }
 
 
@@ -168,6 +192,81 @@ public class ManagerTalent extends AbsTalent {
         settings.saveToFile();
 
         return "OK: API 源 '" + docUrl + "' 已添加";
+    }
+
+    // ==================== loop task ====================
+
+    @ToolMapping(name = "add_loop_task",
+            description = "新增当前会话的定时任务。支持固定分钟间隔或 cron 表达式；" +
+                    "未提供 intervalMinutes 时默认每 5 分钟执行。创建成功后返回 taskId，后续可用它删除任务。")
+    public String addLoopTask(
+            @Param(name = "prompt", description = "任务触发后交给 AI 执行的提示词") String prompt,
+            @Param(name = "intervalMinutes", description = "固定执行间隔（分钟），默认 5；提供 cron 时以 cron 为准", required = false) Integer intervalMinutes,
+            @Param(name = "cron", description = "cron 表达式（可选）；提供后使用 cron 调度", required = false) String cron,
+            @Param(name = "type", description = "任务类型：HEARTBEAT 或 GOAL，默认 HEARTBEAT", required = false) String type,
+            @Param(name = "runNow", description = "是否在创建后立即执行一次，默认 false", required = false) Boolean runNow,
+            @Param(name = "maxTokens", description = "最大 token 预算（可选，主要用于 GOAL 任务）", required = false) Long maxTokens,
+            @Param(name = "maxDurationMs", description = "最大执行时长（毫秒，可选，主要用于 GOAL 任务）", required = false) Long maxDurationMs,
+            String __sessionId) {
+        if (Assert.isEmpty(__sessionId)) {
+            return "ERROR: 无活跃会话，无法新增定时任务。";
+        }
+        if (Assert.isEmpty(prompt)) {
+            return "ERROR: prompt 不能为空。";
+        }
+
+        LoopTask.TaskType taskType = (type != null && "GOAL".equalsIgnoreCase(type))
+                ? LoopTask.TaskType.GOAL
+                : LoopTask.TaskType.HEARTBEAT;
+        int interval = intervalMinutes != null ? intervalMinutes : 5;
+        LoopTask task = new LoopTask(
+                prompt, interval, cron,
+                taskType,
+                runNow != null && runNow
+        );
+        if (maxTokens != null) {
+            task.setMaxTokens(maxTokens);
+        }
+        if (maxDurationMs != null) {
+            task.setMaxDurationMs(maxDurationMs);
+        }
+
+        try {
+            loopTasks.schedule(__sessionId, task);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return "ERROR: 新增定时任务失败: " + e.getMessage();
+        }
+
+        return "OK: 定时任务已新增，taskId=" + task.getId();
+    }
+
+    @ToolMapping(name = "remove_loop_task",
+            description = "删除当前会话中的定时任务。taskId 来自 add_loop_task 的返回值。")
+    public String removeLoopTask(
+            @Param(name = "taskId", description = "待删除的定时任务 ID") String taskId,
+            String __sessionId) {
+        if (Assert.isEmpty(__sessionId)) {
+            return "ERROR: 无活跃会话，无法删除定时任务。";
+        }
+        if (Assert.isEmpty(taskId)) {
+            return "ERROR: taskId 不能为空。";
+        }
+
+        LoopTask task = loopTasks.getTaskById(__sessionId, taskId);
+        if (task == null) {
+            return "ERROR: 定时任务不存在，taskId=" + taskId;
+        }
+
+        loopTasks.remove(__sessionId, task);
+        return "OK: 定时任务已删除，taskId=" + taskId;
+    }
+
+    interface LoopTaskOperations {
+        LoopTask schedule(String sessionId, LoopTask task);
+
+        LoopTask getTaskById(String sessionId, String taskId);
+
+        void remove(String sessionId, LoopTask task);
     }
 
 }

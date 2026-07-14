@@ -133,6 +133,8 @@ export interface GeneralSettings {
   editorTheme: string;
   fontSize: number;
   language: string;
+  autoCheckUpdates: boolean;
+  lastUpdateCheckAt: string;
   tabSize: number;
   autoSave: boolean;
   formatOnSave: boolean;
@@ -206,6 +208,117 @@ export function createProvider(type: ProviderType): ModelProvider {
 
 // ==================== 默认值 ====================
 
+type ChatModelConfig = {
+  apiUrl: string;
+  apiKey?: string;
+  provider?: string;
+  model?: string;
+};
+
+function normalizeBaseUrl(value?: string) {
+  return (value || '').trim().replace(/\/+$/, '');
+}
+
+function configuredProviderId(apiUrl: string, providerType: ProviderType) {
+  const raw = `${providerType || 'auto'}_${normalizeBaseUrl(apiUrl)}`;
+  const key = raw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  return `provider_${(key || 'remote').slice(0, 96)}`;
+}
+
+function providerNameFromConfig(apiUrl: string, providerType: ProviderType, model?: string) {
+  try {
+    return new URL(apiUrl).host || model || PROVIDER_PRESETS[providerType].label;
+  } catch {
+    return model || PROVIDER_PRESETS[providerType].label;
+  }
+}
+
+function mergeAvailableModels(
+  current: ModelProvider['availableModels'],
+  next: ModelProvider['availableModels'],
+  selectedModel?: string,
+) {
+  const models = new Map<string, { id: string; ownedBy?: string; contextLength?: number }>();
+  for (const item of current || []) {
+    if (item?.id) models.set(item.id, item);
+  }
+  for (const item of next || []) {
+    if (item?.id) models.set(item.id, item);
+  }
+  if (selectedModel && !models.has(selectedModel)) {
+    models.set(selectedModel, { id: selectedModel });
+  }
+  return Array.from(models.values());
+}
+
+function sameConfiguredProvider(provider: ModelProvider, config: ChatModelConfig, providerType: ProviderType) {
+  return normalizeBaseUrl(provider.apiUrl) === normalizeBaseUrl(config.apiUrl)
+    && normalizeProviderType(provider.type) === providerType;
+}
+
+function upsertConfiguredProvider(
+  existingProviders: ModelProvider[],
+  config: ChatModelConfig,
+  availableModels?: ModelProvider['availableModels'],
+): { providers: ModelProvider[]; providerId: string; changed: boolean } {
+  const apiUrl = normalizeBaseUrl(config.apiUrl);
+  const providerType = normalizeProviderType(config.provider);
+  const selectedModel = (config.model || '').trim();
+  if (!apiUrl) {
+    return { providers: existingProviders, providerId: '', changed: false };
+  }
+
+  const nextProviders = [...existingProviders];
+  const index = nextProviders.findIndex(p => sameConfiguredProvider(p, { ...config, apiUrl }, providerType));
+  const baseId = configuredProviderId(apiUrl, providerType);
+
+  if (index < 0) {
+    let id = baseId;
+    let suffix = 1;
+    while (nextProviders.some(p => p.id === id)) {
+      suffix += 1;
+      id = `${baseId}_${suffix}`;
+    }
+    const provider: ModelProvider = {
+      id,
+      type: providerType,
+      name: providerNameFromConfig(apiUrl, providerType, selectedModel),
+      apiUrl,
+      apiKey: config.apiKey || '',
+      model: selectedModel || availableModels?.[0]?.id || '',
+      enabled: true,
+      scope: 'user',
+      timeout: 'PT120S',
+      contextLength: availableModels?.find(m => m.id === selectedModel)?.contextLength || 128000,
+      defaultOptions: '',
+      availableModels: mergeAvailableModels(undefined, availableModels, selectedModel),
+    };
+    nextProviders.push(provider);
+    return { providers: nextProviders, providerId: provider.id, changed: true };
+  }
+
+  const current = nextProviders[index];
+  const mergedModels = mergeAvailableModels(current.availableModels, availableModels, selectedModel || current.model);
+  const selected = mergedModels.find(m => m.id === (selectedModel || current.model));
+  const updated: ModelProvider = {
+    ...current,
+    type: providerType,
+    name: current.name || providerNameFromConfig(apiUrl, providerType, selectedModel),
+    apiUrl,
+    apiKey: config.apiKey !== undefined ? config.apiKey : current.apiKey,
+    model: selectedModel || current.model || mergedModels[0]?.id || '',
+    enabled: current.enabled !== false,
+    scope: current.scope || 'user',
+    timeout: current.timeout || 'PT120S',
+    contextLength: selected?.contextLength || current.contextLength || 128000,
+    availableModels: mergedModels.length > 0 ? mergedModels : undefined,
+  };
+
+  const changed = JSON.stringify(current) !== JSON.stringify(updated);
+  if (changed) nextProviders[index] = updated;
+  return { providers: nextProviders, providerId: updated.id, changed };
+}
+
 export const DEFAULT_PROMPTS: Record<'skillPrompt' | 'agentPrompt' | 'gitPrompt', string> = {
   skillPrompt: `请帮我创建一个名为「{name}」的 Skill。
 {description}
@@ -232,19 +345,20 @@ description: {description}
 
 ## 示例
 [提供使用示例]`,
-  agentPrompt: `请帮我创建一个名为「{name}」的 Agent。
+  agentPrompt: `请根据以下需求创建一个 Agent，并自动生成简短、清晰且能概括职责的名称。
 {description}
 
 请直接输出完整的 AGENT.md 文件内容（纯 Markdown 格式，不要用代码块包裹）。
+名称只能包含文字、数字、短横线和下划线，并写入 YAML frontmatter 的 name 字段。
 
 格式参考：
 
 ---
-name: {name}
-description: {description}
+name: <自动生成的名称>
+description: <简短描述 Agent 的职责>
 ---
 
-# {name} Agent
+# <自动生成的名称> Agent
 
 ## 角色定义
 [描述这个 Agent 的角色和能力]
@@ -290,9 +404,11 @@ description: {description}
 
 const defaultGeneral: GeneralSettings = {
   theme: 'dark',
-  editorTheme: 'vs-dark',
+  editorTheme: 'auto',
   fontSize: 14,
   language: 'zh-CN',
+  autoCheckUpdates: false,
+  lastUpdateCheckAt: '',
   tabSize: 2,
   autoSave: true,
   formatOnSave: true,
@@ -401,6 +517,10 @@ function normalizeMcpType(type?: string): 'stdio' | 'sse' | 'streamable' {
 }
 
 type BackendResult<T> = { code?: number; data?: T; message?: string };
+type RuntimeSettingsSection = 'general' | 'loop' | 'permission' | 'mounts' | 'mcp' | 'openapi' | 'lsp';
+
+const CORE_RUNTIME_SETTINGS_SECTIONS: RuntimeSettingsSection[] = ['general', 'mounts', 'mcp', 'openapi'];
+const FULL_RUNTIME_SETTINGS_SECTIONS: RuntimeSettingsSection[] = ['general', 'loop', 'permission', 'mounts', 'mcp', 'openapi', 'lsp'];
 
 function backendBaseUrl(backendPort: number): string {
   return `http://localhost:${backendPort}`;
@@ -597,16 +717,17 @@ export const settingsService = {
     }
   },
 
-  async loadRuntimeSettings(backendPort: number): Promise<Partial<AppSettings> | null> {
+  async loadRuntimeSettings(backendPort: number, sections: RuntimeSettingsSection[] = CORE_RUNTIME_SETTINGS_SECTIONS): Promise<Partial<AppSettings> | null> {
     try {
+      const enabledSections = new Set(sections);
       const [general, loop, permission, mounts, mcpServers, openApiServers, lspServers] = await Promise.all([
-        backendGet<Record<string, any>>(backendPort, '/web/settings/general'),
-        backendGet<Record<string, any>>(backendPort, '/web/settings/loop'),
-        backendGet<Record<string, any>>(backendPort, '/web/settings/permission'),
-        backendGet<any[]>(backendPort, '/web/settings/mounts'),
-        backendGet<any[]>(backendPort, '/web/settings/mcp/servers'),
-        backendGet<any[]>(backendPort, '/web/settings/openapi/servers'),
-        backendGet<any[]>(backendPort, '/web/settings/lsp/servers'),
+        enabledSections.has('general') ? backendGet<Record<string, any>>(backendPort, '/web/settings/general') : Promise.resolve(null),
+        enabledSections.has('loop') ? backendGet<Record<string, any>>(backendPort, '/web/settings/loop') : Promise.resolve(null),
+        enabledSections.has('permission') ? backendGet<Record<string, any>>(backendPort, '/web/settings/permission') : Promise.resolve(null),
+        enabledSections.has('mounts') ? backendGet<any[]>(backendPort, '/web/settings/mounts') : Promise.resolve(null),
+        enabledSections.has('mcp') ? backendGet<any[]>(backendPort, '/web/settings/mcp/servers') : Promise.resolve(null),
+        enabledSections.has('openapi') ? backendGet<any[]>(backendPort, '/web/settings/openapi/servers') : Promise.resolve(null),
+        enabledSections.has('lsp') ? backendGet<any[]>(backendPort, '/web/settings/lsp/servers') : Promise.resolve(null),
       ]);
 
       const result: Partial<AppSettings> = {};
@@ -700,6 +821,18 @@ export const settingsService = {
     }
   },
 
+  runtimeSettingsSections: {
+    core: CORE_RUNTIME_SETTINGS_SECTIONS,
+    full: FULL_RUNTIME_SETTINGS_SECTIONS,
+  },
+
+  ensureConfiguredProvider(
+    existingProviders: ModelProvider[],
+    config: ChatModelConfig,
+  ): { providers: ModelProvider[]; providerId: string; changed: boolean } {
+    return upsertConfiguredProvider(existingProviders, config);
+  },
+
   async syncRuntimeSettings(backendPort: number, settings: AppSettings): Promise<void> {
     try {
       await Promise.all([
@@ -757,7 +890,7 @@ export const settingsService = {
   ): Promise<{ providers: ModelProvider[]; activeProviderId: string } | null> {
     try {
       const resp = await fetch(
-        `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`,
+        `http://localhost:${backendPort}/desktop/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`,
       );
       if (!resp.ok) return null;
 
@@ -768,10 +901,21 @@ export const settingsService = {
       const existingIds = new Set(existingProviders.map(p => p.id));
       const existingModels = new Set(existingProviders.map(p => p.model));
       const newProviders: ModelProvider[] = [];
+      const availableModels = modelList.map(m => ({
+        id: String(m.id),
+        ownedBy: m.ownedBy || m.owned_by,
+        contextLength: Number(m.contextLength || m.context_length) || undefined,
+      }));
+      const merged = upsertConfiguredProvider(
+        existingProviders,
+        { apiUrl, apiKey, provider, model },
+        availableModels,
+      );
 
       for (const m of modelList) {
         const modelId = m.id as string;
         const providerId = `model_${modelId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const contextLength = Number(m.contextLength || m.context_length) || undefined;
 
         if (existingIds.has(providerId)) continue;
 
@@ -785,7 +929,7 @@ export const settingsService = {
           enabled: true,
           scope: 'user',
           timeout: 'PT120S',
-          contextLength: Number(m.contextLength || m.context_length) || undefined,
+          contextLength,
           defaultOptions: '',
         };
         newProviders.push(modelProvider);
@@ -793,7 +937,7 @@ export const settingsService = {
         // 注入到 CLI 后端（仅注入尚未添加的模型）
         if (!existingModels.has(modelId)) {
           try {
-            await fetch(`http://localhost:${backendPort}/chat/models/add`, {
+            await fetch(`http://localhost:${backendPort}/desktop/chat/models/add`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -814,11 +958,11 @@ export const settingsService = {
         }
       }
 
-      if (newProviders.length === 0) return null;
+      if (!merged.changed && newProviders.length === 0) return null;
 
-      const allProviders = [...existingProviders, ...newProviders];
-      const activeProviderId = existingProviders.length === 0 && allProviders.length > 0
-        ? allProviders[0].id
+      const allProviders = [...merged.providers, ...newProviders.filter(p => !merged.providers.some(existing => existing.id === p.id))];
+      const activeProviderId = existingProviders.length === 0 && merged.providerId
+        ? merged.providerId
         : '';
 
       return { providers: allProviders, activeProviderId };
@@ -1066,46 +1210,6 @@ export const settingsService = {
       console.warn('[settingsService] 扫描 skills 目录失败:', err);
       return [];
     }
-  },
-
-  /**
-   * 扫描工作区中的第三方 skill 目录（如 .claude/commands/, .codex/）
-   * 每个 .md 文件视为一个 skill
-   */
-  async scanThirdPartySkills(workspacePath: string): Promise<SkillConfig[]> {
-    const scanConfigs: Array<{ dir: string; group: SkillGroup; ext: string }> = [
-      { dir: '.claude/commands', group: 'claude', ext: '.md' },
-      { dir: '.codex', group: 'codex', ext: '.md' },
-    ];
-
-    const skills: SkillConfig[] = [];
-
-    for (const { dir, group, ext } of scanConfigs) {
-      try {
-        const fullPath = `${workspacePath}/${dir}`;
-        const exists = await fileService.pathExists(fullPath);
-        if (!exists) continue;
-
-        const entries = await fileService.listDirectory(fullPath);
-        for (const entry of entries) {
-          if (!entry.isDir && entry.name.endsWith(ext)) {
-            const name = entry.name.slice(0, -ext.length);
-            skills.push({
-              name,
-              description: '',
-              path: entry.path,
-              enabled: true,
-              source: 'discovered',
-              group,
-            });
-          }
-        }
-      } catch {
-        // 目录不存在或无权限，跳过
-      }
-    }
-
-    return skills;
   },
 
   /**

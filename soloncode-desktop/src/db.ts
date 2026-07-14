@@ -30,6 +30,25 @@ export interface DbProject {
   addedAt: string;   // ISO timestamp
 }
 
+// ==================== 自动化 ====================
+
+export type AutomationReasoningEffort = 'low' | 'medium' | 'high' | 'max';
+
+export interface DbAutomation {
+  id?: number;
+  title: string;
+  prompt: string;
+  projectId: string;
+  projectName: string;
+  modelId: string;
+  modelName: string;
+  reasoningEffort: AutomationReasoningEffort;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string;
+  runCount: number;
+}
+
 /** 未关联项目的特殊标记 */
 export const UNLINKED_PROJECT = '__unlinked__';
 
@@ -107,6 +126,7 @@ class SolonCodeDatabase extends Dexie {
   skills!: Table<DbSkill>;
   agents!: Table<DbAgent>;
   projects!: Table<DbProject>;
+  automations!: Table<DbAutomation>;
 
   constructor() {
     super('SolonCodeDB');
@@ -133,6 +153,10 @@ class SolonCodeDatabase extends Dexie {
     // v7: messages 加 workspacePath 索引
     this.version(7).stores({
       messages: '++id, conversationId, timestamp, workspacePath',
+    });
+    // v8: 新增自动化任务表
+    this.version(8).stores({
+      automations: '++id, projectId, createdAt, lastRunAt',
     });
   }
 }
@@ -238,6 +262,123 @@ export async function addProject(project: DbProject): Promise<void> {
 
 export async function removeProject(id: string): Promise<void> {
   await db.projects.delete(id);
+}
+
+function remapProjectOwnedPath(path: string | undefined, oldProjectId: string, newProjectId: string): string | undefined {
+  if (!path) return path;
+  const normalizedPath = path.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normalizedOld = oldProjectId.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normalizedPathLower = normalizedPath.toLowerCase();
+  const normalizedOldLower = normalizedOld.toLowerCase();
+  if (normalizedPathLower !== normalizedOldLower && !normalizedPathLower.startsWith(`${normalizedOldLower}/`)) {
+    return path;
+  }
+
+  const suffix = normalizedPath.slice(normalizedOld.length);
+  const separator = newProjectId.includes('\\') ? '\\' : '/';
+  return `${newProjectId.replace(/[\\/]+$/, '')}${suffix.replace(/\//g, separator)}`;
+}
+
+function storedSettingEquals(row: DbGlobalSetting | undefined, value: string): boolean {
+  if (!row) return false;
+  try {
+    return JSON.parse(row.value) === value;
+  } catch {
+    return row.value === value;
+  }
+}
+
+export async function renameProject(id: string, newId: string, name: string): Promise<void> {
+  if (id === newId) {
+    await db.projects.update(id, { name });
+    return;
+  }
+
+  await db.transaction(
+    'rw',
+    [db.projects, db.conversations, db.messages, db.automations, db.skills, db.agents, db.globalSettings],
+    async () => {
+      const project = await db.projects.get(id);
+      if (!project) throw new Error('项目不存在');
+      if (await db.projects.get(newId)) throw new Error('目标项目已存在');
+
+      await db.projects.add({ ...project, id: newId, name });
+      await db.conversations.where('workspacePath').equals(id).modify({ workspacePath: newId });
+      await db.messages.where('workspacePath').equals(id).modify({ workspacePath: newId });
+      await db.automations.where('projectId').equals(id).modify({ projectId: newId, projectName: name });
+
+      await db.skills.toCollection().modify(skill => {
+        const nextPath = remapProjectOwnedPath(skill.path, id, newId);
+        if (nextPath !== skill.path) skill.path = nextPath || skill.path;
+      });
+      await db.agents.toCollection().modify(agent => {
+        const nextPath = remapProjectOwnedPath(agent.path, id, newId);
+        if (nextPath !== agent.path) agent.path = nextPath || agent.path;
+      });
+
+      for (const key of ['lastFolder', 'lastActiveProject']) {
+        const row = await db.globalSettings.get(key);
+        if (storedSettingEquals(row, id)) {
+          await db.globalSettings.put({ key, value: JSON.stringify(newId) });
+        }
+      }
+
+      const oldLastSessionKey = `lastSession:${id}`;
+      const lastSession = await db.globalSettings.get(oldLastSessionKey);
+      if (lastSession) {
+        await db.globalSettings.put({ ...lastSession, key: `lastSession:${newId}` });
+        await db.globalSettings.delete(oldLastSessionKey);
+      }
+
+      const general = await db.globalSettings.get('general');
+      if (general) {
+        try {
+          const parsed = JSON.parse(general.value);
+          let changed = false;
+          if (Array.isArray(parsed?.mounts)) {
+            parsed.mounts = parsed.mounts.map((mount: { path?: string }) => {
+              const nextPath = remapProjectOwnedPath(mount.path, id, newId);
+              if (nextPath !== mount.path) changed = true;
+              return nextPath === mount.path ? mount : { ...mount, path: nextPath };
+            });
+          }
+          if (changed) {
+            await db.globalSettings.put({ key: general.key, value: JSON.stringify(parsed) });
+          }
+        } catch {
+          // 非法旧配置保持原样，不阻断项目路径迁移。
+        }
+      }
+
+      await db.projects.delete(id);
+    },
+  );
+}
+
+export async function updateProjectOrder(projectIds: string[]): Promise<void> {
+  await db.transaction('rw', db.projects, async () => {
+    await Promise.all(
+      projectIds.map((id, sortOrder) => db.projects.update(id, { sortOrder })),
+    );
+  });
+}
+
+// ==================== 自动化 CRUD ====================
+
+export async function getAllAutomations(): Promise<DbAutomation[]> {
+  return await db.automations.orderBy('createdAt').reverse().toArray();
+}
+
+export async function addAutomation(automation: Omit<DbAutomation, 'id'>): Promise<number> {
+  return await db.automations.add(automation);
+}
+
+export async function updateAutomation(id: number, updates: Partial<DbAutomation>): Promise<void> {
+  await db.automations.update(id, updates);
+}
+
+export async function deleteAutomation(id: number): Promise<void> {
+  await db.automations.delete(id);
 }
 
 // ==================== 全局设置（键值对） ====================

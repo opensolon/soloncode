@@ -912,6 +912,29 @@ public class WebController {
     }
 
     /**
+     * 获取所有会话的循环任务列表。
+     * <p>每个任务额外包含 sessionId，供后续删除、启停和手动触发使用。</p>
+     */
+    @Get
+    @Mapping("/web/chat/loop/all")
+    public Result<List<Map>> loopAll() {
+        loopScheduler.restoreAll();
+        Map<String, List<LoopTask>> tasksBySession = loopScheduler.listAll();
+        List<Map> data = new ArrayList<>();
+
+        for (Map.Entry<String, List<LoopTask>> entry : tasksBySession.entrySet()) {
+            for (LoopTask task : entry.getValue()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("sessionId", entry.getKey());
+                item.putAll(buildTaskMap(task));
+                data.add(item);
+            }
+        }
+
+        return Result.succeed(data);
+    }
+
+    /**
      * 构建任务 Map（通用方法，供 list/get 复用）
      */
     private Map<String, Object> buildTaskMap(LoopTask t) {

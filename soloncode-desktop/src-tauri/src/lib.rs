@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::net::TcpStream;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
 
@@ -80,6 +80,46 @@ pub struct FileInfo {
 pub struct WorkspaceInfo {
     path: String,
     name: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInfo {
+    current_desktop_version: String,
+    current_backend_version: Option<String>,
+    latest_desktop_version: Option<String>,
+    latest_backend_version: Option<String>,
+    latest_desktop_release_tag: Option<String>,
+    desktop_download_url: Option<String>,
+    backend_update_url: String,
+    desktop_update_available: bool,
+    backend_update_available: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteUpdateJson {
+    cli_version: Option<String>,
+    #[serde(rename = "ide_version")]
+    _ide_version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteRelease {
+    tag_name: String,
+    assets: Vec<RemoteReleaseAsset>,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopReleaseInfo {
+    release_tag: String,
+    version: String,
+    download_url: String,
 }
 
 // ==================== Git 相关结构体 ====================
@@ -274,6 +314,95 @@ fn delete_directory(path: &str) -> Result<(), String> {
 #[tauri::command]
 fn rename_item(old_path: &str, new_path: &str) -> Result<(), String> {
     fs::rename(old_path, new_path).map_err(|e| format!("重命名失败: {}", e))
+}
+
+fn validate_project_directory_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("项目名称不能为空".to_string());
+    }
+    if trimmed.chars().count() > 64 {
+        return Err("项目名称不能超过 64 个字符".to_string());
+    }
+    if trimmed == "." || trimmed == ".." || trimmed.ends_with('.') || trimmed.ends_with(' ') {
+        return Err("项目名称格式无效".to_string());
+    }
+    if !trimmed.chars().all(|ch| {
+        ch.is_alphanumeric() || matches!(ch, ' ' | '_' | '-' | '.' | '(' | ')')
+    }) {
+        return Err("项目名称只能包含文字、数字、空格、点、横线、下划线和括号".to_string());
+    }
+
+    let stem = trimmed.split('.').next().unwrap_or(trimmed).to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit()
+            && stem.as_bytes()[3] != b'0');
+    if reserved {
+        return Err("项目名称是系统保留名称".to_string());
+    }
+
+    Ok(trimmed.to_string())
+}
+
+#[cfg(test)]
+mod project_directory_name_tests {
+    use super::{rename_project_directory, validate_project_directory_name};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn accepts_common_project_names() {
+        assert_eq!(validate_project_directory_name("python-server").unwrap(), "python-server");
+        assert_eq!(validate_project_directory_name("项目 3").unwrap(), "项目 3");
+    }
+
+    #[test]
+    fn rejects_path_traversal_and_windows_reserved_names() {
+        for value in ["../outside", "bad/name", "bad\\name", "CON", "LPT1.txt", "name."] {
+            assert!(validate_project_directory_name(value).is_err(), "should reject {value}");
+        }
+    }
+
+    #[test]
+    fn renames_only_within_the_same_parent_directory() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let parent = std::env::temp_dir().join(format!("soloncode-project-rename-{unique}"));
+        let source = parent.join("old-project");
+        fs::create_dir_all(&source).unwrap();
+
+        let renamed = rename_project_directory(source.to_str().unwrap(), "python-server").unwrap();
+        let target = parent.join("python-server");
+        assert_eq!(renamed, target.to_string_lossy());
+        assert!(!source.exists());
+        assert!(target.is_dir());
+
+        fs::remove_dir_all(parent).unwrap();
+    }
+}
+
+/// 在原父目录内安全地重命名项目目录，禁止通过名称改变目录层级或覆盖已有目录。
+#[tauri::command]
+fn rename_project_directory(project_path: &str, new_name: &str) -> Result<String, String> {
+    let name = validate_project_directory_name(new_name)?;
+    let source = Path::new(project_path);
+    if !source.is_absolute() || !source.is_dir() {
+        return Err("项目目录不存在或不是绝对路径".to_string());
+    }
+    let metadata = fs::symlink_metadata(source).map_err(|e| format!("无法读取项目目录: {}", e))?;
+    if metadata.file_type().is_symlink() {
+        return Err("不支持重命名符号链接项目".to_string());
+    }
+
+    let parent = source.parent().ok_or("无法获取项目父目录")?;
+    let target = parent.join(name);
+    if target.exists() {
+        return Err("同名目录已存在".to_string());
+    }
+
+    fs::rename(source, &target).map_err(|e| format!("重命名项目目录失败: {}", e))?;
+    Ok(target.to_string_lossy().to_string())
 }
 
 /// 检查路径是否存在
@@ -828,8 +957,19 @@ fn terminal_kill() -> Result<(), String> {
 
 // ==================== 后端进程管理 ====================
 
+const BACKEND_READY_ATTEMPTS: u32 = 20;
+const BACKEND_READY_SLEEP_MS: u64 = 500;
+const BACKEND_STARTUP_GRACE: Duration = Duration::from_secs(10);
+const LEGACY_SETTINGS_SCHEMA: &str = "https://solon.noear.org/soloncode/settings.schema.json";
+
+struct ManagedBackendProcess {
+    child: Child,
+    port: u16,
+    started_at: Instant,
+}
+
 /// 全局后端进程句柄
-static BACKEND_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+static BACKEND_PROCESS: Mutex<Option<ManagedBackendProcess>> = Mutex::new(None);
 
 /// 启动方式：soloncode 命令 或 java -jar
 enum BackendLaunchMethod {
@@ -839,12 +979,121 @@ enum BackendLaunchMethod {
     Jar { path: std::path::PathBuf },
 }
 
+fn user_home_dir() -> String {
+    if cfg!(windows) {
+        std::env::var("USERPROFILE").unwrap_or_default()
+    } else {
+        std::env::var("HOME").unwrap_or_default()
+    }
+}
+
+fn user_settings_json_path() -> std::path::PathBuf {
+    Path::new(&user_home_dir()).join(".soloncode").join("settings.json")
+}
+
+fn maybe_prepare_legacy_cli_settings() {
+    let settings_path = user_settings_json_path();
+    let raw = match fs::read_to_string(&settings_path) {
+        Ok(raw) => raw,
+        Err(_) => return,
+    };
+
+    let value: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(value) => value,
+        Err(e) => {
+            app_log(&format!(
+                "[soloncode] Failed to parse settings.json before legacy compatibility check: {}",
+                e
+            ));
+            return;
+        }
+    };
+
+    let root = match value.as_object() {
+        Some(root) => root,
+        None => return,
+    };
+
+    let has_incompatible_shape = root.get("models").is_some()
+        || root.get("permission").is_some()
+        || root.get("loop").is_some()
+        || root.get("mcpServers").is_some()
+        || root.get("apiServers").is_some()
+        || root.get("lspServers").is_some()
+        || root.get("providers").is_some();
+
+    if !has_incompatible_shape {
+        return;
+    }
+
+    let mut legacy_root = serde_json::Map::new();
+    legacy_root.insert(
+        "$schema".to_string(),
+        serde_json::Value::String(LEGACY_SETTINGS_SCHEMA.to_string()),
+    );
+
+    if let Some(general) = root.get("general").filter(|v| v.is_object()) {
+        legacy_root.insert("general".to_string(), general.clone());
+    }
+
+    if let Some(mount_pools) = root.get("mountPools").filter(|v| v.is_object()) {
+        legacy_root.insert("mountPools".to_string(), mount_pools.clone());
+    }
+
+    let fallback = serde_json::Value::Object(legacy_root);
+    if value == fallback {
+        return;
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let backup_path = settings_path.with_file_name(format!("settings.desktop-backup-{}.json", timestamp));
+
+    if let Err(e) = fs::copy(&settings_path, &backup_path) {
+        app_log(&format!(
+            "[soloncode] Failed to backup incompatible legacy settings.json: {}",
+            e
+        ));
+        return;
+    }
+
+    match serde_json::to_string_pretty(&fallback) {
+        Ok(serialized) => {
+            if let Err(e) = fs::write(&settings_path, serialized) {
+                app_log(&format!(
+                    "[soloncode] Failed to rewrite settings.json for legacy CLI compatibility: {}",
+                    e
+                ));
+                return;
+            }
+            app_log(&format!(
+                "[soloncode] Backed up incompatible settings.json to {:?} and wrote legacy-compatible fallback for java -jar serve startup",
+                backup_path
+            ));
+        }
+        Err(e) => {
+            app_log(&format!(
+                "[soloncode] Failed to serialize legacy-compatible settings.json fallback: {}",
+                e
+            ));
+        }
+    }
+}
+
 /// 检测启动方式：优先 soloncode 命令，回退到 JAR
 fn detect_launch_method() -> BackendLaunchMethod {
     if cfg!(windows) {
         if let Ok(home) = std::env::var("USERPROFILE") {
             let bin_dir = Path::new(&home).join(".soloncode").join("bin");
-            for name in ["soloncode.ps1", "soloncode.bat", "soloncode.cmd", "soloncode.exe"] {
+            let jar = bin_dir.join("soloncode-cli.jar");
+            if jar.exists() {
+                app_log(&format!("[soloncode] Found JAR (preferred on Windows): {:?}", jar));
+                return BackendLaunchMethod::Jar { path: jar };
+            }
+
+            for name in ["soloncode.exe", "soloncode.bat", "soloncode.cmd", "soloncode.ps1"] {
                 let candidate = bin_dir.join(name);
                 if candidate.exists() {
                     app_log(&format!("[soloncode] Found {}: {:?}", name, candidate));
@@ -875,7 +1124,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
                     })
                     .unwrap_or_else(|| path.lines().next().unwrap_or(&path))
                     .to_string();
-                app_log(&format!("[soloncode] Found soloncode command: {}", cmd));
+                app_log(&format!("[soloncode] Found soloncode command in PATH: {}", cmd));
                 return BackendLaunchMethod::Command { cmd };
             }
         }
@@ -885,18 +1134,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
     let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     if let Ok(home) = std::env::var(home_var) {
         let bin_dir = Path::new(&home).join(".soloncode").join("bin");
-        if cfg!(windows) {
-            let bat = bin_dir.join("soloncode.bat");
-            if bat.exists() {
-                app_log(&format!("[soloncode] Found soloncode.bat: {:?}", bat));
-                return BackendLaunchMethod::Command { cmd: bat.to_string_lossy().to_string() };
-            }
-            let ps1 = bin_dir.join("soloncode.ps1");
-            if ps1.exists() {
-                app_log(&format!("[soloncode] Found soloncode.ps1: {:?}", ps1));
-                return BackendLaunchMethod::Command { cmd: ps1.to_string_lossy().to_string() };
-            }
-        } else {
+        if !cfg!(windows) {
             let sh = bin_dir.join("soloncode");
             if sh.exists() {
                 app_log(&format!("[soloncode] Found soloncode script: {:?}", sh));
@@ -919,7 +1157,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
 }
 
 /// Check whether an occupied port is already serving the soloncode backend.
-fn is_soloncode_backend(port: u16) -> bool {
+fn is_soloncode_desktop_backend(port: u16) -> bool {
     let addr = format!("127.0.0.1:{}", port);
     let mut stream = match TcpStream::connect(&addr) {
         Ok(stream) => stream,
@@ -930,7 +1168,7 @@ fn is_soloncode_backend(port: u16) -> bool {
     let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(2)));
 
     let req = format!(
-        "GET /version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+        "GET /desktop/version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
         port
     );
     if stream.write_all(req.as_bytes()).is_err() {
@@ -953,10 +1191,64 @@ fn is_soloncode_backend(port: u16) -> bool {
         && resp.contains("\"version\"")
 }
 
+fn wait_for_backend_ready(port: u16, attempts: u32, sleep_ms: u64) -> bool {
+    for _ in 0..attempts {
+        if is_soloncode_desktop_backend(port) {
+            return true;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+    }
+
+    false
+}
+
+fn spawn_backend_readiness_watchdog(port: u16, pid: u32) {
+    std::thread::spawn(move || {
+        if wait_for_backend_ready(port, BACKEND_READY_ATTEMPTS, BACKEND_READY_SLEEP_MS) {
+            app_log(&format!(
+                "[soloncode] Backend PID {} on port {} reported ready",
+                pid, port
+            ));
+            return;
+        }
+
+        let mut proc = match BACKEND_PROCESS.lock() {
+            Ok(guard) => guard,
+            Err(e) => {
+                app_log(&format!(
+                    "[soloncode] Failed to lock backend process for watchdog cleanup: {}",
+                    e
+                ));
+                return;
+            }
+        };
+
+        let should_kill = match proc.as_ref() {
+            Some(managed) => managed.child.id() == pid && managed.port == port && !is_soloncode_desktop_backend(port),
+            None => false,
+        };
+
+        if !should_kill {
+            return;
+        }
+
+        if let Some(mut managed) = proc.take() {
+            app_log(&format!(
+                "[soloncode] Killing managed backend PID {} because port {} did not become ready within startup grace period",
+                managed.child.id(),
+                port
+            ));
+            let _ = managed.child.kill();
+            let _ = managed.child.wait();
+        }
+    });
+}
+
 /// 检测指定端口是否已经有可复用的 SolonCode 后端。
 #[tauri::command]
 fn detect_backend(port: u16) -> Result<bool, String> {
-    let detected = is_soloncode_backend(port);
+    let detected = is_soloncode_desktop_backend(port);
     if detected {
         app_log(&format!("[soloncode] Detected existing soloncode backend on port {}", port));
     }
@@ -964,30 +1256,312 @@ fn detect_backend(port: u16) -> Result<bool, String> {
 }
 
 /// 启动后端 CLI 进程（如果已在运行则复用）
+#[allow(unreachable_code, unused_variables)]
+fn compare_version_text(left: &str, right: &str) -> std::cmp::Ordering {
+    let left_parts: Vec<u32> = left
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.parse::<u32>().unwrap_or(0))
+        .collect();
+    let right_parts: Vec<u32> = right
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.parse::<u32>().unwrap_or(0))
+        .collect();
+
+    let size = left_parts.len().max(right_parts.len());
+    for idx in 0..size {
+        let l = *left_parts.get(idx).unwrap_or(&0);
+        let r = *right_parts.get(idx).unwrap_or(&0);
+        match l.cmp(&r) {
+            std::cmp::Ordering::Equal => {}
+            order => return order,
+        }
+    }
+
+    std::cmp::Ordering::Equal
+}
+
+fn pick_desktop_asset(assets: &[RemoteReleaseAsset]) -> Option<&RemoteReleaseAsset> {
+    let mut ranked: Vec<(&RemoteReleaseAsset, u8)> = assets
+        .iter()
+        .filter_map(|asset| {
+            let lower = asset.name.to_ascii_lowercase();
+            if lower.ends_with("_zh-cn.msi") {
+                Some((asset, 0))
+            } else if lower.ends_with("_x64_en-us.msi") {
+                Some((asset, 1))
+            } else if lower.ends_with(".msi") {
+                Some((asset, 2))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    ranked.sort_by_key(|(_, rank)| *rank);
+    ranked.into_iter().next().map(|(asset, _)| asset)
+}
+
+fn extract_desktop_version(asset_name: &str) -> Option<String> {
+    let rest = asset_name.strip_prefix("soloncode-desktop_")?;
+    let version = rest.split('_').next()?.trim();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version.to_string())
+    }
+}
+
+fn build_http_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("创建更新检查客户端失败: {}", e))
+}
+
+fn fetch_current_backend_version(backend_port: Option<u16>) -> Option<String> {
+    let port = backend_port?;
+    let client = build_http_client().ok()?;
+    let url = format!("http://127.0.0.1:{}/desktop/version", port);
+    let payload = client.get(url).send().ok()?.error_for_status().ok()?;
+    let json: serde_json::Value = payload.json().ok()?;
+    json.get("data")
+        .and_then(|data| data.get("version"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+}
+
+fn fetch_latest_desktop_release(client: &reqwest::blocking::Client) -> Result<Option<DesktopReleaseInfo>, String> {
+    let mut releases: Vec<RemoteRelease> = client
+        .get("https://gitee.com/api/v5/repos/opensolon/soloncode/releases?page=1&per_page=100")
+        .send()
+        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
+        .json()
+        .map_err(|e| format!("解析桌面发行版列表失败: {}", e))?;
+
+    releases.sort_by(|left, right| compare_version_text(&right.tag_name, &left.tag_name));
+
+    for release in releases {
+        let Some(asset) = pick_desktop_asset(&release.assets) else {
+            continue;
+        };
+        let Some(version) = extract_desktop_version(&asset.name) else {
+            continue;
+        };
+
+        let preferred_url = format!(
+            "https://gitee.com/opensolon/soloncode/releases/download/{}/soloncode-desktop_{}_zh-CN.msi",
+            release.tag_name, version
+        );
+
+        let download_url = match client.head(&preferred_url).send() {
+            Ok(resp) if resp.status().is_success() => preferred_url,
+            _ => asset.browser_download_url.clone(),
+        };
+
+        return Ok(Some(DesktopReleaseInfo {
+            release_tag: release.tag_name,
+            version,
+            download_url,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn build_update_info(app: &tauri::AppHandle, backend_port: Option<u16>) -> Result<UpdateInfo, String> {
+    let client = build_http_client()?;
+    let remote_info: RemoteUpdateJson = client
+        .get("https://solon.noear.org/soloncode/info.json")
+        .send()
+        .map_err(|e| format!("读取远端版本信息失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("读取远端版本信息失败: {}", e))?
+        .json()
+        .map_err(|e| format!("解析远端版本信息失败: {}", e))?;
+
+    let current_desktop_version = app.package_info().version.to_string();
+    let current_backend_version = fetch_current_backend_version(backend_port);
+    let latest_backend_version = remote_info.cli_version.clone();
+    let latest_desktop_release = fetch_latest_desktop_release(&client)?;
+
+    let latest_desktop_version = latest_desktop_release.as_ref().map(|item| item.version.clone());
+    let latest_desktop_release_tag = latest_desktop_release.as_ref().map(|item| item.release_tag.clone());
+    let desktop_download_url = latest_desktop_release.as_ref().map(|item| item.download_url.clone());
+
+    let desktop_update_available = latest_desktop_version
+        .as_ref()
+        .map(|latest| compare_version_text(latest, &current_desktop_version) == std::cmp::Ordering::Greater)
+        .unwrap_or(false);
+
+    let backend_update_available = match (latest_backend_version.as_ref(), current_backend_version.as_ref()) {
+        (Some(latest), Some(current)) => compare_version_text(latest, current) == std::cmp::Ordering::Greater,
+        _ => false,
+    };
+
+    Ok(UpdateInfo {
+        current_desktop_version,
+        current_backend_version,
+        latest_desktop_version,
+        latest_backend_version,
+        latest_desktop_release_tag,
+        desktop_download_url,
+        backend_update_url: "https://solon.noear.org/soloncode/setup.ps1".to_string(),
+        desktop_update_available,
+        backend_update_available,
+    })
+}
+
+#[tauri::command]
+fn check_updates(app: tauri::AppHandle, backend_port: Option<u16>) -> Result<UpdateInfo, String> {
+    build_update_info(&app, backend_port)
+}
+
+#[tauri::command]
+fn install_updates(app: tauri::AppHandle, backend_port: Option<u16>) -> Result<String, String> {
+    let info = build_update_info(&app, backend_port)?;
+    let need_backend = info.backend_update_available;
+    let need_desktop = info.desktop_update_available && info.desktop_download_url.is_some();
+
+    if !need_backend && !need_desktop {
+        return Err("当前已是最新版本".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        let script_path = std::env::temp_dir().join(format!(
+            "soloncode-updater-{}.ps1",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
+
+        let backend_line = if need_backend {
+            "    irm 'https://solon.noear.org/soloncode/setup.ps1' | iex\n".to_string()
+        } else {
+            String::new()
+        };
+
+        let desktop_line = if need_desktop {
+            if let Some(url) = info.desktop_download_url.clone() {
+                format!(
+                    "    $msiPath = Join-Path $env:TEMP ('soloncode-desktop-update-' + [guid]::NewGuid().ToString() + '.msi')\n    Invoke-WebRequest -UseBasicParsing -Uri '{}' -OutFile $msiPath\n    Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', $msiPath)\n",
+                    url.replace('\'', "''")
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let script = format!(
+            "$ErrorActionPreference = 'Stop'\n\
+try {{\n\
+    Wait-Process -Id {} -ErrorAction SilentlyContinue\n\
+}} catch {{}}\n\
+try {{\n\
+{}\
+{}\
+}} catch {{\n\
+    $logPath = Join-Path $env:TEMP 'soloncode-updater-error.log'\n\
+    ('[' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '] ' + $_.Exception.Message) | Out-File -FilePath $logPath -Append -Encoding utf8\n\
+}}\n",
+            std::process::id(),
+            backend_line,
+            desktop_line
+        );
+
+        fs::write(&script_path, script).map_err(|e| format!("写入更新脚本失败: {}", e))?;
+
+        let script_path_str = script_path.to_string_lossy().to_string();
+        let mut command = Command::new("powershell");
+        command
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-File",
+                script_path_str.as_str(),
+            ])
+            .creation_flags(0x08000000);
+
+        command.spawn().map_err(|e| format!("启动更新进程失败: {}", e))?;
+
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            app_handle.exit(0);
+        });
+
+        return Ok("更新任务已启动".to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = backend_port;
+        Err("当前仅支持 Windows 自动更新".to_string())
+    }
+}
+
 #[tauri::command]
 fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检查已有进程是否仍在运行
     {
         let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
         match proc.as_mut() {
-            Some(child) => {
-                match child.try_wait() {
+            Some(managed) => {
+                match managed.child.try_wait() {
                     Ok(Some(_status)) => {
                         *proc = None;
                     }
                     Ok(None) => {
-                        if is_soloncode_backend(port) {
-                            app_log(&format!("[soloncode] Backend already running on port {}, reusing PID {}", port, child.id()));
-                            return Ok(child.id());
+                        if managed.port != port {
+                            app_log(&format!(
+                                "[soloncode] Managed backend PID {} is running on port {}, restarting for requested port {}",
+                                managed.child.id(),
+                                managed.port,
+                                port
+                            ));
+                            let _ = managed.child.kill();
+                            let _ = managed.child.wait();
+                            *proc = None;
+                        } else if is_soloncode_desktop_backend(port) {
+                            app_log(&format!(
+                                "[soloncode] Backend already running on port {}, reusing PID {}",
+                                port,
+                                managed.child.id()
+                            ));
+                            return Ok(managed.child.id());
+                        } else if managed.started_at.elapsed() < BACKEND_STARTUP_GRACE {
+                            app_log(&format!(
+                                "[soloncode] Managed backend PID {} on port {} is still starting, reusing pending launch",
+                                managed.child.id(),
+                                port
+                            ));
+                            return Ok(managed.child.id());
+                        } else {
+                            app_log(&format!(
+                                "[soloncode] Killing managed backend PID {} because port {} is still not serving soloncode after startup grace period",
+                                managed.child.id(),
+                                port
+                            ));
+                            let _ = managed.child.kill();
+                            let _ = managed.child.wait();
+                            *proc = None;
                         }
-
-                        app_log(&format!("[soloncode] Managed backend PID {} is alive but port {} is not ready, restarting...", child.id(), port));
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        *proc = None;
                     }
                     Err(e) => {
-                        app_log(&format!("[soloncode] Failed to check process status: {}, restarting...", e));
+                        app_log(&format!("[soloncode] Failed to check managed backend process status: {}, clearing handle", e));
                         *proc = None;
                     }
                 }
@@ -998,8 +1572,8 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
 
     // 检查端口是否已被后端占用（可能是之前启动的 soloncode 服务）
     if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
-        // 尝试 HTTP 请求 /version 确认是 soloncode 后端
-        let is_backend = is_soloncode_backend(port);
+        // 通过桌面端专用版本接口确认这是可复用的 SolonCode 桌面后端。
+        let is_backend = is_soloncode_desktop_backend(port);
 
         if is_backend {
             app_log(&format!("[soloncode] Port {} is already occupied by soloncode backend, reusing", port));
@@ -1013,6 +1587,9 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
     // 检测启动方式
     let launch = detect_launch_method();
     let port_str = port.to_string();
+    if let BackendLaunchMethod::Jar { .. } = &launch {
+        maybe_prepare_legacy_cli_settings();
+    }
 
     // 确定工作目录（空路径时使用用户主目录）
     let work_dir = if workspace_path.is_empty() {
@@ -1104,10 +1681,18 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
         })?;
 
     let pid = child.id();
-    app_log(&format!("[soloncode] Backend started, PID={}", pid));
+    app_log(&format!("[soloncode] Backend started, managed PID={}", pid));
 
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
-    *proc = Some(child);
+    *proc = Some(ManagedBackendProcess {
+        child,
+        port,
+        started_at: Instant::now(),
+    });
+
+    drop(proc);
+
+    spawn_backend_readiness_watchdog(port, pid);
 
     Ok(pid)
 }
@@ -1116,9 +1701,14 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
 #[tauri::command]
 fn stop_backend() -> Result<(), String> {
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
-    if let Some(mut child) = proc.take() {
-        let _ = child.kill();
-        let _ = child.wait();
+    if let Some(mut managed) = proc.take() {
+        app_log(&format!(
+            "[soloncode] stop_backend invoked, killing managed backend PID {} on port {}",
+            managed.child.id(),
+            managed.port
+        ));
+        let _ = managed.child.kill();
+        let _ = managed.child.wait();
         app_log("[soloncode] Backend process stopped");
     }
     Ok(())
@@ -1443,6 +2033,34 @@ fn toggle_agent(agent_path: &str, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_resource_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("名称不能为空".to_string());
+    }
+    if trimmed.chars().count() > 64 {
+        return Err("名称不能超过 64 个字符".to_string());
+    }
+    if !trimmed
+        .chars()
+        .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return Err("名称只能包含文字、数字、短横线和下划线".to_string());
+    }
+
+    let upper = trimmed.to_ascii_uppercase();
+    let is_reserved = matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (upper.len() == 4
+            && (upper.starts_with("COM") || upper.starts_with("LPT"))
+            && upper.as_bytes()[3].is_ascii_digit()
+            && upper.as_bytes()[3] != b'0');
+    if is_reserved {
+        return Err("该名称是系统保留名称，请更换".to_string());
+    }
+
+    Ok(trimmed.to_string())
+}
+
 /// 创建新 Skill（在 ~/.soloncode/skills/{name}/SKILL.md 生成模板）
 #[tauri::command]
 fn create_skill(name: String, description: String, content: Option<String>) -> Result<String, String> {
@@ -1452,10 +2070,7 @@ fn create_skill(name: String, description: String, content: Option<String>) -> R
         std::env::var("HOME").unwrap_or_default()
     };
 
-    let skill_name = name.trim().to_string();
-    if skill_name.is_empty() {
-        return Err("名称不能为空".to_string());
-    }
+    let skill_name = validate_resource_name(&name)?;
 
     let skill_dir = Path::new(&home).join(".soloncode").join("skills").join(&skill_name);
     if skill_dir.exists() {
@@ -1489,10 +2104,7 @@ fn create_agent(name: String, description: String, content: Option<String>) -> R
         std::env::var("HOME").unwrap_or_default()
     };
 
-    let agent_name = name.trim().to_string();
-    if agent_name.is_empty() {
-        return Err("名称不能为空".to_string());
-    }
+    let agent_name = validate_resource_name(&name)?;
 
     let agent_dir = Path::new(&home).join(".soloncode").join("agents").join(&agent_name);
     if agent_dir.exists() {
@@ -1523,9 +2135,9 @@ fn backend_status() -> Result<bool, String> {
     let mut proc = BACKEND_PROCESS.lock().map_err(|e| format!("锁错误: {}", e))?;
 
     match proc.as_mut() {
-        Some(child) => {
+        Some(managed) => {
             // 尝试检查进程状态（非阻塞）
-            match child.try_wait() {
+            match managed.child.try_wait() {
                 Ok(Some(_status)) => {
                     // 进程已退出
                     *proc = None;
@@ -1559,6 +2171,7 @@ pub fn run() {
             delete_file,
             delete_directory,
             rename_item,
+            rename_project_directory,
             path_exists,
             get_workspace_info,
             init_workspace_config,
@@ -1579,6 +2192,8 @@ pub fn run() {
             copy_item,
             move_item,
             detect_backend,
+            check_updates,
+            install_updates,
             start_backend,
             stop_backend,
             backend_status,
@@ -1601,9 +2216,14 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // 应用退出时停止后端进程
                 if let Ok(mut proc) = BACKEND_PROCESS.lock() {
-                    if let Some(mut child) = proc.take() {
-                        let _ = child.kill();
-                        let _ = child.wait();
+                    if let Some(mut managed) = proc.take() {
+                        app_log(&format!(
+                            "[soloncode] Window close requested, killing managed backend PID {} on port {}",
+                            managed.child.id(),
+                            managed.port
+                        ));
+                        let _ = managed.child.kill();
+                        let _ = managed.child.wait();
                     }
                 }
                 // 关闭终端

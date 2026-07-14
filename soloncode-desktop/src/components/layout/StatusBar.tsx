@@ -1,8 +1,3 @@
-/**
- * 状态栏组件 - 底部信息展示
- * 显示模型、分支、警告/错误数、光标位置、编码、语言类型
- * @author bai
- */
 import { Icon } from '../common/Icon';
 import { startWindowDrag } from '../../hooks/useWindowDrag';
 import './StatusBar.css';
@@ -10,31 +5,18 @@ import './StatusBar.css';
 export type BackendStatus = 'connecting' | 'connected' | 'disconnected';
 
 export interface StatusBarProps {
-  /** 当前 AI 模型名称 */
   model?: string;
-  /** 后端连接状态 */
   backendStatus?: BackendStatus;
-  /** Git 分支名 */
   branch?: string;
-  /** ahead 数量 */
   ahead?: number;
-  /** behind 数量 */
   behind?: number;
-  /** 警告数量 */
   warningCount?: number;
-  /** 错误数量 */
   errorCount?: number;
-  /** 光标行号 */
   cursorLine?: number;
-  /** 光标列号 */
   cursorColumn?: number;
-  /** 文件编码 */
   encoding?: string;
-  /** 文件语言类型 */
   language?: string;
-  /** 是否有未保存文件 */
   hasUnsavedChanges?: boolean;
-  /** 重连后端回调 */
   onReconnect?: () => void;
 }
 
@@ -53,19 +35,30 @@ export function StatusBar({
   hasUnsavedChanges = false,
   onReconnect,
 }: StatusBarProps) {
+  const backendTitle = backendStatus === 'connected'
+    ? '后端已连接'
+    : backendStatus === 'connecting'
+      ? '正在连接或启动后端...'
+      : '后端未连接，点击重试';
+
+  const backendText = backendStatus === 'connected'
+    ? '已连接'
+    : backendStatus === 'connecting'
+      ? '连接中...'
+      : '连接失败，点击重试';
+
   return (
     <div className="status-bar" onMouseDown={startWindowDrag}>
       <div className="status-left" data-no-drag>
-        {/* 后端连接状态 */}
-        <span className={`status-item status-connection${backendStatus === 'disconnected' && onReconnect ? ' clickable' : ''}`} title={
-          backendStatus === 'connected' ? '后端已连接' :
-          backendStatus === 'connecting' ? '正在连接后端...' : '点击重连后端'
-        } onClick={backendStatus === 'disconnected' && onReconnect ? onReconnect : undefined}>
+        <span
+          className={`status-item status-connection${backendStatus === 'disconnected' && onReconnect ? ' clickable' : ''}`}
+          title={backendTitle}
+          onClick={backendStatus === 'disconnected' && onReconnect ? onReconnect : undefined}
+        >
           <span className={`status-connection-dot${backendStatus === 'connected' ? ' connected' : ''}${backendStatus === 'connecting' ? ' connecting' : ''}`} />
-          <span>{backendStatus === 'connected' ? '已连接' : backendStatus === 'connecting' ? '连接中...' : '连接失败，点击重连'}</span>
+          <span>{backendText}</span>
         </span>
 
-        {/* AI 模型 */}
         {model && (
           <span className="status-item status-model" title="当前模型">
             <Icon name="bot" size={12} />
@@ -73,7 +66,6 @@ export function StatusBar({
           </span>
         )}
 
-        {/* Git 分支 */}
         {branch && (
           <span className="status-item status-branch" title={`分支: ${branch}${ahead ? ` (ahead ${ahead})` : ''}${behind ? ` (behind ${behind})` : ''}`}>
             <Icon name="git" size={12} />
@@ -83,7 +75,6 @@ export function StatusBar({
           </span>
         )}
 
-        {/* 同步状态 */}
         {hasUnsavedChanges && (
           <span className="status-item status-unsaved" title="有未保存的更改">
             <span className="status-dot unsaved" />
@@ -93,7 +84,6 @@ export function StatusBar({
       </div>
 
       <div className="status-right" data-no-drag>
-        {/* 问题数量 */}
         {(warningCount > 0 || errorCount > 0) && (
           <span className="status-item status-problems" title={`警告: ${warningCount}, 错误: ${errorCount}`}>
             {errorCount > 0 && (
@@ -111,19 +101,16 @@ export function StatusBar({
           </span>
         )}
 
-        {/* 光标位置 */}
         {cursorLine !== undefined && cursorColumn !== undefined && (
           <span className="status-item status-position" title="光标位置">
             <span>行 {cursorLine}, 列 {cursorColumn}</span>
           </span>
         )}
 
-        {/* 编码 */}
         <span className="status-item status-encoding" title="文件编码">
           <span>{encoding}</span>
         </span>
 
-        {/* 语言 */}
         {language && (
           <span className="status-item status-language" title="语言类型">
             <span>{language}</span>
