@@ -496,6 +496,17 @@ export const fileService = {
     }
   },
 
+  /** 在原父目录内重命名项目目录，并返回新的绝对路径。 */
+  async renameProjectDirectory(projectPath: string, newName: string): Promise<string> {
+    if (isTauriEnv()) {
+      return await invoke<string>('rename_project_directory', { projectPath, newName });
+    }
+    const normalized = projectPath.replace(/[\\/]+$/, '');
+    const splitAt = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
+    if (splitAt < 0) throw new Error('无法获取项目父目录');
+    return `${normalized.slice(0, splitAt + 1)}${newName}`;
+  },
+
   /**
    * 检查路径是否存在
    */

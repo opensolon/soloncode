@@ -757,14 +757,10 @@ function ModelSettings({ settings, updateSetting, providers, activeProviderId, o
             />
           </SettingRow>
           <SettingRow label="上下文限制">
-            <input
-              type="number"
-              className="setting-input number"
+            <ContextLengthInput
+              providerId={activeProvider.id}
               value={activeProvider.contextLength || 128000}
-              onChange={e => onUpdateProvider(activeProvider.id, { contextLength: Math.max(1, parseInt(e.target.value, 10) || 128000) })}
-              min={1}
-              step={1000}
-              placeholder="128000"
+              onChange={contextLength => onUpdateProvider(activeProvider.id, { contextLength })}
             />
           </SettingRow>
           <SettingRow label="超时时间">
@@ -819,7 +815,7 @@ function ProviderModelSelect({ provider, onChange, onModelsLoaded, backendPort }
     setError('');
 
     try {
-      const url = `http://localhost:${port}/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}&model=${encodeURIComponent(provider.model || '')}`;
+      const url = `http://localhost:${port}/desktop/chat/models/fetch?apiUrl=${encodeURIComponent(provider.apiUrl)}&apiKey=${encodeURIComponent(provider.apiKey)}&provider=${encodeURIComponent(provider.type)}&model=${encodeURIComponent(provider.model || '')}`;
       const resp = await fetch(url);
       if (!resp.ok) {
         setError('API地址或密钥不正确');
@@ -1366,7 +1362,7 @@ function PromptsSettings({ skillPrompt, agentPrompt, gitPrompt, onPromptChange }
   const values: Record<PromptKey, string> = { skillPrompt, agentPrompt, gitPrompt };
   const items: { key: PromptKey; label: string; placeholder: string }[] = [
     { key: 'skillPrompt', label: 'Skill 生成提示词', placeholder: '请帮我创建一个名为「{name}」的 Skill...' },
-    { key: 'agentPrompt', label: 'Agent 生成提示词', placeholder: '请帮我创建一个名为「{name}」的 Agent...' },
+    { key: 'agentPrompt', label: 'Agent 生成提示词', placeholder: '请根据需求创建 Agent 并自动生成名称，支持 {description}...' },
     { key: 'gitPrompt', label: 'Git Commit 生成提示词', placeholder: '请根据以下 git diff 内容，生成一条简洁的 git commit message...' },
   ];
 
@@ -1513,7 +1509,7 @@ function resolveChannelSessionId(sessionId?: string) {
 async function fetchChannelStatus(backendPort: number | null | undefined, channel: ChannelKind, sessionId?: string): Promise<ChannelStatusPayload | null> {
   if (!backendPort) return null;
   const sid = resolveChannelSessionId(sessionId);
-  const resp = await fetch(`http://localhost:${backendPort}/chat/${channel}/status?sessionId=${encodeURIComponent(sid)}`);
+  const resp = await fetch(`http://localhost:${backendPort}/web/chat/${channel}/status?sessionId=${encodeURIComponent(sid)}`);
   const data = await resp.json();
   return data.data || null;
 }
@@ -1573,7 +1569,7 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
     setStatus('scanning');
     try {
       const sid = resolveChannelSessionId(sessionId);
-      const resp = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode?sessionId=${encodeURIComponent(sid)}`);
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/wechat/qrcode?sessionId=${encodeURIComponent(sid)}`);
       const data = await resp.json();
       const qrToken = data.data?.qrcode;
       const qrImage = data.data?.qrcode_img_content || data.data?.qrcode;
@@ -1582,7 +1578,7 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
         setShowQR(true);
         pollRef.current = setInterval(async () => {
           try {
-            const r = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(qrToken)}&sessionId=${encodeURIComponent(sid)}`);
+            const r = await fetch(`http://localhost:${backendPort}/web/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(qrToken)}&sessionId=${encodeURIComponent(sid)}`);
             const d = await r.json();
             if (d.data?.status === 'confirmed') {
               stopPolling();
@@ -1623,7 +1619,7 @@ function WeChatCard({ backendPort, sessionId }: { backendPort?: number | null; s
     if (!backendPort) return;
     try {
       stopPolling();
-      await fetch(`http://localhost:${backendPort}/chat/wechat/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
+      await fetch(`http://localhost:${backendPort}/web/chat/wechat/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setStatus('');
       setShowQR(false);
@@ -1734,7 +1730,7 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
     setError('');
     setStatusText('');
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/feishu/bind`, {
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/feishu/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}&appId=${encodeURIComponent(appId)}&appSecret=${encodeURIComponent(appSecret)}`,
@@ -1753,7 +1749,7 @@ function FeishuCard({ backendPort, sessionId }: { backendPort?: number | null; s
     if (!backendPort) return;
     try {
       stopPolling();
-      await fetch(`http://localhost:${backendPort}/chat/feishu/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
+      await fetch(`http://localhost:${backendPort}/web/chat/feishu/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setAppId('');
       setAppSecret('');
@@ -1861,7 +1857,7 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
     setError('');
     setStatusText('');
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/dingtalk/bind`, {
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/dingtalk/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}&appKey=${encodeURIComponent(appKey)}&appSecret=${encodeURIComponent(appSecret)}`,
@@ -1880,7 +1876,7 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
     if (!backendPort) return;
     try {
       stopPolling();
-      await fetch(`http://localhost:${backendPort}/chat/dingtalk/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
+      await fetch(`http://localhost:${backendPort}/web/chat/dingtalk/unbind?sessionId=${encodeURIComponent(resolveChannelSessionId(sessionId))}`, { method: 'POST' });
       setBound(false);
       setAppKey('');
       setAppSecret('');
@@ -1920,6 +1916,83 @@ function DingTalkCard({ backendPort, sessionId }: { backendPort?: number | null;
         </div>
       )}
     </div>
+  );
+}
+
+const CONTEXT_LENGTH_UNITS: Record<string, number> = {
+  k: 1_000,
+  m: 1_000_000,
+};
+
+function parseContextLength(value: string): number | null {
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*([km])?$/i);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  const multiplier = match[2] ? CONTEXT_LENGTH_UNITS[match[2].toLowerCase()] : 1;
+  const tokens = Math.round(amount * multiplier);
+  if (!Number.isSafeInteger(tokens) || tokens < 1) return null;
+  return tokens;
+}
+
+function formatContextLength(value: number): string {
+  const tokens = Math.max(1, Math.round(value));
+  if (tokens >= 1_000_000 && tokens % 1_000 === 0) {
+    return `${tokens / 1_000_000}M`;
+  }
+  if (tokens >= 1_000 && tokens % 1_000 === 0) {
+    return `${tokens / 1_000}K`;
+  }
+  return String(tokens);
+}
+
+function ContextLengthInput({ providerId, value, onChange }: {
+  providerId: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => formatContextLength(value));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setDraft(formatContextLength(value));
+    }
+  }, [providerId, value]);
+
+  const commit = () => {
+    const parsed = parseContextLength(draft);
+    if (parsed === null) {
+      setDraft(formatContextLength(value));
+      return;
+    }
+    if (parsed !== value) onChange(parsed);
+    setDraft(formatContextLength(parsed));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className="setting-input number"
+      value={draft}
+      onFocus={() => { focusedRef.current = true; }}
+      onChange={e => {
+        const next = e.target.value;
+        setDraft(next);
+        const parsed = parseContextLength(next);
+        if (parsed !== null && parsed !== value) onChange(parsed);
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit();
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      placeholder="128K / 1M / 128000"
+      title="支持 K、M 单位，例如 128K、1M 或 1.5M"
+    />
   );
 }
 

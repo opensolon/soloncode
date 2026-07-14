@@ -1,6 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Icon } from '../common/Icon';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { ContextMenu } from '../common/ContextMenu';
 import { UNLINKED_PROJECT } from '../../db';
 import './SessionsPanel.css';
 
@@ -29,8 +31,11 @@ interface SessionsPanelProps {
   onSelectSession: (id: string) => void;
   onNewSession: (projectId?: string) => string | void;
   onDeleteSession: (id: string) => void;
+  onCreateProject: () => void;
   onAddProject: () => void;
   onRemoveProject: (id: string) => void;
+  onPinProject: (id: string) => void;
+  onRenameProject: (id: string, name: string) => void;
   onSyncSession?: (sessionId: string) => Promise<void>;
 }
 
@@ -57,13 +62,31 @@ export function SessionsPanel({
   onSelectSession,
   onNewSession,
   onDeleteSession,
+  onCreateProject,
   onAddProject,
   onRemoveProject,
+  onPinProject,
+  onRenameProject,
   onSyncSession,
 }: SessionsPanelProps) {
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [confirmSync, setConfirmSync] = useState<{ sessionId: string; title: string } | null>(null);
   const [confirmSyncAll, setConfirmSyncAll] = useState(false);
+  const [projectContextMenu, setProjectContextMenu] = useState<{
+    x: number;
+    y: number;
+    projectId: string;
+  } | null>(null);
+  const [projectMenu, setProjectMenu] = useState<{
+    x: number;
+    y: number;
+    projectId: string;
+  } | null>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
+  const projectMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const renameCancelledRef = useRef(false);
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [renameProjectValue, setRenameProjectValue] = useState('');
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
     if (currentProjectId) return new Set([currentProjectId]);
     return new Set<string>();
@@ -85,17 +108,92 @@ export function SessionsPanel({
     sessionsByProject.get(key)!.push(session);
   }
 
-  const projectEntries: { id: string; name: string }[] = [
-    ...projects.map(project => ({ id: project.id, name: project.name })),
-  ];
-  for (const [projectId] of sessionsByProject) {
-    if (projectId !== UNLINKED_PROJECT && !projects.find(project => project.id === projectId)) {
-      const name = projectId.split(/[/\\]/).pop() || projectId;
-      projectEntries.push({ id: projectId, name });
-    }
-  }
+  const projectEntries = projects.map(project => ({ id: project.id, name: project.name }));
+  const projectIds = new Set(projects.map(project => project.id));
+  const unlinkedSessions = sessions.filter(session => {
+    const projectId = session.workspacePath || UNLINKED_PROJECT;
+    return projectId === UNLINKED_PROJECT || !projectIds.has(projectId);
+  });
+  const menuProject = projectMenu
+    ? projects.find(project => project.id === projectMenu.projectId)
+    : undefined;
 
-  const unlinkedSessions = sessionsByProject.get(UNLINKED_PROJECT) || [];
+  useEffect(() => {
+    if (!projectMenu) return;
+
+    const closeMenu = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('.project-more-btn')) return;
+      if (!projectMenuRef.current?.contains(event.target as Node)) setProjectMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProjectMenu(null);
+    };
+    const closeOnScroll = () => setProjectMenu(null);
+
+    document.addEventListener('mousedown', closeMenu);
+    document.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('wheel', closeOnScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', closeMenu);
+      document.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('wheel', closeOnScroll, true);
+    };
+  }, [projectMenu]);
+
+  useEffect(() => () => {
+    if (projectMenuCloseTimerRef.current) clearTimeout(projectMenuCloseTimerRef.current);
+  }, []);
+
+  const showProjectMenu = useCallback((event: React.MouseEvent<HTMLButtonElement>, projectId: string) => {
+    if (projectMenuCloseTimerRef.current) clearTimeout(projectMenuCloseTimerRef.current);
+    setProjectContextMenu(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 150;
+    const height = 124;
+    const x = Math.min(rect.right + 4, window.innerWidth - width - 8);
+    const y = Math.min(rect.top, window.innerHeight - height - 8);
+    setProjectMenu({ x: Math.max(8, x), y: Math.max(8, y), projectId });
+  }, []);
+
+  const scheduleProjectMenuClose = useCallback(() => {
+    if (projectMenuCloseTimerRef.current) clearTimeout(projectMenuCloseTimerRef.current);
+    projectMenuCloseTimerRef.current = setTimeout(() => setProjectMenu(null), 140);
+  }, []);
+
+  const keepProjectMenuOpen = useCallback(() => {
+    if (projectMenuCloseTimerRef.current) clearTimeout(projectMenuCloseTimerRef.current);
+  }, []);
+
+  const beginProjectRename = useCallback((projectId: string) => {
+    const project = projects.find(item => item.id === projectId);
+    if (!project) return;
+    renameCancelledRef.current = false;
+    setRenameProjectValue(project.name);
+    setRenamingProjectId(projectId);
+  }, [projects]);
+
+  const commitProjectRename = useCallback((projectId: string, value: string) => {
+    const trimmedValue = value.trim();
+    if (trimmedValue) {
+      onRenameProject(projectId, trimmedValue);
+    }
+    setRenamingProjectId(null);
+    setRenameProjectValue('');
+  }, [onRenameProject, projects]);
+
+  const isCurrentSessionLatest = (sessionList: Session[]) => {
+    if (!currentSessionId || sessionList.length === 0) return false;
+
+    const latestSession = sessionList.reduce((latest, session) => {
+      const latestTime = Date.parse(latest.timestamp);
+      const sessionTime = Date.parse(session.timestamp);
+      const normalizedLatestTime = Number.isFinite(latestTime) ? latestTime : 0;
+      const normalizedSessionTime = Number.isFinite(sessionTime) ? sessionTime : 0;
+      return normalizedSessionTime > normalizedLatestTime ? session : latest;
+    });
+
+    return latestSession.id === currentSessionId;
+  };
 
   const handleSync = useCallback(async (sessionId: string) => {
     if (syncingIds.has(sessionId)) return;
@@ -123,6 +221,25 @@ export function SessionsPanel({
     }
   }, [sessions, handleSync]);
 
+  const handleProjectAction = useCallback((itemId: string, projectId?: string) => {
+    const targetProjectId = projectId || projectContextMenu?.projectId || projectMenu?.projectId;
+    setProjectContextMenu(null);
+    setProjectMenu(null);
+    if (!targetProjectId) return;
+
+    if (itemId === 'pin') {
+      onPinProject(targetProjectId);
+    } else if (itemId === 'rename') {
+      beginProjectRename(targetProjectId);
+    } else if (itemId === 'open-in-explorer') {
+      revealItemInDir(targetProjectId).catch(err => {
+        console.error('[SessionsPanel] 打开资源管理器失败:', err);
+      });
+    } else if (itemId === 'remove') {
+      onRemoveProject(targetProjectId);
+    }
+  }, [beginProjectRename, onPinProject, onRemoveProject, projectContextMenu, projectMenu]);
+
   function renderSessionList(sessionList: Session[]) {
     return sessionList.map(session => {
       const runState = sessionRunStates[session.id];
@@ -132,9 +249,6 @@ export function SessionsPanel({
           className={`session-item${currentSessionId === session.id ? ' active' : ''}${runState ? ` ${runState}` : ''}`}
           onClick={() => onSelectSession(session.id)}
         >
-          <div className="session-icon">
-            <Icon name={session.isPermanent ? 'bot' : 'chat'} size={14} />
-          </div>
           <div className="session-info">
             <div className="session-title">{session.title}</div>
             <div className="session-meta">
@@ -198,10 +312,10 @@ export function SessionsPanel({
       <div className="panel-header">
         <span className="panel-title">项目</span>
         <div className="panel-header-actions">
-          <button className="new-session-btn" onClick={() => onNewSession(currentProjectId || undefined)} title="新建会话">
+          <button className="new-session-btn" onClick={onCreateProject} title="新建项目">
             <Icon name="add" size={16} />
           </button>
-          <button className="new-session-btn" onClick={onAddProject} title="添加项目">
+          <button className="new-session-btn" onClick={onAddProject} title="打开项目">
             <Icon name="folder" size={14} />
           </button>
         </div>
@@ -216,26 +330,65 @@ export function SessionsPanel({
           return (
             <div key={entry.id} className="project-group">
               <div
-                className={`project-header${isActive ? ' active' : ''}`}
+                className={`project-header${isActive ? ' active' : ''}${isExpanded ? ' expanded' : ''}`}
                 onClick={() => toggleExpand(entry.id)}
+                onContextMenu={event => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setProjectMenu(null);
+                  setProjectContextMenu({ x: event.clientX, y: event.clientY, projectId: entry.id });
+                }}
               >
-                <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
-                <Icon name="folder" size={14} />
-                <span className="project-name">{entry.name}</span>
-                <span className="project-count">{projectSessions.length}</span>
+                <Icon name={isExpanded ? 'folder-open' : 'folder'} size={14} />
+                {renamingProjectId === entry.id ? (
+                  <input
+                    className="project-rename-input"
+                    value={renameProjectValue}
+                    autoFocus
+                    onChange={event => setRenameProjectValue(event.target.value)}
+                    onClick={event => event.stopPropagation()}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        commitProjectRename(entry.id, renameProjectValue);
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        renameCancelledRef.current = true;
+                        setRenamingProjectId(null);
+                        setRenameProjectValue('');
+                      }
+                    }}
+                    onBlur={() => {
+                      if (renameCancelledRef.current) {
+                        renameCancelledRef.current = false;
+                        return;
+                      }
+                      commitProjectRename(entry.id, renameProjectValue);
+                    }}
+                    aria-label={`重命名 ${entry.name}`}
+                  />
+                ) : (
+                  <span className="project-name">{entry.name}</span>
+                )}
                 <button
-                  className="project-remove-btn"
-                  onClick={event => { event.stopPropagation(); onRemoveProject(entry.id); }}
-                  title="移除项目"
+                  className="project-more-btn"
+                  onMouseEnter={event => showProjectMenu(event, entry.id)}
+                  onMouseLeave={scheduleProjectMenuClose}
+                  onFocus={event => showProjectMenu(event, entry.id)}
+                  onClick={event => event.stopPropagation()}
+                  title="项目菜单"
+                  aria-label={`${entry.name} 项目菜单`}
+                  aria-haspopup="menu"
                 >
-                  <Icon name="delete" size={12} />
+                  <Icon name="more" size={14} />
                 </button>
                 <button
                   className="project-add-session-btn"
                   onClick={event => { event.stopPropagation(); onNewSession(entry.id); }}
                   title="新建会话"
+                  aria-label={`在 ${entry.name} 中新建会话`}
                 >
-                  <Icon name="add" size={12} />
+                  <Icon name="edit" size={14} />
                 </button>
               </div>
 
@@ -253,13 +406,15 @@ export function SessionsPanel({
 
         <div className="group-header chat-group-header">
           <span>对话</span>
-          <button
-            className="chat-add-btn"
-            onClick={() => onNewSession(UNLINKED_PROJECT)}
-            title="新建对话"
-          >
-            <Icon name="add" size={12} />
-          </button>
+          {!isCurrentSessionLatest(unlinkedSessions) && (
+            <button
+              className="chat-add-btn"
+              onClick={() => onNewSession(UNLINKED_PROJECT)}
+              title="新建对话"
+            >
+              <Icon name="add" size={12} />
+            </button>
+          )}
         </div>
 
         {unlinkedSessions.length === 0 && (
@@ -267,6 +422,76 @@ export function SessionsPanel({
         )}
         {renderSessionList(unlinkedSessions)}
       </div>
+
+      {projectContextMenu && (
+        <ContextMenu
+          x={projectContextMenu.x}
+          y={projectContextMenu.y}
+          items={[
+            {
+              id: 'pin',
+              label: '置顶',
+              disabled: projects[0]?.id === projectContextMenu.projectId,
+            },
+            { id: 'rename', label: '重命名' },
+            { id: 'open-in-explorer', label: '在资源管理器中打开' },
+            { id: 'remove', label: '移除' },
+          ]}
+          onItemClick={handleProjectAction}
+          onClose={() => setProjectContextMenu(null)}
+        />
+      )}
+
+      {projectMenu && menuProject && (
+        <div
+          ref={projectMenuRef}
+          className="project-menu-popover"
+          style={{ left: projectMenu.x, top: projectMenu.y }}
+          role="menu"
+          aria-label={`${menuProject.name} 项目菜单`}
+          onMouseEnter={keepProjectMenuOpen}
+          onMouseLeave={scheduleProjectMenuClose}
+          onClick={event => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="project-menu-item"
+            role="menuitem"
+            disabled={projects[0]?.id === menuProject.id}
+            onClick={() => handleProjectAction('pin', menuProject.id)}
+          >
+            <Icon name="pin" size={14} />
+            <span>置顶</span>
+          </button>
+          <button
+            type="button"
+            className="project-menu-item"
+            role="menuitem"
+            onClick={() => handleProjectAction('rename', menuProject.id)}
+          >
+            <Icon name="edit" size={14} />
+            <span>重命名</span>
+          </button>
+          <button
+            type="button"
+            className="project-menu-item"
+            role="menuitem"
+            onClick={() => handleProjectAction('open-in-explorer', menuProject.id)}
+          >
+            <Icon name="folder-open" size={14} />
+            <span>在资源管理器中打开</span>
+          </button>
+          <button
+            type="button"
+            className="project-menu-item danger"
+            role="menuitem"
+            onClick={() => handleProjectAction('remove', menuProject.id)}
+          >
+            <Icon name="delete" size={14} />
+            <span>移除</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

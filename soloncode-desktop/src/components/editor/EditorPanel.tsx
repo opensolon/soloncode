@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Editor, { DiffEditor, type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { Icon, getFileIconName } from '../common/Icon';
 import { ContextMenu } from '../common/ContextMenu';
 import type { DiffLine } from '../../services/gitService';
@@ -50,6 +53,8 @@ function getMonacoLanguage(path: string): string {
     less: 'less',
     html: 'html',
     md: 'markdown',
+    markdown: 'markdown',
+    mdx: 'markdown',
     py: 'python',
     java: 'java',
     rs: 'rust',
@@ -68,6 +73,10 @@ function getMonacoLanguage(path: string): string {
     kts: 'kotlin',
   };
   return map[ext] || 'plaintext';
+}
+
+function isMarkdownFile(path: string): boolean {
+  return /\.(md|markdown|mdx)$/i.test(path);
 }
 
 // 从 DOM 读取当前实际主题
@@ -121,6 +130,7 @@ export function EditorPanel({
   const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  const [markdownEditFiles, setMarkdownEditFiles] = useState<Set<string>>(() => new Set());
 
   // 用 ref 保持最新值，避免 addCommand 回调闭包过期
   const activeFilePathRef = useRef(activeFilePath);
@@ -274,6 +284,35 @@ export function EditorPanel({
   const monacoTheme = resolveMonacoTheme(activeTheme, _editorTheme);
 
   const activeFile = files.find(f => f.path === activeFilePath);
+  const isActiveMarkdown = !!activeFile && !activeFile.isImage && isMarkdownFile(activeFile.path);
+  const isMarkdownPreview = !!activeFile && isActiveMarkdown && !markdownEditFiles.has(activeFile.path) && !(activeFile.path in diffFiles);
+
+  useEffect(() => {
+    const openPaths = new Set(files.map(file => file.path));
+    setMarkdownEditFiles(prev => {
+      const next = new Set([...prev].filter(path => openPaths.has(path)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [files]);
+
+  useEffect(() => {
+    if (isMarkdownPreview) {
+      editorRef.current = null;
+    }
+  }, [isMarkdownPreview, activeFile?.path]);
+
+  const toggleMarkdownPreview = useCallback(() => {
+    if (!activeFile || !isActiveMarkdown || activeFile.path in diffFiles) return;
+    setMarkdownEditFiles(prev => {
+      const next = new Set(prev);
+      if (next.has(activeFile.path)) {
+        next.delete(activeFile.path);
+      } else {
+        next.add(activeFile.path);
+      }
+      return next;
+    });
+  }, [activeFile, diffFiles, isActiveMarkdown]);
 
   useEffect(() => {
     if (!autoSave || !activeFile || activeFile.isImage || !activeFile.modified) return;
@@ -341,6 +380,18 @@ export function EditorPanel({
             </button>
           </div>
         ))}
+        {isActiveMarkdown && !(activeFile.path in diffFiles) && (
+          <div className="editor-tabs-actions">
+            <button
+              className={`tab-action-btn markdown-preview-toggle${isMarkdownPreview ? ' active' : ''}`}
+              onClick={toggleMarkdownPreview}
+              title={isMarkdownPreview ? '切换到源码编辑' : '切换到 Markdown 预览'}
+              aria-label={isMarkdownPreview ? '切换到源码编辑' : '切换到 Markdown 预览'}
+            >
+              <Icon name={isMarkdownPreview ? 'edit' : 'file-md'} size={15} />
+            </button>
+          </div>
+        )}
       </div>
 
       {tabContextMenu && (
@@ -386,6 +437,21 @@ export function EditorPanel({
                 scrollbar: editorOptions.scrollbar,
               }}
             />
+          ) : isMarkdownPreview ? (
+            <div className="markdown-preview">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkBreaks]}
+                components={{
+                  a: ({ href, children }) => (
+                    <a href={href} target={href?.startsWith('#') ? undefined : '_blank'} rel="noreferrer">
+                      {children}
+                    </a>
+                  ),
+                }}
+              >
+                {activeFile.content}
+              </ReactMarkdown>
+            </div>
           ) : (
           <Editor
             height="100%"

@@ -7,13 +7,13 @@ export type IconName =
   | 'file-java' | 'file-rs' | 'file-py' | 'file-img' | 'file-lock' | 'file-yml'
   // 功能图标
   | 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'settings'
-  | 'chat' | 'terminal' | 'code' | 'skills' | 'agents' | 'channels' | 'info'
+  | 'chat' | 'terminal' | 'code' | 'skills' | 'agents' | 'automation' | 'channels' | 'info'
   // 操作图标
   | 'add' | 'remove' | 'edit' | 'delete' | 'refresh' | 'save'
   | 'push' | 'pull' | 'commit' | 'stage' | 'unstage'
   | 'close' | 'collapse' | 'expand' | 'swap' | 'undo'
   | 'send' | 'attach' | 'theme' | 'user' | 'assistant' | 'bot'
-  | 'copy' | 'check' | 'mic'
+  | 'copy' | 'check' | 'mic' | 'pin'
   // 状态图标
   | 'modified' | 'added' | 'deleted' | 'untracked' | 'warning' | 'error' | 'success' | 'loading'
   // 其他
@@ -52,6 +52,7 @@ const iconPaths: Record<IconName, string> = {
   'extensions': 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z',
   'skills': 'M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M12.2 11.8L11 13M12.2 6.2L11 5M15 9l-6 6-4-4 6-6z',
   'agents': 'M12 2a5 5 0 0 1 5 5v3a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5zM2 20a10 10 0 0 1 20 0H2z',
+  'automation': 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
   'channels': 'M4.5 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM1 4.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0zm13.5-1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM11 4.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0zM6 12.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0zm3.5-1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z',
   'sessions': 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
   'settings': 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
@@ -80,6 +81,7 @@ const iconPaths: Record<IconName, string> = {
   'copy': 'M20 9h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
   'check': 'M20 6L9 17l-5-5',
   'mic': 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z',
+  'pin': 'M12 17v5M5 17h14M15 3l6 6-4 1-4 4-3-3 4-4 1-4z',
   'send': 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
   'attach': 'M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48',
   'theme': 'M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42',

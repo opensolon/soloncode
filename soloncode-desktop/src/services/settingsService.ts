@@ -345,19 +345,20 @@ description: {description}
 
 ## 示例
 [提供使用示例]`,
-  agentPrompt: `请帮我创建一个名为「{name}」的 Agent。
+  agentPrompt: `请根据以下需求创建一个 Agent，并自动生成简短、清晰且能概括职责的名称。
 {description}
 
 请直接输出完整的 AGENT.md 文件内容（纯 Markdown 格式，不要用代码块包裹）。
+名称只能包含文字、数字、短横线和下划线，并写入 YAML frontmatter 的 name 字段。
 
 格式参考：
 
 ---
-name: {name}
-description: {description}
+name: <自动生成的名称>
+description: <简短描述 Agent 的职责>
 ---
 
-# {name} Agent
+# <自动生成的名称> Agent
 
 ## 角色定义
 [描述这个 Agent 的角色和能力]
@@ -889,7 +890,7 @@ export const settingsService = {
   ): Promise<{ providers: ModelProvider[]; activeProviderId: string } | null> {
     try {
       const resp = await fetch(
-        `http://localhost:${backendPort}/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`,
+        `http://localhost:${backendPort}/desktop/chat/models/fetch?apiUrl=${encodeURIComponent(apiUrl)}&apiKey=${encodeURIComponent(apiKey)}&provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`,
       );
       if (!resp.ok) return null;
 
@@ -936,7 +937,7 @@ export const settingsService = {
         // 注入到 CLI 后端（仅注入尚未添加的模型）
         if (!existingModels.has(modelId)) {
           try {
-            await fetch(`http://localhost:${backendPort}/chat/models/add`, {
+            await fetch(`http://localhost:${backendPort}/desktop/chat/models/add`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1209,46 +1210,6 @@ export const settingsService = {
       console.warn('[settingsService] 扫描 skills 目录失败:', err);
       return [];
     }
-  },
-
-  /**
-   * 扫描工作区中的第三方 skill 目录（如 .claude/commands/, .codex/）
-   * 每个 .md 文件视为一个 skill
-   */
-  async scanThirdPartySkills(workspacePath: string): Promise<SkillConfig[]> {
-    const scanConfigs: Array<{ dir: string; group: SkillGroup; ext: string }> = [
-      { dir: '.claude/commands', group: 'claude', ext: '.md' },
-      { dir: '.codex', group: 'codex', ext: '.md' },
-    ];
-
-    const skills: SkillConfig[] = [];
-
-    for (const { dir, group, ext } of scanConfigs) {
-      try {
-        const fullPath = `${workspacePath}/${dir}`;
-        const exists = await fileService.pathExists(fullPath);
-        if (!exists) continue;
-
-        const entries = await fileService.listDirectory(fullPath);
-        for (const entry of entries) {
-          if (!entry.isDir && entry.name.endsWith(ext)) {
-            const name = entry.name.slice(0, -ext.length);
-            skills.push({
-              name,
-              description: '',
-              path: entry.path,
-              enabled: true,
-              source: 'discovered',
-              group,
-            });
-          }
-        }
-      } catch {
-        // 目录不存在或无权限，跳过
-      }
-    }
-
-    return skills;
   },
 
   /**

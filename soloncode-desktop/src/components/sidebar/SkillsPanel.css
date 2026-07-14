@@ -159,67 +159,6 @@
   border-color: var(--cb-accent);
 }
 
-/* Create Form */
-.create-form {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--cb-vscode-panel-border);
-}
-
-.create-form-input {
-  width: 100%;
-  padding: 5px 8px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  background: var(--cb-vscode-input-background);
-  border: 1px solid var(--cb-vscode-panel-border);
-  color: var(--cb-text-primary);
-  border-radius: 4px;
-  outline: none;
-  box-sizing: border-box;
-}
-
-.create-form-input:focus {
-  border-color: var(--cb-accent);
-}
-
-.create-form-actions {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.create-form-btn {
-  padding: 4px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  border: 1px solid var(--cb-vscode-panel-border);
-  background: var(--cb-vscode-input-background);
-  color: var(--cb-text-primary);
-  transition: all 0.15s;
-}
-
-.create-form-btn.confirm {
-  background: var(--cb-accent);
-  border-color: var(--cb-accent);
-  color: #fff;
-}
-
-.create-form-btn.ai-gen {
-  border-color: var(--cb-accent);
-  color: var(--cb-accent);
-}
-
-.create-form-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.create-form-error {
-  margin: 4px 0 0;
-  font-size: 11px;
-  color: #ef5350;
-}
-
 .tree-checkbox {
   margin-left: auto;
   accent-color: var(--cb-accent);

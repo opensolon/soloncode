@@ -25,6 +25,8 @@ interface Project {
   sortOrder: number;
 }
 
+const INITIAL_TREE_LEVELS = 3;
+
 interface ExplorerPanelProps {
   projects: Project[];
   activeProjectPath: string | null;
@@ -85,6 +87,8 @@ export function ExplorerPanel({
   const [loadingProjects, setLoadingProjects] = useState<Set<string>>(new Set());
   // 文件夹展开状态
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  // 超出初始深度后，按需加载中的文件夹
+  const [loadingFolders, setLoadingFolders] = useState<Set<string>>(new Set());
 
   // 右键菜单
   const [contextMenu, setContextMenu] = useState<{
@@ -134,7 +138,8 @@ export function ExplorerPanel({
   const loadProjectTree = useCallback(async (projectPath: string) => {
     setLoadingProjects(prev => new Set(prev).add(projectPath));
     try {
-      const files = await fileService.listDirectoryTree(projectPath, 10);
+      // 后端从 0 开始计算深度，减 1 后对应用户看到的三层文件。
+      const files = await fileService.listDirectoryTree(projectPath, INITIAL_TREE_LEVELS - 1);
       const tree: FileNode[] = files.map(f => ({
         name: f.name,
         type: f.isDir ? 'folder' as const : 'file' as const,
@@ -227,14 +232,48 @@ export function ExplorerPanel({
     }
   }, []);
 
-  const toggleFolder = (path: string) => {
+  const replaceFolderChildren = useCallback((
+    nodes: FileNode[],
+    folderPath: string,
+    children: FileNode[],
+  ): FileNode[] => nodes.map(node => {
+    if (node.path === folderPath) return { ...node, children };
+    if (!node.children) return node;
+    return { ...node, children: replaceFolderChildren(node.children, folderPath, children) };
+  }), []);
+
+  const toggleFolder = useCallback(async (node: FileNode, projectPath: string) => {
+    const isExpanded = expandedFolders.has(node.path);
     setExpandedFolders(prev => {
       const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      if (isExpanded) next.delete(node.path);
+      else next.add(node.path);
       return next;
     });
-  };
+
+    if (isExpanded || node.children !== undefined || loadingFolders.has(node.path)) return;
+
+    setLoadingFolders(prev => new Set(prev).add(node.path));
+    try {
+      const files = await fileService.listDirectoryTree(node.path, 0);
+      const children = convertChildren(files);
+      setProjectTrees(prev => {
+        const projectTree = prev.get(projectPath);
+        if (!projectTree) return prev;
+        const next = new Map(prev);
+        next.set(projectPath, replaceFolderChildren(projectTree, node.path, children));
+        return next;
+      });
+    } catch (err) {
+      console.error('[ExplorerPanel] 加载文件夹失败:', err);
+    } finally {
+      setLoadingFolders(prev => {
+        const next = new Set(prev);
+        next.delete(node.path);
+        return next;
+      });
+    }
+  }, [expandedFolders, loadingFolders, replaceFolderChildren]);
 
   // ==================== 右键菜单 ====================
 
@@ -459,9 +498,10 @@ export function ExplorerPanel({
 
   // ==================== 渲染 ====================
 
-  function renderFileNode(node: FileNode, depth: number = 0) {
+  function renderFileNode(node: FileNode, projectPath: string, depth: number = 0) {
     const indent = depth * 16;
     const isExpanded = expandedFolders.has(node.path);
+    const isLoading = loadingFolders.has(node.path);
     const isRenaming = renamingPath === node.path;
     const isCut = clipboard?.operation === 'cut' && clipboard.path === node.path;
 
@@ -473,7 +513,7 @@ export function ExplorerPanel({
           onClick={() => {
             if (isRenaming) return;
             if (node.type === 'folder') {
-              toggleFolder(node.path);
+              toggleFolder(node, projectPath);
             } else {
               onFileSelect(node.path);
             }
@@ -486,7 +526,11 @@ export function ExplorerPanel({
           {node.type === 'folder' ? (
             <>
               <span className="chevron-icon">
-                <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
+                <Icon
+                  name={isLoading ? 'loading' : isExpanded ? 'chevron-down' : 'chevron-right'}
+                  size={12}
+                  className={isLoading ? 'spinning' : ''}
+                />
               </span>
               <Icon name={isExpanded ? 'folder-open' : 'folder'} size={16} className="file-icon" />
             </>
@@ -522,7 +566,7 @@ export function ExplorerPanel({
             </span>
           )}
         </div>
-        {node.type === 'folder' && isExpanded && node.children?.map(child => renderFileNode(child, depth + 1))}
+        {node.type === 'folder' && isExpanded && node.children?.map(child => renderFileNode(child, projectPath, depth + 1))}
       </div>
     );
   }
@@ -571,7 +615,7 @@ export function ExplorerPanel({
             ) : isEmpty ? (
               <div className="project-empty-tree">空项目</div>
             ) : tree ? (
-              tree.map(file => renderFileNode(file))
+              tree.map(file => renderFileNode(file, project.id))
             ) : null}
           </div>
         )}

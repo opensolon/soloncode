@@ -316,6 +316,95 @@ fn rename_item(old_path: &str, new_path: &str) -> Result<(), String> {
     fs::rename(old_path, new_path).map_err(|e| format!("重命名失败: {}", e))
 }
 
+fn validate_project_directory_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("项目名称不能为空".to_string());
+    }
+    if trimmed.chars().count() > 64 {
+        return Err("项目名称不能超过 64 个字符".to_string());
+    }
+    if trimmed == "." || trimmed == ".." || trimmed.ends_with('.') || trimmed.ends_with(' ') {
+        return Err("项目名称格式无效".to_string());
+    }
+    if !trimmed.chars().all(|ch| {
+        ch.is_alphanumeric() || matches!(ch, ' ' | '_' | '-' | '.' | '(' | ')')
+    }) {
+        return Err("项目名称只能包含文字、数字、空格、点、横线、下划线和括号".to_string());
+    }
+
+    let stem = trimmed.split('.').next().unwrap_or(trimmed).to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit()
+            && stem.as_bytes()[3] != b'0');
+    if reserved {
+        return Err("项目名称是系统保留名称".to_string());
+    }
+
+    Ok(trimmed.to_string())
+}
+
+#[cfg(test)]
+mod project_directory_name_tests {
+    use super::{rename_project_directory, validate_project_directory_name};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn accepts_common_project_names() {
+        assert_eq!(validate_project_directory_name("python-server").unwrap(), "python-server");
+        assert_eq!(validate_project_directory_name("项目 3").unwrap(), "项目 3");
+    }
+
+    #[test]
+    fn rejects_path_traversal_and_windows_reserved_names() {
+        for value in ["../outside", "bad/name", "bad\\name", "CON", "LPT1.txt", "name."] {
+            assert!(validate_project_directory_name(value).is_err(), "should reject {value}");
+        }
+    }
+
+    #[test]
+    fn renames_only_within_the_same_parent_directory() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let parent = std::env::temp_dir().join(format!("soloncode-project-rename-{unique}"));
+        let source = parent.join("old-project");
+        fs::create_dir_all(&source).unwrap();
+
+        let renamed = rename_project_directory(source.to_str().unwrap(), "python-server").unwrap();
+        let target = parent.join("python-server");
+        assert_eq!(renamed, target.to_string_lossy());
+        assert!(!source.exists());
+        assert!(target.is_dir());
+
+        fs::remove_dir_all(parent).unwrap();
+    }
+}
+
+/// 在原父目录内安全地重命名项目目录，禁止通过名称改变目录层级或覆盖已有目录。
+#[tauri::command]
+fn rename_project_directory(project_path: &str, new_name: &str) -> Result<String, String> {
+    let name = validate_project_directory_name(new_name)?;
+    let source = Path::new(project_path);
+    if !source.is_absolute() || !source.is_dir() {
+        return Err("项目目录不存在或不是绝对路径".to_string());
+    }
+    let metadata = fs::symlink_metadata(source).map_err(|e| format!("无法读取项目目录: {}", e))?;
+    if metadata.file_type().is_symlink() {
+        return Err("不支持重命名符号链接项目".to_string());
+    }
+
+    let parent = source.parent().ok_or("无法获取项目父目录")?;
+    let target = parent.join(name);
+    if target.exists() {
+        return Err("同名目录已存在".to_string());
+    }
+
+    fs::rename(source, &target).map_err(|e| format!("重命名项目目录失败: {}", e))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
 /// 检查路径是否存在
 #[tauri::command]
 fn path_exists(path: &str) -> bool {
@@ -1068,7 +1157,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
 }
 
 /// Check whether an occupied port is already serving the soloncode backend.
-fn is_soloncode_backend(port: u16) -> bool {
+fn is_soloncode_desktop_backend(port: u16) -> bool {
     let addr = format!("127.0.0.1:{}", port);
     let mut stream = match TcpStream::connect(&addr) {
         Ok(stream) => stream,
@@ -1079,7 +1168,7 @@ fn is_soloncode_backend(port: u16) -> bool {
     let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(2)));
 
     let req = format!(
-        "GET /version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+        "GET /desktop/version HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
         port
     );
     if stream.write_all(req.as_bytes()).is_err() {
@@ -1104,7 +1193,7 @@ fn is_soloncode_backend(port: u16) -> bool {
 
 fn wait_for_backend_ready(port: u16, attempts: u32, sleep_ms: u64) -> bool {
     for _ in 0..attempts {
-        if is_soloncode_backend(port) {
+        if is_soloncode_desktop_backend(port) {
             return true;
         }
 
@@ -1136,7 +1225,7 @@ fn spawn_backend_readiness_watchdog(port: u16, pid: u32) {
         };
 
         let should_kill = match proc.as_ref() {
-            Some(managed) => managed.child.id() == pid && managed.port == port && !is_soloncode_backend(port),
+            Some(managed) => managed.child.id() == pid && managed.port == port && !is_soloncode_desktop_backend(port),
             None => false,
         };
 
@@ -1159,7 +1248,7 @@ fn spawn_backend_readiness_watchdog(port: u16, pid: u32) {
 /// 检测指定端口是否已经有可复用的 SolonCode 后端。
 #[tauri::command]
 fn detect_backend(port: u16) -> Result<bool, String> {
-    let detected = is_soloncode_backend(port);
+    let detected = is_soloncode_desktop_backend(port);
     if detected {
         app_log(&format!("[soloncode] Detected existing soloncode backend on port {}", port));
     }
@@ -1234,7 +1323,7 @@ fn build_http_client() -> Result<reqwest::blocking::Client, String> {
 fn fetch_current_backend_version(backend_port: Option<u16>) -> Option<String> {
     let port = backend_port?;
     let client = build_http_client().ok()?;
-    let url = format!("http://127.0.0.1:{}/version", port);
+    let url = format!("http://127.0.0.1:{}/desktop/version", port);
     let payload = client.get(url).send().ok()?.error_for_status().ok()?;
     let json: serde_json::Value = payload.json().ok()?;
     json.get("data")
@@ -1446,7 +1535,7 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
                             let _ = managed.child.kill();
                             let _ = managed.child.wait();
                             *proc = None;
-                        } else if is_soloncode_backend(port) {
+                        } else if is_soloncode_desktop_backend(port) {
                             app_log(&format!(
                                 "[soloncode] Backend already running on port {}, reusing PID {}",
                                 port,
@@ -1483,8 +1572,8 @@ fn start_backend(workspace_path: &str, port: u16) -> Result<u32, String> {
 
     // 检查端口是否已被后端占用（可能是之前启动的 soloncode 服务）
     if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
-        // 尝试 HTTP 请求 /version 确认是 soloncode 后端
-        let is_backend = is_soloncode_backend(port);
+        // 通过桌面端专用版本接口确认这是可复用的 SolonCode 桌面后端。
+        let is_backend = is_soloncode_desktop_backend(port);
 
         if is_backend {
             app_log(&format!("[soloncode] Port {} is already occupied by soloncode backend, reusing", port));
@@ -1944,6 +2033,34 @@ fn toggle_agent(agent_path: &str, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_resource_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("名称不能为空".to_string());
+    }
+    if trimmed.chars().count() > 64 {
+        return Err("名称不能超过 64 个字符".to_string());
+    }
+    if !trimmed
+        .chars()
+        .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return Err("名称只能包含文字、数字、短横线和下划线".to_string());
+    }
+
+    let upper = trimmed.to_ascii_uppercase();
+    let is_reserved = matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (upper.len() == 4
+            && (upper.starts_with("COM") || upper.starts_with("LPT"))
+            && upper.as_bytes()[3].is_ascii_digit()
+            && upper.as_bytes()[3] != b'0');
+    if is_reserved {
+        return Err("该名称是系统保留名称，请更换".to_string());
+    }
+
+    Ok(trimmed.to_string())
+}
+
 /// 创建新 Skill（在 ~/.soloncode/skills/{name}/SKILL.md 生成模板）
 #[tauri::command]
 fn create_skill(name: String, description: String, content: Option<String>) -> Result<String, String> {
@@ -1953,10 +2070,7 @@ fn create_skill(name: String, description: String, content: Option<String>) -> R
         std::env::var("HOME").unwrap_or_default()
     };
 
-    let skill_name = name.trim().to_string();
-    if skill_name.is_empty() {
-        return Err("名称不能为空".to_string());
-    }
+    let skill_name = validate_resource_name(&name)?;
 
     let skill_dir = Path::new(&home).join(".soloncode").join("skills").join(&skill_name);
     if skill_dir.exists() {
@@ -1990,10 +2104,7 @@ fn create_agent(name: String, description: String, content: Option<String>) -> R
         std::env::var("HOME").unwrap_or_default()
     };
 
-    let agent_name = name.trim().to_string();
-    if agent_name.is_empty() {
-        return Err("名称不能为空".to_string());
-    }
+    let agent_name = validate_resource_name(&name)?;
 
     let agent_dir = Path::new(&home).join(".soloncode").join("agents").join(&agent_name);
     if agent_dir.exists() {
@@ -2060,6 +2171,7 @@ pub fn run() {
             delete_file,
             delete_directory,
             rename_item,
+            rename_project_directory,
             path_exists,
             get_workspace_info,
             init_workspace_config,

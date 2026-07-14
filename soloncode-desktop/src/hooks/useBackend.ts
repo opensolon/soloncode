@@ -48,7 +48,7 @@ export function useBackend() {
       if (httpProbeInFlightRef.current) return;
       httpProbeInFlightRef.current = true;
       try {
-        const resp = await fetch(`http://localhost:${port}/version`, { cache: 'no-store' });
+        const resp = await fetch(`http://localhost:${port}/desktop/version`, { cache: 'no-store' });
         if (!disposed && resp.ok) {
           markConnected(port);
         } else if (!disposed) {
@@ -78,7 +78,7 @@ export function useBackend() {
       }
 
       try {
-        const ws = new WebSocket(`ws://localhost:${port}/ws`);
+        const ws = new WebSocket(`ws://localhost:${port}/desktop/ws`);
         wsRef.current = ws;
         ws.onopen = () => { if (!disposed) markConnected(port); };
         ws.onclose = () => { if (wsRef.current === ws) wsRef.current = null; };

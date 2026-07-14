@@ -9,10 +9,11 @@ import "./SkillsPanel.css";
 interface SkillsPanelProps {
   backendPort: number | null;
   onFileSelect: (path: string) => void;
-  onCreateWithAI?: (name: string, description: string) => void;
+  onCreateWithAI?: () => void;
+  refreshKey?: number;
 }
 
-export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: SkillsPanelProps) {
+export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refreshKey = 0 }: SkillsPanelProps) {
   const [mounts, setMounts] = useState<MountPool[]>([]);
   const [poolSkills, setPoolSkills] = useState<Record<string, PoolSkill[]>>({});
   const [loading, setLoading] = useState(false);
@@ -23,9 +24,10 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: Skill
     setLoading(true);
     try {
       const list = await skillService.getMounts(backendPort);
-      setMounts(list);
+      const skillMounts = list.filter(mount => mount.type === "SKILLS");
+      setMounts(skillMounts);
       const skillsMap: Record<string, PoolSkill[]> = {};
-      await Promise.all(list.map(async (m) => {
+      await Promise.all(skillMounts.map(async (m) => {
         try { skillsMap[m.alias] = await skillService.getPoolSkills(backendPort, m.alias); }
         catch { skillsMap[m.alias] = []; }
       }));
@@ -34,7 +36,7 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: Skill
     finally { setLoading(false); }
   }, [backendPort]);
 
-  useEffect(() => { loadMounts(); }, [loadMounts]);
+  useEffect(() => { loadMounts(); }, [loadMounts, refreshKey]);
 
   const togglePool = (alias: string) => {
     setCollapsedPools(prev => {
@@ -45,6 +47,7 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: Skill
   };
 
   const totalSkills = Object.values(poolSkills).reduce((sum, arr) => sum + arr.length, 0);
+  const visibleMounts = mounts.filter(mount => (poolSkills[mount.alias]?.length || 0) > 0);
 
   return (
     <div className="skills-panel">
@@ -52,6 +55,7 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: Skill
         <span className="panel-title">Skills</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span className="group-count">{totalSkills}</span>
+          <button className="new-session-btn" onClick={onCreateWithAI} title="根据提示词创建 Skill"><Icon name="add" size={14} /></button>
           <button className="new-session-btn" onClick={loadMounts} title="刷新"><Icon name="refresh" size={14} /></button>
         </div>
       </div>
@@ -59,8 +63,8 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: Skill
       <div className="panel-content skills-list">
         {!backendPort && <div className="empty-state"><div className="empty-text">等待后端连接...</div></div>}
         {backendPort && loading && <div className="empty-state"><div className="empty-text">加载中...</div></div>}
-        {backendPort && !loading && mounts.length === 0 && <div className="empty-state"><div className="empty-text">暂无挂载池</div></div>}
-        {backendPort && !loading && mounts.map(mount => {
+        {backendPort && !loading && visibleMounts.length === 0 && <div className="empty-state"><div className="empty-text">暂无 Skills</div></div>}
+        {backendPort && !loading && visibleMounts.map(mount => {
           const collapsed = collapsedPools.has(mount.alias);
           const skills = poolSkills[mount.alias] || [];
           return (
@@ -78,7 +82,7 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI }: Skill
                   style={{ paddingLeft: "20px", cursor: skill.path ? "pointer" : "default" }}
                   onClick={() => {
                     if (skill.path) {
-                      const mdPath = skill.path.replace(/\/$/, '') + '/skill.md';
+                      const mdPath = skill.path.replace(/[\\/]$/, '') + '/SKILL.md';
                       onFileSelect(mdPath);
                     }
                   }}

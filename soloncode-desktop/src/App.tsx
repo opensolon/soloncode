@@ -8,11 +8,13 @@ import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
 import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
+import { AutomationPanel } from './components/sidebar/AutomationPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
 import type { ChatReviewFile } from './components/ChatHeader';
-import { ChatView } from './components/ChatView';
+import { ChatView, type PromptCreationMode, type PromptCreationType } from './components/ChatView';
+import type { SendOptions } from './components/ChatInput';
 import { fileService } from './services/fileService';
 import { gitService } from './services/gitService';
 import { DEFAULT_PROMPTS, settingsService } from './services/settingsService';
@@ -24,7 +26,7 @@ import { useBackend } from './hooks/useBackend';
 import { useGit } from './hooks/useGit';
 import { useFileManager } from './hooks/useFileManager';
 import { useSessions } from './hooks/useSessions';
-import { UNLINKED_PROJECT, saveMessage, db } from './db';
+import { UNLINKED_PROJECT, addAutomation, saveMessage, db, type DbAutomation } from './db';
 import { useWorkspace } from './hooks/useWorkspace';
 import type { Conversation, Plugin, Theme } from './types';
 import type { GitFileStatus } from './services/gitService';
@@ -231,6 +233,11 @@ function hasMeaningfulReviewChange(file: GitFileStatus, stats: { additions: numb
   return file.status === 'deleted';
 }
 
+function createPromptTitle(prompt: string): string {
+  const oneLine = prompt.trim().replace(/\s+/g, ' ');
+  return oneLine.length > 28 ? `${oneLine.slice(0, 28)}...` : oneLine;
+}
+
 function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityType>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -238,10 +245,15 @@ function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string>('default');
-  const [aiCreatePrompt, setAiCreatePrompt] = useState<{
+  const [promptCreation, setPromptCreation] = useState<PromptCreationMode | null>(null);
+  const [aiCreateRefreshKey, setAiCreateRefreshKey] = useState(0);
+  const [automationRefreshKey, setAutomationRefreshKey] = useState(0);
+  const [automationPrompt, setAutomationPrompt] = useState<{
+    runId: string;
     prompt: string;
-    type: 'skill' | 'agent';
-    name: string;
+    modelId: string;
+    modelName: string;
+    reasoningEffort: DbAutomation['reasoningEffort'];
   } | null>(null);
   const [newSessionFromProject, setNewSessionFromProject] = useState(false);
   const [sessionRunStates, setSessionRunStates] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
@@ -288,7 +300,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    settingsService.load().then(s => {
+    settingsService.load().then(async s => {
       const normalizedSettings = normalizeLoadedSettings(s);
       setSettings(normalizedSettings);
       if (normalizedSettings.theme) {
@@ -296,6 +308,24 @@ function App() {
         applyAppTheme(normalizedSettings.theme);
       }
       applyAppFontSize(normalizedSettings.fontSize);
+
+      try {
+        const discoveredAgents = await invoke<Array<{
+          name: string;
+          description: string;
+          path: string;
+          enabled: boolean;
+        }>>('list_agents');
+        setSettings(current => ({
+          ...current,
+          agents: discoveredAgents.map(agent => ({
+            ...agent,
+            source: 'discovered' as const,
+          })),
+        }));
+      } catch {
+        // Web 开发环境没有 Tauri 命令，继续使用已保存的 Agents。
+      }
     });
   }, []);
 
@@ -341,6 +371,7 @@ function App() {
     sessions, currentSessionId, setCurrentSessionId, currentConversation,
     handleNewSession, handleDeleteSession, handleUpdateSessionTitle,
     incrementSessionMessageCount,
+    remapProjectPath,
     restoreLastSession,
   } = useSessions(null, {
     onSessionIdResolved: (oldId, newId) => {
@@ -374,8 +405,8 @@ function App() {
 
   const {
     activeProjectPath, projectRefreshKey, projects, workspaceName,
-    setActiveProjectPath, refreshFileTree, openFolderByPath,
-    handleSetActiveProject, handleRemoveProject, handleCreateProject,
+    refreshFileTree, openFolderByPath,
+    handleSetActiveProject, handleRemoveProject, handlePinProject, handleRenameProject, handleCreateProject,
   } = useWorkspace({
     setOpenFiles, setActiveFilePath,
     setActiveActivity,
@@ -383,7 +414,20 @@ function App() {
     backendPortRef,
     setCurrentSessionId,
     restoreLastSession,
+    onProjectPathChanged: (oldPath, newPath) => {
+      remapProjectPath(oldPath, newPath);
+      setAutomationRefreshKey(prev => prev + 1);
+    },
   });
+
+  const chatWorkspacePath = useMemo(() => {
+    if (currentConversation.workspacePath === UNLINKED_PROJECT) return null;
+    return currentConversation.workspacePath || activeProjectPath;
+  }, [activeProjectPath, currentConversation.workspacePath]);
+
+  useEffect(() => {
+    setChatWorkspacePath(chatWorkspacePath);
+  }, [chatWorkspacePath]);
 
   const { gitStatus, diffLines, refreshGitStatus, setGitStatus } = useGit(activeProjectPath, activeFilePath, gitPanelVisible);
 
@@ -768,14 +812,22 @@ function App() {
     setCurrentSessionId(id);
     const session = sessions.find(s => s.id === id);
     if (session?.workspacePath && session.workspacePath !== UNLINKED_PROJECT && session.workspacePath !== activeProjectPath) {
-      setActiveProjectPath(session.workspacePath);
+      void handleSetActiveProject(session.workspacePath);
     }
-  }, [sessions, activeProjectPath, setCurrentSessionId, setActiveProjectPath]);
+  }, [sessions, activeProjectPath, handleSetActiveProject, setCurrentSessionId]);
+
+  const handleCreateSessionInProject = useCallback((projectId?: string) => {
+    setNewSessionFromProject(true);
+    if (projectId && projectId !== UNLINKED_PROJECT && projectId !== activeProjectPath) {
+      void handleSetActiveProject(projectId);
+    }
+    return handleNewSession(projectId);
+  }, [activeProjectPath, handleNewSession, handleSetActiveProject]);
 
   const handleSyncSession = useCallback(async (sessionId: string) => {
     const port = backendPort || 4808;
     try {
-      const resp = await fetch(`http://localhost:${port}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`);
+      const resp = await fetch(`http://localhost:${port}/web/chat/messages?sessionId=${encodeURIComponent(sessionId)}`);
       if (!resp.ok) return;
       const json = await resp.json();
       const messages: Array<{ role: string; content: string }> = json.data || json;
@@ -811,21 +863,37 @@ function App() {
     setPanelState(prev => ({ ...prev, panelOrder: [...prev.panelOrder].reverse() }));
   }, []);
 
-  const handleCreateWithAI = useCallback((type: 'skill' | 'agent', name: string, description: string) => {
+  const handleStartPromptCreation = useCallback((type: PromptCreationType) => {
+    if (type === 'automation' && !activeProjectPath) {
+      showToast('请先选择一个项目');
+      return;
+    }
     setPanelState(prev => ({ ...prev, chatVisible: true }));
+    setSidebarCollapsed(false);
+    setAutomationPrompt(null);
+    setNewSessionFromProject(!!activeProjectPath);
 
-    const title = `创建 ${type === 'skill' ? 'Skill' : 'Agent'}: ${name}`;
-    handleNewSession(undefined, title);
+    const label = type === 'skill' ? 'Skill' : type === 'agent' ? 'Agent' : '自动化';
+    const sessionId = handleNewSession(type === 'automation' ? activeProjectPath! : undefined, `创建 ${label}`);
+    if (!sessionId) {
+      showToast(`无法进入${label}创建模式`);
+      return;
+    }
 
-    const template = type === 'skill' ? settings.skillPrompt : settings.agentPrompt;
-    const prompt = (template || '')
-      .replace(/\{name\}/g, name)
-      .replace(/\{description\}/g, description || name);
+    setPromptCreation({
+      id: `${type}-${Date.now()}`,
+      sessionId,
+      type,
+      template: type === 'skill' ? settings.skillPrompt : type === 'agent' ? settings.agentPrompt : undefined,
+    });
+  }, [activeProjectPath, handleNewSession, settings.agentPrompt, settings.skillPrompt]);
 
-    setAiCreatePrompt({ prompt, type, name });
-  }, [handleNewSession, settings.skillPrompt, settings.agentPrompt]);
-
-  const handleAiCreateComplete = useCallback(async (info: { type: 'skill' | 'agent'; name: string }) => {
+  const handleAiCreateComplete = useCallback(async (info: { type: 'skill' | 'agent'; name: string; error?: string }) => {
+    setPromptCreation(null);
+    if (info.error) {
+      showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 创建失败`);
+      return;
+    }
     try {
       if (info.type === 'skill') {
         const skills = await invoke<Array<{ name: string; description: string; path: string; enabled: boolean }>>('list_skills');
@@ -837,8 +905,77 @@ function App() {
       showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 已创建`);
     } catch (err) {
       console.error('[App] AI 创建完成刷新失败:', err);
+    } finally {
+      setAiCreateRefreshKey(current => current + 1);
     }
   }, []);
+
+  const handleCreateAutomationFromPrompt = useCallback(async (rawPrompt: string, options: SendOptions) => {
+    const prompt = rawPrompt.trim();
+    const creation = promptCreation?.type === 'automation' ? promptCreation : null;
+    const project = activeProjectPath
+      ? projects.find(item => item.id === activeProjectPath)
+      : undefined;
+    if (!creation || !activeProjectPath || !project) {
+      showToast('当前项目不可用，请重新进入自动化创建模式');
+      return;
+    }
+    if (!prompt || prompt.length > 10000) {
+      showToast(prompt ? '自动化提示词不能超过 10000 个字符' : '请输入自动化提示词');
+      return;
+    }
+    if (!options.model || !options.modelName) {
+      showToast('请先选择一个可用模型');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    try {
+      await addAutomation({
+        title: createPromptTitle(prompt),
+        prompt,
+        projectId: activeProjectPath,
+        projectName: project.name,
+        modelId: options.model,
+        modelName: options.modelName,
+        reasoningEffort: options.reasoningEffort,
+        createdAt: now,
+        updatedAt: now,
+        runCount: 0,
+      });
+      setPromptCreation(null);
+      setAutomationRefreshKey(current => current + 1);
+      if (creation.sessionId.startsWith('temp-')) handleDeleteSession(creation.sessionId);
+      setActiveActivity('automation');
+      showToast('自动化已创建');
+    } catch (err) {
+      console.error('[App] 创建自动化失败:', err);
+      showToast('创建自动化失败');
+    }
+  }, [activeProjectPath, handleDeleteSession, projects, promptCreation]);
+
+  const handleRunAutomation = useCallback(async (automation: DbAutomation) => {
+    const project = projects.find(item => item.id === automation.projectId);
+    if (!project) throw new Error(`项目已不在列表中：${automation.projectName}`);
+
+    await handleSetActiveProject(automation.projectId);
+    setPanelState(prev => ({ ...prev, chatVisible: true }));
+    setSidebarCollapsed(false);
+    setNewSessionFromProject(true);
+    setPromptCreation(null);
+
+    const sessionId = handleNewSession(automation.projectId, automation.title);
+    if (!sessionId) throw new Error('无法创建自动化会话');
+
+    setAutomationPrompt({
+      runId: `${automation.id || 'automation'}-${Date.now()}`,
+      prompt: automation.prompt,
+      modelId: automation.modelId,
+      modelName: automation.modelName,
+      reasoningEffort: automation.reasoningEffort,
+    });
+    setActiveActivity('sessions');
+  }, [handleNewSession, handleSetActiveProject, projects]);
 
   // 渲染侧边栏内容
   const renderSidebarContent = () => {
@@ -862,15 +999,28 @@ function App() {
             projects={projects} sessions={sessions} currentSessionId={currentSessionId} currentProjectId={activeProjectPath}
             backendPort={backendPort}
             sessionRunStates={sessionRunStates}
-            onSelectSession={handleSelectSession} onNewSession={(projectId?: string) => { setNewSessionFromProject(true); return handleNewSession(projectId); }} onDeleteSession={handleDeleteSession}
-            onAddProject={handleAddProject} onRemoveProject={handleRemoveProject}
+            onSelectSession={handleSelectSession} onNewSession={handleCreateSessionInProject} onDeleteSession={handleDeleteSession}
+            onCreateProject={handleCreateProject} onAddProject={handleAddProject} onRemoveProject={handleRemoveProject} onPinProject={handlePinProject} onRenameProject={(projectId, name) => {
+              void handleRenameProject(projectId, name).catch(err => {
+                showToast(err instanceof Error ? err.message : '重命名项目失败');
+              });
+            }}
             onSyncSession={handleSyncSession}
           />
         );
+      case 'automation':
+        return (
+          <AutomationPanel
+            projects={projects}
+            refreshKey={automationRefreshKey}
+            onCreateWithPrompt={() => handleStartPromptCreation('automation')}
+            onRunAutomation={handleRunAutomation}
+          />
+        );
       case 'skills':
-        return <SkillsPanel backendPort={backendPort} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('skill', name, desc)} />;
+        return <SkillsPanel backendPort={backendPort} refreshKey={aiCreateRefreshKey} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={() => handleStartPromptCreation('skill')} />;
       case 'agents':
-        return <AgentsPanel agents={settings.agents} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={(name, desc) => handleCreateWithAI('agent', name, desc)} />;
+        return <AgentsPanel agents={settings.agents} refreshKey={aiCreateRefreshKey} onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))} activeAgent={activeAgent} onAgentChange={setActiveAgent} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={() => handleStartPromptCreation('agent')} />;
       default:
         return null;
     }
@@ -898,17 +1048,26 @@ function App() {
       return (
         <div key="chat" className="panel-wrapper chat-wrapper" style={{ ...(bothVisible ? { flex: '1 1 auto' } : {}), '--input-max-width': `${inputWidth}%` } as React.CSSProperties}>
           <ChatView
-            currentConversation={currentConversation} plugins={plugins} workspacePath={activeProjectPath || undefined} projectName={workspaceName || undefined}
-            theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => { setNewSessionFromProject(false); return handleNewSession(undefined, title); }}
+            currentConversation={currentConversation} plugins={plugins} workspacePath={chatWorkspacePath || undefined} projectName={workspaceName || undefined}
+            theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => {
+              setNewSessionFromProject(!!activeProjectPath);
+              return handleNewSession(activeProjectPath || UNLINKED_PROJECT, title);
+            }}
             sessions={sessions} sessionRunStates={sessionRunStates} maxSteps={settings.maxSteps} onSelectSession={handleSelectSession}
-            providers={settings.providers} activeProviderId={settings.activeProviderId} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
+            providers={settings.providers} agents={settings.agents} activeProviderId={settings.activeProviderId} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
             activeFileName={activeFile?.name} activeFilePath={activeFilePath || undefined}
             onFileSelect={handleChatFileSelect}
             reviewFiles={currentSessionId ? (sessionReviewFiles[currentSessionId] || []) : []}
             onReviewFileSelect={handleDiffFileSelect}
             onReviewFileDiscard={handleDiscardReviewFile}
             onNewProject={handleCreateProject} onOpenFolder={handleOpenFolder}
-            initialPrompt={aiCreatePrompt} onAiCreateComplete={handleAiCreateComplete}
+            promptCreation={promptCreation}
+            onCreateAutomationFromPrompt={handleCreateAutomationFromPrompt}
+            onAiCreateComplete={handleAiCreateComplete}
+            automationPrompt={automationPrompt}
+            onAutomationPromptConsumed={(runId) => {
+              setAutomationPrompt(current => current?.runId === runId ? null : current);
+            }}
             newSessionFromProject={newSessionFromProject}
             onSessionRunStateChange={(sessionId, status) => {
               setSessionRunStates(prev => ({ ...prev, [sessionId]: status }));
@@ -950,6 +1109,7 @@ function App() {
         onNewFile={() => handleNewFile()} onOpenFile={handleOpenFile} onOpenFolder={handleOpenFolder} onNewProject={handleCreateProject}
         onSave={handleSaveCurrentFile} onSaveAll={() => openFiles.forEach(f => handleFileSave(f.path))}
         editorVisible={panelState.editorVisible} chatVisible={panelState.chatVisible}
+        terminalVisible={terminalVisible} gitPanelVisible={gitPanelVisible}
         onToggleEditor={() => togglePanel('editor')} onToggleChat={() => togglePanel('chat')}
         onToggleTerminal={() => setTerminalVisible(v => !v)} onSwapPanels={swapPanels}
         onToggleGitPanel={() => setGitPanelVisible(v => !v)}
@@ -998,7 +1158,7 @@ function App() {
                     const modelName = specificModelId || activeProvider?.model || '';
 
                     return new Promise<string>((resolve, reject) => {
-                      const wsUrl = `ws://localhost:${backendPort}/ws?X-Session-Cwd=${encodeURIComponent(activeProjectPath)}`;
+                      const wsUrl = `ws://localhost:${backendPort}/desktop/ws?X-Session-Cwd=${encodeURIComponent(activeProjectPath)}`;
                       const ws = new WebSocket(wsUrl);
                       const timeout = setTimeout(() => { ws.close(); reject(new Error('生成超时')); }, 60000);
                       let text = '';

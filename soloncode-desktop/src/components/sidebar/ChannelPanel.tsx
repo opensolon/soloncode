@@ -42,7 +42,7 @@ function WeChatPanel({ backendPort, sessionId }: { backendPort: number | null; s
   const checkStatus = useCallback(async () => {
     if (!backendPort || !sessionId) return;
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/wechat/status?sessionId=${encodeURIComponent(sessionId)}`);
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/wechat/status?sessionId=${encodeURIComponent(sessionId)}`);
       const data = await resp.json();
       if (data.data?.bound) setBound(true);
     } catch { /* ignore */ }
@@ -53,14 +53,14 @@ function WeChatPanel({ backendPort, sessionId }: { backendPort: number | null; s
     setLoading(true);
     setStatus('scanning');
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode?sessionId=${encodeURIComponent(sessionId)}`);
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/wechat/qrcode?sessionId=${encodeURIComponent(sessionId)}`);
       const data = await resp.json();
       if (data.data?.qrcode_img_content) {
         setQrCode(data.data.qrcode_img_content);
         // 轮询扫码状态
         const poll = setInterval(async () => {
           try {
-            const statusResp = await fetch(`http://localhost:${backendPort}/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(data.data.qrcode_img_content)}&sessionId=${encodeURIComponent(sessionId)}`);
+            const statusResp = await fetch(`http://localhost:${backendPort}/web/chat/wechat/qrcode/status?qrcode=${encodeURIComponent(data.data.qrcode_img_content)}&sessionId=${encodeURIComponent(sessionId)}`);
             const statusData = await statusResp.json();
             if (statusData.data?.status === 'confirmed') {
               clearInterval(poll);
@@ -92,7 +92,7 @@ function WeChatPanel({ backendPort, sessionId }: { backendPort: number | null; s
   const unbind = useCallback(async () => {
     if (!backendPort || !sessionId) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/wechat/unbind?sessionId=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+      await fetch(`http://localhost:${backendPort}/web/chat/wechat/unbind?sessionId=${encodeURIComponent(sessionId)}`, { method: 'POST' });
       setBound(false);
       setStatus('');
     } catch { /* ignore */ }
@@ -139,7 +139,7 @@ function FeishuPanel({ backendPort, sessionId }: { backendPort: number | null; s
     setLoading(true);
     setError('');
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/feishu/bind`, {
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/feishu/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `sessionId=${encodeURIComponent(sessionId)}&appId=${encodeURIComponent(appId)}&appSecret=${encodeURIComponent(appSecret)}`,
@@ -160,7 +160,7 @@ function FeishuPanel({ backendPort, sessionId }: { backendPort: number | null; s
   const unbind = useCallback(async () => {
     if (!backendPort || !sessionId) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/feishu/unbind?sessionId=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+      await fetch(`http://localhost:${backendPort}/web/chat/feishu/unbind?sessionId=${encodeURIComponent(sessionId)}`, { method: 'POST' });
       setBound(false);
     } catch { /* ignore */ }
   }, [backendPort, sessionId]);
@@ -200,7 +200,7 @@ function DingTalkPanel({ backendPort, sessionId }: { backendPort: number | null;
     setLoading(true);
     setError('');
     try {
-      const resp = await fetch(`http://localhost:${backendPort}/chat/dingtalk/bind`, {
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/dingtalk/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `sessionId=${encodeURIComponent(sessionId)}&appKey=${encodeURIComponent(appKey)}&appSecret=${encodeURIComponent(appSecret)}`,
@@ -221,7 +221,7 @@ function DingTalkPanel({ backendPort, sessionId }: { backendPort: number | null;
   const unbind = useCallback(async () => {
     if (!backendPort || !sessionId) return;
     try {
-      await fetch(`http://localhost:${backendPort}/chat/dingtalk/unbind?sessionId=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+      await fetch(`http://localhost:${backendPort}/web/chat/dingtalk/unbind?sessionId=${encodeURIComponent(sessionId)}`, { method: 'POST' });
       setBound(false);
     } catch { /* ignore */ }
   }, [backendPort, sessionId]);
