@@ -793,8 +793,8 @@ public class WebGate extends SimpleWebSocketListener {
             }
             session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
             emitToClient(sessionId, WebChunk.ofError("用户已取消任务.")); // 或 ofError
-            ReActTrace trace = session.getContext().getAs("__main");
 
+            ReActTrace trace = session.getContext().getAs("__main");
             if(trace != null){
                 emitToClient(sessionId, streamBuilder.onFinalChunk(session, trace, true, "用户已取消任务."));
             }

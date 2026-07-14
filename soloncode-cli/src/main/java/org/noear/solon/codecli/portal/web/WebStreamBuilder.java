@@ -205,7 +205,7 @@ public class WebStreamBuilder {
                     }
                 })
                 .stream()
-                .map(chunk -> {
+                .flatMap(chunk -> {
                     // 子代理任务包装解包：TaskWrapChuck 携带 taskAgentName/isMultitask
                     String runId = null;
                     String taskAgentName = null;
@@ -230,12 +230,13 @@ public class WebStreamBuilder {
                             if (chunk instanceof ReActChunk) {
                                 // 子代理 ReAct 结束：发 task_done，让前端立刻结算该 task-group
                                 // （主流转 done 仍会 finalize 兜底，但并行任务不必互相等待）
-                                return onTaskDoneChunk((ReActChunk) chunk, runId, taskId,
+                                WebChunk taskDoneChunk = onTaskDoneChunk((ReActChunk) chunk, runId, taskId,
                                         taskAgentName, taskDescription);
+                                return Flux.just(taskDoneChunk);
                             }
 
                         } else {
-                            return WebChunk.EMPTY;
+                            return Flux.empty();
                         }
                     }
 
@@ -255,7 +256,7 @@ public class WebStreamBuilder {
                     }
 
                     if (webChunk == null || webChunk == WebChunk.EMPTY) {
-                        return WebChunk.EMPTY;
+                        return Flux.empty();
                     } else {
                         if (runId != null) {
                             webChunk.setRunId(runId);
@@ -270,14 +271,22 @@ public class WebStreamBuilder {
                             webChunk.setTaskId(taskId);
                             webChunk.setTaskDescription(taskDescription);
                         }
-                        return webChunk;
+                        return Flux.just(webChunk);
                     }
                 })
                 .filter(WebChunk::isNotEmpty)
                 .onErrorResume(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
-                    return Mono.just(WebChunk.ofError(e));
+                    List<WebChunk> chunkList = new ArrayList<>();
+
+                    WebChunk errorChunk = WebChunk.ofError(e);
+                    ReActTrace trace = session.getContext().getAs("__main");
+                    if(trace != null){
+                        this.onFinalChunk(session, trace, true, errorChunk.getText());
+                    }
+
+                    return Flux.fromIterable(chunkList);
                 })
                 .concatWith(Flux.defer(() -> {
                     // Check HITL state after stream completes
@@ -616,18 +625,18 @@ public class WebStreamBuilder {
             }
 
 
-            if (isMultitask) {
-                // 仅在多任务并行且有内容时输出
-                WebChunk wc = WebChunk.ofText("\n" + resultContent);
-                wc.setReasonId(chunk.getReasonId());
-
-                // 子代理标记
-                if (taskAgentName != null) {
-                    wc.setAgentName(taskAgentName);
-                }
-
-                return wc;
-            }
+//            if (isMultitask) {
+//                // 仅在多任务并行且有内容时输出
+//                WebChunk wc = WebChunk.ofText("\n" + resultContent);
+//                wc.setReasonId(chunk.getReasonId());
+//
+//                // 子代理标记
+//                if (taskAgentName != null) {
+//                    wc.setAgentName(taskAgentName);
+//                }
+//
+//                return wc;
+//            }
         }
 
         // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
