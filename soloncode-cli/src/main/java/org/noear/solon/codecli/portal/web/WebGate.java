@@ -33,6 +33,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
@@ -249,7 +250,7 @@ public class WebGate extends SimpleWebSocketListener {
         onChatInput(sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
                 hitlAction, source, null);
     }
-    
+
     /**
      * 用户聊天输入入口（含推理选项）。
      */
@@ -262,7 +263,7 @@ public class WebGate extends SimpleWebSocketListener {
         AgentSession session = null;
         try {
             session = engine.getSession(sessionId);
-            
+
             // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）
             if (Assert.isNotEmpty(selectedModel)) {
                 session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
@@ -444,7 +445,9 @@ public class WebGate extends SimpleWebSocketListener {
                     emitToClient(sessionId, WebChunk.ofDone());
                 })
                 .doFinally(s -> {
-                    session.attrs().remove("disposable");  // 正常完成时清理
+                    session.attrs().remove("disposable");
+                    // 兜底：确保 done 消息一定送达前端（防止 timeout 与 onComplete 竞态导致 done 丢失）
+                    emitToClient(sessionId, WebChunk.ofDone());
                 })
                 .subscribe();
 
@@ -589,6 +592,27 @@ public class WebGate extends SimpleWebSocketListener {
         return true;
     }
 
+
+    /**
+     * 应用执行超时配置到会话
+     *
+     * <p>从 settings 中读取 maxExecutionMinutes，设置到会话属性中供 WebStreamBuilder 使用。
+     * 包含边界值校验：null/0/负值使用默认值 10 分钟，超过 60 分钟强制限制为 60 分钟。</p>
+     *
+     * @param session Agent 会话实例
+     */
+    private void applyExecutionTimeout(AgentSession session) {
+        Integer maxMinutes = settings.getGeneral().getMaxExecutionMinutes();
+        // maxExecutionMinutes 在 GeneralGroupDo 中已有默认值 5
+        if (maxMinutes == null || maxMinutes <= 0) {
+            maxMinutes = GeneralGroupDo.DEFAULT_MAX_EXECUTION_MINUTES;
+        }
+        if (maxMinutes > 60) {
+            LOG.warn("[WebGate] maxExecutionMinutes={} 超过上限，强制限制为 60 分钟", maxMinutes);
+            maxMinutes = 60;
+        }
+        session.attrs().put("_max_execution_ms", maxMinutes * 60 * 1000L);
+    }
 
     /**
      * 判断指定会话是否有 AI 任务正在执行。
