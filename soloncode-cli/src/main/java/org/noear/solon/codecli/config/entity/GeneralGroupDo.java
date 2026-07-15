@@ -13,6 +13,9 @@ import java.io.Serializable;
 @Getter
 @Setter
 public class GeneralGroupDo implements Serializable {
+    /** 默认最大执行时间（分钟） */
+    public static final int DEFAULT_MAX_EXECUTION_MINUTES = 5;
+
     //会话历史窗口大小（即，新指令时使用几条历史消息）
     private Integer sessionWindowSize;
     //上下文压缩触发消息数（达到这个数，就开始触发）
@@ -56,6 +59,8 @@ public class GeneralGroupDo implements Serializable {
 
     //最大回合
     private Integer maxTurns; // 20
+    //最大执行时间（分钟），防止 Agent 死循环。默认 5 分钟
+    private Integer maxExecutionMinutes = 5;
     //自我反思
     private Boolean autoRethink; //true
 
