@@ -33,7 +33,7 @@ import java.util.List;
  * 基础用法:
  *   /loop 5m check if deployment finished    → fixed interval (5m)
  *   /loop check ci status                   → auto interval (5m default)
- *   /loop cron:"0 *&#47;5 * * * ?" check status  → cron expression
+ *   /loop cron:"0 *&#47;5 * * * ? *" check status  → cron expression (7 fields)
  *   /loop ls                                → list active tasks
  *   /loop stop <id>                         → stop a task
  *   /loop stop-all                          → stop all tasks
@@ -149,7 +149,7 @@ public class LoopCommand implements Command {
             }
             if (cronExpr.isEmpty()) {
                 ctx.println(ctx.color(RED + "Usage: /loop cron:<expr> <prompt>" + RESET));
-                ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
+                ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ? *\" check status" + RESET));
                 return;
             }
             promptStartIndex = 1;
@@ -595,7 +595,7 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "  /loop 5m check deployment" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 30s check CI status" + RESET));
         ctx.println(ctx.color(DIM + "  /loop check CI status   (auto 5m)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ? *\" check status" + RESET));
         ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "Goal:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal fix auth module                (goal mode, runs immediately)" + RESET));

@@ -742,7 +742,7 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 .loop-templates { display: flex; gap: 6px; flex-wrap: wrap; background: var(--bg-hover); padding: 8px; border-radius: 8px; }
 .loop-template-btn { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); cursor: pointer; transition: all 0.12s; }
 .loop-template-btn:hover { border-color: var(--accent); background: var(--bg-hover); }
-.loop-tpl-icon { width: 24px; height: 24px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.loop-tpl-icon { width: 24px; height: 24px; border-radius: 4px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); color: var(--text-secondary); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .loop-tpl-info { display: flex; flex-direction: column; gap: 1px; }
 .loop-tpl-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
 .loop-tpl-desc { font-size: 10px; color: var(--text-secondary); }

@@ -240,26 +240,26 @@ public class ManagerTalent extends AbsTalent {
         return "OK: 定时任务已新增，taskId=" + task.getId();
     }
 
-    @ToolMapping(name = "remove_loop_task",
-            description = "删除当前会话中的定时任务（或循环任务）。taskId 来自 add_loop_task 的返回值。")
-    public String removeLoopTask(
-            @Param(name = "taskId", description = "待删除的定时任务 ID") String taskId,
-            String __sessionId) {
-        if (Assert.isEmpty(__sessionId)) {
-            return "ERROR: 无活跃会话，无法删除定时任务。";
-        }
-        if (Assert.isEmpty(taskId)) {
-            return "ERROR: taskId 不能为空。";
-        }
-
-        LoopTask task = loopTasks.getTaskById(__sessionId, taskId);
-        if (task == null) {
-            return "ERROR: 定时任务不存在，taskId=" + taskId;
-        }
-
-        loopTasks.remove(__sessionId, task);
-        return "OK: 定时任务已删除，taskId=" + taskId;
-    }
+//    @ToolMapping(name = "remove_loop_task",
+//            description = "删除当前会话中的定时任务（或循环任务）。taskId 来自 add_loop_task 的返回值。")
+//    public String removeLoopTask(
+//            @Param(name = "taskId", description = "待删除的定时任务 ID") String taskId,
+//            String __sessionId) {
+//        if (Assert.isEmpty(__sessionId)) {
+//            return "ERROR: 无活跃会话，无法删除定时任务。";
+//        }
+//        if (Assert.isEmpty(taskId)) {
+//            return "ERROR: taskId 不能为空。";
+//        }
+//
+//        LoopTask task = loopTasks.getTaskById(__sessionId, taskId);
+//        if (task == null) {
+//            return "ERROR: 定时任务不存在，taskId=" + taskId;
+//        }
+//
+//        loopTasks.remove(__sessionId, task);
+//        return "OK: 定时任务已删除，taskId=" + taskId;
+//    }
 
     interface LoopTaskOperations {
         LoopTask schedule(String sessionId, LoopTask task);

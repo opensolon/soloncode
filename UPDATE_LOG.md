@@ -360,7 +360,7 @@
 * 优化 soloncode acp 输出
 
 ```
-/loop cron:'0 */5 * * * ?' check status
+/loop cron:'0 */5 * * * ? *' check status
 ```
 
 ### v2026.5.5
