@@ -588,7 +588,7 @@ export function ExplorerPanel({
           <span className="chevron-icon">
             <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
           </span>
-          <Icon name="folder-root" size={16} className="file-icon" />
+          <Icon name={isExpanded ? 'folder-open' : 'folder'} size={16} className="file-icon" />
           <span className="project-root-name" title={project.id}>{project.name}</span>
           <div className="project-root-actions">
             <button className="project-root-action" title="刷新" onClick={(e) => handleRefreshProject(project.id, e)}>

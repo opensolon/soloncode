@@ -4,6 +4,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -50,6 +51,33 @@ public class WsController {
         data.put("version", AgentFlags.getVersion());
         data.put("workspace", engine.getWorkspace());
         return Result.succeed(data);
+    }
+
+    /**
+     * 重新扫描桌面端指定的挂载池，使新创建的 Skill/Agent 立即进入运行时。
+     */
+    @Post
+    @Mapping("/desktop/settings/mounts/refresh")
+    public Result mountsRefresh(@Param("alias") String alias) {
+        if (Assert.isEmpty(alias)) {
+            return Result.failure("alias is required");
+        }
+
+        MountDir mountDir = engine.getMount(alias);
+        if (mountDir == null) {
+            return Result.failure("挂载池不存在: " + alias);
+        }
+        if (!mountDir.isEnabled()) {
+            return Result.failure("挂载池未启用: " + alias);
+        }
+
+        try {
+            engine.refreshMount(alias);
+            return Result.succeed("刷新成功");
+        } catch (Exception e) {
+            LOG.warn("[Desktop] Failed to refresh mount {}: {}", alias, e.getMessage());
+            return Result.failure("刷新挂载池失败");
+        }
     }
 
 

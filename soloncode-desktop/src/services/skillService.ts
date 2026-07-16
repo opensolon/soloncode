@@ -81,6 +81,10 @@ export const skillService = {
     await post(port, '/web/settings/mounts/remove', { alias });
   },
 
+  async refreshMount(port: number, alias: string): Promise<void> {
+    await post(port, '/desktop/settings/mounts/refresh', { alias });
+  },
+
   async getPoolSkills(port: number, alias: string): Promise<PoolSkill[]> {
     const skills = await get<BackendPoolSkill[]>(port, '/web/settings/mounts/content', {
       alias,

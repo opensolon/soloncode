@@ -8,7 +8,7 @@ import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
 import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
-import { AutomationPanel } from './components/sidebar/AutomationPanel';
+import { AutomationDetail, AutomationPanel } from './components/sidebar/AutomationPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
@@ -26,7 +26,7 @@ import { useBackend } from './hooks/useBackend';
 import { useGit } from './hooks/useGit';
 import { useFileManager } from './hooks/useFileManager';
 import { useSessions } from './hooks/useSessions';
-import { UNLINKED_PROJECT, addAutomation, saveMessage, db, type DbAutomation } from './db';
+import { UNLINKED_PROJECT, addAutomation, deleteAutomation, updateAutomation, saveMessage, db, type DbAutomation } from './db';
 import { useWorkspace } from './hooks/useWorkspace';
 import type { Conversation, Plugin, Theme } from './types';
 import type { GitFileStatus } from './services/gitService';
@@ -248,6 +248,8 @@ function App() {
   const [promptCreation, setPromptCreation] = useState<PromptCreationMode | null>(null);
   const [aiCreateRefreshKey, setAiCreateRefreshKey] = useState(0);
   const [automationRefreshKey, setAutomationRefreshKey] = useState(0);
+  const [selectedAutomation, setSelectedAutomation] = useState<DbAutomation | null>(null);
+  const [runningAutomationId, setRunningAutomationId] = useState<number | null>(null);
   const [automationPrompt, setAutomationPrompt] = useState<{
     runId: string;
     prompt: string;
@@ -361,11 +363,16 @@ function App() {
   const { backendPort, backendPortRef, backendStatus, startBackend, reconnectBackend } = useBackend();
   const {
     openFiles, activeFilePath, activeFile, setActiveFilePath,
-    handleFileSelect, handleFileClose, handleContentChange,
+    handleFileSelect: handleFileSelectInternal, handleFileClose, handleContentChange,
     handleFileSave, handleSaveCurrentFile, clearEditorState, setOpenFiles,
   } = useFileManager(null, () => {
     setPanelState(prev => ({ ...prev, editorVisible: false }));
   });
+
+  const handleFileSelect = useCallback(async (path: string) => {
+    setSelectedAutomation(null);
+    await handleFileSelectInternal(path);
+  }, [handleFileSelectInternal]);
 
   const {
     sessions, currentSessionId, setCurrentSessionId, currentConversation,
@@ -630,6 +637,7 @@ function App() {
         ],
       });
       if (selectedPath && typeof selectedPath === 'string') {
+        setSelectedAutomation(null);
         const file = await fileService.openFile(selectedPath);
         setOpenFiles(prev => prev.some(f => f.path === selectedPath) ? prev : [...prev, file]);
         setActiveFilePath(selectedPath);
@@ -977,6 +985,69 @@ function App() {
     setActiveActivity('sessions');
   }, [handleNewSession, handleSetActiveProject, projects]);
 
+  const handleSelectAutomation = useCallback((automation: DbAutomation) => {
+    setSelectedAutomation(automation);
+    setPanelState(prev => ({ ...prev, editorVisible: true }));
+  }, []);
+
+  const handleAutomationDeleted = useCallback((automationId: number) => {
+    if (selectedAutomation?.id !== automationId) return;
+    setSelectedAutomation(null);
+    if (openFiles.length === 0) {
+      setPanelState(prev => ({ ...prev, editorVisible: false }));
+    }
+  }, [openFiles.length, selectedAutomation?.id]);
+
+  const handleRunAutomationFromDetail = useCallback(async (automation: DbAutomation) => {
+    if (!automation.id || runningAutomationId !== null) return;
+    setRunningAutomationId(automation.id);
+    try {
+      await handleRunAutomation(automation);
+      const lastRunAt = new Date().toISOString();
+      const updated = {
+        ...automation,
+        lastRunAt,
+        runCount: automation.runCount + 1,
+        updatedAt: lastRunAt,
+      };
+      await updateAutomation(automation.id, {
+        lastRunAt,
+        runCount: updated.runCount,
+        updatedAt: lastRunAt,
+      });
+      setSelectedAutomation(updated);
+      setAutomationRefreshKey(current => current + 1);
+    } catch (err) {
+      console.error('[App] 运行自动化失败:', err);
+      showToast(err instanceof Error ? err.message : '运行自动化失败');
+    } finally {
+      setRunningAutomationId(null);
+    }
+  }, [handleRunAutomation, runningAutomationId]);
+
+  const handleDeleteAutomationFromDetail = useCallback(async (automation: DbAutomation) => {
+    if (!automation.id || runningAutomationId !== null) return;
+    try {
+      await deleteAutomation(automation.id);
+      setSelectedAutomation(null);
+      if (openFiles.length === 0) {
+        setPanelState(prev => ({ ...prev, editorVisible: false }));
+      }
+      setAutomationRefreshKey(current => current + 1);
+      showToast(`自动化任务 "${automation.title}" 已删除`);
+    } catch (err) {
+      console.error('[App] 删除自动化失败:', err);
+      showToast('删除自动化失败');
+    }
+  }, [openFiles.length, runningAutomationId]);
+
+  const handleCloseAutomationDetail = useCallback(() => {
+    setSelectedAutomation(null);
+    if (openFiles.length === 0) {
+      setPanelState(prev => ({ ...prev, editorVisible: false }));
+    }
+  }, [openFiles.length]);
+
   // 渲染侧边栏内容
   const renderSidebarContent = () => {
     if (sidebarCollapsed) return null;
@@ -1013,8 +1084,10 @@ function App() {
           <AutomationPanel
             projects={projects}
             refreshKey={automationRefreshKey}
+            selectedAutomationId={selectedAutomation?.id}
             onCreateWithPrompt={() => handleStartPromptCreation('automation')}
-            onRunAutomation={handleRunAutomation}
+            onSelectAutomation={handleSelectAutomation}
+            onAutomationDeleted={handleAutomationDeleted}
           />
         );
       case 'skills':
@@ -1035,9 +1108,20 @@ function App() {
       if (!panelState.editorVisible) return null;
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
-          <Suspense fallback={<div className="panel-loading">Loading editor...</div>}>
-            <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={currentTheme} editorTheme={settings.editorTheme} fontSize={settings.fontSize} tabSize={settings.tabSize} autoSave={settings.autoSave} formatOnSave={settings.formatOnSave} diffLines={diffLines} diffFiles={diffFiles} />
-          </Suspense>
+          {selectedAutomation ? (
+            <AutomationDetail
+              automation={selectedAutomation}
+              projects={projects}
+              running={runningAutomationId === selectedAutomation.id}
+              onRun={automation => { void handleRunAutomationFromDetail(automation); }}
+              onDelete={automation => { void handleDeleteAutomationFromDetail(automation); }}
+              onClose={handleCloseAutomationDetail}
+            />
+          ) : (
+            <Suspense fallback={<div className="panel-loading">Loading editor...</div>}>
+              <EditorPanel files={openFiles} activeFilePath={activeFilePath} onFileSelect={setActiveFilePath} onFileClose={(path) => { handleFileClose(path); setDiffFiles(prev => { const next = { ...prev }; delete next[path]; return next; }); }} onContentChange={handleContentChange} onFileSave={handleFileSave} theme={currentTheme} editorTheme={settings.editorTheme} fontSize={settings.fontSize} tabSize={settings.tabSize} autoSave={settings.autoSave} formatOnSave={settings.formatOnSave} diffLines={diffLines} diffFiles={diffFiles} />
+            </Suspense>
+          )}
           {bothVisible && <div className="resize-handle vertical" onMouseDown={(e) => startResize('editor', e)} />}
         </div>
       );

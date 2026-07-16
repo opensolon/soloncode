@@ -26,6 +26,14 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refresh
       const list = await skillService.getMounts(backendPort);
       const skillMounts = list.filter(mount => mount.type === "SKILLS");
       setMounts(skillMounts);
+
+      // Tauri 在独立进程中写入 Skill，文件监听可能尚未完成刷新。
+      // 主动让 CLI 重新扫描挂载池，确保管理列表和运行时立即可用。
+      for (const mount of skillMounts) {
+        try { await skillService.refreshMount(backendPort, mount.alias); }
+        catch (err) { console.warn(`[SkillsPanel] refresh mount ${mount.alias} failed:`, err); }
+      }
+
       const skillsMap: Record<string, PoolSkill[]> = {};
       await Promise.all(skillMounts.map(async (m) => {
         try { skillsMap[m.alias] = await skillService.getPoolSkills(backendPort, m.alias); }
