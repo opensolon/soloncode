@@ -107,12 +107,22 @@ public class LoopCommand implements Command {
                 LoopTask task = scheduler.getTaskById(sessionId, taskId);
                 if (task != null) {
                     scheduler.remove(sessionId, task);
+                    // 同时中断正在执行的 Agent
+                    reactor.core.Disposable disposable = (reactor.core.Disposable) ctx.getSession().attrs().remove("disposable");
+                    if (disposable != null && !disposable.isDisposed()) {
+                        disposable.dispose();
+                    }
                 }
 
                 ctx.println(ctx.color(GREEN + "Loop task '" + taskId + "' stopped." + RESET));
             }
         } else if ("stop-all".equals(sub)) {
             scheduler.stopAll(sessionId);
+            // 同时中断正在执行的 Agent，防止当前轮次完成后 scheduleContinuation 继续调度
+            reactor.core.Disposable disposable = (reactor.core.Disposable) ctx.getSession().attrs().remove("disposable");
+            if (disposable != null && !disposable.isDisposed()) {
+                disposable.dispose();
+            }
             ctx.println(ctx.color(GREEN + "All loop tasks stopped." + RESET));
         } else if ("pause".equals(sub)) {
             doPause(ctx, sessionId, ctx.argAt(1));

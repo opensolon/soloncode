@@ -700,6 +700,12 @@ public class LoopScheduler {
             return;
         }
 
+        // 已取消则不续行
+        if (task.isCancelled()) {
+            LOG.debug("Loop task '{}' cancelled, skip continuation", task.getId());
+            return;
+        }
+
         GoalState gs = task.getGoalState();
         if (!gs.getStatus().isActive() || gs.isBudgetExceeded()) {
             return;

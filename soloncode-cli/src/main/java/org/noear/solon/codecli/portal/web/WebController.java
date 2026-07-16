@@ -549,6 +549,15 @@ public class WebController {
 
         webGate.interruptSession(sessionId);
 
+        // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
+        if (loopScheduler != null) {
+            LoopTask activeGoal = loopScheduler.findActiveGoalInSession(sessionId);
+            if (activeGoal != null) {
+                loopScheduler.pauseGoal(sessionId, activeGoal.getId());
+                LOG.info("[WebController] Goal '{}' paused due to session interrupt", activeGoal.getId());
+            }
+        }
+
         return Result.succeed();
     }
 
