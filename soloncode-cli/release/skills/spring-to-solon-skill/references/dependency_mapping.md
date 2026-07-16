@@ -117,6 +117,14 @@ Web 开发集成包（含路由、MVC 注解、静态资源等）。
 
 Solon 天然支持响应式（基于 CompletableFuture / Reactive Streams），无需单独的 WebFlux 包。
 
+> **WebFlux 迁移差异说明**：
+> - Spring WebFlux 基于 Reactor 的 `Mono<T>`/`Flux<T>` 响应式流，而 Solon 的响应式模型基于 `CompletableFuture<T>` 和标准 Java 异步机制。
+> - **无需 `Mono`/`Flux` 包装**：Solon 控制器方法直接返回 POJO 或 `CompletableFuture<T>`，框架自动处理异步响应。
+> - **WebClient 替代**：Spring WebFlux 的 `WebClient` 在 Solon 中可用 `HttpUtils` 或 `Nami`（RPC 客户端）替代。
+> - **函数式路由**：Spring WebFlux 的 `RouterFunction` 在 Solon 中对应 `app.get()/post()/all()` 等函数式路由 API。
+> - **SSE 支持**：Solon 通过 `SseEmitter` 支持 SSE，用法与 Spring WebFlux 的 `SseEmitter` 类似。
+> - 参考：`solon-development-skill` 可查询 Solon 原生响应式 API 细节。
+
 **Before：**
 
 ```xml
@@ -666,7 +674,7 @@ JPA（Hibernate 实现）。
 </dependency>
 ```
 
-#### spring-boot-starter-validation → solon-validation
+#### spring-boot-starter-validation → solon-security-validation
 
 **Before：**
 
@@ -682,9 +690,11 @@ JPA（Hibernate 实现）。
 ```xml
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-validation</artifactId>
+    <artifactId>solon-security-validation</artifactId>
 </dependency>
 ```
+
+> 权威坐标为 `solon-security-validation`（不存在可用的 `solon-validation` artifact）。详见 `validation_migration.md`。
 
 #### spring-boot-starter-aop → 无需额外依赖
 
@@ -730,7 +740,7 @@ JPA（Hibernate 实现）。
 
 ### 3.12 Cloud 微服务
 
-#### spring-cloud-starter-openfeign → nami（或 solon-rpc-nami）
+#### spring-cloud-starter-openfeign → nami（+ 通道；可选 solon-rpc 快捷包）
 
 **Before：**
 
@@ -741,14 +751,20 @@ JPA（Hibernate 实现）。
 </dependency>
 ```
 
-**After：**
+**After（推荐原生 Nami）：**
 
 ```xml
 <dependency>
     <groupId>org.noear</groupId>
     <artifactId>nami</artifactId>
 </dependency>
+<dependency>
+    <groupId>org.noear</groupId>
+    <artifactId>nami-channel-http</artifactId>
+</dependency>
 ```
+
+> 也可评估 `solon-rpc` 快捷包；保留 Feign 习惯时用 `feign-solon-plugin`。详见 `cloud_gateway_rpc_migration.md`。勿使用不存在的 `solon-cloud-feign-compatible` / `solon-rpc-nami` 坐标。
 
 #### spring-cloud-starter-gateway → solon-cloud-gateway
 
@@ -1002,7 +1018,7 @@ org.springframework.cloud   →  org.noear
         <!-- 参数校验 -->
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>solon-validation</artifactId>
+            <artifactId>solon-security-validation</artifactId>
         </dependency>
 
         <!-- AOP：无需额外依赖，Solon 框架内置 -->
@@ -1138,7 +1154,7 @@ org.springframework.cloud   →  org.noear
 | spring-boot-starter-actuator | solon-health | 运维 |
 | spring-boot-starter-mail | solon-mail | 邮件 |
 | spring-boot-starter-quartz | solon-scheduling-simple / solon-scheduling-quartz | 定时任务 |
-| spring-boot-starter-validation | solon-validation | 校验 |
+| spring-boot-starter-validation | solon-security-validation | 校验 |
 | spring-boot-starter-json | solon-serialization-json | 序列化 |
 | spring-boot-starter-aop | （内置，无需依赖） | AOP |
 | spring-boot-devtools | （内置，无需依赖） | 开发工具 |

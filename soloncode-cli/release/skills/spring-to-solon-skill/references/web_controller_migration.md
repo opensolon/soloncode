@@ -104,6 +104,7 @@ public class UserController {
 > - `@GetMapping`/`@PostMapping`/`@PutMapping`/`@DeleteMapping` → `@Get`+`@Mapping` / `@Post`+`@Mapping` 等（HTTP 方法与路径分离为两个注解）。
 > - `@Autowired` → `@Inject`。
 > - `@PathVariable` → `@Path`；`@RequestBody` → `@Body`。
+> - **推荐写法**：推荐使用 `@Get` + `@Mapping` 组合（`@Post`/`@Put`/`@Delete` 同理），可读性更好。也可用 `@Mapping(method = MethodType.GET)` 单注解写法，两者等价。本文档统一使用 `@Get` + `@Mapping` 组合。
 > - **`@Mapping` 不支持多路径映射**（如 `@RequestMapping({"/a", "/b"})` 在 Solon 中不可用）。
 > - 控制器继承时，Solon 支持基类的 `@Mapping` public 函数。
 
@@ -344,3 +345,26 @@ public class ContextController {
 ```
 
 > **注意**：`Context` 不支持通过 `@Inject` 在字段上注入（它是请求作用域对象），只能在方法参数中使用。
+
+---
+
+## 3. 陷阱与差异
+
+| 编号 | 陷阱 | 说明 |
+|---|---|---|
+| 1 | **无 `@RestController`** | 统一 `@Controller`，默认可走 JSON 渲染（配合序列化插件）。 |
+| 2 | **`@Mapping` 单路径** | 一个注解一个 path pattern；多 path 拆多方法。 |
+| 3 | **参数注解名不同** | `@RequestParam`→`@Param`，`@RequestBody`→`@Body`，`@PathVariable`→`@Path`。 |
+| 4 | **Servlet API** | 优先 `Context`，避免继续依赖 `HttpServletRequest/Response`。 |
+| 5 | **Context 作用域** | 只能方法参数注入，不能字段 `@Inject`。 |
+| 6 | **校验另文** | 类级 `@Valid` / 实体 `@Validated` 见 `validation_migration.md`。 |
+
+## 4. 迁移检查清单
+
+- [ ] `@RestController` → `@Controller`
+- [ ] `@RequestMapping` / 各 `*Mapping` → `@Mapping` + 可选 `@Get`/`@Post`/...
+- [ ] `@RequestParam`/`@RequestBody`/`@PathVariable`/`@RequestHeader`/`@CookieValue` → `@Param`/`@Body`/`@Path`/`@Header`/`@Cookie`
+- [ ] `HttpServletRequest`/`HttpServletResponse` → `Context`
+- [ ] 返回视图场景确认 `ModelAndView` / 视图插件，勿假设与 Spring MVC 完全一致
+- [ ] 需要校验时：依赖 `solon-security-validation`，见 `validation_migration.md`
+- [ ] Filter/异常/CORS 见 `web_filter_interceptor_migration.md`；上传/SSE/WS 见 `web_advanced_migration.md`

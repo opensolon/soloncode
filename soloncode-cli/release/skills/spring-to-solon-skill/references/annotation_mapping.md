@@ -610,9 +610,12 @@ public class UserService {
 
 ### 7.3 参数校验
 
+> 依赖：`solon-security-validation`。详细迁移见 `validation_migration.md`。
+
 ```java
-// [Spring] @Validated（基于 JSR 380 / Hibernate Validator）
+// [Spring] 类级 @Validated + 参数 @Validated/@Valid（JSR 380 包名）
 @RestController
+@Validated
 public class UserController {
     @PostMapping("/user")
     public String create(@Validated @RequestBody UserDTO user) {
@@ -622,26 +625,28 @@ public class UserController {
 ```
 
 ```java
-// [Solon] @Valid + 函数级参数校验（可见性更强，支持批量校验）
+// [Solon] 类级 @Valid 启用；实体参数 @Validated；简单参数可直接加约束
+// import: org.noear.solon.validation.annotation.*
 @Valid
 @Controller
 public class UserController {
 
-    @NotNull({"name", "mobile"})
+    @NotNull({"name", "mobile"})  // 方法级：按参数名批量非 null
     @Mapping("/user/add")
     public String add(String name,
                       @Pattern("13\\d{9}") String mobile) {
-        // 参数校验注解直接在函数声明处，可见性更好
         return "ok";
     }
 
     @Mapping("/user/create")
     public String create(@Validated UserDTO user) {
-        // 也支持实体校验
+        // @Validated 触发实体字段校验（非类级启用注解）
         return "ok";
     }
 }
 ```
+
+> **关键差异**: 语义近似 JSR 380，但 **包名不兼容**；异常为 `ValidatorException`。
 
 ---
 
@@ -732,8 +737,10 @@ public class DemoController {
 
 ## 十、定时任务
 
+> **单机**用 `@Scheduled`（本文）；**分布式**用 `@CloudJob`，见 `cloud_observability_migration.md`。详细迁移见 `scheduling_migration.md`。
+
 ```java
-// [Spring] @Scheduled（注解名称和用法基本一致）
+// [Spring] @Scheduled + @EnableScheduling
 @Component
 @EnableScheduling
 public class ScheduledTasks {
@@ -745,7 +752,8 @@ public class ScheduledTasks {
 ```
 
 ```java
-// [Solon] @Scheduled（注解相同，无需额外 @EnableScheduling）
+// [Solon] import org.noear.solon.scheduling.annotation.Scheduled;
+// 无需 @EnableScheduling；依赖 solon-scheduling-simple 或 solon-scheduling-quartz
 @Component
 public class ScheduledTasks {
     @Scheduled(fixedRate = 5000)
@@ -755,7 +763,7 @@ public class ScheduledTasks {
 }
 ```
 
-> **注意**: Solon 不需要 `@EnableScheduling`，引入 `solon-scheduling-simple` 插件即可自动生效。
+> **注意**: 包名是 `org.noear.solon.scheduling.annotation.Scheduled`，不要混用 Spring 的同名注解。
 
 ---
 
@@ -897,8 +905,10 @@ public class App {
 | **事务** | `@Transactional` | `@Transaction` | 事务（无需指定回滚异常） |
 | **缓存** | `@Cacheable` | `@Cache` | 缓存（基于标签管理） |
 | **缓存** | `@CacheEvict` | `@CacheRemove` | 缓存清除 |
-| **校验** | `@Validated` | `@Valid` | 参数校验（支持批量校验） |
-| **定时** | `@Scheduled` | `@Scheduled` | 定时任务（注解相同） |
+| **校验** | 类级 `@Validated` | 类级 `@Valid` | 启用校验（`solon-security-validation`） |
+| **校验** | 实体参数 `@Valid`/`@Validated` | 参数/ 字段 `@Validated` | 校验实体字段（可 groups） |
+| **定时（单机）** | `@Scheduled` + `@EnableScheduling` | `@Scheduled`（`org.noear.solon.scheduling.annotation`） | 见 `scheduling_migration.md` |
+| **定时（分布式）** | 集群 Job / XXL 等 | `@CloudJob` | 见 `cloud_observability_migration.md`；勿与单机 Scheduled 混用 |
 | **RPC** | `@FeignClient` | `@NamiClient` | RPC 客户端 |
 | **启动** | `@SpringBootApplication` | `@SolonMain` | 启动类 |
 | **测试** | `@SpringBootTest` | `@SolonTest` | 测试类 |

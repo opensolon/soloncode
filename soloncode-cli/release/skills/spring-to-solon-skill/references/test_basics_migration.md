@@ -16,15 +16,17 @@
 </dependency>
 ```
 
-**Solon：**
+**Solon（JUnit5，推荐）：**
 
 ```xml
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-test</artifactId>
+    <artifactId>solon-test-junit5</artifactId>
     <scope>test</scope>
 </dependency>
 ```
+
+> 与 `dependency_mapping.md` 一致。若文档其它处出现 `solon-test`，以 JUnit 版本选择对应 artifact，优先 `solon-test-junit5`。
 
 **关键差异：**
 - Spring Boot 提供统一的 `spring-boot-starter-test`，包含所有测试工具。
@@ -532,3 +534,27 @@ class OrderServiceTest {
     }
 }
 ```
+
+---
+
+## 7. 陷阱与差异
+
+| 编号 | 陷阱 | 说明 |
+|---|---|---|
+| 1 | **禁止混用 Spring 测试注解** | 测试类不要同时出现 `@SpringBootTest` 与 `@SolonTest`，也不要 `@Autowired`。 |
+| 2 | **启动类显式指定** | `@SolonTest(App.class)` 需指向真实入口，避免扫错包。 |
+| 3 | **HTTP 测试 API 不同** | 使用 Solon `HttpTester`（或项目约定方式），不是 `MockMvc` 原样照搬。 |
+| 4 | **回滚注解** | Spring `@Transactional`+`@Rollback` → Solon `@Rollback`（语义见上文）。 |
+| 5 | **配置源** | 测试属性优先 `@Import` / `app-test.yml` 等 Solon 方式，不是 `@TestPropertySource` 照搬。 |
+| 6 | **进阶章节** | AOP/条件/WebFlux 等见 **`test_advanced_migration.md`**（从该文件 §7 起接续本文）。 |
+
+## 8. 迁移检查清单
+
+- [ ] 测试依赖：`spring-boot-starter-test` → **`solon-test-junit5`**（以 `dependency_mapping.md` 为准）
+- [ ] `@SpringBootTest` → `@SolonTest(App.class)`
+- [ ] `@Autowired` → `@Inject`；移除 Spring 测试专用注解
+- [ ] MockMvc / TestRestTemplate 用法改为 Solon HTTP 测试方式
+- [ ] 事务回滚：`@Rollback` 等与数据层依赖对齐
+- [ ] 测试配置不再依赖 `application-test.yml` 文件名时，改为 `app-*.yml` 约定
+- [ ] 全测试模块无 `org.springframework` 残留
+- [ ] 进阶场景继续 `test_advanced_migration.md`

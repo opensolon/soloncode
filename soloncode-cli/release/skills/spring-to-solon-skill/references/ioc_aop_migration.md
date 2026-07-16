@@ -10,10 +10,10 @@
 - [2. IoC / 依赖注入迁移](#2-ioc--依赖注入迁移)
 - [3. 组件注册与作用域](#3-组件注册与作用域)
 - [4. 生命周期迁移](#4-生命周期迁移)
-- [7. AOP 迁移](#7-aop-迁移)
-- [8. 事件机制迁移](#8-事件机制迁移)
-- [9. 包扫描迁移](#9-包扫描迁移)
-- [10. 核心陷阱与差异清单（IoC/AOP 相关）](#10-核心陷阱与差异清单ioc-aop-相关)
+- [5. AOP 迁移](#5-aop-迁移)
+- [6. 事件机制迁移](#6-事件机制迁移)
+- [7. 包扫描迁移](#7-包扫描迁移)
+- [8. 核心陷阱与差异清单（IoC/AOP 相关）](#8-核心陷阱与差异清单ioc-aop-相关)
 
 ## 1. 启动类迁移
 
@@ -284,9 +284,9 @@ public class StartupRunner {
 
 > **差异说明**：Solon 没有 `ApplicationRunner` 和 `CommandLineRunner`，统一通过 `AppLoadEndEvent` 事件实现，触发时机等价。
 
-## 7. AOP 迁移
+## 5. AOP 迁移
 
-### 7.1 代理机制差异
+### 5.1 代理机制差异
 
 | 特性 | Spring | Solon |
 |---|---|---|
@@ -297,7 +297,7 @@ public class StartupRunner {
 
 > **陷阱**：原项目中有 **protected 方法** 上的 AOP 注解（如 `@Transactional`），迁移后不会生效，需改为 public。
 
-### 7.2 环绕通知迁移（含自定义拦截器注解）
+### 5.2 环绕通知迁移（含自定义拦截器注解）
 
 Spring 使用 AspectJ `execution()` 表达式；**Solon 不支持 execution 表达式**，需通过自定义注解 + 拦截器实现。
 
@@ -358,7 +358,7 @@ public class OrderService {
 > - Spring 在 `@Aspect` 类中集中定义通知；Solon 通过 `beanInterceptorAdd` 分散注册
 > - 前置/后置/异常通知无独立注解，统一在 `MethodInterceptor.intercept()` 中用 try-catch-finally 实现
 
-### 7.3 带参数的自定义拦截器
+### 5.3 带参数的自定义拦截器
 
 ```java
 // Before — Spring
@@ -391,9 +391,9 @@ public class RateLimitInterceptor implements MethodInterceptor {
 }
 ```
 
-## 8. 事件机制迁移
+## 6. 事件机制迁移
 
-### 8.1 概念对照
+### 6.1 概念对照
 
 | 概念 | Spring | Solon |
 |---|---|---|
@@ -402,7 +402,7 @@ public class RateLimitInterceptor implements MethodInterceptor {
 | 事件监听 | `@EventListener` 注解 | `EventListener<T>` 接口或 `EventBus.subscribe()` |
 | 异步事件 | `@Async` + `@EventListener` | `EventBus.publishAsync()` |
 
-### 8.2 完整对照
+### 6.2 完整对照
 
 ```java
 // Before — Spring
@@ -451,7 +451,7 @@ public class EmailNotifier implements EventListener<OrderCreatedEvent> {
 
 > **差异说明**：Spring 事件必须继承 `ApplicationEvent`；Solon 事件是任意 POJO。监听方式从 `@EventListener` 注解改为 `EventListener<T>` 接口实现或 `EventBus.subscribe()`。
 
-## 9. 包扫描迁移
+## 7. 包扫描迁移
 
 ```java
 // Before — Spring
@@ -471,7 +471,7 @@ public class App {
 
 > **差异说明**：Solon 的 `@Import` 同时替代 `@ComponentScan` 和 `@Import`。仅在启动类或 `@Configuration` 类上有效。
 
-## 10. 核心陷阱与差异清单（IoC/AOP 相关）
+## 8. 核心陷阱与差异清单（IoC/AOP 相关）
 
 ### 陷阱速查表
 

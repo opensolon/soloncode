@@ -15,15 +15,23 @@
 </dependency>
 ```
 
-**Solon Cloud Nami：**
+**Solon（推荐 Nami 原生）：**
 ```xml
+<!-- 快捷：solon-rpc 或按需 nami + 通道 -->
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-cloud-feign-compatible</artifactId>
+    <artifactId>nami</artifactId>
 </dependency>
+<dependency>
+    <groupId>org.noear</groupId>
+    <artifactId>nami-channel-http</artifactId>
+</dependency>
+<!-- 序列化按需，如 solon-serialization-json / nami-coder-* -->
 ```
 
-> 注意：如果仅使用 Nami 原生 API，只需 `solon-serialization-json` + `nami-channel-http`。
+> - **优先** `@NamiClient` 原生迁移（与 `dependency_mapping.md` 的 openfeign → `nami` 一致）。
+> - 若需尽量保留 Feign 编程习惯，可评估官方 **`feign-solon-plugin`**（存在于 solon-parent BOM）；**不要**使用不存在的 `solon-cloud-feign-compatible` 坐标。
+> - 服务发现场景配合 Cloud discovery 插件，`@NamiClient(name="...")` 走注册中心。
 
 ### 1.2 客户端声明迁移
 
@@ -334,3 +342,26 @@ solon:
         bootstrapServers: "127.0.0.1:9092"
         groupId: "order-group"
 ```
+
+---
+
+## 4. 陷阱与差异
+
+| 编号 | 陷阱 | 说明 |
+|---|---|---|
+| 1 | **Feign → Nami** | 接口声明与客户端注解体系不同；兼容包与原生 Nami 二选一策略要明确。 |
+| 2 | **服务名 / 发现** | 依赖注册中心插件（如 Nacos）与 `CloudClient`，不是 Eureka + Ribbon 原样。 |
+| 3 | **网关模型** | Spring Cloud Gateway Predicate/Filter 链不能逐条 1:1 粘贴；按 Solon `CloudGateway` 能力重写路由。 |
+| 4 | **事件载荷** | `@CloudEvent` 侧统一 `Event`，自行反序列化业务对象。 |
+| 5 | **序列化** | RPC/HTTP 通道需配套 `solon-serialization-json` 等，勿假设 Boot 默认 Jackson 自动齐套。 |
+| 6 | **可观测性另文** | 断路器 / 链路 / 分布式任务见 `cloud_observability_migration.md`。 |
+
+## 5. 迁移检查清单
+
+- [ ] 移除 `spring-cloud-starter-openfeign` / Gateway / Stream 等对应 starter
+- [ ] Feign 客户端改为 Nami（或官方兼容方案），接口与配置对齐
+- [ ] 网关路由在 Solon Cloud Gateway 中重写并做联调
+- [ ] `@StreamListener` / Bus → `@CloudEvent` + 通道配置
+- [ ] 注册发现与配置中心与 `cloud_discovery_config_migration.md` 一致
+- [ ] 需要熔断、链路、分布式 Job 时继续 `cloud_observability_migration.md`
+- [ ] 端到端验证：服务发现 → RPC → 网关 → 事件至少一条主路径

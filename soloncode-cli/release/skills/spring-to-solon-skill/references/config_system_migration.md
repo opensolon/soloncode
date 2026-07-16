@@ -6,24 +6,24 @@
 
 ## 目录
 
-- [5. 配置文件迁移](#5-配置文件迁移)
-  - [5.1 文件命名与加载机制](#51-文件命名与加载机制)
-  - [5.2 环境切换](#52-环境切换)
-  - [5.3 配置文件完整对照](#53-配置文件完整对照)
-  - [5.4 属性源导入](#54-属性源导入)
-  - [5.5 变量引用与多片段](#55-变量引用与多片段)
-  - [5.6 编程式读取配置](#56-编程式读取配置)
-- [6. 配置类与 Bean 定义迁移](#6-配置类与-bean-定义迁移)
-  - [6.1 基本配置类](#61-基本配置类)
-  - [6.2 带 Condition 的 Bean 定义](#62-带-condition-的-bean-定义)
-  - [6.3 多数据源场景](#63-多数据源场景)
-- [10. 核心陷阱与差异清单（配置相关）](#10-核心陷阱与差异清单配置相关)
+- [1. 配置文件迁移](#1-配置文件迁移)
+  - [1.1 文件命名与加载机制](#11-文件命名与加载机制)
+  - [1.2 环境切换](#12-环境切换)
+  - [1.3 配置文件完整对照](#13-配置文件完整对照)
+  - [1.4 属性源导入](#14-属性源导入)
+  - [1.5 变量引用与多片段](#15-变量引用与多片段)
+  - [1.6 编程式读取配置](#16-编程式读取配置)
+- [2. 配置类与 Bean 定义迁移](#2-配置类与-bean-定义迁移)
+  - [2.1 基本配置类](#21-基本配置类)
+  - [2.2 带 Condition 的 Bean 定义](#22-带-condition-的-bean-定义)
+  - [2.3 多数据源场景](#23-多数据源场景)
+- [3. 核心陷阱与差异清单（配置相关）](#3-核心陷阱与差异清单配置相关)
 
 ---
 
-## 5. 配置文件迁移
+## 1. 配置文件迁移
 
-### 5.1 文件命名与加载机制
+### 1.1 文件命名与加载机制
 
 | 项目 | Spring Boot | Solon |
 |---|---|---|
@@ -33,7 +33,7 @@
 | 文件位置 | `src/main/resources/` | `src/main/resources/`（相同） |
 | 支持格式 | `.yml`、`.properties` | `.yml`、`.properties`（相同） |
 
-### 5.2 环境切换
+### 1.2 环境切换
 
 #### Before — Spring（application.yml）
 
@@ -54,7 +54,7 @@ solon:
 > - 环境切换的关键字从 `spring.profiles.active` 变为 `solon.env`。
 > - 环境文件命名从 `application-{profile}.yml` 变为 `app-{env}.yml`。
 
-### 5.3 配置文件完整对照
+### 1.3 配置文件完整对照
 
 #### Before — Spring（application.yml）
 
@@ -190,8 +190,13 @@ solon.logging:
 > - `spring.datasource.hikari.maximum-pool-size` → `solon.datasource.maxPoolSize`（层级更扁平，驼峰命名）。
 > - `logging.level` → `solon.logging.level`（前缀不同）。
 > - 自定义业务配置（如 `app.*`）的 key 路径不变，迁移时保持原样即可。
+> - **Redis 配置层级说明**：Solon 的 Redis 配置有两种写法：
+>   1. 推荐放在 `solon.redis.*` 下（如上例），由 `solon-data-redis` 插件自动识别。
+>   2. 也可放在根层级 `redis.*` 下，由 `solon-data-redis` 插件自动合并读取。
+>   两种写法效果相同，但**推荐统一使用 `solon.redis.*`** 以保持与数据源 (`solon.datasource.*`) 一致的命名风格，避免混乱。
+>   这与 `solon.datasource.*` 必须在 `solon` 命名空间下的规则不同（数据源配置**不支持**根层级写法）。
 
-### 5.4 属性源导入
+### 1.4 属性源导入
 
 #### Before — Spring
 
@@ -228,7 +233,7 @@ public class App {
 > - Solon 的 `@Import` 同时承担 `@ComponentScan`、`@Import`（Spring 的类导入）和 `@PropertySource` 三者的职责。
 > - `@Import` 只在启动类或 `@Configuration` 类上有效。
 
-### 5.5 变量引用与多片段
+### 1.5 变量引用与多片段
 
 #### 变量引用
 
@@ -278,7 +283,7 @@ app:
 
 > **差异说明**：Spring 需要通过独立的 `application-{profile}.yml` 文件实现环境隔离；Solon 支持两种方式——既支持独立的 `app-{env}.yml` 文件，也支持在同一文件中用 `---` + `solon.env.on` 分隔多环境片段。
 
-### 5.6 编程式读取配置
+### 1.6 编程式读取配置
 
 #### Before — Spring
 
@@ -314,9 +319,9 @@ public class ConfigReader {
 }
 ```
 
-## 6. 配置类与 Bean 定义迁移
+## 2. 配置类与 Bean 定义迁移
 
-### 6.1 基本配置类
+### 2.1 基本配置类
 
 #### Before — Spring
 
@@ -364,7 +369,7 @@ public class DataSourceConfig {
 > - `@Bean(typed=true)` 用于声明某类型的默认 Bean，在 `@Inject` 按类型注入时优先匹配此 Bean。
 > - Solon 的 `@Bean` 可以返回 `void`（仅用于执行初始化逻辑，不注册任何 Bean）。
 
-### 6.2 带 Condition 的 Bean 定义
+### 2.2 带 Condition 的 Bean 定义
 
 #### Before — Spring
 
@@ -397,7 +402,7 @@ public class CacheConfig {
 
 > **注意**：`@Condition` 可同时声明多个条件（`onClass` + `onProperty`），而 Spring 需要叠加多个 `@ConditionalOnXxx` 注解。
 
-### 6.3 多数据源场景
+### 2.3 多数据源场景
 
 #### Before — Spring
 
@@ -443,7 +448,7 @@ public class MultiDataSourceConfig {
 > - Spring 用 `@Primary` 标记默认 Bean；Solon 用 `@Bean(typed=true)` 实现相同效果。
 > - 注入时：Spring 需 `@Qualifier` 区分，Solon 直接 `@Inject("db1")` 或 `@Inject("db2")`。
 
-## 10. 核心陷阱与差异清单（配置相关）
+## 3. 核心陷阱与差异清单（配置相关）
 
 ### 陷阱速查表
 
