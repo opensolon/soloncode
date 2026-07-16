@@ -1,7 +1,14 @@
+### v2026.7.16
+
+* 优化 soloncode web 任务全停止时，同时停目当前对话
+* 优化 soloncode web 停止任务时，同时停止 loop goal（如果有）
+* 修复 soloncode 可能会因为 llm 输出不规范造成 json 流式解析高 cpu 运行
+* 细节优化
+
 ### v2026.7.14
 
-* 修复 soloncode web 手动停止时，没有提示消息
 * 调整 soloncode web 移除思考块计时器功能及时长显示
+* 修复 soloncode web 手动停止时，没有提示消息
 * 细节优化
 
 ### v2026.7.13
