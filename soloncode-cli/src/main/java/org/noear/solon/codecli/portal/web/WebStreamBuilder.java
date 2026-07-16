@@ -36,12 +36,10 @@ import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.codecli.command.builtin.GoalTalent;
-import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -154,13 +152,6 @@ public class WebStreamBuilder {
         //记录最新的选择
         session.attrs().put("_agent_selected_tmp", agent.name());
 
-        // 执行开始时间，用于超时检测
-        final long startTime = System.currentTimeMillis();
-        // 最大执行时间（默认 10 分钟），防止 Agent 死循环
-        final long maxExecutionMs = getMaxExecutionTimeMs(session);
-        // 超时诊断：记录最后一个 chunk 的时间和类型，用于判断 Agent 卡在哪个阶段
-        final java.util.concurrent.atomic.AtomicLong lastChunkTime = new java.util.concurrent.atomic.AtomicLong(startTime);
-        final java.util.concurrent.atomic.AtomicReference<String> lastChunkInfo = new java.util.concurrent.atomic.AtomicReference<>("init");
         // 会话级推理水平：从 context 读取并注入 Prompt + options
         // auto 时不注入 effort，交给模型 defaultOptions / Agent Builder / 供应商
         String sessionEffort = ReasoningEffortSupport.getSessionEffort(session);
@@ -215,9 +206,6 @@ public class WebStreamBuilder {
                 })
                 .stream()
                 .flatMap(chunk -> {
-                    // 超时诊断：记录每个 chunk 的时间和类型
-                    lastChunkTime.set(System.currentTimeMillis());
-                    lastChunkInfo.set(chunk.getClass().getSimpleName() + ":" + chunk);
                     // 子代理任务包装解包：TaskWrapChuck 携带 taskAgentName/isMultitask
                     String runId = null;
                     String taskAgentName = null;
@@ -287,35 +275,6 @@ public class WebStreamBuilder {
                     }
                 })
                 .filter(WebChunk::isNotEmpty)
-                // ⚠️ 必须使用 timeout(Duration, Publisher) 双参数版本
-                // 单参数版本会发出 TimeoutException，导致超时提示 chunk 丢失
-                .timeout(Duration.ofMillis(maxExecutionMs), Flux.defer(() -> {
-                    long elapsed = System.currentTimeMillis() - startTime;
-                    long idleMs = System.currentTimeMillis() - lastChunkTime.get();
-                    String lastChunk = lastChunkInfo.get();
-
-                    // 收集 Agent 当前状态
-                    ReActTrace trace = session.getContext().getAs("__main");
-                    String route = trace != null ? trace.getRoute() : "unknown";
-                    int turns = trace != null ? trace.getTurnCount() : -1;
-                    int steps = trace != null ? trace.getStepCount() : -1;
-                    int toolCalls = trace != null ? trace.getToolCallCount() : -1;
-                    boolean finished = trace != null && "end".equals(trace.getRoute());
-
-                    LOG.warn("[WebStreamBuilder] Agent 执行超时 ({}ms > {}ms)，强制终止 session={}",
-                            elapsed, maxExecutionMs, session.getSessionId());
-                    LOG.warn("[WebStreamBuilder] 超时诊断: route={}, turns={}, steps={}, toolCalls={}, agentFinished={}, idleMs={}, lastChunk={}",
-                            route, turns, steps, toolCalls, finished, idleMs, lastChunk);
-
-                    // 主动清理：尝试中断 Agent 内部执行
-                    Disposable disposable = (Disposable) session.attrs().remove("disposable");
-                    if (disposable != null && !disposable.isDisposed()) {
-                        disposable.dispose();
-                        LOG.info("[WebStreamBuilder] 已主动 dispose Agent 订阅，session={}", session.getSessionId());
-                    }
-
-                    return Flux.just(createTimeoutChunk(session, elapsed, maxExecutionMs, idleMs, route, turns, toolCalls, finished), WebChunk.ofDone());
-                }))
                 .onErrorResume(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
@@ -340,11 +299,11 @@ public class WebStreamBuilder {
 
                             WebChunk hitlChuck = WebChunk.ofHitl(task.getToolName(), command);
 
-                            return Flux.just(hitlChuck, WebChunk.ofDone());
+                            return Flux.just(hitlChuck);
                         }
                     }
 
-                    return Flux.just(WebChunk.ofDone());
+                    return Flux.empty();
                 }));
     }
 
@@ -794,64 +753,5 @@ public class WebStreamBuilder {
                 link.sendReply(sessionId, text, isFinal);
             }
         }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  超时保护机制
-    // ═══════════════════════════════════════════════════════════════
-
-    /**
-     * 获取最大执行时间（毫秒）
-     *
-     * <p>从会话属性获取，由 WebGate.applyExecutionTimeout() 设置。
-     * 如果会话属性中没有，则使用 GeneralGroupDo 中的默认值。</p>
-     *
-     * @param session Agent 会话
-     * @return 最大执行时间（毫秒）
-     */
-    private long getMaxExecutionTimeMs(AgentSession session) {
-        // 优先从会话属性获取（由 WebGate.applyExecutionTimeout 设置）
-        Object customTimeout = session.attrs().get("_max_execution_ms");
-        if (customTimeout instanceof Number) {
-            return ((Number) customTimeout).longValue();
-        }
-        // 兜底：使用配置类中的默认值
-        return GeneralGroupDo.DEFAULT_MAX_EXECUTION_MINUTES * 60 * 1000L;
-    }
-
-    /**
-     * 创建超时终止的 WebChunk
-     *
-     * @param session       Agent 会话
-     * @param elapsedMs     已执行时间（毫秒）
-     * @param maxExecutionMs 最大执行时间（毫秒）
-     * @return 超时提示的 WebChunk
-     */
-    private WebChunk createTimeoutChunk(AgentSession session, long elapsedMs, long maxExecutionMs,
-                                        long idleMs, String route, int turns, int toolCalls, boolean agentFinished) {
-        String phaseDesc;
-        if (agentFinished) {
-            phaseDesc = "Agent 已完成执行（route=end），但流未及时关闭";
-        } else if (idleMs > 30000) {
-            phaseDesc = String.format("Agent 已空闲 %d 秒无输出（最后阶段: %s），可能卡在 LLM API 调用或工具执行", idleMs / 1000, route);
-        } else {
-            phaseDesc = String.format("Agent 正在执行中（阶段: %s, 轮次: %d, 工具调用: %d）", route, turns, toolCalls);
-        }
-
-        WebChunk wc = new WebChunk();
-        wc.setType("text");
-        wc.setSessionId(session.getSessionId());
-        wc.setText(String.format(
-                "\n\n⚠️ **Agent 执行超时**\n\n" +
-                "执行时间: %d 秒 (上限: %d 秒)\n\n" +
-                "**状态诊断:** %s\n\n" +
-                "可能原因:\n" +
-                "- Agent 推理循环无法正常退出\n" +
-                "- 任务过于复杂，需要拆分为更小的步骤\n" +
-                "- 外部 API 响应缓慢\n\n" +
-                "建议: 请重新描述您的需求，或尝试简化任务。",
-                elapsedMs / 1000, maxExecutionMs / 1000, phaseDesc
-        ));
-        return wc;
     }
 }

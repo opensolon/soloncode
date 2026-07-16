@@ -33,7 +33,6 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.util.ReasoningEffortSupport;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
@@ -221,6 +220,18 @@ public class WebGate extends SimpleWebSocketListener {
     // ═══════════════════════════════════════════════════════════════
 
     /**
+     * 用户聊天输入入口（含推理选项）。
+     */
+    public void onChatInput(String sessionId,
+                            String sessionCwd,
+                            String input, String selectedModel,
+                            UploadedFile[] attachments, String[] attachmentTypes,
+                            String hitlAction, String source) {
+        onChatInput(sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
+                hitlAction, source, null);
+    }
+
+    /**
      * 用户聊天输入入口（由 WebController HTTP 接口调用）。
      *
      * <p>核心处理流程：</p>
@@ -241,18 +252,6 @@ public class WebGate extends SimpleWebSocketListener {
      * @param hitlAction      HITL 操作类型，取值 "approve" 或 "reject"（可为 null）
      * @param source          消息来源通道标识
      * @param reasoningEffort 请求级推理水平（可选，写入会话后由 StreamBuilder 注入）
-     */
-    public void onChatInput(String sessionId,
-                            String sessionCwd,
-                            String input, String selectedModel,
-                            UploadedFile[] attachments, String[] attachmentTypes,
-                            String hitlAction, String source) {
-        onChatInput(sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
-                hitlAction, source, null);
-    }
-
-    /**
-     * 用户聊天输入入口（含推理选项）。
      */
     public void onChatInput(String sessionId,
                             String sessionCwd,
@@ -439,14 +438,12 @@ public class WebGate extends SimpleWebSocketListener {
                 })
                 .doOnError(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
-                    session.attrs().remove("disposable");
 
                     emitToClient(sessionId, WebChunk.ofError(e));
-                    emitToClient(sessionId, WebChunk.ofDone());
                 })
                 .doFinally(s -> {
-                    session.attrs().remove("disposable");
-                    // 兜底：确保 done 消息一定送达前端（防止 timeout 与 onComplete 竞态导致 done 丢失）
+                    session.attrs().remove("disposable");  // 正常完成时清理
+
                     emitToClient(sessionId, WebChunk.ofDone());
                 })
                 .subscribe();
@@ -495,10 +492,11 @@ public class WebGate extends SimpleWebSocketListener {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
                     emitToClient(sessionId, WebChunk.ofError(e));
-                    emitToClient(sessionId, WebChunk.ofDone());
                 })
                 .doFinally(s -> {
                     session.attrs().remove("disposable");
+
+                    emitToClient(sessionId, WebChunk.ofDone());
                     countDownLatch.countDown();
                 })
                 .subscribe();
@@ -592,27 +590,6 @@ public class WebGate extends SimpleWebSocketListener {
         return true;
     }
 
-
-    /**
-     * 应用执行超时配置到会话
-     *
-     * <p>从 settings 中读取 maxExecutionMinutes，设置到会话属性中供 WebStreamBuilder 使用。
-     * 包含边界值校验：null/0/负值使用默认值 10 分钟，超过 60 分钟强制限制为 60 分钟。</p>
-     *
-     * @param session Agent 会话实例
-     */
-    private void applyExecutionTimeout(AgentSession session) {
-        Integer maxMinutes = settings.getGeneral().getMaxExecutionMinutes();
-        // maxExecutionMinutes 在 GeneralGroupDo 中已有默认值 5
-        if (maxMinutes == null || maxMinutes <= 0) {
-            maxMinutes = GeneralGroupDo.DEFAULT_MAX_EXECUTION_MINUTES;
-        }
-        if (maxMinutes > 60) {
-            LOG.warn("[WebGate] maxExecutionMinutes={} 超过上限，强制限制为 60 分钟", maxMinutes);
-            maxMinutes = 60;
-        }
-        session.attrs().put("_max_execution_ms", maxMinutes * 60 * 1000L);
-    }
 
     /**
      * 判断指定会话是否有 AI 任务正在执行。
