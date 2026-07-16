@@ -50,7 +50,10 @@ description: "Expert guidance for migrating Java projects from Spring Boot / Spr
 
 ## Migration Scene Navigation
 
-> 根据迁移场景读取对应 reference。大表（`dependency_mapping` / `annotation_mapping`）只读相关小节，勿整文件灌入上下文。
+> 根据迁移场景读取对应 reference。**大表加载策略**：
+> - `annotation_mapping.md`：优先 **§12 完整速查表** 或目录中的单节；长 Before/After 去各 `*_migration.md`。
+> - `dependency_mapping.md`：优先 **§3 速查表** + §1/§2；仅抄 POM 时读 §5。
+> - 数据层：`datasource_orm`（源/ORM 权威）与 `transaction_cache`（事务/缓存/Redis）职责已拆分，勿混读后互相覆盖。
 
 ### 快速对照
 
@@ -146,9 +149,10 @@ description: "Expert guidance for migrating Java projects from Spring Boot / Spr
 - See: `references/validation_migration.md`
 
 ### Step 7: 数据层改造
-- `spring.datasource` → `solon.dataSources`（`jdbcUrl`）
+- `spring.datasource` → **`solon.dataSources`**（`jdbcUrl`；一般无需手写 DataSource `@Bean`）
 - `JdbcTemplate` → `SqlUtils`；Mapper 用 `@Db`
-- See: `references/datasource_orm_migration.md`, `references/transaction_cache_migration.md`
+- 事务 / 缓存 / Redis：`transaction_cache_migration.md`（与 ORM 文边界分离）
+- See: `references/datasource_orm_migration.md`
 
 ### Step 8: 安全改造（如适用）
 - Remove Spring Security；用 `AuthAdapter` + `AuthProcessor`

@@ -1,8 +1,10 @@
 # 事务与缓存迁移参考
 
-> Spring Boot → Solon 数据访问层迁移指南（目标版本：Solon 4.0.x）
+> Spring Boot → Solon 迁移指南（目标版本：跟随 SKILL，默认 4.0.3）
 >
-> 本文档聚焦事务管理、缓存、Redis 及数据访问层差异陷阱四大主题，提供代码对照与差异陷阱标注。
+> **本文职责**：事务（`@Transaction`）、缓存（`@Cache` / `@CacheRemove`）、Redis 客户端。
+>
+> **边界**：数据源 / SqlUtils / MyBatis / 多数据源 → **`datasource_orm_migration.md`**（权威）。勿在本文臆造「必须手动 `@Bean` 数据源」。
 
 ---
 
@@ -11,7 +13,8 @@
 - [1. 事务管理迁移](#1-事务管理迁移)
 - [2. 缓存迁移](#2-缓存迁移)
 - [3. Redis 迁移](#3-redis-迁移)
-- [4. 数据访问层陷阱与差异清单](#4-数据访问层陷阱与差异清单)
+- [4. 事务 / 缓存 / Redis 陷阱速查](#4-事务--缓存--redis-陷阱速查)
+- [5. 迁移检查清单](#5-迁移检查清单)
 
 ---
 
@@ -387,25 +390,33 @@ public class RedisXDemoService {
 
 ---
 
-## 4. 数据访问层陷阱与差异清单
+## 4. 事务 / 缓存 / Redis 陷阱速查
+
+> 数据源 / MyBatis / JPA / 多数据源陷阱见 **`datasource_orm_migration.md`**，此处不重复、不覆盖其权威表述。
 
 | 编号 | 类别 | Spring | Solon | 风险 | 说明 |
 |------|------|--------|-------|------|------|
-| 1 | 数据源 | 自动配置 | 需手动 `@Bean` | 中 | Solon 不提供数据源自动配置 |
-| 2 | 数据源 | `@Primary` | `typed = true` | 低 | 默认数据源标记机制不同 |
-| 3 | 数据源 | `driver-class-name` | `driverClassName` | 低 | 配置键命名风格不同 |
-| 4 | MyBatis | `@MapperScan` | 自动扫描 | 低 | 需确保 Mapper 在主类包路径下 |
-| 5 | MyBatis | `@Mapper` | 无需注解 | 低 | Mapper 接口无需框架注解 |
-| 6 | MyBatis | `mapper-locations` | `mappers` | 中 | 键名完全不同，易遗漏 |
-| 7 | MyBatis | `@Autowired` | `@Db` | 高 | 注解完全不同，必须全量替换 |
-| 8 | 事务 | `@Transactional` | `@Transaction` | 高 | 注解名不同，注意不要误伤 |
-| 9 | 事务 | 回滚 RuntimeException | 回滚所有 Exception | 中 | 行为更安全，但可能与原预期不同 |
-| 10 | 事务 | `rollbackFor` | 不需要 | 低 | 可安全移除 |
-| 11 | 事务 | `noRollbackFor` | 不支持 | 中 | 需编程式事务替代 |
-| 12 | 缓存 | `@Cacheable` + `key` | `@Cache` + `tags` | 高 | 缓存机制完全不同，需全量重写 |
-| 13 | 缓存 | `@CacheEvict(allEntries)` | `@CacheRemove(tags="*")` | 中 | 批量清除用通配符标签 |
-| 14 | 缓存 | `@CachePut` | `@CacheRemove` + `@Cache` | 中 | 更新策略需调整 |
-| 15 | Redis | `RedisTemplate` | `RedisService` / `RedisX` | 高 | API 完全不同，需全量重写 |
-| 16 | 多数据源 | `@Qualifier` | `@Db("name")` | 中 | 数据源指定方式不同 |
-| 17 | JPA | `spring.jpa.*` | `jpa.*` | 低 | 前缀变更，子项基本兼容 |
-| 18 | MyBatis Plus | `@Mapper` | 无需注解 | 低 | 与原生 MyBatis 规则一致 |
+| 1 | 事务 | `@Transactional` | `@Transaction` | 高 | 注解名少 `al`；包改为 `org.noear.solon.annotation` |
+| 2 | 事务 | 默认仅 RuntimeException 回滚 | 默认所有 `Exception` 回滚 | 中 | 可去掉 `rollbackFor=Exception.class`；行为更严 |
+| 3 | 事务 | `noRollbackFor` | 通常不支持 | 中 | 需编程式事务（如 `DataSourceManager.execute`）替代 |
+| 4 | 事务 | `TransactionTemplate` | `DataSourceManager.execute(ds, runnable)` | 中 | 编程式 API 不同 |
+| 5 | 缓存 | `@Cacheable` + `value`/`key` | `@Cache` + `tags` | 高 | 标签模型，非 Spring Cache key 模型 |
+| 6 | 缓存 | `@CacheEvict(allEntries=true)` | `@CacheRemove(tags="user_*")` 等 | 中 | 用标签通配批量清除 |
+| 7 | 缓存 | `@CachePut` | 常拆成 `@CacheRemove`（+ 再读触发 `@Cache`） | 中 | 无一对一 `@CachePut` |
+| 8 | 缓存 | `CacheManager` | `CacheService` | 中 | 编程式 API 全量替换 |
+| 9 | Redis | `spring-boot-starter-data-redis` | 缓存后端 `solon-cache-jedis` 等；客户端 `solon-data-redis` / `solon-data-redisx` | 高 | **先分清「当 Cache 后端」还是「当 Redis 客户端」** |
+| 10 | Redis | `RedisTemplate` ops 链 | 插件提供的客户端 API（如 Redis 封装 / RedisX session） | 高 | 勿臆造方法名；以所选插件文档为准 |
+| 11 | 依赖 | 注解缓存即用 | 需引入 `solon-data-cache`（或具体 cache 插件） | 中 | 只换注解不换依赖会失效 |
+
+---
+
+## 5. 迁移检查清单
+
+- [ ] `@Transactional` → `@Transaction`（全量替换 import）
+- [ ] 移除多余的 `rollbackFor = Exception.class`（Solon 默认更宽）；有 `noRollbackFor` 的改编程式
+- [ ] `Propagation` / `Isolation` 改用 Solon 包路径枚举
+- [ ] `@Cacheable` → `@Cache(tags=...)`；`@CacheEvict` → `@CacheRemove`
+- [ ] 缓存 key/SpEL 改为 Solon `tags` + `${参数}` 占位
+- [ ] 引入缓存实现依赖（如 `solon-data-cache` / `solon-cache-jedis`），不要只改注解
+- [ ] Redis：按场景选型（Cache 插件 vs 客户端插件），去掉 `RedisTemplate` 专用代码
+- [ ] 数据源 / Mapper / `solon.dataSources` **不在本文改**，见 `datasource_orm_migration.md`

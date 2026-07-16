@@ -1,10 +1,24 @@
 # Web 进阶特性迁移参考
 
-> Spring Boot → Solon Web 文件上传下载、SSE/WebSocket、参数校验、会话管理迁移指南（目标版本：Solon 4.0.x）
+> Spring Boot → Solon 迁移指南（目标版本：跟随 SKILL，默认 4.0.3）
+>
+> **接续**：Controller 见 `web_controller_migration.md`；Filter/异常/CORS 见 `web_filter_interceptor_migration.md`。
+>
+> **本文职责**：上传下载、SSE/WebSocket、会话；参数校验仅摘要（权威：`validation_migration.md`）。
 
-## 6. 文件上传 / 下载
+## 目录
 
-### 6.1 MultipartFile → UploadedFile
+- [1. 文件上传 / 下载](#1-文件上传--下载)
+- [2. SSE / WebSocket](#2-sse--websocket)
+- [3. 请求参数校验（摘要）](#3-请求参数校验摘要)
+- [4. 会话管理](#4-会话管理)
+- [5. Web 进阶陷阱与差异清单](#5-web-进阶陷阱与差异清单)
+
+---
+
+## 1. 文件上传 / 下载
+
+### 1.1 MultipartFile → UploadedFile
 
 #### Before — Spring
 
@@ -60,7 +74,7 @@ public class FileController {
 > - `transferTo()` 方法名相同，行为一致。
 > - Solon 的 `UploadedFile` 不需要 `@RequestParam` 注解，框架会自动绑定。
 
-### 6.2 文件下载（DownloadedFile）
+### 1.2 文件下载（DownloadedFile）
 
 #### Before — Spring
 
@@ -100,7 +114,7 @@ public void download2(@Path String filename, Context ctx) {
 
 > **注意**：`DownloadedFile` 是 Solon 独有的文件下载封装类，Spring 中没有等价物。
 
-### 6.3 多文件上传
+### 1.3 多文件上传
 
 #### Before — Spring
 
@@ -124,9 +138,9 @@ public Map<String, Object> batchUpload(Context ctx) {
 
 > **注意**：多文件上传时，Solon 通过 `ctx.fileValues("fieldName")` 获取 `UploadedFile[]` 数组，而非通过方法参数绑定。
 
-## 7. SSE / WebSocket
+## 2. SSE / WebSocket
 
-### 7.1 SseEmitter → SseEmitter (solon-web-sse)
+### 2.1 SseEmitter → SseEmitter (solon-web-sse)
 
 #### Before — Spring
 
@@ -202,7 +216,7 @@ public class SseController {
 > - Solon 的 `SseEmitter` 支持 `onCompletion`、`onInited` 等回调，通过 `SseEvent` 构建事件数据。
 > - 需要单独引入 `solon-web-sse` 依赖，不是 `solon-web` 内置功能。
 
-### 7.2 Spring WebSocket → Solon WebSocket
+### 2.2 Spring WebSocket → Solon WebSocket
 
 #### Before — Spring
 
@@ -267,7 +281,7 @@ public class ChatWebSocketEndpoint implements WebSocketListener {
 > - Solon **不使用** `@OnOpen`/`@OnMessage` 等注解，而是实现 `WebSocketListener` 接口。
 > - 会话类型是 `WebSocket`（不是 `WebSocketSession`）。需引入 `solon-websocket` 依赖。
 
-## 8. 请求参数校验（摘要）
+## 3. 请求参数校验（摘要）
 
 > **完整迁移请读** `validation_migration.md`。此处仅保留最小对照，避免与独立文档冲突。
 
@@ -293,9 +307,9 @@ public class UserController {
 }
 ```
 
-## 9. 会话管理
+## 4. 会话管理
 
-### 9.1 HttpSession → Context
+### 4.1 HttpSession → Context
 
 #### Before — Spring
 
@@ -354,7 +368,7 @@ public class SessionController {
 > - `HttpSession` → `Context` 的 `sessionSet`/`session`/`sessionClear` 方法。
 > - `sessionSet(key, val)` ≡ `setAttribute`；`session(key)` ≡ `getAttribute`（返回 Object）；`sessionClear()` ≡ `invalidate()`。
 
-### 9.2 会话超时配置
+### 4.2 会话超时配置
 
 ```yaml
 # Spring: timeout: 30m
@@ -363,7 +377,7 @@ public class SessionController {
 
 > **注意**：Solon 的会话超时单位是**秒**，Spring Boot 支持 `30m` 字符串格式。迁移时注意换算。
 
-## 10. Web 层陷阱与差异清单
+## 5. Web 进阶陷阱与差异清单
 
 ### 陷阱速查表
 
@@ -382,7 +396,7 @@ public class SessionController {
 | 11 | **SSE 需引入专用插件** | 低 | `SseEmitter` 在 `solon-web-sse` 插件中。 |
 | 12 | **WebSocket 端点声明方式不同** | 中 | 使用 `@ServerEndpoint` + `implements WebSocketListener`。 |
 
-### Web 层迁移检查清单
+### Web 进阶迁移检查清单
 
 - [ ] `@RestController` → `@Controller`（全局替换）
 - [ ] `@RequestMapping` → `@Mapping`
