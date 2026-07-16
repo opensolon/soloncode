@@ -1,61 +1,58 @@
 # Core Concepts — 核心概念
 
-> 适用场景：理解 Solon 的 IoC 容器、配置系统、插件机制、表达式语言，以及与 Spring 的区别。
+> 适用场景：理解 Solon 的 IoC 容器、配置系统、表达式语言，以及与 Spring 的区别。
 >
-> 基于官方文档整理，目标版本 4.0.3。注解速查表保留精简对照；完整 Spring 迁移请用 `spring-to-solon-skill`。EventBus 完整 API 见 `api_annotations.md`；生态子项目总览见 `quick_start.md`。
+> 目标版本：4.0.3。注解速查表仅作精简对照；完整 Spring 迁移请用 `spring-to-solon-skill`。
+> EventBus 完整 API 见 `api_reference.md`；生态总览见 `quick_start.md`。
+> 插件 / E-SPI / H-SPI / 配置元数据见 **`plugin_spi.md`**（业务开发不必加载）。
 >
-> **阅读建议**：业务开发优先看注解对照、IoC/配置、`@Inject`。文中 SPI / E-SPI / H-SPI 为插件进阶，普通业务生成代码时**不必**通读。
+> **阅读建议**：业务开发优先看注解对照、IoC/配置、`@Inject`。
 
-## Annotations Mapping (Solon vs Spring equivalents)
+## 注解对照（Solon vs Spring）
 
-> 详细迁移对照与工程改造步骤见 **`spring-to-solon-skill`**。下表仅作速查；**右侧注解禁止出现在 Solon 代码中**。
+> 详细迁移与工程改造见 **`spring-to-solon-skill`**。下表仅作速查；**右侧注解禁止出现在 Solon 代码中**。
+> 注解完整说明见 `api_reference.md`。
 
-| Solon | Purpose | Spring Equivalent (DO NOT USE) |
+| Solon | 用途 | Spring 等价（禁止使用） |
 |---|---|---|
-| `@SolonMain` | Entry class marker | `@SpringBootApplication` |
-| `@Controller` | Web controller | `@RestController` / `@Controller` |
-| `@Remoting` | Rpc remote controller | / |
-| `@Mapping("/path")` | URL mapping | `@RequestMapping` |
-| `@Get` / `@Post` / `@Put` / `@Delete` | HTTP method filter | `@GetMapping` / `@PostMapping` etc. |
-| `@Inject` | Inject bean by type | `@Autowired` |
-| `@Inject("name")` | Inject bean by name | `@Qualifier` + `@Autowired` |
-| `@Inject("${key}")` | Inject config value | `@Value("${key}")` |
-| `@BindProps(prefix="xxx")` | Bind properties group to bean | `@ConfigurationProperties(prefix="xxx")` |
-| `@Component` | Managed component | `@Component` / `@Service` / `@Dao` / `@Repository` |
-| `@Configuration` | Config class | `@Configuration` |
-| `@Bean` | Declare bean (in @Configuration) | `@Bean` |
-| `@Condition` | Conditional registration | `@ConditionalOn*` |
-| `@Import` | Import classes / scan packages / import properties | `@ComponentScan` + `@Import` + `@PropertySource` |
-| `@Singleton` | Singleton scope (default) | `@Scope("singleton")` |
-| `@Singleton(false)` | Multi-instance (non-singleton) | / |
-| `@Param` | Request parameter | `@RequestParam` |
-| `@Body` | Request body | `@RequestBody` |
-| `@Header` | Request header | `@RequestHeader` |
-| `@Cookie` | Cookie value | `@CookieValue` |
-| `@Path` | Path variable | `@PathVariable` |
-| `@Produces` | Declare output content type | / |
-| `@Consumes` | Declare input content type | / |
-| `@Init` | Post-construct initialization | `@PostConstruct` |
-| `@Destroy` | Pre-destroy cleanup | `@PreDestroy` |
-| `@Valid` | Parameter validation (class-level) | `@Validated` |
-| `@Transaction` | Transaction management | `@Transactional` |
-| `@NamiClient` | Rpc client (like Feign) | `@FeignClient` |
-| `@Cache` / `@CacheRemove` | Cache with tag support | `@Cacheable` / `@CacheEvict` |
-| `@Rollback` | Test rollback | `@TestRollback` |
+| `@SolonMain` | 入口类标识 | `@SpringBootApplication` |
+| `@Controller` | Web 控制器 | `@RestController` / `@Controller` |
+| `@Remoting` | RPC 远程控制器 | / |
+| `@Mapping("/path")` | URL 映射 | `@RequestMapping` |
+| `@Get` / `@Post` / `@Put` / `@Delete` | HTTP 方法限定 | `@GetMapping` / `@PostMapping` 等 |
+| `@Inject` | 按类型注入 | `@Autowired` |
+| `@Inject("name")` | 按名称注入 | `@Qualifier` + `@Autowired` |
+| `@Inject("${key}")` | 注入配置值 | `@Value("${key}")` |
+| `@BindProps(prefix="xxx")` | 绑定配置组 | `@ConfigurationProperties(prefix="xxx")` |
+| `@Component` | 托管组件 | `@Component` / `@Service` / `@Dao` / `@Repository` |
+| `@Configuration` | 配置类 | `@Configuration` |
+| `@Bean` | 声明 Bean（在 @Configuration 内） | `@Bean` |
+| `@Condition` | 条件注册 | `@ConditionalOn*` |
+| `@Import` | 导入类 / 扫描包 / 导入属性 | `@ComponentScan` + `@Import` + `@PropertySource` |
+| `@Singleton` | 单例（默认） | `@Scope("singleton")` |
+| `@Singleton(false)` | 多例 | / |
+| `@Param` / `@Body` / `@Header` / `@Cookie` / `@Path` | 请求绑定 | `@RequestParam` / `@RequestBody` 等 |
+| `@Produces` / `@Consumes` | 声明内容类型 | / |
+| `@Init` / `@Destroy` | 初始化 / 销毁 | `@PostConstruct` / `@PreDestroy` |
+| `@Valid` | 参数校验（类级） | `@Validated` |
+| `@Transaction` | 事务 | `@Transactional` |
+| `@NamiClient` | RPC 客户端 | `@FeignClient` |
+| `@Cache` / `@CacheRemove` | 缓存（支持 tag） | `@Cacheable` / `@CacheEvict` |
+| `@Rollback` | 测试回滚 | `@TestRollback` |
 
-### Annotation Constraints
+### 注解约束
 
-- `@Bean` methods only work inside `@Configuration` classes and execute only once
-- `@Inject` on parameters only works in `@Bean` methods and constructors
-- `@Inject` on class injection only works in `@Configuration` classes
-- `@Import` only works on the entry class or `@Configuration` classes
-- Solon does **not** support setter injection; use field injection, constructor parameters, or `@Bean` method parameters
+- `@Bean` 方法只在 `@Configuration` 类内有效，且只执行一次
+- 参数上的 `@Inject` 只在 `@Bean` 方法与构造器中有效
+- 类上的 `@Inject` 只在 `@Configuration` 类上有效
+- `@Import` 只在入口类或 `@Configuration` 类上有效
+- **不支持 setter 注入**；请用字段注入、构造器参数或 `@Bean` 方法参数
 
-## IoC Container
+## IoC 容器
 
-- Access the container: `Solon.context()`
-- Get a bean: `Solon.context().getBean(UserService.class)`
-- Register a bean: `Solon.context().wrapAndPut(DemoService.class)`
+- 访问容器：`Solon.context()`
+- 获取 Bean：`Solon.context().getBean(UserService.class)`
+- 注册 Bean：`Solon.context().wrapAndPut(DemoService.class)`
 
 ### ScopeLocal（作用域变量）
 
@@ -69,67 +66,60 @@ LOCAL.with(user, () -> {
 });
 ```
 
-### IoC/AOP Core Concepts
+### IoC / AOP 要点
 
-**IOC (Inversion of Control)**, also known as DI (Dependency Injection): objects are obtained through a "container" mediator rather than direct construction. The container scans classes with `@Component`, registers them, and injects fields annotated with `@Inject`.
+**IoC（控制反转 / 依赖注入）**：对象通过容器获取，而非直接 `new`。容器扫描 `@Component` 等注解，完成注册与 `@Inject` 注入。
 
-**AOP (Aspect-Oriented Programming)**: Solon provides AOP by building proxy layers for components. Only `public` methods are proxied, and **only when interceptors are registered** (on-demand proxy, which is one reason Solon is faster). The pointcut model is annotation-based — interceptors are registered per annotation type.
+**AOP**：通过对组件建立代理实现。仅 `public` 方法可被代理，且**仅在注册了拦截器时**才代理（按需代理，这是 Solon 更快的原因之一）。切点模型以注解为中心。
 
-### IoC/AOP Extension Points
+### IoC/AOP 扩展点（插件常用）
 
-Solon provides four core extension mechanisms on `AppContext`:
-
-| Extension Method | Purpose | Example |
+| 扩展方法 | 用途 | 示例 |
 |---|---|---|
-| `beanBuilderAdd(anno, handler)` | Register bean builder | `@Controller` builder registers route handlers |
-| `beanInjectorAdd(anno, handler)` | Register field injector | `@Inject` injector resolves beans/config |
-| `beanInterceptorAdd(anno, interceptor, index)` | Register method interceptor | `@Transaction` interceptor wraps method calls |
-| `beanExtractorAdd(anno, extractor)` | Register method extractor | `@CloudJob` extractor collects job methods |
+| `beanBuilderAdd(anno, handler)` | 注册 Bean 构建器 | `@Controller` 构建时注册路由 |
+| `beanInjectorAdd(anno, handler)` | 注册字段注入器 | `@Inject` 解析 Bean/配置 |
+| `beanInterceptorAdd(anno, interceptor, index)` | 注册方法拦截器 | `@Transaction` 包装调用 |
+| `beanExtractorAdd(anno, extractor)` | 注册方法提取器 | `@CloudJob` 收集任务方法 |
 
 ```java
-// Example: register an interceptor for a custom annotation
 Solon.context().beanInterceptorAdd(AuthLogined.class, new LoginedInterceptor());
-
-// Example: register a builder for @Controller
-Solon.context().beanBuilderAdd(Controller.class, (clz, bw, anno) -> {
-    new HandlerLoader(bw).load(Solon.global());
-});
 ```
 
-## Application Lifecycle
+> 完整插件开发流程见 `plugin_spi.md`。
 
-An application goes through a defined lifecycle from `start()` to `stop()`. The lifecycle includes:
+## 应用生命周期
 
-1. **One initialization function** — `Solon.start()` lambda callback
-2. **Six application events** — `AppInitEndEvent`, `AppPluginLoadEndEvent`, `AppBeanLoadEndEvent`, `AppLoadEndEvent`, `AppPrestopEndEvent`, `AppStopEndEvent`
-3. **Three plugin lifecycle hooks** — `Plugin.start()`, `Plugin.prestop()`, `Plugin.stop()`
-4. **Two container lifecycle hooks** — `AppContext.start()`, `AppContext.stop()`
+从 `start()` 到 `stop()` 的主要阶段：
 
-### Lifecycle Event Sequence
+1. **一次初始化回调** — `Solon.start()` 的 lambda
+2. **六个应用事件** — `AppInitEndEvent`、`AppPluginLoadEndEvent`、`AppBeanLoadEndEvent`、`AppLoadEndEvent`、`AppPrestopEndEvent`、`AppStopEndEvent`
+3. **插件生命周期** — `Plugin.start()` / `prestop()` / `stop()`
+4. **容器生命周期** — `AppContext.start()` / `stop()`
+
+### 事件顺序
 
 ```
 [Init lambda] -> AppInitEndEvent -> [Plugin.start] -> AppPluginLoadEndEvent
--> [Bean scan + inject] -> AppBeanLoadEndEvent -> [AppContext.start / @Init]
--> AppLoadEndEvent -> ::Running::
+-> [Bean 扫描 + 注入] -> AppBeanLoadEndEvent -> [AppContext.start / @Init]
+-> AppLoadEndEvent -> ::运行中::
 -> AppPrestopEndEvent -> [Plugin.prestop] -> [AppContext.stop / @Destroy]
 -> [Plugin.stop] -> AppStopEndEvent
 ```
 
-**Important notes:**
-- The application must complete startup before it can serve requests; do not block threads during startup
-- Events before `AppBeanLoadEndEvent` must be subscribed manually before startup (e.g., in the `Solon.start()` lambda), otherwise the timing will be missed
+注意：
 
-### Event Subscription
+- 启动完成前不要阻塞线程，否则无法对外服务
+- `AppBeanLoadEndEvent` **之前**的事件须在启动前手动订阅（如 `Solon.start()` lambda），否则会错过时机
+
+### 事件订阅
 
 ```java
-// Manual subscription (for early events)
+// 早期事件：手动订阅
 Solon.start(App.class, args, app -> {
-    app.onEvent(AppInitEndEvent.class, e -> {
-        // ...
-    });
+    app.onEvent(AppInitEndEvent.class, e -> { /* ... */ });
 });
 
-// Annotation-based subscription (for late events like AppLoadEndEvent)
+// 晚期事件：注解组件订阅
 @Component
 public class AppLoadEndListener implements EventListener<AppLoadEndEvent> {
     @Override
@@ -139,112 +129,89 @@ public class AppLoadEndListener implements EventListener<AppLoadEndEvent> {
 }
 ```
 
-## Bean Lifecycle
+## Bean 生命周期
 
-Beans managed by the container follow this lifecycle:
-
-| Phase | Description | Notes |
+| 阶段 | 说明 | 备注 |
 |---|---|---|
-| `::new()` | Constructor called during bean scan | Not yet registered in container |
-| `@Inject` | Field injection executed | After injection, registered in container |
-| `start()` or `@Init` | `AppContext::start()` | Bean scan complete; all beans available. v2.2.8+ auto-sorts by dependency |
-| `postStart()` | `AppContext::start()` (second half) | v2.9+; start network listeners etc. |
-| `preStop()` | `AppContext::preStop()` | v2.9+; deregister remote services |
-| `stop()` or `@Destroy` | `AppContext::stop()` | v2.2.0+; cleanup resources |
+| `::new()` | 扫描时构造 | 尚未注册进容器 |
+| `@Inject` | 字段注入 | 注入后注册进容器 |
+| `start()` 或 `@Init` | `AppContext::start()` | 扫描完成，Bean 可用；v2.2.8+ 按依赖自动排序 |
+| `postStart()` | `AppContext::start()` 后半段 | v2.9+；启动网络监听等 |
+| `preStop()` | `AppContext::preStop()` | v2.9+；注销远程服务 |
+| `stop()` 或 `@Destroy` | `AppContext::stop()` | 清理资源 |
 
-### LifecycleBean Interface
+### LifecycleBean
 
-For full lifecycle control, implement `LifecycleBean`. **Only effective for singletons.**
+需要完整生命周期控制时实现 `LifecycleBean`（**仅单例有效**）：
 
 ```java
 @Component
 public class DemoCom implements LifecycleBean {
     @Override
     public void start() {
-        // Called at AppContext:start(). All beans scanned, injection complete
+        // AppContext:start()，扫描与注入已完成
     }
 
     @Override
     public void postStart() {
-        // Called after start(). Do NOT create new managed beans here
+        // start() 之后；此处不要再创建新的托管 Bean
     }
 
     @Override
     public void preStop() {
-        // Called at AppContext:preStop(). E.g., deregister from service discovery
+        // 如从注册中心下线
     }
 
     @Override
     public void stop() {
-        // Called at AppContext:stop(). Cleanup local resources
+        // 清理本地资源
     }
 }
 ```
 
-### Using @Init / @Destroy Annotations
+### @Init / @Destroy
 
-For simple cases, use annotations instead of the interface:
+简单场景用注解即可：
 
 ```java
 @Component
 public class Demo {
     @Init
-    public void init() { // no-arg method, name is arbitrary
-        // initialization logic
-    }
+    public void init() { /* 初始化 */ }
 
     @Destroy
-    public void destroy() { // no-arg method, name is arbitrary
-        // cleanup logic
-    }
+    public void destroy() { /* 清理 */ }
 }
 ```
 
-### Auto-ordering and Circular Dependencies
+### 自动排序与循环依赖
 
-`LifecycleBean` beans are auto-ordered by injection dependency (v2.2.8+). When Bean2 depends on Bean1 via `@Inject`, Bean1's `start()` executes first. If circular dependency causes issues, use `@Component(index = N)` to manually specify order.
+`LifecycleBean` 按 `@Inject` 依赖自动排序（v2.2.8+）。若 Bean2 依赖 Bean1，则 Bean1 的 `start()` 先执行。循环依赖出问题时用 `@Component(index = N)` 手动指定顺序。
 
-## Local Event Bus
+## 本地事件总线
 
 Solon 内置事件总线：**强类型**、发布/订阅、默认同步派发（可传导异常，便于事务回滚）。
 
-完整 API 与示例见 **`api_annotations.md` → EventBus**；最短用法见 `common_patterns.md`。主题型本地总线可考虑 [DamiBus](https://gitee.com/noear/damibus)。
+最短用法见 `common_patterns.md`；完整 API 见 **`api_reference.md` → EventBus**。主题型本地总线可考虑 [DamiBus](https://gitee.com/noear/damibus)。
+
+## 配置系统
+
+- 主配置：`src/main/resources/app.yml`（或 `app.properties`）
+- 环境配置：`app-{env}.yml`，通过 `solon.env` 加载
+- 编程访问：`Solon.cfg().get("key")`、`getInt("key", default)`、`getProp("prefix")`
+- 类绑定：在 `@Configuration` 类上使用 `@Inject("${prefix}")`
+
+### 代码中读取配置
 
 ```java
-@Component
-public class HelloEventListener implements EventListener<HelloEvent> {
-    @Override
-    public void onEvent(HelloEvent event) throws Throwable {
-        System.out.println(event.getName());
-    }
-}
-
-EventBus.publish(new HelloEvent("world"));
-EventBus.publishAsync(new HelloEvent("world"));
-```
-
-## Configuration System
-
-- Main file: `src/main/resources/app.yml` (or `app.properties`)
-- Environment profiles: `app-{env}.yml` loaded via `solon.env` property
-- Programmatic access: `Solon.cfg().get("key")`, `Solon.cfg().getInt("key", default)`, `Solon.cfg().getProp("prefix")`
-- Config injection to class: use `@Inject("${prefix}")` on a `@Configuration` class
-
-### Configuration Access in Code
-
-```java
-// Get single value
 String val = Solon.cfg().get("key");
 int port = Solon.cfg().getInt("server.port", 8080);
-
-// Get property group
 Props dbProps = Solon.cfg().getProp("db1");
 
-// Inject into field
 @Inject("${server.port}")
 int port;
 
-// Inject into config class (equivalent to @ConfigurationProperties)
+// 等价于 Spring 的 @ConfigurationProperties
 @Inject("${db1}")
 @Configuration
 public class Db1Config {
@@ -254,30 +221,30 @@ public class Db1Config {
 }
 ```
 
-### Configuration Injection Annotations
+### 配置注入注解
 
-| Annotation | Description | Target | Difference |
+| 注解 | 说明 | 作用目标 | 差异 |
 |---|---|---|---|
-| `@Inject("${xxx}")` | Inject config value | Field, parameter, class | Has `required` check (throws exception when config missing) |
-| `@BindProps(prefix="xxx")` | Bind properties group | Class, method | Supports generating module config metadata |
+| `@Inject("${xxx}")` | 注入配置值 | 字段、参数、类 | 有 `required` 检查（缺配置可抛异常） |
+| `@BindProps(prefix="xxx")` | 绑定配置组 | 类、方法 | 支持生成模块配置元数据 |
 
-### Variable References
+### 变量引用
 
-Config values can reference other config variables using `${...}` syntax:
+配置值可用 `${...}` 引用其它配置：
 
 ```yaml
 solon.app.name: "demo"
 
 demo.name: "${solon.app.name}"
-demo.title: "${solon.app.title:}"                    # default empty
+demo.title: "${solon.app.title:}"                    # 默认空
 demo.description: "${solon.app.name}/${solon.app.title:}"
 ```
 
-Rule: variables can be referenced only if they already exist in `Solon.cfg()` at parse time (or within the same config block).
+规则：被引用变量须在解析时已存在于 `Solon.cfg()`（或同一配置块内）。
 
-### YAML Multi-Document Support (v2.5.5+)
+### YAML 多文档（v2.5.5+）
 
-Use `---` to define multiple profile-gated sections in a single YAML file:
+用 `---` 在同一文件中按环境分段：
 
 ```yaml
 solon.env: pro
@@ -294,422 +261,56 @@ demo.auth:
   password: 1234
 ```
 
-## Plugin System (SPI)
+## 插件 SPI（进阶）
 
-Solon uses an SPI-based plugin system. Plugins participate in the application lifecycle and provide extension capabilities. Adding a Maven dependency automatically activates its plugin.
+插件开发、E-SPI 外部扩展、H-SPI 热插拔、配置元数据自动生成 → 见 **`plugin_spi.md`**。
 
-### Plugin Interface
+## Solon 表达式（SnEL）
 
-```java
-public interface Plugin {
-    void start(AppContext context) throws Throwable;  // Called after app init
-    default void prestop() throws Throwable {}         // Called before ::stop
-    default void stop() throws Throwable {}            // Called at Solon::stop
-}
-```
+内置表达式语言，零依赖，约 40KB。
 
-### Plugin Discovery
+能力概览：
 
-1. Create a plugin implementation class (convention: `XxxSolonPlugin`, placed in `integration` package, no injection allowed):
+- 常量：`1`、`'name'`、`true`、`[1,2,3]`
+- 变量：`name`、`map['key']`、`list[0]`
+- 对象访问：`user.name`、`user.getName()`
+- 运算：`+` `-` `*` `/` `%`
+- 比较：`<` `<=` `>` `>=` `==` `!=`
+- 逻辑：`AND` / `OR` / `NOT`（也支持 `&&` `||` `!`）
+- 三元：`condition ? trueExpr : falseExpr`
+- IN/LIKE：`IN`、`NOT IN`、`LIKE`、`NOT LIKE`
+- 静态方法：`Math.abs(-5)`
 
-```java
-public class DemoSolonPlugin implements Plugin {
-    @Override
-    public void start(AppContext context) {
-        context.beanInterceptorAdd(AuthLogined.class, new LoginedInterceptor());
-    }
-}
-```
+## 与 Spring 的关键差异
 
-2. Declare in properties file at `META-INF/solon/{packname}.properties` (filename must be globally unique):
-
-```properties
-solon.plugin=org.example.DemoSolonPlugin
-solon.plugin.priority=1    # higher = earlier, default 0
-```
-
-3. On startup, Solon scans all `.properties` files under `META-INF/solon/`, discovers and sorts plugins.
-
-### Plugin Exclusion
-
-```yaml
-# Via configuration
-solon.plugin.exclude:
-  - "{PluginImpl}"
-```
-
-```java
-// Via code
-Solon.start(App.class, args, app -> {
-    app.pluginExclude(PluginImpl.class);
-});
-```
-
-### Plugin Naming Convention
-
-| Pattern | Meaning |
-|---|---|
-| `solon-*` | Internal framework plugin |
-| `*-solon-plugin` | External adapter plugin |
-| `*-solon-ai-plugin` | AI adapter plugin |
-| `*-solon-cloud-plugin` | Cloud adapter plugin |
-
-### Plugin Extension Mechanisms
-
-Solon SPI goes beyond simple discovery — plugins can programmatically extend the framework at startup:
-
-- Register annotation interceptors (e.g., `@Transaction`, `@Cache`)
-- Register bean builders (e.g., `@Controller` handler loading)
-- Register field injectors (e.g., custom injection logic)
-- Register method extractors (e.g., `@CloudJob` job collection)
-
-### E-SPI (External SPI) — Plugin External Extension Mechanism
-
-E-SPI solves extension needs when deploying as fatjar. It allows loading plugin jars and config files from **outside the application classpath** (i.e., an external directory). `.properties` and `.yml` files are loaded as extension configs; `.jar` and `.zip` files are loaded as plugin packages.
-
-#### Key Characteristics
-
-- All plugins **share** ClassLoader, AppContext, and configuration
-- Plugins can be packaged independently (loaded externally) or bundled with the main app — "split" or "merge" freely
-- Updating external plugins or config files **requires restarting** the main service
-- E-SPI is provided by the Solon core — **no additional dependencies needed**
-
-#### ClassLoader Sharing
-
-E-SPI is implemented via `AppClassLoader:addJar(URL | File)`. On startup, Solon automatically loads from the configured extension directory:
-- All `.jar` and `.zip` packages
-- All `.properties` and `.yml` configuration files
-
-Programmatic API for custom loading:
-
-```java
-@SolonMain
-public class Application {
-    public static void main(String[] args) throws Exception {
-        Solon.start(Application.class, args, app -> {
-            // Load jar package
-            app.classLoader().addJar(new File("/demo.jar"));
-
-            // Load properties file
-            app.cfg().loadAdd(new File("/demo.yml"));
-        });
-    }
-}
-```
-
-#### Configuration
-
-Declare the extension directory in `app.yml`:
-
-```yaml
-# Extension directory (directory must be manually created)
-solon.extend: "demo_ext"
-
-# Extension directory (prefix "!" auto-creates the directory)
-solon.extend: "!demo_ext"
-```
-
-#### File Layout Example
-
-```
-demo.jar
-demo_ext/_db.properties       # external config file
-demo_ext/demo_user.jar         # external plugin package
-demo_ext/demo_order.jar        # external plugin package
-```
-
-#### Packaging Notes
-
-- Either package the plugin as a fatjar (using `maven-assembly-plugin`)
-- Or include the plugin's dependencies in the main app (recommended for shared/common dependencies)
-- Best practice: put common dependencies in the main app packaging; mark them as `<optional>` in the plugin's `pom.xml`
-
-### H-SPI (Hot-SPI) — Plugin Hot-Pluggable Management
-
-H-SPI is an advanced extension mechanism for production use. Compared to E-SPI, H-SPI focuses on **isolation**, **hot-swap**, and **management**. Each business module is developed as a unit and packaged as an independent plugin.
-
-> Requires dependency: `solon-hotplug`
-
-#### Key Characteristics
-
-- Each plugin has its **own isolated** ClassLoader, AppContext, and configuration — fully isolated
-  - Can still access main program resources via `Solon.app()`, `Solon.cfg()`, `Solon.context()`, etc.
-- Plugins can be packaged independently or bundled with the main app
-- Updating a plugin does **not require restarting** the main service — hot update!
-- All resources must be self-managed; resources added in `start()` **must be removed** in `stop()`
-- Inter-plugin communication should use EventBus with weak-typed data (Map, JsonString). Consider using [DamiBus](https://gitee.com/noear/dami) for decoupled communication
-
-#### ClassLoader Isolation Rules
-
-| Relationship | Access Rule |
-|---|---|
-| Parent ClassLoader (public resources) | Child can access classes/resources; if anything is registered, it must be unregistered in plugin `stop()` |
-| Sibling ClassLoaders | Cannot access each other's classes/resources; use EventBus for interaction with weak-typed data or parent ClassLoader entity classes |
-
-#### Plugin Development Example
-
-```java
-public class Plugin1Impl implements Plugin {
-    AppContext context;
-    StaticRepository staticRepository;
-
-    @Override
-    public void start(AppContext context) {
-        this.context = context;
-
-        // Add own config file
-        context.cfg().loadAdd("demo1011.plugin1.yml");
-        // Scan own beans
-        context.beanScan(Plugin1Impl.class);
-
-        // Add own static file repository (register classloader)
-        staticRepository = new ClassPathStaticRepository(context.getClassLoader(), "plugin1_static");
-        StaticMappings.add("/html/", staticRepository);
-    }
-
-    @Override
-    public void stop() throws Throwable {
-        // Remove HTTP handlers (use prefix for easy removal)
-        Solon.app().router().remove("/user");
-
-        // Remove scheduled jobs (use a solution that supports manual removal)
-        JobManager.getInstance().jobRemove("job1");
-
-        // Remove event subscriptions
-        context.beanForeach(bw -> {
-            if (bw.raw() instanceof EventListener) {
-                EventBus.unsubscribe(bw.raw());
-            }
-        });
-
-        // Remove static file repository
-        StaticMappings.remove(staticRepository);
-    }
-}
-```
-
-When using template rendering in H-SPI plugins, be mindful of ClassLoader context:
-
-```java
-public class BaseController implements Render {
-    // Must consider the ClassLoader where templates reside
-    static final FreemarkerRender viewRender = new FreemarkerRender(BaseController.class.getClassLoader());
-
-    @Override
-    public void render(Object data, Context ctx) throws Throwable {
-        if (data instanceof Throwable) {
-            throw (Throwable) data;
-        }
-        if (data instanceof ModelAndView) {
-            viewRender.render(data, ctx);
-        } else {
-            ctx.render(data);
-        }
-    }
-}
-```
-
-#### Plugin Management
-
-With `solon-hotplug` dependency, plugins can be managed (install/uninstall/update at runtime). Plugins can further be repository-based and platform-based.
-
-### E-SPI vs H-SPI Comparison
-
-| Aspect | E-SPI | H-SPI |
+| 维度 | Solon | Spring |
 |---|---|---|
-| ClassLoader | Shared | Isolated (each plugin has its own) |
-| AppContext | Shared | Isolated |
-| Hot update | No (requires restart) | Yes |
-| Extra dependency | None (core support) | `solon-hotplug` |
-| Use case | Simple external extension | Production hot-swap, module isolation |
+| 架构 | 非 Java-EE，从零自研 | 基于 Java EE / Jakarta EE |
+| 启动速度 | 约 5–10 倍更快 | 较慢 |
+| 包体 | 约小 50–90% | 更大 |
+| 内存 | 约少 50% | 更多 |
+| 并发 | TechEmpower 可高数倍 | 较低 |
+| JDK | Java 8 /Users/noear 26 + GraalVM | Spring Boot 3 起 Java 17+ |
+| 配置文件 | `app.yml` / `app.properties` | `application.yml` |
+| 入口 | `Solon.start(App.class, args)` | `SpringApplication.run(...)` |
+| DI | `@Inject` | `@Autowired` |
+| 配置注入 | `@Inject("${key}")` | `@Value("${key}")` |
+| 扫描 | `@Import(scanPackages=...)` | `@ComponentScan` |
+| 作用域 | `@Singleton` / `@Singleton(false)` | `@Scope` |
+| AOP | 仅对注册了拦截器的 public 方法按需代理 | 更广的代理范围 |
+| Servlet | 可选；Context + Handler | Spring MVC 通常依赖 |
+| 按名注册 | 需配置 `name` | 常按类名自动注册 |
+| Setter 注入 | **不支持** | 支持 |
 
-### Plugin SPI Configuration Hint Metadata
-
-Plugin packages can provide configuration hint metadata for IDE support (auto-completion, documentation). The metadata file is placed at:
-
-```
-resource/META-INF/solon/solon-configuration-metadata.json
-```
-
-#### File Format
-
-The JSON file has two top-level arrays: `properties` and `hints`.
-
-**properties** — describes available configuration properties:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | Yes | Full property name in lowercase dot-separated form (e.g., `server.port`) |
-| `type` | string | Yes | Data type (e.g., `java.lang.String`, `java.lang.Integer`) or full generic type |
-| `defaultValue` | object | No | Default value |
-| `description` | string | No | Short human-readable description |
-
-**hints** — provides value suggestions for properties:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | Yes | Full property name (must match a property) |
-| `values` | array | No | List of possible values |
-| `values[].value` | object | Yes | The value |
-| `values[].description` | string | No | Description of the value |
-
-#### Complete Example
-
-```json
-{
-  "properties": [
-    {
-      "name": "server.port",
-      "type": "java.lang.Integer",
-      "defaultValue": "8080",
-      "description": "服务端口"
-    },
-    {
-      "name": "cache.driverType",
-      "type": "java.lang.String",
-      "defaultValue": "local",
-      "description": "缓存驱动类型"
-    },
-    {
-      "name": "beetlsql.inters",
-      "type": "java.lang.String[]",
-      "description": "数据管理插件列表"
-    }
-  ],
-  "hints": [
-    {
-      "name": "cache.driverType",
-      "values": [
-        { "value": "local", "description": "本地缓存" },
-        { "value": "redis", "description": "Redis缓存" },
-        { "value": "memcached", "description": "Memcached缓存" }
-      ]
-    }
-  ]
-}
-```
-
-### Plugin SPI Configuration Metadata Auto-Processing
-
-Writing `solon-configuration-metadata.json` manually is tedious. Using `@BindProps` annotation combined with the `solon-configuration-processor` compiler plugin, metadata files are **auto-generated** at compile time.
-
-#### Dependency Setup
-
-Maven:
-
-```xml
-<dependencies>
-    <dependency>
-        <groupId>org.noear</groupId>
-        <artifactId>solon-configuration-processor</artifactId>
-        <scope>provided</scope> <!-- Must be provided scope -->
-    </dependency>
-</dependencies>
-
-<!-- After JDK 25, also add annotationProcessorPaths -->
-<plugin>
-    <groupId>org.apache.maven.plugins</groupId>
-    <artifactId>maven-compiler-plugin</artifactId>
-    <configuration>
-        <annotationProcessorPaths>
-            <path>
-                <groupId>org.noear</groupId>
-                <artifactId>solon-configuration-processor</artifactId>
-            </path>
-        </annotationProcessorPaths>
-    </configuration>
-</plugin>
-```
-
-Gradle:
-
-```gradle
-compileOnly("org.noear:solon-configuration-processor")
-annotationProcessor("org.noear:solon-configuration-processor")
-```
-
-#### Usage Examples
-
-Class-based property binding:
-
-```java
-@BindProps(prefix = "server")
-@Configuration
-public class ServerProps {
-    private Integer port;
-    private String host;
-}
-```
-
-Method-based property binding:
-
-```java
-public class ServerProps {
-    private Integer port;
-    private String host;
-}
-
-@Configuration
-public class ServerConfig {
-    @BindProps(prefix = "server")
-    @Bean
-    public ServerProps serverProps() {
-        return new ServerProps();
-    }
-}
-```
-
-## Solon Expression (SnEL)
-
-SnEL is Solon's built-in expression language for evaluation. Zero dependency, ~40KB.
-
-### Capabilities
-
-- Constants: `1`, `'name'`, `true`, `[1,2,3]`
-- Variables: `name`, `map['key']`, `list[0]`
-- Object access: `user.name`, `user.getName()`
-- Arithmetic: `+`, `-`, `*`, `/`, `%`
-- Comparison: `<`, `<=`, `>`, `>=`, `==`, `!=`
-- Logic: `AND`, `OR`, `NOT` (also `&&`, `||`, `!`)
-- Ternary: `condition ? trueExpr : falseExpr`
-- IN/LIKE: `IN`, `NOT IN`, `LIKE`, `NOT LIKE`
-- Static method calls: `Math.abs(-5)`
-
-## Key Differences from Spring
-
-| Aspect | Solon | Spring |
-|---|---|---|
-| Architecture | Non-Java-EE, built from scratch | Based on Java EE / Jakarta EE |
-| Startup speed | 5-10x faster | Slower |
-| Package size | 50-90% smaller | Larger |
-| Memory | ~50% less | More |
-| Concurrency | Up to 700% higher (TechEmpower) | Lower |
-| JDK support | Java 8 ~ 26 + GraalVM | Java 17+ (Spring Boot 3) |
-| Config file | `app.yml` / `app.properties` | `application.yml` / `application.properties` |
-| Entry point | `Solon.start(App.class, args)` | `SpringApplication.run(App.class, args)` |
-| DI annotation | `@Inject` | `@Autowired` |
-| Config inject | `@Inject("${key}")` | `@Value("${key}")` |
-| Component scan | `@Import(scanPackages=...)` | `@ComponentScan` |
-| Bean scope | `@Singleton` / `@Singleton(false)` | `@Scope("singleton"/"prototype")` |
-| AOP proxy | Only proxies public methods with registered interceptors (on-demand) | Proxies all public/protected methods |
-| Servlet API | Optional (not required); Context + Handler architecture | Required in Spring MVC |
-| Proxy scope | Only public methods, on-demand | Public and protected methods |
-| Container registration | Must configure `name` to register by name | Auto-registers by class name |
-| Setter injection | Not supported | Supported |
-
-## Ecosystem & Tools
+## 生态与工具
 
 子项目仓库与能力总览见 **`quick_start.md` → Ecosystem Overview**。常用周边：Nami（RPC 客户端）、DamiBus（主题事件）、Snack4（JSON）、Socket.D、Liquor（动态编译）、IDEA 插件 `21380-solon`、SolonCode CLI / SolonClaw。
 
-## Important Constraints
+## 重要约束
 
-1. `@Bean` methods only work inside `@Configuration` classes and execute only once
-2. `@Inject` parameter injection only works in `@Bean` methods and constructors
-3. `@Inject` class injection only works in `@Configuration` classes
-4. `@Import` only works on the entry class or `@Configuration` classes
-5. Solon does **not** support setter injection — use field injection, constructor parameters, or `@Bean` method parameters
-6. Solon's `@Mapping` does not support multi-path mapping; use local gateway for path prefixes instead
-7. Solon controller inheritance supports base class `@Mapping` public methods
-8. `LifecycleBean` auto-ordering is based on `@Inject` dependency; circular dependencies will throw exceptions — resolve via `@Component(index = N)`
-9. `@Transaction` uses the same propagation and isolation as Spring, but rollback does not require specifying exception types
-10. `@Valid` supports batch parameter validation with annotations like `@NotNull`, `@Pattern` directly on handler method parameters
+> 注解作用域（`@Bean` / `@Inject` / `@Import` / 无 setter 注入）见上文「注解约束」。
+
+1. `@Mapping` **不支持多路径**；路径前缀用局部网关等方式处理
+2. 控制器继承支持基类上的 `@Mapping` public 方法
+3. `LifecycleBean` 自动排序依赖 `@Inject`；循环依赖用 `@Component(index = N)` 解决
+4. 事务见 `data_access.md`；参数校验见 `validation.md`

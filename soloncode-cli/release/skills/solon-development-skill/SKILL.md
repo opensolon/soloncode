@@ -1,6 +1,6 @@
 ---
 name: solon-development-skill
-description: "Specialized knowledge for developing Java applications with the Solon framework. Covers core concepts, web, data, security, remoting, AI, flow orchestration, cloud-native, testing, and more. Use when the user asks to create/build/debug Solon apps, Solon AI (ChatModel/RAG/MCP/Agent/Harness/Talent), Solon Flow, Solon Cloud, Nami RPC, data access (SqlUtils/MyBatis), or when writing Java code with Solon annotations (@Mapping, @Inject, @SolonMain, @Component). Solon is an independent Java enterprise framework (NOT based on Spring) with its own annotation system, IoC/AOP container, and plugin ecosystem — never use Spring annotations or spring-boot dependencies."
+description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solon AI (ChatModel/RAG/MCP/Agent/Harness/Talent), Solon Flow, Solon Cloud, Nami RPC, SqlUtils/MyBatis, and Solon annotations (@Mapping, @Inject, @SolonMain, @Component). Independent IoC/AOP and plugins — never use Spring annotations or spring-boot dependencies."
 ---
 
 # Solon Development Skill
@@ -11,7 +11,7 @@ description: "Specialized knowledge for developing Java applications with the So
 **GitHub**: https://github.com/opensolon/solon  
 **License**: Apache 2.0  
 **JDK**: Java 8 ~ 26，GraalVM Native Image  
-**当前版本**: **4.0.3**
+**目标版本**: **4.0.3**（升级时全局替换此标记 + 复核 AI/Nami 变更段）
 
 ## Critical Rules
 
@@ -27,96 +27,78 @@ description: "Specialized knowledge for developing Java applications with the So
 
 ## 执行流程
 
-1. **判定场景** → 只 `read` 下表中对应的 1～2 个 reference（**禁止一次加载全部**，合计约 6000 行）。
+1. **判定场景** → 只 `read` 下表中对应的 1～2 个 reference（**禁止一次加载全部**）。
 2. **生成代码前**核对 Critical Rules（尤其：`app.yml`、`@Component`、`@Inject`、无 Spring 依赖）。
-3. **数据访问**优先读 `references/data_access.md`（SqlUtils / 事务 / MyBatis / `@Cache`）。
-4. **AI 场景**：Chat/RAG/MCP → `ai_chat_rag_mcp.md`；Agent/Talent/Harness/Loop/A2A → `ai_agent_harness.md`。
-5. **从 Spring 迁移** → 使用 `spring-to-solon-skill`，本 skill 仅保留精简对照。
-6. 用户中文提问 → 中文回复与注释；默认版本 **4.0.3**。
-7. **API 不确定时**查 reference 或源码；禁止用 Spring 习惯或臆造坐标补全（例如不存在 `solon-ai-rag` / `solon-ai-a2a`）。
+3. **数据访问**优先读 `references/data_access.md`。
+4. **AI 场景分流**：
+   - Chat/Tool/MCP/基础 RAG → `references/ai_chat_rag_mcp.md`
+   - Loader/向量库/搜索插件表 → `references/ai_rag_plugins.md`
+   - Agent/Talent/Loop → `references/ai_agent.md`
+   - HarnessEngine/工具权限 → `references/ai_harness.md`
+   - AI UI/ACP/A2A → `references/ai_protocol_ui.md`
+5. **Cloud 分流**：Config/Discovery/Event/Job → `references/cloud_core.md`；File/Breaker/Gateway/Trace/Metric/Id/Lock → `references/cloud_ops.md`。
+6. **Remoting 分流**：Nami RPC/HttpClient → `references/remoting.md`；过滤器/发现/LB → `references/remoting_filter_lb.md`；Socket.D → `references/socketd.md`。
+7. **Flow 分流**：YAML/Graph/节点 → `references/flow_orchestration.md`；中断恢复/Workflow/拦截器 → `references/flow_workflow.md`。
+8. **Security 分流**：Auth/CORS/Vault → `references/security.md`；参数校验 → `references/validation.md`。
+9. **从 Spring 迁移** → 使用 `spring-to-solon-skill`，本 skill 仅保留精简对照。
+10. 用户中文提问 → 中文回复与注释；默认版本 **4.0.3**。
+11. **API 不确定时**查 reference 或源码；禁止用 Spring 习惯或臆造坐标补全（例如不存在 `solon-ai-rag` / `solon-ai-a2a`）。
 
-## Scene Navigation
+## Scene Navigation（含阅读优先级）
 
-> 根据用户场景读取对应 reference。
+> 根据场景只读 1～2 个文件。路径统一写完整相对路径（如 `references/quick_start.md`）。
 
 ### 基础与核心
 
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| 项目初始化 / Maven / 构建 / 部署 / AOT / Native Image | `references/quick_start.md` | `pom.xml`, `Solon.start`, `solon-maven-plugin`, `solon-aot`, `native-image` |
-| 注解对照 / IoC / 配置 / 插件 SPI / SnEL / 与 Spring 差异 | `references/core_concepts.md` | `@Inject`, `@Configuration`, `app.yml`, `SnEL`, `SpiLoader` |
-| 依赖选择 (web/lib) / 模块列表 / 序列化 / 视图 / ORM 索引 | `references/modules_reference.md` | `solon-web`, `solon-lib`, `solon-serialization`, `MyBatis` |
-| 数据源 / SqlUtils / 事务 / MyBatis 用法 | `references/data_access.md` | `SqlUtils`, `solon.dataSources`, `@Transaction`, `@Db`, `DataSource` |
-| 注解完整参考 / 配置属性 / WebSocket·EventBus API | `references/api_annotations.md` | `@Mapping`, `@Bean`, `@Param`, `server.port`, `EventBus`, `WebSocket` |
+| 优先级 | Scenario | Reference | Grep Keywords |
+|---|---|---|---|
+| 必读 | 项目初始化 / Maven / 构建 / 部署 / AOT / Native | `references/quick_start.md` | `pom.xml`, `Solon.start`, `solon-maven-plugin`, `solon-aot` |
+| 必读 | REST / MVC / Filter / 定时任务 / 模式速查 | `references/common_patterns.md` | `@Controller`, `Filter`, `@Mapping`, `@Scheduled` |
+| 按需 | 注解对照 / IoC / 配置 / SnEL / 与 Spring 差异 | `references/core_concepts.md` | `@Inject`, `@Configuration`, `app.yml`, `SnEL` |
+| 进阶 | 插件 SPI / E-SPI / H-SPI / 配置元数据 | `references/plugin_spi.md` | `Plugin`, `solon-hotplug`, `SpiLoader`, `META-INF/solon` |
+| 查阅 | 依赖选择 / 模块列表 / 序列化 / 视图 / ORM 索引 | `references/modules_reference.md` | `solon-web`, `solon-lib`, `solon-rpc`, `solon-job` |
+| 按需 | 数据源 / SqlUtils / 事务 / MyBatis 用法 | `references/data_access.md` | `SqlUtils`, `@Transaction`, `@Db`, `DataSource` |
+| 查阅 | 注解 / 配置属性 / WebSocket·EventBus·Filter | `references/api_reference.md` | `@Mapping`, `@Bean`, `EventBus`, `WebSocket` |
 
-### Web 开发
+### Web / 安全 / 通信
 
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| REST API / MVC / Filter / 定时任务 / 全局异常 / 模式速查 | `references/common_patterns.md` | `@Controller`, `@Component`, `Filter`, `@Mapping`, `@Scheduled` |
-| SSE / Reactive / I18n | `references/web_advanced.md` | `SseEmitter`, `Flux`, `Mono`, `solon-web-sse`, `solon-web-rx`, `I18nUtil` |
+| 优先级 | Scenario | Reference | Grep Keywords |
+|---|---|---|---|
+| 按需 | SSE / Reactive | `references/web_sse_reactive.md` | `SseEmitter`, `Flux`, `solon-web-sse`, `Mono` |
+| 按需 | 国际化 / Locale / 模板 i18n | `references/i18n.md` | `I18nUtil`, `I18nService`, `solon-i18n`, `LocaleResolver` |
+| 按需 | 认证 / 鉴权 / CORS / 配置加密 / 请求头安全 | `references/security.md` | `AuthAdapter`, `@CrossOrigin`, `VaultUtils` |
+| 按需 | 参数校验 / 实体校验 / 校验器扩展 | `references/validation.md` | `@Valid`, `@NotNull`, `ValidatorManager` |
+| 按需 | Nami RPC / 声明式 HttpClient | `references/remoting.md` | `@NamiClient`, `@Remoting`, `solon-rpc` |
+| 按需 | Nami 过滤器 / 服务发现 / 负载均衡 | `references/remoting_filter_lb.md` | `NamiManager`, `LoadBalance`, `CloudLoadStrategy` |
+| 按需 | Socket.D 双向通信 | `references/socketd.md` | `Socket.D`, `ClientSession`, `ServerEndpoint` |
 
-### 安全
+### 运维 / 测试 / 云 / 流程
 
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| 认证 / 鉴权 / CORS / 角色权限 / 参数校验 / 配置加密 | `references/security.md` | `AuthAdapter`, `AuthProcessor`, `@CrossOrigin`, `@AuthPermissions`, `solon-security` |
+| 优先级 | Scenario | Reference | Grep Keywords |
+|---|---|---|---|
+| 按需 | 日志 | `references/logging.md` | `solon-logging`, `AppenderBase`, `logback` |
+| 按需 | 单元/集成/HTTP 测试 / Mock | `references/testing.md` | `@SolonTest`, `HttpTester`, `@Rollback` |
+| 按需 | 配置中心 / 注册发现 / 事件 / 任务 | `references/cloud_core.md` | `nacos`, `CloudClient`, `@CloudJob`, `@CloudEvent` |
+| 按需 | 文件 / 熔断 / 网关 / 链路 / 指标 / ID / 锁 | `references/cloud_ops.md` | `CloudClient.file`, `@CloudBreaker`, `solon-cloud-gateway` |
+| 按需 | Flow YAML / Graph / 节点类型 | `references/flow_orchestration.md` | `FlowEngine`, `FlowContext`, `Graph`, `NodeType` |
+| 按需 | Flow 中断恢复 / Workflow / 拦截器 | `references/flow_workflow.md` | `toJson`, `WorkflowExecutor`, `FlowInterceptor` |
 
-### 数据与通信
+### AI
 
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| RPC / Nami / Socket.D / 负载均衡 | `references/remoting.md` | `@NamiClient`, `@Remoting`, `Socket.D`, `LoadBalance`, `ClientSession` |
+| 优先级 | Scenario | Reference | Grep Keywords |
+|---|---|---|---|
+| 按需 | ChatModel / Tool / 基础 RAG / MCP / GenerateModel | `references/ai_chat_rag_mcp.md` | `ChatModel`, `ToolMapping`, `MCP`, `EmbeddingModel` |
+| 按需 | RAG Loader / 向量库 / 联网搜索插件 | `references/ai_rag_plugins.md` | `solon-ai-load`, `solon-ai-repo`, `PdfLoader` |
+| 按需 | Agent / Talent / Loop | `references/ai_agent.md` | `ReActAgent`, `Talent`, `solon-ai-loop` |
+| 按需 | HarnessEngine / 工具权限 / 子代理 / 命令 | `references/ai_harness.md` | `HarnessEngine`, `ToolPermission`, `AgentDefinition` |
+| 按需 | AI UI / ACP / A2A | `references/ai_protocol_ui.md` | `AiSdkStreamWrapper`, `ACP`, `TeamProtocols.A2A` |
 
-### 运维与可观测
+## 版本与变更
 
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| 日志配置 / 自定义添加器 / Slf4j | `references/logging.md` | `solon-logging`, `AppenderBase`, `logback` |
+- 默认稳定版：**4.0.3**；JDK **8 ~ 26**
+- AI / Nami 等增量细节以对应 reference 为准（AI 见 `references/ai_agent.md` 末尾「4.0.3 AI 增量要点」；Nami 默认 snack4）
+- 升级版本时：全局替换 **4.0.3** 标记，并复核 AI、Nami、快捷依赖章节
 
-### 测试
+## 最小模板
 
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| 单元测试 / 集成测试 / HTTP 测试 / Mock | `references/testing.md` | `@SolonTest`, `HttpTester`, `@Rollback`, `@Import`, `mockito` |
-
-### 云原生 / 微服务
-
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| 配置中心 / 注册发现 / 事件 / 分布式任务 / 文件 / 熔断 / 网关 / 链路 / 锁 | `references/cloud_native.md` | `nacos`, `kafka`, `minio`, `xxl-job`, `CloudClient`, `@CloudJob`, `@CloudEvent` |
-
-### AI 开发
-
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| ChatModel / Tool Call / RAG / MCP / GenerateModel / 方言 | `references/ai_chat_rag_mcp.md` | `ChatModel`, `RAG`, `MCP`, `ToolMapping`, `GenerateModel` |
-| Agent / Talent / Harness / AI UI / ACP / A2A / Loop | `references/ai_agent_harness.md` | `ReActAgent`, `HarnessEngine`, `Talent`, `AiSdkStreamWrapper`, `ACP`, `A2A`, `solon-ai-loop` |
-
-### 流程编排
-
-| Scenario | Reference File | Grep Keywords |
-|---|---|---|
-| Flow 流程编排（规则 / 工作流 / 状态机 / 图编排） | `references/flow_orchestration.md` | `FlowEngine`, `FlowContext`, `Graph`, `YAML`, `StateMachine` |
-
-## 4.0.3 要点（相对 4.0.2）
-
-- 官网当前稳定版：**4.0.3**；JDK **8 ~ 26**
-- AI：`solon-ai-loop`；`solon-ai-talent-code`（从 harness 拆出）；`GenerateTool` → `GenerateTalent`
-- A2A：`TeamProtocols.A2A`（`solon-ai-agent`），无独立 `solon-ai-a2a` 模块
-- RAG：核心在 `solon-ai-core`；loader=`solon-ai-load-*`；repo=`solon-ai-repo-*`；写入 API 为 `save`（非 `insert`）
-- Harness Builder：`modelAdd(ChatConfig)`；运行时才是 `engine.addModel(...)`
-- Nami 默认 snack4：`Snack4Decoder` / `Snack4Encoder`
-- 核心：`ScopeLocal` 等能力持续演进；服务器可选 `solon-server-feathttp`
-- 详细 AI 变更见 `ai_chat_rag_mcp.md` / `ai_agent_harness.md`
-
-## Reference 阅读优先级（Agent 友好）
-
-| 优先级 | 文件 | 何时读 |
-|---|---|---|
-| 必读入口 | `quick_start.md` / `common_patterns.md` | 新建项目、REST/MVC |
-| 按需 | `data_access.md` / `testing.md` / `security.md` | 数据、测试、鉴权 |
-| 按需 | `ai_chat_rag_mcp.md` / `ai_agent_harness.md` | AI 相关 |
-| 按需 | `remoting.md` / `cloud_native.md` / `flow_orchestration.md` | RPC/云/流程 |
-| 查阅 | `api_annotations.md` / `modules_reference.md` | 注解/依赖索引 |
-| 进阶 | `core_concepts.md` 后半 SPI/E-SPI/H-SPI | 插件开发时再读 |
+从零建 Web 项目可参考 `assets/minimal-web/`（`pom.xml` + `App` + `HelloController` + `app.yml`）。

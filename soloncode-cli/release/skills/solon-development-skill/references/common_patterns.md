@@ -3,7 +3,7 @@
 > 适用场景：REST API、Service、Filter、定时任务、全局异常处理的最短可运行片段。
 >
 > 目标版本：4.0.3。  
-> WebSocket / EventBus 完整 API → `api_annotations.md`  
+> WebSocket / EventBus 完整 API → `api_reference.md`  
 > 单元测试 / HTTP 测试 → `testing.md`  
 > 数据访问 / 事务 → `data_access.md`
 
@@ -118,7 +118,7 @@ public class MyJob {
 
 ## WebSocket（最短示例）
 
-依赖：`solon-server-websocket`。完整 API 见 `api_annotations.md`。
+依赖：`solon-server-websocket`。完整 API 见 `api_reference.md`。
 
 ```java
 @ServerEndpoint("/ws/chat/{roomId}")
@@ -140,7 +140,7 @@ public class WebSocketChat extends SimpleWebSocketListener {
 
 ## EventBus（最短示例）
 
-完整方法表见 `api_annotations.md`。
+完整方法表见 `api_reference.md`。
 
 ```java
 public class UserCreatedEvent {

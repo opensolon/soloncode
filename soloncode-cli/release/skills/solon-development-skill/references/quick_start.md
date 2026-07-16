@@ -88,12 +88,16 @@ solon.app.name: "demo"
 
 ## Shortcut Dependencies
 
-| Artifact | Use Case |
+| Artifact | 用途 |
 |---|---|
-| `solon-web` | **Full web development** (HTTP server + JSON + session + static files + cors + validation) |
-| `solon-lib` | **Library/non-web** (IoC + AOP + data + cache + yaml config, no HTTP server) |
+| `solon-web` | **完整 Web 开发**（HTTP + JSON + session + 静态资源 + CORS + 校验） |
+| `solon-lib` | **非 Web / 库**（IoC + AOP + data + yaml，无 HTTP 服务器） |
+| `solon-rpc` | **RPC 客户端**（Nami） |
+| `solon-job` | **任务调度** |
+| `solon-ai` | **AI 对话基础**（Agent/Harness 另加依赖） |
 
-When building a web application, use `solon-web`. When building a non-web service or library, use `solon-lib`.
+Web 项目用 `solon-web`；非 Web 服务或库用 `solon-lib`。完整模块索引见 `modules_reference.md`。
+最小可运行模板：`../assets/minimal-web/`。
 
 ## Build & Deploy
 

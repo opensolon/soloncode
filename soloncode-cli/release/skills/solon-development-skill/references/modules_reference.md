@@ -10,12 +10,16 @@
 
 快捷组合包本身不含业务代码，由多个插件组合而成；也可按需单独引入子插件。
 
-| Artifact | Description | Includes |
+| Artifact | Description | Includes / 备注 |
 |---|---|---|
-| `solon-web` | 完整 Web 应用开发（推荐 Web 项目）。含服务器 + 序列化 + 会话 + 静态文件 + 跨域 + 校验 | solon-lib + solon-server-smarthttp + solon-serialization-snack4 + solon-sessionstate-local + solon-web-staticfiles + solon-web-cors + solon-security-validation |
-| `solon-lib` | 基础开发组合包（无 Web 服务器）。适用于 CLI、后台任务、非 Web 微服务 | solon + solon-data + solon-proxy + solon-config-yaml + solon-config-plus |
+| `solon-web` | 完整 Web 应用开发（推荐 Web 项目） | solon-lib + smarthttp + snack4 + session + staticfiles + cors + validation |
+| `solon-lib` | 基础开发组合包（无 Web 服务器） | solon + solon-data + solon-proxy + yaml/config-plus；CLI / 后台 / 非 Web |
+| `solon-rpc` | RPC 客户端快捷包 | Nami 客户端所需通道与默认序列化；配合 `@NamiClient` |
+| `solon-job` | 任务调度快捷包 | 内置调度相关能力；细粒度见 Scheduling 表 |
+| `solon-ai` | AI 基础快捷包 | ChatModel / 方言等；Agent 另引 `solon-ai-agent`，Harness 另引 `solon-ai-harness` |
+| `solon-cloud-gateway` | 云网关快捷包 | 网关场景；细节见 `cloud_ops.md` |
 
-> **选择指南：** 需要 HTTP 服务 → `solon-web`；仅数据处理 / 定时 / 消息消费 → `solon-lib`。
+> **选择指南：** HTTP 服务 → `solon-web`；非 Web → `solon-lib`；RPC 消费端 → `solon-rpc`；AI 对话 → `solon-ai`；Agent/Harness 按需叠加。
 
 ## Server Implementations
 
@@ -56,6 +60,14 @@
 | `solon-view-velocity` | Velocity |
 | `solon-view-beetl` | Beetl |
 | `solon-view-jsp` | JSP |
+
+## Web 增强 / I18n
+
+| Artifact | Description | 详情 |
+|---|---|---|
+| `solon-web-sse` | Server-Sent Events | `web_sse_reactive.md` |
+| `solon-web-rx` | 响应式 Web（Mono/Flux） | `web_sse_reactive.md` |
+| `solon-i18n` | 国际化 / Locale | `i18n.md` |
 
 ## Data Access（索引）
 
@@ -132,3 +144,19 @@
 | `solon-test` | JUnit 5（推荐，见 `testing.md`） |
 | `solon-test-junit5` | 仅 JUnit 5 |
 | `solon-test-junit4` | JUnit 4 |
+
+## RPC / AI / Cloud（索引）
+
+| Artifact | 说明 | 详情 |
+|---|---|---|
+| `solon-rpc` / `nami-*` | Nami RPC 客户端 | `remoting.md` / `remoting_filter_lb.md` |
+| `solon-server-socketd` / `socket.d` | Socket.D | `socketd.md` |
+| `solon-ai` / `solon-ai-core` | Chat / RAG 核心 | `ai_chat_rag_mcp.md` |
+| `solon-ai-load-*` / `solon-ai-repo-*` / `solon-ai-search-*` | RAG 插件表 | `ai_rag_plugins.md` |
+| `solon-ai-agent` / `solon-ai-loop` | Agent / Loop | `ai_agent.md` |
+| `solon-ai-harness` | 马具框架 | `ai_harness.md` |
+| `solon-ai-ui-aisdk` / `solon-ai-acp` | AI UI / ACP | `ai_protocol_ui.md` |
+| `*-solon-cloud-plugin` | 注册/配置/事件等 | `cloud_core.md` |
+| `solon-cloud-gateway` / File/Breaker/Trace 等 | 网关与运维能力 | `cloud_ops.md` |
+| `solon-flow` | 流程编排基础 | `flow_orchestration.md` |
+| `solon-flow-workflow` | 中断恢复 / Workflow | `flow_workflow.md` |
