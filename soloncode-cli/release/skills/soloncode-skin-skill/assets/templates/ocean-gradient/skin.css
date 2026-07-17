@@ -1,0 +1,52 @@
+/* skin: ocean-gradient — 配方 B：主区氛围渐变（无图片文件） */
+[data-skin="ocean-gradient"][data-theme="light"] {
+  --accent: #0b7ea4;
+  --accent-hover: #096b8c;
+  --accent-light: #e6f6fb;
+  --bg-user-msg: #e7f5fa;
+  --thinking-dot: #0b7ea4;
+  --text-user-msg-link: #0b7ea4;
+  --text-user-msg-link-hover: #096b8c;
+
+  --bg-body: #f3f8fb;
+  --bg-main: #f5f9fc;
+  --bg-sidebar: #f2f7fa;
+  --bg-input-box: rgba(255, 255, 255, 0.92);
+  --bg-hover: rgba(11, 126, 164, 0.08);
+  --border-color: rgba(11, 126, 164, 0.16);
+
+  --bg-main-image: linear-gradient(160deg, #e8f7fc 0%, #f5f8ff 45%, #eef6f4 100%);
+  --bg-main-overlay: rgba(255, 255, 255, 0.30);
+  --bg-main-surface: transparent;
+
+  --bg-sidebar-image: linear-gradient(180deg, #f3fafc, #ffffff);
+  --bg-sidebar-overlay: transparent;
+  --bg-sidebar-surface: transparent;
+}
+
+[data-skin="ocean-gradient"][data-theme="dark"] {
+  --accent: #3db8d9;
+  --accent-hover: #2ea3c2;
+  --accent-light: #12303a;
+  --bg-user-msg: #1a4a5a;
+  --thinking-dot: #3db8d9;
+  --text-user-msg-link: #3db8d9;
+  --text-user-msg-link-hover: #7ad4ec;
+
+  --bg-body: #0d141a;
+  --bg-main: #101820;
+  --bg-sidebar: #0f161d;
+  --bg-primary: #121c24;
+  --bg-secondary: #0f161d;
+  --bg-input-box: rgba(22, 32, 40, 0.92);
+  --bg-hover: rgba(61, 184, 217, 0.12);
+  --border-color: rgba(61, 184, 217, 0.22);
+
+  --bg-main-image: linear-gradient(160deg, #0d1b24 0%, #12182a 50%, #0f1f1c 100%);
+  --bg-main-overlay: rgba(10, 14, 24, 0.42);
+  --bg-main-surface: transparent;
+
+  --bg-sidebar-image: linear-gradient(180deg, #121c28, #16162a);
+  --bg-sidebar-overlay: transparent;
+  --bg-sidebar-surface: transparent;
+}

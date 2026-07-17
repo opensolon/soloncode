@@ -1,0 +1,95 @@
+/* skin: settings-panel — 配方 C：设置面板独立背景（默认为强渐变，可换成 url("./assets/...")） */
+[data-skin="settings-panel"][data-theme="light"] {
+  --accent: #6d5efc;
+  --accent-hover: #5a4ae6;
+  --accent-light: #ece9ff;
+  --bg-user-msg: #ebe7ff;
+  --thinking-dot: #6d5efc;
+  --text-user-msg-link: #6d5efc;
+  --text-user-msg-link-hover: #5a4ae6;
+
+  /* 主区克制 */
+  --bg-main-image: linear-gradient(165deg, #f7f8fd 0%, #eef1ff 48%, #f5f7fc 100%);
+  --bg-main-overlay: rgba(255, 255, 255, 0.28);
+  --bg-main-surface: transparent;
+
+  /* 设置弹层：有位图时改为 assets/settings-light.png 的相对 url */
+  --bg-settings: rgba(248, 247, 255, 0.60);
+  --bg-settings-image: linear-gradient(145deg, #efe9ff 0%, #e8f4ff 42%, #f7eefc 100%);
+  --bg-settings-overlay: rgba(255, 255, 255, 0.22);
+  --bg-settings-surface: transparent;
+  --bg-settings-tabs: rgba(255, 255, 255, 0.28);
+}
+
+[data-skin="settings-panel"][data-theme="dark"] {
+  --accent: #a89bff;
+  --accent-hover: #c0b6ff;
+  --accent-light: #2a2448;
+  --bg-user-msg: #2a2450;
+  --thinking-dot: #a89bff;
+  --text-user-msg-link: #a89bff;
+  --text-user-msg-link-hover: #d0c8ff;
+
+  --bg-main-image: linear-gradient(165deg, #12121f 0%, #17142a 50%, #10141c 100%);
+  --bg-main-overlay: rgba(12, 12, 24, 0.35);
+  --bg-main-surface: transparent;
+
+  /* 有位图时改为 assets/settings-dark.png 的相对 url */
+  --bg-settings: rgba(24, 22, 42, 0.66);
+  --bg-settings-image: linear-gradient(145deg, #1a1430 0%, #12182c 45%, #1c1230 100%);
+  --bg-settings-overlay: rgba(10, 8, 24, 0.28);
+  --bg-settings-surface: transparent;
+  --bg-settings-tabs: rgba(16, 12, 36, 0.42);
+}
+
+/* 透图链路：面板/内容区不要盖实色 */
+[data-skin="settings-panel"] .settings-panel {
+  background-color: transparent !important;
+}
+
+[data-skin="settings-panel"] .settings-tabs {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: var(--bg-settings-tabs) !important;
+}
+
+[data-skin="settings-panel"] .settings-body,
+[data-skin="settings-panel"] .settings-content {
+  background: transparent;
+}
+
+[data-skin="settings-panel"] .settings-tab.active {
+  background: rgba(109, 94, 252, 0.12);
+  color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+[data-skin="settings-panel"] .settings-tab:hover:not(.active) {
+  background: rgba(109, 94, 252, 0.06);
+}
+
+/* 卡片/分组半透明，让背景图透出 */
+[data-skin="settings-panel"] .settings-section,
+[data-skin="settings-panel"] .settings-card,
+[data-skin="settings-panel"] .settings-group,
+[data-skin="settings-panel"] .settings-block {
+  background: rgba(255, 255, 255, 0.40);
+  border: 1px solid rgba(109, 94, 252, 0.12);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+[data-skin="settings-panel"][data-theme="dark"] .settings-section,
+[data-skin="settings-panel"][data-theme="dark"] .settings-card,
+[data-skin="settings-panel"][data-theme="dark"] .settings-group,
+[data-skin="settings-panel"][data-theme="dark"] .settings-block {
+  background: rgba(20, 18, 40, 0.48);
+  border-color: rgba(168, 155, 255, 0.16);
+}
+
+[data-skin="settings-panel"] .settings-primary-btn,
+[data-skin="settings-panel"] button.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  border-color: transparent;
+  color: #fff;
+}

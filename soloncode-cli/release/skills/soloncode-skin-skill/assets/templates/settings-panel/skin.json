@@ -1,0 +1,7 @@
+{
+  "name": "settings-panel",
+  "displayName": "设置面板主题",
+  "description": "设置弹层独立氛围（默认可纯 CSS 渐变；有图时替换 assets/settings-*）",
+  "author": "soloncode",
+  "version": "1.0.0"
+}
