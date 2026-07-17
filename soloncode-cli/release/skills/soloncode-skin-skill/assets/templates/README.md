@@ -3,10 +3,10 @@
 ## 一键（推荐）
 
 ```bash
-# 在 soloncode-skin-skill 根目录
+# 在目标 workspace 下执行（默认 zip 落 .uploads/）
 python3 scripts/make_skin.py \
   --name aurora --recipe c --theme aurora \
-  --with-assets -o /tmp/aurora.zip --force
+  --with-assets -o .uploads/aurora.zip --force
 ```
 
 ## 分步
@@ -14,7 +14,8 @@ python3 scripts/make_skin.py \
 ```bash
 python3 scripts/scaffold_skin.py --name aurora --recipe b --theme ocean --out /tmp/aurora-skin --preview
 python3 scripts/validate_skin.py /tmp/aurora-skin
-python3 scripts/pack_skin.py /tmp/aurora-skin -o /tmp/aurora.zip
+mkdir -p .uploads
+python3 scripts/pack_skin.py /tmp/aurora-skin -o .uploads/aurora.zip
 ```
 
 ## 模板表

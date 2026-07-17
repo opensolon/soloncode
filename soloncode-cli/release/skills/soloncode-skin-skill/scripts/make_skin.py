@@ -29,7 +29,12 @@ def main() -> int:
     parser.add_argument("--theme", default="aurora", help="color heuristic theme")
     parser.add_argument("--display-name", default=None)
     parser.add_argument("--description", default=None)
-    parser.add_argument("-o", "--output", default=None, help="output zip path (default: ./{name}.zip)")
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="output zip path (default: .uploads/{name}.zip)",
+    )
     parser.add_argument("--work-dir", default=None, help="keep working dir (default: temp)")
     parser.add_argument("--no-preview", action="store_true", help="skip preview.png (default: generate)")
     parser.add_argument(
@@ -43,7 +48,13 @@ def main() -> int:
     name = args.name.strip()
     recipe = (args.recipe or "b").strip().lower()
     theme = (args.theme or "aurora").strip().lower()
-    out_zip = Path(args.output).expanduser().resolve() if args.output else (Path.cwd() / f"{name}.zip")
+    # Default under .uploads/ to align with Web attachments and keep project root clean.
+    out_zip = (
+        Path(args.output).expanduser().resolve()
+        if args.output
+        else (Path.cwd() / ".uploads" / f"{name}.zip").resolve()
+    )
+    out_zip.parent.mkdir(parents=True, exist_ok=True)
     if out_zip.exists() and not args.force:
         print(f"ERROR\t输出已存在: {out_zip}（加 --force 覆盖）", flush=True)
         return 2

@@ -406,7 +406,7 @@ def scaffold(
     print(f"OK\tscaffolded recipe={template_name} name={name} -> {out_dir}")
     print("NEXT\t1) edit skin.css / optional assets / preview.png")
     print("NEXT\t2) python3 scripts/validate_skin.py <dir>")
-    print(f"NEXT\t3) python3 scripts/pack_skin.py <dir> -o ./{name}.zip")
+    print(f"NEXT\t3) python3 scripts/pack_skin.py <dir> -o .uploads/{name}.zip")
     print("TIP\tone-shot: python3 scripts/make_skin.py --name <id> --recipe c --theme aurora --with-assets")
     return out_dir
 

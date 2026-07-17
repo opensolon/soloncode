@@ -48,7 +48,8 @@ def default_out_path(skin_root: Path, out: Path | None) -> Path:
         name = str(meta.get("name") or name)
     except Exception:  # noqa: BLE001
         pass
-    return Path.cwd() / f"{name}.zip"
+    # Align with Web attachments dir (.uploads is gitignored).
+    return Path.cwd() / ".uploads" / f"{name}.zip"
 
 
 def should_include(rel: str, path: Path) -> bool:
@@ -96,7 +97,7 @@ def pack(skin_root: Path, out_zip: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Pack SolonCode skin directory to zip")
     parser.add_argument("skin_dir", help="skin directory (flat or one-level wrapper)")
-    parser.add_argument("-o", "--output", help="output zip path (default: ./{name}.zip)")
+    parser.add_argument("-o", "--output", help="output zip path (default: .uploads/{name}.zip)")
     parser.add_argument("--skip-validate", action="store_true", help="skip validation before pack")
     args = parser.parse_args()
 

@@ -10,7 +10,9 @@
 | 项 | 值 |
 |---|---|
 | 产品 | SolonCode（Web UI） |
-| 安装入口 | 设置 → 通用 → 皮肤选择 → 上传皮肤 |
+| 默认 zip 路径 | `.uploads/{name}.zip`（与 Web 附件目录一致，gitignore） |
+| 一键安装 | Markdown：`[点击安装皮肤](/web/settings/skins/install?file=.uploads/{name}.zip)`（前端 POST 安装并启用） |
+| 手动安装 | 设置 → 通用 → 皮肤选择 → 上传皮肤 |
 | 安装目录 | `~/.soloncode/skins/{name}/` |
 | 预置皮肤 | `default` / `eyecare` / `contrast` |
 | 作用范围 | 仅 Web 静态资源体系；**不要**改 `soloncode-desktop` |
@@ -643,10 +645,10 @@ background-image:
 #### 步骤 0：一键生成（推荐）
 
 ```bash
-# skill 根目录
+# skill 根目录（在目标 workspace 下执行，zip 默认落 .uploads/）
 python3 scripts/make_skin.py \
   --name aurora --recipe c --theme aurora \
-  --with-assets -o ./aurora.zip --force
+  --with-assets -o .uploads/aurora.zip --force
 ```
 
 | 脚本 | 作用 |
@@ -690,7 +692,7 @@ name / displayName
 
 ```bash
 python3 scripts/validate_skin.py /path/to/skin-dir
-python3 scripts/pack_skin.py /path/to/skin-dir -o ./name.zip
+python3 scripts/pack_skin.py /path/to/skin-dir -o .uploads/name.zip
 ```
 
 也可：
@@ -719,12 +721,15 @@ zip 内须**扁平**可见 `skin.json` 与 `skin.css`。最终交付物是 **`.z
 
 #### 步骤 5：向用户说明如何安装
 
-```text
-设置 → 通用 → 皮肤选择 → 上传皮肤 → 选择生成的 zip → 点击启用
-切换顶栏明暗，确认 light/dark 都正常
-若样式像旧版：强制刷新，或先切默认再切回该皮肤
-同名重装会覆盖旧版
+优先输出**一键安装链接**（zip 默认在 `.uploads/`，相对当前 workspace）：
+
+```markdown
+[点击安装皮肤](/web/settings/skins/install?file=.uploads/settings-aurora.zip)
 ```
+
+规则：`file` 为相对 workspace 路径，不要 `./` 前缀，不要绝对路径；默认推荐 `.uploads/{name}.zip`。  
+备用手动：设置 → 通用 → 皮肤选择 → 上传皮肤 → 启用。  
+验收：切换 light/dark；若像旧版则强制刷新或先切默认再切回。同名重装覆盖。
 
 ---
 
@@ -924,23 +929,26 @@ zip 内须**扁平**可见 `skin.json` 与 `skin.css`。最终交付物是 **`.z
 
 生成完成后，回复用户时包含：
 
-1. **Zip 路径**（可安装文件）
-2. **皮肤 name / displayName**
-3. **覆盖了哪些区域**（main/sidebar/settings/...）
-4. **是否含位图**
-5. **安装步骤**
-6. **建议验收点**（light/dark、设置面板、对话可读性）
+1. **Zip 路径**（相对 workspace，默认 `.uploads/{name}.zip`）
+2. **一键安装链接**（必须）：`[点击安装皮肤](/web/settings/skins/install?file=.uploads/{name}.zip)`
+3. **皮肤 name / displayName**
+4. **覆盖了哪些区域**（main/sidebar/settings/...）
+5. **是否含位图**
+6. **备用手动安装步骤**
+7. **建议验收点**（light/dark、设置面板、对话可读性）
 
 示例回复结构：
 
 ```text
-已生成皮肤包：./settings-aurora.zip
+已生成皮肤包：.uploads/settings-aurora.zip
 - name: settings-aurora
 - 展示名: 设置极光
 - 区域: settings 独立背景 + 全局强调色；main 仅淡渐变
 - 资源: assets/settings-light.png, assets/settings-dark.png, preview.png
 
-安装：设置 → 通用 → 皮肤选择 → 上传皮肤
+[点击安装皮肤](/web/settings/skins/install?file=.uploads/settings-aurora.zip)
+
+备用：设置 → 通用 → 皮肤选择 → 上传皮肤
 请分别检查 light/dark 下设置面板背景与正文可读性。
 若看不出变化：强制刷新，或先切默认再切回。
 ```
@@ -952,6 +960,7 @@ zip 内须**扁平**可见 `skin.json` 与 `skin.css`。最终交付物是 **`.z
 当前皮肤系统支持：
 
 - 预置皮肤 + 本地 Zip 安装/启用/卸载
+- 聊天一键安装：`POST /web/settings/skins/install?file={workspace相对zip}`（推荐 `.uploads/{name}.zip`）
 - 分区背景槽位：body / sidebar / main / filer / settings
 - light/dark 正交切换
 - 本地资源代理与 CSS `url()` 改写

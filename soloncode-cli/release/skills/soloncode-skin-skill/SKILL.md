@@ -61,7 +61,7 @@ python3 scripts/make_skin.py \
   --theme aurora \
   --display-name "极光设置" \
   --with-assets \
-  -o ./aurora.zip \
+  -o .uploads/aurora.zip \
   --force
 ```
 
@@ -73,7 +73,7 @@ python3 scripts/make_skin.py \
 | `--with-assets` | 配方 C/D 生成有结构 PNG 并写入 `url("./assets/...")` |
 | `--no-preview` | 跳过 preview.png（默认会生成） |
 | `--work-dir` | 保留工作目录便于再改 |
-| `-o` | 输出 zip |
+| `-o` | 输出 zip（**默认** `.uploads/{name}.zip`，与 Web 附件目录一致） |
 
 成功后按「输出协议」回复即可。
 
@@ -87,10 +87,10 @@ name / displayName
 是否要位图（要 → --with-assets 或 gen_bg）
 是否“只改设置”
 明暗偏好（仍必须 light+dark）
-输出路径（默认 ./{name}.zip）
+输出路径（默认 .uploads/{name}.zip，已在 .gitignore）
 ```
 
-默认：合法英文短名 + 配方 B + 无位图 + 不改功能色。
+默认：合法英文短名 + 配方 B + 无位图 + 不改功能色 + zip 落到 `.uploads/`。
 
 ### 2. 选择配方
 
@@ -142,7 +142,8 @@ python3 scripts/gen_preview.py -o /tmp/aurora-skin/preview.png --theme aurora --
 
 ```bash
 python3 scripts/validate_skin.py /tmp/aurora-skin
-python3 scripts/pack_skin.py /tmp/aurora-skin -o ./aurora.zip
+mkdir -p .uploads
+python3 scripts/pack_skin.py /tmp/aurora-skin -o .uploads/aurora.zip
 ```
 
 zip 必须**扁平结构**（根上直接 `skin.json`）。  
@@ -152,21 +153,44 @@ zip 必须**扁平结构**（根上直接 `skin.json`）。
 
 必须包含：
 
-1. Zip 路径  
-2. `name` / `displayName`  
-3. 覆盖区域  
-4. 是否含位图  
-5. 安装步骤  
-6. 验收点（light/dark、目标区域、可读性）
+1. Zip 路径（相对当前 workspace，供一键安装）  
+2. **一键安装链接**（优先，Web 端点一点即可装）  
+3. `name` / `displayName`  
+4. 覆盖区域  
+5. 是否含位图  
+6. 备用手动安装步骤  
+7. 验收点（light/dark、目标区域、可读性）
+
+**默认落盘目录**：`.uploads/{name}.zip`
+
+- 与 Web 聊天附件统一目录一致，已在仓库 `.gitignore`，不污染项目根
+- 打包前确保目录存在：`mkdir -p .uploads`
+- 用户明确要求其它路径时才改；安装链接 `file=` 始终跟真实相对路径
+
+**一键安装链接（必须）**：zip 落在当前工作区后，用 Markdown 链接输出：
+
+```markdown
+[点击安装皮肤](/web/settings/skins/install?file={相对路径.zip})
+```
+
+规则：
+
+- `file` 为 **相对 workspace 的路径**，不要带 `./` 前缀，不要绝对路径
+- 例：默认产物 `.uploads/aurora.zip` → `file=.uploads/aurora.zip`
+- 链接文案固定友好文案即可，如「点击安装皮肤」「一键安装」
+- 前端会拦截该链接并 `POST` 安装，成功后自动启用；**不要**只写纯文本路径而不给链接
+- 若无法确定相对路径（极少见），才退回手动上传说明
 
 ```text
-已生成皮肤包：./aurora.zip
+已生成皮肤包：.uploads/aurora.zip
 - name: aurora
 - 展示名: 极光
 - 区域: settings 独立背景 + 全局强调色
 - 资源: preview.png + assets/settings-*.png
 
-安装：设置 → 通用 → 皮肤选择 → 上传皮肤
+[点击安装皮肤](/web/settings/skins/install?file=.uploads/aurora.zip)
+
+备用：设置 → 通用 → 皮肤选择 → 上传皮肤
 请检查 light/dark 设置面板；若无变化：强制刷新，或先切默认再切回。
 ```
 
@@ -205,7 +229,9 @@ zip 必须**扁平结构**（根上直接 `skin.json`）。
 
 | 项 | 值 |
 |---|---|
-| 安装入口 | 设置 → 通用 → 皮肤选择 → 上传皮肤 |
+| 默认 zip 路径 | `.uploads/{name}.zip`（与 Web 附件目录一致，gitignore） |
+| 一键安装 | Markdown 链接 `[点击安装皮肤](/web/settings/skins/install?file=.uploads/{name}.zip)` → 前端 POST 安装并启用 |
+| 手动安装 | 设置 → 通用 → 皮肤选择 → 上传皮肤 |
 | 安装目录 | `~/.soloncode/skins/{name}/` |
 | 预置 | `default` / `eyecare` / `contrast` |
 | 本地 CSS | `/web/settings/skins/file?name={name}&file=skin.css`（服务端改写相对 url） |
@@ -222,7 +248,8 @@ zip 必须**扁平结构**（根上直接 `skin.json`）。
 - [ ] 相对路径正确；预览用 `preview.png`
 - [ ] zip ≤ 8MB；资源 ≤ 2MB（css 除外）
 - [ ] 通过 `validate_skin.py`
-- [ ] 已产出 zip（优先 `make_skin.py` / `pack_skin.py`）
+- [ ] 已产出 zip（优先 `make_skin.py` / `pack_skin.py`，默认 `.uploads/{name}.zip`）
+- [ ] 回复中含一键安装链接：`[…](/web/settings/skins/install?file=.uploads/…zip)`
 
 ## Do Not
 
