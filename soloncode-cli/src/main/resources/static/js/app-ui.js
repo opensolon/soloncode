@@ -520,6 +520,8 @@ function finalizeMdElement(el, text) {
     if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
     if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
     if (typeof processMermaidBlocks === 'function') processMermaidBlocks(el);
+    // 完成态 MD 替换后高度常变；hljs/mermaid 内部还会再 schedule，这里先补一次
+    if (typeof scheduleScrollToBottom === 'function') scheduleScrollToBottom();
 }
 window.renderMdStreaming = renderMdStreaming;
 window.finalizeMdElement = finalizeMdElement;
@@ -701,7 +703,7 @@ function switchToChatMode() {
     $(welcomeView).hide();
     $(chatView).addClass('active');
     chatInput.focus();
-    // 欢迎页 → 聊天页后布局/clientHeight 可能晚一帧才稳定，双 rAF + 短延时强制贴底
+    // 欢迎页 → 聊天页后布局/clientHeight 可能晚几帧才稳定，双 rAF + 多次短延时强制贴底
     if (typeof scrollToBottom === 'function') {
         requestAnimationFrame(function() {
             scrollToBottom(true);
@@ -712,6 +714,10 @@ function switchToChatMode() {
         setTimeout(function() {
             if (typeof scrollToBottom === 'function') scrollToBottom(true);
         }, 80);
+        // 慢设备/首条带图：再补一次，仍尊重后续用户上滑（force 仅在未上滑意图时由调用方保证）
+        setTimeout(function() {
+            if (typeof scrollToBottom === 'function' && !userScrolledUp) scrollToBottom(true);
+        }, 320);
     }
 }
 function switchToWelcomeMode() {

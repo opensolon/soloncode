@@ -136,6 +136,8 @@ var scrollFollowTimer = null;
 /* force 贴底默认窗口：覆盖首条切页布局、图片解码、hljs/mermaid 异步增高 */
 var SCROLL_FORCE_STICK_MS = 1200;
 var SCROLL_STREAM_STICK_MS = 280;
+/* 图片 onload / mermaid / hljs / ResizeObserver 等异步增高：单次信号也要跟够一会儿 */
+var SCROLL_ASYNC_STICK_MS = 600;
 var SCROLL_PROGRAMMATIC_MS = 160;
 
 function _markUserScrolledUp() {
@@ -188,8 +190,8 @@ function _applyScrollBottom() {
  */
 function scheduleScrollToBottom() {
     if (userScrolledUp) return;
-    // 延长短粘底窗口，让 followTick 跟上晚到的布局
-    _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_STREAM_STICK_MS);
+    // 异步增高可能只触发一次信号（如图片 load），用更长窗口让 followTick 跟上
+    _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_ASYNC_STICK_MS);
     scrollToBottom(false);
 }
 
@@ -211,8 +213,10 @@ function observeMessagesHeight(el) {
         _messagesResizeObserver.observe(el);
     } catch (e) {}
 }
-
-/**
+// 列表根容器：会话增高、滚动条出现导致 clientHeight 变化时也补贴底
+if (messagesWrap) observeMessagesHeight(messagesWrap);
+ 
+ /**
  * 贴底滚动（流式粘底）。
  * - force：强制贴底并清除 userScrolledUp
  * - 同一帧多次调用合并为一次 RAF

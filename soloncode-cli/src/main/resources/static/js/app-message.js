@@ -1579,7 +1579,10 @@ function addImageLightbox(container) {
                 if (typeof scheduleScrollToBottom === 'function') scheduleScrollToBottom();
                 else if (typeof scrollToBottom === 'function') scrollToBottom(false);
             }
-            if (!imgEl.complete) {
+            if (imgEl.complete) {
+                // 缓存图可能已 complete，但刚插入时高度尚未参与布局
+                requestAnimationFrame(onImgLayout);
+            } else {
                 $(imgEl).one('load error', onImgLayout);
             }
         })(imgs[i]);
