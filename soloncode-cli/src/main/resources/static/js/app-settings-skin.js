@@ -47,17 +47,27 @@
         return 'local';
     }
 
+    function renderUploadCard() {
+        return '<div class="skin-card skin-card--upload" id="skinUploadCard" title="上传 Zip 自定义皮肤">' +
+            '<div class="skin-card-preview skin-card-preview--upload" aria-hidden="true">+</div>' +
+            '<div class="skin-card-body">' +
+            '<div class="skin-card-title">上传皮肤</div>' +
+            '<div class="skin-card-desc">Zip 安装，立即加入列表</div>' +
+            '<div class="skin-card-actions">' +
+            '<span class="skin-manage-hint" style="margin:0">自定义</span>' +
+            '</div></div></div>';
+    }
+
     function renderCards(skins, active) {
         var $list = $('#skinCardList');
         if (!$list.length) return;
-        if (!skins || !skins.length) {
-            $list.html('<div class="skin-empty">暂无皮肤</div>');
-            return;
-        }
+
         var html = '';
-        skins.forEach(function (s) {
+        (skins || []).forEach(function (s) {
             var isActive = s.name === active;
-            var badge = s.source === 'local' ? '<span class="skin-badge local">本地</span>' : '<span class="skin-badge">预置</span>';
+            var badge = s.source === 'local'
+                ? '<span class="skin-badge local">本地</span>'
+                : '<span class="skin-badge">预置</span>';
             var preview = '';
             if (s.source === 'local' && s.hasPreview) {
                 preview = '<div class="skin-card-preview" style="background-image:url(\'/web/settings/skins/file?name=' +
@@ -65,20 +75,23 @@
             } else {
                 preview = '<div class="skin-card-preview skin-card-preview--' + escapeAttr(s.name) + '"></div>';
             }
-            html += '<div class="skin-card' + (isActive ? ' active' : '') + '" data-name="' + escapeAttr(s.name) + '" data-source="' + escapeAttr(s.source || '') + '">' +
+            // 点击整卡启用；本地皮肤保留卸载。不再单独放「启用」按钮，与四选一选择感一致
+            html += '<div class="skin-card' + (isActive ? ' active' : '') + '" data-name="' +
+                escapeAttr(s.name) + '" data-source="' + escapeAttr(s.source || '') + '">' +
                 preview +
                 '<div class="skin-card-body">' +
                 '<div class="skin-card-title">' + escapeHtml(s.displayName || s.name) + badge + '</div>' +
                 '<div class="skin-card-desc">' + escapeHtml(s.description || s.name) + '</div>' +
                 '<div class="skin-card-actions">' +
-                (isActive
-                    ? '<span class="skin-active-label">使用中</span>'
-                    : '<button type="button" class="settings-mini-btn skin-activate-btn">启用</button>') +
+                (isActive ? '<span class="skin-active-label">使用中</span>' : '<span class="skin-manage-hint" style="margin:0">点击启用</span>') +
                 (s.source === 'local'
                     ? '<button type="button" class="settings-mini-btn skin-uninstall-btn">卸载</button>'
                     : '') +
                 '</div></div></div>';
         });
+
+        // 始终追加「上传」块：与默认/护眼/高对比同形，凑满一行四格
+        html += renderUploadCard();
         $list.html(html);
     }
 
@@ -223,9 +236,15 @@
 
     // ===== 事件绑定 =====
 
-    $(document).on('click', '#skinInstallBtn', function () {
+    function openSkinZipPicker() {
         $('#skinZipInput').val('');
         $('#skinZipInput').trigger('click');
+    }
+
+    $(document).on('click', '#skinUploadCard, #skinInstallBtn', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSkinZipPicker();
     });
 
     $(document).on('change', '#skinZipInput', function () {
@@ -251,6 +270,10 @@
 
     $(document).on('click', '.skin-card', function (e) {
         if ($(e.target).closest('button').length) return;
+        if ($(this).hasClass('skin-card--upload') || this.id === 'skinUploadCard') {
+            openSkinZipPicker();
+            return;
+        }
         var name = $(this).data('name');
         if (name && name !== _activeSkin) activateSkin(name);
     });

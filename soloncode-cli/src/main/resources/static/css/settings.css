@@ -497,23 +497,28 @@
     padding: 14px 18px 18px;
 }
 
-/* ===== Skin manager (独立「皮肤」Tab) ===== */
-.skin-manage-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+/* ===== Skin picker（通用 → 界面效果，一行 4 块） ===== */
+.general-subblock-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
 }
 .skin-manage-hint {
     font-size: 11px;
     color: var(--text-secondary);
     opacity: 0.8;
+    margin-top: 8px;
 }
 .skin-card-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
-    margin-top: 12px;
+}
+@media (max-width: 720px) {
+    .skin-card-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 .skin-card {
     border: 1px solid var(--border-color);
@@ -522,6 +527,9 @@
     background: var(--bg-input-box);
     cursor: pointer;
     transition: border-color 0.15s, box-shadow 0.15s;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
 }
 .skin-card:hover {
     border-color: var(--accent);
@@ -536,6 +544,7 @@
     background: linear-gradient(135deg, var(--bg-hover), var(--bg-main));
     background-size: cover;
     background-position: center;
+    flex-shrink: 0;
 }
 .skin-card-preview--default { background: linear-gradient(135deg, #eef1ff, #f7f8fc); }
 .skin-card-preview--eyecare { background: linear-gradient(135deg, #e4edd8, #f3f6ea 50%, #eef3e4); }
@@ -543,14 +552,22 @@
 [data-theme="dark"] .skin-card-preview--default { background: linear-gradient(135deg, #1a1a2e, #16162a); }
 [data-theme="dark"] .skin-card-preview--eyecare { background: linear-gradient(135deg, #141a12, #1b2218); }
 [data-theme="dark"] .skin-card-preview--contrast { background: linear-gradient(135deg, #0f172a, #1e293b); }
-.skin-card-body { padding: 8px 10px 10px; }
+.skin-card-body {
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
 .skin-card-title {
     font-size: 12.5px;
     font-weight: 600;
     color: var(--text-primary);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    flex-wrap: wrap;
+    line-height: 1.3;
 }
 .skin-card-desc {
     font-size: 11px;
@@ -564,8 +581,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-top: 8px;
-    min-height: 24px;
+    margin-top: auto;
+    padding-top: 8px;
+    min-height: 22px;
 }
 .skin-badge {
     font-size: 10px;
@@ -573,8 +591,9 @@
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
     border-radius: 999px;
-    padding: 0 6px;
-    line-height: 16px;
+    padding: 0 5px;
+    line-height: 15px;
+    flex-shrink: 0;
 }
 .skin-badge.local {
     color: var(--accent);
@@ -590,6 +609,38 @@
     font-size: 12px;
     color: var(--text-secondary);
     padding: 8px 0;
+    grid-column: 1 / -1;
+}
+
+/* 上传皮肤：与预置皮肤同形块，虚线表示「添加」 */
+.skin-card--upload {
+    border-style: dashed;
+    background: transparent;
+}
+.skin-card--upload:hover {
+    background: var(--bg-hover);
+}
+.skin-card-preview--upload {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--bg-hover), var(--bg-main));
+    color: var(--text-secondary);
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1;
+}
+[data-theme="dark"] .skin-card-preview--upload {
+    background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+}
+.skin-card--upload .skin-card-title {
+    color: var(--text-primary);
+}
+.skin-card--upload .skin-card-desc {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* 字段行 */

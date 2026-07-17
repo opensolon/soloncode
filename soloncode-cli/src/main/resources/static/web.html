@@ -590,8 +590,8 @@
                                 <div class="general-card-body">
                                     <div class="general-toggle-row">
                                         <div class="general-toggle-info">
-                                            <span class="general-toggle-name">工具调用显示简化（或者收起）</span>
-                                            <span class="general-toggle-desc">开启后工具调用输出更简洁；关闭则展示完整的详细信息</span>
+                                            <span class="general-toggle-name">简化工具调用展示</span>
+                                            <span class="general-toggle-desc">开启后默认收起详情，需要时再展开；关闭则始终完整显示</span>
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="generalCliPrintSimplified"/>
@@ -599,14 +599,9 @@
                                         </label>
                                     </div>
 
-                                    <div class="settings-gap-top-md">
-                                        <div class="general-card-title" style="font-size:13px;margin-bottom:4px;">皮肤库</div>
-                                        <div class="general-toggle-desc" style="margin-bottom:10px;">预置与本地皮肤，点击卡片启用；支持安装本地 Zip 皮肤，切换后立即生效</div>
-                                        <div class="skin-manage-bar">
-                                            <input type="file" id="skinZipInput" accept=".zip,application/zip" style="display:none"/>
-                                            <button type="button" class="settings-mini-btn" id="skinInstallBtn">安装 Zip 皮肤</button>
-                                            <span class="skin-manage-hint" id="skinManageHint">本地皮肤目录：~/.soloncode/skins/</span>
-                                        </div>
+                                    <div class="settings-gap-top-md skin-section">
+                                        <div class="general-subblock-title">选择皮肤</div>
+                                        <input type="file" id="skinZipInput" accept=".zip,application/zip" style="display:none"/>
                                         <div class="skin-card-list" id="skinCardList"></div>
                                     </div>
                                 </div>
