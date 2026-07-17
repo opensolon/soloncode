@@ -28,6 +28,11 @@ function SessionState(sessionId) {
     $(messagesWrap).append(this.container);
     this.eventSource = null;
     this.isStreaming = false;
+    // 用户点 Stop 后等待服务端 error/trace/done；期间禁止迟到 chunk 再拉起新流
+    this.stopRequested = false;
+    // 是否接受 agent 流 chunk。finishStream 后关闭，仅 send / user_input / 主动开流时打开，
+    // 防止 done 之后的迟到 error/trace/text 把 UI 再次拉起。
+    this.acceptingStream = false;
     this.currentBubbleEl = null;
     this.nextContentBlock = false;
     this.reasonBuffer = '';

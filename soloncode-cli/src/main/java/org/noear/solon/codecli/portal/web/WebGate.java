@@ -828,8 +828,12 @@ public class WebGate extends SimpleWebSocketListener {
     /**
      * 中断指定会话的当前 AI 任务。
      *
-     * <p>从会话属性中取出并销毁 RxJava {@link Disposable} 以终止流式订阅，
-     * 同时向会话历史追加一条取消记录，并向前端推送完成信号。</p>
+     * <p>仅当会话存在活跃流（disposable 未 dispose）时发出取消语义；
+     * 无活跃流时不写历史、不推送取消 error/trace，仅在尚未发过 done 时兜底
+     * {@link #emitDoneOnce}，避免双击 Stop 或自然结束后仍刷「用户已取消任务」。</p>
+     *
+     * <p>有活跃流时同线程保证包序：error → 可选 trace → done → dispose。
+     * dispose 触发的 {@code doFinally} 中 {@link #emitDoneOnce} 因 CAS 跳过，不会双发 done。</p>
      *
      * @param sessionId 待中断的会话标识
      */
@@ -838,7 +842,18 @@ public class WebGate extends SimpleWebSocketListener {
             AgentSession session = engine.getSession(sessionId);
             Disposable disposable = (Disposable) session.attrs().remove("disposable");
 
-            // 1) 取消语义：error + 可选 final/trace（可与后续 done 分离）
+            // 无活跃流：不发取消语义；若尚未发 done 则兜底，便于前端收尾
+            if (disposable == null || disposable.isDisposed()) {
+                boolean sent = emitDoneOnce(session);
+                if (sent) {
+                    LOG.info("[WebGate] Session {} interrupt ignored (no active stream), emitted fallback done", sessionId);
+                } else {
+                    LOG.info("[WebGate] Session {} interrupt ignored (no active stream)", sessionId);
+                }
+                return;
+            }
+
+            // 1) 取消语义：error + 可选 final/trace
             session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
             emitToClient(sessionId, WebChunk.ofError("用户已取消任务."));
 
@@ -847,13 +862,9 @@ public class WebGate extends SimpleWebSocketListener {
                 emitToClient(sessionId, streamBuilder.onFinalChunk(session, trace, true, "用户已取消任务."));
             }
 
-            // 2) dispose → 触发 doFinally → emitDoneOnce（唯一 done）
-            //    无活跃流时兜底发一次，保证前端能收尾
-            if (disposable != null && !disposable.isDisposed()) {
-                disposable.dispose();
-            } else {
-                emitDoneOnce(session);
-            }
+            // 2) 同线程先发 done，再 dispose；doFinally 中 emitDoneOnce 因 CAS 跳过
+            emitDoneOnce(session);
+            disposable.dispose();
             LOG.info("[WebGate] Session {} interrupted", sessionId);
         } catch (Exception e) {
             LOG.error("[WebGate] Interrupt failed for session {}: {}", sessionId, e.getMessage());

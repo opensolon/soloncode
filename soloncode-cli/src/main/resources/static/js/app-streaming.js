@@ -6,13 +6,25 @@
 $(welcomeSendBtn).on('click', function() { sendMessage(); });
 $(chatSendBtn).on('click', function() {
     if (isStreaming && activeSessionId && sessionMap[activeSessionId]) {
+        var sess = sessionMap[activeSessionId];
+        // 已在等待服务端 done，避免重复 interrupt
+        if (sess.stopRequested) return;
+        sess.stopRequested = true;
+        // 提交 interrupt；不在本地立即 finishStream
+        // 等服务端 error(取消) + trace + done 到齐后再收尾，避免迟到 chunk 被当成新流
         try {
-            //提交 interrupt
             $.post('/web/chat/interrupt?sessionId=' + encodeURIComponent(activeSessionId));
-        } finally {
-            // 停止流
-            finishStream(sessionMap[activeSessionId]);
+        } catch (e) {
+            console.warn('[stop] interrupt failed:', e);
         }
+        // 兜底：服务端异常未回 done 时，避免按钮永久卡在 stop
+        if (sess._stopFallbackTimer) clearTimeout(sess._stopFallbackTimer);
+        sess._stopFallbackTimer = setTimeout(function() {
+            sess._stopFallbackTimer = null;
+            if (sess.isStreaming && sess.stopRequested) {
+                finishStream(sess);
+            }
+        }, 8000);
     } else {
         sendMessage();
     }
@@ -90,6 +102,8 @@ function sendMessage() {
     appendUserMessage(sess, displayText, imageDataUrls, fileAttachments);
 
     sess.isStreaming = true;
+    sess.stopRequested = false;
+    sess.acceptingStream = true;
     isStreaming = true;
     sess.messageStartTime = Date.now();
     setBtnStopMode();
@@ -122,6 +136,8 @@ function sendCommandSilent(cmdText, onBeforeSend) {
     setActiveSession(sess.sessionId);
 
     sess.isStreaming = true;
+    sess.stopRequested = false;
+    sess.acceptingStream = true;
     isStreaming = true;
     sess.messageStartTime = Date.now();
     setBtnStopMode();
@@ -151,6 +167,8 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
 
     // 标记流式状态，WebSocket onmessage 会处理数据
     sess.isStreaming = true;
+    sess.stopRequested = false;
+    sess.acceptingStream = true;
     if (!sess.messageStartTime) sess.messageStartTime = Date.now();
     if (sess.sessionId === activeSessionId) {
         isStreaming = true;
@@ -311,6 +329,13 @@ function onWebChunk(sess, chunk) {
 function finishStream(sess) {
     var wasStreaming = sess.isStreaming;
     sess.isStreaming = false;
+    sess.stopRequested = false;
+    // 关闭流接收：done 之后的迟到 chunk 不得再把 UI 拉起
+    sess.acceptingStream = false;
+    if (sess._stopFallbackTimer) {
+        clearTimeout(sess._stopFallbackTimer);
+        sess._stopFallbackTimer = null;
+    }
     if (sess.silenceTimer) { clearTimeout(sess.silenceTimer); sess.silenceTimer = null; }
 
     // 先排空该会话尚未处理的 chunk 队列，避免丢尾部文本
@@ -543,7 +568,7 @@ function connectWebGate() {
                 if (!sess) return;
                 // 保存 done 消息的时间戳，用于 finishStream 显示
                 if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
-                // 已收尾则忽略（stop 本地 finish + 迟到/重复 done）
+                // 已收尾则忽略（迟到/重复 done）
                 if (!sess.isStreaming) return;
                 finishStream(sess);
                 return;
@@ -566,10 +591,12 @@ function connectWebGate() {
                 }
             }
 
-            // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡
+            // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡，并打开本轮流接收
             if (chunk.type === 'user_input') {
                 if (!sid) return;
                 var userSess = getOrCreateSession(sid);
+                userSess.acceptingStream = true;
+                userSess.stopRequested = false;
                 if (typeof ensureChatInHistory === 'function') {
                     ensureChatInHistory(sid, chunk.text, true);
                 }
@@ -583,7 +610,13 @@ function connectWebGate() {
 
             var sess2 = getOrCreateSession(sid);
             if (!sess2.isStreaming) {
+                // Stop 等待 done 期间：丢弃迟到包，避免重入
+                if (sess2.stopRequested) return;
+                // finishStream 后已关闭接收：丢弃迟到 error/trace/text，防止 UI 复活
+                // 外部新流须先经 user_input（或本地 send）打开 acceptingStream
+                if (!sess2.acceptingStream) return;
                 sess2.isStreaming = true;
+                sess2.stopRequested = false;
                 if (!sess2.messageStartTime) sess2.messageStartTime = Date.now();
                 if (sess2.sessionId === activeSessionId) {
                     isStreaming = true;
