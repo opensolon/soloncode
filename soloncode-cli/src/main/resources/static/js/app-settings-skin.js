@@ -8,6 +8,7 @@
  *   POST /web/settings/skins/install   multipart file
  *   POST /web/settings/skins/activate  {name}
  *   POST /web/settings/skins/uninstall {name}
+ *   GET  /web/settings/skins/export?name=xxx  导出本地皮肤 zip
  */
 (function () {
     'use strict';
@@ -65,29 +66,32 @@
         var html = '';
         (skins || []).forEach(function (s) {
             var isActive = s.name === active;
-            var badge = s.source === 'local'
+            var isLocal = s.source === 'local';
+            var badge = isLocal
                 ? '<span class="skin-badge local">本地</span>'
                 : '<span class="skin-badge">预置</span>';
             var preview = '';
-            if (s.source === 'local' && s.hasPreview) {
+            if (isLocal && s.hasPreview) {
                 preview = '<div class="skin-card-preview" style="background-image:url(\'/web/settings/skins/file?name=' +
                     encodeURIComponent(s.name) + '&file=preview.png\')"></div>';
             } else {
                 preview = '<div class="skin-card-preview skin-card-preview--' + escapeAttr(s.name) + '"></div>';
             }
-            // 点击整卡启用；本地皮肤保留卸载。不再单独放「启用」按钮，与四选一选择感一致
+            // 点击整卡启用；选中态用左上角勾；本地皮肤提供卸载 + 导出
             html += '<div class="skin-card' + (isActive ? ' active' : '') + '" data-name="' +
                 escapeAttr(s.name) + '" data-source="' + escapeAttr(s.source || '') + '">' +
+                (isActive ? '<span class="skin-check" aria-hidden="true">✓</span>' : '') +
                 preview +
                 '<div class="skin-card-body">' +
                 '<div class="skin-card-title">' + escapeHtml(s.displayName || s.name) + badge + '</div>' +
                 '<div class="skin-card-desc">' + escapeHtml(s.description || s.name) + '</div>' +
-                '<div class="skin-card-actions">' +
-                (isActive ? '<span class="skin-active-label">使用中</span>' : '<span class="skin-manage-hint" style="margin:0">点击启用</span>') +
-                (s.source === 'local'
-                    ? '<button type="button" class="settings-mini-btn skin-uninstall-btn">卸载</button>'
+                (isLocal
+                    ? '<div class="skin-card-actions skin-card-actions--local">' +
+                      '<button type="button" class="settings-mini-btn skin-uninstall-btn">卸载</button>' +
+                      '<button type="button" class="settings-mini-btn skin-export-btn">导出</button>' +
+                      '</div>'
                     : '') +
-                '</div></div></div>';
+                '</div></div>';
         });
 
         // 始终追加「上传」块：与默认/护眼/高对比同形，凑满一行四格
@@ -266,6 +270,22 @@
         if (name && confirm('确认卸载本地皮肤「' + name + '」？')) {
             uninstallSkin(name);
         }
+    });
+    
+    $(document).on('click', '.skin-export-btn', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var name = $(this).closest('.skin-card').data('name');
+        if (!name) return;
+        // 触发浏览器下载本地皮肤 zip，便于分享给朋友导入
+        var a = document.createElement('a');
+        a.href = '/web/settings/skins/export?name=' + encodeURIComponent(name);
+        a.download = name + '.zip';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast('开始导出: ' + name + '.zip');
     });
 
     $(document).on('click', '.skin-card', function (e) {

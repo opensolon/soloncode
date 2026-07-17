@@ -420,6 +420,37 @@ public class WebSettingsController {
     }
 
     /**
+     * 导出本地皮肤为 zip（便于分享给朋友再导入）
+     */
+    @Get
+    @Mapping("/web/settings/skins/export")
+    public void skinsExport(Context ctx, String name) throws Exception {
+        if (Assert.isEmpty(name)) {
+            ctx.status(400);
+            ctx.output("missing name");
+            return;
+        }
+        try {
+            byte[] zip = skinService.exportZip(name);
+            String safeName = name.replaceAll("[^a-zA-Z0-9_-]", "_");
+            if (safeName.isEmpty()) {
+                safeName = "skin";
+            }
+            ctx.contentType("application/zip");
+            ctx.headerSet("Content-Disposition", "attachment; filename=\"" + safeName + ".zip\"");
+            ctx.headerSet("Cache-Control", "no-cache");
+            ctx.output(zip);
+        } catch (IllegalArgumentException e) {
+            ctx.status(400);
+            ctx.output(e.getMessage());
+        } catch (Exception e) {
+            LOG.warn("Export skin failed: {}", e.getMessage());
+            ctx.status(500);
+            ctx.output("export failed: " + e.getMessage());
+        }
+    }
+     
+    /**
      * 代理读取本地皮肤文件（skin.css / preview / assets/*）
      */
     @Get

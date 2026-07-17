@@ -20,6 +20,7 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.core.util.Assert;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -30,11 +31,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 本地皮肤服务 —— 管理 ~/.soloncode/skins 下的 Zip 安装皮肤。
  *
- * <p>支持：列表、安装、卸载、安全读文件、CSS 内相对资源改写。</p>
+ * <p>支持：列表、安装、卸载、导出、安全读文件、CSS 内相对资源改写。</p>
  *
  * @author noear 2026/7/17
  */
@@ -236,6 +238,51 @@ public class SkinService {
             throw new IllegalArgumentException("皮肤不存在: " + name);
         }
         deleteRecursively(target);
+    }
+    
+    /**
+     * 导出本地皮肤为 zip 字节（扁平结构，便于再次安装分享）。
+     */
+    public byte[] exportZip(String name) throws Exception {
+        if (!isValidSkinName(name)) {
+            throw new IllegalArgumentException("非法皮肤名");
+        }
+        if (isBuiltin(name)) {
+            throw new IllegalArgumentException("预置皮肤不可导出");
+        }
+        Path root = skinsRoot().normalize();
+        Path target = root.resolve(name).normalize();
+        if (!target.startsWith(root) || !Files.isDirectory(target)) {
+            throw new IllegalArgumentException("皮肤不存在: " + name);
+        }
+        if (!Files.isRegularFile(target.resolve("skin.css"))) {
+            throw new IllegalArgumentException("皮肤不存在: " + name);
+        }
+    
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(bos)) {
+            final Path srcNorm = target.normalize();
+            Files.walkFileTree(target, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    Path rel = srcNorm.relativize(file.normalize());
+                    String entryName = rel.toString().replace('\\', '/');
+                    if (entryName.isEmpty() || entryName.contains("..")) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    // 跳过符号链接，避免导出到包外
+                    if (Files.isSymbolicLink(file)) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    ZipEntry entry = new ZipEntry(entryName);
+                    zos.putNextEntry(entry);
+                    Files.copy(file, zos);
+                    zos.closeEntry();
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+        return bos.toByteArray();
     }
 
     public boolean isInstalled(String name) {

@@ -537,6 +537,7 @@
     }
 }
 .skin-card {
+    position: relative;
     border: 1px solid var(--border-color);
     border-radius: 10px;
     overflow: hidden;
@@ -554,6 +555,24 @@
 .skin-card.active {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
+}
+/* 选中态：左上角勾 */
+.skin-check {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    pointer-events: none;
 }
 .skin-card-preview {
     height: 52px;
@@ -601,6 +620,10 @@
     padding-top: 8px;
     min-height: 22px;
 }
+/* 本地皮肤：卸载 + 导出 居中排列 */
+.skin-card-actions--local {
+    justify-content: center;
+}
 .skin-badge {
     font-size: 10px;
     font-weight: 500;
@@ -615,11 +638,6 @@
     color: var(--accent);
     border-color: var(--accent);
     background: var(--accent-light);
-}
-.skin-active-label {
-    font-size: 11px;
-    color: var(--accent);
-    font-weight: 600;
 }
 .skin-empty {
     font-size: 12px;

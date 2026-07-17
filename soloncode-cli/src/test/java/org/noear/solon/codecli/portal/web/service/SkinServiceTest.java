@@ -138,6 +138,39 @@ public class SkinServiceTest {
     void cannotUninstallBuiltin() {
         assertThrows(IllegalArgumentException.class, () -> service.uninstall("eyecare"));
     }
+    
+    @Test
+    @DisplayName("导出本地皮肤 zip 并可再次安装")
+    void exportLocalZip() throws Exception {
+        byte[] zip = buildZip(false, "shareme",
+                "{\n  \"name\": \"shareme\",\n  \"displayName\": \"分享\"\n}",
+                "[data-skin=\"shareme\"] { --accent: #333; }\n");
+        service.installZip(new ByteArrayInputStream(zip), "shareme.zip");
+    
+        // 补一个 assets 资源，确认导出包含子目录文件
+        Path assets = service.skinsRoot().resolve("shareme").resolve("assets");
+        Files.createDirectories(assets);
+        Files.write(assets.resolve("bg.webp"), new byte[]{9, 8, 7});
+    
+        byte[] exported = service.exportZip("shareme");
+        assertNotNull(exported);
+        assertTrue(exported.length > 20);
+    
+        // 卸载后用导出包重装
+        service.uninstall("shareme");
+        assertFalse(service.isInstalled("shareme"));
+    
+        String name = service.installZip(new ByteArrayInputStream(exported), "shareme.zip");
+        assertEquals("shareme", name);
+        assertTrue(service.isInstalled("shareme"));
+        assertTrue(Files.isRegularFile(service.skinsRoot().resolve("shareme").resolve("assets").resolve("bg.webp")));
+    }
+    
+    @Test
+    @DisplayName("预置皮肤不可导出")
+    void cannotExportBuiltin() {
+        assertThrows(IllegalArgumentException.class, () -> service.exportZip("default"));
+    }
 
     private static byte[] buildZip(boolean wrapInDir, String dirName, String skinJson, String skinCss) {
         try {
