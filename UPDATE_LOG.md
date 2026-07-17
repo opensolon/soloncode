@@ -1,9 +1,11 @@
 ### v2026.7.17
 
+* 添加 soloncode web 皮肤功能（自带生成的 skill）
 * 优化 soloncode web 流式消息处理性能
 * 优化 soloncode web 流式消息 done 原子处理
-* 优化 solon-development-skill
-* 优化 spring-to-solon-skill
+* 改进 solon-development-skill
+* 改进 spring-to-solon-skill
+* 新增 soloncode-skin-skill
 * 细节优化
 
 ### v2026.7.16
