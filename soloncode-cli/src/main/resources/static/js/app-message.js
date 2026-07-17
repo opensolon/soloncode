@@ -684,9 +684,11 @@ function finishThinkingBlock(sess, reasonId) {
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
         sess.thinkingBuffer = '';
+        // 思考块收起后高度变化，补一次贴底（多 tool-call 紧随其后时尤其重要）
+        if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
     }
-
+    
     // 旧式逻辑（无 reasonId 时）：结束当前 thinkingBlockEl 并包裹分组
     if (sess.thinkingBlockEl) {
         if (sess.reasonRafId) {
@@ -709,14 +711,15 @@ function finishThinkingBlock(sess, reasonId) {
         var label = $(sess.thinkingBlockEl).find('.reason-group-think-label')[0];
         if (label) $(label).text('思考');
         $(sess.thinkingBlockEl).find('.reason-group-think-dots').remove();
-
+        
         // reason-group 已在 ensureThinkingBlock 中预创建，无需再做 DOM 包裹
         sess.thinkingGroupEl = sess.thinkingBlockEl.parentNode;
-
+        
         sess.thinkingBlockEl = null;
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
         sess.thinkingBuffer = '';
+        if (sess.sessionId === activeSessionId) scrollToBottom();
     }
 }
 

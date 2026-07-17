@@ -274,6 +274,10 @@ function drainWebChunkQueue(sess, flushAll) {
     for (var i = 0; i < limit; i++) {
         processWebChunkNow(sess, batch[i]);
     }
+    // 批量插入后统一补一次贴底，避免同帧多 DOM 增高后停在半截
+    if (sess.sessionId === activeSessionId && typeof scrollToBottom === 'function') {
+        scrollToBottom();
+    }
     if (limit < batch.length) {
         sess._chunkQueue = batch.slice(limit).concat(sess._chunkQueue || []);
         scheduleWebChunkDrain(sess);

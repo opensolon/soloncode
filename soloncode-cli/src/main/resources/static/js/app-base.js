@@ -117,19 +117,98 @@ function deactivateSession() {
 }
 
 /* ===== Helpers ===== */
-$(messagesWrap).on('scroll', function() {
-    var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
-    userScrolledUp = gap > 80;
-});
+/* 程序化贴底期间忽略被动 scroll 事件，避免布局未稳时把 userScrolledUp 误判为 true。
+   典型场景：思考组同时追加多张 tool-card、流式 MD 节流晚一帧增高。
+   用户真实上滑用 wheel/touch/pointer 识别，不被程序化窗口吞掉。 */
+var _programmaticScrollUntil = 0;
+var _scrollStickUntil = 0;
 var scrollRafPending = false;
+var scrollFollowTimer = null;
+
+function _markUserScrolledUp() {
+    userScrolledUp = true;
+    _scrollStickUntil = 0;
+    if (scrollFollowTimer) {
+        clearTimeout(scrollFollowTimer);
+        scrollFollowTimer = null;
+    }
+}
+
+function _syncUserScrollFromGap() {
+    if (!messagesWrap) return;
+    var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
+    if (gap > 80) {
+        _markUserScrolledUp();
+    } else {
+        userScrolledUp = false;
+    }
+}
+
+// 滚轮 / 触控：立即识别用户意图（优先于程序化贴底）
+$(messagesWrap).on('wheel', function(e) {
+    var dy = (e.originalEvent && e.originalEvent.deltaY) || 0;
+    if (dy < 0) {
+        _markUserScrolledUp();
+    } else if (dy > 0) {
+        // 向下滚时按实际 gap 同步；到了底部则恢复粘底
+        requestAnimationFrame(_syncUserScrollFromGap);
+    }
+});
+$(messagesWrap).on('touchstart', function() {
+    // 触控开始后的 scroll 视为用户操作，短暂关闭程序化忽略
+    _programmaticScrollUntil = 0;
+});
+$(messagesWrap).on('scroll', function() {
+    if (Date.now() < _programmaticScrollUntil) return;
+    _syncUserScrollFromGap();
+});
+
+function _applyScrollBottom() {
+    if (!messagesWrap || userScrolledUp) return;
+    _programmaticScrollUntil = Date.now() + 80;
+    messagesWrap.scrollTop = messagesWrap.scrollHeight;
+}
+
+/**
+ * 贴底滚动（流式粘底）。
+ * - force：强制贴底并清除 userScrolledUp
+ * - 同一帧多次调用合并为一次 RAF
+ * - 粘底窗口内会在高度继续变化时再补滚（多 tool-call / 思考收起 / 节流 MD 增高）
+ */
 function scrollToBottom(force) {
     if (!force && userScrolledUp) return;
-    if (force) userScrolledUp = false;
+    if (force) {
+        userScrolledUp = false;
+        // force 时给更长粘底窗口，覆盖 finishThinking + 多 tool 连续插入
+        _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + 400);
+    } else if (!userScrolledUp) {
+        // 普通流式输出：短粘底，覆盖同帧后到的布局增高
+        _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + 220);
+    }
     if (scrollRafPending) return;
     scrollRafPending = true;
     requestAnimationFrame(function() {
         scrollRafPending = false;
-        messagesWrap.scrollTop = messagesWrap.scrollHeight;
+        if (userScrolledUp) return;
+        _applyScrollBottom();
+        // 双 RAF：等本帧布局（多 DOM 插入）完成后再贴一次
+        requestAnimationFrame(function() {
+            if (userScrolledUp) return;
+            _applyScrollBottom();
+        });
+        // 短窗口跟随：处理节流 MD / 多 tool 连续增高 / 异步渲染
+        if (scrollFollowTimer) clearTimeout(scrollFollowTimer);
+        var followUntil = _scrollStickUntil;
+        function followTick() {
+            scrollFollowTimer = null;
+            if (userScrolledUp) return;
+            if (Date.now() > followUntil) return;
+            _applyScrollBottom();
+            if (Date.now() < followUntil && !userScrolledUp) {
+                scrollFollowTimer = setTimeout(followTick, 48);
+            }
+        }
+        scrollFollowTimer = setTimeout(followTick, 48);
     });
 }
 

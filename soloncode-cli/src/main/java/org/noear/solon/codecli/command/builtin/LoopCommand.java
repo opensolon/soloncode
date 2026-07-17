@@ -20,6 +20,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.entity.LoopGroupDo;
+import reactor.core.Disposable;
 
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -108,7 +109,7 @@ public class LoopCommand implements Command {
                 if (task != null) {
                     scheduler.remove(sessionId, task);
                     // 同时中断正在执行的 Agent
-                    reactor.core.Disposable disposable = (reactor.core.Disposable) ctx.getSession().attrs().remove("disposable");
+                    Disposable disposable = (Disposable) ctx.getSession().attrs().remove("disposable");
                     if (disposable != null && !disposable.isDisposed()) {
                         disposable.dispose();
                     }
@@ -119,7 +120,7 @@ public class LoopCommand implements Command {
         } else if ("stop-all".equals(sub)) {
             scheduler.stopAll(sessionId);
             // 同时中断正在执行的 Agent，防止当前轮次完成后 scheduleContinuation 继续调度
-            reactor.core.Disposable disposable = (reactor.core.Disposable) ctx.getSession().attrs().remove("disposable");
+            Disposable disposable = (Disposable) ctx.getSession().attrs().remove("disposable");
             if (disposable != null && !disposable.isDisposed()) {
                 disposable.dispose();
             }
