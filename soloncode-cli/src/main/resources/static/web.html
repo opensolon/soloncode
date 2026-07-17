@@ -1483,10 +1483,8 @@
 
 <script src="/layui/layui.js"></script>
 <script>window.$ = layui.$;</script>
+<!-- 首屏关键：marked 必需。mermaid(3MB)/highlight/qrcode 改为按需加载 -->
 <script src="/js/marked.min.js"></script>
-<script src="/js/qrcode.min.js"></script>
-<script src="/js/mermaid.min.js"></script>
-<script src="/highlight/highlight.min.js"></script>
 
 <script>
     var SSE_ENDPOINT = "/web/chat/input";
@@ -1542,6 +1540,7 @@
 })();
 </script>
 
+<!-- 核心路径：立即加载 -->
 <script src="/js/app-base.js"></script>
 <script src="/js/app-ui.js"></script>
 <script src="/js/app-history.js"></script>
@@ -1551,18 +1550,123 @@
 <script src="/js/app-gitdiff.js"></script>
 <script src="/js/app-todos.js"></script>
 <script src="/js/app-context.js"></script>
-<script src="/js/app-settings.js"></script>
-<script src="/js/app-settings-general.js"></script>
-<script src="/js/app-settings-permission.js"></script>
-<script src="/js/app-settings-llm.js"></script>
-<script src="/js/app-settings-mounts.js"></script>
-<script src="/js/app-settings-mcp.js"></script>
-<script src="/js/app-settings-openapi.js"></script>
-<script src="/js/app-settings-lsp.js"></script>
-<script src="/js/app-settings-providers.js"></script>
-<script src="/js/app-settings-skill.js"></script>
 <script src="/js/app-loop.js"></script>
-    <script src="/js/studio.js"></script>
+<script src="/js/studio.js"></script>
+
+<!-- 设置模块：首次打开设置时再加载，降低首屏解析成本 -->
+<script>
+(function () {
+    // 核心必须先于子模块；子模块彼此无依赖，可并行
+    var SETTINGS_CORE = '/js/app-settings.js';
+    var SETTINGS_MODULES = [
+        '/js/app-settings-general.js',
+        '/js/app-settings-permission.js',
+        '/js/app-settings-llm.js',
+        '/js/app-settings-mounts.js',
+        '/js/app-settings-mcp.js',
+        '/js/app-settings-openapi.js',
+        '/js/app-settings-lsp.js',
+        '/js/app-settings-providers.js',
+        '/js/app-settings-skill.js'
+    ];
+    var settingsLoading = null;
+    var realOpenSettingsTab = null;
+
+    function loadOneScript(src) {
+        return new Promise(function (resolve, reject) {
+            if (typeof loadScriptOnce === 'function') {
+                loadScriptOnce(src, function (err) {
+                    if (err) reject(err);
+                    else resolve();
+                });
+                return;
+            }
+            var s = document.createElement('script');
+            s.src = src;
+            s.async = true;
+            s.onload = function () { resolve(); };
+            s.onerror = function () { reject(new Error('Failed to load ' + src)); };
+            document.head.appendChild(s);
+        });
+    }
+
+    function loadSettingsModules() {
+        if (window.__settingsModulesReady) return Promise.resolve();
+        if (settingsLoading) return settingsLoading;
+        settingsLoading = loadOneScript(SETTINGS_CORE)
+            .then(function () {
+                return Promise.all(SETTINGS_MODULES.map(loadOneScript));
+            })
+            .then(function () {
+                window.__settingsModulesReady = true;
+                settingsLoading = null;
+            })
+            .catch(function (err) {
+                // 允许下次点击重试
+                settingsLoading = null;
+                window.__settingsModulesReady = false;
+                console.warn('[settings] load failed', err);
+                throw err;
+            });
+        return settingsLoading;
+    }
+    window.loadSettingsModules = loadSettingsModules;
+
+    function toastSettingsError() {
+        if (window.layer && typeof layer.msg === 'function') {
+            layer.msg('设置模块加载失败，请重试', { icon: 2, time: 2500 });
+        } else {
+            console.error('[settings] modules failed to load');
+        }
+    }
+
+    function openSettingsAfterReady(tab) {
+        loadSettingsModules().then(function () {
+            if (typeof realOpenSettingsTab === 'function') {
+                realOpenSettingsTab(tab || 'general');
+                return;
+            }
+            var overlay = document.getElementById('settingsOverlay');
+            if (overlay) overlay.style.display = 'flex';
+            if (tab) {
+                var tabBtn = document.querySelector('.settings-tab[data-tab="' + tab + '"]');
+                if (tabBtn) tabBtn.click();
+            }
+        }).catch(function () {
+            toastSettingsError();
+        });
+    }
+
+    // 捕获阶段拦截设置按钮：首次点击先加载模块
+    document.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('#settingsBtn') : null;
+        if (!btn) return;
+        if (window.__settingsModulesReady) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openSettingsAfterReady(null);
+    }, true);
+
+    // 兼容 filer 等调用 window.openSettingsTab(tab)
+    Object.defineProperty(window, 'openSettingsTab', {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+            return function (tab) {
+                if (!window.__settingsModulesReady) {
+                    openSettingsAfterReady(tab);
+                    return;
+                }
+                if (typeof realOpenSettingsTab === 'function') realOpenSettingsTab(tab);
+            };
+        },
+        set: function (fn) {
+            // app-settings.js 赋值时保存真实实现
+            realOpenSettingsTab = fn;
+        }
+    });
+})();
+</script>
 
 </body>
 </html>

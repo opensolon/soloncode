@@ -175,8 +175,13 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
     });
 }
 
-/* ===== WebChunk Handling (Session-Aware) ===== */
-function onWebChunk(sess, chunk) {
+/* ===== WebChunk Handling (Session-Aware) =====
+ * 高频 text/reason 先进会话队列，按帧合并后处理，降低主线程压力。
+ * 控制类 chunk（tool/error/trace 等）立即处理，避免顺序错乱。
+ */
+var _STREAM_BATCH_TYPES = { text: 1, reason: 1, agent: 1 };
+
+function processWebChunkNow(sess, chunk) {
     try {
         if (sess.silenceTimer) {
             clearTimeout(sess.silenceTimer);
@@ -231,12 +236,83 @@ function onWebChunk(sess, chunk) {
     }
 }
 
+/* 合并同类型连续 text/reason：减少 DOM 调度次数，保持 chunk 到达顺序 */
+function coalesceQueuedChunks(queue) {
+    if (!queue || queue.length <= 1) return queue || [];
+    var out = [];
+    for (var i = 0; i < queue.length; i++) {
+        var c = queue[i];
+        var prev = out.length ? out[out.length - 1] : null;
+        if (prev && prev.type === c.type && (c.type === 'text' || c.type === 'reason')
+            && prev.reasonId === c.reasonId
+            && prev.taskId === c.taskId
+            && prev.agentName === c.agentName
+            && prev.runId === c.runId) {
+            prev.text = (prev.text || '') + (c.text || '');
+            // 后到的元数据不要丢（首包常缺，后续补齐）
+            if (!prev.sourceLabel && c.sourceLabel) prev.sourceLabel = c.sourceLabel;
+            if (!prev.runId && c.runId) prev.runId = c.runId;
+            if (!prev.agentName && c.agentName) prev.agentName = c.agentName;
+            if (!prev.taskDescription && c.taskDescription) prev.taskDescription = c.taskDescription;
+        } else {
+            out.push(c);
+        }
+    }
+    return out;
+}
+
+function drainWebChunkQueue(sess, flushAll) {
+    if (!sess || !sess._chunkQueue || !sess._chunkQueue.length) {
+        if (sess) sess._chunkDrainScheduled = false;
+        return;
+    }
+    sess._chunkDrainScheduled = false;
+    var batch = coalesceQueuedChunks(sess._chunkQueue);
+    sess._chunkQueue = [];
+    // 非 flush 时每帧最多处理一定数量，避免超长队列堵主线程
+    var limit = flushAll ? batch.length : Math.min(batch.length, 40);
+    for (var i = 0; i < limit; i++) {
+        processWebChunkNow(sess, batch[i]);
+    }
+    if (limit < batch.length) {
+        sess._chunkQueue = batch.slice(limit).concat(sess._chunkQueue || []);
+        scheduleWebChunkDrain(sess);
+    }
+}
+window.drainWebChunkQueue = drainWebChunkQueue;
+
+function scheduleWebChunkDrain(sess) {
+    if (!sess || sess._chunkDrainScheduled) return;
+    sess._chunkDrainScheduled = true;
+    requestAnimationFrame(function() {
+        drainWebChunkQueue(sess, false);
+    });
+}
+
+function onWebChunk(sess, chunk) {
+    if (!sess || !chunk) return;
+    // 高频流式文本走队列批处理；控制类消息立即处理（先排空队列保序）
+    if (_STREAM_BATCH_TYPES[chunk.type]) {
+        if (!sess._chunkQueue) sess._chunkQueue = [];
+        sess._chunkQueue.push(chunk);
+        scheduleWebChunkDrain(sess);
+        return;
+    }
+    if (sess._chunkQueue && sess._chunkQueue.length) {
+        drainWebChunkQueue(sess, true);
+    }
+    processWebChunkNow(sess, chunk);
+}
+
 function finishStream(sess) {
     var wasStreaming = sess.isStreaming;
     sess.isStreaming = false;
     if (sess.silenceTimer) { clearTimeout(sess.silenceTimer); sess.silenceTimer = null; }
 
-    // --- 新增：强刷逻辑，必须在 resetStreamState 之前执行 ---
+    // 先排空该会话尚未处理的 chunk 队列，避免丢尾部文本
+    if (typeof drainWebChunkQueue === 'function') drainWebChunkQueue(sess, true);
+
+    // --- 强刷逻辑：必须在 resetStreamState 之前执行 ---
     // 1. 取消还没跑的动画帧
     if (sess.contentRafId) { cancelAnimationFrame(sess.contentRafId); sess.contentRafId = null; }
     if (sess.reasonRafId) { cancelAnimationFrame(sess.reasonRafId); sess.reasonRafId = null; }
@@ -252,63 +328,44 @@ function finishStream(sess) {
         }
     }
 
-    // 2. 立即把 Buffer 内容渲染出来
+    // 2. 取消文本 run 的待执行 RAF（真正的 Markdown 升级交给 finishThinkingBlock / 下方统一 finalize）
     if (sess.reasonBuffer) {
+        // 旧路径：无 reasonGroups 时可能直接写在 bubble 上
         var el = ensureAssistantBubble(sess);
-        el.setAttribute('data-md-raw', sess.reasonBuffer);
-        $(el).html(renderMd(sess.reasonBuffer));
-        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
-        if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
-        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(el);
-    }
-    // 如果有思考中的内容，也刷一下（含 per-reasonId 分组）
-    for (var _rid in sess.reasonGroups) {
-        var group = sess.reasonGroups[_rid];
-        if (group.thinkingBlockEl && group.thinkingBuffer) {
-            var bodyMdEl = $(group.thinkingBlockEl).find('.reason-group-think-body .md-content')[0];
-            if (bodyMdEl) {
-                $(bodyMdEl).html(renderMd(group.thinkingBuffer));
-                if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(bodyMdEl);
-                if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(bodyMdEl);
-                if (typeof processMermaidBlocks === 'function') processMermaidBlocks(bodyMdEl);
-            }
+        if (typeof finalizeMdElement === 'function') finalizeMdElement(el, sess.reasonBuffer);
+        else {
+            el.setAttribute('data-md-raw', sess.reasonBuffer);
+            el.innerHTML = renderMd(sess.reasonBuffer);
         }
     }
-    // 渲染 reason-group 文本内容（groupBuffer），应用代码高亮、复制按钮、Mermaid
     for (var _rid in sess.reasonGroups) {
         var group = sess.reasonGroups[_rid];
         if (group.textRuns && group.textRuns.length) {
             for (var ri = 0; ri < group.textRuns.length; ri++) {
                 var run = group.textRuns[ri];
                 if (run.rafId) { cancelAnimationFrame(run.rafId); run.rafId = null; }
+                // 仅升级文本 run；思考块留给 finishThinkingBlock，避免双重 marked
                 if (run.el && run.buffer) {
-                    $(run.el).html(renderMd(run.buffer));
-                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(run.el);
-                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(run.el);
-                    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(run.el);
+                    if (typeof finalizeMdElement === 'function') finalizeMdElement(run.el, run.buffer);
+                    else {
+                        run.el.setAttribute('data-md-raw', run.buffer);
+                        run.el.innerHTML = renderMd(run.buffer);
+                    }
                 }
             }
         } else if (group.groupContentEl && group.groupBuffer) {
-            $(group.groupContentEl).html(renderMd(group.groupBuffer));
-            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(group.groupContentEl);
-            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(group.groupContentEl);
-            if (typeof processMermaidBlocks === 'function') processMermaidBlocks(group.groupContentEl);
-        }
-    }
-    if (sess.thinkingBlockEl && sess.thinkingBuffer) {
-        if (sess.thinkingBodyMdEl) {
-            $(sess.thinkingBodyMdEl).html(renderMd(sess.thinkingBuffer));
-            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(sess.thinkingBodyMdEl);
-            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(sess.thinkingBodyMdEl);
-            if (typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
+            if (typeof finalizeMdElement === 'function') finalizeMdElement(group.groupContentEl, group.groupBuffer);
+            else {
+                group.groupContentEl.setAttribute('data-md-raw', group.groupBuffer);
+                group.groupContentEl.innerHTML = renderMd(group.groupBuffer);
+            }
         }
     }
     // ---------------------------------------------------
-
+        
     removeThinking(sess);
     purgeInlineThinking(sess);
-    // 关闭所有未完成的 reasonId 分组思考块，确保它们被正确收尾
-    // 避免 finishThinkingBlock(sess) 对已分组的思考块第二次包裹
+    // 关闭所有未完成的 reasonId 分组思考块（内部会 finalize 一次思考内容）
     for (var _rid in sess.reasonGroups) {
         if (sess.reasonGroups[_rid].thinkingBlockEl) {
             finishThinkingBlock(sess, _rid);
@@ -610,10 +667,20 @@ function updateWechatUI() {
     }, 'json');
 }
 
-// Page load & session switch: refresh all IM status
-updateWechatUI();
-updateFeishuUI();
-updateDingTalkUI();
+// 首屏：IM 状态属于次要请求，延后到空闲时再拉，避免与 sessions/meta/ws 抢带宽
+function scheduleIdle(fn, timeoutMs) {
+    if (window.requestIdleCallback) {
+        requestIdleCallback(function() { fn(); }, { timeout: timeoutMs || 2000 });
+    } else {
+        setTimeout(fn, timeoutMs || 800);
+    }
+}
+scheduleIdle(function() {
+    updateWechatUI();
+    updateFeishuUI();
+    updateDingTalkUI();
+}, 1500);
+
 var origSetActiveSession = setActiveSession;
 var _sessionSwitchTimer = null;
 setActiveSession = function(sid) {
@@ -621,7 +688,7 @@ setActiveSession = function(sid) {
     if (_sessionSwitchTimer) {
         clearTimeout(_sessionSwitchTimer);
     }
-    // 将非关键请求延迟到下一帧执行，让 UI 先完成切换
+    // 将非关键请求延迟执行，让 UI 先完成切换
     _sessionSwitchTimer = setTimeout(function() {
         _sessionSwitchTimer = null;
         updateWechatUI();
@@ -631,7 +698,7 @@ setActiveSession = function(sid) {
         if (window.loadTodos) window.loadTodos();
         // 切换会话时重置上下文指示器
         if (typeof resetContextIndicator === 'function') resetContextIndicator();
-    }, 0);
+    }, 50);
 };
 
 wechatHeaderBtn.on('click', function() {
@@ -681,11 +748,19 @@ function showWechatModal() {
             $qrWrap.html('');
             var qrContent = resp.data.qrcode_img_content || resp.data.qrcode;
             if (qrContent) {
-                try {
-                    new QRCode($qrWrap[0], { text: qrContent, width: 180, height: 180 });
-                } catch(e) {
-                    $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px">' + escapeHtml(qrContent) + '</span>');
-                }
+                var renderQr = function(err) {
+                    if (err || typeof QRCode === 'undefined') {
+                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px">' + escapeHtml(qrContent) + '</span>');
+                        return;
+                    }
+                    try {
+                        new QRCode($qrWrap[0], { text: qrContent, width: 180, height: 180 });
+                    } catch(e) {
+                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px">' + escapeHtml(qrContent) + '</span>');
+                    }
+                };
+                if (typeof ensureQrcode === 'function') ensureQrcode(renderQr);
+                else renderQr(null);
             }
             // Start polling
             startWechatPoll(resp.data.qrcode, activeSessionId);
@@ -958,12 +1033,21 @@ function showFeishuModal() {
             var qrUrl = resp.data.qrUrl;
             $qrWrap.html('');
             if (qrUrl) {
-                try {
-                    new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
-                    $qrStatus.text('请使用飞书 App 扫码').removeClass('error scanned');
-                } catch(e) {
-                    $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
-                }
+                var renderFeishuQr = function(err) {
+                    if (err || typeof QRCode === 'undefined') {
+                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                        $qrStatus.text('二维码库加载失败').addClass('error');
+                        return;
+                    }
+                    try {
+                        new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
+                        $qrStatus.text('请使用飞书 App 扫码').removeClass('error scanned');
+                    } catch(e) {
+                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                    }
+                };
+                if (typeof ensureQrcode === 'function') ensureQrcode(renderFeishuQr);
+                else renderFeishuQr(null);
             }
             // 开始轮询扫码状态
             startFeishuQrPoll();
@@ -1294,12 +1378,21 @@ function showDingTalkModal() {
             var qrUrl = resp.data.qrUrl;
             $qrWrap.html('');
             if (qrUrl) {
-                try {
-                    new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
-                    $qrStatus.text('请使用钉钉 App 扫码').removeClass('error scanned');
-                } catch(e) {
-                    $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
-                }
+                var renderDingtalkQr = function(err) {
+                    if (err || typeof QRCode === 'undefined') {
+                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                        $qrStatus.text('二维码库加载失败').addClass('error');
+                        return;
+                    }
+                    try {
+                        new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
+                        $qrStatus.text('请使用钉钉 App 扫码').removeClass('error scanned');
+                    } catch(e) {
+                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                    }
+                };
+                if (typeof ensureQrcode === 'function') ensureQrcode(renderDingtalkQr);
+                else renderDingtalkQr(null);
             }
             // 开始轮询扫码状态
             startDingtalkQrPoll();

@@ -284,75 +284,363 @@ function createMarkdownRenderer() {
 }
 
 if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true, renderer: createMarkdownRenderer() }); }
-var _mdCache = new Map();
-var _MD_CACHE_MAX = 100;
-function renderMd(text) {
-    if (typeof marked !== 'undefined') {
-        if (!text) return '';
-        if (text.length < 5000) {
-            var cached = _mdCache.get(text);
-            if (cached) return cached;
-            var html = marked.parse(text);
-            _mdCache.set(text, html);
-            if (_mdCache.size > _MD_CACHE_MAX) {
-                var firstKey = _mdCache.keys().next().value;
-                _mdCache.delete(firstKey);
+
+/* ===== Lazy script loader (mermaid / highlight / qrcode / settings) ===== */
+var _scriptLoaders = {};
+var _loadedScripts = window.__loadedScripts || (window.__loadedScripts = {});
+/**
+ * 按需加载脚本（全局去重）。
+ * cb(err)：成功 err 为 null；失败也会回调，便于上层提示/重试。
+ * 失败不写入成功标记，允许后续 loadScriptOnce 重试。
+ */
+function loadScriptOnce(src, cb) {
+    if (_loadedScripts[src] === true) {
+        if (cb) cb(null);
+        return;
+    }
+    if (_scriptLoaders[src]) {
+        if (cb) _scriptLoaders[src].push(cb);
+        return;
+    }
+    _scriptLoaders[src] = cb ? [cb] : [];
+    var s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = function() {
+        _loadedScripts[src] = true;
+        var cbs = _scriptLoaders[src] || [];
+        delete _scriptLoaders[src];
+        for (var i = 0; i < cbs.length; i++) {
+            if (cbs[i]) {
+                try { cbs[i](null); } catch (e) { console.warn('[loadScriptOnce]', src, e); }
             }
-            return html;
         }
-        return marked.parse(text);
-    }
-    return text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-}
-
-/* ===== Highlight.js ===== */
-function highlightCodeBlocks(container) {
-    if (!container || typeof hljs === 'undefined') return;
-    var blocks = $(container).find('pre code:not([data-hljs-collected])');
-    if (blocks.length === 0) return;
-    blocks.each(function() { this.dataset.hljsCollected = 'true'; });
-    function doHighlight() {
-        blocks.each(function() {
-            if (!this.dataset.hljsHighlighted) {
-                this.dataset.hljsHighlighted = 'true';
-                try { hljs.highlightElement(this); } catch(e) {}
+    };
+    s.onerror = function() {
+        console.warn('[loadScriptOnce] failed:', src);
+        var cbs = _scriptLoaders[src] || [];
+        delete _scriptLoaders[src];
+        // 不标记成功，允许下次重试
+        delete _loadedScripts[src];
+        var err = new Error('Failed to load ' + src);
+        for (var i = 0; i < cbs.length; i++) {
+            if (cbs[i]) {
+                try { cbs[i](err); } catch (e) { console.warn('[loadScriptOnce]', src, e); }
             }
-        });
+        }
+    };
+    (document.head || document.documentElement).appendChild(s);
+}
+
+var _mdCache = new Map();
+var _MD_CACHE_MAX = 80;
+var _MD_CACHE_MAX_LEN = 12000; // 仅缓存完成态中等长度消息，避免流式碎片污染
+function renderMd(text) {
+    if (!text) return '';
+    if (typeof marked === 'undefined') {
+        return String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
     }
-    if (window.requestIdleCallback) {
-        requestIdleCallback(doHighlight, { timeout: 300 });
-    } else {
-        setTimeout(doHighlight, 50);
+    // 完成态缓存：流式路径已改走轻量渲染，这里只服务历史/结束态稳定文本
+    if (text.length <= _MD_CACHE_MAX_LEN) {
+        var cached = _mdCache.get(text);
+        if (cached) return cached;
+        var html = marked.parse(text);
+        _mdCache.set(text, html);
+        if (_mdCache.size > _MD_CACHE_MAX) {
+            var firstKey = _mdCache.keys().next().value;
+            _mdCache.delete(firstKey);
+        }
+        return html;
+    }
+    return marked.parse(text);
+}
+
+/* 流式降级 HTML：仅当 marked 不可用时作 fallback */
+function lightStreamHtml(text) {
+    var s = String(text == null ? '' : text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    s = s.replace(/\*\*([^\*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\n/g, '<br>');
+    return s;
+}
+
+/**
+ * 补全流式中尚未闭合的 Markdown 结构，使 marked 能产出与主流 coding agent
+ * 一致的结构化预览（代码块/标题/列表等边出边排）。
+ * 仅用于预览，不会写回 buffer。
+ */
+function prepareStreamMarkdown(text) {
+    var s = String(text == null ? '' : text);
+    if (!s) return s;
+
+    // 未闭合栅栏代码块：补一个闭合栅栏，便于渲成 <pre><code>
+    // 支持 ``` 与 ~~~ ；按行首统计，避免误伤行内反引号
+    var fenceLines = s.match(/^(?:```|~~~)/gm);
+    if (fenceLines && fenceLines.length % 2 === 1) {
+        var lastFence = fenceLines[fenceLines.length - 1];
+        var fenceMark = lastFence.indexOf('~') === 0 ? '~~~' : '```';
+        if (!/\n$/.test(s)) s += '\n';
+        s += fenceMark;
+    }
+
+    return s;
+}
+
+/* 流式渲染节流状态：各元素独立节流，避免每 token 全量 parse */
+var _streamMdState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+var _streamMdStateFallback = _streamMdState ? null : [];
+function getStreamMdState(el) {
+    if (_streamMdState) {
+        var st = _streamMdState.get(el);
+        if (!st) {
+            st = { lastAt: 0, timer: null, pending: null, lastLen: 0 };
+            _streamMdState.set(el, st);
+        }
+        return st;
+    }
+    for (var i = 0; i < _streamMdStateFallback.length; i++) {
+        if (_streamMdStateFallback[i].el === el) return _streamMdStateFallback[i].st;
+    }
+    var created = { lastAt: 0, timer: null, pending: null, lastLen: 0 };
+    _streamMdStateFallback.push({ el: el, st: created });
+    return created;
+}
+function clearStreamMdState(el) {
+    if (!el) return;
+    var st = null;
+    if (_streamMdState) {
+        st = _streamMdState.get(el);
+        if (st) _streamMdState.delete(el);
+    } else if (_streamMdStateFallback) {
+        for (var i = _streamMdStateFallback.length - 1; i >= 0; i--) {
+            if (_streamMdStateFallback[i].el === el) {
+                st = _streamMdStateFallback[i].st;
+                _streamMdStateFallback.splice(i, 1);
+                break;
+            }
+        }
+    }
+    if (st && st.timer) {
+        clearTimeout(st.timer);
+        st.timer = null;
     }
 }
 
-/* ===== Mermaid ===== */
+/** 根据文本长度动态调节流间隔：短文更跟手，长文降低 parse 频率 */
+function streamMdIntervalMs(len) {
+    if (len > 12000) return 160;
+    if (len > 6000) return 120;
+    if (len > 2500) return 90;
+    return 50; // 短回复更贴近主流 agent 的“边出边排”
+}
+
+function paintStreamMarkdown(el, text) {
+    var raw = text == null ? '' : String(text);
+    if (typeof marked === 'undefined') {
+        el.innerHTML = lightStreamHtml(raw);
+        return;
+    }
+    try {
+        // 流式不走 renderMd 缓存，避免不完整文本污染完成态缓存
+        el.innerHTML = marked.parse(prepareStreamMarkdown(raw));
+    } catch (e) {
+        el.innerHTML = lightStreamHtml(raw);
+    }
+}
+
+/**
+ * 流式阶段：节流后的完整 GFM Markdown（与 Cursor / Claude / ChatGPT 一致）。
+ * - 有：标题、列表、代码块外框、链接、表格等结构
+ * - 无：语法高亮、mermaid、代码块按钮（结束态 finalize 再补）
+ */
+function renderMdStreaming(el, text) {
+    if (!el) return;
+    el.classList.add('md-streaming');
+    var raw = text == null ? '' : String(text);
+    el.setAttribute('data-md-stream-raw', raw);
+
+    var st = getStreamMdState(el);
+    st.pending = raw;
+    st.lastLen = raw.length;
+
+    var now = Date.now();
+    var interval = streamMdIntervalMs(raw.length);
+    var elapsed = now - (st.lastAt || 0);
+
+    function flush() {
+        st.timer = null;
+        st.lastAt = Date.now();
+        if (st.pending == null) return;
+        // finalize 后可能已离开流式，避免覆盖完成态 DOM
+        if (!el.classList.contains('md-streaming')) return;
+        paintStreamMarkdown(el, st.pending);
+        // 节流延迟绘制后补一次贴底，避免高度变化后停在半截
+        if (typeof scrollToBottom === 'function' && typeof activeSessionId !== 'undefined') {
+            try { scrollToBottom(); } catch (e) {}
+        }
+    }
+
+    // 首帧或间隔已到：立即刷
+    if (!st.lastAt || elapsed >= interval) {
+        if (st.timer) {
+            clearTimeout(st.timer);
+            st.timer = null;
+        }
+        flush();
+        return;
+    }
+    // 否则合并到下一个节流窗口（保留最新 pending）
+    if (!st.timer) {
+        st.timer = setTimeout(flush, Math.max(0, interval - elapsed));
+    }
+}
+
+/* 流结束/历史消息：升级为完整 Markdown + 高亮 + mermaid（同文案可幂等跳过） */
+function finalizeMdElement(el, text) {
+    if (!el) return;
+    // 取消流式节流，防止迟迟到来的 paint 覆盖完成态
+    clearStreamMdState(el);
+
+    var raw = text == null ? '' : String(text);
+    var alreadyDone = !el.classList.contains('md-streaming')
+        && el.getAttribute('data-md-raw') === raw
+        && el.innerHTML
+        && raw !== '';
+    if (alreadyDone) return;
+
+    el.classList.remove('md-streaming');
+    el.removeAttribute('data-md-stream-raw');
+    if (text != null) {
+        el.setAttribute('data-md-raw', raw);
+        el.innerHTML = renderMd(raw);
+    }
+    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
+    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(el);
+}
+window.renderMdStreaming = renderMdStreaming;
+window.finalizeMdElement = finalizeMdElement;
+window.loadScriptOnce = loadScriptOnce;
+window.prepareStreamMarkdown = prepareStreamMarkdown;
+
+/* ===== Highlight.js（按需加载） ===== */
+function ensureHljs(cb) {
+    if (typeof hljs !== 'undefined') {
+        if (cb) cb(null);
+        return;
+    }
+    loadScriptOnce('/highlight/highlight.min.js', function(err) {
+        if (cb) cb(err || null);
+    });
+}
+window.ensureHljs = ensureHljs;
+
+function highlightCodeBlocks(container) {
+    if (!container) return;
+    var hasBlocks = container.querySelectorAll
+        ? container.querySelectorAll('pre code:not([data-hljs-collected])').length > 0
+        : $(container).find('pre code:not([data-hljs-collected])').length > 0;
+    if (!hasBlocks) return;
+
+    ensureHljs(function(err) {
+        if (err || typeof hljs === 'undefined') return;
+        var blocks = $(container).find('pre code:not([data-hljs-collected])');
+        if (blocks.length === 0) return;
+        blocks.each(function() { this.dataset.hljsCollected = 'true'; });
+        function doHighlight() {
+            blocks.each(function() {
+                if (!this.dataset.hljsHighlighted) {
+                    this.dataset.hljsHighlighted = 'true';
+                    try { hljs.highlightElement(this); } catch (e) {}
+                }
+            });
+        }
+        if (window.requestIdleCallback) {
+            requestIdleCallback(doHighlight, { timeout: 300 });
+        } else {
+            setTimeout(doHighlight, 50);
+        }
+    });
+}
+
+/* ===== Mermaid（按需加载；仅当存在 mermaid 代码块时才下载 3MB 库） ===== */
+var __mermaidInited = false;
+function initMermaidIfNeeded() {
+    if (typeof mermaid === 'undefined' || __mermaidInited) return;
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: (typeof currentTheme !== 'undefined' && currentTheme === 'dark') ? 'dark' : 'default',
+        securityLevel: 'loose',
+        fontFamily: 'var(--font-sans)',
+    });
+    __mermaidInited = true;
+}
+function ensureMermaid(cb) {
+    if (typeof mermaid !== 'undefined') {
+        initMermaidIfNeeded();
+        if (cb) cb(null);
+        return;
+    }
+    loadScriptOnce('/js/mermaid.min.js', function(err) {
+        if (err) {
+            if (cb) cb(err);
+            return;
+        }
+        initMermaidIfNeeded();
+        if (cb) cb(null);
+    });
+}
+window.ensureMermaid = ensureMermaid;
+
 function processMermaidBlocks(container) {
-    if (!container || typeof mermaid === 'undefined') return;
-    var blocks = container.querySelectorAll('pre code.language-mermaid:not([data-mermaid-processed])');
-    if (blocks.length === 0) return;
+    if (!container) return;
+    var blocks = container.querySelectorAll
+        ? container.querySelectorAll('pre code.language-mermaid:not([data-mermaid-processed])')
+        : [];
+    if (!blocks || blocks.length === 0) return;
 
-    var nodes = [];
-    for (var i = 0; i < blocks.length; i++) {
-        var codeEl = blocks[i];
-        codeEl.setAttribute('data-mermaid-processed', 'true');
-        var preEl = codeEl.parentNode;
-        var txt = codeEl.textContent.trim();
-        if (!txt) continue;
+    ensureMermaid(function(err) {
+        if (err || typeof mermaid === 'undefined') return;
+        var fresh = container.querySelectorAll('pre code.language-mermaid:not([data-mermaid-processed])');
+        if (!fresh.length) return;
 
-        var div = document.createElement('div');
-        div.id = 'm-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 8);
-        div.className = 'mermaid-svg';
-        div.style.cssText = 'text-align:center;padding:10px 0;overflow-x:auto;';
-        div.textContent = txt;
-        preEl.parentNode.replaceChild(div, preEl);
-        nodes.push(div);
-    }
+        var nodes = [];
+        for (var i = 0; i < fresh.length; i++) {
+            var codeEl = fresh[i];
+            codeEl.setAttribute('data-mermaid-processed', 'true');
+            var preEl = codeEl.parentNode;
+            var txt = codeEl.textContent.trim();
+            if (!txt) continue;
 
-    if (nodes.length > 0 && mermaid.run) {
-        mermaid.run({ nodes: nodes, suppressErrors: true }).catch(function() {});
-    }
+            var div = document.createElement('div');
+            div.id = 'm-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 8);
+            div.className = 'mermaid-svg';
+            div.style.cssText = 'text-align:center;padding:10px 0;overflow-x:auto;';
+            div.textContent = txt;
+            preEl.parentNode.replaceChild(div, preEl);
+            nodes.push(div);
+        }
+
+        if (nodes.length > 0 && mermaid.run) {
+            mermaid.run({ nodes: nodes, suppressErrors: true }).catch(function() {});
+        }
+    });
 }
+
+/* ===== QRCode（仅扫码绑定时加载） ===== */
+function ensureQrcode(cb) {
+    if (typeof QRCode !== 'undefined') {
+        if (cb) cb(null);
+        return;
+    }
+    loadScriptOnce('/js/qrcode.min.js', function(err) {
+        if (cb) cb(err || null);
+    });
+}
+window.ensureQrcode = ensureQrcode;
 
 function applyHljsTheme(theme) {
     var $lightLink = $('#hljs-light-theme');
@@ -366,9 +654,11 @@ function applyHljsTheme(theme) {
         $lightLink.prop('disabled', false).prop('media', 'all');
     }
 }
+window.applyHljsTheme = applyHljsTheme;
 
 /* ===== Theme ===== */
 var currentTheme = localStorage.getItem('chat-theme') || 'light';
+window.currentTheme = currentTheme;
 $('body').attr('data-theme', currentTheme);
 
 // Apply initial hljs theme (after currentTheme is defined)
@@ -376,30 +666,23 @@ applyHljsTheme(currentTheme);
 
 updateThemeIcon();
 
-/* ===== Mermaid Init ===== */
-if (typeof mermaid !== 'undefined') {
-    mermaid.initialize({
-        startOnLoad: false,
-        theme: currentTheme === 'dark' ? 'dark' : 'default',
-        securityLevel: 'loose',
-        fontFamily: 'var(--font-sans)',
-    });
-}
-
 $(themeBtn).on('click', function() {
     currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+    window.currentTheme = currentTheme;
     $('body').attr('data-theme', currentTheme);
     localStorage.setItem('chat-theme', currentTheme);
     updateThemeIcon();
     applyHljsTheme(currentTheme);
     if (typeof mermaid !== 'undefined') {
-        mermaid.initialize({ theme: currentTheme === 'dark' ? 'dark' : 'default' });
+        __mermaidInited = false;
+        initMermaidIfNeeded();
     }
 });
 function updateThemeIcon() {
     $(themeIcon).html(currentTheme === 'light' ? '&#xe6c2;' : '&#xe748;');
     $(themeBtn).prop('title', currentTheme === 'light' ? '切换至暗色' : '切换至浅色');
 }
+window.updateThemeIcon = updateThemeIcon;
 
 /* ===== View Switch ===== */
 function switchToChatMode() {

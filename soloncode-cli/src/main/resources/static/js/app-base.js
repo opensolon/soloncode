@@ -149,6 +149,9 @@ function resetStreamState(sess) {
     sess.streamSegments = [];
     sess.currentStreamSegment = null;
     sess.streamSegmentSeq = 0;
+    // 清空流式 chunk 批处理队列
+    sess._chunkQueue = [];
+    sess._chunkDrainScheduled = false;
     // Cancel per-reasonId RAF IDs before clearing
     for (var _rid in sess.reasonGroups) {
         if (sess.reasonGroups[_rid].reasonRafId) {
@@ -182,9 +185,13 @@ function autoResize(el) {
 }
 
 function escapeHtml(str) {
-    var div = $('<div>')[0];
-    $(div).text(str);
-    return div.innerHTML;
+    // 字符串替换，避免热路径反复 createElement
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function formatFileSize(bytes) {

@@ -654,11 +654,15 @@ function finishThinkingBlock(sess, reasonId) {
         if (group.reasonRafId) {
             cancelAnimationFrame(group.reasonRafId);
             group.reasonRafId = null;
-            if (group.thinkingBodyMdEl) {
+        }
+        // 流结束：把轻量文本升级为完整 Markdown
+        if (group.thinkingBodyMdEl) {
+            if (typeof finalizeMdElement === 'function') {
+                finalizeMdElement(group.thinkingBodyMdEl, group.thinkingBuffer || '');
+            } else {
                 group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer || '');
             }
         }
-        if (group.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(group.thinkingBodyMdEl);
         // 检查思考块内容是否超出高度
         if (group.thinkingBodyWrapEl) { checkOverflow(group.thinkingBodyWrapEl, 300); }
         $(group.thinkingBlockEl).removeClass('streaming');
@@ -688,11 +692,14 @@ function finishThinkingBlock(sess, reasonId) {
         if (sess.reasonRafId) {
             cancelAnimationFrame(sess.reasonRafId);
             sess.reasonRafId = null;
-            if (sess.thinkingBodyMdEl) {
-                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+        }
+        if (sess.thinkingBodyMdEl) {
+            if (typeof finalizeMdElement === 'function') {
+                finalizeMdElement(sess.thinkingBodyMdEl, sess.thinkingBuffer || '');
+            } else {
+                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer || '');
             }
         }
-        if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
         // 检查思考块内容是否超出高度
         if (sess.thinkingBodyWrapEl) { checkOverflow(sess.thinkingBodyWrapEl, 300); }
         $(sess.thinkingBlockEl).removeClass('streaming');
@@ -751,11 +758,15 @@ function appendReasonChunk(sess, segment, text, reasonId, agentName) {
         recordTaskGroupReason(segment);
     }
     group.thinkingBuffer += clean;
-    if (!group.reasonRafId) group.reasonRafId = requestAnimationFrame(function() {
-        group.reasonRafId = null;
-        if (group.thinkingBodyMdEl) group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer);
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-    });
+    // 队列 drain 已在 RAF 批处理；此处直接走节流 Markdown 渲染（与主流 coding agent 一致）
+    if (group.thinkingBodyMdEl) {
+        if (typeof renderMdStreaming === 'function') {
+            renderMdStreaming(group.thinkingBodyMdEl, group.thinkingBuffer);
+        } else {
+            group.thinkingBodyMdEl.textContent = group.thinkingBuffer;
+        }
+    }
+    if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
 function finishPendingTool(sess) {
@@ -852,19 +863,34 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
     return true;
 };
 
-/* write / read：按 file_path 推断语言，hljs 语法高亮 */
+/* write / read：按 file_path 推断语言，hljs 语法高亮（hljs 按需加载） */
 function renderHighlightedFile(bodyEl, text, args) {
     if (!text) return false;
     var filePath = (args && args.file_path) || '';
     var lang = (typeof window.guessLang === 'function') ? window.guessLang(filePath) : '';
-    if (lang && typeof hljs !== 'undefined') {
+    function applyHighlight() {
+        if (!(lang && typeof hljs !== 'undefined')) {
+            bodyEl.textContent = text;
+            return;
+        }
         try {
             var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
             bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
-            return true;
-        } catch(e) {
-            return false;
+        } catch (e) {
+            bodyEl.textContent = text;
         }
+    }
+    if (lang && typeof hljs === 'undefined' && typeof ensureHljs === 'function') {
+        // 先纯文本占位，库就绪后升级高亮（不阻塞工具卡展示）
+        bodyEl.textContent = text;
+        ensureHljs(function(err) {
+            if (!err) applyHighlight();
+        });
+        return true;
+    }
+    if (lang && typeof hljs !== 'undefined') {
+        applyHighlight();
+        return true;
     }
     return false;
 }
@@ -1072,6 +1098,40 @@ function findPendingToolCard(sess, callId, reasonId) {
 /* action_start：工具调用前（来源引擎 ActionChunk）提前渲染 loading 卡片骨架。
    存为 pendingToolCards，待 action_end（ObservationChunk 结果）到达时由
    appendActionEndChunk 复用此卡片填充结果体并转完成态。 */
+/* 工具卡 body：默认折叠时延迟重渲染（diff/hljs），展开时再填充，避免 action_end 瞬时卡顿 */
+function bindToolCardToggle(card) {
+    $(card).find('.tool-card-header').off('click.toolcard').on('click.toolcard', function() {
+        var expanded = !$(card).hasClass('expanded');
+        $(card).toggleClass('expanded', expanded);
+        if (expanded && card._pendingToolRender && !card._toolBodyRendered) {
+            card._pendingToolRender();
+        }
+    });
+}
+
+function fillToolCardBody(card, toolName, text, args) {
+    var body = $(card).find('.tool-card-body')[0];
+    if (!body) return;
+    function doRender() {
+        if (card._toolBodyRendered) return;
+        card._toolBodyRendered = true;
+        body.innerHTML = '';
+        if (!renderToolBody(body, toolName, text, args)) body.textContent = text || '';
+        checkOverflow(body, 200);
+    }
+    // 展开态或没有简化开关时立即渲染；折叠态延迟到用户展开
+    if ($(card).hasClass('expanded') || window.cliPrintSimplified === false) {
+        doRender();
+    } else {
+        card._pendingToolRender = doRender;
+        // 先放一段轻量摘要，避免 body 完全空白
+        var preview = (text || '');
+        if (preview.length > 240) preview = preview.substring(0, 240) + '...';
+        body.textContent = preview;
+        body.classList.add('tool-body-deferred');
+    }
+}
+
 function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reasonId, agentName, callId) {
     var group = ensureReasonGroup(sess, segment, reasonId);
     if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
@@ -1083,7 +1143,7 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
         + escapeHtml(toolTitle || toolName || 'tool') + '</span>' + (argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '')
         + '<i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
     if (agentName) { $(card).addClass('is-subagent'); $(card).find('.tool-name').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>'); }
-    $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+    bindToolCardToggle(card);
     if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
     if (callId) card.setAttribute('data-call-id', callId);
     registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
@@ -1110,13 +1170,15 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
         if (window.cliPrintSimplified === false) $(card).addClass('expanded');
         card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon done"><i class="layui-icon layui-icon-ok" style="font-size:12px"></i></span><span class="tool-name">'
             + escapeHtml(toolTitle || toolName || 'tool') + '</span><i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
-        $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+        bindToolCardToggle(card);
         if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
         // 无 action_start 的终态卡也计入 task 摘要
         if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
+    } else {
+        bindToolCardToggle(card);
     }
-    var body = $(card).find('.tool-card-body')[0];
-    if (body) { body.innerHTML = ''; if (!renderToolBody(body, toolName, text, args)) body.textContent = text || ''; checkOverflow(body, 200); }
+    card._toolBodyRendered = false;
+    fillToolCardBody(card, toolName, text, args);
     var icon = $(card).find('.tool-status-icon')[0];
     if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
     if (callId) card.setAttribute('data-call-id', callId);
@@ -1147,11 +1209,15 @@ function appendContentChunk(sess, segment, text, append, reasonId) {
     group.activeKind = 'text';
     run.buffer = append ? run.buffer + clean : clean;
     group.groupBuffer = run.buffer;
-    if (!run.rafId) run.rafId = requestAnimationFrame(function() {
-        run.rafId = null;
-        if (run.el) run.el.innerHTML = renderMd(run.buffer);
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-    });
+    // 队列 drain 已在 RAF 批处理；此处直接走节流 Markdown 渲染，边出边排
+    if (run.el) {
+        if (typeof renderMdStreaming === 'function') {
+            renderMdStreaming(run.el, run.buffer);
+        } else {
+            run.el.textContent = run.buffer;
+        }
+    }
+    if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
 function appendErrorChunkToSegment(sess, segment, text) {
@@ -1213,8 +1279,12 @@ function appendTraceBadge(sess, chunk) {
 function appendCommandOutput(sess, text) {
     ensureAssistantBubble(sess);
     var mdEl = $('<div>').addClass('md-content')[0];
-    mdEl.innerHTML = renderMd(text);
-    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
+    if (typeof finalizeMdElement === 'function') {
+        finalizeMdElement(mdEl, text || '');
+    } else {
+        mdEl.innerHTML = renderMd(text);
+        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
+    }
     insertBeforeActions(sess, mdEl);
     sess.currentBubbleEl = mdEl;
     if (sess.sessionId === activeSessionId) scrollToBottom();
