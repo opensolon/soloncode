@@ -255,7 +255,7 @@
         if (name && name !== _activeSkin) activateSkin(name);
     });
 
-    // 独立「皮肤」Tab 加载时调用 loadSkins；切换/安装统一走 activate API
+    // 挂在「通用 → 界面效果」下，进入通用 Tab 时调用 loadSkins；切换/安装统一走 activate API
 
     window._settingsSkin = {
         load: loadSkins

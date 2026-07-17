@@ -155,8 +155,6 @@
         if (targetTab === 'general') {
             $('#settingsTabGeneral').addClass('active');
             if (mod('_settingsGeneral')) mod('_settingsGeneral').load();
-        } else if (targetTab === 'skin') {
-            $('#settingsTabSkin').addClass('active');
             if (mod('_settingsSkin')) mod('_settingsSkin').load();
         } else if (targetTab === 'permission') {
             $('#settingsTabPermission').addClass('active');
@@ -191,8 +189,8 @@
         var targetTab = $active.attr('data-tab');
         if (targetTab === 'general') {
             if (mod('_settingsGeneral')) mod('_settingsGeneral').load();
+            if (mod('_settingsSkin')) mod('_settingsSkin').load();
         }
-        else if (targetTab === 'skin') { if (mod('_settingsSkin')) mod('_settingsSkin').load(); }
         else if (targetTab === 'permission') { if (mod('_settingsPermission')) mod('_settingsPermission').load(); }
         else if (targetTab === 'llm') { if (mod('_settingsLlm')) mod('_settingsLlm').load(); }
         else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(); }
@@ -204,7 +202,9 @@
     }
 
     // 全局打开设置 tab 入口（供 app-filer.js 调用）
+    // skin 已并入通用 → 界面效果，旧入口兼容跳到 general
     window.openSettingsTab = function(tab) {
+        if (tab === 'skin') tab = 'general';
         $overlay.css('display', 'flex');
         $('.settings-tab[data-tab="' + tab + '"]').click();
     };
