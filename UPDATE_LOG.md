@@ -1,6 +1,10 @@
 ### v2026.7.17
 
 * 优化 soloncode web 流式消息处理性能
+* 优化 soloncode web 流式消息 done 原子处理
+* 优化 solon-development-skill
+* 优化 spring-to-solon-skill
+* 细节优化
 
 ### v2026.7.16
 
