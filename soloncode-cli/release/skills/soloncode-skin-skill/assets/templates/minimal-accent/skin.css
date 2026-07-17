@@ -1,0 +1,20 @@
+/* skin: minimal-accent — 配方 A：仅换强调色 */
+[data-skin="minimal-accent"][data-theme="light"] {
+  --accent: #7c5cff;
+  --accent-hover: #6b4de6;
+  --accent-light: #f0ebff;
+  --bg-user-msg: #efe9ff;
+  --thinking-dot: #7c5cff;
+  --text-user-msg-link: #7c5cff;
+  --text-user-msg-link-hover: #6b4de6;
+}
+
+[data-skin="minimal-accent"][data-theme="dark"] {
+  --accent: #b39cff;
+  --accent-hover: #9f86ff;
+  --accent-light: #2a2040;
+  --bg-user-msg: #2c2448;
+  --thinking-dot: #b39cff;
+  --text-user-msg-link: #b39cff;
+  --text-user-msg-link-hover: #d0c4ff;
+}

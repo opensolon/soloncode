@@ -20,6 +20,7 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.entity.LoopGroupDo;
+import reactor.core.Disposable;
 
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -33,7 +34,7 @@ import java.util.List;
  * 基础用法:
  *   /loop 5m check if deployment finished    → fixed interval (5m)
  *   /loop check ci status                   → auto interval (5m default)
- *   /loop cron:"0 *&#47;5 * * * ?" check status  → cron expression
+ *   /loop cron:"0 *&#47;5 * * * ? *" check status  → cron expression (7 fields)
  *   /loop ls                                → list active tasks
  *   /loop stop <id>                         → stop a task
  *   /loop stop-all                          → stop all tasks
@@ -107,12 +108,22 @@ public class LoopCommand implements Command {
                 LoopTask task = scheduler.getTaskById(sessionId, taskId);
                 if (task != null) {
                     scheduler.remove(sessionId, task);
+                    // 同时中断正在执行的 Agent
+                    Disposable disposable = (Disposable) ctx.getSession().attrs().remove("disposable");
+                    if (disposable != null && !disposable.isDisposed()) {
+                        disposable.dispose();
+                    }
                 }
 
                 ctx.println(ctx.color(GREEN + "Loop task '" + taskId + "' stopped." + RESET));
             }
         } else if ("stop-all".equals(sub)) {
             scheduler.stopAll(sessionId);
+            // 同时中断正在执行的 Agent，防止当前轮次完成后 scheduleContinuation 继续调度
+            Disposable disposable = (Disposable) ctx.getSession().attrs().remove("disposable");
+            if (disposable != null && !disposable.isDisposed()) {
+                disposable.dispose();
+            }
             ctx.println(ctx.color(GREEN + "All loop tasks stopped." + RESET));
         } else if ("pause".equals(sub)) {
             doPause(ctx, sessionId, ctx.argAt(1));
@@ -149,7 +160,7 @@ public class LoopCommand implements Command {
             }
             if (cronExpr.isEmpty()) {
                 ctx.println(ctx.color(RED + "Usage: /loop cron:<expr> <prompt>" + RESET));
-                ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
+                ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ? *\" check status" + RESET));
                 return;
             }
             promptStartIndex = 1;
@@ -595,7 +606,7 @@ public class LoopCommand implements Command {
         ctx.println(ctx.color(DIM + "  /loop 5m check deployment" + RESET));
         ctx.println(ctx.color(DIM + "  /loop 30s check CI status" + RESET));
         ctx.println(ctx.color(DIM + "  /loop check CI status   (auto 5m)" + RESET));
-        ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ?\" check status" + RESET));
+        ctx.println(ctx.color(DIM + "  /loop cron:\"0 */5 * * * ? *\" check status" + RESET));
         ctx.println(ctx.color(DIM + "" + RESET));
         ctx.println(ctx.color(DIM + "Goal:" + RESET));
         ctx.println(ctx.color(DIM + "  /loop goal fix auth module                (goal mode, runs immediately)" + RESET));

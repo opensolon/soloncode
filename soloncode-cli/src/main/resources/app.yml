@@ -1,8 +1,8 @@
 server.port: 4808
 
 server.request:
-  maxBodySize: 2mb
-  maxFileSize: 2mb
+  maxBodySize: 10mb
+  maxFileSize: 10mb
 
 server.http:
   coreThreads: 2
@@ -14,7 +14,7 @@ solon.task:
       size: 8
   scheduling:
     pool:
-      size:4
+      size: 4
 
 solon.app:
   name: "soloncode"

@@ -1,6 +1,9 @@
 # 测试进阶迁移参考
 
-> Spring Boot Test → Solon Test 迁移指南（目标版本：Solon 4.0.x）
+> Spring Boot Test → Solon Test 迁移指南（目标版本：跟随 SKILL.md）
+>
+> **接续** `test_basics_migration.md`（该文档第 1～6 / 7～8 节为依赖、`@SolonTest`、HTTP、Mock、回滚与基础清单）。
+> **本文从第 7 节起**讲切面、条件、生命周期、数据层进阶与完整陷阱；请先完成 basics 再读本节。
 
 ## 7. 切面测试迁移
 
@@ -90,7 +93,7 @@ class LinuxOnlyTest {
 **Spring Boot / Solon（完全一致）：**
 
 ```java
-@SolonTest(App.class)  // 或 @SpringBootTest
+@SolonTest(App.class)
 class UserApiTest {
     @Nested
     @DisplayName("用户查询测试")
@@ -139,9 +142,9 @@ void testUserMapping(Long id, String expectedName) {
 **Spring Boot / Solon（完全一致）：**
 
 ```java
-@SolonTest(App.class)  // 或 @SpringBootTest
+@SolonTest(App.class)
 class UserServiceTest {
-    @Inject  // 或 @Autowired
+    @Inject
     private UserRepository userRepository;
 
     @BeforeEach
@@ -301,12 +304,14 @@ class UserRepositoryTest {
 - 内存数据库配置：
 
 ```yaml
-# src/test/resources/application.yml
-solon:
-  app:
-    name: test-app
-  dataSources:
-    url: jdbc:h2:mem:testdb
+# src/test/resources/app.yml
+solon.app:
+  name: test-app
+
+solon.dataSources:
+  db1!:
+    class: "com.zaxxer.hikari.HikariDataSource"
+    jdbcUrl: jdbc:h2:mem:testdb
     driverClassName: org.h2.Driver
 ```
 

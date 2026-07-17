@@ -1,0 +1,93 @@
+/*
+ * Builtin skin: eyecare (eye-care / soft warm green)
+ * Applied via <body data-skin="eyecare">.
+ * Works on top of data-theme="light|dark".
+ *
+ * Design goals:
+ * - Avoid pure white / pure black glare
+ * - Warm paper-green base, low blue light
+ * - Soft muted green accent, comfortable for long reading
+ */
+
+[data-skin="eyecare"][data-theme="light"] {
+    --accent: #5a8f4a;
+    --accent-hover: #4a7a3c;
+    --accent-light: #eaf3e4;
+    --bg-user-msg: #e8f1e0;
+    --text-primary: #2c3328;
+    --text-secondary: #5c6656;
+    --text-sidebar: #3a4236;
+    --text-user-msg: #2c3328;
+    --text-user-msg-link: #4f7f40;
+    --text-user-msg-link-hover: #3f6a33;
+    --text-ai-msg: #2c3328;
+    --thinking-dot: #5a8f4a;
+    --bg-body: #eef3e6;
+    --bg-main: #f5f8ef;
+    --bg-sidebar: #f0f4e9;
+    --bg-hover: #e4ecda;
+    --bg-input-box: #fafcf6;
+    --border-color: #d4deca;
+    --border-input: #c5d2b8;
+    --shadow: 0 2px 10px rgba(74, 100, 60, 0.07);
+    --shadow-lg: 0 4px 24px rgba(74, 100, 60, 0.09);
+    --tag-bg: #e8f0df;
+    --tag-border: #d4deca;
+    --reason-group-think-bg: #f0f4e9;
+    --reason-group-think-border: #d4deca;
+
+    --bg-main-image: linear-gradient(165deg, #e6efd8 0%, #f5f8ef 48%, #eef4e6 100%);
+    --bg-main-overlay: rgba(255, 255, 255, 0.28);
+    --bg-sidebar-image: linear-gradient(180deg, #eaf1e0 0%, #f4f7ee 100%);
+    --bg-sidebar-overlay: rgba(255, 255, 255, 0.20);
+    /* filer/settings fall back to sidebar colors unless overridden */
+    --bg-filer: var(--bg-sidebar);
+    --bg-filer-image: none;
+    --bg-filer-overlay: transparent;
+    --bg-settings: var(--bg-sidebar);
+    --bg-settings-image: none;
+    --bg-settings-overlay: transparent;
+    --bg-settings-tabs: var(--bg-hover);
+}
+
+[data-skin="eyecare"][data-theme="dark"] {
+    --accent: #8fbf78;
+    --accent-hover: #7aab64;
+    --accent-light: #24301f;
+    --bg-user-msg: #2a3824;
+    --text-primary: #e4eadc;
+    --text-secondary: #a8b49c;
+    --text-sidebar: #d2dbc8;
+    --text-user-msg: #e8f0e0;
+    --text-user-msg-link: #b6d9a0;
+    --text-user-msg-link-hover: #d0ebc0;
+    --text-ai-msg: #e4eadc;
+    --thinking-dot: #8fbf78;
+    --bg-body: #121610;
+    --bg-main: #181e15;
+    --bg-sidebar: #151b13;
+    --bg-hover: #24301f;
+    --bg-input-box: #1c2419;
+    --bg-primary: #181e15;
+    --bg-secondary: #151b13;
+    --border-color: #2f3c29;
+    --border-input: #3a4a32;
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.36);
+    --tag-bg: #24301f;
+    --tag-border: #3a4a32;
+    --reason-group-think-bg: #1a2217;
+    --reason-group-think-border: #2f3c29;
+
+    --bg-main-image: linear-gradient(165deg, #121810 0%, #1a2217 48%, #151b13 100%);
+    --bg-main-overlay: rgba(10, 14, 8, 0.36);
+    --bg-sidebar-image: linear-gradient(180deg, #141a12 0%, #1a2217 100%);
+    --bg-sidebar-overlay: rgba(10, 14, 8, 0.24);
+    --bg-filer: var(--bg-sidebar);
+    --bg-filer-image: none;
+    --bg-filer-overlay: transparent;
+    --bg-settings: var(--bg-sidebar);
+    --bg-settings-image: none;
+    --bg-settings-overlay: transparent;
+    --bg-settings-tabs: var(--bg-hover);
+}

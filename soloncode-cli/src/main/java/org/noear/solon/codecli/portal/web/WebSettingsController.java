@@ -58,6 +58,7 @@ import org.noear.solon.codecli.portal.FileWatchService;
 import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.portal.web.market.Market;
 import org.noear.solon.codecli.portal.web.market.MarketManager;
+import org.noear.solon.codecli.portal.web.service.SkinService;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
@@ -128,6 +129,11 @@ public class WebSettingsController {
      * 统一配置管理器，管理 LLM 模型、MCP 服务器、OpenApi 服务器的持久化数据
      */
     private final AgentSettings settings;
+
+    /**
+     * 本地皮肤服务（Zip 安装 / 列表 / 资源代理）
+     */
+    private final SkinService skinService = new SkinService();
 
     /**
      * 文件变更监听服务（由 Configurator 注入，用于动态挂载管理）
@@ -293,6 +299,250 @@ public class WebSettingsController {
 
         saveSettings();
         return Result.succeed();
+    }
+
+    // ==================== 设置：皮肤 Skin ====================
+
+    /**
+     * 皮肤列表：预置 + 本地安装，并返回当前激活皮肤
+     */
+    @Get
+    @Mapping("/web/settings/skins/list")
+    public Result skinsList() {
+        List<Map<String, Object>> skins = new ArrayList<>();
+
+        // 预置
+        String[][] builtins = new String[][]{
+                {"default", "默认", "纯净默认外观"},
+                {"eyecare", "护眼", "柔和暖绿，长时间阅读更舒适"},
+                {"contrast", "高对比", "强化可读性，无装饰背景"}
+        };
+        String active = normalizeActiveSkin(settings.getGeneral().getActiveSkin());
+        for (String[] b : builtins) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", b[0]);
+            item.put("displayName", b[1]);
+            item.put("description", b[2]);
+            item.put("source", "builtin");
+            item.put("active", b[0].equals(active));
+            item.put("hasPreview", false);
+            skins.add(item);
+        }
+
+        // 本地
+        for (Map<String, Object> local : skinService.listInstalled()) {
+            local.put("active", String.valueOf(local.get("name")).equals(active));
+            skins.add(local);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("activeSkin", active);
+        data.put("skins", skins);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 安装本地 zip 皮肤。
+     *
+     * <p>两种方式：</p>
+     * <ul>
+     *   <li>multipart 上传：表单字段 {@code file}</li>
+     *   <li>工作区路径：查询参数 {@code file=xxx.zip}（相对当前 workspace，供聊天一键安装链接）</li>
+     * </ul>
+     */
+    @Post
+    @Mapping("/web/settings/skins/install")
+    public Result skinsInstall(Context ctx, String file) throws Exception {
+        try {
+            String name;
+            if (!Assert.isEmpty(file)) {
+                // 聊天一键安装：从工作区相对路径读取 zip
+                name = installSkinFromWorkspaceFile(file);
+            } else {
+                UploadedFile uploaded = ctx.file("file");
+                if (uploaded == null) {
+                    return Result.failure("请上传皮肤 zip 文件，或提供 file 工作区路径参数");
+                }
+                String filename = uploaded.getName();
+                if (filename == null || !filename.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                    return Result.failure("仅支持 .zip 皮肤包");
+                }
+                name = skinService.installZip(uploaded.getContent(), filename);
+            }
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("name", name);
+            return Result.succeed(data);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(e.getMessage());
+        } catch (Exception e) {
+            LOG.warn("Install skin failed: {}", e.getMessage());
+            return Result.failure("安装失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 从当前 workspace 相对路径安装皮肤 zip（防路径穿越，仅 .zip）。
+     */
+    private String installSkinFromWorkspaceFile(String relativeFile) throws Exception {
+        if (Assert.isEmpty(relativeFile)) {
+            throw new IllegalArgumentException("缺少 file 参数");
+        }
+        String rel = relativeFile.trim().replace('\\', '/');
+        while (rel.startsWith("./")) {
+            rel = rel.substring(2);
+        }
+        if (rel.startsWith("/") || rel.contains(":") || rel.contains("..")) {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+        if (!rel.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            throw new IllegalArgumentException("仅支持 .zip 皮肤包");
+        }
+
+        Path workspace = Paths.get(engine.getWorkspace()).toAbsolutePath().normalize();
+        Path zipPath = workspace.resolve(rel).normalize();
+        if (!zipPath.startsWith(workspace)) {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+        if (!Files.isRegularFile(zipPath)) {
+            throw new IllegalArgumentException("皮肤 zip 不存在: " + rel);
+        }
+
+        return skinService.installZipFile(zipPath);
+    }
+
+    /**
+     * 激活皮肤（name 为空或 default 表示恢复默认）
+     */
+    @Post
+    @Mapping("/web/settings/skins/activate")
+    public Result skinsActivate(@Body String json) {
+        ONode root = ONode.ofJson(json == null ? "{}" : json);
+        String name = root.get("name").getString();
+        name = normalizeActiveSkin(name);
+
+        if (!"default".equals(name) && !SkinService.builtinNames().contains(name) && !skinService.isInstalled(name)) {
+            return Result.failure("皮肤不存在: " + name);
+        }
+
+        settings.getGeneral().setActiveSkin("default".equals(name) ? null : name);
+        saveSettings();
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("activeSkin", name);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 卸载本地皮肤；若卸载的是当前激活皮肤则回退默认
+     */
+    @Post
+    @Mapping("/web/settings/skins/uninstall")
+    public Result skinsUninstall(@Body String json) throws Exception {
+        ONode root = ONode.ofJson(json == null ? "{}" : json);
+        String name = root.get("name").getString();
+        if (Assert.isEmpty(name)) {
+            return Result.failure("缺少皮肤 name");
+        }
+        try {
+            skinService.uninstall(name);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(e.getMessage());
+        }
+
+        String active = normalizeActiveSkin(settings.getGeneral().getActiveSkin());
+        if (name.equals(active)) {
+            settings.getGeneral().setActiveSkin(null);
+            active = "default";
+            saveSettings();
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("activeSkin", active);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 导出本地皮肤为 zip（便于分享给朋友再导入）
+     */
+    @Get
+    @Mapping("/web/settings/skins/export")
+    public void skinsExport(Context ctx, String name) throws Exception {
+        if (Assert.isEmpty(name)) {
+            ctx.status(400);
+            ctx.output("missing name");
+            return;
+        }
+        try {
+            byte[] zip = skinService.exportZip(name);
+            String safeName = name.replaceAll("[^a-zA-Z0-9_-]", "_");
+            if (safeName.isEmpty()) {
+                safeName = "skin";
+            }
+            ctx.contentType("application/zip");
+            ctx.headerSet("Content-Disposition", "attachment; filename=\"" + safeName + ".zip\"");
+            ctx.headerSet("Cache-Control", "no-cache");
+            ctx.output(zip);
+        } catch (IllegalArgumentException e) {
+            ctx.status(400);
+            ctx.output(e.getMessage());
+        } catch (Exception e) {
+            LOG.warn("Export skin failed: {}", e.getMessage());
+            ctx.status(500);
+            ctx.output("export failed: " + e.getMessage());
+        }
+    }
+     
+    /**
+     * 代理读取本地皮肤文件（skin.css / preview / assets/*）
+     */
+    @Get
+    @Mapping("/web/settings/skins/file")
+    public void skinsFile(Context ctx, String name, String file) throws Exception {
+        if (Assert.isEmpty(name) || Assert.isEmpty(file)) {
+            ctx.status(400);
+            ctx.output("missing name or file");
+            return;
+        }
+        // CSS 需要改写相对 url
+        if ("skin.css".equals(file)) {
+            String css = skinService.loadCssWithRewrittenUrls(name);
+            if (css == null) {
+                ctx.status(404);
+                ctx.output("skin css not found");
+                return;
+            }
+            ctx.contentType("text/css; charset=utf-8");
+            ctx.headerSet("Cache-Control", "no-cache");
+            ctx.output(css);
+            return;
+        }
+
+        Path path = skinService.resolveSkinFile(name, file);
+        if (path == null) {
+            ctx.status(404);
+            ctx.output("file not found");
+            return;
+        }
+        byte[] bytes = Files.readAllBytes(path);
+        ctx.contentType(skinService.guessContentType(file));
+        ctx.headerSet("Cache-Control", "private, max-age=3600");
+        ctx.output(bytes);
+    }
+
+    private String normalizeActiveSkin(String name) {
+        if (Assert.isEmpty(name) || "default".equals(name)) {
+            return "default";
+        }
+        if (!skinService.isValidSkinName(name)) {
+            return "default";
+        }
+        if (SkinService.builtinNames().contains(name)) {
+            return name;
+        }
+        if (skinService.isInstalled(name)) {
+            return name;
+        }
+        return "default";
     }
 
     // ==================== 设置：Loop Goal 配置 ====================

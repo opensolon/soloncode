@@ -1,3 +1,26 @@
+### v2026.7.17
+
+* 添加 soloncode web 皮肤功能（自带生成的 skill），可开启花花世界
+* 优化 soloncode web 流式消息处理性能
+* 优化 soloncode web 流式消息 done 原子处理
+* 改进 solon-development-skill
+* 改进 spring-to-solon-skill
+* 新增 soloncode-skin-skill
+* 细节优化
+
+### v2026.7.16
+
+* 优化 soloncode web 任务全停止时，同时停目当前对话
+* 优化 soloncode web 停止任务时，同时停止 loop goal（如果有）
+* 修复 soloncode 可能会因为 llm 输出不规范造成 json 流式解析高 cpu 运行
+* 细节优化
+
+### v2026.7.14
+
+* 调整 soloncode web 移除思考块计时器功能及时长显示
+* 修复 soloncode web 手动停止时，没有提示消息
+* 细节优化
+
 ### v2026.7.13
 
 * 优化 soloncode web 会话删除逻辑（同时删掉内存）
@@ -354,7 +377,7 @@
 * 优化 soloncode acp 输出
 
 ```
-/loop cron:'0 */5 * * * ?' check status
+/loop cron:'0 */5 * * * ? *' check status
 ```
 
 ### v2026.5.5

@@ -1,0 +1,7 @@
+{
+  "name": "full-theme",
+  "displayName": "完整主题",
+  "description": "配方 D：主区/侧栏/设置多区背景 + 表面色 + 强调色（默认可纯 CSS 渐变）",
+  "author": "soloncode",
+  "version": "1.0.0"
+}

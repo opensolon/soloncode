@@ -1,6 +1,8 @@
 # Testing — 测试体系
 
 > 适用场景：单元测试、集成测试、HTTP 接口测试、Mock 测试。
+>
+> 目标版本：4.0.3。
 
 ## 测试框架选择
 
@@ -82,8 +84,10 @@ public class DemoTest {
 
 ### HTTP 接口测试（推荐）
 
+`HttpTester` 走真实 HTTP 时，请打开 `enableHttp = true`（默认 false，仅启动容器不监听端口）：
+
 ```java
-@SolonTest(TestApp.class)
+@SolonTest(value = TestApp.class, enableHttp = true)
 public class DemoTest extends HttpTester {
     @Inject
     UserService userService;
@@ -108,6 +112,25 @@ public class DemoTest extends HttpTester {
                 .data(map)
                 .post()
                 .equals("OK");
+    }
+}
+```
+
+### 事务回滚 `@Rollback`
+
+测试方法（或类）加 `@Rollback`，方法结束后事务回滚，不污染库：
+
+```java
+@SolonTest(TestApp.class)
+public class UserServiceTxTest {
+    @Inject
+    UserService userService;
+
+    @Test
+    @Rollback
+    public void save_then_rollback() {
+        userService.add(new User(1L, "demo"));
+        // 断言业务写入逻辑；方法结束自动回滚
     }
 }
 ```

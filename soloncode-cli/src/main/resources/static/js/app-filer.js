@@ -1039,6 +1039,10 @@
         }
     });
 
-    // ---- 启动 ----
-    loadTree();
+    // ---- 启动：文件树非输入关键路径，延后一点，给 sessions/ws 让带宽 ----
+    if (window.requestIdleCallback) {
+        requestIdleCallback(function() { loadTree(); }, { timeout: 2000 });
+    } else {
+        setTimeout(function() { loadTree(); }, 300);
+    }
 })();

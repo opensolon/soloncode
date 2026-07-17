@@ -89,7 +89,7 @@ resilience4j:
         waitDurationInOpenState: 60000
 ```
 
-**Solon Cloud Breaker (application.yml)：**
+**Solon Cloud Breaker (app.yml)：**
 ```yaml
 solon:
   cloud:
@@ -148,7 +148,13 @@ public class Application {
 
 ### 2.3 任务声明迁移
 
-**Spring Boot (@Scheduled)：**
+> **选型（必读）**
+> - **单机调度**（默认）：继续用 Solon `@Scheduled` + `solon-scheduling-simple` / `quartz` → 见 **`scheduling_migration.md`**
+> - **分布式调度**（多实例只执行一次）：`@CloudJob` + Solon Cloud Job 插件 → 本节
+>
+> Spring 的 `@Scheduled` **不要**一律改成 `@CloudJob`。
+
+**Spring Boot (@Scheduled，单机语义)：**
 ```java
 @Component
 public class DataSyncTask {
@@ -165,7 +171,7 @@ public class DataSyncTask {
 }
 ```
 
-**Solon Cloud (@CloudJob)：**
+**Solon Cloud (@CloudJob，分布式语义)：**
 ```java
 @Component
 public class DataSyncTask {
@@ -197,13 +203,14 @@ solon:
 ```
 
 **关键差异：**
-- `@Scheduled` → `@CloudJob`
-- `@CloudJob` 是分布式任务，天然具备 **防重复执行** 能力（多实例部署时只有一个实例会执行）。
+- **仅分布式场景**：Spring `@Scheduled`（或 XXL-JOB 等）→ Solon `@CloudJob`
+- **单机场景**：Spring `@Scheduled` → Solon `@Scheduled`（`org.noear.solon.scheduling.annotation.Scheduled`），见 `scheduling_migration.md`
+- `@CloudJob` 天然具备 **防重复执行** 能力（多实例部署时只有一个实例会执行）。
 - 任务方法签名可接收 `Context` 参数，获取执行上下文。
-- cron 表达式格式与 Spring 一致，无需调整。
+- cron 多在 cloud job 配置中声明，与注解名称关联。
 
 **陷阱提醒：**
-- 如果只需要单机调度（不需要分布式协调），可继续使用 Solon 的 `@Scheduled`（由 `solon-scheduling-simple` 提供）。
+- 单机调度不要引入 Cloud Job 依赖硬上 `@CloudJob`。
 - `@CloudJob` 的任务名称是必须的，用于在注册中心标识任务。
 
 ## 3. 链路追踪迁移
@@ -486,7 +493,7 @@ public class OrderService {
 ## 10. 可观测性迁移检查清单
 
 - [ ] 将 `@HystrixCommand` / `@CircuitBreaker` 改为 `@CloudBreaker`
-- [ ] 将 `@Scheduled` 改为 `@CloudJob`（如需分布式调度）
+- [ ] 调度选型：单机 `@Scheduled` → `scheduling_migration.md`；仅分布式才 `@CloudJob`（勿一律替换）
 - [ ] 将 `Tracer` 注入改为 `CloudClient.trace()` 静态调用
 - [ ] 确认分布式锁使用 `CloudClient.lock()` 替代第三方锁库
 - [ ] 确认所有可观测性插件（trace、metric、log）配置正确

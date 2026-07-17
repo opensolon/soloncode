@@ -2,9 +2,9 @@
 
 > Spring Boot → Solon Web Filter、拦截器、全局异常处理及 CORS 迁移指南（目标版本：Solon 4.0.x）
 
-## 3. Filter / Interceptor 迁移
+## 1. Filter / Interceptor 迁移
 
-### 3.1 Servlet Filter → Solon Filter
+### 1.1 Servlet Filter → Solon Filter
 
 #### Before — Spring
 
@@ -67,7 +67,7 @@ public class AuthFilter implements Filter {
 > - Spring 调用 `chain.doFilter(req, res)` 继续执行；Solon 调用 `chain.doFilter(ctx)`。
 > - 终止请求的方式相同：不调用 chain 的 `doFilter` 方法即终止。
 
-### 3.2 HandlerInterceptor → RouterInterceptor
+### 1.2 HandlerInterceptor → RouterInterceptor
 
 #### Before — Spring
 
@@ -153,7 +153,7 @@ public class LogRouterInterceptor implements RouterInterceptor {
 > - Spring 的 `HandlerInterceptor` 有 `preHandle`、`postHandle`、`afterCompletion` 三个方法；Solon 的 `RouterInterceptor` 通过 `chain.doIntercept()` 的前后位置统一处理。
 > - Solon 不需要额外的 `WebMvcConfigurer` 配置类，`@Component` 自动注册。
 
-### 3.3 执行顺序控制
+### 1.3 执行顺序控制
 
 #### Before — Spring
 
@@ -186,9 +186,9 @@ public class LogFilter implements Filter { ... }
 > - 如果不指定 `index`，默认值为 0，多个 Filter 的执行顺序不确定。
 > - 建议为所有 Filter 和 RouterInterceptor 明确指定 `index` 值。
 
-## 4. 全局异常处理
+## 2. 全局异常处理
 
-### 4.1 @ControllerAdvice → Filter
+### 2.1 @ControllerAdvice → Filter
 
 #### Before — Spring
 
@@ -263,9 +263,9 @@ public class GlobalExceptionFilter implements Filter {
 > - 将 `GlobalExceptionFilter` 的 `index` 设为最小值（如 0），确保它包裹所有后续处理逻辑。
 > - 可以在 Filter 内部使用统一的响应格式类（如 `Result<T>`）保证输出一致性。
 
-## 5. CORS 迁移
+## 3. CORS 迁移
 
-### 5.1 @CrossOrigin / WebMvcConfigurer → @CrossOrigin
+### 3.1 @CrossOrigin / WebMvcConfigurer → @CrossOrigin
 
 #### Before — Spring（注解方式）
 
@@ -297,7 +297,7 @@ public class CorsConfig implements WebMvcConfigurer {
 }
 ```
 
-### 5.2 注解式 CORS（推荐）
+### 3.2 注解式 CORS（推荐）
 
 引入 `solon-web-cors` 插件后，可直接使用 `@CrossOrigin` 注解：
 
@@ -322,10 +322,10 @@ public class ApiController {
 
 > **说明**：`solon-web-cors` **不提供 YAML 配置式支持**。CORS 配置方式有三种：
 > 1. `@CrossOrigin` 注解（推荐）
-> 2. `CrossFilter` 编程式（见 5.3 节）
+> 2. `CrossFilter` 编程式（见 3.3 节）
 > 3. `CrossInterceptor` 路由拦截器
 
-### 5.3 编程式 CORS（CrossFilter）
+### 3.3 编程式 CORS（CrossFilter）
 
 适合动态场景，需手动处理预检请求：
 
@@ -355,3 +355,26 @@ public class CorsFilter implements Filter {
 > - CORS Filter 必须在所有其他 Filter 之前执行，否则预检请求（OPTIONS）可能被后续 Filter 拦截。
 > - 生产环境中 `allowedOrigins` 不应设置为 `*`，应明确指定允许的域名。
 > - 推荐使用 `@CrossOrigin` 注解方式管理 CORS，避免硬编码。
+
+---
+
+## 4. 陷阱与差异汇总
+
+| 编号 | 陷阱 | 说明 |
+|---|---|---|
+| 1 | **Filter 顺序** | 用 `@Component(index=N)`；index 越小越靠外。未指定则顺序不确定。 |
+| 2 | **无 `@ControllerAdvice`** | 全局异常用 `Filter` try-catch（或统一异常处理约定），见上文。 |
+| 3 | **Interceptor 模型** | `HandlerInterceptor` → `RouterInterceptor`（API 与生命周期不同）。 |
+| 4 | **CORS 无 YAML 一等公民** | 用 `@CrossOrigin` / `CrossFilter` / `CrossInterceptor` + `solon-web-cors`。 |
+| 5 | **鉴权另文** | Spring Security 链不要塞进普通 Filter 硬复刻；见 `security_migration.md`。 |
+| 6 | **校验异常** | `ValidatorException` 处理见 `validation_migration.md`，可与全局 Filter 合并。 |
+
+## 5. 迁移检查清单
+
+- [ ] `OncePerRequestFilter` / Servlet `Filter` → Solon `Filter` + `@Component(index=...)`
+- [ ] `HandlerInterceptor` → `RouterInterceptor`
+- [ ] `@ControllerAdvice` + `@ExceptionHandler` → 全局 `Filter` 捕获
+- [ ] CORS：`WebMvcConfigurer` → `@CrossOrigin` 或 `CrossFilter`；引入 `solon-web-cors`
+- [ ] 预检 OPTIONS 不被鉴权/业务 Filter 误伤
+- [ ] 鉴权需求转到 `security_migration.md`（`AuthAdapter`），避免半套 Security Filter
+- [ ] 校验失败响应与业务异常响应策略统一

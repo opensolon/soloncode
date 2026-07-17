@@ -91,6 +91,8 @@
         }).fail(function () { console.error('[Settings] Failed to load loop settings'); });
     }
 
+    // 皮肤切换由 app-settings-skin.js 统一处理（含服务端 activeSkin 持久化）
+
     $('#generalSaveBtn').on('click', function () {
         var $generalSaveBtn = $('#generalSaveBtn');
         var bodyObj = {

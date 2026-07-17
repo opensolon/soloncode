@@ -26,8 +26,17 @@ function SessionState(sessionId) {
     $(this.container).addClass('messages-inner');
     $(this.container).hide();
     $(messagesWrap).append(this.container);
+    // 监听会话容器高度变化，异步内容增高时保持贴底
+    if (typeof observeMessagesHeight === 'function') {
+        observeMessagesHeight(this.container);
+    }
     this.eventSource = null;
     this.isStreaming = false;
+    // 用户点 Stop 后等待服务端 error/trace/done；期间禁止迟到 chunk 再拉起新流
+    this.stopRequested = false;
+    // 是否接受 agent 流 chunk。finishStream 后关闭，仅 send / user_input / 主动开流时打开，
+    // 防止 done 之后的迟到 error/trace/text 把 UI 再次拉起。
+    this.acceptingStream = false;
     this.currentBubbleEl = null;
     this.nextContentBlock = false;
     this.reasonBuffer = '';
@@ -47,8 +56,6 @@ function SessionState(sessionId) {
     this.thinkingStartTime = null;
     this.inlineThinkingTimerId = null;
     this.inlineThinkingStartTime = null;
-    this.thinkingBlockTimerId = null;
-    this.thinkingBlockStartTime = null;
     this.messageStartTime = null;
     // Context 条本轮总计时：发送起算，finishStream 定格
     this.roundStartedAt = null;
@@ -119,19 +126,136 @@ function deactivateSession() {
 }
 
 /* ===== Helpers ===== */
-$(messagesWrap).on('scroll', function() {
-    var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
-    userScrolledUp = gap > 80;
-});
+/* 程序化贴底期间忽略被动 scroll 事件，避免布局未稳时把 userScrolledUp 误判为 true。
+   典型场景：思考组同时追加多张 tool-card、流式 MD 节流晚一帧增高。
+   用户真实上滑用 wheel/touch/pointer 识别，不被程序化窗口吞掉。 */
+var _programmaticScrollUntil = 0;
+var _scrollStickUntil = 0;
 var scrollRafPending = false;
+var scrollFollowTimer = null;
+/* force 贴底默认窗口：覆盖首条切页布局、图片解码、hljs/mermaid 异步增高 */
+var SCROLL_FORCE_STICK_MS = 1200;
+var SCROLL_STREAM_STICK_MS = 280;
+/* 图片 onload / mermaid / hljs / ResizeObserver 等异步增高：单次信号也要跟够一会儿 */
+var SCROLL_ASYNC_STICK_MS = 600;
+var SCROLL_PROGRAMMATIC_MS = 160;
+
+function _markUserScrolledUp() {
+    userScrolledUp = true;
+    _scrollStickUntil = 0;
+    if (scrollFollowTimer) {
+        clearTimeout(scrollFollowTimer);
+        scrollFollowTimer = null;
+    }
+}
+
+function _syncUserScrollFromGap() {
+    if (!messagesWrap) return;
+    var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
+    if (gap > 80) {
+        _markUserScrolledUp();
+    } else {
+        userScrolledUp = false;
+    }
+}
+
+// 滚轮 / 触控：立即识别用户意图（优先于程序化贴底）
+$(messagesWrap).on('wheel', function(e) {
+    var dy = (e.originalEvent && e.originalEvent.deltaY) || 0;
+    if (dy < 0) {
+        _markUserScrolledUp();
+    } else if (dy > 0) {
+        // 向下滚时按实际 gap 同步；到了底部则恢复粘底
+        requestAnimationFrame(_syncUserScrollFromGap);
+    }
+});
+$(messagesWrap).on('touchstart', function() {
+    // 触控开始后的 scroll 视为用户操作，短暂关闭程序化忽略
+    _programmaticScrollUntil = 0;
+});
+$(messagesWrap).on('scroll', function() {
+    if (Date.now() < _programmaticScrollUntil) return;
+    _syncUserScrollFromGap();
+});
+
+function _applyScrollBottom() {
+    if (!messagesWrap || userScrolledUp) return;
+    _programmaticScrollUntil = Date.now() + SCROLL_PROGRAMMATIC_MS;
+    messagesWrap.scrollTop = messagesWrap.scrollHeight;
+}
+
+/**
+ * 内容异步增高时补贴底（图片 onload / mermaid / hljs / ResizeObserver）。
+ * 仅在用户未主动上滑时生效，不 force 清掉 userScrolledUp。
+ */
+function scheduleScrollToBottom() {
+    if (userScrolledUp) return;
+    // 异步增高可能只触发一次信号（如图片 load），用更长窗口让 followTick 跟上
+    _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_ASYNC_STICK_MS);
+    scrollToBottom(false);
+}
+
+/**
+ * 监听消息容器高度变化：图片解码、异步图表、字体回流后自动贴底。
+ * 用户上滑后不打扰；回到底部后由 scroll 逻辑恢复粘底。
+ */
+var _messagesResizeObserver = null;
+function observeMessagesHeight(el) {
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!_messagesResizeObserver) {
+        _messagesResizeObserver = new ResizeObserver(function() {
+            if (userScrolledUp) return;
+            // 只延长粘底窗口并请求贴底；scrollToBottom 内部合并 RAF
+            scheduleScrollToBottom();
+        });
+    }
+    try {
+        _messagesResizeObserver.observe(el);
+    } catch (e) {}
+}
+// 列表根容器：会话增高、滚动条出现导致 clientHeight 变化时也补贴底
+if (messagesWrap) observeMessagesHeight(messagesWrap);
+ 
+ /**
+ * 贴底滚动（流式粘底）。
+ * - force：强制贴底并清除 userScrolledUp
+ * - 同一帧多次调用合并为一次 RAF
+ * - 粘底窗口内会在高度继续变化时再补滚（多 tool-call / 思考收起 / 节流 MD 增高）
+ */
 function scrollToBottom(force) {
     if (!force && userScrolledUp) return;
-    if (force) userScrolledUp = false;
+    if (force) {
+        userScrolledUp = false;
+        // force 时给更长粘底窗口，覆盖首条切页、图片解码、finishThinking + 多 tool 连续插入
+        _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_FORCE_STICK_MS);
+    } else if (!userScrolledUp) {
+        // 普通流式输出：短粘底，覆盖同帧后到的布局增高
+        _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_STREAM_STICK_MS);
+    }
     if (scrollRafPending) return;
     scrollRafPending = true;
     requestAnimationFrame(function() {
         scrollRafPending = false;
-        messagesWrap.scrollTop = messagesWrap.scrollHeight;
+        if (userScrolledUp) return;
+        _applyScrollBottom();
+        // 双 RAF：等本帧布局（多 DOM 插入）完成后再贴一次
+        requestAnimationFrame(function() {
+            if (userScrolledUp) return;
+            _applyScrollBottom();
+        });
+        // 短窗口跟随：处理节流 MD / 多 tool 连续增高 / 异步渲染
+        // 每次 tick 读最新 _scrollStickUntil，便于图片/ResizeObserver 延长窗口后继续跟
+        if (scrollFollowTimer) clearTimeout(scrollFollowTimer);
+        function followTick() {
+            scrollFollowTimer = null;
+            if (userScrolledUp) return;
+            if (Date.now() > _scrollStickUntil) return;
+            _applyScrollBottom();
+            if (Date.now() < _scrollStickUntil && !userScrolledUp) {
+                scrollFollowTimer = setTimeout(followTick, 48);
+            }
+        }
+        scrollFollowTimer = setTimeout(followTick, 48);
     });
 }
 
@@ -151,6 +275,9 @@ function resetStreamState(sess) {
     sess.streamSegments = [];
     sess.currentStreamSegment = null;
     sess.streamSegmentSeq = 0;
+    // 清空流式 chunk 批处理队列
+    sess._chunkQueue = [];
+    sess._chunkDrainScheduled = false;
     // Cancel per-reasonId RAF IDs before clearing
     for (var _rid in sess.reasonGroups) {
         if (sess.reasonGroups[_rid].reasonRafId) {
@@ -184,9 +311,13 @@ function autoResize(el) {
 }
 
 function escapeHtml(str) {
-    var div = $('<div>')[0];
-    $(div).text(str);
-    return div.innerHTML;
+    // 字符串替换，避免热路径反复 createElement
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function formatFileSize(bytes) {

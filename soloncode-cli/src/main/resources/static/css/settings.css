@@ -5,14 +5,30 @@
 .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center; animation: settings-fade-in 0.2s ease-out; }
 @keyframes settings-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.settings-panel { width: 900px; height: 600px; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 12px 48px rgba(0,0,0,0.25); display: flex; animation: settings-slide-up 0.25s ease-out; overflow: hidden; }
+.settings-panel {
+    width: 900px;
+    height: 600px;
+    background-color: var(--bg-settings-surface);
+    background-image:
+        linear-gradient(var(--bg-settings-overlay), var(--bg-settings-overlay)),
+        var(--bg-settings-image);
+    background-size: var(--bg-settings-image-size);
+    background-position: var(--bg-settings-image-position);
+    background-repeat: var(--bg-settings-image-repeat);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.25);
+    display: flex;
+    animation: settings-slide-up 0.25s ease-out;
+    overflow: hidden;
+}
 @keyframes settings-slide-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 
 .settings-content { flex: 1; display: flex; overflow: hidden; }
-.settings-tabs { display: flex; flex-direction: column; border-right: 1px solid var(--border-color); padding: 20px 0; min-width: 180px; background: var(--bg-hover); border-radius: 16px 0 0 16px; }
+.settings-tabs { display: flex; flex-direction: column; border-right: 1px solid var(--border-color); padding: 20px 0; min-width: 180px; background: var(--bg-settings-tabs); border-radius: 16px 0 0 16px; }
 .settings-tab { padding: 10px 20px; background: none; border: none; border-left: 3px solid transparent; color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 8px; }
 .settings-tab:hover { color: var(--text-primary); background: rgba(0,0,0,0.03); }
-.settings-tab.active { color: var(--accent); border-left-color: var(--accent); background: var(--bg-sidebar); font-weight: 600; }
+.settings-tab.active { color: var(--accent); border-left-color: var(--accent); background: var(--bg-settings); font-weight: 600; }
 .settings-tabs-footer { margin-top: auto; padding: 12px 20px 4px; }
 .settings-product-name { font-size: 13px; font-weight: 500; color: var(--text-secondary); opacity: 0.7; letter-spacing: 0.5px; margin-bottom: 2px; }
 .settings-version { font-size: 11px; color: var(--text-secondary); opacity: 0.7; }
@@ -495,6 +511,170 @@
 }
 .general-card-body {
     padding: 14px 18px 18px;
+}
+
+/* ===== Skin picker（通用 → 界面效果，一行 4 块） ===== */
+.general-subblock-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+.skin-manage-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.8;
+    margin-top: 8px;
+}
+.skin-card-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+@media (max-width: 720px) {
+    .skin-card-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+.skin-card {
+    position: relative;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--bg-input-box);
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.skin-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+.skin-card.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+/* 选中态：左上角勾 */
+.skin-check {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    pointer-events: none;
+}
+.skin-card-preview {
+    height: 52px;
+    background: linear-gradient(135deg, var(--bg-hover), var(--bg-main));
+    background-size: cover;
+    background-position: center;
+    flex-shrink: 0;
+}
+.skin-card-preview--default { background: linear-gradient(135deg, #eef1ff, #f7f8fc); }
+.skin-card-preview--eyecare { background: linear-gradient(135deg, #e4edd8, #f3f6ea 50%, #eef3e4); }
+.skin-card-preview--contrast { background: linear-gradient(135deg, #dbeafe, #f8fafc); }
+[data-theme="dark"] .skin-card-preview--default { background: linear-gradient(135deg, #1a1a2e, #16162a); }
+[data-theme="dark"] .skin-card-preview--eyecare { background: linear-gradient(135deg, #141a12, #1b2218); }
+[data-theme="dark"] .skin-card-preview--contrast { background: linear-gradient(135deg, #0f172a, #1e293b); }
+.skin-card-body {
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+.skin-card-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    line-height: 1.3;
+}
+.skin-card-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.skin-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 8px;
+    min-height: 22px;
+}
+/* 本地皮肤：卸载 + 导出 居中排列 */
+.skin-card-actions--local {
+    justify-content: center;
+}
+.skin-badge {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0 5px;
+    line-height: 15px;
+    flex-shrink: 0;
+}
+.skin-badge.local {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+.skin-empty {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 8px 0;
+    grid-column: 1 / -1;
+}
+
+/* 上传皮肤：与预置皮肤同形块，虚线表示「添加」 */
+.skin-card--upload {
+    border-style: dashed;
+    background: transparent;
+}
+.skin-card--upload:hover {
+    background: var(--bg-hover);
+}
+.skin-card-preview--upload {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--bg-hover), var(--bg-main));
+    color: var(--text-secondary);
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1;
+}
+[data-theme="dark"] .skin-card-preview--upload {
+    background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+}
+.skin-card--upload .skin-card-title {
+    color: var(--text-primary);
+}
+.skin-card--upload .skin-card-desc {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* 字段行 */

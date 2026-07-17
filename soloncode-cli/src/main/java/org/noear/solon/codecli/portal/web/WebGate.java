@@ -18,6 +18,7 @@ package org.noear.solon.codecli.portal.web;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.ChatModel;
@@ -49,9 +50,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -65,6 +66,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class WebGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WebGate.class);
+
+    /** 会话属性：本轮 agent 流是否已向客户端发送过 done（防 interrupt + doFinally 双发） */
+    private static final String ATTR_STREAM_DONE_SENT = "streamDoneSent";
 
     /** AI 引擎实例，提供会话管理、模型获取、命令注册等核心能力 */
     private final HarnessEngine engine;
@@ -195,6 +199,38 @@ public class WebGate extends SimpleWebSocketListener {
     }
 
     /**
+     * 流级 done 只发一次；返回 true 表示本次真正发出。
+     *
+     * <p>覆盖正常完成、异常、用户 interrupt 等路径，避免 dispose + doFinally 与
+     * interrupt 显式 ofDone 造成双 done。</p>
+     */
+    private boolean emitDoneOnce(AgentSession session) {
+        if (session == null) {
+            return false;
+        }
+        AtomicBoolean doneSent = (AtomicBoolean) session.attrs()
+                .computeIfAbsent(ATTR_STREAM_DONE_SENT, k -> new AtomicBoolean(false));
+        if (!doneSent.compareAndSet(false, true)) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("[WebGate] skip duplicate done for session {}", session.getSessionId());
+            }
+            return false;
+        }
+        emitToClient(session.getSessionId(), WebChunk.ofDone());
+        return true;
+    }
+
+    /**
+     * 新开流前重置 done 标记，避免上一轮 streamDoneSent 挡住本轮 done。
+     */
+    private void resetStreamDoneSent(AgentSession session) {
+        if (session == null) {
+            return;
+        }
+        session.attrs().put(ATTR_STREAM_DONE_SENT, new AtomicBoolean(false));
+    }
+
+    /**
      * 广播原始 JSON 字符串到所有 WebSocket 连接。
      *
      * <p>与 {@link #emitToClient} 不同，此方法不注入 sessionId，
@@ -217,6 +253,18 @@ public class WebGate extends SimpleWebSocketListener {
     // ═══════════════════════════════════════════════════════════════
     //  输入端口 —— 接收并处理用户请求
     // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * 用户聊天输入入口（含推理选项）。
+     */
+    public void onChatInput(String sessionId,
+                            String sessionCwd,
+                            String input, String selectedModel,
+                            UploadedFile[] attachments, String[] attachmentTypes,
+                            String hitlAction, String source) {
+        onChatInput(sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
+                hitlAction, source, null);
+    }
 
     /**
      * 用户聊天输入入口（由 WebController HTTP 接口调用）。
@@ -244,24 +292,12 @@ public class WebGate extends SimpleWebSocketListener {
                             String sessionCwd,
                             String input, String selectedModel,
                             UploadedFile[] attachments, String[] attachmentTypes,
-                            String hitlAction, String source) {
-        onChatInput(sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
-                hitlAction, source, null);
-    }
-    
-    /**
-     * 用户聊天输入入口（含推理选项）。
-     */
-    public void onChatInput(String sessionId,
-                            String sessionCwd,
-                            String input, String selectedModel,
-                            UploadedFile[] attachments, String[] attachmentTypes,
                             String hitlAction, String source,
                             String reasoningEffort) {
         AgentSession session = null;
         try {
             session = engine.getSession(sessionId);
-            
+
             // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）
             if (Assert.isNotEmpty(selectedModel)) {
                 session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
@@ -381,7 +417,12 @@ public class WebGate extends SimpleWebSocketListener {
         } catch (Exception e) {
             LOG.error("Task fail: {}", e.getMessage(), e);
             emitToClient(sessionId, WebChunk.ofError(e));
-            emitToClient(sessionId, WebChunk.ofDone());
+            // 流可能尚未建立：有 session 走去重出口，否则直接发 done
+            if (session != null) {
+                emitDoneOnce(session);
+            } else {
+                emitToClient(sessionId, WebChunk.ofDone());
+            }
         } finally {
             if (session != null) {
                 if (session.isEmpty() && Assert.isNotEmpty(input)) {
@@ -430,6 +471,9 @@ public class WebGate extends SimpleWebSocketListener {
         ChatModel chatModel = engine.getModelOrMain(selectedModel);
         ReActAgent agent = engine.getAgentOrMain(agentName);
 
+        // 新开流前重置，避免上一轮 streamDoneSent 挡住本轮 done
+        resetStreamDoneSent(session);
+
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
@@ -437,13 +481,14 @@ public class WebGate extends SimpleWebSocketListener {
                 })
                 .doOnError(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
-                    session.attrs().remove("disposable");
 
                     emitToClient(sessionId, WebChunk.ofError(e));
-                    emitToClient(sessionId, WebChunk.ofDone());
                 })
                 .doFinally(s -> {
                     session.attrs().remove("disposable");  // 正常完成时清理
+
+                    // 流级终态只发一次（含 dispose / 正常 complete / error）
+                    emitDoneOnce(session);
                 })
                 .subscribe();
 
@@ -478,6 +523,9 @@ public class WebGate extends SimpleWebSocketListener {
         CountDownLatch countDownLatch = new CountDownLatch(1);
         AtomicReference<String> finalAnswerRef = new AtomicReference<>("");
 
+        // 新开流前重置，避免上一轮 streamDoneSent 挡住本轮 done
+        resetStreamDoneSent(session);
+
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
@@ -491,10 +539,12 @@ public class WebGate extends SimpleWebSocketListener {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
                     emitToClient(sessionId, WebChunk.ofError(e));
-                    emitToClient(sessionId, WebChunk.ofDone());
                 })
                 .doFinally(s -> {
                     session.attrs().remove("disposable");
+
+                    // 流级终态只发一次（含 dispose / 正常 complete / error）
+                    emitDoneOnce(session);
                     countDownLatch.countDown();
                 })
                 .subscribe();
@@ -778,8 +828,12 @@ public class WebGate extends SimpleWebSocketListener {
     /**
      * 中断指定会话的当前 AI 任务。
      *
-     * <p>从会话属性中取出并销毁 RxJava {@link Disposable} 以终止流式订阅，
-     * 同时向会话历史追加一条取消记录，并向前端推送完成信号。</p>
+     * <p>仅当会话存在活跃流（disposable 未 dispose）时发出取消语义；
+     * 无活跃流时不写历史、不推送取消 error/trace，仅在尚未发过 done 时兜底
+     * {@link #emitDoneOnce}，避免双击 Stop 或自然结束后仍刷「用户已取消任务」。</p>
+     *
+     * <p>有活跃流时同线程保证包序：error → 可选 trace → done → dispose。
+     * dispose 触发的 {@code doFinally} 中 {@link #emitDoneOnce} 因 CAS 跳过，不会双发 done。</p>
      *
      * @param sessionId 待中断的会话标识
      */
@@ -787,11 +841,30 @@ public class WebGate extends SimpleWebSocketListener {
         try {
             AgentSession session = engine.getSession(sessionId);
             Disposable disposable = (Disposable) session.attrs().remove("disposable");
-            if (disposable != null) {
-                disposable.dispose();
+
+            // 无活跃流：不发取消语义；若尚未发 done 则兜底，便于前端收尾
+            if (disposable == null || disposable.isDisposed()) {
+                boolean sent = emitDoneOnce(session);
+                if (sent) {
+                    LOG.info("[WebGate] Session {} interrupt ignored (no active stream), emitted fallback done", sessionId);
+                } else {
+                    LOG.info("[WebGate] Session {} interrupt ignored (no active stream)", sessionId);
+                }
+                return;
             }
+
+            // 1) 取消语义：error + 可选 final/trace
             session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
-            emitToClient(sessionId, WebChunk.ofDone());
+            emitToClient(sessionId, WebChunk.ofError("用户已取消任务."));
+
+            ReActTrace trace = session.getContext().getAs("__main");
+            if (trace != null) {
+                emitToClient(sessionId, streamBuilder.onFinalChunk(session, trace, true, "用户已取消任务."));
+            }
+
+            // 2) 同线程先发 done，再 dispose；doFinally 中 emitDoneOnce 因 CAS 跳过
+            emitDoneOnce(session);
+            disposable.dispose();
             LOG.info("[WebGate] Session {} interrupted", sessionId);
         } catch (Exception e) {
             LOG.error("[WebGate] Interrupt failed for session {}: {}", sessionId, e.getMessage());

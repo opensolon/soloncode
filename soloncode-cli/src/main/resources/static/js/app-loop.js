@@ -24,13 +24,13 @@
         return inChatMode ? $chatLoopBtn : $welcomeLoopBtn;
     }
 
-    // ========== 预设模板 v2（优化版） ==========
+    // ========== 预设模板 v3（精选真实场景版） ==========
     var LOOP_TEMPLATES = [
         {
             id: 'auto-fix',
             icon: 'AF',
             name: '自动修复循环',
-            desc: '反复运行测试 → 分析失败 → 修复代码 → 验证通过',
+            desc: '运行测试 → 分析失败 → 修复代码 → 验证通过，循环直至全部通过',
             data: {
                 prompt: '运行项目的测试套件，收集所有失败的测试用例；逐一分析失败根因（检查断言、逻辑、依赖），修复对应源码；提交修复并确认所有测试通过。如遇无法修复的阻塞问题，详细记录原因后暂停',
                 intervalMinutes: 10,
@@ -39,37 +39,25 @@
             }
         },
         {
-            id: 'code-refactor',
-            icon: 'RF',
-            name: '代码重构',
-            desc: '逐步重构指定模块，保持测试通过',
-            data: {
-                prompt: '分析项目中需要重构的模块（高复杂度/重复代码/坏味道），制定重构计划；每次重构一个单元后运行测试确保不引入回归；持续迭代直到目标模块重构完成',
-                intervalMinutes: 15,
-                type: 'GOAL',
-                runNow: true
-            }
-        },
-        {
-            id: 'daily-review',
+            id: 'code-review',
             icon: 'CR',
-            name: '每日代码审查',
-            desc: '每天 9 点审查昨日提交，生成风险报告',
+            name: '代码审查助手',
+            desc: '每天 9 点审查昨日代码提交，自动识别风险并生成审查报告',
             data: {
-                prompt: '从昨天 0 点到今天 8 点间的所有提交中提取变更摘要（按文件分类），检查是否存在以下风险：未处理的错误、硬编码密钥、SQL 注入隐患、内存泄漏、逻辑漏洞。输出包含风险等级（高/中/低）的汇总报告',
-                cron: '0 9 * * *',
+                prompt: '从昨天 0 点到今天 8 点间的所有提交中提取变更摘要（按文件分类），检查是否存在以下风险：未处理的错误、硬编码密钥、SQL 注入隐患、内存泄漏、逻辑漏洞。输出包含风险等级（高/中/低）的汇总报告，并针对高风险项给出修复建议',
+                cron: '0 0 9 * * ? *',
                 type: 'HEARTBEAT',
                 runNow: false
             }
         },
         {
-            id: 'daily-memory',
-            icon: 'MR',
-            name: '每晚记忆整理',
-            desc: '每晚 22 点归纳当日对话，沉淀长期记忆',
+            id: 'dep-security',
+            icon: 'DS',
+            name: '依赖安全巡检',
+            desc: '定期扫描项目依赖，发现已知安全漏洞与版本过期风险',
             data: {
-                prompt: '回顾当天所有对话记录，按以下维度提取关键信息：1）技术决策（架构选型、依赖引入、配置变更）2）用户偏好（编码风格、命名习惯、工具偏好）3）重要约束（性能要求、兼容性限制、安全规范）4）待办事项（遗留问题、后续计划）。将提炼后的信息整理为结构化记忆条目存入长期记忆',
-                cron: '0 22 * * *',
+                prompt: '扫描项目所有直接和传递依赖，检查：1）已知安全漏洞（CVE）及其严重程度 2）版本是否过时（最新稳定版 vs 当前版本）3）依赖间的兼容性冲突。汇总为依赖健康报告，标注每个问题的建议操作（升级/降级/替换/忽略），并对高危漏洞单独高亮告警',
+                intervalMinutes: 60,
                 type: 'HEARTBEAT',
                 runNow: false
             }
@@ -77,48 +65,12 @@
         {
             id: 'test-coverage',
             icon: 'TC',
-            name: '测试补全',
-            desc: '扫描未覆盖代码，逐步补充单元测试',
+            name: '测试覆盖率守护',
+            desc: '扫描未覆盖代码，按优先级逐步补充单元测试直至达标',
             data: {
-                prompt: '运行测试覆盖率工具，列出未被测试覆盖的模块/方法；选择优先级最高的模块（核心逻辑 > 边界条件 > 工具函数），编写缺失的单元测试；每次提交后重新检查覆盖率，持续迭代直到目标覆盖率达成',
+                prompt: '运行测试覆盖率工具，列出未被测试覆盖的模块/方法；按优先级排序（核心逻辑 > 边界条件 > 工具函数），逐个编写缺失的单元测试；每次提交后重新检查覆盖率，持续迭代直到目标覆盖率达成',
                 intervalMinutes: 15,
                 type: 'GOAL',
-                runNow: true
-            }
-        },
-        {
-            id: 'ci-monitor',
-            icon: 'CI',
-            name: 'CI 构建监控',
-            desc: '每 30 分钟检查 CI 状态，失败时自动诊断',
-            data: {
-                prompt: '检查项目 CI 的最新构建状态（包括编译、测试、lint、打包等阶段）。如有失败阶段，按以下流程诊断：1）定位失败日志的关键错误行 2）分析根因（代码变更/环境问题/配置错误）3）给出修复建议。如连续 3 次检查同一问题未修复，标记为阻塞',
-                intervalMinutes: 30,
-                type: 'HEARTBEAT',
-                runNow: false
-            }
-        },
-        {
-            id: 'dep-upkeep',
-            icon: 'DU',
-            name: '依赖健康检查',
-            desc: '检查依赖安全漏洞与版本兼容性',
-            data: {
-                prompt: '扫描项目所有直接和传递依赖，检查：1）已知安全漏洞（CVE）及其严重程度 2）版本是否过时（最新稳定版 vs 当前版本）3）依赖间的兼容性冲突。汇总为依赖健康报告，标注每个问题的建议操作（升级/降级/替换/忽略）',
-                intervalMinutes: 60,
-                type: 'HEARTBEAT',
-                runNow: false
-            }
-        },
-        {
-            id: 'health-check',
-            icon: 'HC',
-            name: '服务健康巡检',
-            desc: '每 5 分钟探测核心端点，异常即时告警',
-            data: {
-                prompt: '依次探测所有核心服务端点的健康状态（HTTP GET /health 或等价端点），记录每个端点的响应状态码、响应时间、返回体摘要。如有异常（非 2xx/超时/连接拒绝），立即输出告警信息并持续监控直到恢复',
-                intervalMinutes: 5,
-                type: 'HEARTBEAT',
                 runNow: true
             }
         }
@@ -504,11 +456,11 @@
         html += '</div>';
         html += '<div class="loop-interval-row">';
         html += '<label class="loop-radio"><input type="radio" name="loopScheduleType" value="cron"/> Cron 表达式</label>';
-        html += '<input type="text" class="loop-input loop-input-sm" id="loopFormCron" placeholder="0 */5 * * * ?"/>';
+        html += '<input type="text" class="loop-input loop-input-sm" id="loopFormCron" placeholder="0 */5 * * * ? *"/>';
         html += '<span class="loop-cron-hint">示例:</span> ';
-        html += '<a class="loop-cron-link" data-cron="0 0 */2 * * ?">每2小时</a>';
-        html += '<a class="loop-cron-link" data-cron="0 0 22 * * ?">每天22点</a> ';
-        html += '<a class="loop-cron-link" data-cron="0 0 0 * * 1">每周一</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 0 */2 * * ? *">每2小时</a>';
+        html += '<a class="loop-cron-link" data-cron="0 0 22 * * ? *">每天22点</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 0 0 ? * 1 *">每周一</a> ';
         html += '</div>';
         html += '</div>';
         html += '</div>';  // 结束 loop-form-schedule

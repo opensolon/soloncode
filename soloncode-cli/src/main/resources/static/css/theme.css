@@ -5,6 +5,11 @@
  * Usage:
  *   <link rel="stylesheet" href="/css/theme.css"/>
  *   <body data-theme="light">
+ *
+ * Skin region background slots (overridable in skin.css):
+ *   body | sidebar | main | filer | settings
+ *   --bg-{region}-image / -overlay / -surface / -image-size|position|repeat
+ *   plus --bg-settings-tabs for settings left nav
  */
 
 /* ===== Common ===== */
@@ -87,6 +92,51 @@
     --tag-border: #e5e7eb;
     --reason-group-think-bg: #f8f9fc;
     --reason-group-think-border: #e0e3eb;
+
+    /* Skin background slots (default: none)
+     * Regions: body / sidebar(left) / main(center) / filer(right) / settings(modal)
+     * Global --bg-image-* fall through; override per-region with --bg-{region}-image-*
+     */
+    --bg-image-size: cover;
+    --bg-image-position: center;
+    --bg-image-repeat: no-repeat;
+
+    --bg-body-image: none;
+    --bg-body-overlay: transparent;
+    --bg-body-image-size: var(--bg-image-size);
+    --bg-body-image-position: var(--bg-image-position);
+    --bg-body-image-repeat: var(--bg-image-repeat);
+
+    --bg-main-image: none;
+    --bg-main-overlay: transparent;
+    --bg-main-surface: var(--bg-main);
+    --bg-main-image-size: var(--bg-image-size);
+    --bg-main-image-position: var(--bg-image-position);
+    --bg-main-image-repeat: var(--bg-image-repeat);
+
+    --bg-sidebar-image: none;
+    --bg-sidebar-overlay: transparent;
+    --bg-sidebar-surface: var(--bg-sidebar);
+    --bg-sidebar-image-size: var(--bg-image-size);
+    --bg-sidebar-image-position: var(--bg-image-position);
+    --bg-sidebar-image-repeat: var(--bg-image-repeat);
+
+    --bg-filer: var(--bg-sidebar);
+    --bg-filer-image: none;
+    --bg-filer-overlay: transparent;
+    --bg-filer-surface: var(--bg-filer);
+    --bg-filer-image-size: var(--bg-image-size);
+    --bg-filer-image-position: var(--bg-image-position);
+    --bg-filer-image-repeat: var(--bg-image-repeat);
+
+    --bg-settings: var(--bg-sidebar);
+    --bg-settings-image: none;
+    --bg-settings-overlay: transparent;
+    --bg-settings-surface: var(--bg-settings);
+    --bg-settings-tabs: var(--bg-hover);
+    --bg-settings-image-size: var(--bg-image-size);
+    --bg-settings-image-position: var(--bg-image-position);
+    --bg-settings-image-repeat: var(--bg-image-repeat);
 }
 
 /* ===== Dark Theme ===== */
@@ -163,6 +213,51 @@
     --tag-border: #333355;
     --reason-group-think-bg: #1a1a30;
     --reason-group-think-border: #2a2a44;
+
+    /* Skin background slots (default: none)
+     * Regions: body / sidebar(left) / main(center) / filer(right) / settings(modal)
+     * Global --bg-image-* fall through; override per-region with --bg-{region}-image-*
+     */
+    --bg-image-size: cover;
+    --bg-image-position: center;
+    --bg-image-repeat: no-repeat;
+
+    --bg-body-image: none;
+    --bg-body-overlay: transparent;
+    --bg-body-image-size: var(--bg-image-size);
+    --bg-body-image-position: var(--bg-image-position);
+    --bg-body-image-repeat: var(--bg-image-repeat);
+
+    --bg-main-image: none;
+    --bg-main-overlay: transparent;
+    --bg-main-surface: var(--bg-main);
+    --bg-main-image-size: var(--bg-image-size);
+    --bg-main-image-position: var(--bg-image-position);
+    --bg-main-image-repeat: var(--bg-image-repeat);
+
+    --bg-sidebar-image: none;
+    --bg-sidebar-overlay: transparent;
+    --bg-sidebar-surface: var(--bg-sidebar);
+    --bg-sidebar-image-size: var(--bg-image-size);
+    --bg-sidebar-image-position: var(--bg-image-position);
+    --bg-sidebar-image-repeat: var(--bg-image-repeat);
+
+    --bg-filer: var(--bg-sidebar);
+    --bg-filer-image: none;
+    --bg-filer-overlay: transparent;
+    --bg-filer-surface: var(--bg-filer);
+    --bg-filer-image-size: var(--bg-image-size);
+    --bg-filer-image-position: var(--bg-image-position);
+    --bg-filer-image-repeat: var(--bg-image-repeat);
+
+    --bg-settings: var(--bg-sidebar);
+    --bg-settings-image: none;
+    --bg-settings-overlay: transparent;
+    --bg-settings-surface: var(--bg-settings);
+    --bg-settings-tabs: var(--bg-hover);
+    --bg-settings-image-size: var(--bg-image-size);
+    --bg-settings-image-position: var(--bg-image-position);
+    --bg-settings-image-repeat: var(--bg-image-repeat);
 }
 
 /* ===== Accessibility ===== */
@@ -235,5 +330,47 @@
         --tag-border: #333355;
         --reason-group-think-bg: #1a1a30;
         --reason-group-think-border: #2a2a44;
+
+        /* Skin background slots (default: none) */
+        --bg-image-size: cover;
+        --bg-image-position: center;
+        --bg-image-repeat: no-repeat;
+
+        --bg-body-image: none;
+        --bg-body-overlay: transparent;
+        --bg-body-image-size: var(--bg-image-size);
+        --bg-body-image-position: var(--bg-image-position);
+        --bg-body-image-repeat: var(--bg-image-repeat);
+
+        --bg-main-image: none;
+        --bg-main-overlay: transparent;
+        --bg-main-surface: var(--bg-main);
+        --bg-main-image-size: var(--bg-image-size);
+        --bg-main-image-position: var(--bg-image-position);
+        --bg-main-image-repeat: var(--bg-image-repeat);
+
+        --bg-sidebar-image: none;
+        --bg-sidebar-overlay: transparent;
+        --bg-sidebar-surface: var(--bg-sidebar);
+        --bg-sidebar-image-size: var(--bg-image-size);
+        --bg-sidebar-image-position: var(--bg-image-position);
+        --bg-sidebar-image-repeat: var(--bg-image-repeat);
+
+        --bg-filer: var(--bg-sidebar);
+        --bg-filer-image: none;
+        --bg-filer-overlay: transparent;
+        --bg-filer-surface: var(--bg-filer);
+        --bg-filer-image-size: var(--bg-image-size);
+        --bg-filer-image-position: var(--bg-image-position);
+        --bg-filer-image-repeat: var(--bg-image-repeat);
+
+        --bg-settings: var(--bg-sidebar);
+        --bg-settings-image: none;
+        --bg-settings-overlay: transparent;
+        --bg-settings-surface: var(--bg-settings);
+        --bg-settings-tabs: var(--bg-hover);
+        --bg-settings-image-size: var(--bg-image-size);
+        --bg-settings-image-position: var(--bg-image-position);
+        --bg-settings-image-repeat: var(--bg-image-repeat);
     }
 }

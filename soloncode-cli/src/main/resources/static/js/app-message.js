@@ -21,12 +21,24 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
 
     // 来源标签（仅非空且非 "Web" 时显示；会在时间戳左侧追加）
 
-    // Multiple images
+    // Multiple images（解码完成后再补滚，避免占位高度 0 导致贴底失效）
     if (imageDataUrls && imageDataUrls.length > 0) {
         var imgWrap = $('<div>').addClass('user-attach-imgs')[0];
         for (var i = 0; i < imageDataUrls.length; i++) {
             var img = $('<img>').attr('src', imageDataUrls[i].dataUrl || imageDataUrls[i])
                 .attr('style', 'max-height:120px;max-width:200px;border-radius:8px;object-fit:cover;')[0];
+            (function(imgEl) {
+                function onImgLayout() {
+                    if (typeof scheduleScrollToBottom === 'function') scheduleScrollToBottom();
+                    else if (typeof scrollToBottom === 'function') scrollToBottom(false);
+                }
+                if (imgEl.complete) {
+                    // 缓存图可能已 complete，下一帧再补一次高度
+                    requestAnimationFrame(onImgLayout);
+                } else {
+                    $(imgEl).one('load error', onImgLayout);
+                }
+            })(img);
             $(imgWrap).append(img);
         }
         $(bubble).append(imgWrap);
@@ -109,8 +121,15 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
 
     addImageLightbox(bubble);
     $(sess.container).append(row);
+    if (typeof observeMessagesHeight === 'function') observeMessagesHeight(row);
     // 容器不在 DOM 树中（如 loadMessages 的临时容器阶段）时跳过滚动，避免无效回流
-    if (sess.sessionId === activeSessionId && document.contains(sess.container)) scrollToBottom(true);
+    if (sess.sessionId === activeSessionId && document.contains(sess.container)) {
+        scrollToBottom(true);
+        // 再补一帧：欢迎页首条 / 宽用户气泡布局稳定后贴底
+        requestAnimationFrame(function() {
+            if (sess.sessionId === activeSessionId && !userScrolledUp) scrollToBottom(true);
+        });
+    }
 }
 
 /* 刷新用户消息的时间戳，在编辑/重发时调用 */
@@ -155,8 +174,9 @@ function ensureAssistantBubble(sess) {
             + '<button class="user-copy-btn del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button>'
             + '</div></div>';
         $(sess.container).append(row);
+        if (typeof observeMessagesHeight === 'function') observeMessagesHeight(row);
         sess.currentBubbleEl = $(row).find('.md-content')[0];
-
+        
         // AI 回复不显示来源标签
         var copyBtn = $(row).find('.copy-btn')[0];
         // 复制目标为「最终答案」：统一从 .md-content 的 data-md-raw 读取。
@@ -606,7 +626,6 @@ function ensureThinkingBlockInGroup(sess, group) {
     var block = $('<div>').addClass('reason-group-think streaming')[0];
     if (initiallyExpanded) $(block).addClass('expanded');
     block.innerHTML = '<div class="reason-group-think-header" aria-expanded="' + initiallyExpanded + '"><span class="reason-group-think-label">思考</span>'
-        + '<span class="thinking-timer-wrap" style="margin-left:4px"><span class="thinking-current-timer">0s</span></span>'
         + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i></div>'
         + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
     $(group.groupEl).append(block);
@@ -618,7 +637,6 @@ function ensureThinkingBlockInGroup(sess, group) {
     group.thinkingBlockEl = block;
     group.thinkingBodyMdEl = $(block).find('.reason-group-think-body .md-content')[0];
     group.thinkingBodyWrapEl = $(block).find('.reason-group-think-body')[0];
-    group.thinkingStartTime = Date.now();
     return block;
 }
 
@@ -653,31 +671,27 @@ function finishThinkingBlock(sess, reasonId) {
             sess.thinkingBuffer = '';
             return;
         }
-        // 保存计时起始时间，防止 stopThinkingTimer 清空后引用丢失
-        var blockStartTime = sess.thinkingBlockStartTime;
-        stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
         if (group.reasonRafId) {
             cancelAnimationFrame(group.reasonRafId);
             group.reasonRafId = null;
-            if (group.thinkingBodyMdEl) {
+        }
+        // 流结束：把轻量文本升级为完整 Markdown
+        if (group.thinkingBodyMdEl) {
+            if (typeof finalizeMdElement === 'function') {
+                finalizeMdElement(group.thinkingBodyMdEl, group.thinkingBuffer || '');
+            } else {
                 group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer || '');
             }
         }
-        if (group.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(group.thinkingBodyMdEl);
         // 检查思考块内容是否超出高度
         if (group.thinkingBodyWrapEl) { checkOverflow(group.thinkingBodyWrapEl, 300); }
         $(group.thinkingBlockEl).removeClass('streaming');
         if (window.cliPrintSimplified !== false) {
             $(group.thinkingBlockEl).removeClass('expanded');
         }
-        var elapsed = '';
-        if (blockStartTime) {
-            elapsed = ' (' + Math.floor((Date.now() - blockStartTime) / 1000) + 's)';
-        }
         var label = $(group.thinkingBlockEl).find('.reason-group-think-label')[0];
-        if (label) $(label).text('思考' + elapsed);
+        if (label) $(label).text('思考');
         $(group.thinkingBlockEl).find('.reason-group-think-dots').remove();
-        $(group.thinkingBlockEl).find('.thinking-timer-wrap').remove();
 
         // ★ 清空组内引用 + 顶层引用，防止 finishStream 再次包裹
         group.thinkingBlockEl = null;
@@ -690,42 +704,42 @@ function finishThinkingBlock(sess, reasonId) {
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
         sess.thinkingBuffer = '';
+        // 思考块收起后高度变化，补一次贴底（多 tool-call 紧随其后时尤其重要）
+        if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
     }
-
+    
     // 旧式逻辑（无 reasonId 时）：结束当前 thinkingBlockEl 并包裹分组
     if (sess.thinkingBlockEl) {
-        stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
         if (sess.reasonRafId) {
             cancelAnimationFrame(sess.reasonRafId);
             sess.reasonRafId = null;
-            if (sess.thinkingBodyMdEl) {
-                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+        }
+        if (sess.thinkingBodyMdEl) {
+            if (typeof finalizeMdElement === 'function') {
+                finalizeMdElement(sess.thinkingBodyMdEl, sess.thinkingBuffer || '');
+            } else {
+                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer || '');
             }
         }
-        if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
         // 检查思考块内容是否超出高度
         if (sess.thinkingBodyWrapEl) { checkOverflow(sess.thinkingBodyWrapEl, 300); }
         $(sess.thinkingBlockEl).removeClass('streaming');
         if (window.cliPrintSimplified !== false) {
             $(sess.thinkingBlockEl).removeClass('expanded');
         }
-        var elapsed = '';
-        if (sess.thinkingBlockStartTime) {
-            elapsed = ' (' + Math.floor((Date.now() - sess.thinkingBlockStartTime) / 1000) + 's)';
-        }
         var label = $(sess.thinkingBlockEl).find('.reason-group-think-label')[0];
-        if (label) $(label).text('思考' + elapsed);
+        if (label) $(label).text('思考');
         $(sess.thinkingBlockEl).find('.reason-group-think-dots').remove();
-        $(sess.thinkingBlockEl).find('.thinking-timer-wrap').remove();
-
+        
         // reason-group 已在 ensureThinkingBlock 中预创建，无需再做 DOM 包裹
         sess.thinkingGroupEl = sess.thinkingBlockEl.parentNode;
-
+        
         sess.thinkingBlockEl = null;
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
         sess.thinkingBuffer = '';
+        if (sess.sessionId === activeSessionId) scrollToBottom();
     }
 }
 
@@ -767,11 +781,15 @@ function appendReasonChunk(sess, segment, text, reasonId, agentName) {
         recordTaskGroupReason(segment);
     }
     group.thinkingBuffer += clean;
-    if (!group.reasonRafId) group.reasonRafId = requestAnimationFrame(function() {
-        group.reasonRafId = null;
-        if (group.thinkingBodyMdEl) group.thinkingBodyMdEl.innerHTML = renderMd(group.thinkingBuffer);
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-    });
+    // 队列 drain 已在 RAF 批处理；此处直接走节流 Markdown 渲染（与主流 coding agent 一致）
+    if (group.thinkingBodyMdEl) {
+        if (typeof renderMdStreaming === 'function') {
+            renderMdStreaming(group.thinkingBodyMdEl, group.thinkingBuffer);
+        } else {
+            group.thinkingBodyMdEl.textContent = group.thinkingBuffer;
+        }
+    }
+    if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
 function finishPendingTool(sess) {
@@ -868,19 +886,34 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
     return true;
 };
 
-/* write / read：按 file_path 推断语言，hljs 语法高亮 */
+/* write / read：按 file_path 推断语言，hljs 语法高亮（hljs 按需加载） */
 function renderHighlightedFile(bodyEl, text, args) {
     if (!text) return false;
     var filePath = (args && args.file_path) || '';
     var lang = (typeof window.guessLang === 'function') ? window.guessLang(filePath) : '';
-    if (lang && typeof hljs !== 'undefined') {
+    function applyHighlight() {
+        if (!(lang && typeof hljs !== 'undefined')) {
+            bodyEl.textContent = text;
+            return;
+        }
         try {
             var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
             bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
-            return true;
-        } catch(e) {
-            return false;
+        } catch (e) {
+            bodyEl.textContent = text;
         }
+    }
+    if (lang && typeof hljs === 'undefined' && typeof ensureHljs === 'function') {
+        // 先纯文本占位，库就绪后升级高亮（不阻塞工具卡展示）
+        bodyEl.textContent = text;
+        ensureHljs(function(err) {
+            if (!err) applyHighlight();
+        });
+        return true;
+    }
+    if (lang && typeof hljs !== 'undefined') {
+        applyHighlight();
+        return true;
     }
     return false;
 }
@@ -1088,6 +1121,40 @@ function findPendingToolCard(sess, callId, reasonId) {
 /* action_start：工具调用前（来源引擎 ActionChunk）提前渲染 loading 卡片骨架。
    存为 pendingToolCards，待 action_end（ObservationChunk 结果）到达时由
    appendActionEndChunk 复用此卡片填充结果体并转完成态。 */
+/* 工具卡 body：默认折叠时延迟重渲染（diff/hljs），展开时再填充，避免 action_end 瞬时卡顿 */
+function bindToolCardToggle(card) {
+    $(card).find('.tool-card-header').off('click.toolcard').on('click.toolcard', function() {
+        var expanded = !$(card).hasClass('expanded');
+        $(card).toggleClass('expanded', expanded);
+        if (expanded && card._pendingToolRender && !card._toolBodyRendered) {
+            card._pendingToolRender();
+        }
+    });
+}
+
+function fillToolCardBody(card, toolName, text, args) {
+    var body = $(card).find('.tool-card-body')[0];
+    if (!body) return;
+    function doRender() {
+        if (card._toolBodyRendered) return;
+        card._toolBodyRendered = true;
+        body.innerHTML = '';
+        if (!renderToolBody(body, toolName, text, args)) body.textContent = text || '';
+        checkOverflow(body, 200);
+    }
+    // 展开态或没有简化开关时立即渲染；折叠态延迟到用户展开
+    if ($(card).hasClass('expanded') || window.cliPrintSimplified === false) {
+        doRender();
+    } else {
+        card._pendingToolRender = doRender;
+        // 先放一段轻量摘要，避免 body 完全空白
+        var preview = (text || '');
+        if (preview.length > 240) preview = preview.substring(0, 240) + '...';
+        body.textContent = preview;
+        body.classList.add('tool-body-deferred');
+    }
+}
+
 function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reasonId, agentName, callId) {
     var group = ensureReasonGroup(sess, segment, reasonId);
     if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
@@ -1099,7 +1166,7 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
         + escapeHtml(toolTitle || toolName || 'tool') + '</span>' + (argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '')
         + '<i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
     if (agentName) { $(card).addClass('is-subagent'); $(card).find('.tool-name').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>'); }
-    $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+    bindToolCardToggle(card);
     if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
     if (callId) card.setAttribute('data-call-id', callId);
     registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
@@ -1126,13 +1193,15 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
         if (window.cliPrintSimplified === false) $(card).addClass('expanded');
         card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon done"><i class="layui-icon layui-icon-ok" style="font-size:12px"></i></span><span class="tool-name">'
             + escapeHtml(toolTitle || toolName || 'tool') + '</span><i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
-        $(card).find('.tool-card-header').on('click', function() { $(card).toggleClass('expanded'); });
+        bindToolCardToggle(card);
         if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
         // 无 action_start 的终态卡也计入 task 摘要
         if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
+    } else {
+        bindToolCardToggle(card);
     }
-    var body = $(card).find('.tool-card-body')[0];
-    if (body) { body.innerHTML = ''; if (!renderToolBody(body, toolName, text, args)) body.textContent = text || ''; checkOverflow(body, 200); }
+    card._toolBodyRendered = false;
+    fillToolCardBody(card, toolName, text, args);
     var icon = $(card).find('.tool-status-icon')[0];
     if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
     if (callId) card.setAttribute('data-call-id', callId);
@@ -1163,11 +1232,15 @@ function appendContentChunk(sess, segment, text, append, reasonId) {
     group.activeKind = 'text';
     run.buffer = append ? run.buffer + clean : clean;
     group.groupBuffer = run.buffer;
-    if (!run.rafId) run.rafId = requestAnimationFrame(function() {
-        run.rafId = null;
-        if (run.el) run.el.innerHTML = renderMd(run.buffer);
-        if (sess.sessionId === activeSessionId) scrollToBottom();
-    });
+    // 队列 drain 已在 RAF 批处理；此处直接走节流 Markdown 渲染，边出边排
+    if (run.el) {
+        if (typeof renderMdStreaming === 'function') {
+            renderMdStreaming(run.el, run.buffer);
+        } else {
+            run.el.textContent = run.buffer;
+        }
+    }
+    if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
 function appendErrorChunkToSegment(sess, segment, text) {
@@ -1229,8 +1302,12 @@ function appendTraceBadge(sess, chunk) {
 function appendCommandOutput(sess, text) {
     ensureAssistantBubble(sess);
     var mdEl = $('<div>').addClass('md-content')[0];
-    mdEl.innerHTML = renderMd(text);
-    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
+    if (typeof finalizeMdElement === 'function') {
+        finalizeMdElement(mdEl, text || '');
+    } else {
+        mdEl.innerHTML = renderMd(text);
+        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
+    }
     insertBeforeActions(sess, mdEl);
     sess.currentBubbleEl = mdEl;
     if (sess.sessionId === activeSessionId) scrollToBottom();
@@ -1287,6 +1364,7 @@ function showThinking(sess) {
         + '<span class="thinking-current-timer">0s</span>'
         + '</span></div>';
     $(sess.container).append(sess.thinkingEl);
+    if (typeof observeMessagesHeight === 'function') observeMessagesHeight(sess.thinkingEl);
     var currentTimerSpan = $(sess.thinkingEl).find('.thinking-current-timer')[0];
     startThinkingTimerDual(sess, 'thinkingTimerId', 'thinkingStartTime', currentTimerSpan, null);
     if (sess.sessionId === activeSessionId) scrollToBottom(true);
@@ -1397,6 +1475,8 @@ function handleHitlResponse(sess, action) {
     resetStreamState(sess);
 
     sess.isStreaming = true;
+    sess.stopRequested = false;
+    sess.acceptingStream = true;
     if (sess.sessionId === activeSessionId) {
         isStreaming = true;
         setBtnStopMode();
@@ -1493,6 +1573,19 @@ function addImageLightbox(container) {
         if ($(imgs[i]).data('lightbox')) continue;
         $(imgs[i]).data('lightbox', '1');
         imgs[i].style.cursor = 'zoom-in';
+        // MD 内嵌图解码后补滚（用户附件图在 appendUserMessage 已绑）
+        (function(imgEl) {
+            function onImgLayout() {
+                if (typeof scheduleScrollToBottom === 'function') scheduleScrollToBottom();
+                else if (typeof scrollToBottom === 'function') scrollToBottom(false);
+            }
+            if (imgEl.complete) {
+                // 缓存图可能已 complete，但刚插入时高度尚未参与布局
+                requestAnimationFrame(onImgLayout);
+            } else {
+                $(imgEl).one('load error', onImgLayout);
+            }
+        })(imgs[i]);
         $(imgs[i]).on('click', function(e) {
             e.stopPropagation();
             openLightbox(this.src);

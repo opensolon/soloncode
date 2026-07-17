@@ -1,10 +1,24 @@
 # Web 进阶特性迁移参考
 
-> Spring Boot → Solon Web 文件上传下载、SSE/WebSocket、参数校验、会话管理迁移指南（目标版本：Solon 4.0.x）
+> Spring Boot → Solon 迁移指南（目标版本：跟随 SKILL，默认 4.0.3）
+>
+> **接续**：Controller 见 `web_controller_migration.md`；Filter/异常/CORS 见 `web_filter_interceptor_migration.md`。
+>
+> **本文职责**：上传下载、SSE/WebSocket、会话；参数校验仅摘要（权威：`validation_migration.md`）。
 
-## 6. 文件上传 / 下载
+## 目录
 
-### 6.1 MultipartFile → UploadedFile
+- [1. 文件上传 / 下载](#1-文件上传--下载)
+- [2. SSE / WebSocket](#2-sse--websocket)
+- [3. 请求参数校验（摘要）](#3-请求参数校验摘要)
+- [4. 会话管理](#4-会话管理)
+- [5. Web 进阶陷阱与差异清单](#5-web-进阶陷阱与差异清单)
+
+---
+
+## 1. 文件上传 / 下载
+
+### 1.1 MultipartFile → UploadedFile
 
 #### Before — Spring
 
@@ -60,7 +74,7 @@ public class FileController {
 > - `transferTo()` 方法名相同，行为一致。
 > - Solon 的 `UploadedFile` 不需要 `@RequestParam` 注解，框架会自动绑定。
 
-### 6.2 文件下载（DownloadedFile）
+### 1.2 文件下载（DownloadedFile）
 
 #### Before — Spring
 
@@ -100,7 +114,7 @@ public void download2(@Path String filename, Context ctx) {
 
 > **注意**：`DownloadedFile` 是 Solon 独有的文件下载封装类，Spring 中没有等价物。
 
-### 6.3 多文件上传
+### 1.3 多文件上传
 
 #### Before — Spring
 
@@ -124,9 +138,9 @@ public Map<String, Object> batchUpload(Context ctx) {
 
 > **注意**：多文件上传时，Solon 通过 `ctx.fileValues("fieldName")` 获取 `UploadedFile[]` 数组，而非通过方法参数绑定。
 
-## 7. SSE / WebSocket
+## 2. SSE / WebSocket
 
-### 7.1 SseEmitter → SseEmitter (solon-web-sse)
+### 2.1 SseEmitter → SseEmitter (solon-web-sse)
 
 #### Before — Spring
 
@@ -202,7 +216,7 @@ public class SseController {
 > - Solon 的 `SseEmitter` 支持 `onCompletion`、`onInited` 等回调，通过 `SseEvent` 构建事件数据。
 > - 需要单独引入 `solon-web-sse` 依赖，不是 `solon-web` 内置功能。
 
-### 7.2 Spring WebSocket → Solon WebSocket
+### 2.2 Spring WebSocket → Solon WebSocket
 
 #### Before — Spring
 
@@ -267,96 +281,35 @@ public class ChatWebSocketEndpoint implements WebSocketListener {
 > - Solon **不使用** `@OnOpen`/`@OnMessage` 等注解，而是实现 `WebSocketListener` 接口。
 > - 会话类型是 `WebSocket`（不是 `WebSocketSession`）。需引入 `solon-websocket` 依赖。
 
-## 8. 请求参数校验
+## 3. 请求参数校验（摘要）
 
-### 8.1 @Valid + @Validated → @Valid
+> **完整迁移请读** `validation_migration.md`。此处仅保留最小对照，避免与独立文档冲突。
 
-#### Before — Spring
-
-```java
-@RestController
-@RequestMapping("/api/users")
-public class UserController {
-    @PostMapping
-    public Map<String, Object> create(@Valid @RequestBody UserDTO user,
-                                      BindingResult bindingResult) {
-        if (bindingResult.hasErrors()) {
-            return Map.of("code", 400, "message", bindingResult.getFieldError().getDefaultMessage());
-        }
-        return Map.of("code", 200, "data", user);
-    }
-}
-
-public class UserDTO {
-    @NotBlank(message = "用户名不能为空") private String username;
-    @Email(message = "邮箱格式不正确") private String email;
-    @Size(min = 6, max = 20, message = "密码长度 6-20 位") private String password;
-}
-```
-
-#### After — Solon
+| 项 | Spring | Solon |
+|---|---|---|
+| 依赖 | `spring-boot-starter-validation` | **`solon-security-validation`** |
+| 启用 | 类级 `@Validated` 等 | **类级 `@Valid`** |
+| 实体参数 | `@Valid` / `@Validated` + `@RequestBody` | **`@Validated`** + 可选 `@Body` |
+| 简单参数 | 多靠 DTO | 参数上直接 `@NotNull` / `@NotBlank` / `@Pattern` 等 |
+| 失败处理 | `BindingResult` / `MethodArgumentNotValidException` | 无 BindingResult；捕获 **`ValidatorException`** |
+| 包名 | `javax`/`jakarta.validation` | `org.noear.solon.validation.annotation`（**不兼容**，须换 import） |
 
 ```java
-@Valid    // 类级 @Valid 开启参数校验功能
+@Valid
 @Controller
 @Mapping("/api/users")
 public class UserController {
     @Post
     @Mapping("")
-    public Map<String, Object> create(@Body UserDTO user) {
-        // 校验不通过时，Solon 自动返回 400 错误
+    public Map<String, Object> create(@Body @Validated UserDTO user) {
         return Map.of("code", 200, "data", user);
     }
 }
-
-// DTO 使用 Solon 内置校验注解（org.noear.solon.validation.annotation.*）
-// 注意：Solon 不兼容 javax.validation 注解
-public class UserDTO {
-    @NotBlank(message = "用户名不能为空") private String username;
-    @Email(message = "邮箱格式不正确") private String email;
-    @Size(min = 6, max = 20, message = "密码长度 6-20 位") private String password;
-}
 ```
 
-> **关键差异**：
-> - Spring 使用 `@Validated`/`@Valid` + `BindingResult` 手动处理；Solon 类上标注 `@Valid` 即自动触发校验。
-> - Solon **没有 `BindingResult`**，校验失败由框架自动处理。需引入 `solon-validation` 依赖。
+## 4. 会话管理
 
-### 8.2 批量参数校验
-
-Solon 支持在方法参数上直接使用校验注解：
-
-```java
-// Spring 不支持在方法参数上直接加校验注解，需封装 DTO
-
-// Solon 写法：
-@Valid
-@Controller
-@Mapping("/api")
-public class RegisterController {
-    @Post
-    @Mapping("/register")
-    public String register(
-            @NotBlank(message = "姓名不能为空") String name,
-            @Email(message = "邮箱格式不正确") String email,
-            @Pattern("13\\d{9}") String mobile) {
-        return "ok";
-    }
-}
-```
-
-> **注意**：控制器类上必须标注 `@Valid` 才能激活校验。参数约束直接在方法签名上声明，比 Spring 的 DTO 封装更直观。
-
-### 8.3 实体校验
-
-```java
-// Spring: @Validated @RequestBody UserDTO user
-// Solon:  @Validated UserDTO user（@Validated 触发实体内部校验注解）
-```
-
-## 9. 会话管理
-
-### 9.1 HttpSession → Context
+### 4.1 HttpSession → Context
 
 #### Before — Spring
 
@@ -415,7 +368,7 @@ public class SessionController {
 > - `HttpSession` → `Context` 的 `sessionSet`/`session`/`sessionClear` 方法。
 > - `sessionSet(key, val)` ≡ `setAttribute`；`session(key)` ≡ `getAttribute`（返回 Object）；`sessionClear()` ≡ `invalidate()`。
 
-### 9.2 会话超时配置
+### 4.2 会话超时配置
 
 ```yaml
 # Spring: timeout: 30m
@@ -424,7 +377,7 @@ public class SessionController {
 
 > **注意**：Solon 的会话超时单位是**秒**，Spring Boot 支持 `30m` 字符串格式。迁移时注意换算。
 
-## 10. Web 层陷阱与差异清单
+## 5. Web 进阶陷阱与差异清单
 
 ### 陷阱速查表
 
@@ -435,7 +388,7 @@ public class SessionController {
 | 3 | **Context 不支持字段注入** | 低 | `Context` 是请求作用域对象，只能在方法参数中使用。 |
 | 4 | **Filter 顺序需显式指定** | 高 | 通过 `@Component(index=N)` 控制。不指定时执行顺序不确定，可能导致逻辑错乱。 |
 | 5 | **没有 @ControllerAdvice** | 高 | 全局异常处理需通过 Filter 的 try-catch 实现。 |
-| 6 | **没有 BindingResult** | 中 | 参数校验失败由框架自动返回 400。自定义错误响应需通过 Filter 拦截。 |
+| 6 | **没有 BindingResult** | 中 | 校验见 `validation_migration.md`：类级 `@Valid`、实体 `@Validated`、依赖 `solon-security-validation`、异常 `ValidatorException`。 |
 | 7 | **CORS 需引入独立插件** | 低 | 需引入 `solon-web-cors`。支持注解/编程式/拦截器三种方式。**不提供 YAML 配置**。 |
 | 8 | **文件上传参数无需注解** | 低 | `UploadedFile` 自动绑定。多文件通过 `ctx.fileValues()` 获取。 |
 | 9 | **会话超时单位不同** | 中 | Solon 单位是**秒**，Spring Boot 支持 `30m` 字符串格式。 |
@@ -443,7 +396,7 @@ public class SessionController {
 | 11 | **SSE 需引入专用插件** | 低 | `SseEmitter` 在 `solon-web-sse` 插件中。 |
 | 12 | **WebSocket 端点声明方式不同** | 中 | 使用 `@ServerEndpoint` + `implements WebSocketListener`。 |
 
-### Web 层迁移检查清单
+### Web 进阶迁移检查清单
 
 - [ ] `@RestController` → `@Controller`（全局替换）
 - [ ] `@RequestMapping` → `@Mapping`
@@ -459,7 +412,7 @@ public class SessionController {
 - [ ] `MultipartFile` → `UploadedFile`
 - [ ] `SseEmitter`(Spring) → `SseEmitter`(Solon, solon-web-sse)
 - [ ] `TextWebSocketHandler` → `@ServerEndpoint` + `WebSocketListener`
-- [ ] `@Valid` + `BindingResult` → `@Valid`（类级）+ 框架自动处理
+- [ ] 校验：依赖 `solon-security-validation`；类级 `@Valid`；实体 `@Validated`；见 `validation_migration.md`
 - [ ] `produces`/`consumes` → `@Produces`/`@Consumes`
 - [ ] 多路径映射 → 拆分为多个方法
 - [ ] 所有 Filter 显式指定 `@Component(index=N)`

@@ -44,11 +44,11 @@
 ```xml
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-cloud-discovery-nacos</artifactId>
+    <artifactId>nacos-solon-cloud-plugin</artifactId>
 </dependency>
 ```
 
-> 也可使用 `solon-cloud-discovery-consul` 或 `solon-cloud-discovery-zookeeper`，切换时只需更换依赖，代码无需修改。
+> 也可使用 `consul-solon-cloud-plugin` 或 `zookeeper-solon-cloud-plugin`，切换时只需更换依赖，代码无需修改。
 
 ### 2.2 启用注解迁移
 
@@ -90,21 +90,22 @@ spring:
         group: DEFAULT_GROUP
 ```
 
-**Solon Cloud (application.yml)：**
+**Solon Cloud (app.yml)：**
 ```yaml
-solon:
-  app:
-    name: user-service          # 对应 spring.application.name
-  cloud:
-    nacos:
-      discovery:
-        serverAddr: 127.0.0.1:8848   # 注意：驼峰命名（Solon 风格）
-        namespace: dev
-        group: DEFAULT_GROUP
+solon.app:
+  name: user-service              # 对应 spring.application.name
+
+solon.cloud.nacos:
+  server: "127.0.0.1:8848"        # 注意：不是 server-addr
+  namespace: "dev"
+  discovery:
+    group: "DEFAULT_GROUP"
+    # serviceName 可省略，默认取 solon.app.name
 ```
 
 **陷阱提醒：**
-- Solon Cloud 配置键名使用 **驼峰命名** (`serverAddr`)，不是 Spring 的 **短横线命名** (`server-addr`)。
+- 配置文件是 **`app.yml`**，不是 `application.yml` / `bootstrap.yml`。
+- Solon Cloud 常用 `solon.cloud.nacos.server`，不要照搬 Spring 的 `server-addr`。
 - 服务名称由 `solon.app.name` 指定，而非 `spring.application.name`。
 
 ### 2.4 服务发现使用迁移
@@ -148,11 +149,11 @@ public class OrderService {
 ```xml
 <dependency>
     <groupId>org.noear</groupId>
-    <artifactId>solon-cloud-config-nacos</artifactId>
+    <artifactId>nacos-solon-cloud-plugin</artifactId>
 </dependency>
 ```
 
-> 也可使用 `solon-cloud-config-polaris` 等其他实现。
+> 也可使用 `polaris-solon-cloud-plugin` 等其他实现。
 
 ### 3.2 配置迁移
 
@@ -167,18 +168,14 @@ spring:
       label: main
 ```
 
-**Solon Cloud (application.yml)：**
+**Solon Cloud (app.yml)：**
 ```yaml
-solon:
-  cloud:
-    nacos:
-      config:
-        serverAddr: 127.0.0.1:8848
-        namespace: dev
-        group: DEFAULT_GROUP
-        files:
-          - dataId: "user-service.yml"
-          - dataId: "user-service-dev.yml"
+solon.cloud.nacos:
+  server: "127.0.0.1:8848"
+  namespace: "dev"
+  config:
+    group: "DEFAULT_GROUP"
+    # 也可按插件文档配置 load / files 拉取远程配置
 ```
 
 **陷阱提醒：** Spring Cloud Config 需要独立的 Config Server，而 Solon Cloud 通常直连 Nacos/Polaris，架构更简洁。
@@ -203,12 +200,12 @@ public class UserController {
 **Solon Cloud：**
 ```java
 // Solon 通过 @Inject 注入配置，支持热更新（无需额外注解）
-@RestController
+@Controller
 public class UserController {
     @Inject("${user.max-count:100}")
     private int maxCount;
 
-    @GetMapping("/config")
+    @Mapping("/config")
     public int getConfig() {
         return maxCount;
     }
@@ -235,7 +232,7 @@ public class ConfigController {
 **Solon Cloud：**
 ```java
 // 方式1：自动注入（推荐）
-@RestController
+@Controller
 public class ConfigController {
     @Inject("${dynamic.value}")
     private String dynamicValue;  // 配置变更时自动更新
@@ -261,17 +258,17 @@ public class ConfigListener {
 | 配置前缀 | `spring.cloud.*` | `solon.cloud.*` |
 | 键名风格 | 短横线 (`server-addr`) | 驼峰 (`serverAddr`) |
 | 应用名称 | `spring.application.name` | `solon.app.name` |
-| 配置文件 | `bootstrap.yml` + `application.yml` | `application.yml` (单文件) |
+| 配置文件 | `bootstrap.yml` + `application.yml` | `app.yml` (单文件) |
 
 ### 4.2 依赖冲突排查
 
 - Solon Cloud 插件之间互不冲突，可按需组合。
-- **不要**同时引入 `solon-cloud-discovery-nacos` 和 `solon-cloud-discovery-consul`，同一类型 Discovery 只能有一个实现。
+- **不要**同时引入 `nacos-solon-cloud-plugin` 和 `consul-solon-cloud-plugin`，同一类型 Discovery 只能有一个实现。
 - Config 和 Discovery 可以使用不同的后端（如 Config 用 Nacos，Discovery 用 Consul），但通常建议统一。
 
 ### 4.3 版本兼容性
 
-- Solon 4.0.x 要求 Java 17+。
+- 示例推荐 Java 17；实际以 `solon-parent` 支持的 JDK 范围为准。
 - 各 Cloud 插件版本与 Solon 框架版本保持一致。
 - 引入插件时使用 BOM 管理版本，避免版本不一致。
 
@@ -281,7 +278,7 @@ public class ConfigListener {
         <dependency>
             <groupId>org.noear</groupId>
             <artifactId>solon-parent</artifactId>
-            <version>4.0.2</version>
+            <version>4.0.3</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -328,5 +325,5 @@ public void onConfigChange(Event event) {
 - [ ] 将 `spring.cloud.*` 配置键改为 `solon.cloud.*` 格式（注意驼峰命名）
 - [ ] 将 `spring.application.name` 改为 `solon.app.name`
 - [ ] 将 `@Value` 改为 `@Inject`
-- [ ] 删除 `bootstrap.yml`，合并到 `application.yml`
+- [ ] 删除 `bootstrap.yml`，合并到 `app.yml`
 - [ ] 验证 Discovery 和 Config 插件配置正确，启动无报错

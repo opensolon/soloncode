@@ -1,0 +1,129 @@
+/* skin: full-theme — 配方 D：多区完整主题（纯 CSS 渐变；有图时替换 url） */
+[data-skin="full-theme"][data-theme="light"] {
+  --accent: #0b7ea4;
+  --accent-hover: #096b8c;
+  --accent-light: #e6f6fb;
+  --bg-user-msg: #e7f5fa;
+  --thinking-dot: #0b7ea4;
+  --text-user-msg-link: #0b7ea4;
+  --text-user-msg-link-hover: #096b8c;
+
+  --bg-body: #f3f8fb;
+  --bg-main: #f5f9fc;
+  --bg-sidebar: #f2f7fa;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7fafc;
+  --bg-input-box: rgba(255, 255, 255, 0.92);
+  --bg-hover: rgba(11, 126, 164, 0.08);
+  --border-color: rgba(11, 126, 164, 0.16);
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+
+  --bg-body-image: linear-gradient(180deg, #f3f8fb, #eef5f9);
+  --bg-body-overlay: transparent;
+  --bg-body-surface: transparent;
+
+  --bg-main-image: linear-gradient(160deg, #e8f7fc 0%, #f5f8ff 45%, #eef6f4 100%);
+  --bg-main-overlay: rgba(255, 255, 255, 0.28);
+  --bg-main-surface: transparent;
+
+  --bg-sidebar-image: linear-gradient(180deg, #f3fafc, #ffffff);
+  --bg-sidebar-overlay: transparent;
+  --bg-sidebar-surface: transparent;
+
+  --bg-settings: rgba(245, 250, 252, 0.62);
+  --bg-settings-image: linear-gradient(145deg, #e8f7fc 0%, #eef4ff 48%, #f5fbf8 100%);
+  --bg-settings-overlay: rgba(255, 255, 255, 0.24);
+  --bg-settings-surface: transparent;
+  --bg-settings-tabs: rgba(255, 255, 255, 0.32);
+
+  --bg-filer-image: linear-gradient(180deg, #f7fafc, #f0f7fa);
+  --bg-filer-overlay: transparent;
+  --bg-filer-surface: transparent;
+}
+
+[data-skin="full-theme"][data-theme="dark"] {
+  --accent: #3db8d9;
+  --accent-hover: #2ea3c2;
+  --accent-light: #12303a;
+  --bg-user-msg: #1a4a5a;
+  --thinking-dot: #3db8d9;
+  --text-user-msg-link: #3db8d9;
+  --text-user-msg-link-hover: #7ad4ec;
+
+  --bg-body: #0d141a;
+  --bg-main: #101820;
+  --bg-sidebar: #0f161d;
+  --bg-primary: #121c24;
+  --bg-secondary: #0f161d;
+  --bg-input-box: rgba(22, 32, 40, 0.92);
+  --bg-hover: rgba(61, 184, 217, 0.12);
+  --border-color: rgba(61, 184, 217, 0.22);
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+
+  --bg-body-image: linear-gradient(180deg, #0d141a, #101820);
+  --bg-body-overlay: transparent;
+  --bg-body-surface: transparent;
+
+  --bg-main-image: linear-gradient(160deg, #0d1b24 0%, #12182a 50%, #0f1f1c 100%);
+  --bg-main-overlay: rgba(10, 14, 24, 0.40);
+  --bg-main-surface: transparent;
+
+  --bg-sidebar-image: linear-gradient(180deg, #121c28, #16162a);
+  --bg-sidebar-overlay: transparent;
+  --bg-sidebar-surface: transparent;
+
+  --bg-settings: rgba(16, 22, 30, 0.68);
+  --bg-settings-image: linear-gradient(145deg, #0f1a24 0%, #14182a 48%, #101f22 100%);
+  --bg-settings-overlay: rgba(8, 12, 20, 0.30);
+  --bg-settings-surface: transparent;
+  --bg-settings-tabs: rgba(12, 18, 28, 0.48);
+
+  --bg-filer-image: linear-gradient(180deg, #101820, #0f161d);
+  --bg-filer-overlay: transparent;
+  --bg-filer-surface: transparent;
+}
+
+/* settings panel transparency chain */
+[data-skin="full-theme"] .settings-panel {
+  background-color: transparent !important;
+}
+
+[data-skin="full-theme"] .settings-tabs {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: var(--bg-settings-tabs) !important;
+}
+
+[data-skin="full-theme"] .settings-body,
+[data-skin="full-theme"] .settings-content {
+  background: transparent;
+}
+
+[data-skin="full-theme"] .settings-tab.active {
+  background: rgba(11, 126, 164, 0.14);
+}
+
+[data-skin="full-theme"] .settings-section,
+[data-skin="full-theme"] .settings-card,
+[data-skin="full-theme"] .settings-group {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(11, 126, 164, 0.12);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+[data-skin="full-theme"][data-theme="dark"] .settings-section,
+[data-skin="full-theme"][data-theme="dark"] .settings-card,
+[data-skin="full-theme"][data-theme="dark"] .settings-group {
+  background: rgba(18, 26, 36, 0.48);
+  border-color: rgba(61, 184, 217, 0.16);
+}
+
+[data-skin="full-theme"] .settings-primary-btn,
+[data-skin="full-theme"] button.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  border-color: transparent;
+  color: #fff;
+}

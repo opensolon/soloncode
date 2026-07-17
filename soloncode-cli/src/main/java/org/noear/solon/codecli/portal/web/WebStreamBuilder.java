@@ -205,7 +205,7 @@ public class WebStreamBuilder {
                     }
                 })
                 .stream()
-                .map(chunk -> {
+                .flatMap(chunk -> {
                     // 子代理任务包装解包：TaskWrapChuck 携带 taskAgentName/isMultitask
                     String runId = null;
                     String taskAgentName = null;
@@ -230,12 +230,13 @@ public class WebStreamBuilder {
                             if (chunk instanceof ReActChunk) {
                                 // 子代理 ReAct 结束：发 task_done，让前端立刻结算该 task-group
                                 // （主流转 done 仍会 finalize 兜底，但并行任务不必互相等待）
-                                return onTaskDoneChunk((ReActChunk) chunk, runId, taskId,
+                                WebChunk taskDoneChunk = onTaskDoneChunk((ReActChunk) chunk, runId, taskId,
                                         taskAgentName, taskDescription);
+                                return Flux.just(taskDoneChunk);
                             }
 
                         } else {
-                            return WebChunk.EMPTY;
+                            return Flux.empty();
                         }
                     }
 
@@ -255,7 +256,7 @@ public class WebStreamBuilder {
                     }
 
                     if (webChunk == null || webChunk == WebChunk.EMPTY) {
-                        return WebChunk.EMPTY;
+                        return Flux.empty();
                     } else {
                         if (runId != null) {
                             webChunk.setRunId(runId);
@@ -270,14 +271,22 @@ public class WebStreamBuilder {
                             webChunk.setTaskId(taskId);
                             webChunk.setTaskDescription(taskDescription);
                         }
-                        return webChunk;
+                        return Flux.just(webChunk);
                     }
                 })
                 .filter(WebChunk::isNotEmpty)
                 .onErrorResume(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
-                    return Mono.just(WebChunk.ofError(e));
+                    List<WebChunk> chunkList = new ArrayList<>();
+
+                    WebChunk errorChunk = WebChunk.ofError(e);
+                    ReActTrace trace = session.getContext().getAs("__main");
+                    if(trace != null){
+                        this.onFinalChunk(session, trace, true, errorChunk.getText());
+                    }
+
+                    return Flux.fromIterable(chunkList);
                 })
                 .concatWith(Flux.defer(() -> {
                     // Check HITL state after stream completes
@@ -290,11 +299,11 @@ public class WebStreamBuilder {
 
                             WebChunk hitlChuck = WebChunk.ofHitl(task.getToolName(), command);
 
-                            return Flux.just(hitlChuck, WebChunk.ofDone());
+                            return Flux.just(hitlChuck);
                         }
                     }
 
-                    return Flux.just(WebChunk.ofDone());
+                    return Flux.empty();
                 }));
     }
 
@@ -616,18 +625,18 @@ public class WebStreamBuilder {
             }
 
 
-            if (isMultitask) {
-                // 仅在多任务并行且有内容时输出
-                WebChunk wc = WebChunk.ofText("\n" + resultContent);
-                wc.setReasonId(chunk.getReasonId());
-
-                // 子代理标记
-                if (taskAgentName != null) {
-                    wc.setAgentName(taskAgentName);
-                }
-
-                return wc;
-            }
+//            if (isMultitask) {
+//                // 仅在多任务并行且有内容时输出
+//                WebChunk wc = WebChunk.ofText("\n" + resultContent);
+//                wc.setReasonId(chunk.getReasonId());
+//
+//                // 子代理标记
+//                if (taskAgentName != null) {
+//                    wc.setAgentName(taskAgentName);
+//                }
+//
+//                return wc;
+//            }
         }
 
         // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
@@ -707,11 +716,13 @@ public class WebStreamBuilder {
      * @return 包含追踪信息的 trace 类型 WebChunk
      */
     private WebChunk onFinalChunk(AgentSession session, ReActChunk chunk) {
-        ReActTrace trace = chunk.getTrace();
+        return onFinalChunk(session, chunk.getTrace(), chunk.isAbnormal(), chunk.getContent());
+    }
 
-        if (chunk.isAbnormal()) {
+    public WebChunk onFinalChunk(AgentSession session, ReActTrace trace, boolean isAbnormal, String finalAnswer) {
+        if (isAbnormal) {
             // 通知 IM 任务完成了
-            replyToBoundChannel(session.getSessionId(), chunk.getContent(), true);
+            replyToBoundChannel(session.getSessionId(), finalAnswer, true);
         }
 
         // 结构化 trace 数据，供前端独立渲染
@@ -721,7 +732,6 @@ public class WebStreamBuilder {
         Long elapsedSeconds = startMs > 0 ? Duration.ofMillis(System.currentTimeMillis() - startMs).getSeconds() : null;
 
         // 最终答案全量文本（去除 think 标签，与正文输出保持一致），供前端复制使用
-        String finalAnswer = chunk.getContent();
         if (finalAnswer != null) {
             finalAnswer = finalAnswer.replaceAll("(?s)<\\s*/?think\\s*>", "");
         }

@@ -1,6 +1,8 @@
-# Web Advanced — SSE / Reactive / I18n
+# Web SSE / Reactive — SSE / Reactive
 
-> 适用场景：服务端推送 (SSE)、响应式 Web、国际化。
+> 适用场景：服务端推送 (SSE)、响应式 Web。
+>
+> 目标版本：4.0.3。国际化见 **`i18n.md`**。
 
 ## SSE — Server-Sent Events
 
@@ -60,7 +62,7 @@ public class DemoController {
     @Mapping("case2")
     public Flux<ChatMessage> case2(String prompt) {
         return Flux.from(chatModel.prompt(prompt).stream())
-                .filter(resp -> resp.haContent())
+                .filter(resp -> resp.hasContent())
                 .map(resp -> resp.getMessage());
     }
 }
@@ -182,109 +184,4 @@ public class DemoController {
         return HttpUtils.http("https://solon.noear.org/").execAsLineStream("GET");
     }
 }
-```
-
----
-
-## I18n — 国际化
-
-Dependency: `solon-i18n`
-
-### 配置文件
-
-`resources/i18n/messages.properties`（默认）：
-```properties
-login.title=登录
-login.name=世界
-```
-
-`resources/i18n/messages_en_US.properties`：
-```properties
-login.title=Login
-login.name=world
-```
-
-### 方式一：工具类
-
-```java
-@Controller
-public class DemoController {
-    @Mapping("/demo/")
-    public String demo(Locale locale) {
-        return I18nUtil.getMessage(locale, "login.title");
-    }
-}
-```
-
-### 方式二：国际化服务类
-
-```java
-@Controller
-public class LoginController {
-    I18nService i18nService = new I18nService("i18n.login");
-
-    @Mapping("/demo/")
-    public String demo(Locale locale) {
-        return i18nService.get(locale, "login.title");
-    }
-}
-```
-
-### 方式三：注解（视图模板）
-
-```java
-@I18n("i18n.login")
-@Controller
-public class LoginController {
-    @Mapping("/login/")
-    public ModelAndView login() {
-        return new ModelAndView("login.ftl");
-    }
-}
-```
-
-### 模板中使用
-
-**beetl:** `${i18n["login.title"]}` / `${@i18n.get("login.title")}`
-**enjoy:** `#(i18n.get("login.title"))`
-**freemarker:** `${i18n["login.title"]}` / `${i18n.get("login.title")}`
-**thymeleaf:** `<span th:text='${i18n.get("login.title")}'></span>`
-
-### 语言分析器
-
-| 分析器 | 说明 |
-|---|---|
-| `LocaleResolverHeader`（默认） | 从 `Content-Language` 或 `Accept-Language` 获取 |
-| `LocaleResolverCookie` | 从 `SOLON.LOCALE` Cookie 获取 |
-| `LocaleResolverSession` | 从 `SOLON.LOCALE` Session 属性获取 |
-
-切换分析器：
-
-```java
-@Configuration
-public class DemoConfig {
-    @Bean
-    public LocaleResolver localeResolver() {
-        return new LocaleResolverCookie();
-    }
-}
-```
-
-### 分布式国际化配置
-
-适合对接企业内部的国际化配置中台：
-
-```java
-public class I18nBundleFactoryImpl implements I18nBundleFactory {
-    @Override
-    public I18nBundle create(String bundleName, Locale locale) {
-        if (I18nUtil.getMessageBundleName().equals(bundleName)) {
-            bundleName = Solon.cfg().appName();
-        }
-        return new I18nBundleImpl(I18nContextManager.getMessageContext(bundleName), locale);
-    }
-}
-
-// 注册到 Bean 容器
-Solon.context().wrapAndPut(I18nBundleFactory.class, new I18nBundleFactoryImpl());
 ```

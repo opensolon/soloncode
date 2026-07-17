@@ -1,6 +1,8 @@
 # Quick Start — 项目初始化与构建部署
 
 > 适用场景：从零创建 Solon 项目、配置 Maven、打包部署。
+>
+> 目标版本：4.0.3。Parent POM：`org.noear:solon-parent`。
 
 ## Maven pom.xml
 
@@ -14,7 +16,7 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>solon-parent</artifactId>
-        <version>4.0.2</version>
+        <version>4.0.3</version>
     </parent>
 
     <groupId>com.example</groupId>
@@ -86,12 +88,16 @@ solon.app.name: "demo"
 
 ## Shortcut Dependencies
 
-| Artifact | Use Case |
+| Artifact | 用途 |
 |---|---|
-| `solon-web` | **Full web development** (HTTP server + JSON + session + static files + cors + validation) |
-| `solon-lib` | **Library/non-web** (IoC + AOP + data + cache + yaml config, no HTTP server) |
+| `solon-web` | **完整 Web 开发**（HTTP + JSON + session + 静态资源 + CORS + 校验） |
+| `solon-lib` | **非 Web / 库**（IoC + AOP + data + yaml，无 HTTP 服务器） |
+| `solon-rpc` | **RPC 客户端**（Nami） |
+| `solon-job` | **任务调度** |
+| `solon-ai` | **AI 对话基础**（Agent/Harness 另加依赖） |
 
-When building a web application, use `solon-web`. When building a non-web service or library, use `solon-lib`.
+Web 项目用 `solon-web`；非 Web 服务或库用 `solon-lib`。完整模块索引见 `modules_reference.md`。
+最小可运行模板：`../assets/minimal-web/`。
 
 ## Build & Deploy
 

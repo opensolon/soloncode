@@ -1,0 +1,87 @@
+/*
+ * Builtin skin: contrast (high contrast)
+ * Applied via <body data-skin="contrast">.
+ * Works on top of data-theme="light|dark".
+ */
+
+[data-skin="contrast"][data-theme="light"] {
+    --accent: #1d4ed8;
+    --accent-hover: #1e40af;
+    --accent-light: #dbeafe;
+    --bg-user-msg: #dbeafe;
+    --text-primary: #0a0a0a;
+    --text-secondary: #374151;
+    --text-sidebar: #111827;
+    --text-user-msg: #0a0a0a;
+    --text-user-msg-link: #1d4ed8;
+    --text-user-msg-link-hover: #1e40af;
+    --text-ai-msg: #0a0a0a;
+    --border-color: #9ca3af;
+    --border-input: #6b7280;
+    --thinking-dot: #1d4ed8;
+    --bg-body: #f3f4f6;
+    --bg-main: #ffffff;
+    --bg-sidebar: #ffffff;
+    --bg-hover: #e5e7eb;
+    --bg-input-box: #ffffff;
+    --tag-bg: #e5e7eb;
+    --tag-border: #9ca3af;
+    --reason-group-think-bg: #f9fafb;
+    --reason-group-think-border: #9ca3af;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+    --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.12);
+
+    /* No decorative background for accessibility */
+    --bg-body-image: none;
+    --bg-main-image: none;
+    --bg-sidebar-image: none;
+    --bg-filer-image: none;
+    --bg-settings-image: none;
+    --bg-body-overlay: transparent;
+    --bg-main-overlay: transparent;
+    --bg-sidebar-overlay: transparent;
+    --bg-filer-overlay: transparent;
+    --bg-settings-overlay: transparent;
+}
+
+[data-skin="contrast"][data-theme="dark"] {
+    --accent: #93c5fd;
+    --accent-hover: #60a5fa;
+    --accent-light: #1e293b;
+    --bg-user-msg: #1e3a5f;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-sidebar: #e2e8f0;
+    --text-user-msg: #f8fafc;
+    --text-user-msg-link: #dbeafe;
+    --text-user-msg-link-hover: #ffffff;
+    --text-ai-msg: #f8fafc;
+    --border-color: #64748b;
+    --border-input: #94a3b8;
+    --thinking-dot: #93c5fd;
+    --bg-body: #020617;
+    --bg-main: #0f172a;
+    --bg-sidebar: #0b1220;
+    --bg-hover: #1e293b;
+    --bg-input-box: #111827;
+    --bg-primary: #0f172a;
+    --bg-secondary: #0b1220;
+    --tag-bg: #1e293b;
+    --tag-border: #64748b;
+    --reason-group-think-bg: #111827;
+    --reason-group-think-border: #64748b;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.45);
+
+    /* No decorative background for accessibility */
+    --bg-body-image: none;
+    --bg-main-image: none;
+    --bg-sidebar-image: none;
+    --bg-filer-image: none;
+    --bg-settings-image: none;
+    --bg-body-overlay: transparent;
+    --bg-main-overlay: transparent;
+    --bg-sidebar-overlay: transparent;
+    --bg-filer-overlay: transparent;
+    --bg-settings-overlay: transparent;
+}

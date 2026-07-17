@@ -1,6 +1,11 @@
 # Common Patterns — 常用开发模式
 
-> 适用场景：REST API、Service、Filter、定时任务、测试、WebSocket、EventBus、全局异常处理。
+> 适用场景：REST API、Service、Filter、定时任务、全局异常处理的最短可运行片段。
+>
+> 目标版本：4.0.3。  
+> WebSocket / EventBus 完整 API → `api_reference.md`  
+> 单元测试 / HTTP 测试 → `testing.md`  
+> 数据访问 / 事务 → `data_access.md`
 
 ## REST API with JSON
 
@@ -47,7 +52,7 @@ public class UserController {
 ## Service Component
 
 ```java
-@Component
+@Component // 禁止使用 Spring 的 @Service
 public class UserService {
     @Inject
     UserMapper userMapper;
@@ -70,6 +75,8 @@ public class DataSourceConfig {
 }
 ```
 
+> 更推荐 `solon.dataSources` 自动构建，见 `data_access.md`。
+
 ## Filter (Middleware)
 
 ```java
@@ -87,12 +94,12 @@ public class LogFilter implements Filter {
 
 ## Scheduled Task
 
-With `solon-scheduling-simple`:
+依赖：`solon-scheduling-simple`。
 
-> **注意**：必须先在启动类上添加 `@EnableScheduling` 注解，`@Scheduled` 才会生效。`@Scheduled` 的完整包名为 `org.noear.solon.scheduling.annotation.Scheduled`。
+> 必须在启动类上添加 `@EnableScheduling`，`@Scheduled` 才会生效。完整包名：`org.noear.solon.scheduling.annotation.Scheduled`。Solon 官方规范要求 **7 位** cron。
 
 ```java
-@EnableScheduling  // 在启动类上启用调度
+@EnableScheduling
 @SolonMain
 public class App {
     public static void main(String[] args) {
@@ -102,34 +109,16 @@ public class App {
 
 @Component
 public class MyJob {
-    @Scheduled(cron = "0 0/5 * * * ? *")  // Solon 官方规范要求 7 位 cron 表达式
+    @Scheduled(cron = "0 0/5 * * * ? *") // 每 5 分钟
     public void run() {
-        // Execute every 5 minutes
+        // ...
     }
 }
 ```
 
-## Unit Testing
+## WebSocket（最短示例）
 
-With `solon-test-junit5`:
-
-```java
-@SolonTest(App.class)
-public class UserControllerTest {
-    @Inject
-    UserService userService;
-
-    @Test
-    public void testFindAll() {
-        List<User> users = userService.findAll();
-        assert users != null;
-    }
-}
-```
-
-## WebSocket
-
-Dependency: `solon-server-websocket`
+依赖：`solon-server-websocket`。完整 API 见 `api_reference.md`。
 
 ```java
 @ServerEndpoint("/ws/chat/{roomId}")
@@ -147,18 +136,18 @@ public class WebSocketChat extends SimpleWebSocketListener {
 }
 ```
 
-> Enable in entry class: `Solon.start(App.class, args, app -> app.enableWebSocket(true));`
+入口启用：`Solon.start(App.class, args, app -> app.enableWebSocket(true));`
 
-## Event-Driven (EventBus)
+## EventBus（最短示例）
+
+完整方法表见 `api_reference.md`。
 
 ```java
-// 定义事件
 public class UserCreatedEvent {
     public final String username;
     public UserCreatedEvent(String username) { this.username = username; }
 }
 
-// 订阅事件
 @Component
 public class UserCreatedListener implements EventListener<UserCreatedEvent> {
     @Override
@@ -167,7 +156,7 @@ public class UserCreatedListener implements EventListener<UserCreatedEvent> {
     }
 }
 
-// 发布事件
+// 发布
 EventBus.publish(new UserCreatedEvent("张三"));       // 同步（可传导异常）
 EventBus.publishAsync(new UserCreatedEvent("张三"));  // 异步
 ```

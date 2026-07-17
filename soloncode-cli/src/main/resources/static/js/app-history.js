@@ -319,10 +319,18 @@ function loadMessages(sess) {
                     if (!isConsecutive) resetStreamState(sess);
                     var el = ensureAssistantBubble(sess);
                     sess.reasonBuffer = isConsecutive ? sess.reasonBuffer + '\n\n' + m.content : m.content;
-                    el.setAttribute('data-md-raw', sess.reasonBuffer);
-                    $(el).html(renderMd(sess.reasonBuffer));
-                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
-                    // 不在此处逐条调用 highlightCodeBlocks；循环结束后统一对真实容器调用一次
+                    // 与流结束路径统一：先写入 MD；高亮/mermaid 循环后对真实容器统一跑一次
+                    if (typeof finalizeMdElement === 'function') {
+                        // 临时容器阶段只做 MD 解析，避免过早 ensureHljs/mermaid
+                        el.classList.remove('md-streaming');
+                        el.setAttribute('data-md-raw', sess.reasonBuffer);
+                        el.innerHTML = renderMd(sess.reasonBuffer);
+                        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+                    } else {
+                        el.setAttribute('data-md-raw', sess.reasonBuffer);
+                        $(el).html(renderMd(sess.reasonBuffer));
+                        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+                    }
                     // 显示时间戳（连续助手消息取最后一条的时间）
                     setAssistantTime(sess, m.createdAt);
                 }
@@ -347,7 +355,7 @@ function loadMessages(sess) {
     });
 }
 
-/* Load on startup */
+/* Load on startup：会话列表关键路径立即拉；hints 可延后 */
 loadSessionHistory();
 
 /* ===== Command System ===== */
@@ -364,7 +372,12 @@ function loadCommands() {
     });
 }
 
-loadCommands();
+// hints 非首屏必需，空闲时再拉，减少启动并发
+if (window.requestIdleCallback) {
+    requestIdleCallback(function() { loadCommands(); }, { timeout: 2500 });
+} else {
+    setTimeout(loadCommands, 600);
+}
 
 var $welcomeCmdComplete = $('#welcomeCmdComplete');
 var $chatCmdComplete = $('#chatCmdComplete');
