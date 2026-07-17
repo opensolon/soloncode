@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read as IoRead, Write as IoWrite};
 use base64::Engine;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::net::TcpStream;
@@ -787,9 +787,13 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
+        let file_type = entry.file_type().map_err(|e| format!("读取条目类型失败: {}", e))?;
+        if file_type.is_symlink() {
+            return Err("不支持复制包含符号链接的目录".to_string());
+        }
+        if file_type.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
+        } else if file_type.is_file() {
             fs::copy(&src_path, &dst_path).map_err(|e| format!("复制文件失败: {}", e))?;
         }
     }
@@ -2061,6 +2065,183 @@ fn validate_resource_name(name: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManagedResourceResult {
+    name: String,
+    path: String,
+}
+
+fn managed_resource_marker(kind: &str) -> Result<&'static str, String> {
+    match kind {
+        "skill" => Ok("SKILL.md"),
+        "agent" => Ok("AGENT.md"),
+        _ => Err("不支持的资源类型".to_string()),
+    }
+}
+
+fn validate_managed_resource_path(resource_path: &str, kind: &str) -> Result<(PathBuf, &'static str), String> {
+    let marker = managed_resource_marker(kind)?;
+    let source = Path::new(resource_path);
+    if !source.is_absolute() {
+        return Err("资源路径必须是绝对路径".to_string());
+    }
+    let metadata = fs::symlink_metadata(source).map_err(|_| "资源目录不存在".to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("不支持修改符号链接资源".to_string());
+    }
+    if !metadata.is_dir() {
+        return Err("资源路径不是目录".to_string());
+    }
+    let canonical = fs::canonicalize(source).map_err(|e| format!("无法解析资源路径: {}", e))?;
+    let marker_path = canonical.join(marker);
+    let marker_metadata = fs::symlink_metadata(&marker_path)
+        .map_err(|_| format!("资源目录缺少 {}", marker))?;
+    if !marker_metadata.is_file() || marker_metadata.file_type().is_symlink() {
+        return Err(format!("{} 必须是普通文件", marker));
+    }
+    Ok((canonical, marker))
+}
+
+fn replace_frontmatter_name(content: &str, new_name: &str) -> String {
+    let newline = if content.contains("\r\n") { "\r\n" } else { "\n" };
+    let trailing_newline = content.ends_with('\n');
+    let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
+    if lines.first().is_some_and(|line| line.trim() == "---") {
+        let end = lines.iter().enumerate().skip(1)
+            .find_map(|(index, line)| (line.trim() == "---").then_some(index));
+        if let Some(end_index) = end {
+            if let Some(name_index) = (1..end_index).find(|index| lines[*index].trim_start().starts_with("name:")) {
+                lines[name_index] = format!("name: {}", new_name);
+            } else {
+                lines.insert(1, format!("name: {}", new_name));
+            }
+        } else {
+            lines.insert(0, format!("---{newline}name: {new_name}{newline}---"));
+        }
+    } else {
+        lines.insert(0, format!("---{newline}name: {new_name}{newline}---"));
+    }
+    let mut result = lines.join(newline);
+    if trailing_newline || content.is_empty() {
+        result.push_str(newline);
+    }
+    result
+}
+
+fn update_managed_resource_name(resource_dir: &Path, marker: &str, new_name: &str) -> Result<(), String> {
+    let marker_path = resource_dir.join(marker);
+    let content = fs::read_to_string(&marker_path).map_err(|e| format!("读取 {} 失败: {}", marker, e))?;
+    let updated = replace_frontmatter_name(&content, new_name);
+    fs::write(&marker_path, updated).map_err(|e| format!("更新 {} 失败: {}", marker, e))
+}
+
+fn copy_resource_name(source: &Path) -> Result<String, String> {
+    let raw = source.file_name().and_then(|value| value.to_str()).unwrap_or("resource");
+    let mut base: String = raw.chars()
+        .map(|ch| if ch.is_alphanumeric() || ch == '-' || ch == '_' { ch } else { '-' })
+        .take(44)
+        .collect();
+    base = base.trim_matches('-').to_string();
+    if base.is_empty() {
+        base = "resource".to_string();
+    }
+    validate_resource_name(&base)
+}
+
+#[tauri::command]
+fn rename_managed_resource(resource_path: &str, kind: &str, new_name: &str) -> Result<ManagedResourceResult, String> {
+    let name = validate_resource_name(new_name)?;
+    let (source, marker) = validate_managed_resource_path(resource_path, kind)?;
+    let parent = source.parent().ok_or("无法获取资源父目录")?;
+    let target = parent.join(&name);
+    if source == target {
+        return Ok(ManagedResourceResult { name, path: source.to_string_lossy().to_string() });
+    }
+    if target.exists() {
+        return Err("同名资源已存在".to_string());
+    }
+
+    fs::rename(&source, &target).map_err(|e| format!("重命名资源目录失败: {}", e))?;
+    if let Err(error) = update_managed_resource_name(&target, marker, &name) {
+        let _ = fs::rename(&target, &source);
+        return Err(error);
+    }
+    Ok(ManagedResourceResult { name, path: target.to_string_lossy().to_string() })
+}
+
+#[tauri::command]
+fn copy_managed_resource(resource_path: &str, kind: &str) -> Result<ManagedResourceResult, String> {
+    let (source, marker) = validate_managed_resource_path(resource_path, kind)?;
+    let parent = source.parent().ok_or("无法获取资源父目录")?;
+    let base = copy_resource_name(&source)?;
+    let mut index = 1_u32;
+    let (name, target) = loop {
+        let suffix = if index == 1 { "-copy".to_string() } else { format!("-copy-{}", index) };
+        let candidate = format!("{}{}", base, suffix);
+        let target = parent.join(&candidate);
+        if !target.exists() {
+            break (candidate, target);
+        }
+        index = index.checked_add(1).ok_or("副本数量过多")?;
+    };
+
+    if let Err(error) = copy_dir_recursive(&source, &target) {
+        let _ = fs::remove_dir_all(&target);
+        return Err(error);
+    }
+    if let Err(error) = update_managed_resource_name(&target, marker, &name) {
+        let _ = fs::remove_dir_all(&target);
+        return Err(error);
+    }
+    Ok(ManagedResourceResult { name, path: target.to_string_lossy().to_string() })
+}
+
+#[tauri::command]
+fn delete_managed_resource(resource_path: &str, kind: &str) -> Result<(), String> {
+    let (source, _) = validate_managed_resource_path(resource_path, kind)?;
+    fs::remove_dir_all(source).map_err(|e| format!("删除资源失败: {}", e))
+}
+
+#[cfg(test)]
+mod managed_resource_tests {
+    use super::{copy_managed_resource, delete_managed_resource, rename_managed_resource};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn renames_copies_and_deletes_only_valid_resources() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("soloncode-managed-resource-{unique}"));
+        let source = root.join("demo");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "---\nname: demo\ndescription: test\n---\n\n# Demo\n").unwrap();
+
+        let renamed = rename_managed_resource(source.to_str().unwrap(), "skill", "renamed").unwrap();
+        let renamed_path = root.join("renamed");
+        assert_eq!(renamed.path, fs::canonicalize(&renamed_path).unwrap().to_string_lossy());
+        assert!(fs::read_to_string(renamed_path.join("SKILL.md")).unwrap().contains("name: renamed"));
+
+        let copied = copy_managed_resource(renamed_path.to_str().unwrap(), "skill").unwrap();
+        let copied_path = root.join("renamed-copy");
+        assert_eq!(copied.path, fs::canonicalize(&copied_path).unwrap().to_string_lossy());
+        assert!(fs::read_to_string(copied_path.join("SKILL.md")).unwrap().contains("name: renamed-copy"));
+
+        delete_managed_resource(copied_path.to_str().unwrap(), "skill").unwrap();
+        assert!(!copied_path.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_directories_without_expected_marker() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("soloncode-invalid-resource-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        assert!(delete_managed_resource(root.to_str().unwrap(), "agent").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
 /// 创建新 Skill（在 ~/.soloncode/skills/{name}/SKILL.md 生成模板）
 #[tauri::command]
 fn create_skill(name: String, description: String, content: Option<String>) -> Result<String, String> {
@@ -2208,6 +2389,9 @@ pub fn run() {
             list_skills,
             toggle_skill,
             create_skill,
+            rename_managed_resource,
+            copy_managed_resource,
+            delete_managed_resource,
             list_agents,
             toggle_agent,
             create_agent

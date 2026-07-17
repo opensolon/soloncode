@@ -6,9 +6,10 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Icon, getFileIconName } from '../common/Icon';
 import { ContextMenu } from '../common/ContextMenu';
 import { ConfirmDialog } from '../common/ConfirmDialog';
-import type { MenuItem } from '../common/DropdownMenu';
+import { DropdownMenu, type MenuItem } from '../common/DropdownMenu';
 import { fileService } from '../../services/fileService';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { copyTextToClipboard } from '../../utils/clipboard';
 import './ExplorerPanel.css';
 
 interface FileNode {
@@ -34,7 +35,8 @@ interface ExplorerPanelProps {
   onFileSelect: (path: string) => void;
   onOpenFolder: () => void;
   onCreateProject: () => void;
-  onRemoveProject: (id: string) => void;
+  onRemoveProject: (id: string) => Promise<void>;
+  onRenameProject: (id: string, name: string) => Promise<void>;
   onSetActiveProject: (path: string) => void;
   onRefreshProject: (projectPath: string) => void;
   onNewFile: (projectPath: string) => void;
@@ -62,6 +64,17 @@ function getBaseName(name: string): string {
   return dot >= 0 ? name.slice(0, dot) : name;
 }
 
+function getProjectNameError(value: string): string {
+  const name = value.trim();
+  if (!name) return '项目名称不能为空';
+  if (Array.from(name).length > 64) return '项目名称不能超过 64 个字符';
+  if (name === '.' || name === '..' || name.endsWith('.') || name.endsWith(' ')) return '项目名称格式无效';
+  if (!/^[\p{L}\p{N} _().-]+$/u.test(name)) return '名称包含不支持的字符';
+  const stem = name.split('.')[0].toUpperCase();
+  if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/.test(stem)) return '该名称是系统保留名称';
+  return '';
+}
+
 export function ExplorerPanel({
   projects,
   activeProjectPath,
@@ -70,6 +83,7 @@ export function ExplorerPanel({
   onOpenFolder,
   onCreateProject,
   onRemoveProject,
+  onRenameProject,
   onSetActiveProject,
   onRefreshProject,
   onNewFile,
@@ -123,6 +137,11 @@ export function ExplorerPanel({
     y: number;
     projectPath: string;
   } | null>(null);
+  const [renameProjectTarget, setRenameProjectTarget] = useState<Project | null>(null);
+  const [renameProjectValue, setRenameProjectValue] = useState('');
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null);
+  const [projectActionPending, setProjectActionPending] = useState(false);
+  const [projectActionMessage, setProjectActionMessage] = useState<{ text: string; error?: boolean } | null>(null);
 
   const prevRefreshKey = useRef(refreshKey);
 
@@ -207,8 +226,9 @@ export function ExplorerPanel({
   }, [loadProjectTree, onRefreshProject]);
 
   // 关闭项目
-  const handleRemoveProject = useCallback((projectPath: string, e?: React.MouseEvent) => {
+  const handleRemoveProject = useCallback(async (projectPath: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    await onRemoveProject(projectPath);
     setProjectTrees(prev => {
       const next = new Map(prev);
       next.delete(projectPath);
@@ -219,7 +239,6 @@ export function ExplorerPanel({
       next.delete(projectPath);
       return next;
     });
-    onRemoveProject(projectPath);
   }, [onRemoveProject]);
 
   // 在系统资源管理器中打开
@@ -441,9 +460,28 @@ export function ExplorerPanel({
       case 'open-in-explorer':
         await handleOpenInExplorer(path);
         break;
-      case 'close':
-        handleRemoveProject(path);
+      case 'rename': {
+        const project = projects.find(item => item.id === path);
+        if (project) {
+          setRenameProjectTarget(project);
+          setRenameProjectValue(project.name);
+        }
         break;
+      }
+      case 'copy':
+        try {
+          await copyTextToClipboard(path);
+          setProjectActionMessage({ text: '项目路径已复制' });
+        } catch (error) {
+          console.error('[ExplorerPanel] 复制项目路径失败:', error);
+          setProjectActionMessage({ text: '复制项目路径失败', error: true });
+        }
+        break;
+      case 'delete': {
+        const project = projects.find(item => item.id === path);
+        if (project) setDeleteProjectTarget(project);
+        break;
+      }
       case 'new-file':
         await onNewFile(path);
         break;
@@ -451,7 +489,31 @@ export function ExplorerPanel({
         await onNewFolder(path);
         break;
     }
-  }, [projectContextMenu, handleOpenInExplorer, handleRemoveProject, onNewFile, onNewFolder]);
+  }, [projectContextMenu, handleOpenInExplorer, onNewFile, onNewFolder, projects]);
+
+  const handleRenameProjectConfirm = useCallback(async () => {
+    if (!renameProjectTarget || getProjectNameError(renameProjectValue) || projectActionPending) return;
+    setProjectActionPending(true);
+    try {
+      await onRenameProject(renameProjectTarget.id, renameProjectValue.trim());
+      setRenameProjectTarget(null);
+      setRenameProjectValue('');
+      setProjectActionMessage({ text: '项目已重命名' });
+    } catch (error) {
+      console.error('[ExplorerPanel] 重命名项目失败:', error);
+      setProjectActionMessage({ text: error instanceof Error ? error.message : '重命名项目失败', error: true });
+    } finally {
+      setProjectActionPending(false);
+    }
+  }, [onRenameProject, projectActionPending, renameProjectTarget, renameProjectValue]);
+
+  const handleNewProjectAction = useCallback((itemId: string) => {
+    if (itemId === 'new-empty-project') {
+      onCreateProject();
+    } else if (itemId === 'use-existing-project') {
+      onOpenFolder();
+    }
+  }, [onCreateProject, onOpenFolder]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (confirmDialog) {
@@ -630,15 +692,23 @@ export function ExplorerPanel({
       <div className="panel-header">
         <span className="panel-title">项目管理</span>
         <div className="panel-actions">
-          <button className="panel-action" title="打开文件夹" onClick={onOpenFolder}>
-            <Icon name="folder-add" size={16} />
-          </button>
-          <button className="panel-action" title="新建项目" onClick={onCreateProject}>
-            <Icon name="add" size={16} />
-          </button>
+          <DropdownMenu
+            align="right"
+            items={[
+              { id: 'new-empty-project', label: '新建空项目' },
+              { id: 'use-existing-project', label: '使用现有项目' },
+            ]}
+            onItemClick={handleNewProjectAction}
+            trigger={(
+              <button className="panel-action" title="新建项目" aria-label="新建项目">
+                <Icon name="add" size={16} />
+              </button>
+            )}
+          />
         </div>
       </div>
       <div className="projects-list">
+        {projectActionMessage && <div className={`resource-action-message${projectActionMessage.error ? ' error' : ''}`}>{projectActionMessage.text}</div>}
         {hasProjects ? (
           projects.map(project => renderProject(project))
         ) : null}
@@ -665,8 +735,10 @@ export function ExplorerPanel({
             { id: 'new-file', label: '新建文件' },
             { id: 'new-folder', label: '新建文件夹' },
             { id: 'divider-1', label: '', divider: true },
+            { id: 'rename', label: '重命名' },
+            { id: 'copy', label: '复制路径' },
             { id: 'open-in-explorer', label: '在资源管理器中打开' },
-            { id: 'close', label: '关闭项目' },
+            { id: 'delete', label: '删除', danger: true },
           ]}
           onItemClick={handleProjectContextAction}
           onClose={() => setProjectContextMenu(null)}
@@ -683,6 +755,43 @@ export function ExplorerPanel({
           danger
           onConfirm={handleConfirmDelete}
           onCancel={() => setConfirmDialog(null)}
+        />
+      )}
+      {renameProjectTarget && (
+        <ConfirmDialog
+          title="重命名项目"
+          message="项目目录会在原父目录中同步重命名。"
+          inputLabel="项目名称"
+          inputValue={renameProjectValue}
+          inputError={getProjectNameError(renameProjectValue)}
+          confirmLabel={projectActionPending ? '处理中' : '重命名'}
+          confirmDisabled={Boolean(getProjectNameError(renameProjectValue)) || projectActionPending}
+          onInputChange={setRenameProjectValue}
+          onConfirm={() => { void handleRenameProjectConfirm(); }}
+          onCancel={() => { if (!projectActionPending) setRenameProjectTarget(null); }}
+        />
+      )}
+      {deleteProjectTarget && (
+        <ConfirmDialog
+          title="删除项目"
+          message={`仅将「${deleteProjectTarget.name}」从项目管理中移除，不会删除磁盘上的项目目录和文件。`}
+          confirmLabel="删除"
+          confirmDisabled={projectActionPending}
+          danger
+          onConfirm={() => {
+            setProjectActionPending(true);
+            void handleRemoveProject(deleteProjectTarget.id)
+              .then(() => {
+                setDeleteProjectTarget(null);
+                setProjectActionMessage({ text: '项目已从列表删除' });
+              })
+              .catch(error => {
+                console.error('[ExplorerPanel] 删除项目管理项失败:', error);
+                setProjectActionMessage({ text: '删除项目失败', error: true });
+              })
+              .finally(() => setProjectActionPending(false));
+          }}
+          onCancel={() => { if (!projectActionPending) setDeleteProjectTarget(null); }}
         />
       )}
     </div>

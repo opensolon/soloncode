@@ -8,7 +8,12 @@ import { ExplorerPanel } from './components/sidebar/ExplorerPanel';
 import { GitPanel } from './components/sidebar/GitPanel';
 import { ExtensionsPanel } from './components/sidebar/ExtensionsPanel';
 import { SessionsPanel, type Session, type Project } from './components/sidebar/SessionsPanel';
-import { AutomationDetail, AutomationPanel } from './components/sidebar/AutomationPanel';
+import {
+  AutomationDetail,
+  AutomationPanel,
+  type AutomationModelOption,
+  type AutomationUpdateInput,
+} from './components/sidebar/AutomationPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
 import { SettingsPanel, type Settings } from './components/sidebar/SettingsPanel';
@@ -26,7 +31,22 @@ import { useBackend } from './hooks/useBackend';
 import { useGit } from './hooks/useGit';
 import { useFileManager } from './hooks/useFileManager';
 import { useSessions } from './hooks/useSessions';
-import { UNLINKED_PROJECT, addAutomation, deleteAutomation, updateAutomation, saveMessage, db, type DbAutomation } from './db';
+import {
+  UNLINKED_PROJECT,
+  addAutomation,
+  addAutomationRun,
+  deleteAutomation,
+  getAllAutomations,
+  getAutomation,
+  updateAutomation,
+  updateAutomationRun,
+  saveMessage,
+  db,
+  type DbAutomation,
+  type DbAutomationRun,
+} from './db';
+import { cronMatchesDate, getCronMinuteKey, getCronValidationError, getLatestCronRun } from './utils/cron';
+import type { GeneratedAutomationPlan } from './utils/automationPlan';
 import { useWorkspace } from './hooks/useWorkspace';
 import type { Conversation, Plugin, Theme } from './types';
 import type { GitFileStatus } from './services/gitService';
@@ -233,9 +253,11 @@ function hasMeaningfulReviewChange(file: GitFileStatus, stats: { additions: numb
   return file.status === 'deleted';
 }
 
-function createPromptTitle(prompt: string): string {
-  const oneLine = prompt.trim().replace(/\s+/g, ' ');
-  return oneLine.length > 28 ? `${oneLine.slice(0, 28)}...` : oneLine;
+function getAutomationRunError(error: unknown): string {
+  const message = error instanceof Error
+    ? error.message
+    : (typeof error === 'string' ? error : '自动化运行失败');
+  return message.trim().replace(/\s+/g, ' ').slice(0, 300) || '自动化运行失败';
 }
 
 function App() {
@@ -250,8 +272,13 @@ function App() {
   const [automationRefreshKey, setAutomationRefreshKey] = useState(0);
   const [selectedAutomation, setSelectedAutomation] = useState<DbAutomation | null>(null);
   const [runningAutomationId, setRunningAutomationId] = useState<number | null>(null);
+  const runningAutomationIdRef = useRef<number | null>(null);
+  const scheduledAutomationQueueRef = useRef<number[]>([]);
+  const scheduledAutomationQueueProcessingRef = useRef(false);
+  const [scheduledAutomationQueueVersion, setScheduledAutomationQueueVersion] = useState(0);
   const [automationPrompt, setAutomationPrompt] = useState<{
     runId: string;
+    sessionId: string;
     prompt: string;
     modelId: string;
     modelName: string;
@@ -261,6 +288,8 @@ function App() {
   const [sessionRunStates, setSessionRunStates] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
   const [sessionReviewFiles, setSessionReviewFiles] = useState<Record<string, ChatReviewFile[]>>({});
   const resolvedSessionIdsRef = useRef<Record<string, string>>({});
+  const automationRunBySessionRef = useRef<Record<string, number>>({});
+  const lastAutomationScheduleCheckRef = useRef<Date | null>(null);
   const sessionReviewBaselinesRef = useRef<Record<string, ReviewBaseline>>({});
   const sessionReviewBaselinePromisesRef = useRef<Record<string, Promise<void>>>({});
   const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
@@ -269,6 +298,22 @@ function App() {
     applyAppTheme(theme);
     return theme;
   });
+
+  const automationModels = useMemo<AutomationModelOption[]>(() => {
+    const options = new Map<string, AutomationModelOption>();
+    for (const provider of settings.providers) {
+      if (!provider.enabled) continue;
+      if (provider.availableModels?.length) {
+        for (const model of provider.availableModels) {
+          const id = `${provider.id}__${model.id}`;
+          options.set(id, { id, name: model.id, label: `${model.id} · ${provider.name}` });
+        }
+      } else if (provider.model) {
+        options.set(provider.id, { id: provider.id, name: provider.model, label: `${provider.model} · ${provider.name}` });
+      }
+    }
+    return Array.from(options.values());
+  }, [settings.providers]);
 
   const toggleTheme = useCallback(() => {
     setCurrentTheme(prev => {
@@ -383,6 +428,14 @@ function App() {
   } = useSessions(null, {
     onSessionIdResolved: (oldId, newId) => {
       resolvedSessionIdsRef.current[oldId] = newId;
+      const automationRunId = automationRunBySessionRef.current[oldId];
+      if (automationRunId) {
+        automationRunBySessionRef.current[newId] = automationRunId;
+        delete automationRunBySessionRef.current[oldId];
+        void updateAutomationRun(automationRunId, { sessionId: newId }).catch(err => {
+          console.error('[App] 更新自动化运行记录会话失败:', err);
+        });
+      }
       setSessionRunStates(prev => {
         const state = prev[oldId];
         if (!state) return prev;
@@ -429,8 +482,8 @@ function App() {
 
   const chatWorkspacePath = useMemo(() => {
     if (currentConversation.workspacePath === UNLINKED_PROJECT) return null;
-    return currentConversation.workspacePath || activeProjectPath;
-  }, [activeProjectPath, currentConversation.workspacePath]);
+    return currentConversation.workspacePath || null;
+  }, [currentConversation.workspacePath]);
 
   useEffect(() => {
     setChatWorkspacePath(chatWorkspacePath);
@@ -670,7 +723,7 @@ function App() {
   }, [activeProjectPath, handleFileSelect]);
 
   const captureReviewBaseline = useCallback(async (sessionId: string, workspacePath?: string | null) => {
-    const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : activeProjectPath;
+    const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : null;
     if (!cwd) {
       delete sessionReviewBaselinesRef.current[sessionId];
       delete sessionReviewBaselinePromisesRef.current[sessionId];
@@ -694,10 +747,10 @@ function App() {
         delete sessionReviewBaselinePromisesRef.current[sessionId];
       }
     }
-  }, [activeProjectPath]);
+  }, []);
 
   const captureSessionReviewFiles = useCallback(async (sessionId: string, workspacePath?: string | null) => {
-    const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : activeProjectPath;
+    const cwd = workspacePath && workspacePath !== UNLINKED_PROJECT ? workspacePath : null;
     if (!cwd) {
       setSessionReviewFiles(prev => {
         const next = { ...prev };
@@ -819,13 +872,18 @@ function App() {
   const handleSelectSession = useCallback((id: string) => {
     setCurrentSessionId(id);
     const session = sessions.find(s => s.id === id);
+    setChatWorkspacePath(session?.workspacePath && session.workspacePath !== UNLINKED_PROJECT
+      ? session.workspacePath
+      : null);
     if (session?.workspacePath && session.workspacePath !== UNLINKED_PROJECT && session.workspacePath !== activeProjectPath) {
       void handleSetActiveProject(session.workspacePath);
     }
   }, [sessions, activeProjectPath, handleSetActiveProject, setCurrentSessionId]);
 
   const handleCreateSessionInProject = useCallback((projectId?: string) => {
-    setNewSessionFromProject(true);
+    const linked = Boolean(projectId && projectId !== UNLINKED_PROJECT);
+    setNewSessionFromProject(linked);
+    setChatWorkspacePath(linked ? projectId! : null);
     if (projectId && projectId !== UNLINKED_PROJECT && projectId !== activeProjectPath) {
       void handleSetActiveProject(projectId);
     }
@@ -872,17 +930,15 @@ function App() {
   }, []);
 
   const handleStartPromptCreation = useCallback((type: PromptCreationType) => {
-    if (type === 'automation' && !activeProjectPath) {
-      showToast('请先选择一个项目');
-      return;
-    }
     setPanelState(prev => ({ ...prev, chatVisible: true }));
     setSidebarCollapsed(false);
     setAutomationPrompt(null);
-    setNewSessionFromProject(!!activeProjectPath);
+    setNewSessionFromProject(false);
+    setChatWorkspacePath(null);
 
     const label = type === 'skill' ? 'Skill' : type === 'agent' ? 'Agent' : '自动化';
-    const sessionId = handleNewSession(type === 'automation' ? activeProjectPath! : undefined, `创建 ${label}`);
+    const projectId = type === 'automation' ? UNLINKED_PROJECT : undefined;
+    const sessionId = handleNewSession(projectId, `创建 ${label}`);
     if (!sessionId) {
       showToast(`无法进入${label}创建模式`);
       return;
@@ -892,14 +948,16 @@ function App() {
       id: `${type}-${Date.now()}`,
       sessionId,
       type,
+      projectId,
       template: type === 'skill' ? settings.skillPrompt : type === 'agent' ? settings.agentPrompt : undefined,
     });
-  }, [activeProjectPath, handleNewSession, settings.agentPrompt, settings.skillPrompt]);
+  }, [handleNewSession, settings.agentPrompt, settings.skillPrompt]);
 
-  const handleAiCreateComplete = useCallback(async (info: { type: 'skill' | 'agent'; name: string; error?: string }) => {
+  const handleAiCreateComplete = useCallback(async (info: { type: PromptCreationType; name: string; error?: string }) => {
     setPromptCreation(null);
     if (info.error) {
-      showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 创建失败`);
+      if (info.type === 'automation') showToast(`自动化创建失败：${info.error}`);
+      else showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 创建失败`);
       return;
     }
     try {
@@ -910,7 +968,9 @@ function App() {
         const agents = await invoke<Array<{ name: string; description: string; path: string; enabled: boolean }>>('list_agents');
         setSettings(prev => ({ ...prev, agents: agents.map(a => ({ ...a, source: 'discovered' as const })) }));
       }
-      showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 已创建`);
+      if (info.type !== 'automation') {
+        showToast(`${info.type === 'skill' ? 'Skill' : 'Agent'} "${info.name}" 已创建`);
+      }
     } catch (err) {
       console.error('[App] AI 创建完成刷新失败:', err);
     } finally {
@@ -918,71 +978,76 @@ function App() {
     }
   }, []);
 
-  const handleCreateAutomationFromPrompt = useCallback(async (rawPrompt: string, options: SendOptions) => {
-    const prompt = rawPrompt.trim();
+  const handleCreateAutomationFromPrompt = useCallback(async (plan: GeneratedAutomationPlan, options: SendOptions) => {
     const creation = promptCreation?.type === 'automation' ? promptCreation : null;
-    const project = activeProjectPath
-      ? projects.find(item => item.id === activeProjectPath)
-      : undefined;
-    if (!creation || !activeProjectPath || !project) {
-      showToast('当前项目不可用，请重新进入自动化创建模式');
-      return;
+    if (!creation) {
+      throw new Error('自动化创建上下文已失效，请重新进入创建模式');
     }
-    if (!prompt || prompt.length > 10000) {
-      showToast(prompt ? '自动化提示词不能超过 10000 个字符' : '请输入自动化提示词');
-      return;
-    }
+    const projectId = creation.projectId || UNLINKED_PROJECT;
+    const project = projectId === UNLINKED_PROJECT
+      ? { id: UNLINKED_PROJECT, name: '未关联项目' }
+      : projects.find(item => item.id === projectId);
+    if (!project) throw new Error('创建自动化时选择的项目已不可用');
     if (!options.model || !options.modelName) {
-      showToast('请先选择一个可用模型');
-      return;
+      throw new Error('请先选择一个可用模型');
     }
 
     const now = new Date().toISOString();
     try {
       await addAutomation({
-        title: createPromptTitle(prompt),
-        prompt,
-        projectId: activeProjectPath,
+        title: plan.title,
+        prompt: plan.prompt,
+        projectId: project.id,
         projectName: project.name,
         modelId: options.model,
         modelName: options.modelName,
         reasoningEffort: options.reasoningEffort,
+        scheduleEnabled: plan.scheduleEnabled,
+        cron: plan.cron,
         createdAt: now,
         updatedAt: now,
         runCount: 0,
       });
       setPromptCreation(null);
       setAutomationRefreshKey(current => current + 1);
-      if (creation.sessionId.startsWith('temp-')) handleDeleteSession(creation.sessionId);
+      const creationSessionId = resolvedSessionIdsRef.current[creation.sessionId] || creation.sessionId;
+      handleDeleteSession(creationSessionId);
       setActiveActivity('automation');
-      showToast('自动化已创建');
+      showToast(plan.scheduleEnabled ? '定时自动化已创建' : '自动化已创建');
     } catch (err) {
       console.error('[App] 创建自动化失败:', err);
-      showToast('创建自动化失败');
+      throw err;
     }
-  }, [activeProjectPath, handleDeleteSession, projects, promptCreation]);
+  }, [handleDeleteSession, projects, promptCreation]);
 
-  const handleRunAutomation = useCallback(async (automation: DbAutomation) => {
-    const project = projects.find(item => item.id === automation.projectId);
-    if (!project) throw new Error(`项目已不在列表中：${automation.projectName}`);
+  const handleRunAutomation = useCallback(async (automation: DbAutomation, automationRunId?: number) => {
+    const unlinked = automation.projectId === UNLINKED_PROJECT;
+    const project = unlinked ? null : projects.find(item => item.id === automation.projectId);
+    if (!unlinked && !project) throw new Error(`项目已不在列表中：${automation.projectName}`);
 
-    await handleSetActiveProject(automation.projectId);
+    if (unlinked) setChatWorkspacePath(null);
+    else await handleSetActiveProject(automation.projectId);
     setPanelState(prev => ({ ...prev, chatVisible: true }));
     setSidebarCollapsed(false);
-    setNewSessionFromProject(true);
+    setNewSessionFromProject(!unlinked);
     setPromptCreation(null);
 
     const sessionId = handleNewSession(automation.projectId, automation.title);
     if (!sessionId) throw new Error('无法创建自动化会话');
+    if (automationRunId) {
+      automationRunBySessionRef.current[sessionId] = automationRunId;
+    }
 
     setAutomationPrompt({
       runId: `${automation.id || 'automation'}-${Date.now()}`,
+      sessionId,
       prompt: automation.prompt,
       modelId: automation.modelId,
       modelName: automation.modelName,
       reasoningEffort: automation.reasoningEffort,
     });
     setActiveActivity('sessions');
+    return sessionId;
   }, [handleNewSession, handleSetActiveProject, projects]);
 
   const handleSelectAutomation = useCallback((automation: DbAutomation) => {
@@ -998,32 +1063,226 @@ function App() {
     }
   }, [openFiles.length, selectedAutomation?.id]);
 
-  const handleRunAutomationFromDetail = useCallback(async (automation: DbAutomation) => {
-    if (!automation.id || runningAutomationId !== null) return;
+  const handleRunAutomationFromDetail = useCallback(async (
+    automation: DbAutomation,
+    trigger: 'manual' | 'scheduled' = 'manual',
+  ): Promise<boolean> => {
+    if (!automation.id || runningAutomationIdRef.current !== null) return false;
+    runningAutomationIdRef.current = automation.id;
     setRunningAutomationId(automation.id);
+    const startedAt = new Date().toISOString();
+    let automationRunId: number;
+
     try {
-      await handleRunAutomation(automation);
-      const lastRunAt = new Date().toISOString();
+      automationRunId = await addAutomationRun({
+        automationId: automation.id,
+        status: 'running',
+        trigger,
+        projectId: automation.projectId,
+        projectName: automation.projectName,
+        modelId: automation.modelId,
+        modelName: automation.modelName,
+        reasoningEffort: automation.reasoningEffort,
+        startedAt,
+      });
+    } catch (err) {
+      runningAutomationIdRef.current = null;
+      setRunningAutomationId(null);
+      console.error('[App] 保存自动化运行记录失败:', err);
+      showToast('无法保存运行记录，自动化未启动');
+      return false;
+    }
+
+    try {
+      const sessionId = await handleRunAutomation(automation, automationRunId);
+      try {
+        await updateAutomationRun(automationRunId, { sessionId });
+      } catch (err) {
+        console.error('[App] 关联自动化运行会话失败:', err);
+      }
+
+      const lastRunAt = startedAt;
       const updated = {
         ...automation,
         lastRunAt,
         runCount: automation.runCount + 1,
         updatedAt: lastRunAt,
       };
-      await updateAutomation(automation.id, {
-        lastRunAt,
-        runCount: updated.runCount,
-        updatedAt: lastRunAt,
-      });
-      setSelectedAutomation(updated);
+      try {
+        await updateAutomation(automation.id, {
+          lastRunAt,
+          runCount: updated.runCount,
+          updatedAt: lastRunAt,
+        });
+      } catch (err) {
+        console.error('[App] 更新自动化运行统计失败:', err);
+      }
+      setSelectedAutomation(current => current?.id === updated.id ? updated : current);
       setAutomationRefreshKey(current => current + 1);
+      if (trigger === 'scheduled') showToast(`定时任务 "${automation.title}" 已启动`);
+      return true;
     } catch (err) {
+      for (const [mappedSessionId, mappedRunId] of Object.entries(automationRunBySessionRef.current)) {
+        if (mappedRunId === automationRunId) delete automationRunBySessionRef.current[mappedSessionId];
+      }
+      const completedAt = new Date().toISOString();
+      await updateAutomationRun(automationRunId, {
+        status: 'error',
+        completedAt,
+        error: getAutomationRunError(err),
+      }).catch(updateErr => {
+        console.error('[App] 更新自动化失败记录失败:', updateErr);
+      });
+      setAutomationRefreshKey(current => current + 1);
+      runningAutomationIdRef.current = null;
+      setRunningAutomationId(null);
       console.error('[App] 运行自动化失败:', err);
       showToast(err instanceof Error ? err.message : '运行自动化失败');
-    } finally {
-      setRunningAutomationId(null);
+      return false;
     }
-  }, [handleRunAutomation, runningAutomationId]);
+  }, [handleRunAutomation, showToast]);
+
+  const handleSaveAutomation = useCallback(async (
+    automation: DbAutomation,
+    updates: AutomationUpdateInput,
+  ): Promise<boolean> => {
+    if (!automation.id || runningAutomationIdRef.current === automation.id) return false;
+    const title = updates.title.trim();
+    const prompt = updates.prompt.trim();
+    const cron = updates.cron.trim().replace(/\s+/g, ' ');
+    if (!title || title.length > 100) {
+      showToast('任务名称应为 1-100 个字符');
+      return false;
+    }
+    if (!prompt || prompt.length > 10000) {
+      showToast('任务提示词应为 1-10000 个字符');
+      return false;
+    }
+    const cronError = getCronValidationError(cron);
+    if (cronError) {
+      showToast(cronError);
+      return false;
+    }
+    const project = updates.projectId === UNLINKED_PROJECT
+      ? { id: UNLINKED_PROJECT, name: '未关联项目' }
+      : projects.find(item => item.id === updates.projectId);
+    const model = automationModels.find(item => item.id === updates.modelId);
+    if (!project || !model) {
+      showToast(!project ? '请选择一个可用项目' : '请选择一个可用模型');
+      return false;
+    }
+
+    const updatedAt = new Date().toISOString();
+    const nextAutomation: DbAutomation = {
+      ...automation,
+      ...updates,
+      title,
+      prompt,
+      cron,
+      projectName: project.name,
+      modelName: model.name,
+      updatedAt,
+    };
+    try {
+      await updateAutomation(automation.id, {
+        title,
+        prompt,
+        projectId: project.id,
+        projectName: project.name,
+        modelId: model.id,
+        modelName: model.name,
+        reasoningEffort: updates.reasoningEffort,
+        scheduleEnabled: updates.scheduleEnabled,
+        cron,
+        updatedAt,
+      });
+      if (!updates.scheduleEnabled) {
+        scheduledAutomationQueueRef.current = scheduledAutomationQueueRef.current.filter(id => id !== automation.id);
+        setScheduledAutomationQueueVersion(current => current + 1);
+      }
+      setSelectedAutomation(nextAutomation);
+      setAutomationRefreshKey(current => current + 1);
+      showToast('自动化配置已保存');
+      return true;
+    } catch (error) {
+      console.error('[App] 保存自动化配置失败:', error);
+      showToast('保存自动化配置失败');
+      return false;
+    }
+  }, [automationModels, projects, showToast]);
+
+  useEffect(() => {
+    let checking = false;
+    const checkSchedules = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const now = new Date();
+        const previousCheck = lastAutomationScheduleCheckRef.current;
+        lastAutomationScheduleCheckRef.current = now;
+        const automations = await getAllAutomations();
+        let queued = false;
+        for (const automation of automations) {
+          if (!automation.id || !automation.scheduleEnabled) continue;
+          let scheduledFor: Date | null = null;
+          try {
+            const cron = automation.cron || '0 9 * * *';
+            scheduledFor = previousCheck
+              ? getLatestCronRun(cron, previousCheck, now)
+              : (cronMatchesDate(cron, now) ? new Date(Math.floor(now.getTime() / 60_000) * 60_000) : null);
+          } catch (error) {
+            console.error(`[App] 自动化 ${automation.id} 的 Cron 无效:`, error);
+            continue;
+          }
+          if (!scheduledFor) continue;
+          const minuteKey = getCronMinuteKey(scheduledFor);
+          if (automation.lastScheduledAt === minuteKey) continue;
+          await updateAutomation(automation.id, { lastScheduledAt: minuteKey });
+          if (!scheduledAutomationQueueRef.current.includes(automation.id)) {
+            scheduledAutomationQueueRef.current.push(automation.id);
+            queued = true;
+          }
+        }
+        if (queued) {
+          setAutomationRefreshKey(current => current + 1);
+          setScheduledAutomationQueueVersion(current => current + 1);
+        }
+      } catch (error) {
+        console.error('[App] 检查自动化定时任务失败:', error);
+      } finally {
+        checking = false;
+      }
+    };
+
+    void checkSchedules();
+    const timer = window.setInterval(() => { void checkSchedules(); }, 30_000);
+    const handleFocus = () => { void checkSchedules(); };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (runningAutomationIdRef.current !== null || scheduledAutomationQueueProcessingRef.current) return;
+    const automationId = scheduledAutomationQueueRef.current.shift();
+    if (automationId === undefined) return;
+    scheduledAutomationQueueProcessingRef.current = true;
+    void (async () => {
+      try {
+        const automation = await getAutomation(automationId);
+        if (automation?.scheduleEnabled) {
+          await handleRunAutomationFromDetail(automation, 'scheduled');
+        }
+      } catch (error) {
+        console.error('[App] 启动排队的自动化任务失败:', error);
+      } finally {
+        scheduledAutomationQueueProcessingRef.current = false;
+        setScheduledAutomationQueueVersion(current => current + 1);
+      }
+    })();
+  }, [handleRunAutomationFromDetail, runningAutomationId, scheduledAutomationQueueVersion]);
 
   const handleDeleteAutomationFromDetail = useCallback(async (automation: DbAutomation) => {
     if (!automation.id || runningAutomationId !== null) return;
@@ -1048,6 +1307,20 @@ function App() {
     }
   }, [openFiles.length]);
 
+  const handleOpenAutomationRun = useCallback((run: DbAutomationRun) => {
+    if (!run.sessionId) return;
+    const sessionId = resolvedSessionIdsRef.current[run.sessionId] || run.sessionId;
+    if (!sessions.some(session => session.id === sessionId)) {
+      showToast('该运行记录关联的对话已不存在');
+      return;
+    }
+    handleCloseAutomationDetail();
+    setPanelState(prev => ({ ...prev, chatVisible: true }));
+    setSidebarCollapsed(false);
+    setActiveActivity('sessions');
+    handleSelectSession(sessionId);
+  }, [handleCloseAutomationDetail, handleSelectSession, sessions, showToast]);
+
   // 渲染侧边栏内容
   const renderSidebarContent = () => {
     if (sidebarCollapsed) return null;
@@ -1057,7 +1330,7 @@ function App() {
           <ExplorerPanel
             projects={projects} activeProjectPath={activeProjectPath} refreshKey={projectRefreshKey}
             onFileSelect={handleFileSelect} onOpenFolder={handleOpenFolder} onCreateProject={handleCreateProject}
-            onRemoveProject={handleRemoveProject} onSetActiveProject={handleSetActiveProject}
+            onRemoveProject={handleRemoveProject} onRenameProject={handleRenameProject} onSetActiveProject={handleSetActiveProject}
             onRefreshProject={refreshFileTree} onNewFile={handleNewFile} onNewFolder={handleNewFolder}
             onRename={handleRename} onDelete={handleDelete} onCopy={handleCopy} onMove={handleMove}
           />
@@ -1112,8 +1385,13 @@ function App() {
             <AutomationDetail
               automation={selectedAutomation}
               projects={projects}
+              models={automationModels}
               running={runningAutomationId === selectedAutomation.id}
+              runDisabled={runningAutomationId !== null && runningAutomationId !== selectedAutomation.id}
+              runRefreshKey={automationRefreshKey}
               onRun={automation => { void handleRunAutomationFromDetail(automation); }}
+              onOpenRun={handleOpenAutomationRun}
+              onSave={handleSaveAutomation}
               onDelete={automation => { void handleDeleteAutomationFromDetail(automation); }}
               onClose={handleCloseAutomationDetail}
             />
@@ -1134,12 +1412,14 @@ function App() {
           <ChatView
             currentConversation={currentConversation} plugins={plugins} workspacePath={chatWorkspacePath || undefined} projectName={workspaceName || undefined}
             theme={currentTheme} backendPort={backendPort} onUpdateSessionTitle={handleUpdateSessionTitle} onNewSession={(title) => {
-              setNewSessionFromProject(!!activeProjectPath);
-              return handleNewSession(activeProjectPath || UNLINKED_PROJECT, title);
+              setNewSessionFromProject(false);
+              setChatWorkspacePath(null);
+              return handleNewSession(UNLINKED_PROJECT, title);
             }}
             sessions={sessions} sessionRunStates={sessionRunStates} maxSteps={settings.maxSteps} onSelectSession={handleSelectSession}
             providers={settings.providers} agents={settings.agents} activeProviderId={settings.activeProviderId} onActiveProviderChange={(providerId: string) => { setSettings(prev => { const updated = { ...prev, activeProviderId: providerId }; settingsService.save(updated); return updated; }); }}
-            activeFileName={activeFile?.name} activeFilePath={activeFilePath || undefined}
+            activeFileName={chatWorkspacePath ? activeFile?.name : undefined}
+            activeFilePath={chatWorkspacePath ? (activeFilePath || undefined) : undefined}
             onFileSelect={handleChatFileSelect}
             reviewFiles={currentSessionId ? (sessionReviewFiles[currentSessionId] || []) : []}
             onReviewFileSelect={handleDiffFileSelect}
@@ -1153,8 +1433,30 @@ function App() {
               setAutomationPrompt(current => current?.runId === runId ? null : current);
             }}
             newSessionFromProject={newSessionFromProject}
-            onSessionRunStateChange={(sessionId, status) => {
+            onSessionRunStateChange={(sessionId, status, error) => {
               setSessionRunStates(prev => ({ ...prev, [sessionId]: status }));
+              if (status === 'completed' || status === 'error') {
+                const resolvedSessionId = resolvedSessionIdsRef.current[sessionId] || sessionId;
+                const automationRunId = automationRunBySessionRef.current[sessionId]
+                  || automationRunBySessionRef.current[resolvedSessionId];
+                if (automationRunId) {
+                  for (const [mappedSessionId, mappedRunId] of Object.entries(automationRunBySessionRef.current)) {
+                    if (mappedRunId === automationRunId) delete automationRunBySessionRef.current[mappedSessionId];
+                  }
+                  const completedAt = new Date().toISOString();
+                  void updateAutomationRun(automationRunId, {
+                    status,
+                    completedAt,
+                    error: status === 'error' ? getAutomationRunError(error || '会话执行失败') : undefined,
+                  }).then(() => {
+                    setAutomationRefreshKey(current => current + 1);
+                  }).catch(err => {
+                    console.error('[App] 完成自动化运行记录失败:', err);
+                  });
+                  runningAutomationIdRef.current = null;
+                  setRunningAutomationId(null);
+                }
+              }
               if (status === 'running') {
                 setSessionReviewFiles(prev => {
                   const next = { ...prev };

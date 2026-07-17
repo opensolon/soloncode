@@ -43,10 +43,32 @@ export interface DbAutomation {
   modelId: string;
   modelName: string;
   reasoningEffort: AutomationReasoningEffort;
+  scheduleEnabled: boolean;
+  cron: string;
+  lastScheduledAt?: string;
   createdAt: string;
   updatedAt: string;
   lastRunAt?: string;
   runCount: number;
+}
+
+export type AutomationRunStatus = 'running' | 'completed' | 'error';
+export type AutomationRunTrigger = 'manual' | 'scheduled';
+
+export interface DbAutomationRun {
+  id?: number;
+  automationId: number;
+  sessionId?: string;
+  status: AutomationRunStatus;
+  trigger?: AutomationRunTrigger;
+  projectId: string;
+  projectName: string;
+  modelId: string;
+  modelName: string;
+  reasoningEffort: AutomationReasoningEffort;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
 }
 
 /** 未关联项目的特殊标记 */
@@ -127,6 +149,7 @@ class SolonCodeDatabase extends Dexie {
   agents!: Table<DbAgent>;
   projects!: Table<DbProject>;
   automations!: Table<DbAutomation>;
+  automationRuns!: Table<DbAutomationRun>;
 
   constructor() {
     super('SolonCodeDB');
@@ -158,6 +181,17 @@ class SolonCodeDatabase extends Dexie {
     this.version(8).stores({
       automations: '++id, projectId, createdAt, lastRunAt',
     });
+    // v9: 新增自动化运行记录表
+    this.version(9).stores({
+      automationRuns: '++id, automationId, sessionId, status, startedAt',
+    });
+    // v10: 自动化支持 Cron 定时开关
+    this.version(10).stores({
+      automations: '++id, projectId, scheduleEnabled, createdAt, lastRunAt',
+    }).upgrade(transaction => transaction.table<DbAutomation>('automations').toCollection().modify(automation => {
+      if (typeof automation.scheduleEnabled !== 'boolean') automation.scheduleEnabled = false;
+      if (!automation.cron) automation.cron = '0 9 * * *';
+    }));
   }
 }
 
@@ -377,8 +411,33 @@ export async function updateAutomation(id: number, updates: Partial<DbAutomation
   await db.automations.update(id, updates);
 }
 
+export async function getAutomation(id: number): Promise<DbAutomation | undefined> {
+  return await db.automations.get(id);
+}
+
 export async function deleteAutomation(id: number): Promise<void> {
-  await db.automations.delete(id);
+  await db.transaction('rw', [db.automations, db.automationRuns], async () => {
+    await db.automationRuns.where('automationId').equals(id).delete();
+    await db.automations.delete(id);
+  });
+}
+
+export async function getAutomationRuns(automationId: number): Promise<DbAutomationRun[]> {
+  if (!Number.isInteger(automationId) || automationId <= 0) return [];
+  const runs = await db.automationRuns
+    .where('automationId')
+    .equals(automationId)
+    .toArray();
+  return runs.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+}
+
+export async function addAutomationRun(run: Omit<DbAutomationRun, 'id'>): Promise<number> {
+  return await db.automationRuns.add(run);
+}
+
+export async function updateAutomationRun(id: number, updates: Partial<DbAutomationRun>): Promise<void> {
+  if (!Number.isInteger(id) || id <= 0) return;
+  await db.automationRuns.update(id, updates);
 }
 
 // ==================== 全局设置（键值对） ====================

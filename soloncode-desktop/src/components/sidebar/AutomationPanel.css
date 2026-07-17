@@ -164,6 +164,23 @@
 .automation-task-meta {
   color: var(--cb-text-secondary);
   font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.automation-task-schedule-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background-color: var(--cb-text-secondary);
+  opacity: 0.45;
+}
+
+.automation-task-schedule-dot.enabled {
+  background-color: #4caf50;
+  opacity: 1;
 }
 
 .automation-task-meta.missing,
@@ -219,6 +236,42 @@
   line-height: 1.3;
 }
 
+.automation-detail-title-field {
+  min-width: 0;
+  flex: 1;
+}
+
+.automation-detail-title-field label,
+.automation-detail-field label,
+.automation-cron-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--cb-text-secondary);
+  font-size: 10px;
+}
+
+.automation-detail-title-field input {
+  width: 100%;
+  max-width: 520px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cb-text-primary);
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  box-sizing: border-box;
+}
+
+.automation-detail-title-field input:hover,
+.automation-detail-title-field input:focus {
+  border-color: var(--cb-vscode-input-border, var(--cb-vscode-widget-border));
+  background-color: var(--cb-vscode-input-background, var(--cb-vscode-editor-background));
+  outline: none;
+}
+
 .automation-detail-hero p {
   margin: 0;
   color: var(--cb-text-secondary);
@@ -237,6 +290,11 @@
 .automation-detail-status.missing {
   background-color: rgba(241, 76, 76, 0.12);
   color: var(--cb-vscode-errorForeground, #f14c4c);
+}
+
+.automation-detail-status.scheduled {
+  background-color: rgba(66, 165, 245, 0.14);
+  color: #42a5f5;
 }
 
 .automation-detail-section {
@@ -263,6 +321,22 @@
   overflow-wrap: anywhere;
 }
 
+.automation-detail-prompt-input {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  color: var(--cb-text-primary);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.automation-detail-prompt-input:focus,
+.automation-detail-field select:focus,
+.automation-cron-field input:focus {
+  border-color: var(--cb-accent);
+  outline: none;
+}
+
 .automation-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -281,10 +355,32 @@
 }
 
 .automation-detail-field > span,
+.automation-detail-field > label,
 .automation-detail-field small,
 .automation-detail-times {
   color: var(--cb-text-secondary);
   font-size: 10px;
+}
+
+.automation-detail-field select,
+.automation-cron-field input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--cb-vscode-input-border, var(--cb-vscode-widget-border));
+  border-radius: 4px;
+  background-color: var(--cb-vscode-input-background, var(--cb-vscode-editor-background));
+  color: var(--cb-vscode-input-foreground, var(--cb-text-primary));
+  font: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.automation-detail-field select:disabled,
+.automation-cron-field input:disabled,
+.automation-detail-title-field input:disabled,
+.automation-detail-prompt-input:disabled {
+  opacity: 0.58;
 }
 
 .automation-detail-field strong,
@@ -324,6 +420,279 @@
   gap: 8px 20px;
 }
 
+.automation-schedule-section {
+  padding-bottom: 4px;
+}
+
+.automation-schedule-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.automation-schedule-heading h3 {
+  margin-bottom: 4px;
+}
+
+.automation-schedule-heading p {
+  margin: 0;
+  color: var(--cb-text-secondary);
+  font-size: 10px;
+}
+
+.automation-schedule-switch {
+  width: 34px;
+  height: 18px;
+  padding: 2px;
+  flex: 0 0 auto;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 10px;
+  background-color: var(--cb-vscode-input-background, transparent);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.automation-schedule-switch span {
+  width: 12px;
+  height: 12px;
+  display: block;
+  border-radius: 50%;
+  background-color: var(--cb-text-secondary);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+.automation-schedule-switch.enabled {
+  border-color: var(--cb-accent);
+  background-color: var(--cb-accent);
+}
+
+.automation-schedule-switch.enabled span {
+  transform: translateX(16px);
+  background-color: #fff;
+}
+
+.automation-schedule-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.automation-cron-field {
+  padding: 12px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 7px;
+}
+
+.automation-cron-field input {
+  font-family: var(--cb-vscode-editor-font-family, Consolas, monospace);
+}
+
+.automation-cron-field small,
+.automation-last-scheduled {
+  display: block;
+  margin-top: 7px;
+  color: var(--cb-text-secondary);
+  font-size: 10px;
+}
+
+.automation-field-error,
+.automation-detail-save-error {
+  color: var(--cb-vscode-errorForeground, #f14c4c);
+  font-size: 10px;
+}
+
+.automation-field-error,
+.automation-next-run {
+  margin-top: 7px;
+}
+
+.automation-next-run {
+  color: #4caf50;
+  font-size: 10px;
+}
+
+.automation-cron-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.automation-cron-presets button {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cb-text-secondary);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.automation-cron-presets button:hover:not(:disabled) {
+  color: var(--cb-text-primary);
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.automation-run-history-section {
+  padding-bottom: 8px;
+}
+
+.automation-run-history-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.automation-run-history-heading h3 {
+  margin-bottom: 0;
+}
+
+.automation-run-history-heading > span {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background-color: var(--cb-vscode-badge-background, var(--cb-accent));
+  color: var(--cb-vscode-badge-foreground, #fff);
+  font-size: 9px;
+  box-sizing: border-box;
+}
+
+.automation-run-history {
+  margin-top: 10px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.automation-run-history-empty {
+  margin-top: 10px;
+  padding: 20px 14px;
+  border: 1px dashed var(--cb-vscode-widget-border);
+  border-radius: 7px;
+  color: var(--cb-text-secondary);
+  font-size: 11px;
+  text-align: center;
+}
+
+.automation-run-record {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.automation-run-record.clickable {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.automation-run-record.clickable:hover {
+  background-color: var(--cb-vscode-list-hoverBackground);
+}
+
+.automation-run-record.clickable:focus-visible {
+  outline: 1px solid var(--cb-accent);
+  outline-offset: -1px;
+}
+
+.automation-run-record:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.automation-run-record + .automation-run-record {
+  border-top: 1px solid var(--cb-vscode-panel-border);
+}
+
+.automation-run-record-marker {
+  display: flex;
+  align-items: center;
+  align-self: start;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.automation-run-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background-color: #808080;
+}
+
+.automation-run-status-dot.running { background-color: #42a5f5; }
+.automation-run-status-dot.completed { background-color: #4caf50; }
+.automation-run-status-dot.error { background-color: var(--cb-vscode-errorForeground, #f14c4c); }
+
+.automation-run-status {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.automation-run-status.running { color: #42a5f5; }
+.automation-run-status.completed { color: #4caf50; }
+.automation-run-status.error { color: var(--cb-vscode-errorForeground, #f14c4c); }
+
+.automation-run-record-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.automation-run-record-primary,
+.automation-run-record-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.automation-run-record-primary strong {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.automation-run-record-primary span,
+.automation-run-record-meta,
+.automation-run-session {
+  color: var(--cb-text-secondary);
+  font-size: 10px;
+}
+
+.automation-run-record-meta span,
+.automation-run-session {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-run-session {
+  max-width: 100%;
+}
+
+.automation-run-error {
+  padding: 5px 7px;
+  border-radius: 4px;
+  background-color: rgba(241, 76, 76, 0.1);
+  color: var(--cb-vscode-errorForeground, #f14c4c);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .automation-detail-actions {
   min-height: 56px;
   padding: 9px 14px;
@@ -336,7 +705,16 @@
   box-sizing: border-box;
 }
 
+.automation-detail-save-error {
+  max-width: 260px;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .automation-detail-delete,
+.automation-detail-save,
 .automation-detail-run {
   height: 30px;
   padding: 0 12px;
@@ -361,12 +739,19 @@
   color: #fff;
 }
 
+.automation-detail-save {
+  border: 1px solid var(--cb-vscode-widget-border);
+  background-color: var(--cb-vscode-button-secondaryBackground, var(--cb-vscode-list-hoverBackground));
+  color: var(--cb-text-primary);
+}
+
 .automation-detail-delete:hover:not(:disabled) {
   color: var(--cb-vscode-errorForeground, #f14c4c);
   border-color: var(--cb-vscode-errorForeground, #f14c4c);
 }
 
 .automation-detail-run:disabled,
+.automation-detail-save:disabled,
 .automation-detail-delete:disabled {
   opacity: 0.45;
   cursor: default;
@@ -375,5 +760,10 @@
 @media (max-width: 760px) {
   .automation-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .automation-run-record {
+    grid-template-columns: 1fr;
+    gap: 7px;
   }
 }

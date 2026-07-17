@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { Icon } from "../common/Icon";
+import { ConfirmDialog } from "../common/ConfirmDialog";
+import { ContextMenu } from "../common/ContextMenu";
 import { skillService } from "../../services/skillService";
 import type { MountPool, PoolSkill } from "../../services/skillService";
+import { getManagedResourceNameError, managedResourceService } from "../../services/managedResourceService";
 import "../sidebar/ExplorerPanel.css";
 import "../sidebar/SessionsPanel.css";
 import "./SkillsPanel.css";
@@ -18,6 +21,11 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refresh
   const [poolSkills, setPoolSkills] = useState<Record<string, PoolSkill[]>>({});
   const [loading, setLoading] = useState(false);
   const [collapsedPools, setCollapsedPools] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; mount: MountPool; skill: PoolSkill } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ mount: MountPool; skill: PoolSkill; value: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ mount: MountPool; skill: PoolSkill } | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [actionPending, setActionPending] = useState(false);
 
   const loadMounts = useCallback(async () => {
     if (!backendPort) return;
@@ -56,6 +64,63 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refresh
 
   const totalSkills = Object.values(poolSkills).reduce((sum, arr) => sum + arr.length, 0);
   const visibleMounts = mounts.filter(mount => (poolSkills[mount.alias]?.length || 0) > 0);
+  const renameError = renameTarget ? getManagedResourceNameError(renameTarget.value) : '';
+
+  const handleContextAction = useCallback((action: string) => {
+    const target = contextMenu;
+    setContextMenu(null);
+    if (!target || target.mount.system || !target.skill.path) return;
+    setActionMessage(null);
+    if (action === 'rename') {
+      setRenameTarget({ ...target, value: target.skill.name });
+    } else if (action === 'copy') {
+      setActionPending(true);
+      void managedResourceService.copy(target.skill.path, 'skill')
+        .then(result => {
+          setActionMessage({ text: `已复制为 ${result.name}` });
+          return loadMounts();
+        })
+        .catch(error => {
+          console.error('[SkillsPanel] 复制 Skill 失败:', error);
+          setActionMessage({ text: '复制 Skill 失败', error: true });
+        })
+        .finally(() => setActionPending(false));
+    } else if (action === 'delete') {
+      setDeleteTarget(target);
+    }
+  }, [contextMenu, loadMounts]);
+
+  const confirmRename = useCallback(async () => {
+    if (!renameTarget?.skill.path || getManagedResourceNameError(renameTarget.value) || actionPending) return;
+    setActionPending(true);
+    try {
+      const result = await managedResourceService.rename(renameTarget.skill.path, 'skill', renameTarget.value);
+      setRenameTarget(null);
+      setActionMessage({ text: `已重命名为 ${result.name}` });
+      await loadMounts();
+    } catch (error) {
+      console.error('[SkillsPanel] 重命名 Skill 失败:', error);
+      setActionMessage({ text: '重命名 Skill 失败', error: true });
+    } finally {
+      setActionPending(false);
+    }
+  }, [actionPending, loadMounts, renameTarget]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget?.skill.path || actionPending) return;
+    setActionPending(true);
+    try {
+      await managedResourceService.delete(deleteTarget.skill.path, 'skill');
+      setDeleteTarget(null);
+      setActionMessage({ text: `已删除 ${deleteTarget.skill.name}` });
+      await loadMounts();
+    } catch (error) {
+      console.error('[SkillsPanel] 删除 Skill 失败:', error);
+      setActionMessage({ text: '删除 Skill 失败', error: true });
+    } finally {
+      setActionPending(false);
+    }
+  }, [actionPending, deleteTarget, loadMounts]);
 
   return (
     <div className="skills-panel">
@@ -69,6 +134,7 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refresh
       </div>
 
       <div className="panel-content skills-list">
+        {actionMessage && <div className={`resource-action-message${actionMessage.error ? ' error' : ''}`}>{actionMessage.text}</div>}
         {!backendPort && <div className="empty-state"><div className="empty-text">等待后端连接...</div></div>}
         {backendPort && loading && <div className="empty-state"><div className="empty-text">加载中...</div></div>}
         {backendPort && !loading && visibleMounts.length === 0 && <div className="empty-state"><div className="empty-text">暂无 Skills</div></div>}
@@ -85,7 +151,7 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refresh
               </div>
               {!collapsed && skills.map(skill => (
                 <div
-                  key={skill.name}
+                  key={skill.path || skill.name}
                   className="file-node file"
                   style={{ paddingLeft: "20px", cursor: skill.path ? "pointer" : "default" }}
                   onClick={() => {
@@ -93,6 +159,11 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refresh
                       const mdPath = skill.path.replace(/[\\/]$/, '') + '/SKILL.md';
                       onFileSelect(mdPath);
                     }
+                  }}
+                  onContextMenu={event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setContextMenu({ x: event.clientX, y: event.clientY, mount, skill });
                   }}
                 >
                   <span className="chevron-placeholder" />
@@ -104,6 +175,45 @@ export function SkillsPanel({ backendPort, onFileSelect, onCreateWithAI, refresh
           );
         })}
       </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={[
+            ...(contextMenu.mount.system ? [{ id: 'readonly', label: '系统 Skill（只读）', disabled: true }] : []),
+            { id: 'rename', label: '重命名', disabled: contextMenu.mount.system || !contextMenu.skill.path || actionPending },
+            { id: 'copy', label: '复制', disabled: contextMenu.mount.system || !contextMenu.skill.path || actionPending },
+            { id: 'delete', label: '删除', danger: true, disabled: contextMenu.mount.system || !contextMenu.skill.path || actionPending },
+          ]}
+          onItemClick={handleContextAction}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+      {renameTarget && (
+        <ConfirmDialog
+          title="重命名 Skill"
+          message="名称会同步写入 SKILL.md。"
+          inputLabel="Skill 名称"
+          inputValue={renameTarget.value}
+          inputError={renameError}
+          confirmLabel={actionPending ? '处理中' : '重命名'}
+          confirmDisabled={Boolean(renameError) || actionPending}
+          onInputChange={value => setRenameTarget(current => current ? { ...current, value } : null)}
+          onConfirm={() => { void confirmRename(); }}
+          onCancel={() => { if (!actionPending) setRenameTarget(null); }}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmDialog
+          title="删除 Skill"
+          message={`将删除「${deleteTarget.skill.name}」及其目录中的全部文件，此操作无法撤销。`}
+          confirmLabel={actionPending ? '处理中' : '删除'}
+          confirmDisabled={actionPending}
+          danger
+          onConfirm={() => { void confirmDelete(); }}
+          onCancel={() => { if (!actionPending) setDeleteTarget(null); }}
+        />
+      )}
     </div>
   );
 }

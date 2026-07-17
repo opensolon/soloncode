@@ -8,6 +8,7 @@ import { ThinkBlock } from './ThinkBlock';
 import { ActionBlock } from './ActionBlock';
 import { ActionGroupBlock } from './ActionGroupBlock';
 import type { Message, Theme, ContentItem } from '../types';
+import { isTodoToolName } from '../utils/todoTools';
 import './ChatMessages.css';
 
 interface ChatMessagesProps {
@@ -474,6 +475,14 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
   ({ messages, isLoading, thinkingElapsedSeconds = 0, theme, projectName, onDeleteMessage, onHitlAction, onFileSelect }, ref) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const autoFollowRef = useRef(true);
+    const visibleMessages = useMemo(() => {
+      return messages.reduce<Message[]>((result, message) => {
+        const contents = message.contents.filter(item => !isTodoToolName(item.toolName));
+        if (contents.length === 0) return result;
+        result.push(contents.length === message.contents.length ? message : { ...message, contents });
+        return result;
+      }, []);
+    }, [messages]);
 
     useImperativeHandle(ref, () => ({
       scrollToBottom() {
@@ -482,20 +491,20 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
       }
     }));
 
-    const showThinkingRow = isLoading && messages[messages.length - 1]?.role !== 'ASSISTANT';
+    const showThinkingRow = isLoading && visibleMessages[visibleMessages.length - 1]?.role !== 'ASSISTANT';
 
     const itemContent = useCallback((index: number) => {
-      if (showThinkingRow && index === messages.length) {
+      if (showThinkingRow && index === visibleMessages.length) {
         return <ThinkingRow elapsedSeconds={thinkingElapsedSeconds} />;
       }
-      const message = messages[index];
-      const isStreamingMessage = isLoading && index === messages.length - 1 && message?.role === 'ASSISTANT';
+      const message = visibleMessages[index];
+      const isStreamingMessage = isLoading && index === visibleMessages.length - 1 && message?.role === 'ASSISTANT';
       return (
         <MessageRow message={message} theme={theme} onDelete={onDeleteMessage} onHitlAction={onHitlAction} onFileSelect={onFileSelect} isStreaming={isStreamingMessage} />
       );
-    }, [messages, isLoading, showThinkingRow, thinkingElapsedSeconds, theme, onDeleteMessage, onHitlAction, onFileSelect]);
+    }, [visibleMessages, isLoading, showThinkingRow, thinkingElapsedSeconds, theme, onDeleteMessage, onHitlAction, onFileSelect]);
 
-    if (messages.length === 0 && !isLoading) {
+    if (visibleMessages.length === 0 && !isLoading) {
       return (
         <div className="chat-messages">
           <div className="empty-messages">
@@ -511,14 +520,14 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
         <Virtuoso
           className="chat-messages-list"
           ref={virtuosoRef}
-          totalCount={messages.length + (showThinkingRow ? 1 : 0)}
+          totalCount={visibleMessages.length + (showThinkingRow ? 1 : 0)}
           itemContent={itemContent}
           followOutput={(isAtBottom) => autoFollowRef.current && isAtBottom ? 'auto' : false}
           atBottomStateChange={(atBottom) => {
             autoFollowRef.current = atBottom;
           }}
-          initialTopMostItemIndex={Math.max(0, messages.length - 1)}
-          computeItemKey={(index) => showThinkingRow && index === messages.length ? 'thinking' : (messages[index]?.id ?? index)}
+          initialTopMostItemIndex={Math.max(0, visibleMessages.length - 1)}
+          computeItemKey={(index) => showThinkingRow && index === visibleMessages.length ? 'thinking' : (visibleMessages[index]?.id ?? index)}
           style={{ height: '100%' }}
         />
         {false && (

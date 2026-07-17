@@ -4,11 +4,18 @@ import type { Message, Conversation, Theme, Plugin, ContentType, ContentItem } f
 import { normalizeProviderType, type ModelProvider } from '../services/settingsService';
 import { fileService } from '../services/fileService';
 import { saveMessage, getMessagesByConversation } from '../db';
-import { ChatHeader, type ChatHeaderTask, type ChatReviewFile } from './ChatHeader';
+import { ChatHeader, type ChatReviewFile } from './ChatHeader';
+import { ChatTaskList, type ChatTask } from './ChatTaskList';
 import { ChatMessages } from './ChatMessages';
 import { ChatInput, type ChatAgentOption, type SendOptions, type ChatMode, type ReasoningEffort } from './ChatInput';
 import { Icon } from './common/Icon';
 import type { Session } from './sidebar/SessionsPanel';
+import {
+  buildAutomationPlanningPrompt,
+  parseGeneratedAutomationPlan,
+  type GeneratedAutomationPlan,
+} from '../utils/automationPlan';
+import { isTodoToolName } from '../utils/todoTools';
 import '../views/ChatPage.css';
 
 export type PromptCreationType = 'skill' | 'agent' | 'automation';
@@ -17,6 +24,7 @@ export interface PromptCreationMode {
   id: string;
   sessionId: string;
   type: PromptCreationType;
+  projectId?: string;
   template?: string;
 }
 
@@ -30,7 +38,7 @@ const promptCreationCopy: Record<PromptCreationType, { slogan: string; fileName?
     fileName: 'AGENT.md',
   },
   automation: {
-    slogan: '描述需要重复执行的任务，将关联当前项目、模型和推理程度',
+    slogan: '描述执行频率和工作内容，模型会识别调度并补全实际执行提示词',
   },
 };
 
@@ -164,18 +172,19 @@ interface ChatViewProps {
   onReviewFileSelect?: (path: string) => void;
   onReviewFileDiscard?: (path: string) => void;
   promptCreation?: PromptCreationMode | null;
-  onCreateAutomationFromPrompt?: (prompt: string, options: SendOptions) => Promise<void>;
+  onCreateAutomationFromPrompt?: (plan: GeneratedAutomationPlan, options: SendOptions) => Promise<void>;
   automationPrompt?: {
     runId: string;
+    sessionId: string;
     prompt: string;
     modelId: string;
     modelName: string;
     reasoningEffort: ReasoningEffort;
   } | null;
   onAutomationPromptConsumed?: (runId: string) => void;
-  onAiCreateComplete?: (info: { type: 'skill' | 'agent'; name: string; error?: string }) => void;
+  onAiCreateComplete?: (info: { type: PromptCreationType; name: string; error?: string }) => void;
   newSessionFromProject?: boolean;
-  onSessionRunStateChange?: (sessionId: string, status: 'running' | 'completed' | 'error') => void;
+  onSessionRunStateChange?: (sessionId: string, status: 'running' | 'completed' | 'error', error?: string) => void;
   onSessionMessageSaved?: (sessionId: string, count?: number) => void;
 }
 
@@ -188,7 +197,7 @@ class WebSocketManager {
   private activeWs = new Map<string, WebSocket>();
   private intentionallyClosedWs = new WeakSet<WebSocket>();
   private messageCallback: ((data: any) => void) | null = null;
-  private statusCallback: ((sessionId: string, status: 'running' | 'completed' | 'error') => void) | null = null;
+  private statusCallback: ((sessionId: string, status: 'running' | 'completed' | 'error', error?: string) => void) | null = null;
   private backendPort: number | null = null;
   private workspacePath: string | null = null;
 
@@ -266,7 +275,7 @@ class WebSocketManager {
     this.messageCallback = callback;
   }
 
-  registerStatusCallback(callback: (sessionId: string, status: 'running' | 'completed' | 'error') => void) {
+  registerStatusCallback(callback: (sessionId: string, status: 'running' | 'completed' | 'error', error?: string) => void) {
     this.statusCallback = callback;
   }
 
@@ -316,7 +325,7 @@ class WebSocketManager {
         const messageType = typeof msg.type === 'string' ? msg.type.toLowerCase() : '';
         if (messageType === 'done' || messageType === 'error') terminalReceived = true;
         if (msgSessionId && messageType === 'done') this.statusCallback?.(msgSessionId, 'completed');
-        if (msgSessionId && messageType === 'error') this.statusCallback?.(msgSessionId, 'error');
+        if (msgSessionId && messageType === 'error') this.statusCallback?.(msgSessionId, 'error', msg.text || '会话执行失败');
         this.messageCallback?.(msg);
         if (terminalReceived) ws.close();
       } catch (e) {
@@ -329,7 +338,7 @@ class WebSocketManager {
         this.activeWs.delete(sessionId);
       }
       if (sessionId && !terminalReceived && !this.intentionallyClosedWs.has(ws)) {
-        this.statusCallback?.(sessionId, 'error');
+        this.statusCallback?.(sessionId, 'error', 'WebSocket 连接已中断，请重试');
         this.messageCallback?.({
           type: 'error',
           sessionId,
@@ -414,17 +423,8 @@ function estimateMessageTokens(messages: Message[]) {
   return Math.ceil(text.length / 4);
 }
 
-function normalizeTodoToolName(toolName?: string) {
-  return (toolName || '').toLowerCase().replace(/[_\s-]/g, '');
-}
-
-function isTodoTool(toolName?: string) {
-  const name = normalizeTodoToolName(toolName);
-  return name === 'todoread' || name === 'todowrite';
-}
-
-function parseTodoMarkdown(raw: string): ChatHeaderTask[] {
-  const tasks: ChatHeaderTask[] = [];
+function parseTodoMarkdown(raw: string): ChatTask[] {
+  const tasks: ChatTask[] = [];
   let currentGroup = '';
   String(raw || '').split(/\r?\n/).forEach((line, index) => {
     const heading = line.match(/^\s*##\s+(.+)$/);
@@ -435,7 +435,7 @@ function parseTodoMarkdown(raw: string): ChatHeaderTask[] {
     const match = line.match(/^\s*-\s*\[([ xX/])\]\s+(.+)$/);
     if (!match) return;
     const statusChar = match[1];
-    const status: ChatHeaderTask['status'] = statusChar === ' '
+    const status: ChatTask['status'] = statusChar === ' '
       ? 'pending'
       : (statusChar === '/' ? 'in_progress' : 'done');
     const title = match[2].trim();
@@ -451,14 +451,14 @@ function parseTodoMarkdown(raw: string): ChatHeaderTask[] {
 }
 
 function getTodoMarkdownFromContent(item: ContentItem) {
-  if (!isTodoTool(item.toolName)) return null;
+  if (!isTodoToolName(item.toolName)) return null;
   const todosArg = item.args?.todos;
   if (typeof todosArg === 'string' && todosArg.trim()) return todosArg;
   return item.text || '';
 }
 
-function extractLatestTodoTasks(messages: Message[]): ChatHeaderTask[] {
-  let latest: ChatHeaderTask[] | null = null;
+function extractLatestTodoTasks(messages: Message[]): ChatTask[] {
+  let latest: ChatTask[] | null = null;
   for (const message of messages) {
     for (const item of message.contents || []) {
       const markdown = getTodoMarkdownFromContent(item);
@@ -469,7 +469,7 @@ function extractLatestTodoTasks(messages: Message[]): ChatHeaderTask[] {
   return latest || [];
 }
 
-function mapTodoApiItems(items: any[]): ChatHeaderTask[] {
+function mapTodoApiItems(items: any[]): ChatTask[] {
   return (Array.isArray(items) ? items : []).map((item, index) => {
     const status = item.status === 'done'
       ? 'done'
@@ -482,7 +482,7 @@ function mapTodoApiItems(items: any[]): ChatHeaderTask[] {
       status,
       group: item.group || '',
       line,
-    } satisfies ChatHeaderTask;
+    } satisfies ChatTask;
   });
 }
 
@@ -662,7 +662,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   const [chatMode, setChatMode] = useState<ChatMode>('default');
   const [reviewInfoSignal, setReviewInfoSignal] = useState(0);
   const [thinkingElapsedSeconds, setThinkingElapsedSeconds] = useState(0);
-  const [sessionTodoTasks, setSessionTodoTasks] = useState<Record<string, ChatHeaderTask[]>>({});
+  const [sessionTodoTasks, setSessionTodoTasks] = useState<Record<string, ChatTask[]>>({});
   const chatMessagesRef = useRef<{ scrollToBottom: () => void } | null>(null);
   const sessionIdRef = useRef<string>('');
   const conversationIdRef = useRef<string | number>('');
@@ -670,7 +670,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   const streamingSessionIdRef = useRef<string | null>(null);
   const thinkingStartedAtBySessionRef = useRef(new Map<string, number>());
   const aiCreateRef = useRef<
-    { type: 'skill'; name: string } | { type: 'agent' } | null
+    { type: 'skill'; name: string } | { type: 'agent' } | { type: 'automation'; options: SendOptions } | null
   >(null);
   const automationPromptSentRef = useRef<string | null>(null);
   const onUpdateSessionTitleRef = useRef(onUpdateSessionTitle);
@@ -681,6 +681,10 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   onSessionRunStateChangeRef.current = onSessionRunStateChange;
   const onSessionMessageSavedRef = useRef(onSessionMessageSaved);
   onSessionMessageSavedRef.current = onSessionMessageSaved;
+  const onCreateAutomationFromPromptRef = useRef(onCreateAutomationFromPrompt);
+  onCreateAutomationFromPromptRef.current = onCreateAutomationFromPrompt;
+  const onAiCreateCompleteRef = useRef(onAiCreateComplete);
+  onAiCreateCompleteRef.current = onAiCreateComplete;
   const workspacePathRef = useRef(workspacePath);
   workspacePathRef.current = workspacePath;
 
@@ -966,7 +970,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       isStreamingRef.current = false;
       streamingSessionIdRef.current = null;
       if (timedOutSessionId) {
-        onSessionRunStateChangeRef.current?.(timedOutSessionId, 'error');
+        onSessionRunStateChangeRef.current?.(timedOutSessionId, 'error', '等待响应超时');
       }
     }, 120000);
   }, []);
@@ -978,7 +982,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
   }, []);
   const updateSessionTodosFromTool = useCallback((sessionId: string, toolName?: string, text?: string, args?: Record<string, unknown>) => {
-    if (!sessionId || !isTodoTool(toolName)) return;
+    if (!sessionId || !isTodoToolName(toolName)) return;
     const todosArg = args?.todos;
     const markdown = typeof todosArg === 'string' && todosArg.trim() ? todosArg : (text || '');
     setSessionTodoTasks(prev => ({
@@ -1153,8 +1157,8 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
               if (type === 'skill') {
                 const { name } = creation;
                 await invoke('create_skill', { name, description: '', content: aiContent });
-                onAiCreateComplete?.({ type, name });
-              } else {
+                onAiCreateCompleteRef.current?.({ type, name });
+              } else if (type === 'agent') {
                 const generatedName = extractGeneratedAgentName(aiContent);
                 if (!generatedName) {
                   throw new Error('AI 未生成有效的 Agent 名称');
@@ -1162,16 +1166,20 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
                 const name = await createUniqueAgentName(generatedName);
                 const content = applyGeneratedAgentName(aiContent, name);
                 await invoke('create_agent', { name, description: '', content });
-                onAiCreateComplete?.({ type, name });
+                onAiCreateCompleteRef.current?.({ type, name });
+              } else {
+                const plan = parseGeneratedAutomationPlan(aiContent);
+                if (!onCreateAutomationFromPromptRef.current) throw new Error('自动化保存处理器不可用');
+                await onCreateAutomationFromPromptRef.current(plan, creation.options);
               }
             } catch (err) {
               console.error('[ChatView] AI 创建自动保存失败:', err);
-              const displayName = type === 'skill' ? creation.name : '自动命名 Agent';
-              onAiCreateComplete?.({ type, name: displayName, error: String(err) });
+              const displayName = type === 'skill' ? creation.name : type === 'agent' ? '自动命名 Agent' : '自动化';
+              onAiCreateCompleteRef.current?.({ type, name: displayName, error: String(err) });
             }
           } else {
-            const displayName = type === 'skill' ? creation.name : '自动命名 Agent';
-            onAiCreateComplete?.({ type, name: displayName, error: 'AI 未返回可保存的内容' });
+            const displayName = type === 'skill' ? creation.name : type === 'agent' ? '自动命名 Agent' : '自动化';
+            onAiCreateCompleteRef.current?.({ type, name: displayName, error: 'AI 未返回可保存的内容' });
           }
           aiCreateRef.current = null;
         }
@@ -1191,6 +1199,18 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       }
 
       if (data.type === 'error') {
+        if (aiCreateRef.current) {
+          const creation = aiCreateRef.current;
+          aiCreateRef.current = null;
+          const displayName = creation.type === 'skill'
+            ? creation.name
+            : (creation.type === 'agent' ? '自动命名 Agent' : '自动化');
+          onAiCreateCompleteRef.current?.({
+            type: creation.type,
+            name: displayName,
+            error: data.text || '生成请求失败',
+          });
+        }
         if (!isCurrentSession) {
           const pending = await flushPendingUserMessage(msgSessionId);
           await saveMessage({
@@ -1289,7 +1309,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       ) as ContentType;
       let text = filterEmptyTags(data.text || '');
       if (rawType === 'COMMAND') text += '\n';
-      if (type === 'ACTION' && isTodoTool(data.toolName)) {
+      if (type === 'ACTION' && isTodoToolName(data.toolName)) {
         updateSessionTodosFromTool(msgSessionId, data.toolName, text, data.args);
       }
 
@@ -1368,8 +1388,8 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     };
 
     wsManager.registerCallback(handleMessage);
-    wsManager.registerStatusCallback((sessionId, status) => {
-      onSessionRunStateChangeRef.current?.(sessionId, status);
+    wsManager.registerStatusCallback((sessionId, status, error) => {
+      onSessionRunStateChangeRef.current?.(sessionId, status, error);
     });
 
     return () => {
@@ -1402,7 +1422,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
 
     if (contextParts.length > 0) {
-      fullMessage = `${contextParts.join('\n\n')}\n\n${messageText}`;
+      fullMessage = `${contextParts.join('\n\n')}\n\n${fullMessage}`;
     }
 
     // 拼接文本附件内容（图片通过 attachments 字段单独发送）
@@ -1584,12 +1604,20 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       if (aiCreateRef.current) {
         const creation = aiCreateRef.current;
         aiCreateRef.current = null;
-        onAiCreateComplete?.({
+        const displayName = creation.type === 'skill'
+          ? creation.name
+          : (creation.type === 'agent' ? '自动命名 Agent' : '自动化');
+        onAiCreateCompleteRef.current?.({
           type: creation.type,
-          name: creation.type === 'skill' ? creation.name : '自动命名 Agent',
+          name: displayName,
           error: '生成请求失败',
         });
       }
+      onSessionRunStateChangeRef.current?.(
+        sessionId!,
+        'error',
+        error instanceof Error ? error.message : '命令发送失败',
+      );
     }
   }, [currentConversation, onAiCreateComplete, onNewSession, onUpdateSessionTitle, workspacePath, providers, activeFilePath, maxSteps]);
 
@@ -1597,7 +1625,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   useEffect(() => {
     if (!automationPrompt || automationPromptSentRef.current === automationPrompt.runId) return;
     const conversationId = currentConversation.id?.toString();
-    if (!conversationId) return;
+    if (!conversationId || conversationId !== automationPrompt.sessionId) return;
 
     automationPromptSentRef.current = automationPrompt.runId;
     void sendMessage(automationPrompt.prompt, {
@@ -1620,7 +1648,8 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
 
     if (activeCreation.type === 'automation') {
-      void onCreateAutomationFromPrompt?.(message, options);
+      aiCreateRef.current = { type: 'automation', options };
+      void sendMessage(message, options, buildAutomationPlanningPrompt(message));
       return;
     }
 
@@ -1843,7 +1872,6 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           startedAt={headerStartedAt}
           totalTokens={headerTotalTokens}
           totalConversations={totalConversationCount}
-          tasks={currentTodoTasks}
           reviewFiles={reviewFiles}
           onReviewFileSelect={onReviewFileSelect}
           openInfoSignal={reviewInfoSignal}
@@ -1862,6 +1890,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           {showReviewFiles && (
             <ReviewFilesBar files={reviewFiles} onReview={onReviewFileSelect} onDiscard={onReviewFileDiscard} />
           )}
+          <ChatTaskList key={currentConversationIdString || 'new'} tasks={currentTodoTasks} />
           <ChatInput onSend={handleChatInputSend} isLoading={isCurrentConversationLoading} onStop={handleStop} providers={providers} agents={agents} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={promptCreationUi?.fileName || activeFileName} backendPort={backendPort} showStartWork={!workspacePath && !activePromptCreation} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
         </div>
       ) : (
@@ -1869,6 +1898,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           {showReviewFiles && (
             <ReviewFilesBar files={reviewFiles} onReview={onReviewFileSelect} onDiscard={onReviewFileDiscard} />
           )}
+          <ChatTaskList key={currentConversationIdString || 'current'} tasks={currentTodoTasks} />
           <ChatInput onSend={handleChatInputSend} isLoading={isCurrentConversationLoading} onStop={handleStop} providers={providers} agents={agents} activeProviderId={activeProviderId} onModelChange={handleModelChange} activeFileName={promptCreationUi?.fileName || activeFileName} backendPort={backendPort} showStartWork={!workspacePath && !activePromptCreation} onNewProject={onNewProject} onOpenFolder={onOpenFolder} workspacePath={workspacePath} mode={chatMode} onModeChange={setChatMode} baseContextTokens={baseContextTokens} />
         </>
       )}
