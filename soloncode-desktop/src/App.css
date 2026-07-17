@@ -443,7 +443,7 @@ select option {
   background: var(--cb-vscode-input-background);
   color: var(--cb-vscode-foreground);
   font-size: 13px;
-  z-index: 9999;
+  z-index: 10001;
   pointer-events: none;
   animation: fadeInOut 5s ease-in-out forwards;
   border: 1px solid var(--cb-vscode-panel-border);

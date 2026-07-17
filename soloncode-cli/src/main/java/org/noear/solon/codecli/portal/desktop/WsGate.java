@@ -76,6 +76,7 @@ public class WsGate extends SimpleWebSocketListener {
 
     private final HarnessEngine engine;
     private final AgentSettings agentSettings;
+    private final DesktopStreamHub streamHub = new DesktopStreamHub();
 
     public WsGate(HarnessEngine engine, AgentSettings agentSettings) {
         this.engine = engine;
@@ -105,6 +106,22 @@ public class WsGate extends SimpleWebSocketListener {
             AgentSession session = engine.getSession(sessionId);
             session.attrs().putIfAbsent(HarnessEngine.ATTR_CWD, sessionCwd);
         }
+
+        if ("1".equals(socket.param("resume"))) {
+            long afterSequence = parseSequence(socket.param("afterSequence"));
+            if (!streamHub.attach(sessionId, socket, afterSequence)) {
+                socket.send(new ONode().set("type", "error")
+                        .set("sessionId", sessionId)
+                        .set("text", "会话流已失效，无法恢复连接")
+                        .toJson());
+                socket.close();
+            }
+        }
+    }
+
+    @Override
+    public void onClose(WebSocket socket) {
+        streamHub.detach(socket);
     }
 
     @Override
@@ -153,16 +170,22 @@ public class WsGate extends SimpleWebSocketListener {
                     interruptModelName = engine.getMainModel().getConfig().getNameOrModel();
                 }
 
-                socket.send(new ONode().set("type", "reason")
+                String interruptReason = new ONode().set("type", "reason")
                         .set("sessionId", session.getSessionId())
                         .set("text", "[Task interrupted]")
-                        .toJson());
+                        .toJson();
+                if (!streamHub.emit(sessionId, interruptReason)) {
+                    socket.send(interruptReason);
+                }
 
-                socket.send(new ONode().set("type", "done")
+                String interruptDone = new ONode().set("type", "done")
                         .set("sessionId", session.getSessionId())
                         .set("modelName", interruptModelName)
                         .set("totalTokens", 0)
-                        .set("elapsedMs", 0).toJson());
+                        .set("elapsedMs", 0).toJson();
+                if (!streamHub.emit(sessionId, interruptDone)) {
+                    socket.send(interruptDone);
+                }
                 return;
             }
 
@@ -314,6 +337,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             String finalCwd = cwd;
             AtomicBoolean terminalSent = new AtomicBoolean(false);
+            streamHub.begin(finalSessionId, socket);
             Disposable disposable = engine.prompt(prompt)
                     .session(session)
                     .options(o -> {
@@ -329,7 +353,7 @@ public class WsGate extends SimpleWebSocketListener {
                         // ReActChunk 需要优先处理 metrics 收集（无论 hasContent 状态）
                         String msg = null;
                         if (chunk instanceof ReActChunk) {
-                            onReActChunk((ReActChunk) chunk, finalSessionId, socket, terminalSent);
+                            onReActChunk((ReActChunk) chunk, finalSessionId, terminalSent);
                             return;
                         } else if (chunk instanceof ReasonChunk) {
                             msg = onReasonChunk((ReasonChunk) chunk, finalSessionId);
@@ -342,12 +366,12 @@ public class WsGate extends SimpleWebSocketListener {
                         }
 
                         if (Assert.isNotEmpty(msg)) {
-                            socket.send(msg);
+                            streamHub.emit(finalSessionId, msg);
                         }
                     })
-                    .doOnComplete(() -> sendDoneIfNeeded(socket, terminalSent, finalSessionId,
+                    .doOnComplete(() -> sendDoneIfNeeded(terminalSent, finalSessionId,
                             chatModel.getConfig().getNameOrModel(), 0, 0))
-                    .doOnError(err -> sendErrorIfNeeded(socket, terminalSent, finalSessionId, err))
+                    .doOnError(err -> sendErrorIfNeeded(terminalSent, finalSessionId, err))
                     .subscribe();
 
             Disposable old = (Disposable) session.attrs().put("disposable", disposable);
@@ -361,24 +385,24 @@ public class WsGate extends SimpleWebSocketListener {
         }
     }
 
-    private void onReActChunk(ReActChunk chunk, String finalSessionId, WebSocket socket,
+    private void onReActChunk(ReActChunk chunk, String finalSessionId,
                               AtomicBoolean terminalSent) {
         ReActTrace trace = chunk.getTrace();
         Long start_time = trace.getOriginalPrompt().attrAs("start_time");
         long elapsed = start_time != null ? System.currentTimeMillis() - start_time : 0;
         long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : 0;
 
-        sendDoneIfNeeded(socket, terminalSent, finalSessionId,
+        sendDoneIfNeeded(terminalSent, finalSessionId,
                 trace.getOptions().getChatModel().getNameOrModel(), totalTokens, elapsed);
     }
 
-    private void sendDoneIfNeeded(WebSocket socket, AtomicBoolean terminalSent, String sessionId,
+    private void sendDoneIfNeeded(AtomicBoolean terminalSent, String sessionId,
                                   String modelName, long totalTokens, long elapsedMs) {
         if (!terminalSent.compareAndSet(false, true)) {
             return;
         }
 
-        socket.send(new ONode().set("type", "done")
+        streamHub.emit(sessionId, new ONode().set("type", "done")
                 .set("sessionId", sessionId)
                 .set("modelName", modelName)
                 .set("totalTokens", totalTokens)
@@ -386,17 +410,28 @@ public class WsGate extends SimpleWebSocketListener {
                 .toJson());
     }
 
-    private void sendErrorIfNeeded(WebSocket socket, AtomicBoolean terminalSent, String sessionId,
+    private void sendErrorIfNeeded(AtomicBoolean terminalSent, String sessionId,
                                    Throwable error) {
         if (!terminalSent.compareAndSet(false, true)) {
             return;
         }
 
         String errorMessage = error.getMessage() != null ? error.getMessage() : error.getClass().getSimpleName();
-        socket.send(new ONode().set("type", "error")
+        streamHub.emit(sessionId, new ONode().set("type", "error")
                 .set("sessionId", sessionId)
                 .set("text", errorMessage)
                 .toJson());
+    }
+
+    private long parseSequence(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
     }
 
     private String onReasonChunk(ReasonChunk chunk, String finalSessionId) {
@@ -538,6 +573,7 @@ public class WsGate extends SimpleWebSocketListener {
             applyReasoningEffort(hitlPrompt, reasoningEffort);
             
             AtomicBoolean terminalSent = new AtomicBoolean(false);
+            streamHub.subscribe(sessionId, socket);
             Disposable disposable = engine.prompt(hitlPrompt)
                     .session(session)
                     .options(o -> {
@@ -551,7 +587,7 @@ public class WsGate extends SimpleWebSocketListener {
                     .doFinally(signal -> session.attrs().remove("disposable"))
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReActChunk) {
-                            onReActChunk((ReActChunk) chunk, sessionId, socket, terminalSent);
+                            onReActChunk((ReActChunk) chunk, sessionId, terminalSent);
                             return;
                         }
                         String msg = null;
@@ -565,12 +601,12 @@ public class WsGate extends SimpleWebSocketListener {
                             msg = onThoughtChunk((ThoughtChunk) chunk, sessionId);
                         }
                         if (Assert.isNotEmpty(msg)) {
-                            socket.send(msg);
+                            streamHub.emit(sessionId, msg);
                         }
                     })
-                    .doOnComplete(() -> sendDoneIfNeeded(socket, terminalSent, sessionId,
+                    .doOnComplete(() -> sendDoneIfNeeded(terminalSent, sessionId,
                             chatModel.getConfig().getNameOrModel(), 0, 0))
-                    .doOnError(err -> sendErrorIfNeeded(socket, terminalSent, sessionId, err))
+                    .doOnError(err -> sendErrorIfNeeded(terminalSent, sessionId, err))
                     .subscribe();
 
             session.attrs().put("disposable", disposable);
@@ -822,6 +858,7 @@ public class WsGate extends SimpleWebSocketListener {
         Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
         applyReasoningEffort(prompt, reasoningEffort);
         AtomicBoolean terminalSent = new AtomicBoolean(false);
+        streamHub.begin(finalSessionId, socket);
         Disposable disposable = engine.prompt(prompt)
                 .session(session)
                 .options(o -> {
@@ -835,7 +872,7 @@ public class WsGate extends SimpleWebSocketListener {
                 .doFinally(signal -> session.attrs().remove("disposable"))
                 .doOnNext(chunk -> {
                     if (chunk instanceof ReActChunk) {
-                        onReActChunk((ReActChunk) chunk, finalSessionId, socket, terminalSent);
+                        onReActChunk((ReActChunk) chunk, finalSessionId, terminalSent);
                         return;
                     }
                     String msg = null;
@@ -849,12 +886,12 @@ public class WsGate extends SimpleWebSocketListener {
                         msg = onThoughtChunk((ThoughtChunk) chunk, finalSessionId);
                     }
                     if (Assert.isNotEmpty(msg)) {
-                        socket.send(msg);
+                        streamHub.emit(finalSessionId, msg);
                     }
                 })
-                .doOnComplete(() -> sendDoneIfNeeded(socket, terminalSent, finalSessionId,
+                .doOnComplete(() -> sendDoneIfNeeded(terminalSent, finalSessionId,
                         chatModel.getConfig().getNameOrModel(), 0, 0))
-                .doOnError(err -> sendErrorIfNeeded(socket, terminalSent, finalSessionId, err))
+                .doOnError(err -> sendErrorIfNeeded(terminalSent, finalSessionId, err))
                 .subscribe();
 
         Disposable old = (Disposable) session.attrs().put("disposable", disposable);

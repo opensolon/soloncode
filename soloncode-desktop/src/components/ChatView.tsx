@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Message, Conversation, Theme, Plugin, ContentType, ContentItem } from '../types';
 import { normalizeProviderType, type ModelProvider } from '../services/settingsService';
 import { fileService } from '../services/fileService';
-import { saveMessage, getMessagesByConversation } from '../db';
+import { saveMessage, updateMessage, getMessagesByConversation } from '../db';
 import { ChatHeader, type ChatReviewFile } from './ChatHeader';
 import { ChatTaskList, type ChatTask } from './ChatTaskList';
 import { ChatMessages } from './ChatMessages';
@@ -16,6 +16,7 @@ import {
   type GeneratedAutomationPlan,
 } from '../utils/automationPlan';
 import { isTodoToolName } from '../utils/todoTools';
+import { withRetry } from '../utils/retry';
 import '../views/ChatPage.css';
 
 export type PromptCreationType = 'skill' | 'agent' | 'automation';
@@ -191,12 +192,18 @@ interface ChatViewProps {
 // 全局 WebSocket 连接管理器（每次请求独立连接�?
 const STREAM_BATCH_INTERVAL_MS = 16;
 const STREAM_BATCH_CHARS = 24;
+const WS_CONNECT_RETRY_DELAYS_MS = [300, 700, 1500];
+const WS_RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 
 class WebSocketManager {
   private static instance: WebSocketManager | null = null;
   private activeWs = new Map<string, WebSocket>();
   private intentionallyClosedWs = new WeakSet<WebSocket>();
-  private messageCallback: ((data: any) => void) | null = null;
+  private lastSequenceBySession = new Map<string, number>();
+  private reconnectAttempts = new Map<string, number>();
+  private reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private terminalSessions = new Set<string>();
+  private messageCallback: ((data: any) => void | Promise<void>) | null = null;
   private statusCallback: ((sessionId: string, status: 'running' | 'completed' | 'error', error?: string) => void) | null = null;
   private backendPort: number | null = null;
   private workspacePath: string | null = null;
@@ -223,7 +230,7 @@ class WebSocketManager {
     this.workspacePath = path;
   }
 
-  private getWebSocketUrl(sessionId?: string): string {
+  private getWebSocketUrl(sessionId?: string, resume = false): string {
     const host = this.backendPort
       ? `localhost:${this.backendPort}`
       : (import.meta.env.VITE_WS_HOST || 'localhost:4808');
@@ -235,16 +242,21 @@ class WebSocketManager {
     if (this.workspacePath) {
       params.set('X-Session-Cwd', this.workspacePath);
     }
+    if (resume && sessionId) {
+      params.set('resume', '1');
+      params.set('afterSequence', String(this.lastSequenceBySession.get(sessionId) || 0));
+    }
     const query = params.toString();
     return `${protocol}://${host}/desktop/ws${query ? '?' + query : ''}`;
   }
 
   /** 每次请求创建独立 WebSocket 连接 */
-  private createConnection(sessionId?: string): Promise<WebSocket> {
+  private createConnection(sessionId?: string, resume = false, manageSession = false): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
-      const wsUrl = this.getWebSocketUrl(sessionId);
+      const wsUrl = this.getWebSocketUrl(sessionId, resume);
       console.log('[WS] Connecting to:', wsUrl);
       const ws = new WebSocket(wsUrl);
+      if (sessionId && manageSession) this.bindSessionSocket(sessionId, ws);
 
       const onOpen = () => {
         cleanup();
@@ -271,7 +283,21 @@ class WebSocketManager {
     });
   }
 
-  registerCallback(callback: (data: any) => void) {
+  private async createConnectionWithRetry(sessionId: string): Promise<WebSocket> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= WS_CONNECT_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        return await this.createConnection(sessionId);
+      } catch (error) {
+        lastError = error;
+        if (attempt >= WS_CONNECT_RETRY_DELAYS_MS.length) break;
+        await new Promise(resolve => setTimeout(resolve, WS_CONNECT_RETRY_DELAYS_MS[attempt]));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('WebSocket connection failed');
+  }
+
+  registerCallback(callback: (data: any) => void | Promise<void>) {
     this.messageCallback = callback;
   }
 
@@ -285,71 +311,137 @@ class WebSocketManager {
 
   async sendMessage(request: any): Promise<void> {
     const sessionId = request.sessionId?.toString() || '';
-    const ws = await this.createConnection(sessionId);
-    let terminalReceived = false;
+    if (!sessionId) throw new Error('Session ID is required');
+    this.closeSession(sessionId);
+    this.terminalSessions.delete(sessionId);
+    this.lastSequenceBySession.set(sessionId, 0);
+    this.reconnectAttempts.set(sessionId, 0);
+    const ws = await this.createConnectionWithRetry(sessionId);
     if (sessionId) {
-      this.closeSession(sessionId);
       this.activeWs.set(sessionId, ws);
       this.statusCallback?.(sessionId, 'running');
     }
 
-    ws.onmessage = (event) => {
+    this.bindSessionSocket(sessionId, ws);
+
+    // sessionId 已通过 URL 参数传递，从 body 中移除。
+    const payload = { ...request };
+    delete payload.sessionId;
+    try {
+      ws.send(JSON.stringify(payload));
+    } catch (error) {
+      this.terminalSessions.add(sessionId);
+      this.closeSession(sessionId);
+      throw error;
+    }
+  }
+
+  private bindSessionSocket(sessionId: string, ws: WebSocket) {
+    ws.onmessage = (event) => this.handleSessionMessage(sessionId, ws, event);
+    ws.onclose = () => {
+      if (this.activeWs.get(sessionId) === ws) {
+        this.activeWs.delete(sessionId);
+      }
+      if (!this.terminalSessions.has(sessionId) && !this.intentionallyClosedWs.has(ws)) {
+        this.scheduleReconnect(sessionId);
+      }
+    };
+  }
+
+  private handleSessionMessage(sessionId: string, ws: WebSocket, event: MessageEvent) {
+    try {
+      const data = event.data;
+      if (typeof data !== 'string') throw new Error('Unsupported WebSocket frame type');
+      if (data.trim() === '[DONE]') {
+        this.finishSession(sessionId, ws, { type: 'done', sessionId });
+        return;
+      }
+      const parsed: unknown = JSON.parse(data);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid WebSocket message');
+      const msg = parsed as Record<string, any>;
+      if (typeof msg.type !== 'string') throw new Error('WebSocket message type is required');
+      if (msg.text !== undefined && typeof msg.text !== 'string') throw new Error('Invalid WebSocket message text');
+      if (msg.sessionId !== undefined && typeof msg.sessionId !== 'string' && typeof msg.sessionId !== 'number') {
+        throw new Error('Invalid WebSocket session ID');
+      }
+
+      const msgSessionId = (msg.sessionId || sessionId).toString();
+      msg.sessionId = msgSessionId;
+      this.reconnectAttempts.set(msgSessionId, 0);
+      if (typeof msg.sequence === 'number' && Number.isSafeInteger(msg.sequence) && msg.sequence > 0) {
+        const previousSequence = this.lastSequenceBySession.get(msgSessionId) || 0;
+        if (msg.sequence <= previousSequence) return;
+        this.lastSequenceBySession.set(msgSessionId, msg.sequence);
+      }
+
+      const messageType = msg.type.toLowerCase();
+      if (messageType === 'done' || messageType === 'error') {
+        this.finishSession(msgSessionId, ws, msg);
+        return;
+      }
+      this.dispatchMessage(msg);
+    } catch (error) {
+      console.warn('[WS] Failed to parse message:', error);
+    }
+  }
+
+  private finishSession(sessionId: string, ws: WebSocket, message: Record<string, any>) {
+    this.terminalSessions.add(sessionId);
+    this.clearReconnectTimer(sessionId);
+    const messageType = String(message.type || '').toLowerCase();
+    if (messageType === 'done') this.statusCallback?.(sessionId, 'completed');
+    else this.statusCallback?.(sessionId, 'error', message.text || '会话执行失败');
+    this.dispatchMessage(message);
+    if (ws.readyState === WebSocket.OPEN) ws.close();
+  }
+
+  private scheduleReconnect(sessionId: string) {
+    if (this.reconnectTimers.has(sessionId) || this.terminalSessions.has(sessionId)) return;
+    const attempt = this.reconnectAttempts.get(sessionId) || 0;
+    if (attempt >= WS_RECONNECT_DELAYS_MS.length) {
+      this.terminalSessions.add(sessionId);
+      const text = '连接恢复失败，请重试';
+      this.statusCallback?.(sessionId, 'error', text);
+      this.dispatchMessage({ type: 'error', sessionId, text });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      this.reconnectTimers.delete(sessionId);
+      if (this.terminalSessions.has(sessionId)) return;
+      this.reconnectAttempts.set(sessionId, attempt + 1);
       try {
-        const data = event.data;
-        if (typeof data !== 'string') {
-          throw new Error('Unsupported WebSocket frame type');
-        }
-        if (data.trim() === '[DONE]') {
-          terminalReceived = true;
-          if (sessionId) this.statusCallback?.(sessionId, 'completed');
-          this.messageCallback?.({ type: 'done', sessionId });
+        const ws = await this.createConnection(sessionId, true, true);
+        if (this.terminalSessions.has(sessionId)) {
+          this.intentionallyClosedWs.add(ws);
           ws.close();
           return;
         }
-        const parsed: unknown = JSON.parse(data);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          throw new Error('Invalid WebSocket message');
-        }
-        const msg = parsed as Record<string, any>;
-        if (typeof msg.type !== 'string') {
-          throw new Error('WebSocket message type is required');
-        }
-        if (msg.text !== undefined && typeof msg.text !== 'string') {
-          throw new Error('Invalid WebSocket message text');
-        }
-        if (msg.sessionId !== undefined && typeof msg.sessionId !== 'string' && typeof msg.sessionId !== 'number') {
-          throw new Error('Invalid WebSocket session ID');
-        }
-        const msgSessionId = (msg.sessionId || sessionId || '').toString();
-        if (msgSessionId && !msg.sessionId) msg.sessionId = msgSessionId;
-        const messageType = typeof msg.type === 'string' ? msg.type.toLowerCase() : '';
-        if (messageType === 'done' || messageType === 'error') terminalReceived = true;
-        if (msgSessionId && messageType === 'done') this.statusCallback?.(msgSessionId, 'completed');
-        if (msgSessionId && messageType === 'error') this.statusCallback?.(msgSessionId, 'error', msg.text || '会话执行失败');
-        this.messageCallback?.(msg);
-        if (terminalReceived) ws.close();
-      } catch (e) {
-        console.warn('[WS] Failed to parse message:', e);
+        this.activeWs.set(sessionId, ws);
+        this.statusCallback?.(sessionId, 'running');
+      } catch (error) {
+        console.warn(`[WS] Reconnect attempt ${attempt + 1} failed:`, error);
+        this.scheduleReconnect(sessionId);
       }
-    };
+    }, WS_RECONNECT_DELAYS_MS[attempt]);
+    this.reconnectTimers.set(sessionId, timer);
+  }
 
-    ws.onclose = () => {
-      if (sessionId && this.activeWs.get(sessionId) === ws) {
-        this.activeWs.delete(sessionId);
+  private dispatchMessage(message: Record<string, any>) {
+    try {
+      const result = this.messageCallback?.(message);
+      if (result) {
+        void result.catch(error => console.error('[WS] Message handler failed:', error));
       }
-      if (sessionId && !terminalReceived && !this.intentionallyClosedWs.has(ws)) {
-        this.statusCallback?.(sessionId, 'error', 'WebSocket 连接已中断，请重试');
-        this.messageCallback?.({
-          type: 'error',
-          sessionId,
-          text: 'WebSocket 连接已中断，请重试',
-        });
-      }
-    };
+    } catch (error) {
+      console.error('[WS] Message handler failed:', error);
+    }
+  }
 
-    // sessionId 已通过 URL 参数传递，�?body 中移�?
-    delete request.sessionId;
-    ws.send(JSON.stringify(request));
+  private clearReconnectTimer(sessionId: string) {
+    const timer = this.reconnectTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    this.reconnectTimers.delete(sessionId);
   }
 
   /** 取消当前请求：关闭连�?*/
@@ -358,7 +450,19 @@ class WebSocketManager {
   }
 
   cancelSession(sessionId: string) {
-    this.closeSession(sessionId);
+    this.terminalSessions.add(sessionId);
+    this.clearReconnectTimer(sessionId);
+    const ws = this.activeWs.get(sessionId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ input: '[(sec)interrupt]' }));
+      } catch {
+        // Closing the socket below is still sufficient to stop client-side streaming.
+      }
+      setTimeout(() => this.closeSession(sessionId), 50);
+    } else {
+      this.closeSession(sessionId);
+    }
   }
 
   getSessionSocket(sessionId: string): WebSocket | null {
@@ -381,6 +485,7 @@ class WebSocketManager {
   }
 
   private closeActive() {
+    for (const sessionId of this.reconnectTimers.keys()) this.clearReconnectTimer(sessionId);
     for (const ws of this.activeWs.values()) {
       this.intentionallyClosedWs.add(ws);
       ws.close();
@@ -389,6 +494,7 @@ class WebSocketManager {
   }
 
   private closeSession(sessionId: string) {
+    this.clearReconnectTimer(sessionId);
     const ws = this.activeWs.get(sessionId);
     if (ws) {
       this.intentionallyClosedWs.add(ws);
@@ -823,6 +929,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         item.forceNewSegment = false;
       }
       buildLiveMessages(item.sessionId, segments);
+      scheduleAssistantPersistence(item.sessionId);
       return;
     }
     if (item.type === 'ACTION') {
@@ -833,6 +940,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         item.forceNewSegment = false;
       }
       buildLiveMessages(item.sessionId, segments);
+      scheduleAssistantPersistence(item.sessionId);
       return;
     }
     if (last && last.type === 'TEXT' && !item.forceNewSegment) {
@@ -843,6 +951,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       item.forceNewSegment = false;
     }
     buildLiveMessages(item.sessionId, segments);
+    scheduleAssistantPersistence(item.sessionId);
   }
 
   function hasPendingQueuedChars(sessionId: string) {
@@ -940,16 +1049,22 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     thinkingStartedAtBySessionRef.current.delete(sessionId);
   }
 
-  const pendingPersistRef = useRef<{
+  type PendingPersist = {
     sessionId: string;
     userMessage: { timestamp: string; contents: string };
     messageText: string;
-  } | null>(null);
-  const pendingPersistBySessionRef = useRef(new Map<string, {
-    sessionId: string;
-    userMessage: { timestamp: string; contents: string };
-    messageText: string;
-  }>());
+    userMessageId?: number;
+  };
+  type AssistantDraftPersistence = {
+    messageId?: number;
+    lastContents?: string;
+    metadata?: Message['metadata'];
+    timer?: ReturnType<typeof setTimeout>;
+    writeChain: Promise<void>;
+  };
+  const pendingPersistRef = useRef<PendingPersist | null>(null);
+  const pendingPersistBySessionRef = useRef(new Map<string, PendingPersist>());
+  const assistantDraftsBySessionRef = useRef(new Map<string, AssistantDraftPersistence>());
 
   // 当前 assistant 消息 ID
   const assistantMsgIdRef = useRef<number>(0);
@@ -1033,6 +1148,70 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       .filter(item => item.text.length > 0);
   }
 
+  function getAssistantDraftState(sessionId: string) {
+    let state = assistantDraftsBySessionRef.current.get(sessionId);
+    if (!state) {
+      state = { writeChain: Promise.resolve() };
+      assistantDraftsBySessionRef.current.set(sessionId, state);
+    }
+    return state;
+  }
+
+  async function writeAssistantSnapshot(sessionId: string, state: AssistantDraftPersistence) {
+    const segments = isSessionVisible(sessionId)
+      ? accumulatedContentRef.current
+      : (backgroundContentBySessionRef.current.get(sessionId) || []);
+    const items = buildContentItems(segments);
+    if (items.length === 0) return;
+    const contents = JSON.stringify({ items, metadata: state.metadata });
+    if (contents === state.lastContents) return;
+
+    if (state.messageId) {
+      await withRetry(() => updateMessage(state.messageId!, {
+        contents,
+      }));
+    } else {
+      state.messageId = await withRetry(() => saveMessage({
+        conversationId: sessionId,
+        role: 'ASSISTANT',
+        timestamp: new Date().toLocaleTimeString(),
+        contents,
+        workspacePath: workspacePathRef.current,
+      }));
+      onSessionMessageSavedRef.current?.(sessionId, 1);
+    }
+    state.lastContents = contents;
+  }
+
+  function scheduleAssistantPersistence(sessionId: string) {
+    const state = getAssistantDraftState(sessionId);
+    if (state.timer) return;
+    const delay = state.messageId ? 200 : 0;
+    state.timer = setTimeout(() => {
+      state.timer = undefined;
+      state.writeChain = state.writeChain
+        .then(() => writeAssistantSnapshot(sessionId, state!))
+        .catch(error => console.error('[ChatView] 增量保存助手消息失败:', error));
+    }, delay);
+  }
+
+  async function flushAssistantPersistence(sessionId: string, metadata?: Message['metadata']) {
+    const state = getAssistantDraftState(sessionId);
+    state.metadata = metadata || state.metadata;
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = undefined;
+    }
+    state.writeChain = state.writeChain.then(() => writeAssistantSnapshot(sessionId, state));
+    try {
+      await state.writeChain;
+    } catch (error) {
+      console.error('[ChatView] 保存助手消息最终状态失败:', error);
+    } finally {
+      assistantDraftsBySessionRef.current.delete(sessionId);
+    }
+  }
+
   // 注册消息回调（只注册一次，通过 ref 获取当前 sessionId�?
   useEffect(() => {
     const wsManager = WebSocketManager.getInstance();
@@ -1049,14 +1228,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         pendingPersistRef.current = null;
       }
 
-      await saveMessage({
-        conversationId: pending.sessionId,
-        role: 'USER',
-        timestamp: pending.userMessage.timestamp,
-        contents: pending.userMessage.contents,
-        workspacePath: workspacePathRef.current,
-      });
-      onSessionMessageSavedRef.current?.(pending.sessionId, 1);
+      if (!pending.userMessageId) {
+        pending.userMessageId = await withRetry(() => saveMessage({
+          conversationId: pending.sessionId,
+          role: 'USER',
+          timestamp: pending.userMessage.timestamp,
+          contents: pending.userMessage.contents,
+          workspacePath: workspacePathRef.current,
+        }));
+        onSessionMessageSavedRef.current?.(pending.sessionId, 1);
+      }
 
       return {
         sessionId: pending.sessionId,
@@ -1076,20 +1257,11 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           const pending = await flushPendingUserMessage(msgSessionId);
           const backgroundSegments = backgroundContentBySessionRef.current.get(msgSessionId) || [];
           const contentItems = buildContentItems(backgroundSegments);
-          if (contentItems.length > 0) {
-            await saveMessage({
-              conversationId: pending?.sessionId || msgSessionId,
-              role: 'ASSISTANT',
-              timestamp: new Date().toLocaleTimeString(),
-              contents: JSON.stringify({ items: contentItems, metadata: {
-                modelName: data.modelName,
-                totalTokens: data.totalTokens,
-                elapsedMs: data.elapsedMs,
-              } }),
-              workspacePath: workspacePathRef.current,
-            });
-            onSessionMessageSavedRef.current?.(pending?.sessionId || msgSessionId, 1);
-          }
+          await flushAssistantPersistence(msgSessionId, contentItems.length > 0 ? {
+            modelName: data.modelName,
+            totalTokens: data.totalTokens,
+            elapsedMs: data.elapsedMs,
+          } : undefined);
           if (pending?.wasNew && onUpdateSessionTitleRef.current) {
             onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
           }
@@ -1127,15 +1299,9 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
             return [...filtered, finalMsg];
           });
 
-          // 保存助手消息（用 temp ID，后�?reassignMessages 会统一转换�?
-          await saveMessage({
-            conversationId: pending?.sessionId || msgSessionId,
-            role: 'ASSISTANT',
-            timestamp: finalMsg.timestamp,
-            contents: JSON.stringify({ items: contentItems, metadata: finalMsg.metadata }),
-            workspacePath: workspacePathRef.current,
-          });
-          onSessionMessageSavedRef.current?.(pending?.sessionId || msgSessionId, 1);
+          await flushAssistantPersistence(msgSessionId, finalMsg.metadata);
+        } else {
+          await flushAssistantPersistence(msgSessionId);
         }
 
         // 所有消息保存后，触发会话持久化（reassignMessages 会把 temp ID 转为 real ID�?
@@ -1213,13 +1379,14 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         }
         if (!isCurrentSession) {
           const pending = await flushPendingUserMessage(msgSessionId);
-          await saveMessage({
+          await flushAssistantPersistence(msgSessionId);
+          await withRetry(() => saveMessage({
             conversationId: pending?.sessionId || msgSessionId,
             role: 'ERROR',
             timestamp: new Date().toLocaleTimeString(),
             contents: JSON.stringify([{ type: 'ERROR', text: data.text || '未知错误' }]),
             workspacePath: workspacePathRef.current,
-          });
+          }));
           onSessionMessageSavedRef.current?.(pending?.sessionId || msgSessionId, 1);
           if (pending?.wasNew && onUpdateSessionTitleRef.current) {
             onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
@@ -1237,6 +1404,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
 
         // 即使出错也要持久化用户消�?
         const pending = await flushPendingUserMessage(msgSessionId);
+        await flushAssistantPersistence(msgSessionId);
 
         const errorText = data.text || '未知错误';
         const errorMsg: Message = {
@@ -1247,13 +1415,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         };
         setMessages(prev => [...prev, errorMsg]);
 
-        await saveMessage({
+        await withRetry(() => saveMessage({
           conversationId: pending?.sessionId || msgSessionId,
           role: 'ERROR',
           timestamp: errorMsg.timestamp,
           contents: JSON.stringify(errorMsg.contents),
           workspacePath: workspacePathRef.current,
-        });
+        }));
         onSessionMessageSavedRef.current?.(pending?.sessionId || msgSessionId, 1);
 
         // 所有消息保存后，触发会话持久化
@@ -1380,6 +1548,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           }
           break;
       }
+      scheduleAssistantPersistence(msgSessionId);
 
       // 实时更新显示（RAF 节流，合并多�?chunk�?
       if (isCurrentSession) {
@@ -1498,6 +1667,16 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     try {
       const wsManager = WebSocketManager.getInstance();
 
+      pendingPersist.userMessageId = await withRetry(() => saveMessage({
+        conversationId: pendingPersist.sessionId,
+        role: 'USER',
+        timestamp: pendingPersist.userMessage.timestamp,
+        contents: pendingPersist.userMessage.contents,
+        workspacePath,
+      }));
+      onSessionMessageSavedRef.current?.(pendingPersist.sessionId, 1);
+      getAssistantDraftState(pendingPersist.sessionId);
+
       // 开启会话时注册模型到后�?
       // options.model 格式: "providerId" �?"providerId__modelId"
       const sepIdx = options.model.indexOf('__');
@@ -1563,14 +1742,17 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
       if (pending) {
         pendingPersistBySessionRef.current.delete(pending.sessionId);
         if (pendingPersistRef.current?.sessionId === pending.sessionId) pendingPersistRef.current = null;
-        await saveMessage({
-          conversationId: pending.sessionId,
-          role: 'USER',
-          timestamp: pending.userMessage.timestamp,
-          contents: pending.userMessage.contents,
-          workspacePath,
-        });
-        onSessionMessageSaved?.(pending.sessionId, 1);
+        if (!pending.userMessageId) {
+          pending.userMessageId = await withRetry(() => saveMessage({
+            conversationId: pending.sessionId,
+            role: 'USER',
+            timestamp: pending.userMessage.timestamp,
+            contents: pending.userMessage.contents,
+            workspacePath,
+          }));
+          onSessionMessageSaved?.(pending.sessionId, 1);
+        }
+        await flushAssistantPersistence(pending.sessionId);
 
         const errorMessage: Message = {
           id: Date.now() + 1,
@@ -1580,13 +1762,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         };
         setMessages(prev => [...prev, errorMessage]);
 
-        await saveMessage({
+        await withRetry(() => saveMessage({
           conversationId: pending.sessionId,
           role: 'ERROR',
           timestamp: errorMessage.timestamp,
           contents: JSON.stringify(errorMessage.contents),
           workspacePath,
-        });
+        }));
         onSessionMessageSaved?.(pending.sessionId, 1);
 
         // 触发会话持久化（reassignMessages 会处�?temp→real�?
@@ -1726,8 +1908,11 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     const id = currentConversationId?.toString();
     if (!id || id.startsWith('temp-') || id.startsWith('pending-') || !backendPort) return;
     let cancelled = false;
-    fetch(`http://localhost:${backendPort}/web/chat/todos?sessionId=${encodeURIComponent(id)}`)
-      .then(resp => resp.ok ? resp.json() : null)
+    withRetry(async () => {
+      const resp = await fetch(`http://localhost:${backendPort}/web/chat/todos?sessionId=${encodeURIComponent(id)}`);
+      if (!resp.ok) throw new Error(`Todo request failed: ${resp.status}`);
+      return resp.json();
+    }, [300, 700, 1500])
       .then(res => {
         if (cancelled) return;
         const items = res?.data?.items || [];
@@ -1766,7 +1951,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     }
   }, []);
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     const stoppedSessionId = sessionIdRef.current;
     WebSocketManager.getInstance().cancelSession(stoppedSessionId);
     clearLoadingTimer();
@@ -1791,6 +1976,17 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         const filtered = prev.filter(m => m.id !== assistantMsgIdRef.current);
         return [...filtered, finalMsg];
       });
+    }
+
+    await flushAssistantPersistence(stoppedSessionId);
+    const pending = pendingPersistBySessionRef.current.get(stoppedSessionId);
+    if (pending) {
+      pendingPersistBySessionRef.current.delete(stoppedSessionId);
+      if (pendingPersistRef.current?.sessionId === stoppedSessionId) pendingPersistRef.current = null;
+      if (pending.sessionId.startsWith('temp-') && onUpdateSessionTitleRef.current) {
+        const title = pending.messageText.trim().slice(0, 20) + (pending.messageText.trim().length > 20 ? '...' : '');
+        void onUpdateSessionTitleRef.current(pending.sessionId, title);
+      }
     }
 
     // 重置累积�?

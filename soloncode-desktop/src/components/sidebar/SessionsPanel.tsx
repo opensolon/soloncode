@@ -3,6 +3,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Icon } from '../common/Icon';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ContextMenu } from '../common/ContextMenu';
+import { DropdownMenu } from '../common/DropdownMenu';
 import { UNLINKED_PROJECT } from '../../db';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import './SessionsPanel.css';
@@ -253,6 +254,14 @@ export function SessionsPanel({
     }
   }, [beginProjectRename, onPinProject, projectContextMenu, projectMenu, projects]);
 
+  const handleNewProjectAction = useCallback((itemId: string) => {
+    if (itemId === 'new-empty-project') {
+      onCreateProject();
+    } else if (itemId === 'use-existing-project') {
+      onAddProject();
+    }
+  }, [onCreateProject, onAddProject]);
+
   function renderSessionList(sessionList: Session[]) {
     return sessionList.map(session => {
       const runState = sessionRunStates[session.id];
@@ -339,12 +348,19 @@ export function SessionsPanel({
       <div className="panel-header">
         <span className="panel-title">项目</span>
         <div className="panel-header-actions">
-          <button className="new-session-btn" onClick={onCreateProject} title="新建项目">
-            <Icon name="add" size={16} />
-          </button>
-          <button className="new-session-btn" onClick={onAddProject} title="打开项目">
-            <Icon name="folder" size={14} />
-          </button>
+          <DropdownMenu
+            align="right"
+            items={[
+              { id: 'new-empty-project', label: '新建空项目' },
+              { id: 'use-existing-project', label: '使用现有项目' },
+            ]}
+            onItemClick={handleNewProjectAction}
+            trigger={(
+              <button className="new-session-btn" title="新建项目" aria-label="新建项目">
+                <Icon name="add" size={16} />
+              </button>
+            )}
+          />
         </div>
       </div>
 

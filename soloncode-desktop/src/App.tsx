@@ -822,6 +822,11 @@ function App() {
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
 
+  const handleSkillInstalled = useCallback((skillName: string) => {
+    setAiCreateRefreshKey(current => current + 1);
+    showToast(`Skill "${skillName}" 安装成功，列表已刷新`);
+  }, [showToast]);
+
   useEffect(() => {
     if (!backendPort || !settings.autoCheckUpdates || autoUpdateCheckedRef.current) return;
 
@@ -1611,7 +1616,7 @@ function App() {
         onReconnect={() => reconnectBackend((updater) => setSettings(updater))}
       />
       {toast && <div className="toast-message">{toast}</div>}
-      <SettingsPanel visible={settingsVisible} settings={settings} onSettingsChange={handleSettingsChange} onClose={() => setSettingsVisible(false)} backendPort={backendPort} workspacePath={activeProjectPath} sessionId={currentSessionId} />
+      <SettingsPanel visible={settingsVisible} settings={settings} onSettingsChange={handleSettingsChange} onClose={() => setSettingsVisible(false)} onSkillInstalled={handleSkillInstalled} backendPort={backendPort} workspacePath={activeProjectPath} sessionId={currentSessionId} />
     </div>
     </div>
   );

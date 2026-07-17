@@ -561,7 +561,8 @@ export function ExplorerPanel({
   // ==================== 渲染 ====================
 
   function renderFileNode(node: FileNode, projectPath: string, depth: number = 0) {
-    const indent = depth * 16;
+    // 项目根目录本身占一层，子目录和文件从下一层开始缩进。
+    const indent = (depth + 1) * 16;
     const isExpanded = expandedFolders.has(node.path);
     const isLoading = loadingFolders.has(node.path);
     const isRenaming = renamingPath === node.path;

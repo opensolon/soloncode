@@ -214,6 +214,10 @@ export async function saveMessage(message: Omit<DbMessage, 'id'>): Promise<numbe
   return await db.messages.add(message);
 }
 
+export async function updateMessage(id: number, changes: Partial<Omit<DbMessage, 'id'>>): Promise<void> {
+  await db.messages.update(id, changes);
+}
+
 export async function reassignMessages(oldConvId: string | number, newConvId: string | number): Promise<void> {
   const numId = typeof oldConvId === 'string' ? parseInt(oldConvId, 10) : oldConvId;
   const ids = isNaN(numId) ? [oldConvId] : [oldConvId, numId];
