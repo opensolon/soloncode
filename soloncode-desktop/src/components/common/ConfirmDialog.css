@@ -50,6 +50,36 @@
   margin-bottom: 20px;
 }
 
+.confirm-input-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: -6px 0 20px;
+  color: var(--cb-text-secondary, #858699);
+  font-size: 11px;
+}
+
+.confirm-input-field input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--cb-vscode-input-border, var(--cb-vscode-widget-border, #474747));
+  border-radius: 4px;
+  outline: none;
+  background: var(--cb-vscode-input-background, #3c3c3c);
+  color: var(--cb-vscode-input-foreground, var(--cb-text-primary, #cccccc));
+  font: inherit;
+  font-size: 13px;
+}
+
+.confirm-input-field input:focus {
+  border-color: var(--cb-accent);
+}
+
+.confirm-input-field small {
+  color: var(--cb-vscode-errorForeground, #f14c4c);
+  font-size: 10px;
+}
+
 .confirm-actions {
   display: flex;
   justify-content: flex-end;
@@ -69,6 +99,11 @@
 
 .confirm-btn:hover {
   background: var(--cb-vscode-list-hoverBackground, #2a2d2e);
+}
+
+.confirm-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .confirm-btn.danger {

@@ -10,6 +10,7 @@ export interface MenuItem {
   label: string;
   shortcut?: string;
   disabled?: boolean;
+  danger?: boolean;
   divider?: boolean;
   children?: MenuItem[];
 }
@@ -109,7 +110,7 @@ export function DropdownMenu({ trigger, items, onItemClick, align = 'left' }: Dr
     return (
       <div
         key={item.id}
-        className={`dropdown-item${item.disabled ? ' disabled' : ''}${hasChildren ? ' has-children' : ''}`}
+        className={`dropdown-item${item.disabled ? ' disabled' : ''}${item.danger ? ' danger' : ''}${hasChildren ? ' has-children' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           handleItemClick(item);

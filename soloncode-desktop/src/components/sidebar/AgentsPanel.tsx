@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Icon, getFileIconName } from '../common/Icon';
+import { ConfirmDialog } from '../common/ConfirmDialog';
+import { ContextMenu } from '../common/ContextMenu';
 import type { AgentConfig } from '../../services/settingsService';
+import { getManagedResourceNameError, managedResourceService } from '../../services/managedResourceService';
 import '../sidebar/ExplorerPanel.css';
 import './AgentsPanel.css';
 
@@ -18,6 +21,11 @@ interface AgentsPanelProps {
 export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange, onFileSelect, onCreateWithAI, refreshKey = 0 }: AgentsPanelProps) {
   const [loading, setLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; agent: AgentConfig } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ agent: AgentConfig; value: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AgentConfig | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [actionPending, setActionPending] = useState(false);
   const onAgentsChangeRef = useRef(onAgentsChange);
   onAgentsChangeRef.current = onAgentsChange;
 
@@ -31,16 +39,14 @@ export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange
         enabled: boolean;
       }>>('list_agents');
 
-      if (backendAgents.length > 0) {
-        const mapped: AgentConfig[] = backendAgents.map(a => ({
-          name: a.name,
-          description: a.description,
-          path: a.path,
-          enabled: a.enabled,
-          source: 'discovered' as const,
-        }));
-        onAgentsChangeRef.current(mapped);
-      }
+      const mapped: AgentConfig[] = backendAgents.map(a => ({
+        name: a.name,
+        description: a.description,
+        path: a.path,
+        enabled: a.enabled,
+        source: 'discovered' as const,
+      }));
+      onAgentsChangeRef.current(mapped);
     } catch (err) {
       console.warn('[AgentsPanel] 加载后端 agents 失败:', err);
     } finally {
@@ -74,6 +80,66 @@ export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange
   };
 
   const enabledCount = agents.filter(a => a.enabled).length;
+  const renameError = renameTarget ? getManagedResourceNameError(renameTarget.value) : '';
+
+  const handleContextAction = useCallback((action: string) => {
+    const target = contextMenu?.agent;
+    setContextMenu(null);
+    if (!target?.path) return;
+    setActionMessage(null);
+    if (action === 'rename') {
+      setRenameTarget({ agent: target, value: target.name });
+    } else if (action === 'copy') {
+      setActionPending(true);
+      void managedResourceService.copy(target.path, 'agent')
+        .then(result => {
+          setActionMessage({ text: `已复制为 ${result.name}` });
+          return loadFromBackend();
+        })
+        .catch(error => {
+          console.error('[AgentsPanel] 复制 Agent 失败:', error);
+          setActionMessage({ text: '复制 Agent 失败', error: true });
+        })
+        .finally(() => setActionPending(false));
+    } else if (action === 'delete') {
+      setDeleteTarget(target);
+    }
+  }, [contextMenu, loadFromBackend]);
+
+  const confirmRename = useCallback(async () => {
+    if (!renameTarget?.agent.path || getManagedResourceNameError(renameTarget.value) || actionPending) return;
+    setActionPending(true);
+    try {
+      const wasActive = activeAgent === renameTarget.agent.name;
+      const result = await managedResourceService.rename(renameTarget.agent.path, 'agent', renameTarget.value);
+      setRenameTarget(null);
+      if (wasActive) onAgentChange(result.name);
+      setActionMessage({ text: `已重命名为 ${result.name}` });
+      await loadFromBackend();
+    } catch (error) {
+      console.error('[AgentsPanel] 重命名 Agent 失败:', error);
+      setActionMessage({ text: '重命名 Agent 失败', error: true });
+    } finally {
+      setActionPending(false);
+    }
+  }, [actionPending, activeAgent, loadFromBackend, onAgentChange, renameTarget]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget?.path || actionPending) return;
+    setActionPending(true);
+    try {
+      await managedResourceService.delete(deleteTarget.path, 'agent');
+      if (activeAgent === deleteTarget.name) onAgentChange('default');
+      setDeleteTarget(null);
+      setActionMessage({ text: `已删除 ${deleteTarget.name}` });
+      await loadFromBackend();
+    } catch (error) {
+      console.error('[AgentsPanel] 删除 Agent 失败:', error);
+      setActionMessage({ text: '删除 Agent 失败', error: true });
+    } finally {
+      setActionPending(false);
+    }
+  }, [actionPending, activeAgent, deleteTarget, loadFromBackend, onAgentChange]);
 
   function renderAgentNode(agent: AgentConfig, index: number) {
     const isExpanded = expandedFolders.has(agent.path);
@@ -89,6 +155,11 @@ export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange
               onAgentChange(agent.name);
               toggleFolder(agent.path);
             }
+          }}
+          onContextMenu={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setContextMenu({ x: event.clientX, y: event.clientY, agent });
           }}
         >
           <span className="chevron-icon">
@@ -135,6 +206,7 @@ export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange
       </div>
 
       <div className="panel-content agents-list">
+        {actionMessage && <div className={`resource-action-message${actionMessage.error ? ' error' : ''}`}>{actionMessage.text}</div>}
         {loading && (
           <div className="empty-state">
             <div className="empty-text">加载中...</div>
@@ -154,6 +226,44 @@ export function AgentsPanel({ agents, onAgentsChange, activeAgent, onAgentChange
 
         {!loading && agents.map((agent, index) => renderAgentNode(agent, index))}
       </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={[
+            { id: 'rename', label: '重命名', disabled: actionPending },
+            { id: 'copy', label: '复制', disabled: actionPending },
+            { id: 'delete', label: '删除', danger: true, disabled: actionPending },
+          ]}
+          onItemClick={handleContextAction}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+      {renameTarget && (
+        <ConfirmDialog
+          title="重命名 Agent"
+          message="名称会同步写入 AGENT.md。"
+          inputLabel="Agent 名称"
+          inputValue={renameTarget.value}
+          inputError={renameError}
+          confirmLabel={actionPending ? '处理中' : '重命名'}
+          confirmDisabled={Boolean(renameError) || actionPending}
+          onInputChange={value => setRenameTarget(current => current ? { ...current, value } : null)}
+          onConfirm={() => { void confirmRename(); }}
+          onCancel={() => { if (!actionPending) setRenameTarget(null); }}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmDialog
+          title="删除 Agent"
+          message={`将删除「${deleteTarget.name}」及其目录中的全部文件，此操作无法撤销。`}
+          confirmLabel={actionPending ? '处理中' : '删除'}
+          confirmDisabled={actionPending}
+          danger
+          onConfirm={() => { void confirmDelete(); }}
+          onCancel={() => { if (!actionPending) setDeleteTarget(null); }}
+        />
+      )}
     </div>
   );
 }

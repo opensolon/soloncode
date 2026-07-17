@@ -72,7 +72,7 @@ export function ContextMenu({ x, y, items, onItemClick, onClose }: ContextMenuPr
         return (
           <div
             key={item.id}
-            className={`dropdown-item${item.disabled ? ' disabled' : ''}`}
+            className={`dropdown-item${item.disabled ? ' disabled' : ''}${item.danger ? ' danger' : ''}`}
             onClick={(e) => {
               e.stopPropagation();
               if (!item.disabled) {

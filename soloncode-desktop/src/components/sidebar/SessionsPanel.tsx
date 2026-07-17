@@ -4,6 +4,7 @@ import { Icon } from '../common/Icon';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ContextMenu } from '../common/ContextMenu';
 import { UNLINKED_PROJECT } from '../../db';
+import { copyTextToClipboard } from '../../utils/clipboard';
 import './SessionsPanel.css';
 
 export interface Session {
@@ -72,6 +73,8 @@ export function SessionsPanel({
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [confirmSync, setConfirmSync] = useState<{ sessionId: string; title: string } | null>(null);
   const [confirmSyncAll, setConfirmSyncAll] = useState(false);
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null);
+  const [projectActionMessage, setProjectActionMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [projectContextMenu, setProjectContextMenu] = useState<{
     x: number;
     y: number;
@@ -149,7 +152,7 @@ export function SessionsPanel({
     setProjectContextMenu(null);
     const rect = event.currentTarget.getBoundingClientRect();
     const width = 150;
-    const height = 124;
+    const height = 156;
     const x = Math.min(rect.right + 4, window.innerWidth - width - 8);
     const y = Math.min(rect.top, window.innerHeight - height - 8);
     setProjectMenu({ x: Math.max(8, x), y: Math.max(8, y), projectId });
@@ -235,10 +238,20 @@ export function SessionsPanel({
       revealItemInDir(targetProjectId).catch(err => {
         console.error('[SessionsPanel] 打开资源管理器失败:', err);
       });
-    } else if (itemId === 'remove') {
-      onRemoveProject(targetProjectId);
+    } else if (itemId === 'copy') {
+      const copyPath = async () => {
+        await copyTextToClipboard(targetProjectId);
+        setProjectActionMessage({ text: '项目路径已复制' });
+      };
+      void copyPath().catch(error => {
+        console.error('[SessionsPanel] 复制项目路径失败:', error);
+        setProjectActionMessage({ text: '复制项目路径失败', error: true });
+      });
+    } else if (itemId === 'delete') {
+      const project = projects.find(item => item.id === targetProjectId);
+      if (project) setDeleteProjectTarget(project);
     }
-  }, [beginProjectRename, onPinProject, onRemoveProject, projectContextMenu, projectMenu]);
+  }, [beginProjectRename, onPinProject, projectContextMenu, projectMenu, projects]);
 
   function renderSessionList(sessionList: Session[]) {
     return sessionList.map(session => {
@@ -308,6 +321,20 @@ export function SessionsPanel({
           onCancel={() => setConfirmSyncAll(false)}
         />
       )}
+      {deleteProjectTarget && (
+        <ConfirmDialog
+          title="删除项目"
+          message={`仅将「${deleteProjectTarget.name}」从项目管理中移除，不会删除磁盘上的项目目录和文件。`}
+          confirmLabel="删除"
+          danger
+          onConfirm={() => {
+            onRemoveProject(deleteProjectTarget.id);
+            setDeleteProjectTarget(null);
+            setProjectActionMessage({ text: '项目已从列表删除' });
+          }}
+          onCancel={() => setDeleteProjectTarget(null)}
+        />
+      )}
 
       <div className="panel-header">
         <span className="panel-title">项目</span>
@@ -322,6 +349,7 @@ export function SessionsPanel({
       </div>
 
       <div className="sessions-list">
+        {projectActionMessage && <div className={`resource-action-message${projectActionMessage.error ? ' error' : ''}`}>{projectActionMessage.text}</div>}
         {projectEntries.length > 0 && projectEntries.map(entry => {
           const projectSessions = sessionsByProject.get(entry.id) || [];
           const isExpanded = expandedProjects.has(entry.id);
@@ -344,6 +372,7 @@ export function SessionsPanel({
                   <input
                     className="project-rename-input"
                     value={renameProjectValue}
+                    maxLength={64}
                     autoFocus
                     onChange={event => setRenameProjectValue(event.target.value)}
                     onClick={event => event.stopPropagation()}
@@ -434,8 +463,9 @@ export function SessionsPanel({
               disabled: projects[0]?.id === projectContextMenu.projectId,
             },
             { id: 'rename', label: '重命名' },
+            { id: 'copy', label: '复制路径' },
             { id: 'open-in-explorer', label: '在资源管理器中打开' },
-            { id: 'remove', label: '移除' },
+            { id: 'delete', label: '删除', danger: true },
           ]}
           onItemClick={handleProjectAction}
           onClose={() => setProjectContextMenu(null)}
@@ -476,6 +506,15 @@ export function SessionsPanel({
             type="button"
             className="project-menu-item"
             role="menuitem"
+            onClick={() => handleProjectAction('copy', menuProject.id)}
+          >
+            <Icon name="copy" size={14} />
+            <span>复制路径</span>
+          </button>
+          <button
+            type="button"
+            className="project-menu-item"
+            role="menuitem"
             onClick={() => handleProjectAction('open-in-explorer', menuProject.id)}
           >
             <Icon name="folder-open" size={14} />
@@ -485,10 +524,10 @@ export function SessionsPanel({
             type="button"
             className="project-menu-item danger"
             role="menuitem"
-            onClick={() => handleProjectAction('remove', menuProject.id)}
+            onClick={() => handleProjectAction('delete', menuProject.id)}
           >
             <Icon name="delete" size={14} />
-            <span>移除</span>
+            <span>删除</span>
           </button>
         </div>
       )}

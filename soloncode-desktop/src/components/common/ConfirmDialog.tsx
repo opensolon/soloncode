@@ -10,6 +10,11 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  inputLabel?: string;
+  inputValue?: string;
+  inputError?: string;
+  confirmDisabled?: boolean;
+  onInputChange?: (value: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -20,25 +25,52 @@ export function ConfirmDialog({
   confirmLabel = '确认',
   cancelLabel = '取消',
   danger = false,
+  inputLabel,
+  inputValue,
+  inputError,
+  confirmDisabled = false,
+  onInputChange,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    confirmRef.current?.focus();
+    if (inputValue !== undefined) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    } else {
+      confirmRef.current?.focus();
+    }
+  }, []);
+
+  useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
+      if (e.key === 'Enter' && inputValue !== undefined && !confirmDisabled) onConfirm();
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [onCancel]);
+  }, [confirmDisabled, inputValue, onCancel, onConfirm]);
 
   return (
     <div className="confirm-overlay" onClick={onCancel}>
       <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="confirm-title">{title}</div>
         <div className="confirm-message">{message}</div>
+        {inputValue !== undefined && (
+          <label className="confirm-input-field">
+            {inputLabel && <span>{inputLabel}</span>}
+            <input
+              ref={inputRef}
+              value={inputValue}
+              maxLength={64}
+              onChange={event => onInputChange?.(event.target.value)}
+            />
+            {inputError && <small>{inputError}</small>}
+          </label>
+        )}
         <div className="confirm-actions">
           <button className="confirm-btn cancel" onClick={onCancel}>
             {cancelLabel}
@@ -46,6 +78,7 @@ export function ConfirmDialog({
           <button
             ref={confirmRef}
             className={`confirm-btn${danger ? ' danger' : ''}`}
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {confirmLabel}

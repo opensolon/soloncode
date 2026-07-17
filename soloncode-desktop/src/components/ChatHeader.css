@@ -127,19 +127,13 @@
   white-space: nowrap;
 }
 
-.chat-task-section {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--cb-vscode-panel-border);
-}
-
 .chat-review-section {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--cb-vscode-panel-border);
 }
 
-.chat-task-heading {
+.chat-section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -147,150 +141,6 @@
   color: var(--cb-text-secondary);
   font-size: 12px;
   font-weight: 600;
-}
-
-.chat-task-list {
-  max-height: 340px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-right: 2px;
-}
-
-.chat-result-card-shell {
-  width: 100%;
-  border: 1px solid var(--cb-vscode-panel-border);
-  border-radius: 8px;
-  background-color: var(--cb-vscode-input-background);
-  color: var(--cb-text-primary);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.16s, background-color 0.16s, box-shadow 0.16s;
-}
-
-.chat-result-card-shell:hover {
-  border-color: rgba(14, 99, 156, 0.48);
-  background-color: var(--cb-vscode-list-hoverBackground);
-}
-
-.chat-result-card-shell.selected {
-  border-color: var(--cb-accent);
-  box-shadow: 0 0 0 1px rgba(14, 99, 156, 0.18);
-}
-
-.chat-task-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
-.chat-task-card-title {
-  min-width: 0;
-  color: var(--cb-text-primary);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-task-tag {
-  flex: 0 0 auto;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 2px 7px;
-  font-size: 12px;
-  line-height: 1.25;
-}
-
-.chat-task-tag.info {
-  color: var(--cb-text-secondary);
-  background-color: var(--cb-text-secondary);
-  background-color: rgba(144, 147, 153, 0.12);
-  border-color: rgba(144, 147, 153, 0.24);
-}
-
-.chat-task-tag.primary {
-  color: #409eff;
-  background-color: rgba(64, 158, 255, 0.12);
-  border-color: rgba(64, 158, 255, 0.24);
-}
-
-.chat-task-tag.success {
-  color: #67c23a;
-  background-color: rgba(103, 194, 58, 0.12);
-  border-color: rgba(103, 194, 58, 0.24);
-}
-
-.chat-task-tag.danger {
-  color: #f56c6c;
-  background-color: rgba(245, 108, 108, 0.12);
-  border-color: rgba(245, 108, 108, 0.24);
-}
-
-.chat-task-card-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.chat-task-card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--cb-text-secondary);
-  font-size: 12px;
-}
-
-.chat-task-card-meta span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-task-progress {
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  overflow: hidden;
-  background-color: rgba(144, 147, 153, 0.16);
-}
-
-.chat-task-progress span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background-color: #909399;
-  transition: width 0.2s ease;
-}
-
-.chat-task-progress.primary span {
-  background-color: #409eff;
-}
-
-.chat-task-progress.success span {
-  background-color: #67c23a;
-}
-
-.chat-task-progress.danger span {
-  background-color: #f56c6c;
-}
-
-.chat-task-empty {
-  padding: 18px 8px;
-  color: var(--cb-text-secondary);
-  font-size: 12px;
-  text-align: center;
 }
 
 .chat-review-file-list {

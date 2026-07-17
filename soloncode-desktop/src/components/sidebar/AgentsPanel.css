@@ -9,6 +9,20 @@
   overflow-y: auto;
 }
 
+.resource-action-message {
+  margin: 6px 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background-color: rgba(76, 175, 80, 0.12);
+  color: #4caf50;
+  font-size: 11px;
+}
+
+.resource-action-message.error {
+  background-color: rgba(241, 76, 76, 0.12);
+  color: var(--cb-vscode-errorForeground, #f14c4c);
+}
+
 .agents-panel .file-node.disabled-item {
   opacity: 0.5;
 }

@@ -1,14 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './common/Icon';
 import './ChatHeader.css';
-
-export interface ChatHeaderTask {
-  id: string;
-  title: string;
-  status: 'pending' | 'in_progress' | 'done';
-  group?: string;
-  line?: number;
-}
 
 export interface ChatReviewFile {
   path: string;
@@ -25,9 +17,6 @@ interface ChatHeaderProps {
   startedAt?: string;
   totalTokens?: number;
   totalConversations?: number;
-  tasks?: ChatHeaderTask[];
-  activeTaskId?: string;
-  onSelectTask?: (id: string) => void;
   reviewFiles?: ChatReviewFile[];
   onReviewFileSelect?: (path: string) => void;
   openInfoSignal?: number;
@@ -64,16 +53,6 @@ function formatRelativeTime(value?: string) {
   return new Date(value).toLocaleDateString('zh-CN');
 }
 
-function getTaskStatusMeta(status?: ChatHeaderTask['status']) {
-  if (status === 'in_progress') {
-    return { label: '进行中', tone: 'primary', progress: 50 };
-  }
-  if (status === 'done') {
-    return { label: '已完成', tone: 'success', progress: 100 };
-  }
-  return { label: '待处理', tone: 'info', progress: 0 };
-}
-
 function getFileName(path: string) {
   return path.split(/[\\/]/).pop() || path;
 }
@@ -93,9 +72,6 @@ export function ChatHeader({
   startedAt,
   totalTokens = 0,
   totalConversations = 0,
-  tasks = [],
-  activeTaskId,
-  onSelectTask,
   reviewFiles = [],
   onReviewFileSelect,
   openInfoSignal,
@@ -125,19 +101,6 @@ export function ChatHeader({
     if (openInfoSignal === undefined) return;
     if (openInfoSignal > 0) setInfoOpen(true);
   }, [openInfoSignal]);
-
-  const sortedTasks = useMemo(() => {
-    return [...tasks].sort((a, b) => {
-      if (typeof a.line === 'number' && typeof b.line === 'number') return a.line - b.line;
-      return 0;
-    });
-  }, [tasks]);
-
-  const handleSelectTask = (id: string) => {
-    if (!onSelectTask) return;
-    onSelectTask?.(id);
-    setInfoOpen(false);
-  };
 
   return (
     <header className="chat-header">
@@ -181,7 +144,7 @@ export function ChatHeader({
             </div>
             {reviewFiles.length > 0 && (
               <div className="chat-review-section">
-                <div className="chat-task-heading">
+                <div className="chat-section-heading">
                   <span>审查文件</span>
                   <span>{formatNumber(reviewFiles.length)}</span>
                 </div>
@@ -205,46 +168,6 @@ export function ChatHeader({
                 </div>
               </div>
             )}
-            <div className="chat-task-section">
-              <div className="chat-task-heading">
-                <span>任务列表</span>
-                <span>{formatNumber(sortedTasks.length)}</span>
-              </div>
-              <div className="chat-task-list">
-                {sortedTasks.length === 0 && (
-                  <div className="chat-task-empty">暂无任务</div>
-                )}
-                {sortedTasks.map((task, index) => {
-                  const statusMeta = getTaskStatusMeta(task.status);
-                  const isActiveTask = activeTaskId === task.id;
-                  const progress = statusMeta.progress;
-                  return (
-                    <button
-                      key={task.id}
-                      type="button"
-                      className={`chat-result-card-shell${isActiveTask ? ' selected' : ''}`}
-                      onClick={() => handleSelectTask(task.id)}
-                    >
-                      <span className="chat-task-card-header">
-                        <span className="chat-task-card-title">任务 {index + 1} · {task.title}</span>
-                        <span className={`chat-task-tag ${statusMeta.tone}`}>
-                          {statusMeta.label}
-                        </span>
-                      </span>
-                      <span className="chat-task-card-footer">
-                        <span className="chat-task-card-meta">
-                          <span>{task.group || '当前任务清单'}</span>
-                          {typeof task.line === 'number' && <span>第 {formatNumber(task.line)} 行</span>}
-                        </span>
-                        <span className={`chat-task-progress ${statusMeta.tone}`}>
-                          <span style={{ width: `${progress}%` }} />
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         )}
       </div>

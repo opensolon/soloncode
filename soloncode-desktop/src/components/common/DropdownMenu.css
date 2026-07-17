@@ -71,6 +71,10 @@
   background: transparent;
 }
 
+.dropdown-item.danger:not(.disabled) {
+  color: var(--cb-vscode-errorForeground, #f14c4c);
+}
+
 .dropdown-item-label {
   flex: 1;
 }

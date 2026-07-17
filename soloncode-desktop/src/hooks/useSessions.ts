@@ -70,15 +70,16 @@ export function useSessions(
     }
 
     const tempId = `temp-${Date.now()}`;
-    const workspacePath = projectId === UNLINKED_PROJECT
-      ? UNLINKED_PROJECT
-      : (projectId || activeProjectPath || UNLINKED_PROJECT);
+    // 只有调用方显式传入项目时才关联；恢复的活跃项目不能作为隐式默认值。
+    const workspacePath = projectId && projectId !== UNLINKED_PROJECT
+      ? projectId
+      : UNLINKED_PROJECT;
     const title = _title || '新会话';
     const timestamp = new Date().toISOString();
     setPendingSession({ id: tempId, title, timestamp, messageCount: 0, workspacePath });
     setCurrentSessionId(tempId);
     return tempId;
-  }, [activeProjectPath, currentSessionId, sessions]);
+  }, [currentSessionId, sessions]);
 
   const handleDeleteSession = useCallback((id: string) => {
     const remaining = sessions.filter(s => s.id !== id);
@@ -111,7 +112,7 @@ export function useSessions(
     if (resolving) return resolving;
 
     const pending = pendingSession?.id === sessionId ? pendingSession : null;
-    const sessionWsPath = pending?.workspacePath || activeProjectPath || UNLINKED_PROJECT;
+    const sessionWsPath = pending?.workspacePath || UNLINKED_PROJECT;
     const resolvePromise = (async () => {
       try {
         const dbId = await saveConversation({
