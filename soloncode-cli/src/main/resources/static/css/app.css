@@ -5,10 +5,12 @@ html, body { height: 100%; overflow: hidden; }
 body {
     font-family: var(--font-sans);
     background-color: var(--bg-body);
-    background-image: var(--bg-body-image);
-    background-size: var(--bg-image-size);
-    background-position: var(--bg-image-position);
-    background-repeat: var(--bg-image-repeat);
+    background-image:
+        linear-gradient(var(--bg-body-overlay), var(--bg-body-overlay)),
+        var(--bg-body-image);
+    background-size: var(--bg-body-image-size);
+    background-position: var(--bg-body-image-position);
+    background-repeat: var(--bg-body-image-repeat);
     color: var(--text-primary);
     display: flex;
     font-size: 14px;
@@ -22,9 +24,9 @@ body {
     background-image:
         linear-gradient(var(--bg-sidebar-overlay), var(--bg-sidebar-overlay)),
         var(--bg-sidebar-image);
-    background-size: var(--bg-image-size);
-    background-position: var(--bg-image-position);
-    background-repeat: var(--bg-image-repeat);
+    background-size: var(--bg-sidebar-image-size);
+    background-position: var(--bg-sidebar-image-position);
+    background-repeat: var(--bg-sidebar-image-repeat);
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
@@ -172,9 +174,9 @@ body {
     background-image:
         linear-gradient(var(--bg-main-overlay), var(--bg-main-overlay)),
         var(--bg-main-image);
-    background-size: var(--bg-image-size);
-    background-position: var(--bg-image-position);
-    background-repeat: var(--bg-image-repeat);
+    background-size: var(--bg-main-image-size);
+    background-position: var(--bg-main-image-position);
+    background-repeat: var(--bg-main-image-repeat);
     transition: background-color 0.3s;
 }
 
@@ -902,14 +904,20 @@ body {
 }
 .filer-panel {
     width: var(--filer-panel-width);
-    background: var(--bg-sidebar);
+    background-color: var(--bg-filer-surface);
+    background-image:
+        linear-gradient(var(--bg-filer-overlay), var(--bg-filer-overlay)),
+        var(--bg-filer-image);
+    background-size: var(--bg-filer-image-size);
+    background-position: var(--bg-filer-image-position);
+    background-repeat: var(--bg-filer-image-repeat);
     border-left: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
     height: 100vh;
     contain: layout paint;
-    transition: background 0.3s;
+    transition: background-color 0.3s;
 }
 .filer-panel.collapsed {
     width: 0 !important;

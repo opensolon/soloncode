@@ -5,14 +5,30 @@
 .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center; animation: settings-fade-in 0.2s ease-out; }
 @keyframes settings-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.settings-panel { width: 900px; height: 600px; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 12px 48px rgba(0,0,0,0.25); display: flex; animation: settings-slide-up 0.25s ease-out; overflow: hidden; }
+.settings-panel {
+    width: 900px;
+    height: 600px;
+    background-color: var(--bg-settings-surface);
+    background-image:
+        linear-gradient(var(--bg-settings-overlay), var(--bg-settings-overlay)),
+        var(--bg-settings-image);
+    background-size: var(--bg-settings-image-size);
+    background-position: var(--bg-settings-image-position);
+    background-repeat: var(--bg-settings-image-repeat);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.25);
+    display: flex;
+    animation: settings-slide-up 0.25s ease-out;
+    overflow: hidden;
+}
 @keyframes settings-slide-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 
 .settings-content { flex: 1; display: flex; overflow: hidden; }
-.settings-tabs { display: flex; flex-direction: column; border-right: 1px solid var(--border-color); padding: 20px 0; min-width: 180px; background: var(--bg-hover); border-radius: 16px 0 0 16px; }
+.settings-tabs { display: flex; flex-direction: column; border-right: 1px solid var(--border-color); padding: 20px 0; min-width: 180px; background: var(--bg-settings-tabs); border-radius: 16px 0 0 16px; }
 .settings-tab { padding: 10px 20px; background: none; border: none; border-left: 3px solid transparent; color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 8px; }
 .settings-tab:hover { color: var(--text-primary); background: rgba(0,0,0,0.03); }
-.settings-tab.active { color: var(--accent); border-left-color: var(--accent); background: var(--bg-sidebar); font-weight: 600; }
+.settings-tab.active { color: var(--accent); border-left-color: var(--accent); background: var(--bg-settings); font-weight: 600; }
 .settings-tabs-footer { margin-top: auto; padding: 12px 20px 4px; }
 .settings-product-name { font-size: 13px; font-weight: 500; color: var(--text-secondary); opacity: 0.7; letter-spacing: 0.5px; margin-bottom: 2px; }
 .settings-version { font-size: 11px; color: var(--text-secondary); opacity: 0.7; }

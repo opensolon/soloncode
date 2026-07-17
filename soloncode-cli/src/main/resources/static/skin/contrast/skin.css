@@ -32,10 +32,16 @@
     --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.12);
 
     /* No decorative background for accessibility */
+    --bg-body-image: none;
     --bg-main-image: none;
     --bg-sidebar-image: none;
+    --bg-filer-image: none;
+    --bg-settings-image: none;
+    --bg-body-overlay: transparent;
     --bg-main-overlay: transparent;
     --bg-sidebar-overlay: transparent;
+    --bg-filer-overlay: transparent;
+    --bg-settings-overlay: transparent;
 }
 
 [data-skin="contrast"][data-theme="dark"] {
@@ -68,8 +74,14 @@
     --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.45);
 
     /* No decorative background for accessibility */
+    --bg-body-image: none;
     --bg-main-image: none;
     --bg-sidebar-image: none;
+    --bg-filer-image: none;
+    --bg-settings-image: none;
+    --bg-body-overlay: transparent;
     --bg-main-overlay: transparent;
     --bg-sidebar-overlay: transparent;
+    --bg-filer-overlay: transparent;
+    --bg-settings-overlay: transparent;
 }

@@ -40,6 +40,14 @@
     --bg-main-overlay: rgba(255, 255, 255, 0.28);
     --bg-sidebar-image: linear-gradient(180deg, #eaf1e0 0%, #f4f7ee 100%);
     --bg-sidebar-overlay: rgba(255, 255, 255, 0.20);
+    /* filer/settings fall back to sidebar colors unless overridden */
+    --bg-filer: var(--bg-sidebar);
+    --bg-filer-image: none;
+    --bg-filer-overlay: transparent;
+    --bg-settings: var(--bg-sidebar);
+    --bg-settings-image: none;
+    --bg-settings-overlay: transparent;
+    --bg-settings-tabs: var(--bg-hover);
 }
 
 [data-skin="eyecare"][data-theme="dark"] {
@@ -75,4 +83,11 @@
     --bg-main-overlay: rgba(10, 14, 8, 0.36);
     --bg-sidebar-image: linear-gradient(180deg, #141a12 0%, #1a2217 100%);
     --bg-sidebar-overlay: rgba(10, 14, 8, 0.24);
+    --bg-filer: var(--bg-sidebar);
+    --bg-filer-image: none;
+    --bg-filer-overlay: transparent;
+    --bg-settings: var(--bg-sidebar);
+    --bg-settings-image: none;
+    --bg-settings-overlay: transparent;
+    --bg-settings-tabs: var(--bg-hover);
 }
