@@ -543,6 +543,8 @@ function connectWebGate() {
                 if (!sess) return;
                 // 保存 done 消息的时间戳，用于 finishStream 显示
                 if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
+                // 已收尾则忽略（stop 本地 finish + 迟到/重复 done）
+                if (!sess.isStreaming) return;
                 finishStream(sess);
                 return;
             }
