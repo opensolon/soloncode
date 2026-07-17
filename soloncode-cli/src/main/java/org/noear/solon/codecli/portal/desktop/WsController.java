@@ -48,7 +48,7 @@ public class WsController {
     @Mapping("/desktop/version")
     public Result<Map> version() {
         Map<String, String> data = new LinkedHashMap<>();
-        data.put("version", "v1.0.1");
+        data.put("version", AgentFlags.getVersion());
         data.put("workspace", engine.getWorkspace());
         return Result.succeed(data);
     }
