@@ -220,5 +220,12 @@ public class AgentFlags {
         return getHarnessHome() + "loops/";
     }
 
+    /**
+     * 马具皮肤存放区（用户安装的本地皮肤）
+     */
+    public static final String getHarnessSkins() {
+        return getHarnessHome() + "skins/";
+    }
+
 
 }

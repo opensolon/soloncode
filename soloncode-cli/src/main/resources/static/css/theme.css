@@ -87,6 +87,18 @@
     --tag-border: #e5e7eb;
     --reason-group-think-bg: #f8f9fc;
     --reason-group-think-border: #e0e3eb;
+
+    /* Skin background (default: none) */
+    --bg-body-image: none;
+    --bg-main-image: none;
+    --bg-sidebar-image: none;
+    --bg-image-size: cover;
+    --bg-image-position: center;
+    --bg-image-repeat: no-repeat;
+    --bg-main-overlay: transparent;
+    --bg-sidebar-overlay: transparent;
+    --bg-main-surface: var(--bg-main);
+    --bg-sidebar-surface: var(--bg-sidebar);
 }
 
 /* ===== Dark Theme ===== */
@@ -163,6 +175,18 @@
     --tag-border: #333355;
     --reason-group-think-bg: #1a1a30;
     --reason-group-think-border: #2a2a44;
+
+    /* Skin background (default: none) */
+    --bg-body-image: none;
+    --bg-main-image: none;
+    --bg-sidebar-image: none;
+    --bg-image-size: cover;
+    --bg-image-position: center;
+    --bg-image-repeat: no-repeat;
+    --bg-main-overlay: transparent;
+    --bg-sidebar-overlay: transparent;
+    --bg-main-surface: var(--bg-main);
+    --bg-sidebar-surface: var(--bg-sidebar);
 }
 
 /* ===== Accessibility ===== */
@@ -235,5 +259,17 @@
         --tag-border: #333355;
         --reason-group-think-bg: #1a1a30;
         --reason-group-think-border: #2a2a44;
+
+        /* Skin background (default: none) */
+        --bg-body-image: none;
+        --bg-main-image: none;
+        --bg-sidebar-image: none;
+        --bg-image-size: cover;
+        --bg-image-position: center;
+        --bg-image-repeat: no-repeat;
+        --bg-main-overlay: transparent;
+        --bg-sidebar-overlay: transparent;
+        --bg-main-surface: var(--bg-main);
+        --bg-sidebar-surface: var(--bg-sidebar);
     }
 }

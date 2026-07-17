@@ -72,6 +72,9 @@ public class GeneralGroupDo implements Serializable {
     //是否启用 Goal 模式（Codex CLI 对齐的长任务目标模式）
     private Boolean goalsEnabled; // true
 
+    //当前激活的皮肤（default / 预置名 / 本地安装名；空或 default 表示默认）
+    private String activeSkin;
+
 
     //===================
 

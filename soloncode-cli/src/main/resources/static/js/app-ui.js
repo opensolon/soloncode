@@ -696,6 +696,138 @@ function updateThemeIcon() {
 }
 window.updateThemeIcon = updateThemeIcon;
 
+/* ===== Skin (static/skin/<name>/skin.css + local zip) ===== */
+var BUILTIN_SKINS = {
+    default:  { name: 'default',  displayName: '默认',   source: 'builtin' },
+    eyecare:  { name: 'eyecare',  displayName: '护眼',   source: 'builtin' },
+    contrast: { name: 'contrast', displayName: '高对比', source: 'builtin' }
+};
+window.BUILTIN_SKINS = BUILTIN_SKINS;
+
+/** 本地皮肤注册表 name -> meta（由设置页 list 填充，启动时也可为空） */
+var LOCAL_SKINS = window.LOCAL_SKINS || {};
+window.LOCAL_SKINS = LOCAL_SKINS;
+
+function isBuiltinSkin(name) {
+    return !!(name && BUILTIN_SKINS[name]);
+}
+
+function ensureSkinStyleLink() {
+    var el = document.getElementById('skin-style');
+    if (!el) {
+        el = document.createElement('link');
+        el.id = 'skin-style';
+        el.rel = 'stylesheet';
+        document.head.appendChild(el);
+    }
+    return el;
+}
+
+/** 预置皮肤：static/skin/<name>/skin.css */
+function builtinSkinCssUrl(skinName) {
+    return '/skin/' + encodeURIComponent(skinName || 'default') + '/skin.css';
+}
+
+/** 本地安装皮肤：经服务端代理（含相对 url 改写） */
+function localSkinCssUrl(skinName) {
+    return '/web/settings/skins/file?name=' + encodeURIComponent(skinName) +
+        '&file=skin.css&_=' + Date.now();
+}
+
+function loadSkinCss(skinName, source) {
+    var el = ensureSkinStyleLink();
+    if (source === 'local') {
+        el.href = localSkinCssUrl(skinName);
+    } else {
+        el.href = builtinSkinCssUrl(skinName) + '?_=' + Date.now();
+    }
+}
+
+function clearSkinCss() {
+    var el = document.getElementById('skin-style');
+    if (el) {
+        // 回到默认目录下的空 skin.css，避免残留本地/其它皮肤样式
+        el.href = builtinSkinCssUrl('default');
+    }
+}
+
+/**
+ * 应用皮肤。options.source: 'builtin'|'local'（可选，缺省时自动判断）
+ * options.persistServer: 是否同步到后端 activeSkin（默认 false，由调用方决定）
+ */
+function applySkin(skinName, options) {
+    options = options || {};
+    if (!skinName) skinName = 'default';
+
+    var source = options.source;
+    if (!source) {
+        if (isBuiltinSkin(skinName)) source = 'builtin';
+        else if (LOCAL_SKINS[skinName] || options.forceLocal) source = 'local';
+        else source = 'builtin';
+    }
+
+    // 未知本地皮肤：若明确 forceLocal 仍尝试加载；否则回退 default
+    if (source === 'local') {
+        // ok
+    } else if (!isBuiltinSkin(skinName)) {
+        skinName = 'default';
+        source = 'builtin';
+    }
+
+    if (skinName === 'default') {
+        $('body').removeAttr('data-skin');
+        clearSkinCss();
+    } else if (source === 'local') {
+        $('body').attr('data-skin', skinName);
+        loadSkinCss(skinName, 'local');
+    } else {
+        // 预置皮肤：static/skin/<name>/skin.css
+        $('body').attr('data-skin', skinName);
+        loadSkinCss(skinName, 'builtin');
+    }
+
+    localStorage.setItem('chat-skin', skinName);
+    window.currentSkin = skinName;
+    window.currentSkinSource = source;
+}
+window.applySkin = applySkin;
+window.isBuiltinSkin = isBuiltinSkin;
+
+// 启动：先读 localStorage 快速应用；随后用服务端 activeSkin 校准
+var currentSkin = localStorage.getItem('chat-skin') || 'default';
+if (isBuiltinSkin(currentSkin)) {
+    applySkin(currentSkin, { source: 'builtin' });
+} else {
+    // 可能是本地皮肤：先尝试加载，失败由后续 list/activate 校准
+    applySkin(currentSkin, { source: 'local', forceLocal: true });
+}
+
+// 异步与服务端对齐（不阻塞首屏）
+try {
+    $.get('/web/settings/skins/list').done(function (resp) {
+        if (!resp || resp.code !== 200 || !resp.data) return;
+        var active = resp.data.activeSkin || 'default';
+        var skins = resp.data.skins || [];
+        LOCAL_SKINS = window.LOCAL_SKINS = {};
+        skins.forEach(function (s) {
+            if (s && s.source === 'local' && s.name) {
+                LOCAL_SKINS[s.name] = s;
+            }
+        });
+        var localMeta = null;
+        for (var i = 0; i < skins.length; i++) {
+            if (skins[i].name === active) {
+                localMeta = skins[i];
+                break;
+            }
+        }
+        var src = (localMeta && localMeta.source === 'local') ? 'local' : 'builtin';
+        if (active !== window.currentSkin || src !== window.currentSkinSource) {
+            applySkin(active, { source: src, forceLocal: src === 'local' });
+        }
+    });
+} catch (e) { /* ignore */ }
+
 /* ===== View Switch ===== */
 function switchToChatMode() {
     if (inChatMode) return;

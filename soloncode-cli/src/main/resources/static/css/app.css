@@ -2,10 +2,36 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
-body { font-family: var(--font-sans); background: var(--bg-body); color: var(--text-primary); display: flex; font-size: 14px; transition: background 0.3s, color 0.3s; }
+body {
+    font-family: var(--font-sans);
+    background-color: var(--bg-body);
+    background-image: var(--bg-body-image);
+    background-size: var(--bg-image-size);
+    background-position: var(--bg-image-position);
+    background-repeat: var(--bg-image-repeat);
+    color: var(--text-primary);
+    display: flex;
+    font-size: 14px;
+    transition: background-color 0.3s, color 0.3s;
+}
 
 /* ===== Sidebar ===== */
-.sidebar { width: var(--sidebar-width); background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; flex-shrink: 0; height: 100vh; transition: background 0.3s; }
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--bg-sidebar-surface);
+    background-image:
+        linear-gradient(var(--bg-sidebar-overlay), var(--bg-sidebar-overlay)),
+        var(--bg-sidebar-image);
+    background-size: var(--bg-image-size);
+    background-position: var(--bg-image-position);
+    background-repeat: var(--bg-image-repeat);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    height: 100vh;
+    transition: background-color 0.3s;
+}
 .sidebar-header { padding: 20px 16px 16px; }
 .new-chat-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 0; border: 1px dashed var(--border-color); border-radius: 10px; background: transparent; color: var(--text-primary); cursor: pointer; font-size: 14px; transition: all 0.2s; }
 .new-chat-btn:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
@@ -136,7 +162,21 @@ body { font-family: var(--font-sans); background: var(--bg-body); color: var(--t
 }
 
 /* ===== Main ===== */
-.main-area { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; background: var(--bg-main); transition: background 0.3s; }
+.main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-width: 0;
+    background-color: var(--bg-main-surface);
+    background-image:
+        linear-gradient(var(--bg-main-overlay), var(--bg-main-overlay)),
+        var(--bg-main-image);
+    background-size: var(--bg-image-size);
+    background-position: var(--bg-image-position);
+    background-repeat: var(--bg-image-repeat);
+    transition: background-color 0.3s;
+}
 
 /* Header */
 .main-header { padding: 18px 28px 14px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; transition: padding-right 0.25s ease; }
