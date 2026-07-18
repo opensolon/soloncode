@@ -104,6 +104,7 @@ function sendMessage() {
     sess.isStreaming = true;
     sess.stopRequested = false;
     sess.acceptingStream = true;
+    sess._streamClosed = false;
     isStreaming = true;
     sess.messageStartTime = Date.now();
     setBtnStopMode();
@@ -138,6 +139,7 @@ function sendCommandSilent(cmdText, onBeforeSend) {
     sess.isStreaming = true;
     sess.stopRequested = false;
     sess.acceptingStream = true;
+    sess._streamClosed = false;
     isStreaming = true;
     sess.messageStartTime = Date.now();
     setBtnStopMode();
@@ -169,6 +171,7 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
     sess.isStreaming = true;
     sess.stopRequested = false;
     sess.acceptingStream = true;
+    sess._streamClosed = false;
     if (!sess.messageStartTime) sess.messageStartTime = Date.now();
     if (sess.sessionId === activeSessionId) {
         isStreaming = true;
@@ -332,6 +335,9 @@ function finishStream(sess) {
     sess.stopRequested = false;
     // 关闭流接收：done 之后的迟到 chunk 不得再把 UI 拉起
     sess.acceptingStream = false;
+    // 仅标记“本页本轮已收尾”，刷新后不会带上该标记
+    sess._streamClosed = true;
+    sess._pendingStreamChunks = null;
     if (sess._stopFallbackTimer) {
         clearTimeout(sess._stopFallbackTimer);
         sess._stopFallbackTimer = null;
@@ -527,6 +533,124 @@ var webGateSocket = null;
 var webGateReconnectAttempts = 0;
 var webGateHeartbeatTimer = null;
 var WEBGATE_MAX_RECONNECT = 10;
+var WEBGATE_PENDING_CHUNK_MAX = 300;
+
+/* 历史消息加载期间先缓存流式 chunk，加载完再回放，避免被 DOM 重建冲掉 */
+function bufferPendingStreamChunk(sess, chunk) {
+    if (!sess || !chunk) return;
+    if (!sess._pendingStreamChunks) sess._pendingStreamChunks = [];
+    if (sess._pendingStreamChunks.length >= WEBGATE_PENDING_CHUNK_MAX) {
+        sess._pendingStreamChunks.shift();
+    }
+    sess._pendingStreamChunks.push(chunk);
+}
+
+function flushPendingStreamChunks(sess) {
+    var buf = sess && sess._pendingStreamChunks;
+    if (!sess) return;
+    sess._pendingStreamChunks = null;
+    if (!buf || !buf.length) return;
+    for (var i = 0; i < buf.length; i++) {
+        handleWebGateChunk(buf[i]);
+    }
+}
+window.flushPendingStreamChunks = flushPendingStreamChunks;
+
+/** 有流式消息到来时，打开本会话的接收/展示状态 */
+function openStreamFromIncoming(sess) {
+    if (!sess || sess.stopRequested) return false;
+    sess._streamClosed = false;
+    sess.acceptingStream = true;
+    if (sess.isStreaming) return true;
+    sess.isStreaming = true;
+    sess.stopRequested = false;
+    if (!sess.messageStartTime) sess.messageStartTime = Date.now();
+    if (sess.sessionId === activeSessionId) {
+        isStreaming = true;
+        setBtnStopMode();
+        if (!inChatMode) switchToChatMode();
+    }
+    resetStreamState(sess);
+    showThinking(sess);
+    if (typeof startRoundElapsed === 'function') startRoundElapsed(sess);
+    if (typeof updateHistoryUI === 'function') updateHistoryUI();
+    return true;
+}
+
+function handleWebGateChunk(chunk) {
+    if (!chunk) return;
+
+    var sid = chunk.sessionId;
+
+    // WebSocket 流结束信号
+    if (chunk.type === 'done') {
+        if (!sid) return;
+        var sess = sessionMap[sid] || getOrCreateSession(sid);
+        if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
+        // 历史还在加载：先缓存，加载完再收尾
+        if (sess._loadingHistory) {
+            bufferPendingStreamChunk(sess, chunk);
+            return;
+        }
+        if (!sess.isStreaming) return;
+        finishStream(sess);
+        return;
+    }
+
+    // 文件变更通知（无 sessionId，系统级广播）
+    if (chunk.type === 'filer_change') {
+        if (typeof onFilerChange === 'function') {
+            onFilerChange(chunk);
+        }
+        return;
+    }
+
+    if (!sid) return;
+
+    // 即使 sess 不存在，也优先处理 todowrite（更新左侧 todo 进度）
+    if (chunk.type === 'action_end' && chunk.toolName === 'todowrite') {
+        if (window._todoChunkHandlers) {
+            window._todoChunkHandlers.forEach(function(h) { h(chunk); });
+        }
+    }
+
+    // Loop/微信 等后端推送的用户提示词
+    if (chunk.type === 'user_input') {
+        var userSess = getOrCreateSession(sid);
+        userSess._streamClosed = false;
+        userSess.acceptingStream = true;
+        userSess.stopRequested = false;
+        if (typeof ensureChatInHistory === 'function') {
+            ensureChatInHistory(sid, chunk.text, true);
+        }
+        appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt, chunk.sourceLabel);
+        if (userSess.sessionId === activeSessionId) {
+            if (!inChatMode) switchToChatMode();
+            scrollToBottom(true);
+        }
+        return;
+    }
+
+    var sess2 = getOrCreateSession(sid);
+
+    // 历史加载中：先缓存，避免 loadMessages 重建 DOM 时丢内容
+    if (sess2._loadingHistory) {
+        bufferPendingStreamChunk(sess2, chunk);
+        return;
+    }
+
+    if (!sess2.isStreaming) {
+        if (sess2.stopRequested) return;
+        // 本页已正常 finishStream 的迟到包丢弃；刷新后 _streamClosed 未设置，有流就显示
+        if (!sess2.acceptingStream) {
+            if (sess2._streamClosed) return;
+            if (!openStreamFromIncoming(sess2)) return;
+        } else if (!openStreamFromIncoming(sess2)) {
+            return;
+        }
+    }
+    onWebChunk(sess2, chunk);
+}
 
 function connectWebGate() {
     if (webGateSocket && webGateSocket.readyState === WebSocket.OPEN) return;
@@ -555,80 +679,7 @@ function connectWebGate() {
         var raw = event.data;
         if (raw === 'pong') return; // 心跳回复
         try {
-            var chunk = JSON.parse(raw);
-
-            // 正常处理 WebSocket 消息
-
-            var sid = chunk.sessionId;
-
-            // WebSocket 流结束信号
-            if (chunk.type === 'done') {
-                if (!sid) return;
-                var sess = sessionMap[sid];
-                if (!sess) return;
-                // 保存 done 消息的时间戳，用于 finishStream 显示
-                if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
-                // 已收尾则忽略（迟到/重复 done）
-                if (!sess.isStreaming) return;
-                finishStream(sess);
-                return;
-            }
-
-            // 文件变更通知（无 sessionId，系统级广播）
-            if (chunk.type === 'filer_change') {
-                if (typeof onFilerChange === 'function') {
-                    onFilerChange(chunk);
-                }
-                return;
-            }
-
-            if (!sid) return; // 无 sessionId 的消息丢弃
-
-            // 即使 sess2 不存在，也优先处理 todowrite 动作（用于更新左侧 Sidebar 的 todo 进度）
-            if (chunk.type === 'action_end' && chunk.toolName === 'todowrite') {
-                if (window._todoChunkHandlers) {
-                    window._todoChunkHandlers.forEach(function(h) { h(chunk); });
-                }
-            }
-
-            // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡，并打开本轮流接收
-            if (chunk.type === 'user_input') {
-                if (!sid) return;
-                var userSess = getOrCreateSession(sid);
-                userSess.acceptingStream = true;
-                userSess.stopRequested = false;
-                if (typeof ensureChatInHistory === 'function') {
-                    ensureChatInHistory(sid, chunk.text, true);
-                }
-                appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt, chunk.sourceLabel);
-                if (userSess.sessionId === activeSessionId) {
-                    if (!inChatMode) switchToChatMode();
-                    scrollToBottom(true);
-                }
-                return;
-            }
-
-            var sess2 = getOrCreateSession(sid);
-            if (!sess2.isStreaming) {
-                // Stop 等待 done 期间：丢弃迟到包，避免重入
-                if (sess2.stopRequested) return;
-                // finishStream 后已关闭接收：丢弃迟到 error/trace/text，防止 UI 复活
-                // 外部新流须先经 user_input（或本地 send）打开 acceptingStream
-                if (!sess2.acceptingStream) return;
-                sess2.isStreaming = true;
-                sess2.stopRequested = false;
-                if (!sess2.messageStartTime) sess2.messageStartTime = Date.now();
-                if (sess2.sessionId === activeSessionId) {
-                    isStreaming = true;
-                    setBtnStopMode();
-                    if (!inChatMode) switchToChatMode();
-                }
-                resetStreamState(sess2);
-                showThinking(sess2);
-                // 外部通道（Loop/IM 等）推流：按首包起算本轮总计时
-                if (typeof startRoundElapsed === 'function') startRoundElapsed(sess2);
-            }
-            onWebChunk(sess2, chunk);
+            handleWebGateChunk(JSON.parse(raw));
         } catch(e) {
             // 非 JSON 消息忽略
         }

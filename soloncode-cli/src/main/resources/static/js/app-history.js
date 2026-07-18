@@ -301,10 +301,12 @@ function selectSession(idx) {
 }
 
 function loadMessages(sess) {
+    // 历史加载期间：流式 chunk 先缓存，加载完再回放，避免被 DOM 重建冲掉
+    sess._loadingHistory = true;
     $.get('/web/chat/messages?sessionId=' + encodeURIComponent(sess.sessionId), function(resp) {
+        var realContainer = sess.container;
         try {
             var msgs = resp.data;
-            var realContainer = sess.container;
             // 用临时容器批量构建 DOM，避免逐条 append 触发多次 layout
             var tempDiv = document.createElement('div');
             sess.container = tempDiv;
@@ -351,6 +353,17 @@ function loadMessages(sess) {
         } catch (e) {
             // 异常时确保容器恢复
             if (realContainer) sess.container = realContainer;
+        } finally {
+            sess._loadingHistory = false;
+            // 回放加载期间缓存的流式 chunk（刷新后后端仍在推的内容）
+            if (typeof flushPendingStreamChunks === 'function') {
+                flushPendingStreamChunks(sess);
+            }
+        }
+    }).fail(function() {
+        sess._loadingHistory = false;
+        if (typeof flushPendingStreamChunks === 'function') {
+            flushPendingStreamChunks(sess);
         }
     });
 }

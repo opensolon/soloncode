@@ -1477,6 +1477,7 @@ function handleHitlResponse(sess, action) {
     sess.isStreaming = true;
     sess.stopRequested = false;
     sess.acceptingStream = true;
+    sess._streamClosed = false;
     if (sess.sessionId === activeSessionId) {
         isStreaming = true;
         setBtnStopMode();

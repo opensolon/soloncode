@@ -1,3 +1,9 @@
+### v2026.7.19
+
+* 修复 soloncode web 历史消息加载期间缓冲并回放流式chunk，避免DOM重建冲掉内容；
+* 修复 soloncode web 浏览器刷新后流状态恢复与迟到包丢弃逻辑
+
+
 ### v2026.7.17
 
 * 添加 soloncode web 皮肤功能（自带生成的 skill），可开启花花世界
