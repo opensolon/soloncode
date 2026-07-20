@@ -728,10 +728,22 @@ public class LoopScheduler {
 
     /**
      * 异常分级处理：连续异常 ≥ 阈值时标记 BLOCKED，否则递增延迟重试
+     *
+     * <p>增强逻辑：
+     * <ul>
+     *   <li>对错误进行分类（SSL/NETWORK/HTTP_4XX/HTTP_5XX/TOOL_EXECUTION/OTHER）</li>
+     *   <li>不可恢复的错误（SSL、HTTP_4XX）连续 2 次即标记 BLOCKED</li>
+     *   <li>同类型错误连续 3 次标记 BLOCKED（比总错误阈值更早触发）</li>
+     *   <li>记录错误类型和摘要，供 prompt 注入使用</li>
+     * </ul>
      */
     private void handleExecutionError(String sessionId, LoopTask task, Exception e) {
-        LOG.error("Loop task '{}' failed: {}", task.getId(), e.getMessage());
-        task.updateLastExecution("error: " + e.getMessage());
+        // 错误分类
+        String errorType = LoopTask.classifyError(e);
+        int sameTypeCount = task.recordError(e);
+
+        LOG.error("Loop task '{}' failed [{}]: {}", task.getId(), errorType, e.getMessage());
+        task.updateLastExecution("error [" + errorType + "]: " + e.getMessage());
         List<LoopTask> tasks = sessionTasks.get(sessionId);
         if (tasks != null) {
             saveToFile(sessionId, tasks);
@@ -742,6 +754,25 @@ public class LoopScheduler {
             GoalState gs = task.getGoalState();
             if (gs.getStatus().isActive() && !gs.isBudgetExceeded()) {
                 int errors = task.incrementConsecutiveErrors();
+
+                // ★ 不可恢复错误快速熔断：SSL/HTTP_4XX 连续 2 次直接 BLOCKED
+                if (LoopTask.isNonRecoverable(errorType) && sameTypeCount >= 2) {
+                    LOG.warn("Goal '{}' blocked by runtime: non-recoverable error [{}] repeated {} times",
+                            task.getId(), errorType, sameTypeCount);
+                    gs.markBlocked();
+                    pauseGoal(sessionId, task.getId());
+                    return;
+                }
+
+                // ★ 同类型错误熔断：连续 3 次相同类型错误直接 BLOCKED
+                if (sameTypeCount >= 3) {
+                    LOG.warn("Goal '{}' blocked by runtime: same error type [{}] repeated {} times",
+                            task.getId(), errorType, sameTypeCount);
+                    gs.markBlocked();
+                    pauseGoal(sessionId, task.getId());
+                    return;
+                }
+
                 if (errors >= loop.getMaxConsecutiveErrorsOrDefault()) {
                     // 连续异常 → 运行时兜底 blocked
                     LOG.warn("Goal '{}' blocked by runtime: {} consecutive errors",
@@ -752,8 +783,8 @@ public class LoopScheduler {
                 } else {
                     // 未达阈值 → 递增延迟重试
                     long delay = 5L * errors; // 5s, 10s, 15s ...
-                    LOG.info("Loop task '{}' scheduling error retry in {}s (attempt {})",
-                            task.getId(), delay, errors);
+                    LOG.info("Loop task '{}' scheduling error retry in {}s (attempt {}, type={}, sameType={})",
+                            task.getId(), delay, errors, errorType, sameTypeCount);
                     RunUtil.delay(() -> {
                         if (!task.isCancelled()) {
                             onTrigger(sessionId, task);
