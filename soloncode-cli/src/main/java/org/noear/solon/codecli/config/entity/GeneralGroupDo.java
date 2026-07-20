@@ -19,8 +19,6 @@ public class GeneralGroupDo implements Serializable {
     private Integer summaryWindowSize;
     //上下文压缩触发词元数（达到这个数，就开始触发）
     private Integer summaryWindowToken;
-    //压缩模型
-    private String summaryModel;
 
     //启用沙盒模式
     private Boolean sandboxMode;

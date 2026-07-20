@@ -100,7 +100,6 @@ public class Configurator {
                 .sessionWindowSize(settings.getGeneral().getSessionWindowSize())
                 .sessionProvider(sessionManager)
                 .compressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getSummaryWindowToken())
-                .compressionModel(settings.getGeneral().getSummaryModel())
                 .memoryEnabled(settings.getGeneral().getMemoryEnabled())
                 .memoryProvider(new MemoryProvider(agentSettings))
                 .sandboxEnabled(settings.getGeneral().getSandboxMode())

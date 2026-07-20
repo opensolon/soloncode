@@ -71,10 +71,6 @@ public class AgentSettings implements Serializable {
             general.setSummaryWindowToken(props.getSummaryWindowToken());
         }
 
-        if(general.getSummaryModel() == null){
-            general.setSummaryModel(props.getSummaryModel());
-        }
-
         if (general.getSandboxMode() == null) {
             general.setSandboxMode(props.isSandboxMode());
         }
