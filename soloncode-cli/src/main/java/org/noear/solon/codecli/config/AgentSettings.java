@@ -184,13 +184,13 @@ public class AgentSettings implements Serializable {
         try {
             org.noear.solon.core.Props cfg = org.noear.solon.Solon.cfg();
             if (general.getLogLevel() == null) {
-                general.setLogLevel(cfg.get("solon.logging.appender.file.level", "DEBUG"));
+                general.setLogLevel(cfg.get("solon.logging.appender.file.level", "INFO"));
             }
             if (general.getLogFileMaxSize() == null) {
                 general.setLogFileMaxSize(cfg.get("solon.logging.appender.file.maxSize", "10MB"));
             }
             if (general.getLogMaxHistory() == null) {
-                general.setLogMaxHistory(cfg.getInt("solon.logging.appender.file.maxHistory", 30));
+                general.setLogMaxHistory(cfg.getInt("solon.logging.appender.file.maxHistory", 7));
             }
         } catch (Exception ignored) {
             // 非 Solon 环境时保持 null
