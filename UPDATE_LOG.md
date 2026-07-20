@@ -2,6 +2,7 @@
 
 * 添加 soloncode web 未跟踪文件按整文件新增生成 Diff 与 stat；
 * 优化 soloncode llm 缓存处理
+* 细节优化
 
 ### v2026.7.19
 
