@@ -114,7 +114,7 @@ public class Configurator {
                 .mcpRetries(settings.getGeneral().getModelRetries())
                 .toolsAdd(settings.getPermission().getTools())
                 .disallowedToolsAdd(settings.getPermission().getDisallowedTools())
-                .cacheControl(CacheControl.ofEphemeral())
+                .cacheControl(CacheControl.ofEphemeral("30m"))
                 .build();
 
 
