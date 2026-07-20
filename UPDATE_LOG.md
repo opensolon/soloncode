@@ -1,8 +1,12 @@
+### v2026.7.20
+
+* 添加 soloncode web 未跟踪文件按整文件新增生成 Diff 与 stat；
+* 优化 soloncode llm 缓存处理
+
 ### v2026.7.19
 
 * 修复 soloncode web 历史消息加载期间缓冲并回放流式chunk，避免DOM重建冲掉内容；
 * 修复 soloncode web 浏览器刷新后流状态恢复与迟到包丢弃逻辑
-
 
 ### v2026.7.17
 
