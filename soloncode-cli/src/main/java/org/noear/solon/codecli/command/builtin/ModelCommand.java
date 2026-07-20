@@ -63,7 +63,7 @@ public class ModelCommand implements Command {
 
         if ("ls".equals(flag) || flag == null || flag.isEmpty()) {
             String currentModel = ctx.getSession().getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
-            currentModel = ctx.getEngine().getModelOrMain(currentModel).getNameOrModel();
+            currentModel = ctx.getEngine().getModelOrDef(currentModel).getNameOrModel();
 
             ctx.println(ctx.color(BOLD + "Models:" + RESET));
             for (ChatConfig m : ctx.getEngine().getModels()) {

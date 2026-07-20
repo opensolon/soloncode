@@ -320,7 +320,7 @@ public class CliShell implements Runnable {
             }
         }
 
-        ChatModel chatModel = engine.getModelOrMain(modelSelected);
+        ChatModel chatModel = engine.getModelOrDefInstance(modelSelected);
         ReActAgent agent = engine.getAgentOrMain(agentName);
 
         while (true) {
@@ -710,7 +710,7 @@ public class CliShell implements Runnable {
                 modelName = engine.getMainModel().getNameOrModel();
             } else {
                 String modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
-                modelName = engine.getModelOrMain(modelSelected).getNameOrModel();
+                modelName = engine.getModelOrDef(modelSelected).getNameOrModel();
             }
         }
 

@@ -634,7 +634,7 @@ public class GitService {
                     HarnessEngine.CTX_MODEL_SELECTED,
                     engine.getMainModel().getNameOrModel()
             );
-            ChatModel chatModel = engine.getModelOrMain(selectedModel);
+            ChatModel chatModel = engine.getModelOrDefInstance(selectedModel);
             ReActAgent agent = engine.getAgentOrMain("git-summary");
 
             // 收集 diff 内容（最多 15 个文件）

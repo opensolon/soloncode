@@ -253,7 +253,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 根据前端指定的 model 选择对应 ChatModel
             String modelName = req.getModel();
-            ChatModel chatModel = engine.getModelOrMain(modelName);
+            ChatModel chatModel = engine.getModelOrDefInstance(modelName);
             
             session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
             if (req.getReasoningEffort() != null) {
@@ -565,7 +565,7 @@ public class WsGate extends SimpleWebSocketListener {
 
             // 审批后恢复流执行
             String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
-            ChatModel chatModel = engine.getModelOrMain(modelName);
+            ChatModel chatModel = engine.getModelOrDefInstance(modelName);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
             String reasoningEffort = ReasoningEffortSupport.getSessionEffort(session);
             
@@ -805,7 +805,7 @@ public class WsGate extends SimpleWebSocketListener {
             // 构建 context（注入 agentTaskRunner 回调）
             WebCommandContext ctx = new WebCommandContext(session, engine, input, cmdName, args,
                     (prompt, model) -> {
-                        ChatModel selectedModel = model != null ? engine.getModelOrMain(model) : chatModel;
+                        ChatModel selectedModel = model != null ? engine.getModelOrDefInstance(model) : chatModel;
                         handleFallbackPrompt(socket, session, selectedModel, sessionCwd, prompt, finalSessionId, reasoningEffort);
                     });
 

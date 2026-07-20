@@ -468,7 +468,7 @@ public class WebGate extends SimpleWebSocketListener {
             selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
         }
 
-        ChatModel chatModel = engine.getModelOrMain(selectedModel);
+        ChatModel chatModel = engine.getModelOrDefInstance(selectedModel);
         ReActAgent agent = engine.getAgentOrMain(agentName);
 
         // 新开流前重置，避免上一轮 streamDoneSent 挡住本轮 done
@@ -518,7 +518,7 @@ public class WebGate extends SimpleWebSocketListener {
             selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
         }
 
-        ChatModel chatModel = engine.getModelOrMain(selectedModel);
+        ChatModel chatModel = engine.getModelOrDefInstance(selectedModel);
         ReActAgent agent = engine.getAgentOrMain(agentName);
         CountDownLatch countDownLatch = new CountDownLatch(1);
         AtomicReference<String> finalAnswerRef = new AtomicReference<>("");
