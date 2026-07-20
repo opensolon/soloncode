@@ -120,6 +120,35 @@ public class LoopPromptBuilder {
             sb.append("\n");
         }
 
+        // ★ 错误上下文注入 — 当有连续错误时，告知 Agent 错误类型和不可重试提示
+        if (task.getConsecutiveSameTypeErrors() > 0 && task.getLastErrorType() != null) {
+            sb.append("--- 错误警告 (Error Warning) ---\n");
+            sb.append("最近连续 ").append(task.getConsecutiveSameTypeErrors())
+                    .append(" 次执行遇到相同类型的错误：\n");
+            sb.append("- 错误类型: ").append(task.getLastErrorType()).append("\n");
+            if (task.getLastErrorSummary() != null) {
+                sb.append("- 错误摘要: ").append(task.getLastErrorSummary()).append("\n");
+            }
+
+            // 根据错误类型给出具体建议
+            String errorType = task.getLastErrorType();
+            if ("SSL".equals(errorType)) {
+                sb.append("- 这是 SSL/TLS 证书验证错误，属于运行环境问题，无法通过重试或更换 URL 解决。\n");
+                sb.append("- 请使用 websearch 或 codesearch 工具替代 webfetch 来获取信息。\n");
+            } else if ("HTTP_4XX".equals(errorType)) {
+                sb.append("- 这是 HTTP 4xx 客户端错误（如 404/403/401），通常表示资源不存在或无权限。\n");
+                sb.append("- 重试相同请求不会成功，请更换目标 URL 或使用其他工具。\n");
+            } else if ("NETWORK".equals(errorType)) {
+                sb.append("- 这是网络连接错误，可能是临时性的。\n");
+                sb.append("- 可以稍后重试，但如果连续多次失败请换用其他策略。\n");
+            } else if ("TOOL_EXECUTION".equals(errorType)) {
+                sb.append("- 工具调用执行失败。请分析错误原因，考虑换用其他工具或调整参数。\n");
+            } else {
+                sb.append("- 请分析错误原因，如果同一问题已尝试 3 次以上，请调用 goal_update(blocked)。\n");
+            }
+            sb.append("\n");
+        }
+
         // Chapter 2: Budget
         if (gs.isBudgetCritical()) {
             sb.append("[紧急] 你的 Token 预算即将耗尽。请专注于高效完成目标。\n");

@@ -80,6 +80,9 @@ public class LoopTask {
 
     // ---- 运行时兜底：连续异常检测 ----
     private volatile int consecutiveErrors;      // 连续异常计数
+    private volatile String lastErrorType;       // 最后一次错误分类（SSL/NETWORK/HTTP_4XX/HTTP_5XX/TOOL_EXECUTION/OTHER）
+    private volatile String lastErrorSummary;    // 最后一次错误摘要（用于注入 prompt）
+    private volatile int consecutiveSameTypeErrors; // 连续同类型错误计数
 
     /**
      * 固定间隔构造
@@ -314,7 +317,126 @@ public class LoopTask {
 
     public int incrementConsecutiveErrors() { return ++consecutiveErrors; }
 
-    public void resetConsecutiveErrors() { this.consecutiveErrors = 0; }
+    public void resetConsecutiveErrors() {
+        this.consecutiveErrors = 0;
+        this.consecutiveSameTypeErrors = 0;
+        this.lastErrorType = null;
+        this.lastErrorSummary = null;
+    }
+
+    // ===== 错误分类与同类型熔断 =====
+
+    public String getLastErrorType() { return lastErrorType; }
+
+    public String getLastErrorSummary() { return lastErrorSummary; }
+
+    public int getConsecutiveSameTypeErrors() { return consecutiveSameTypeErrors; }
+
+    /**
+     * 记录一次错误，更新错误分类和连续同类型错误计数。
+     *
+     * @return 连续同类型错误次数
+     */
+    public int recordError(Exception e) {
+        String errorType = classifyError(e);
+        String errorSummary = extractErrorSummary(e);
+
+        if (errorType.equals(this.lastErrorType)) {
+            this.consecutiveSameTypeErrors++;
+        } else {
+            this.consecutiveSameTypeErrors = 1;
+        }
+
+        this.lastErrorType = errorType;
+        this.lastErrorSummary = errorSummary;
+        return this.consecutiveSameTypeErrors;
+    }
+
+    /**
+     * 对异常进行分类，用于判断是否为不可恢复的错误类型。
+     */
+    public static String classifyError(Exception e) {
+        String msg = getFullMessage(e);
+
+        // SSL/TLS 证书问题 — 不可通过重试解决
+        if (msg.contains("SSLHandshakeException")
+                || msg.contains("PKIX")
+                || msg.contains("certificate")
+                || msg.contains("trust")
+                || msg.contains("unable to find valid certification")) {
+            return "SSL";
+        }
+
+        // 网络连接问题 — 可能是临时性的
+        if (msg.contains("ConnectException")
+                || msg.contains("Connection refused")
+                || msg.contains("Connection reset")
+                || msg.contains("SocketTimeoutException")
+                || msg.contains("connect timed out")
+                || msg.contains("Read timed out")) {
+            return "NETWORK";
+        }
+
+        // HTTP 4xx 客户端错误 — 通常不可通过重试解决
+        if (msg.contains("HTTP 4") || msg.contains("status code: 4")
+                || msg.contains("400") || msg.contains("401") || msg.contains("403")
+                || msg.contains("404") || msg.contains("405") || msg.contains("429")) {
+            return "HTTP_4XX";
+        }
+
+        // HTTP 5xx 服务端错误 — 可能是临时性的
+        if (msg.contains("HTTP 5") || msg.contains("status code: 5")
+                || msg.contains("500") || msg.contains("502") || msg.contains("503")
+                || msg.contains("504")) {
+            return "HTTP_5XX";
+        }
+
+        // 工具执行失败（Agent 工具调用层面的错误）
+        if (msg.contains("execution failed")
+                || msg.contains("MethodFunctionTool")
+                || msg.contains("ActionTask")) {
+            return "TOOL_EXECUTION";
+        }
+
+        return "OTHER";
+    }
+
+    /**
+     * 提取错误摘要（用于注入 prompt，限制长度）
+     */
+    public static String extractErrorSummary(Exception e) {
+        String msg = e.getMessage();
+        if (msg == null || msg.isEmpty()) {
+            msg = e.getClass().getSimpleName();
+        }
+        // 限制长度，避免 prompt 过长
+        if (msg.length() > 200) {
+            msg = msg.substring(0, 200) + "...";
+        }
+        return msg;
+    }
+
+    /**
+     * 判断错误类型是否为不可恢复的（重试无意义）
+     */
+    public static boolean isNonRecoverable(String errorType) {
+        return "SSL".equals(errorType) || "HTTP_4XX".equals(errorType);
+    }
+
+    private static String getFullMessage(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        Throwable current = t;
+        int depth = 0;
+        while (current != null && depth < 5) {
+            if (current.getMessage() != null) {
+                sb.append(current.getMessage()).append(" ");
+            }
+            sb.append(current.getClass().getSimpleName()).append(" ");
+            current = current.getCause();
+            depth++;
+        }
+        return sb.toString();
+    }
 
     /**
      * 序列化为 ONode
