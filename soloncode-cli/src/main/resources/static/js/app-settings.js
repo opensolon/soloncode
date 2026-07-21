@@ -201,6 +201,77 @@
         else if (targetTab === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
     }
 
+    /**
+     * 从磁盘重新加载 settings.json 到当前实例（多实例共享全局配置时使用）
+     */
+    function reloadSettingsFromDisk() {
+        var $btn = $('#settingsReloadBtn');
+        if ($btn.prop('disabled')) return;
+
+        $btn.prop('disabled', true).addClass('is-loading');
+
+        $.ajax({
+            url: '/web/settings/reload',
+            method: 'POST',
+            dataType: 'json',
+            timeout: 60000
+        })
+            .done(function (resp) {
+                if (!resp || resp.code !== 200) {
+                    showToast((resp && resp.message) || '重新加载失败', 'error');
+                    return;
+                }
+
+                var data = resp.data || {};
+                if (!data.reloaded) {
+                    showToast('磁盘配置无变化');
+                } else {
+                    var warnings = data.warnings || [];
+                    if (warnings.length) {
+                        showToast('已从磁盘重新加载（部分项需重启）');
+                    } else {
+                        showToast('已从磁盘重新加载');
+                    }
+                }
+
+                // 刷新当前设置 Tab + 聊天区模型列表
+                var $active = $('.settings-tab.active');
+                if ($active.length) {
+                    resetCurrentTabView($active.attr('data-tab'));
+                }
+                loadActiveTabData();
+                if (typeof window.reloadModels === 'function') {
+                    window.reloadModels();
+                }
+            })
+            .fail(function (jqXHR, textStatus) {
+                var msg = textStatus === 'timeout' ? '重新加载超时' : '网络错误';
+                showToast(msg, 'error');
+            })
+            .always(function () {
+                $btn.prop('disabled', false).removeClass('is-loading');
+            });
+    }
+
+    $('#settingsReloadBtn').on('click', function () {
+        if (typeof layer !== 'undefined' && layer.confirm) {
+            layer.confirm('将从磁盘读取 settings.json 并应用到当前实例。<br>未保存的设置表单修改会丢失，是否继续？', {
+                title: '从磁盘重新加载',
+                btn: ['重新加载', '取消'],
+                icon: 3,
+                offset: '120px'
+            }, function (index) {
+                layer.close(index);
+                reloadSettingsFromDisk();
+            });
+            return;
+        }
+        // layer 不可用时的降级
+        if (window.confirm('将从磁盘读取 settings.json 并应用到当前实例。\n未保存的设置表单修改会丢失，是否继续？')) {
+            reloadSettingsFromDisk();
+        }
+    });
+
     // 全局打开设置 tab 入口（供 app-filer.js 调用）
     // skin 已并入通用 → 界面效果，旧入口兼容跳到 general
     window.openSettingsTab = function(tab) {

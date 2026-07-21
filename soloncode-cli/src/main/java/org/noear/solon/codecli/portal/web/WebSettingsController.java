@@ -233,6 +233,436 @@ public class WebSettingsController {
         settings.saveToFile();
     }
 
+    /**
+     * 从磁盘显式重载 settings.json 到当前实例，并差分应用到引擎。
+     * <p>用于多实例共享 {@code ~/.soloncode/settings.json} 时，其它实例手动拉齐内存/引擎状态。</p>
+     * <p>不会写回磁盘。mountPools / lspServers 仅更新内存，运行时完全生效可能需重启。</p>
+     *
+     * @param apply 是否应用引擎侧变更（默认 true）；false 时仅刷新内存，便于调试
+     */
+    @Post
+    @Mapping("/web/settings/reload")
+    public Result settingsReload(@Param(value = "apply", defaultValue = "true") boolean apply) {
+        try {
+            // 1) 快照旧状态（供差分；与 settings 同一 monitor，降低并发交错）
+            String oldDefaultModel;
+            String oldGeneralFp;
+            String oldPermissionFp;
+            String oldLoopFp;
+            String oldProvidersFp;
+            Map<String, ModelDo> oldModels;
+            Map<String, McpServerDo> oldMcp;
+            Map<String, ApiSourceDo> oldApi;
+            Map<String, MountDo> oldMounts;
+            Map<String, LspServerDo> oldLsp;
+            boolean changed;
+            
+            synchronized (settings) {
+                oldDefaultModel = settings.getDefaultModel();
+                oldGeneralFp = configFingerprint(settings.getGeneral());
+                oldPermissionFp = configFingerprint(settings.getPermission());
+                oldLoopFp = configFingerprint(settings.getLoop());
+                oldProvidersFp = configFingerprint(settings.getProviders());
+                oldModels = new LinkedHashMap<>(settings.getModels());
+                oldMcp = new LinkedHashMap<>(settings.getMcpServers());
+                oldApi = new LinkedHashMap<>(settings.getApiServers());
+                oldMounts = new LinkedHashMap<>(settings.getMountPools());
+                oldLsp = new LinkedHashMap<>(settings.getLspServers());
+            
+                // 2) 读盘 in-place（parse 成功后才 mutate；含 null→默认回落）
+                changed = settings.reloadInPlace();
+            }
+            
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("reloaded", changed);
+            data.put("source", buildReloadSourceInfo());
+            
+            if (!changed) {
+                data.put("changed", Collections.emptyMap());
+                data.put("applied", Collections.emptyList());
+                data.put("warnings", Collections.emptyList());
+                return Result.succeed(data);
+            }
+            
+            // 3) 变更摘要（按内容指纹；group 也按指纹，避免无变仍强制 apply）
+            boolean generalChanged = !Objects.equals(oldGeneralFp, configFingerprint(settings.getGeneral()));
+            boolean permissionChanged = !Objects.equals(oldPermissionFp, configFingerprint(settings.getPermission()));
+            boolean loopChanged = !Objects.equals(oldLoopFp, configFingerprint(settings.getLoop()));
+            boolean providersChanged = !Objects.equals(oldProvidersFp, configFingerprint(settings.getProviders()));
+            boolean defaultModelChanged = !Objects.equals(oldDefaultModel, settings.getDefaultModel());
+            
+            Map<String, Object> changedMap = new LinkedHashMap<>();
+            changedMap.put("general", generalChanged);
+            changedMap.put("permission", permissionChanged);
+            changedMap.put("loop", loopChanged);
+            changedMap.put("defaultModel", defaultModelChanged);
+            List<String> modelChanges = diffConfigMap(oldModels, settings.getModels());
+            List<String> mcpChanges = diffConfigMap(oldMcp, settings.getMcpServers());
+            List<String> apiChanges = diffConfigMap(oldApi, settings.getApiServers());
+            List<String> mountChanges = diffConfigMap(oldMounts, settings.getMountPools());
+            List<String> lspChanges = diffConfigMap(oldLsp, settings.getLspServers());
+            changedMap.put("models", modelChanges);
+            changedMap.put("mcpServers", mcpChanges);
+            changedMap.put("apiServers", apiChanges);
+            changedMap.put("mountPools", mountChanges);
+            changedMap.put("lspServers", lspChanges);
+            changedMap.put("providers", providersChanged); // providers 无 engine 对象，仅内存
+            data.put("changed", changedMap);
+                
+            List<String> applied = new ArrayList<>();
+            List<String> warnings = new ArrayList<>();
+            
+            // 4) apply engine（仅对真正变更的分组）
+            if (apply) {
+                if (generalChanged) {
+                    applyGeneralToEngine(settings.getGeneral(), applied, warnings);
+                }
+                if (permissionChanged) {
+                    applyPermissionToEngine(settings.getPermission(), applied, warnings);
+                }
+                if (loopChanged) {
+                    applied.add("loop"); // loop 仅内存，LoopScheduler 读 settings
+                }
+                
+                if (defaultModelChanged) {
+                    applyDefaultModel(settings.getDefaultModel(), settings.getModels(), applied, warnings);
+                }
+            
+                applyModelsDiff(oldModels, settings.getModels(), applied, warnings);
+                applyMcpDiff(oldMcp, settings.getMcpServers(), applied, warnings);
+                applyApiDiff(oldApi, settings.getApiServers(), applied, warnings);
+        
+                if (!mountChanges.isEmpty()) {
+                    warnings.add("mountPools changed; memory updated, restart recommended for full runtime effect");
+                }
+                if (!lspChanges.isEmpty()) {
+                    warnings.add("lspServers changed; memory updated, restart recommended for full runtime effect");
+                }
+            }
+    
+            data.put("applied", applied);
+            data.put("warnings", warnings);
+    
+            // 5) 通知前端
+            if (webGate != null) {
+                try {
+                    ONode evt = new ONode().asObject()
+                            .set("type", "settings_reloaded")
+                            .set("changed", changedMap);
+                    webGate.broadcastRaw(evt.toJson());
+                } catch (Exception e) {
+                    LOG.debug("[Settings] broadcast settings_reloaded failed: {}", e.getMessage());
+                }
+            }
+    
+            LOG.info("[Settings] Reloaded from disk: applied={}, warnings={}", applied, warnings);
+            return Result.succeed(data);
+        } catch (Exception e) {
+            LOG.warn("[Settings] Reload failed: {}", e.getMessage());
+            return Result.failure("reload failed: " + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> buildReloadSourceInfo() {
+        Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
+        Path localFile = Paths.get(AgentFlags.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("global", globalFile.toString());
+        source.put("local", localFile.toString());
+        source.put("globalExists", Files.exists(globalFile));
+        source.put("localExists", Files.exists(localFile) && !localFile.toString().equals(globalFile.toString()));
+        return source;
+    }
+
+    /**
+     * 按内容指纹做 map 差分：+ 新增，- 删除，~ 内容变更。内容相同则不列入。
+     */
+    private static <V> List<String> diffConfigMap(Map<String, V> oldMap, Map<String, V> newMap) {
+        List<String> changes = new ArrayList<>();
+        Set<String> oldKeys = oldMap != null ? oldMap.keySet() : Collections.emptySet();
+        Set<String> newKeys = newMap != null ? newMap.keySet() : Collections.emptySet();
+        
+        for (String k : oldKeys) {
+            if (!newKeys.contains(k)) {
+                changes.add("-" + k);
+            }
+        }
+        for (String k : newKeys) {
+            if (!oldKeys.contains(k)) {
+                changes.add("+" + k);
+            } else if (!configFingerprint(oldMap.get(k)).equals(configFingerprint(newMap.get(k)))) {
+                changes.add("~" + k);
+            }
+        }
+        return changes;
+    }
+            
+    private static String configFingerprint(Object value) {
+        if (value == null) {
+            return "";
+        }
+        return ONode.ofBean(value).toJson();
+    }
+            
+    private void applyDefaultModel(String defaultModel, Map<String, ModelDo> models,
+                                   List<String> applied, List<String> warnings) {
+        try {
+            if (Assert.isEmpty(defaultModel)) {
+                warnings.add("defaultModel cleared in settings; engine default kept (no empty default API)");
+                return;
+            }
+            if (models == null || !models.containsKey(defaultModel)) {
+                warnings.add("defaultModel points to missing model: " + defaultModel);
+                return;
+            }
+            engine.setDefaultModel(defaultModel);
+            applied.add("defaultModel");
+        } catch (Exception e) {
+            warnings.add("defaultModel apply failed: " + e.getMessage());
+        }
+    }
+                    
+    /** 将 general 配置热应用到引擎（对齐 generalSave + 启动期可热更新字段）。
+     * 调用前 settings 已 fillRuntimeDefaults，关键字段通常非 null。 */
+    private void applyGeneralToEngine(GeneralGroupDo g, List<String> applied, List<String> warnings) {
+        try {
+            engine.setCompressionThreshold(g.getSummaryWindowSize(), g.getSummaryWindowToken());
+            engine.setSessionWindowSize(g.getSessionWindowSize());
+            engine.setModelRetries(g.getModelRetries());
+            engine.setMcpRetries(g.getMcpRetries());
+            engine.setApiRetries(g.getApiRetries());
+            engine.setSandboxEnabled(g.getSandboxMode());
+            engine.setSandboxAllowUserHome(g.getSandboxAllowUserHome());
+            engine.setSandboxSystemRestrict(g.getSandboxSystemRestrict());
+            engine.setBashAsyncEnabled(g.getBashAsyncEnabled());
+            engine.setMemoryEnabled(g.getMemoryEnabled());
+            engine.setSubagentEnabled(g.getSubagentEnabled());
+            engine.setMaxTurns(g.getMaxTurns());
+            engine.setHitlEnabled(g.getHitlEnabled());
+            
+            if (engine.getMcpGatewayTalent() != null) {
+                engine.getMcpGatewayTalent().setEnabled(g.getMcpEnabled());
+            }
+            if (engine.getOpenApiGatewayTalent() != null) {
+                engine.getOpenApiGatewayTalent().setEnabled(g.getOpenApiEnabled());
+            }
+            if (engine.getLspTalent() != null) {
+                engine.getLspTalent().setEnabled(g.getLspEnabled());
+            }
+            
+            // goalsEnabled：热更新 GoalTalent
+            try {
+                boolean goalsEnabled = g.getGoalsEnabled() != null ? g.getGoalsEnabled() : true;
+                for (org.noear.solon.ai.harness.HarnessExtension ext : engine.getExtensions()) {
+                    if (ext instanceof org.noear.solon.codecli.command.builtin.GoalExtension) {
+                        ((org.noear.solon.codecli.command.builtin.GoalExtension) ext)
+                                .getGoalTalent().setEnabled(goalsEnabled);
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                warnings.add("goalsEnabled apply failed: " + e.getMessage());
+            }
+            
+            if (g.getLogLevel() != null && !g.getLogLevel().isEmpty()) {
+                ch.qos.logback.classic.Level level = ch.qos.logback.classic.Level.toLevel(g.getLogLevel(), null);
+                if (level != null) {
+                    ch.qos.logback.classic.Logger rootLogger =
+                            (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+                    rootLogger.setLevel(level);
+                }
+            }
+            
+            applied.add("general");
+            
+            // 无公开热更新 API 的字段：仅提示一次
+            if (g.getAutoRethink() != null || g.getMemoryIsolation() != null
+                    || g.getLogFileMaxSize() != null || g.getLogMaxHistory() != null) {
+                warnings.add("autoRethink / memoryIsolation / log rotation: memory updated; restart recommended for full runtime effect");
+            }
+        } catch (Exception e) {
+            warnings.add("general apply failed: " + e.getMessage());
+        }
+    }
+            
+    private void applyPermissionToEngine(PermissionGroupDo p, List<String> applied, List<String> warnings) {
+        try {
+            // 白名单 + 黑名单一次重置，只重建一次主 Agent（避免双次 createMainAgent）
+            try {
+                engine.toolPermissionReset(p.getTools(), p.getDisallowedTools());
+            } catch (NoSuchMethodError | AbstractMethodError err) {
+                // 兼容尚未升级 harness 的运行环境
+                engine.allowToolReset(p.getTools());
+                engine.disallowToolReset(p.getDisallowedTools());
+            }
+            applied.add("permission");
+        } catch (Exception e) {
+            warnings.add("permission apply failed: " + e.getMessage());
+        }
+    }
+        
+    /**
+     * 模型差分应用。
+     * <p>与 {@code llmModelsToggle} 对齐：仅 enabled/visibled 变化时只改内存标志、不卸引擎模型；
+     * 连接参数等实质内容变更才 remove+add；删除/新增按需处理。</p>
+     */
+    private void applyModelsDiff(Map<String, ModelDo> oldModels, Map<String, ModelDo> newModels,
+                                 List<String> applied, List<String> warnings) {
+        try {
+            boolean any = false;
+                                 
+            for (String name : oldModels.keySet()) {
+                if (!newModels.containsKey(name)) {
+                    try {
+                        engine.removeModel(name);
+                        any = true;
+                    } catch (Exception e) {
+                        warnings.add("remove model " + name + " failed: " + e.getMessage());
+                    }
+                }
+            }
+                    
+            for (Map.Entry<String, ModelDo> e : newModels.entrySet()) {
+                String name = e.getKey();
+                ModelDo config = e.getValue();
+                ModelDo old = oldModels.get(name);
+                try {
+                    if (old == null) {
+                        // 新增：与启动路径一致，始终 add（引擎按 enabled 过滤使用）
+                        engine.addModel(config);
+                        any = true;
+                    } else if (!modelRuntimeFingerprint(old).equals(modelRuntimeFingerprint(config))) {
+                        // 连接/身份等实质内容变更：先删后加
+                        engine.removeModel(name);
+                        engine.addModel(config);
+                        any = true;
+                    }
+                    // 仅 enabled/visibled/scope 等 UI 标志变化：与 toggle 一致，不 rebuild
+                } catch (Exception ex) {
+                    warnings.add("apply model " + name + " failed: " + ex.getMessage());
+                }
+            }
+            if (any) {
+                applied.add("models");
+            }
+        } catch (Exception e) {
+            warnings.add("models diff failed: " + e.getMessage());
+        }
+    }
+            
+    /**
+     * 模型“引擎重建”指纹：忽略 enabled/visibled 等仅影响列表展示的字段，
+     * 与 llmModelsToggle（只改 enabled、不卸引擎）语义对齐。
+     */
+    private static String modelRuntimeFingerprint(ModelDo m) {
+        if (m == null) {
+            return "";
+        }
+        ONode n = ONode.ofBean(m);
+        if (n.isObject()) {
+            n.remove("enabled");
+            n.remove("visibled");
+            n.remove("scope");
+        }
+        return n.toJson();
+    }
+            
+    private void applyMcpDiff(Map<String, McpServerDo> oldMap, Map<String, McpServerDo> newMap,
+                              List<String> applied, List<String> warnings) {
+        try {
+            boolean any = false;
+    
+            for (String name : oldMap.keySet()) {
+                if (!newMap.containsKey(name)) {
+                    try {
+                        engine.removeMcpServer(name);
+                        any = true;
+                    } catch (Exception e) {
+                        warnings.add("remove mcp " + name + " failed: " + e.getMessage());
+                    }
+                }
+            }
+    
+            for (Map.Entry<String, McpServerDo> e : newMap.entrySet()) {
+                String name = e.getKey();
+                McpServerDo params = e.getValue();
+                McpServerDo old = oldMap.get(name);
+                try {
+                    if (old == null) {
+                        if (params.isEnabled()) {
+                            engine.addMcpServer(name, params);
+                            any = true;
+                        }
+                    } else if (!configFingerprint(old).equals(configFingerprint(params))) {
+                        engine.removeMcpServer(name);
+                        if (params.isEnabled()) {
+                            engine.addMcpServer(name, params);
+                        }
+                        any = true;
+                    }
+                } catch (Exception ex) {
+                    warnings.add("apply mcp " + name + " failed: " + ex.getMessage());
+                }
+            }
+            if (any) {
+                applied.add("mcpServers");
+            }
+        } catch (Exception e) {
+            warnings.add("mcpServers diff failed: " + e.getMessage());
+        }
+    }
+    
+    private void applyApiDiff(Map<String, ApiSourceDo> oldMap, Map<String, ApiSourceDo> newMap,
+                              List<String> applied, List<String> warnings) {
+        try {
+            boolean any = false;
+    
+            for (Map.Entry<String, ApiSourceDo> e : oldMap.entrySet()) {
+                String name = e.getKey();
+                if (!newMap.containsKey(name)) {
+                    try {
+                        ApiSourceDo src = e.getValue();
+                        if (src != null && Assert.isNotEmpty(src.getDocUrl())) {
+                            engine.removeApiServer(src.getDocUrl());
+                            any = true;
+                        }
+                    } catch (Exception ex) {
+                        warnings.add("remove api " + name + " failed: " + ex.getMessage());
+                    }
+                }
+            }
+    
+            for (Map.Entry<String, ApiSourceDo> e : newMap.entrySet()) {
+                String name = e.getKey();
+                ApiSourceDo source = e.getValue();
+                ApiSourceDo old = oldMap.get(name);
+                try {
+                    if (old == null) {
+                        if (source != null && source.isEnabled()) {
+                            engine.addApiServer(source);
+                            any = true;
+                        }
+                    } else if (!configFingerprint(old).equals(configFingerprint(source))) {
+                        if (Assert.isNotEmpty(old.getDocUrl())) {
+                            engine.removeApiServer(old.getDocUrl());
+                        }
+                        if (source != null && source.isEnabled()) {
+                            engine.addApiServer(source);
+                        }
+                        any = true;
+                    }
+                } catch (Exception ex) {
+                    warnings.add("apply api " + name + " failed: " + ex.getMessage());
+                }
+            }
+            if (any) {
+                applied.add("apiServers");
+            }
+        } catch (Exception e) {
+            warnings.add("apiServers diff failed: " + e.getMessage());
+        }
+    }
+
     // ==================== 设置：General 通用配置 ====================
 
     /**

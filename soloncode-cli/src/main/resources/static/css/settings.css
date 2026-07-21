@@ -26,12 +26,56 @@
 
 .settings-content { flex: 1; display: flex; overflow: hidden; }
 .settings-tabs { display: flex; flex-direction: column; border-right: 1px solid var(--border-color); padding: 20px 0; min-width: 180px; background: var(--bg-settings-tabs); border-radius: 16px 0 0 16px; }
+.settings-sidebar-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 16px 12px 8px 16px;
+}
+.settings-sidebar-title {
+    padding: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    line-height: 1;
+}
 .settings-tab { padding: 10px 20px; background: none; border: none; border-left: 3px solid transparent; color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 8px; }
 .settings-tab:hover { color: var(--text-primary); background: rgba(0,0,0,0.03); }
 .settings-tab.active { color: var(--accent); border-left-color: var(--accent); background: var(--bg-settings); font-weight: 600; }
-.settings-tabs-footer { margin-top: auto; padding: 12px 20px 4px; }
-.settings-product-name { font-size: 13px; font-weight: 500; color: var(--text-secondary); opacity: 0.7; letter-spacing: 0.5px; margin-bottom: 2px; }
+.settings-tabs-footer { margin-top: auto; padding: 12px 20px 8px; display: flex; flex-direction: column; gap: 2px; }
+.settings-product-name { font-size: 13px; font-weight: 500; color: var(--text-secondary); opacity: 0.7; letter-spacing: 0.5px; }
 .settings-version { font-size: 11px; color: var(--text-secondary); opacity: 0.7; }
+.settings-reload-icon-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    opacity: 0.45;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.settings-reload-icon-btn:hover {
+    opacity: 1;
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+.settings-reload-icon-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.settings-reload-icon-btn.is-loading svg {
+    animation: spin 1s linear infinite;
+}
 
 .settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 28px 28px; }
 .settings-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
