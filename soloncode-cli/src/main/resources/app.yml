@@ -24,7 +24,7 @@ solon.logging.appender:
   console:
     enable: false
   file:
-    level: DEBUG
+    level: INFO
     name: ".soloncode/logs/${solon.app.name}"
     extension: ".log"
     maxFileSize: "10 MB"
