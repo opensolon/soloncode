@@ -686,6 +686,16 @@ $(welcomeInput).on('keydown', function(e) {
 $(chatInput).on('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
     if (isInputComposing(e)) return;
+    // ESC：输入为空时取消队尾并回填
+    if (e.key === 'Escape') {
+        var escSess = activeSessionId && sessionMap[activeSessionId];
+        if (escSess && escSess.messageQueue && escSess.messageQueue.length
+            && !chatInput.value.trim() && pendingFiles.length === 0) {
+            e.preventDefault();
+            if (typeof cancelLastQueuedToInput === 'function') cancelLastQueuedToInput(escSess);
+            return;
+        }
+    }
     // 优先级1：命令补全导航
     var handled = navigateCmdComplete(e, chatInput, $chatCmdComplete[0]);
     if (handled) return;

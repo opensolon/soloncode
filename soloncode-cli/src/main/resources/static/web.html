@@ -158,6 +158,16 @@
         </div>
         <div class="input-wrap">
             <div class="context-status" id="chatContextStatus" style="display:none"><span class="context-status-text">Context: -- / -- (--%)</span><span class="context-status-elapsed" style="display:none"></span></div>
+            <div class="queue-dock collapsed" id="chatQueueDock" style="display:none" aria-live="polite">
+                <div class="queue-dock-header" id="chatQueueHeader">
+                    <span class="queue-dock-title" id="chatQueueTitle">0 条消息排队中</span>
+                    <span class="queue-dock-hint">当前任务结束后自动发送</span>
+                    <button type="button" class="queue-dock-clear" id="chatQueueClear" title="清空排队">清空</button>
+                    <button type="button" class="queue-dock-toggle" id="chatQueueToggle" title="展开/收起">▾</button>
+                </div>
+                <div class="queue-dock-preview" id="chatQueuePreview"></div>
+                <div class="queue-dock-list" id="chatQueueList"></div>
+            </div>
             <div class="input-box" id="chatDropZone">
                 <div class="drop-overlay" id="chatDropOverlay">
                     <div class="drop-overlay-content">

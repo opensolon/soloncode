@@ -71,6 +71,11 @@ function SessionState(sessionId) {
     this.streamSegments = [];
     this.currentStreamSegment = null;
     this.streamSegmentSeq = 0;
+    // 运行中 follow-up 消息排队（FIFO）；仅前端内存，刷新丢失
+    this.messageQueue = [];
+    this._queueDraining = false;
+    // 本轮是否因 Stop 结束；finishStream 读取后复位，避免停止后误 drain
+    this._stoppedTurn = false;
 }
 
 var sessionMap = {};
@@ -84,6 +89,7 @@ var chatHistory = [];
 var currentChatIndex = -1;
 var pendingFiles = [];
 var MAX_ATTACHMENTS = 10;
+var MAX_QUEUED_MESSAGES = 10;
 var userScrolledUp = false;
 
 var onFinishStream = null;
@@ -114,6 +120,23 @@ function setActiveSession(sessionId) {
     else setBtnSendMode();
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) refreshSessionModel(sessionId);
     if (typeof resetContextIndicator === 'function') resetContextIndicator();
+    if (typeof renderQueueDock === 'function') renderQueueDock();
+    if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
+    // 切回空闲且有排队的会话时，提示后短暂延迟再续发，给用户一点取消窗口
+    if (!sess.isStreaming && !sess.stopRequested && !sess._stoppedTurn
+        && sess.messageQueue && sess.messageQueue.length && typeof drainMessageQueue === 'function') {
+        var qn = sess.messageQueue.length;
+        if (typeof showToast === 'function') {
+            showToast('有 ' + qn + ' 条排队消息，即将发送', 'info', 1600);
+        }
+        var drainSess = sess;
+        setTimeout(function() {
+            if (activeSessionId !== drainSess.sessionId) return;
+            if (drainSess.isStreaming || drainSess.stopRequested || drainSess._stoppedTurn) return;
+            if (!drainSess.messageQueue || !drainSess.messageQueue.length) return;
+            drainMessageQueue(drainSess);
+        }, 350);
+    }
 }
 
 function deactivateSession() {
