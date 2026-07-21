@@ -1208,6 +1208,15 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
         + '<i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
     if (agentName) { $(card).addClass('is-subagent'); $(card).find('.tool-name').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>'); }
     bindToolCardToggle(card);
+    // 让 bash 在 start 时就展开并显示命令，无需等执行完
+    if (toolName === 'bash' && args && args.command) {
+        $(card).addClass('expanded');
+        var body = $(card).find('.tool-card-body')[0];
+        if (body) {
+            body.style.padding = '0';
+            body.innerHTML = '<div class="bash-output"><div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(args.command) + '</div><pre class="bash-stdout">(执行中...)</pre></div>';
+        }
+    }
     if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
     if (callId) card.setAttribute('data-call-id', callId);
     registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
