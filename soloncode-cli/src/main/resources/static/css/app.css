@@ -671,6 +671,23 @@ body {
     border-radius: 4px;
     flex-shrink: 0;
 }
+.queue-dock-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+.queue-dock-toggle svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+    transition: transform 0.15s ease;
+}
+.queue-dock-toggle.expanded svg {
+    transform: rotate(180deg);
+}
 .queue-dock-clear:hover { color: var(--color-danger); }
 .queue-dock-toggle:hover { color: var(--text-primary); }
 

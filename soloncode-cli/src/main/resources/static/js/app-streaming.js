@@ -266,7 +266,12 @@ function cancelLastQueuedToInput(sess) {
     }
                 
     var toggleEl = document.getElementById('chatQueueToggle');
-    if (toggleEl) toggleEl.textContent = _queueDockExpanded ? '▴' : '▾';
+    if (toggleEl) {
+        toggleEl.title = _queueDockExpanded ? '收起' : '展开';
+        toggleEl.setAttribute('aria-label', _queueDockExpanded ? '收起' : '展开');
+        if (_queueDockExpanded) toggleEl.classList.add('expanded');
+        else toggleEl.classList.remove('expanded');
+    }
     
     var listEl = document.getElementById('chatQueueList');
     if (!listEl) return;
