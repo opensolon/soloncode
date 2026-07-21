@@ -849,34 +849,60 @@
                 var confirmMsg = status === '?'
                     ? '确定删除未跟踪文件「' + path + '」吗？此操作不可恢复。'
                     : '确定回滚「' + path + '」的变更吗？本地修改将丢失且不可恢复。';
-                if (!window.confirm(confirmMsg)) return;
+                var confirmTitle = status === '?' ? '确认删除' : '确认回滚';
+                var confirmBtn = status === '?' ? '删除' : '回滚';
+                var discardIconHtml = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> 回滚';
 
-                discardBtn.disabled = true;
-                discardBtn.textContent = '回滚中...';
-                fetch(gitUrl('/web/chat/git/discard'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: path })
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(res) {
-                    if (res && res.code === 200) {
-                        if (typeof showToast === 'function') {
-                            showToast('已回滚：' + path, 'success', 2200);
+                function doDiscard() {
+                    discardBtn.disabled = true;
+                    discardBtn.textContent = '回滚中...';
+                    fetch(gitUrl('/web/chat/git/discard'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: path })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (res && res.code === 200) {
+                            if (typeof showToast === 'function') {
+                                showToast('已回滚：' + path, 'success', 2200);
+                            }
+                            loadGitStatus();
+                            closeDiffViewer();
+                        } else {
+                            if (typeof layer !== 'undefined' && layer.msg) {
+                                layer.msg('回滚失败：' + gitActionError(res), { icon: 2, time: 3000, offset: '120px' });
+                            } else if (typeof showToast === 'function') {
+                                showToast('回滚失败：' + gitActionError(res), 'error');
+                            }
+                            discardBtn.disabled = false;
+                            discardBtn.innerHTML = discardIconHtml;
                         }
-                        loadGitStatus();
-                        closeDiffViewer();
-                    } else {
-                        alert('回滚失败：' + gitActionError(res));
+                    })
+                    .catch(function(e) {
+                        if (typeof layer !== 'undefined' && layer.msg) {
+                            layer.msg('回滚失败：' + e.message, { icon: 2, time: 3000, offset: '120px' });
+                        } else if (typeof showToast === 'function') {
+                            showToast('回滚失败：' + e.message, 'error');
+                        }
                         discardBtn.disabled = false;
-                        discardBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> 回滚';
-                    }
-                })
-                .catch(function(e) {
-                    alert('回滚失败：' + e.message);
-                    discardBtn.disabled = false;
-                    discardBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> 回滚';
-                });
+                        discardBtn.innerHTML = discardIconHtml;
+                    });
+                }
+
+                if (typeof layer !== 'undefined' && layer.confirm) {
+                    layer.confirm(confirmMsg, {
+                        title: confirmTitle,
+                        btn: [confirmBtn, '取消'],
+                        icon: 3,
+                        offset: '120px'
+                    }, function(index) {
+                        layer.close(index);
+                        doDiscard();
+                    });
+                } else if (window.confirm(confirmMsg)) {
+                    doDiscard();
+                }
             });
             actionBar.appendChild(discardBtn);
             hasAction = true;
