@@ -164,6 +164,8 @@ var SCROLL_ASYNC_STICK_MS = 600;
 var SCROLL_PROGRAMMATIC_MS = 160;
 
 function _markUserScrolledUp() {
+    // 程序化贴底窗口内忽略：覆盖 force 后的布局回流，以及发送前上滑的惯性 wheel
+    if (Date.now() < _programmaticScrollUntil) return;
     userScrolledUp = true;
     _scrollStickUntil = 0;
     if (scrollFollowTimer) {
@@ -174,6 +176,7 @@ function _markUserScrolledUp() {
 
 function _syncUserScrollFromGap() {
     if (!messagesWrap) return;
+    if (Date.now() < _programmaticScrollUntil) return;
     var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
     if (gap > 80) {
         _markUserScrolledUp();
@@ -182,8 +185,9 @@ function _syncUserScrollFromGap() {
     }
 }
 
-// 滚轮 / 触控：立即识别用户意图（优先于程序化贴底）
+// 滚轮 / 触控：立即识别用户意图（程序化贴底窗口内不抢状态）
 $(messagesWrap).on('wheel', function(e) {
+    if (Date.now() < _programmaticScrollUntil) return;
     var dy = (e.originalEvent && e.originalEvent.deltaY) || 0;
     if (dy < 0) {
         _markUserScrolledUp();
@@ -241,7 +245,7 @@ if (messagesWrap) observeMessagesHeight(messagesWrap);
  
  /**
  * 贴底滚动（流式粘底）。
- * - force：强制贴底并清除 userScrolledUp
+ * - force：强制贴底并清除 userScrolledUp（用户新发消息后应走 force，作废旧上滑状态）
  * - 同一帧多次调用合并为一次 RAF
  * - 粘底窗口内会在高度继续变化时再补滚（多 tool-call / 思考收起 / 节流 MD 增高）
  */
@@ -249,6 +253,12 @@ function scrollToBottom(force) {
     if (!force && userScrolledUp) return;
     if (force) {
         userScrolledUp = false;
+        // force：同步立即贴底，避免 RAF 前被残留惯性 wheel / 回流 scroll 重新标成上滑
+        // 同时拉长程序化窗口，吞掉发送前上滑的 momentum
+        _programmaticScrollUntil = Date.now() + Math.max(SCROLL_PROGRAMMATIC_MS, 420);
+        if (messagesWrap) {
+            messagesWrap.scrollTop = messagesWrap.scrollHeight;
+        }
         // force 时给更长粘底窗口，覆盖首条切页、图片解码、finishThinking + 多 tool 连续插入
         _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_FORCE_STICK_MS);
     } else if (!userScrolledUp) {

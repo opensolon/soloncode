@@ -153,6 +153,9 @@ var _queueEnqueueToastAt = 0;
     if (!inChatMode) switchToChatMode();
     setActiveSession(sess.sessionId);
     
+    // 用户主动发消息：作废此前上滑状态，后续 AI 输出必须重新粘底
+    if (typeof scrollToBottom === 'function') scrollToBottom(true);
+    
     var imageDataUrls = [];
     var fileAttachments = [];
     for (var i = 0; i < filesToSend.length; i++) {

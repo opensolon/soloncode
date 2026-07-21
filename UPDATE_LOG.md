@@ -2,6 +2,7 @@
 
 * 添加 soloncode web 刷新配置的功能（方便多实例同步）
 * 添加 soloncode web 最后条用户消息 rerun 按钮支持
+* 添加 soloncode web 在任务运行时，可以添加消息队列
 * 修复 soloncode web 日志级别设置后，重启失效的问题
 * 细节优化
 
