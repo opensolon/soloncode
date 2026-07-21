@@ -1954,6 +1954,23 @@ body {
 .git-action-unstage {
     color: var(--text-secondary);
 }
+.git-action-discard {
+    color: #cf222e;
+    border-color: color-mix(in srgb, #cf222e 45%, var(--border-color));
+    margin-left: auto;
+}
+.git-action-discard:hover {
+    background: color-mix(in srgb, #cf222e 10%, var(--bg-primary));
+    border-color: #cf222e;
+}
+[data-theme="dark"] .git-action-discard {
+    color: #f85149;
+    border-color: color-mix(in srgb, #f85149 45%, var(--border-color));
+}
+[data-theme="dark"] .git-action-discard:hover {
+    background: color-mix(in srgb, #f85149 12%, var(--bg-primary));
+    border-color: #f85149;
+}
 
 /* ===== File Viewer (文件内容查看器) ===== */
 

@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -533,6 +534,104 @@ public class GitService {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("path", path);
         return Result.succeed(data);
+    }
+
+    /**
+     * 回滚指定文件的变更（丢弃工作区 / 暂存区修改）。
+     * <ul>
+     *   <li>HEAD 中已有的文件：恢复 index 与工作区到 HEAD 版本</li>
+     *   <li>未纳入 HEAD 的文件（未跟踪或仅暂存的新文件）：取消暂存并删除工作区文件</li>
+     * </ul>
+     *
+     * @param path 文件路径（相对工作区）
+     * @return 包含 path 的结果对象
+     * @throws Exception Git 命令执行异常
+     */
+    public Result<Map> discard(String path) throws Exception {
+        if (!isGitRepo()) {
+            return Result.failure(400, "Not a git repository");
+        }
+
+        if (path == null || path.trim().isEmpty()) {
+            return Result.failure(400, "Path is required");
+        }
+        path = path.trim();
+        // 规范化：去掉尾部斜杠（目录路径）
+        if (path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        if (path.contains("..") || path.startsWith("/") || path.startsWith("\\")) {
+            return Result.failure(400, "Invalid path");
+        }
+
+        // 确保目标路径落在工作区内，防止路径穿越
+        Path workspacePath = workspaceDir.getCanonicalFile().toPath().normalize();
+        Path targetPath = workspacePath.resolve(path).normalize();
+        if (!targetPath.startsWith(workspacePath)) {
+            return Result.failure(400, "Invalid path");
+        }
+        File targetFile = targetPath.toFile();
+
+        // 判断该路径是否已在 HEAD 中（已跟踪的历史版本）
+        boolean inHead = false;
+        try {
+            ProcessResult headCheck = runGitCommand("git", "cat-file", "-e", "HEAD:" + path);
+            inHead = headCheck.exitCode == 0;
+        } catch (Exception ignored) {
+            inHead = false;
+        }
+
+        if (inHead) {
+            // 已跟踪：将暂存区与工作区一并恢复到 HEAD
+            ProcessResult checkoutResult = runGitCommand("git", "checkout", "HEAD", "--", path);
+            if (checkoutResult.exitCode != 0) {
+                // 兼容较新 Git 的 restore 语义作为回退
+                ProcessResult restoreResult = runGitCommand(
+                        "git", "restore", "--source=HEAD", "--staged", "--worktree", "--", path);
+                if (restoreResult.exitCode != 0) {
+                    String err = checkoutResult.stderr;
+                    if (err == null || err.trim().isEmpty()) {
+                        err = restoreResult.stderr;
+                    }
+                    return Result.failure(500, "git discard failed: " + err);
+                }
+            }
+        } else {
+            // 未在 HEAD：先尝试移出暂存区，再删除工作区文件
+            runGitCommand("git", "reset", "HEAD", "--", path);
+            if (targetFile.exists()) {
+                try {
+                    deleteRecursively(targetFile);
+                } catch (Exception e) {
+                    return Result.failure(500, "delete failed: " + e.getMessage());
+                }
+            }
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 递归删除文件或目录。
+     */
+    private void deleteRecursively(File file) throws Exception {
+        if (file == null || !file.exists()) {
+            return;
+        }
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        if (!file.delete()) {
+            // 兜底：NIO 删除
+            java.nio.file.Files.deleteIfExists(file.toPath());
+        }
     }
 
     /**

@@ -15,6 +15,7 @@
  */
 package org.noear.solon.codecli.portal.web;
 
+import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.agent.AgentSession;
@@ -803,6 +804,14 @@ public class WebController {
                                   @Param(value = "workspace", required = false) String workspace) throws Exception {
         String path = parseJsonPath(body);
         return withGitWorkspace(workspace, () -> gitService.unstage(path));
+    }
+
+    @Post
+    @Mapping("/web/chat/git/discard")
+    public Result<Map> gitDiscard(@Body String body,
+                                  @Param(value = "workspace", required = false) String workspace) throws Exception {
+        String path = parseJsonPath(body);
+        return withGitWorkspace(workspace, () -> gitService.discard(path));
     }
 
     @Get
@@ -1617,7 +1626,7 @@ public class WebController {
             payload.put("updatedAt", updatedAt);
             payload.put("items", items);
             
-            String json = ONode.ofBean(payload).toJson();
+            String json = ONode.ofBean(payload, Feature.Write_PrettyFormat).toJson();
             Files.write(queuePath, json.getBytes("UTF-8"));
             // 迁移后清理旧文件名，避免双份
             if (legacyPath != null && Files.exists(legacyPath)) {

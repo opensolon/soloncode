@@ -759,16 +759,15 @@
             });
     }
 
-    // ---- Diff Viewer：渲染操作按钮（添加到Git / 移出暂存）----
+    // ---- Diff Viewer：渲染操作按钮（添加到Git / 移出暂存 / 回滚）----
     function renderViewerActions(path, status) {
         // 移除旧的操作栏（如有）
         var oldActions = gitDiffViewer.querySelector('.git-viewer-actions');
         if (oldActions) oldActions.remove();
 
-        if (status !== '?' && status !== 'S') return; // 只有未跟踪和已暂存需要操作按钮
-
         var actionBar = document.createElement('div');
         actionBar.className = 'git-viewer-actions';
+        var hasAction = false;
 
         if (status === '?') {
             // 未跟踪 -> 提供 "添加到 Git" 按钮
@@ -778,7 +777,7 @@
             addBtn.addEventListener('click', function() {
                 addBtn.disabled = true;
                 addBtn.textContent = '添加中...';
-        fetch(gitUrl('/web/chat/git/stage'), {
+                fetch(gitUrl('/web/chat/git/stage'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -789,7 +788,7 @@
                         loadGitStatus();
                         closeDiffViewer();
                     } else {
-                        alert('操作失败：' + ((res && res.data && res.data.message) || '未知错误'));
+                        alert('操作失败：' + gitActionError(res));
                         addBtn.disabled = false;
                         addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加到 Git';
                     }
@@ -801,6 +800,7 @@
                 });
             });
             actionBar.appendChild(addBtn);
+            hasAction = true;
         }
 
         if (status === 'S') {
@@ -811,7 +811,7 @@
             unstageBtn.addEventListener('click', function() {
                 unstageBtn.disabled = true;
                 unstageBtn.textContent = '移出中...';
-        fetch(gitUrl('/web/chat/git/unstage'), {
+                fetch(gitUrl('/web/chat/git/unstage'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: path })
@@ -822,7 +822,7 @@
                         loadGitStatus();
                         closeDiffViewer();
                     } else {
-                        alert('操作失败：' + ((res && res.data && res.data.message) || '未知错误'));
+                        alert('操作失败：' + gitActionError(res));
                         unstageBtn.disabled = false;
                         unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> 移出暂存';
                     }
@@ -834,13 +834,68 @@
                 });
             });
             actionBar.appendChild(unstageBtn);
+            hasAction = true;
         }
+
+        // 所有变更状态均可回滚：已修改 / 已暂存 / 未跟踪
+        if (status === 'M' || status === 'S' || status === '?') {
+            var discardBtn = document.createElement('button');
+            discardBtn.className = 'git-action-btn git-action-discard';
+            discardBtn.title = status === '?'
+                ? '删除此未跟踪文件（不可恢复）'
+                : '丢弃此文件的本地变更，恢复到 HEAD';
+            discardBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> 回滚';
+            discardBtn.addEventListener('click', function() {
+                var confirmMsg = status === '?'
+                    ? '确定删除未跟踪文件「' + path + '」吗？此操作不可恢复。'
+                    : '确定回滚「' + path + '」的变更吗？本地修改将丢失且不可恢复。';
+                if (!window.confirm(confirmMsg)) return;
+
+                discardBtn.disabled = true;
+                discardBtn.textContent = '回滚中...';
+                fetch(gitUrl('/web/chat/git/discard'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res && res.code === 200) {
+                        if (typeof showToast === 'function') {
+                            showToast('已回滚：' + path, 'success', 2200);
+                        }
+                        loadGitStatus();
+                        closeDiffViewer();
+                    } else {
+                        alert('回滚失败：' + gitActionError(res));
+                        discardBtn.disabled = false;
+                        discardBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> 回滚';
+                    }
+                })
+                .catch(function(e) {
+                    alert('回滚失败：' + e.message);
+                    discardBtn.disabled = false;
+                    discardBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> 回滚';
+                });
+            });
+            actionBar.appendChild(discardBtn);
+            hasAction = true;
+        }
+
+        if (!hasAction) return;
 
         // 插入到 header 后面、content 前面
         var content = gitDiffViewer.querySelector('.git-viewer-content');
         if (content) {
             gitDiffViewer.insertBefore(actionBar, content);
         }
+    }
+
+    function gitActionError(res) {
+        if (!res) return '未知错误';
+        if (res.message) return res.message;
+        if (res.data && res.data.message) return res.data.message;
+        return '未知错误';
     }
 
     // ---- Diff Viewer：渲染 diff 文本（带行号）----
