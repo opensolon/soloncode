@@ -20,6 +20,7 @@ import org.noear.solon.SolonApp;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentProperties;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;
@@ -103,7 +104,34 @@ public class App {
         //与 AgentProperties 双向合并
         agentSettings.mergeFrom(props);
 
+        //将 settings.json 中的日志配置同步到 Solon.cfg()，使重启后日志系统真正读取到用户保存的值
+        syncLogPropertiesToCfg(agentSettings.getGeneral());
+
         app.context().wrapAndPut(AgentSettings.class, agentSettings);
+    }
+
+    /**
+     * 将用户保存的日志配置（来自 settings.json）写入 Solon.cfg()，
+     * 并让 logLevel 立即生效。
+     */
+    private static void syncLogPropertiesToCfg(GeneralGroupDo general) {
+        try {
+            //写入 Solon.cfg()，以便 Solon 日志模块后续读取
+            if (general.getLogLevel() != null) {
+                Solon.cfg().setProperty("solon.logging.appender.file.level", general.getLogLevel());
+            }
+
+            if (general.getLogFileMaxSize() != null) {
+                Solon.cfg().setProperty("solon.logging.appender.file.maxSize", general.getLogFileMaxSize());
+            }
+
+            if (general.getLogMaxHistory() != null) {
+                Solon.cfg().setProperty("solon.logging.appender.file.maxHistory",
+                        String.valueOf(general.getLogMaxHistory()));
+            }
+        } catch (Exception e) {
+            //非 Solon 环境或日志系统未就绪时静默跳过，不影响启动
+        }
     }
 
     private static void enabledWeb(SolonApp app, AgentProperties c) {
