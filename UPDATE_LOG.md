@@ -1,7 +1,8 @@
 ### v2026.7.22
 
-* 添加 soloncode 刷新配置的功能（方便多实例同步）
-* 修复 soloncode 日志级别设置后，重启失效的问题
+* 添加 soloncode web 刷新配置的功能（方便多实例同步）
+* 添加 soloncode web 最后条用户消息 rerun 按钮支持
+* 修复 soloncode web 日志级别设置后，重启失效的问题
 * 细节优化
 
 ### v2026.7.21

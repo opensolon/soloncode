@@ -16,7 +16,7 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
     var row = $('<div>').addClass('msg-row user')[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
     row.setAttribute('data-session-id', sess.sessionId);
-    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="msg-actions"><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button><button class="user-del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button></div></div>';
+    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="msg-actions"><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button><button class="user-rerun-btn" title="重做">' + RERUN_SVG + '</button><button class="user-del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button></div></div>';
     var bubble = $(row).find('.msg-bubble')[0];
 
     // 来源标签（仅非空且非 "Web" 时显示；会在时间戳左侧追加）
@@ -82,6 +82,23 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
                     copyBtn.innerHTML = COPY_SVG;
                 }, 1500);
             });
+        }
+    });
+
+    var rerunUserBtn = $(row).find('.user-rerun-btn')[0];
+    $(rerunUserBtn).on('click', function() {
+        if (sess.isStreaming) return;
+        var txtEl = $(bubble).find('.user-msg-text')[0];
+        var md = txtEl ? (txtEl.getAttribute('data-md-raw') || txtEl.innerText) : '';
+        if (!md || !md.trim()) return;
+        // 将用户消息填入输入框并发送
+        if (inChatMode) {
+            chatInput.value = md;
+        } else {
+            welcomeInput.value = md;
+        }
+        if (typeof sendMessage === 'function') {
+            sendMessage();
         }
     });
 
