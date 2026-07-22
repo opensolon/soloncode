@@ -2679,7 +2679,7 @@ public class WebSettingsController {
     }
 
     /**
-     * 删除供应商
+     * 删除供应商（并级联删除所有关联模型）
      */
     @Post
     @Mapping("/web/settings/providers/remove")
@@ -2688,9 +2688,30 @@ public class WebSettingsController {
             return Result.failure("name is required");
         }
 
+        // 级联删除该供应商下的所有模型
+        int removedModels = 0;
+        List<String> modelNamesToRemove = new ArrayList<>();
+        for (Map.Entry<String, ModelDo> entry : settings.getModels().entrySet()) {
+            ModelDo model = entry.getValue();
+            if (name.equals(model.getProvider())) {
+                modelNamesToRemove.add(entry.getKey());
+            }
+        }
+        for (String modelName : modelNamesToRemove) {
+            engine.removeModel(modelName);
+            settings.getModels().remove(modelName);
+            removedModels++;
+        }
+
+        // 若默认模型属于该供应商，一并清空
+        String defaultModel = settings.getDefaultModel();
+        if (Assert.isNotEmpty(defaultModel) && modelNamesToRemove.contains(defaultModel)) {
+            settings.setDefaultModel(null);
+        }
+
         settings.getProviders().remove(name);
         saveSettings();
-        LOG.info("[Settings] Provider removed: {}", name);
+        LOG.info("[Settings] Provider removed: {}, cascaded models: {}", name, removedModels);
         return Result.succeed();
     }
 
