@@ -185,7 +185,7 @@ function startRename(idx) {
 
     $input.on('blur', finishRename);
     $input.on('keydown', function(e) {
-        if (e.key === 'Enter') { e.preventDefault(); $input[0].blur(); }
+        if (e.key === 'Enter' && !isInputComposing(e)) { e.preventDefault(); $input[0].blur(); }
         if (e.key === 'Escape') { $input.val(currentLabel); $input[0].blur(); }
     });
 }
