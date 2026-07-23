@@ -331,20 +331,27 @@ body {
 
 /* 流式消息内容包裹层：所有内容元素（md-content、tool-card、reason-group、
    task-group、msg-trace、chunk-error 等）都在 msg-content 内，
-   与 msg-time、msg-actions 物理隔离。间距规则只作用于 msg-content 直系子节点。 */
-.msg-content { display: block; }
-/* 主代理流式片段的直属内容按统一节奏排列；内部 task-group 保持自身的紧凑结构。 */
-.main-stream-segment { display: flex; flex-direction: column; gap: 20px; }
+   与 msg-time、msg-actions 物理隔离。使用 flex gap 统一直系内容节奏，
+   避免 margin 折叠、空占位节点和末尾规则造成流式前后跳变。 */
+.msg-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+/* ensureAssistantBubble 会先创建一个承载流式正文的空 md-content；
+   空节点不参与布局，首次写入内容后会自动恢复为 flex item。 */
+.msg-content > .md-content:empty:not([data-md-raw]) { display: none; }
+/* 主代理片段内部采用稍宽的一级节奏；其子元素的外边距统一清零。 */
+.main-stream-segment { display: flex; flex-direction: column; gap: 16px; }
 .main-stream-segment > * { margin: 0; }
-.msg-row.assistant .msg-bubble > .msg-content > *:not(.inline-thinking) {
+/* 直系内容的间距由 .msg-content gap 负责，不再叠加 margin。 */
+.msg-row.assistant .msg-bubble > .msg-content > * {
     margin-top: 0;
-    margin-bottom: 10px;
-}
-.msg-row.assistant .msg-bubble > .msg-content > .msg-trace {
-    margin-top: 4px;
-}
-.msg-row.assistant .msg-bubble > .msg-content > *:not(.inline-thinking):last-child {
     margin-bottom: 0;
+}
+/* Trace 属于内容列表的一项，使用统一的 10px 节奏，不再使用特殊 4px 偏移。 */
+.msg-row.assistant .msg-bubble > .msg-content > .msg-trace {
+    margin-top: 0;
 }
 /* 宽度约束放在列容器上，避免气泡百分比相对塌缩列计算导致被挤成窄高条 */
 .msg-row.user .user-msg-col { max-width: 75%; }
@@ -414,28 +421,41 @@ body {
 .md-content hr { border: none; border-top: 1px solid var(--border-color); margin: 14px 0; }
 
 /* Tool Card */
-.tool-card { border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; background: var(--bg-primary); transition: border-color 0.2s; }
-.tool-card-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; transition: background 0.15s; font-size: 13px; overflow: hidden; }
+.tool-card { border: none; border-radius: 8px; overflow: hidden; background: var(--bg-secondary); transition: background 0.2s; }
+.tool-card-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; transition: background 0.15s; font-size: 13px; overflow: hidden; }
 .tool-card-header:hover { background: var(--bg-hover); }
+.tool-card-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .tool-status-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; transition: all 0.3s; }
+.tool-status-icon > .layui-icon { font-size: 12px; }
 .tool-status-icon.loading { border: 2px solid var(--border-color); border-top-color: var(--accent); animation: blob-spin 0.8s linear infinite; }
 .tool-status-icon.done { background: var(--color-success); color: #fff; border: none; animation: none; }
 .tool-status-icon.warn { background: var(--color-warning); color: #fff; border: none; animation: none; }
 .tool-status-icon.reject { background: var(--color-danger); color: #fff; border: none; animation: none; }
-.tool-card.hitl-pending { border-color: var(--color-warning); }
-.tool-card .hitl-card-actions { display: flex; gap: 10px; padding: 0 14px 14px; }
-.tool-name { font-weight: 600; color: var(--text-primary); white-space: nowrap; flex-shrink: 0; }
-.tool-args { color: var(--text-tertiary); font-size: 12px; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tool-card.hitl-pending { border: 1px solid var(--color-warning); }
+.tool-card .hitl-card-actions { display: flex; gap: 10px; padding: 0 12px 12px; }
+.tool-card-title-group { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; }
+.tool-name { flex: 0 0 auto; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: visible; text-overflow: clip; }
+.tool-args { flex: 1 1 auto; color: var(--text-secondary); font-size: 12px; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tool-label { color: var(--text-secondary); font-size: 12px; }
 .tool-toggle { margin-left: auto; color: var(--text-secondary); font-size: 14px; transition: transform 0.2s; flex-shrink: 0; }
 .tool-card.expanded .tool-toggle { transform: rotate(90deg); }
-.tool-card-body { display: none; padding: 0 14px 12px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; border-top: 1px solid var(--border-color); }
+.tool-card-body { display: none; padding: 0 12px 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow-y: auto; }
 .tool-card.expanded .tool-card-body { display: block; }
+.tool-card-body.tool-body-diff { padding: 0; max-height: 360px; overflow: auto; line-height: 1.5; }
+.tool-card-body.tool-body-code { padding: 0; max-height: 320px; overflow: auto; }
+.tool-card-body.tool-body-terminal { padding: 0; max-height: 300px; overflow: auto; }
+.tool-code-pre { margin: 0; padding: 10px 12px; overflow: auto; border-radius: 0; line-height: 1.5; }
+.tool-card-body.tool-body-todo .tool-code-pre { padding: 10px 12px; }
+.tool-body-deferred { color: var(--text-tertiary); }
+.tool-card > .tool-card-header[aria-expanded="true"] { background: var(--bg-hover); }
 
 .chunk-error { padding: 10px 14px; background: var(--error-bg); border-left: 3px solid var(--error-border); border-radius: 6px; color: var(--error-text); font-size: 13px; }
 
 /* HITL Card */
 .hitl-card { margin: 10px 0; border: 1px solid var(--color-warning); border-radius: 10px; overflow: hidden; background: var(--bg-input-box); animation: msg-in 0.25s ease-out; }
+/* 授权卡嵌入流式内容列表时复用统一间距，不额外增加上下空白。 */
+.msg-content > .hitl-card { margin: 0; }
+
 .hitl-card-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; font-size: 14px; font-weight: 600; color: var(--color-warning); border-bottom: 1px solid var(--border-color); }
 .hitl-card-header i { font-size: 18px; }
 .hitl-card-body { padding: 12px 14px; font-size: 13px; color: var(--text-primary); }
@@ -491,7 +511,9 @@ body {
 .messages-inner > .msg-row.assistant:last-child .continue-btn { display: flex; }
 
 /* Thinking */
-.inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); font-size: 13px; }
+/* 流式等待指示器是列表末项，外部间距由 msg-content gap 统一管理；
+   padding 仅表示指示器自身的内容留白。 */
+.inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; margin: 0; color: var(--text-secondary); font-size: 13px; }
 .inline-thinking.hidden-reserve { visibility: hidden; }
 .thinking-timer { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
 .thinking-timer-wrap { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
@@ -511,43 +533,39 @@ body {
 .reason-group-think-label { color: var(--text-secondary); font-weight: 500; }
 .reason-group-think-toggle { margin-left: auto; color: var(--text-secondary); font-size: 12px; transition: transform 0.25s; }
 .reason-group-think.expanded .reason-group-think-toggle { transform: rotate(90deg); }
-.reason-group-think-body { padding: 8px 14px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; border-top: 1px solid var(--reason-group-think-border); max-height: 300px; overflow-y: auto; }
+.reason-group-think-body { padding: 8px 14px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; max-height: 300px; overflow-y: auto; }
 .reason-group-think-body .md-content { color: var(--text-secondary); font-size: 13px; }
 .reason-group-think:not(.expanded) .reason-group-think-body { display: none; }
-.reason-group-think.streaming { border-color: var(--accent); }
 .reason-group-think.streaming .reason-group-think-label { color: var(--accent); }
 .reason-group-think-dots { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
 .reason-group-think-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: none; }
 .reason-group-think-dots span:nth-child(2) { animation-delay: 0.2s; }
 .reason-group-think-dots span:nth-child(3) { animation-delay: 0.4s; }
 
-/* Thinking Group: wraps thinking block + subsequent tool calls */
-.reason-group { border: 1px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
+/* Thinking Group: background and spacing define the group; inner records do not repeat borders. */
+.reason-group { border: none; border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
 .reason-group .reason-group-think { margin: 0; border: none; border-radius: 0; }
-.reason-group .reason-group-think-body { border-bottom: none; }
-.reason-group:has(.tool-card) .reason-group-think-body { border-bottom: 1px solid var(--reason-group-think-border); }
-.reason-group .tool-card { border: none; border-radius: 0; border-top: 1px solid var(--border-color); border-left: 3px solid var(--reason-group-think-border); background: var(--bg-primary); }
-.reason-group > .reason-group-text { padding: 8px 14px; font-size: 14px; line-height: 1.7; color: var(--text-primary); background: var(--bg-primary); }
+.reason-group > .tool-card { border: none; border-radius: 0; background: var(--bg-primary); }
+.reason-group > .reason-group-text { padding: 8px 12px; font-size: 14px; line-height: 1.7; color: var(--text-primary); background: var(--bg-primary); }
+.reason-group > .tool-card + .tool-card,
+.task-group-body > .tool-card + .tool-card { margin-top: 2px; }
 
-/* Sub-agent: accent-colored left border for thinking block and tool card */
-.reason-group .reason-group-think.is-subagent { border-left-color: var(--accent); }
-.reason-group .tool-card.is-subagent { border-left-color: var(--accent); }
+/* Agent identity is expressed by the badge, avoiding another nested border. */
 
 /* Agent badge: small pill/tag next to label or tool name */
 .agent-badge { display: inline-flex; align-items: center; padding: 0 6px; margin-left: 6px; font-size: 10px; font-weight: 600; line-height: 18px; border-radius: 4px; background: var(--accent); color: #fff; vertical-align: middle; white-space: nowrap; }
 .reason-group-think-header .agent-badge { font-size: 9px; line-height: 15px; padding: 0 5px; }
 
 /* Task group: wraps reason-group + tool-cards for multitask subagent output */
-.task-group { position: relative; margin: 0; border: 1px solid var(--border-color); border-left: 4px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); transition: border-left-color 0.15s; }
+.task-group { position: relative; margin: 0; border: none; border-left: 4px solid var(--reason-group-think-border); border-radius: 0; overflow: hidden; background: var(--reason-group-think-bg); transition: border-left-color 0.15s; }
 /* running/done 统一灰色左边框；仅 error 用红色强提示 */
 .task-group.is-error { border-left-color: var(--error-border); }
-/* 左侧灰边透明热区：静置零感知；悬停时点亮 border-left，建立「边=开关」 */
+/* 左侧灰边透明热区：仅作为鼠标点击区域；键盘交互统一由可见标题承担。 */
 .task-group-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 12px; z-index: 3; cursor: pointer; user-select: none; }
-.task-group-rail:focus-visible { outline: none; }
-.task-group:has(.task-group-rail:hover) { border-left-color: var(--text-tertiary); }
+.task-group:not(.is-error):has(.task-group-rail:hover) { border-left-color: var(--text-tertiary); }
 
 /* Header 两行：L1 图标(22px)+title(文本+贴字 badge)+stats+toggle；L2 最近 tool 动作 */
-.task-group-header { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-primary); background: var(--bg-primary); border-bottom: 1px solid var(--border-color); transition: background 0.15s; }
+.task-group-header { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-primary); background: var(--bg-primary); transition: background 0.15s; }
 .task-group-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .task-group-header:hover { background: var(--bg-hover); }
 .task-group-row { display: flex; align-items: center; min-width: 0; }
@@ -576,10 +594,11 @@ body {
 .task-group-body .agent-badge { display: none; }
 
 .task-group-body .reason-group { margin: 0; border: none; border-radius: 0; }
-.task-group-body .reason-group .reason-group-think-body { border-bottom: none; }
-.task-group-body .reason-group .tool-card { border-left: 3px solid var(--reason-group-think-border); }
-.task-group-body .tool-card { margin: 0; border: none; border-radius: 0; border-top: 1px solid var(--border-color); border-left: 3px solid var(--reason-group-think-border); background: var(--bg-primary); }
-.task-group-body .chunk-error { margin: 0; border-radius: 0; border-top: 1px solid var(--border-color); }
+.task-group-body .tool-card { margin: 0; border: none; border-radius: 0; background: var(--bg-primary); }
+.task-group-body .chunk-error { margin: 0; border-radius: 0; }
+/* 授权确认是普通执行记录的例外：无论嵌套层级都保留警示边界。 */
+.reason-group .tool-card.hitl-pending,
+.task-group-body .tool-card.hitl-pending { border: 1px solid var(--color-warning); border-radius: 8px; }
 
 /* --- Overflow Indicator (展开全部提示) --- */
 .reason-group-think-body.has-overflow::after,
@@ -1682,13 +1701,13 @@ body {
 
 /* ===== 工具结果专用渲染：grep / glob / ls / bash ===== */
 .tool-summary, .grep-summary {
-    padding: 6px 14px;
-    color: var(--text-secondary);
+    padding: 5px 12px 4px;
+    margin-bottom: 2px;
+    color: var(--text-tertiary);
     font-size: 11px;
-    border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
-    background: var(--bg-code, #f5f5f5);
+    background: transparent;
 }
 .grep-result, .file-listing { padding: 0; }
 .grep-file {
@@ -1727,19 +1746,19 @@ body {
 }
 .file-entry-icon { opacity: 0.7; flex-shrink: 0; display: inline-flex; align-items: center; }
 .file-entry.is-dir .file-entry-path { color: var(--text-primary); font-weight: 500; }
-.bash-output { background: var(--bg-code-block); border-radius: 0; }
+.bash-output { background: transparent; border-radius: 0; }
 .bash-cmd {
-    padding: 8px 14px;
+    padding: 8px 12px;
+    background: var(--bg-code);
     color: var(--text-primary);
-    border-bottom: 1px solid var(--border-color);
     white-space: pre-wrap;
     word-break: break-all;
 }
 .bash-stdout {
     margin: 0;
-    padding: 10px 14px;
+    padding: 8px 12px 10px;
     color: var(--text-primary);
-    background: var(--bg-code-block);
+    background: transparent;
     white-space: pre-wrap;
     word-break: break-all;
     overflow-x: auto;
@@ -1753,16 +1772,12 @@ body {
 }
 .bash-prompt { color: var(--git-line-add-text); }
 
-/* edit 两段式：输入(diff) 与 输出(result) 之间的分隔与结果样式 */
-.edit-result-sep {
-    border-top: 1px dashed var(--border-color);
-    margin: 0;
-}
+/* edit 两段式：输入(diff) 与输出(result) 使用语义背景区分，不再增加装饰性分隔线。 */
 .edit-result {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    padding: 8px 14px;
+    padding: 8px 12px;
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.5;

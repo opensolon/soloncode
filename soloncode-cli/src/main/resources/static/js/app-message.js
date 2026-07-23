@@ -543,12 +543,10 @@ function createTaskGroupElement(sess, segment) {
         + '<div class="task-group-row task-group-row-sub"' + (metaText ? '' : ' style="display:none"') + '>'
         + '<span class="task-group-meta"' + metaTitleAttr + (metaText ? '' : ' style="display:none"') + '>' + escapeHtml(metaText) + '</span>'
         + '</div>';
-    // 左侧灰边透明热区：视觉零改动，整高可点展开/收起
+    // 左侧边线仅作为鼠标热区；可见标题是唯一键盘入口。
     var rail = $('<div>').addClass('task-group-rail')[0];
-    rail.setAttribute('role', 'button');
-    rail.setAttribute('tabindex', '0');
+    rail.setAttribute('aria-hidden', 'true');
     rail.setAttribute('title', '展开');
-    rail.setAttribute('aria-label', '展开子任务');
     function toggle() {
         var expanded = !$(group).hasClass('expanded');
         segment.userToggled = true;
@@ -568,14 +566,11 @@ function createTaskGroupElement(sess, segment) {
         }
         header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, expanded));
         rail.setAttribute('title', expanded ? '收起' : '展开');
-        rail.setAttribute('aria-label', expanded ? '收起子任务' : '展开子任务');
     }
     $(header).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
     });
-    $(rail).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
-    });
+    $(rail).on('click', function(e) { e.stopPropagation(); toggle(); });
     var body = $('<div>').addClass('task-group-body')[0];
     body.id = bodyId;
     $(group).append(rail).append(header).append(body);
@@ -837,7 +832,7 @@ function finishPendingTool(sess) {
     // 兼容旧单槽：标记并清除
     if (sess.pendingToolCard) {
         var icon = $(sess.pendingToolCard).find('.tool-status-icon')[0];
-        if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
+        if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok"></i>'; }
         sess.pendingToolCard = null;
     }
     // 多槽 map：标记所有未完成的 pending 卡片为 done
@@ -845,7 +840,7 @@ function finishPendingTool(sess) {
         var pending = sess.pendingToolCards[_key];
         if (pending && pending.card) {
             var icon = $(pending.card).find('.tool-status-icon')[0];
-            if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
+            if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok"></i>'; }
         }
         delete sess.pendingToolCards[_key];
     }
@@ -864,12 +859,7 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
     var result = (typeof text === 'string') ? text : null;
     if (!diff && result && result.startsWith('---')) { diff = result; result = null; }
     if (!diff && !result) return false;
-    bodyEl.style.padding = '0';
-    bodyEl.style.maxHeight = '400px';
-    bodyEl.style.overflow = 'auto';
-    bodyEl.style.fontFamily = 'var(--font-mono)';
-    bodyEl.style.fontSize = '12px';
-    bodyEl.style.lineHeight = '1.5';
+    bodyEl.classList.add('tool-body-diff');
 
     var lines = (diff || '').split('\n');
     var html = '';
@@ -917,7 +907,6 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
     if (result && result !== diff) {
         var isErr = result.indexOf("成功完成") < 0;
         if (isErr) {
-            if (diff) html += '<div class="edit-result-sep"></div>';
             html += '<div class="edit-result is-error">'
                 + '<span class="edit-result-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> \u5931\u8d25</span>'
                 + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
@@ -932,6 +921,7 @@ function renderHighlightedFile(bodyEl, text, args) {
     if (!text) return false;
     var filePath = (args && args.file_path) || '';
     var lang = (typeof window.guessLang === 'function') ? window.guessLang(filePath) : '';
+    bodyEl.classList.add('tool-body-code');
     function applyHighlight() {
         if (!(lang && typeof hljs !== 'undefined')) {
             bodyEl.textContent = text;
@@ -939,7 +929,7 @@ function renderHighlightedFile(bodyEl, text, args) {
         }
         try {
             var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
-            bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
+            bodyEl.innerHTML = '<pre class="tool-code-pre"><code class="hljs">' + highlighted.value + '</code></pre>';
         } catch (e) {
             bodyEl.textContent = text;
         }
@@ -1036,9 +1026,9 @@ function renderFileListing(bodyEl, text, args) {
 window._toolRenderers.glob = renderFileListing;
 window._toolRenderers.ls = renderFileListing;
 
-/* bash：终端风格输出块，等宽、深色、保留换行 */
+/* bash：紧凑终端风格输出块，保留换行但不增加命令/输出分隔线 */
 window._toolRenderers.bash = function(bodyEl, text, args) {
-    bodyEl.style.padding = '0';
+    bodyEl.classList.add('tool-body-terminal');
     var cmd = (args && args.command) ? args.command : '';
     var html = '<div class="bash-output">';
     if (cmd) html += '<div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(cmd) + '</div>';
@@ -1058,7 +1048,8 @@ function renderTodoMarkdown(bodyEl, text, args) {
         try { inner = hljs.highlight(md, { language: 'markdown' }).value; } catch(e) {}
     }
     if (!inner) inner = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    bodyEl.innerHTML = '<pre style="margin:0;padding:10px"><code class="hljs language-markdown">' + inner + '</code></pre>';
+    bodyEl.classList.add('tool-body-todo');
+    bodyEl.innerHTML = '<pre class="tool-code-pre"><code class="hljs language-markdown">' + inner + '</code></pre>';
     return true;
 }
 window._toolRenderers.todowrite = renderTodoMarkdown;
@@ -1077,10 +1068,10 @@ function renderToolBody(bodyEl, toolName, text, args) {
     return false;
 }
 
-/* 检查容器内容是否超出高度，若超出则添加溢出指示器 */
-function checkOverflow(el, maxHeight) {
+/* 检查容器内容是否超出当前 CSS 限高，若超出则添加溢出指示器 */
+function checkOverflow(el) {
     if (!el) return;
-    var hasOverflow = el.scrollHeight > maxHeight;
+    var hasOverflow = el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1;
     $(el).toggleClass('has-overflow', hasOverflow);
     if (hasOverflow && !el._overflowBtn) {
         el._overflowBtn = true;
@@ -1121,6 +1112,59 @@ function formatToolArgsStr(args) {
     var argsStr = parts.join(' ');
     if (argsStr.length > 80) argsStr = argsStr.substring(0, 77) + '...';
     return argsStr;
+}
+
+/* 根据工具语义生成头部摘要，避免通用 key=value 抢占视觉空间。 */
+function formatToolSummary(toolName, args) {
+    if (!args || typeof args !== 'object') return '';
+    var name = String(toolName || '').toLowerCase();
+    if (name === 'bash' && args.command) return String(args.command).replace(/\n/g, ' ');
+    if ((name === 'read' || name === 'write' || name === 'edit') && args.file_path) {
+        var fileSummary = String(args.file_path);
+        if (name === 'read' && args.offset) {
+            fileSummary += ' · ' + args.offset;
+            if (args.limit) fileSummary += '–' + (Number(args.offset) + Number(args.limit) - 1);
+            fileSummary += ' 行';
+        }
+        return fileSummary;
+    }
+    if (name === 'grep') {
+        var grepSummary = args.pattern ? '“' + String(args.pattern).replace(/\n/g, ' ') + '”' : '';
+        if (args.path) grepSummary += (grepSummary ? ' · ' : '') + args.path;
+        return grepSummary;
+    }
+    if (name === 'glob') return args.pattern || args.path || '';
+    if (name === 'ls') return (args.path || '') + (args.recursive ? ' · 递归' : '');
+    return formatToolArgsStr(args);
+}
+
+function getToolKind(toolName) {
+    var name = String(toolName || '').toLowerCase();
+    if (name === 'bash') return 'terminal';
+    if (name === 'edit') return 'diff';
+    if (name === 'read' || name === 'write') return 'code';
+    if (name === 'grep') return 'search';
+    if (name === 'glob' || name === 'ls') return 'files';
+    if (name === 'todowrite' || name === 'todoread') return 'todo';
+    return 'generic';
+}
+
+function createToolCard(toolName, args, toolTitle, agentName, statusClass) {
+    var card = $('<div>').addClass('tool-card tool-kind-' + getToolKind(toolName))[0];
+    var summary = formatToolSummary(toolName, args);
+    var titleHtml = '<span class="tool-name">' + escapeHtml(toolTitle || toolName || 'tool') + '</span>';
+    if (agentName) titleHtml += '<span class="agent-badge">' + escapeHtml(agentName) + '</span>';
+    if (summary) titleHtml += '<span class="tool-args" title="' + escapeHtml(summary) + '">' + escapeHtml(summary) + '</span>';
+    var statusIcon = statusClass === 'done' ? '<i class="layui-icon layui-icon-ok"></i>'
+        : (statusClass === 'warn' ? '<i class="layui-icon layui-icon-tips"></i>' : '');
+    card.innerHTML = '<div class="tool-card-header" role="button" tabindex="0" aria-expanded="false">'
+        + '<span class="tool-status-icon ' + (statusClass || 'loading') + '">' + statusIcon + '</span>'
+        + '<span class="tool-card-title-group">' + titleHtml + '</span>'
+        + '<i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
+    if (agentName) $(card).addClass('is-subagent');
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
+    bindToolCardToggle(card);
+    return card;
 }
 
 /* 为工具调用注册 pending 卡片：有 callId 时必须以 callId 作为唯一键；
@@ -1164,13 +1208,21 @@ function findPendingToolCard(sess, callId, reasonId) {
    appendActionEndChunk 复用此卡片填充结果体并转完成态。 */
 /* 工具卡 body：默认折叠时延迟重渲染（diff/hljs），展开时再填充，避免 action_end 瞬时卡顿 */
 function bindToolCardToggle(card) {
-    $(card).find('.tool-card-header').off('click.toolcard').on('click.toolcard', function() {
-        var expanded = !$(card).hasClass('expanded');
+    var header = $(card).find('.tool-card-header');
+    function setExpanded(expanded) {
         $(card).toggleClass('expanded', expanded);
-        if (expanded && card._pendingToolRender && !card._toolBodyRendered) {
-            card._pendingToolRender();
-        }
-    });
+        header.attr('aria-expanded', expanded ? 'true' : 'false');
+        if (expanded && card._pendingToolRender && !card._toolBodyRendered) card._pendingToolRender();
+    }
+    header.off('.toolcard')
+        .on('click.toolcard', function() { setExpanded(!$(card).hasClass('expanded')); })
+        .on('keydown.toolcard', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setExpanded(!$(card).hasClass('expanded'));
+            }
+        });
+    header.attr('aria-expanded', $(card).hasClass('expanded') ? 'true' : 'false');
 }
 
 function fillToolCardBody(card, toolName, text, args) {
@@ -1179,9 +1231,9 @@ function fillToolCardBody(card, toolName, text, args) {
     function doRender() {
         if (card._toolBodyRendered) return;
         card._toolBodyRendered = true;
-        body.innerHTML = '';
+        body.className = 'tool-card-body';
         if (!renderToolBody(body, toolName, text, args)) body.textContent = text || '';
-        checkOverflow(body, 200);
+        checkOverflow(body);
     }
     // 展开态或没有简化开关时立即渲染；折叠态延迟到用户展开
     if ($(card).hasClass('expanded') || window.cliPrintSimplified === false) {
@@ -1199,21 +1251,13 @@ function fillToolCardBody(card, toolName, text, args) {
 function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reasonId, agentName, callId) {
     var group = ensureReasonGroup(sess, segment, reasonId);
     if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
-    var argsStr = formatToolArgsStr(args);
-    var card = $('<div>').addClass('tool-card')[0];
-    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
+    var card = createToolCard(toolName, args, toolTitle, agentName, 'loading');
     if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
-    card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon loading"></span><span class="tool-name">'
-        + escapeHtml(toolTitle || toolName || 'tool') + '</span>' + (argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '')
-        + '<i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
-    if (agentName) { $(card).addClass('is-subagent'); $(card).find('.tool-name').after('<span class="agent-badge">' + escapeHtml(agentName) + '</span>'); }
-    bindToolCardToggle(card);
-    // 让 bash 在 start 时就展开并显示命令，无需等执行完
-    if (toolName === 'bash' && args && args.command) {
-        $(card).addClass('expanded');
+    // 非简化模式在 start 时展示 bash 的实时命令；简化模式保持所有工具一致折叠。
+    if (window.cliPrintSimplified === false && toolName === 'bash' && args && args.command) {
         var body = $(card).find('.tool-card-body')[0];
         if (body) {
-            body.style.padding = '0';
+            body.classList.add('tool-body-terminal');
             body.innerHTML = '<div class="bash-output"><div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(args.command) + '</div><pre class="bash-stdout">(执行中...)</pre></div>';
         }
     }
@@ -1239,11 +1283,7 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
     if (!card) {
         if (!segment) segment = ensureStreamSegment(sess, null, null, null);
         var group = ensureReasonGroup(sess, segment, reasonId);
-        card = $('<div>').addClass('tool-card')[0];
-        if (window.cliPrintSimplified === false) $(card).addClass('expanded');
-        card.innerHTML = '<div class="tool-card-header"><span class="tool-status-icon done"><i class="layui-icon layui-icon-ok" style="font-size:12px"></i></span><span class="tool-name">'
-            + escapeHtml(toolTitle || toolName || 'tool') + '</span><i class="layui-icon layui-icon-right tool-toggle"></i></div><div class="tool-card-body"></div>';
-        bindToolCardToggle(card);
+        card = createToolCard(toolName, args, toolTitle, agentName, 'done');
         if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
         // 无 action_start 的终态卡也计入 task 摘要
         if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
@@ -1253,7 +1293,7 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
     card._toolBodyRendered = false;
     fillToolCardBody(card, toolName, text, args);
     var icon = $(card).find('.tool-status-icon')[0];
-    if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok" style="font-size:12px"></i>'; }
+    if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok"></i>'; }
     if (callId) card.setAttribute('data-call-id', callId);
     // 优先用 chunk 上的 task segment；若 action_end 缺 taskId，则从已挂载的 tool-card 反查归属
     var taskSegment = (segment && segment.taskId) ? segment : resolveTaskSegmentFromCard(sess, card);
@@ -1464,29 +1504,15 @@ function purgeInlineThinking(sess) {
 function appendHitlCard(sess, toolName, command) {
     ensureAssistantBubble(sess);
 
-    // 采用 tool-card 视觉体系：审批通过后原地复用为工具结果卡片
-    var argsHtml = command ? '<span class="tool-args">' + escapeHtml(command) + '</span>' : '';
-    var card = $('<div>').addClass('tool-card hitl-pending')[0];
-    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
-    // 存储当前 runId，用于后续删除同一运行的消息
-    if (sess.currentRunId) {
-        card.setAttribute('data-run-id', sess.currentRunId);
-    }
-    card.innerHTML = '<div class="tool-card-header">'
-        + '<span class="tool-status-icon warn"><i class="layui-icon layui-icon-tips" style="font-size:13px"></i></span>'
-        + '<span class="tool-name">\u9700\u8981\u6388\u6743\uff1a' + escapeHtml(toolName || 'unknown') + '</span>'
-        + argsHtml
-        + '<i class="layui-icon layui-icon-right tool-toggle"></i>'
-        + '</div>'
-        + '<div class="tool-card-body">' + (command ? escapeHtml(command) : '\u7b49\u5f85\u6388\u6743\u4ee5\u6267\u884c\u8be5\u5de5\u5177') + '</div>'
-        + '<div class="hitl-card-actions">'
+    var card = createToolCard(toolName, command ? { command: command } : {}, '\u9700\u8981\u6388\u6743\uff1a' + (toolName || 'unknown'), null, 'warn');
+    $(card).addClass('hitl-pending');
+    if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
+    var body = $(card).find('.tool-card-body')[0];
+    if (body) body.textContent = command || '\u7b49\u5f85\u6388\u6743\u4ee5\u6267\u884c\u8be5\u5de5\u5177';
+    card.insertAdjacentHTML('beforeend', '<div class="hitl-card-actions">'
         + '<button class="hitl-btn hitl-btn-approve">\u6279\u51c6</button>'
         + '<button class="hitl-btn hitl-btn-reject">\u62d2\u7edd</button>'
-        + '</div>';
-
-    $(card).find('.tool-card-header').on('click', function() {
-        $(card).toggleClass('expanded');
-    });
+        + '</div>');
 
     insertBeforeActions(sess, card);
 
@@ -1509,7 +1535,7 @@ function appendHitlCard(sess, toolName, command) {
         approveBtn.disabled = true;
         rejectBtn.disabled = true;
         var icon = $(card).find('.tool-status-icon')[0];
-        if (icon) { icon.className = 'tool-status-icon reject'; icon.innerHTML = '<i class="layui-icon layui-icon-close" style="font-size:12px"></i>'; }
+        if (icon) { icon.className = 'tool-status-icon reject'; icon.innerHTML = '<i class="layui-icon layui-icon-close"></i>'; }
         $(card).find('.tool-name').text('\u5df2\u62d2\u7edd\uff1a' + (toolName || 'unknown'));
         $(card).find('.hitl-card-actions').remove();
         $(card).removeClass('hitl-pending expanded');

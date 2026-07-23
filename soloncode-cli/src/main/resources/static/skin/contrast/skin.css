@@ -85,3 +85,38 @@
     --bg-filer-overlay: transparent;
     --bg-settings-overlay: transparent;
 }
+
+/* Keep one clear boundary per streaming group in high-contrast mode. */
+[data-skin="contrast"] .tool-card {
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+[data-skin="contrast"] .reason-group {
+    border: 1px solid var(--border-color);
+}
+
+/* A task already owns the group boundary; do not draw another box inside it. */
+[data-skin="contrast"] .task-group-body .reason-group {
+    border: none;
+}
+
+[data-skin="contrast"] .task-group {
+    border-top: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+[data-skin="contrast"] .reason-group > .reason-group-think,
+[data-skin="contrast"] .reason-group > .tool-card,
+[data-skin="contrast"] .task-group-body .tool-card {
+    border: none;
+    border-radius: 0;
+}
+
+[data-skin="contrast"] .reason-group .tool-card.hitl-pending,
+[data-skin="contrast"] .task-group-body .tool-card.hitl-pending {
+    border: 1px solid var(--color-warning);
+    border-radius: 8px;
+}
