@@ -1,5 +1,6 @@
 ### v2026.7.24
 
+* 添加 soloncode web 输入面板 Alt + Enter 换行支持
 * 优化 soloncode web macOS Safari 输入法选词 Enter 时序问题
 * 优化 soloncode web 移动任务排队面板至会话任务区域，优化布局结构
 * 优化 soloncode web mcp 导入解析

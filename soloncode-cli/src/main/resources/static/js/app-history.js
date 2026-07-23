@@ -673,13 +673,24 @@ $(chatInput).on('input', handleInputForCommands);
 $(document).on('compositionstart', function() { composing = true; });
 $(document).on('compositionend', function() { composing = false; });
 
+// 在 textarea 光标处插入文本的辅助函数
+function insertAtCursor(textarea, text) {
+    var start = textarea.selectionStart;
+    var end = textarea.selectionEnd;
+    textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + text.length;
+    $(textarea).trigger('input');
+}
+
 // Keyboard navigation for command completion
 $(welcomeInput).on('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
     if (isInputComposing(e)) return;
     var handled = navigateCmdComplete(e, welcomeInput, $welcomeCmdComplete[0]);
     if (handled) return;
-    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); sendMessage(); return; }
+    // Alt+Enter (macOS: Option+Enter) 换行
+    if (e.key === 'Enter' && e.altKey) { e.preventDefault(); insertAtCursor(welcomeInput, '\n'); }
 });
 $(chatInput).on('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
@@ -706,7 +717,9 @@ $(chatInput).on('keydown', function(e) {
         showHistoryPanel();
         return;
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); sendMessage(); return; }
+    // Alt+Enter (macOS: Option+Enter) 换行
+    if (e.key === 'Enter' && e.altKey) { e.preventDefault(); insertAtCursor(chatInput, '\n'); }
 });
 
 // Click on completion item
