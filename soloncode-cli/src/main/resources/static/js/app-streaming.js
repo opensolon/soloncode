@@ -769,23 +769,27 @@ function processWebChunkNow(sess, chunk) {
             segment = sess.taskSegments[chunk.taskId];
             sess.currentStreamSegment = segment;
         }
+        var sourceEl = null;
         switch (chunk.type) {
-            case 'command': finishThinkingBlock(sess); finishPendingTool(sess); appendCommandOutput(sess, chunk.text); break;
+            case 'command': finishThinkingBlock(sess); finishPendingTool(sess); sourceEl = appendCommandOutput(sess, chunk.text); break;
             case 'rewind': finishThinkingBlock(sess); finishPendingTool(sess); handleRewind(sess, parseInt(chunk.text) || 1); break;
-            case 'reason': appendReasonChunk(sess, segment, chunk.text, chunk.reasonId, chunk.agentName); break;
-            case 'text': appendContentChunk(sess, segment, chunk.text, true, chunk.reasonId); break;
-            case 'action_end': appendActionEndChunk(sess, segment, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
-            case 'action_start': appendActionStartChunk(sess, segment, chunk.toolName, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); break;
-            case 'agent': appendContentChunk(sess, segment, chunk.text, false, chunk.reasonId); break;
-            case 'error': finishThinkingBlock(sess); appendErrorChunk(sess, chunk.text, chunk.taskId, chunk.taskDescription, chunk.agentName); break;
-            case 'task_done': if (typeof applyTaskDoneChunk === 'function') applyTaskDoneChunk(sess, chunk); break;
-            case 'hitl': finishThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
-            case 'trace': finishThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
+            case 'reason': sourceEl = appendReasonChunk(sess, segment, chunk.text, chunk.reasonId, chunk.agentName); break;
+            case 'text': sourceEl = appendContentChunk(sess, segment, chunk.text, true, chunk.reasonId); break;
+            case 'action_end': sourceEl = appendActionEndChunk(sess, segment, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);}); break;
+            case 'action_start': sourceEl = appendActionStartChunk(sess, segment, chunk.toolName, chunk.args, chunk.toolTitle, chunk.reasonId, chunk.agentName, chunk.callId); break;
+            case 'agent': sourceEl = appendContentChunk(sess, segment, chunk.text, false, chunk.reasonId); break;
+            case 'error': finishThinkingBlock(sess); sourceEl = appendErrorChunk(sess, chunk.text, chunk.taskId, chunk.taskDescription, chunk.agentName); break;
+            case 'task_done': if (typeof applyTaskDoneChunk === 'function') applyTaskDoneChunk(sess, chunk); sourceEl = segment && segment.groupEl; break;
+            case 'hitl': finishThinkingBlock(sess); finishPendingTool(sess); sourceEl = appendHitlCard(sess, chunk.toolName, chunk.command); break;
+            case 'trace': finishThinkingBlock(sess); finishPendingTool(sess); sourceEl = appendTraceBadge(sess, chunk); break;
             case 'context_size': if (typeof updateContextIndicator === 'function') updateContextIndicator(chunk, sess); break;
         }
         // task-group 展开状态尊重用户操作；有输出时刷新状态图标与 meta。
         // task_done 已自行结算状态，不再 mark 回 running。
         if (segment && segment.taskId && chunk.type !== 'task_done') markTaskGroupUpdated(sess, segment);
+        if (chunk.type !== 'rewind' && chunk.type !== 'context_size') {
+            scrollForStreamEvent(sess, chunk, sourceEl, false);
+        }
         sess.silenceTimer = setTimeout(function() {
             if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
         }, 1000);
@@ -831,10 +835,6 @@ function drainWebChunkQueue(sess, flushAll) {
     var limit = flushAll ? batch.length : Math.min(batch.length, 40);
     for (var i = 0; i < limit; i++) {
         processWebChunkNow(sess, batch[i]);
-    }
-    // 批量插入后统一补一次贴底，避免同帧多 DOM 增高后停在半截
-    if (sess.sessionId === activeSessionId && typeof scrollToBottom === 'function') {
-        scrollToBottom();
     }
     if (limit < batch.length) {
         sess._chunkQueue = batch.slice(limit).concat(sess._chunkQueue || []);
@@ -1061,7 +1061,9 @@ function finishStream(sess) {
         isStreaming = false;
         setBtnSendMode();
         // 只有在活动会话才滚动
-        scrollToBottom(true);
+        if (shouldScheduleSessionScroll(sess)) {
+            scrollToBottom(true);
+        }
         chatInput.focus();
         if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
     }

@@ -1143,7 +1143,7 @@ body {
     justify-content: center;
     gap: 6px;
     padding: 6px 12px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: none;
     flex-shrink: 0;
 }
 
@@ -2022,6 +2022,80 @@ body {
 [data-theme="dark"] .git-action-discard:hover {
     background: color-mix(in srgb, #f85149 12%, var(--bg-primary));
     border-color: #f85149;
+}
+
+/* ===== LayUI Layer 暗色主题适配 ===== */
+[data-theme="dark"] .layui-layer {
+    background-color: var(--bg-primary);
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+}
+[data-theme="dark"] .layui-layer-title {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+[data-theme="dark"] .layui-layer-content {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+[data-theme="dark"] .layui-layer-dialog .layui-layer-content {
+    color: var(--text-primary);
+}
+[data-theme="dark"] .layui-layer-btn a {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+[data-theme="dark"] .layui-layer-btn0 {
+    border-color: transparent !important;
+    background-color: var(--accent) !important;
+    color: #fff !important;
+}
+[data-theme="dark"] .layui-layer-btn1 {
+    background-color: var(--bg-hover) !important;
+}
+[data-theme="dark"] .layui-layer-setwin span {
+    color: var(--text-secondary);
+}
+[data-theme="dark"] .layui-layer-setwin .layui-layer-min:before {
+    border-bottom-color: var(--text-secondary);
+}
+[data-theme="dark"] .layui-layer-setwin .layui-layer-max:before,
+[data-theme="dark"] .layui-layer-setwin .layui-layer-max:after {
+    border-color: var(--text-secondary);
+}
+[data-theme="dark"] .layui-layer-setwin .layui-layer-close2 {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+[data-theme="dark"] .layui-layer-setwin .layui-layer-close2:hover {
+    background-color: var(--accent);
+    color: #fff;
+}
+[data-theme="dark"] .layui-layer-rim {
+    border-color: var(--border-color);
+}
+[data-theme="dark"] .layui-layer-msg {
+    border-color: var(--border-color);
+}
+[data-theme="dark"] .layui-layer-input {
+    background-color: var(--bg-input-box);
+    color: var(--text-primary);
+    border-color: var(--border-input);
+}
+[data-theme="dark"] .layui-layer-shade {
+    background-color: rgba(0, 0, 0, 0.55);
+}
+[data-theme="dark"] .layui-layer-prompt input {
+    background-color: var(--bg-input-box);
+    color: var(--text-primary);
+    border-color: var(--border-input);
+}
+[data-theme="dark"] .layui-layer-prompt textarea {
+    background-color: var(--bg-input-box);
+    color: var(--text-primary);
+    border-color: var(--border-input);
 }
 
 /* ===== File Viewer (文件内容查看器) ===== */

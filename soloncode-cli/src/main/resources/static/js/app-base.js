@@ -159,6 +159,44 @@ var SCROLL_STREAM_STICK_MS = 280;
 /* 图片 onload / mermaid / hljs / ResizeObserver 等异步增高：单次信号也要跟够一会儿 */
 var SCROLL_ASYNC_STICK_MS = 600;
 var SCROLL_PROGRAMMATIC_MS = 160;
+var STREAM_SCROLL_SUPPRESS_MS = 360;
+
+function isSessionContainerVisible(sess) {
+    if (!sess || !sess.container || !document.contains(sess.container)) return false;
+    if (!sess.container.getClientRects || !sess.container.getClientRects().length) return false;
+    if (typeof window.getComputedStyle === 'function') {
+        var style = window.getComputedStyle(sess.container);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+    }
+    return true;
+}
+
+function getStreamTaskGroup(sess, chunk, sourceEl) {
+    var group = sourceEl ? $(sourceEl).closest('.task-group')[0] : null;
+    if (!group && chunk && chunk.taskId && sess && sess.taskSegments && sess.taskSegments[chunk.taskId]) {
+        group = sess.taskSegments[chunk.taskId].groupEl;
+    }
+    return group;
+}
+
+/* 流式事件专用滚动入口：后台会话和收起的任务组只更新内容，不抢用户视线。 */
+function scrollForStreamEvent(sess, chunk, sourceEl, force) {
+    if (!sess || sess.sessionId !== activeSessionId || !isSessionContainerVisible(sess)) return false;
+    var group = getStreamTaskGroup(sess, chunk, sourceEl);
+    if (!force && group && !$(group).hasClass('expanded')) {
+        sess._streamScrollSuppressedUntil = Date.now() + STREAM_SCROLL_SUPPRESS_MS;
+        return false;
+    }
+    if (force) sess._streamScrollSuppressedUntil = 0;
+    scrollToBottom(!!force);
+    return true;
+}
+
+function shouldScheduleSessionScroll(sess) {
+    if (!sess || sess.sessionId !== activeSessionId || !isSessionContainerVisible(sess)) return false;
+    if (sess._streamScrollSuppressedUntil && Date.now() < sess._streamScrollSuppressedUntil) return false;
+    return true;
+}
 
 function _markUserScrolledUp() {
     // 程序化贴底窗口内忽略：覆盖 force 后的布局回流，以及发送前上滑的惯性 wheel
@@ -212,7 +250,9 @@ function _applyScrollBottom() {
  * 内容异步增高时补贴底（图片 onload / mermaid / hljs / ResizeObserver）。
  * 仅在用户未主动上滑时生效，不 force 清掉 userScrolledUp。
  */
-function scheduleScrollToBottom() {
+function scheduleScrollToBottom(sess) {
+    if (sess && !shouldScheduleSessionScroll(sess)) return;
+    if (!sess && activeSessionId && sessionMap[activeSessionId] && !shouldScheduleSessionScroll(sessionMap[activeSessionId])) return;
     if (userScrolledUp) return;
     // 异步增高可能只触发一次信号（如图片 load），用更长窗口让 followTick 跟上
     _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_ASYNC_STICK_MS);
@@ -227,10 +267,21 @@ var _messagesResizeObserver = null;
 function observeMessagesHeight(el) {
     if (!el || typeof ResizeObserver === 'undefined') return;
     if (!_messagesResizeObserver) {
-        _messagesResizeObserver = new ResizeObserver(function() {
+        _messagesResizeObserver = new ResizeObserver(function(entries) {
             if (userScrolledUp) return;
+            var activeSess = activeSessionId && sessionMap[activeSessionId];
+            if (!shouldScheduleSessionScroll(activeSess)) return;
+            var relevant = false;
+            for (var i = 0; i < entries.length; i++) {
+                var target = entries[i].target;
+                if (target === messagesWrap || (activeSess && (target === activeSess.container || $(target).closest('.messages-inner')[0] === activeSess.container))) {
+                    relevant = true;
+                    break;
+                }
+            }
+            if (!relevant) return;
             // 只延长粘底窗口并请求贴底；scrollToBottom 内部合并 RAF
-            scheduleScrollToBottom();
+            scheduleScrollToBottom(activeSess);
         });
     }
     try {

@@ -740,8 +740,6 @@ function finishThinkingBlock(sess, reasonId) {
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
         sess.thinkingBuffer = '';
-        // 思考块收起后高度变化，补一次贴底（多 tool-call 紧随其后时尤其重要）
-        if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
     }
     
@@ -775,7 +773,6 @@ function finishThinkingBlock(sess, reasonId) {
         sess.thinkingBodyMdEl = null;
         sess.thinkingBodyWrapEl = null;
         sess.thinkingBuffer = '';
-        if (sess.sessionId === activeSessionId) scrollToBottom();
     }
 }
 
@@ -825,7 +822,7 @@ function appendReasonChunk(sess, segment, text, reasonId, agentName) {
             group.thinkingBodyMdEl.textContent = group.thinkingBuffer;
         }
     }
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return block;
 }
 
 function finishPendingTool(sess) {
@@ -1265,7 +1262,7 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
     if (callId) card.setAttribute('data-call-id', callId);
     registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
     if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return card;
 }
 
 function resolveTaskSegmentFromCard(sess, card) {
@@ -1302,7 +1299,7 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
         // onWebChunk 仅在 segment.taskId 时 mark；此处覆盖 action_end 无 taskId 的反查场景
         if (!segment || !segment.taskId) markTaskGroupUpdated(sess, taskSegment);
     }
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return card;
 }
 
 function appendContentChunk(sess, segment, text, append, reasonId) {
@@ -1330,13 +1327,12 @@ function appendContentChunk(sess, segment, text, append, reasonId) {
             run.el.textContent = run.buffer;
         }
     }
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return run.el;
 }
 
 function appendErrorChunkToSegment(sess, segment, text) {
     if (!segment || !segment.bodyEl) {
-        appendErrorChunk(sess, text);
-        return;
+        return appendErrorChunk(sess, text);
     }
     var errEl = $('<div>').addClass('chunk-error').text(text)[0];
     $(segment.bodyEl).append(errEl);
@@ -1344,7 +1340,7 @@ function appendErrorChunkToSegment(sess, segment, text) {
     segment.updatedAt = Date.now();
     // error → 红叉 + is-error 左边框；不自动展开
     setTaskGroupStatus(segment, 'error');
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return errEl;
 }
 
 function appendErrorChunk(sess, text, taskId, taskDescription, agentName) {
@@ -1352,14 +1348,13 @@ function appendErrorChunk(sess, text, taskId, taskDescription, agentName) {
     if (taskId) {
         var segment = ensureStreamSegment(sess, taskId, taskDescription, agentName);
         if (segment && segment.taskId) {
-            appendErrorChunkToSegment(sess, segment, text);
-            return;
+            return appendErrorChunkToSegment(sess, segment, text);
         }
     }
     ensureAssistantBubble(sess);
     var errEl = $('<div>').addClass('chunk-error').text(text)[0];
     insertBeforeActions(sess, errEl);
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return errEl;
 }
 
 /* ===== Trace Badge ===== */
@@ -1385,7 +1380,7 @@ function appendTraceBadge(sess, chunk) {
     if (parts.length === 0) return;
     var badge = $('<div>').addClass('msg-trace').text(parts.join(' \u00b7 '));
     insertBeforeActions(sess, badge[0]);
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return badge[0];
 }
 
 /* ===== Command Output ===== */
@@ -1400,7 +1395,7 @@ function appendCommandOutput(sess, text) {
     }
     insertBeforeActions(sess, mdEl);
     sess.currentBubbleEl = mdEl;
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    return mdEl;
 }
 
 /* ===== Thinking Indicators ===== */
@@ -1489,7 +1484,7 @@ function showInlineThinking(sess) {
     $(el).removeClass('hidden-reserve');
     var currentTimerSpan = $(el).find('.thinking-current-timer')[0];
     startThinkingTimerDual(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', currentTimerSpan, null);
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    if (sess.sessionId === activeSessionId) scrollForStreamEvent(sess, null, el, false);
 }
 function removeInlineThinking(sess) {
     stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
@@ -1543,7 +1538,8 @@ function appendHitlCard(sess, toolName, command) {
         handleHitlResponse(sess, 'reject');
     });
 
-    if (sess.sessionId === activeSessionId) scrollToBottom();
+    if (sess.sessionId === activeSessionId) scrollForStreamEvent(sess, null, card, false);
+    return card;
 }
 
 function handleHitlResponse(sess, action) {
