@@ -248,7 +248,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 获取所有供应商列表
      */
     @Get
-    @Mapping("/web/settings/providers")
+    @Mapping("/web/settings/llm/providers")
     public Result<List<Map>> providersList() {
         List<Map> list = new ArrayList<>();
         for (Map.Entry<String, ProviderDo> entry : settings.getProviders().entrySet()) {
@@ -273,7 +273,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 获取单个供应商详情
      */
     @Get
-    @Mapping("/web/settings/providers/get")
+    @Mapping("/web/settings/llm/providers/get")
     public Result<Map> providersGet(@Param("name") String name) {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
@@ -299,7 +299,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 添加供应商
      */
     @Post
-    @Mapping("/web/settings/providers/add")
+    @Mapping("/web/settings/llm/providers/add")
     public Result providersAdd(@Body String json) throws Exception {
         ONode root = ONode.ofJson(json);
         String name = root.get("name").getString();
@@ -333,7 +333,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 更新供应商
      */
     @Post
-    @Mapping("/web/settings/providers/update")
+    @Mapping("/web/settings/llm/providers/update")
     public Result providersUpdate(@Body String json) throws Exception {
         ONode root = ONode.ofJson(json);
         String name = root.get("name").getString();
@@ -409,7 +409,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 删除供应商（并级联删除所有关联模型）
      */
     @Post
-    @Mapping("/web/settings/providers/remove")
+    @Mapping("/web/settings/llm/providers/remove")
     public Result providersRemove(@Param("name") String name) throws Exception {
         if (Assert.isEmpty(name)) {
             return Result.failure("name is required");
@@ -446,7 +446,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 切换供应商启用/禁用状态
      */
     @Post
-    @Mapping("/web/settings/providers/toggle")
+    @Mapping("/web/settings/llm/providers/toggle")
     public Result providersToggle(@Param("name") String name, @Param("enabled") Boolean enabled) throws Exception {
         if (Assert.isEmpty(name) || enabled == null) {
             return Result.failure("name and enabled are required");
@@ -475,7 +475,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 拉取供应商模型列表
      */
     @Post
-    @Mapping("/web/settings/providers/fetch")
+    @Mapping("/web/settings/llm/providers/fetch")
     public Result providersFetch(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("standard") String standard) {
         if (Assert.isEmpty(apiUrl)) {
             return Result.failure("apiUrl is required");
@@ -535,7 +535,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 同步供应商模型到 LLM 模型配置
      */
     @Post
-    @Mapping("/web/settings/providers/sync-models")
+    @Mapping("/web/settings/llm/providers/sync-models")
     public Result providersSyncModels(@Body String json) throws Exception {
         ONode root = ONode.ofJson(json);
         String providerName = root.get("providerName").getString();
@@ -700,7 +700,7 @@ public class LlmSettingController extends BaseSettingsController {
      * 从供应商生成模型配置
      */
     @Post
-    @Mapping("/web/settings/providers/generate")
+    @Mapping("/web/settings/llm/providers/generate")
     public Result providersGenerate(@Body String json) throws Exception {
         ONode root = ONode.ofJson(json);
         String providerName = root.get("providerName").getString();

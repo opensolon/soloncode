@@ -155,7 +155,7 @@
     // ==================== 列表视图 ====================
     function loadProvidersList() {
         $.ajax({
-            url: '/web/settings/providers',
+            url: '/web/settings/llm/providers',
             method: 'GET',
             success: function (res) {
                 if (res.code === 200) {
@@ -350,7 +350,7 @@
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>');
 
         $.ajax({
-            url: '/web/settings/providers/fetch',
+            url: '/web/settings/llm/providers/fetch',
             method: 'POST',
             data: {
                 apiUrl: apiUrl,
@@ -504,7 +504,7 @@
     // ==================== CRUD 操作 ====================
     function editProvider(name) {
         $.ajax({
-            url: '/web/settings/providers/get',
+            url: '/web/settings/llm/providers/get',
             method: 'GET',
             data: { name: name },
             success: function (res) {
@@ -570,7 +570,7 @@
             data.originalName = currentProvider.name;
         }
 
-        var url = currentProvider ? '/web/settings/providers/update' : '/web/settings/providers/add';
+        var url = currentProvider ? '/web/settings/llm/providers/update' : '/web/settings/llm/providers/add';
 
         $.ajax({
             url: url,
@@ -596,7 +596,7 @@
     function syncModelsToLlm(providerData) {
         // 调用后端接口同步模型
         $.ajax({
-            url: '/web/settings/providers/sync-models',
+            url: '/web/settings/llm/providers/sync-models',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
@@ -628,7 +628,7 @@
         }, function (index) {
             layui.layer.close(index);
             $.ajax({
-                url: '/web/settings/providers/remove',
+                url: '/web/settings/llm/providers/remove',
                 method: 'POST',
                 data: { name: currentProvider.name },
                 success: function (res) {
@@ -656,7 +656,7 @@
 
     function toggleProvider(name, enabled) {
         $.ajax({
-            url: '/web/settings/providers/toggle',
+            url: '/web/settings/llm/providers/toggle',
             method: 'POST',
             data: { name: name, enabled: enabled },
             success: function (res) {
