@@ -1,5 +1,6 @@
 package org.noear.solon.codecli.portal.web.market;
 
+import org.noear.solon.codecli.config.models.ModelsAdapterManager;
 import org.noear.solon.codecli.portal.web.market.impl.ClawhubMarket;
 import org.noear.solon.codecli.portal.web.market.impl.SkillhubMarket;
 import org.noear.solon.codecli.portal.web.market.impl.SkillsShMarket;
@@ -17,12 +18,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author noear 2026/5/29 created
  */
 public class MarketManager {
+    private static MarketManager instance;
+
+    public static MarketManager getInstance() {
+        if (instance == null) {
+            instance = new MarketManager();
+        }
+
+        return instance;
+    }
+
+    //-------
+
     private static final Logger LOG = LoggerFactory.getLogger(MarketManager.class);
 
     private final Map<String, Market> markets = new LinkedHashMap<>();
     private Market defaultMarket;
 
-    public MarketManager() {
+    private MarketManager() {
         Market skillhub = new SkillhubMarket();
         register(skillhub);
 

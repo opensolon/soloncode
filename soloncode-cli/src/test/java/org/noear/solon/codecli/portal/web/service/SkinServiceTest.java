@@ -25,7 +25,7 @@ public class SkinServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new SkinService();
+        service = SkinService.getInstance();
         tempHome = Files.createTempDirectory("soloncode-skin-home-");
         originalUserHome = System.getProperty("user.home");
         System.setProperty("user.home", tempHome.toString());

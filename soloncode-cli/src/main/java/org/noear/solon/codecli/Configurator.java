@@ -35,6 +35,7 @@ import org.noear.solon.codecli.portal.web.WebChannel;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.codecli.portal.web.WebSettingsController;
 import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.portal.web.settings.*;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
@@ -306,11 +307,14 @@ public class Configurator {
         BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler, sessionManager));
         Solon.app().router().add(webController);
 
-        WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);
-        settingsController.setFileWatchService(fileWatchService);
-        settingsController.setWebGate(webGate);
-        BeanWrap webSettingsController = Solon.context().wrapAndPut(WebSettingsController.class, settingsController);
-        Solon.app().router().add(webSettingsController);
+        addWebBean(new WebSettingsController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new MountSettingsController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new SkillSettingsController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new LlmSettingController(agentRuntime, settings, fileWatchService, webGate));
+
+        addWebBean(new McpSettingsController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new OpenapiSettingsController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new LspSettingsController(agentRuntime, settings, fileWatchService, webGate));
 
         BeanWrap webChannel = Solon.context().wrapAndPut(WebChannel.class, new WebChannel(agentRuntime, webGate));
         Solon.app().router().add(webChannel);
@@ -346,6 +350,11 @@ public class Configurator {
             String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
             cliShell.printWelcome("Web interface: " + url);
         }
+    }
+
+    private  void addWebBean(Object bean){
+        BeanWrap beanWrap = Solon.context().wrapAndPut(bean.getClass(), bean);
+        Solon.app().router().add(beanWrap);
     }
 
     private void openBrowser() {

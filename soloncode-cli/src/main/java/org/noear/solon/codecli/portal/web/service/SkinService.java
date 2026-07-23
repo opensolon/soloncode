@@ -17,6 +17,7 @@ package org.noear.solon.codecli.portal.web.service;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.util.Assert;
 
 import java.io.BufferedInputStream;
@@ -41,6 +42,23 @@ import java.util.zip.ZipOutputStream;
  * @author noear 2026/7/17
  */
 public class SkinService {
+    private static SkinService instance;
+
+    public static SkinService getInstance() {
+        if (instance == null) {
+            instance = new SkinService();
+        }
+
+        return instance;
+    }
+
+    private SkinService() {
+
+    }
+
+    //-------
+
+
     private static final Pattern SKIN_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$");
     private static final Pattern CSS_URL_PATTERN = Pattern.compile("url\\((['\"]?)([^)'\"]+)\\1\\)", Pattern.CASE_INSENSITIVE);
     private static final long MAX_ZIP_BYTES = 8L * 1024 * 1024; // 8MB
@@ -252,7 +270,7 @@ public class SkinService {
         }
         deleteRecursively(target);
     }
-    
+
     /**
      * 导出本地皮肤为 zip 字节（扁平结构，便于再次安装分享）。
      */
@@ -271,7 +289,7 @@ public class SkinService {
         if (!Files.isRegularFile(target.resolve("skin.css"))) {
             throw new IllegalArgumentException("皮肤不存在: " + name);
         }
-    
+
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(bos)) {
             final Path srcNorm = target.normalize();

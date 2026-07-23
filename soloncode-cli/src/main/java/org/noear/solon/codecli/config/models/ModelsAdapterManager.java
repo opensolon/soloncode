@@ -13,12 +13,23 @@ import java.util.Map;
  * ModelProvider 工厂
  * 管理不同类型的模型提供商实现
  */
-@Component
 public class ModelsAdapterManager {
+    private static ModelsAdapterManager instance;
+
+    public static ModelsAdapterManager getInstance() {
+        if (instance == null) {
+            instance = new ModelsAdapterManager();
+        }
+
+        return instance;
+    }
+
+    //-------
+
     private final Map<String, ModelsAdapter> adapterMap = new HashMap<>();
     private ModelsAdapter defaultAdapter;
 
-    public ModelsAdapterManager() {
+    private ModelsAdapterManager() {
         OpenAIModelsAdapter openAIModelProvider = new OpenAIModelsAdapter();
         AnthropicModelsAdapter anthropicModelsAdapter = new AnthropicModelsAdapter();
         OllamaModelsAdapter ollamaModelsAdapter = new OllamaModelsAdapter();

@@ -749,7 +749,7 @@
             $overlay.remove();
         });
         
-        // 确认 - 创建虚拟文件并使用现有导入流程
+        // 确认 - 直接 POST JSON 字符串到后端解析接口
         $('#importStringConfirm').on('click', function () {
             var jsonStr = $('#importStringInput').val().trim();
             if (!jsonStr) {
@@ -757,7 +757,7 @@
                 return;
             }
             
-            // 验证 JSON 格式
+            // 基本验证
             try {
                 JSON.parse(jsonStr);
             } catch (e) {
@@ -768,18 +768,31 @@
             // 关闭字符串对话框
             $overlay.remove();
             
-            // 创建虚拟文件并触发现有导入流程
-            try {
-                var blob = new Blob([jsonStr], { type: 'application/json' });
-                var file = new File([blob], 'import.json', { type: 'application/json' });
-                
-                var dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                $('#mcpImportFileInput')[0].files = dataTransfer.files;
-                $('#mcpImportFileInput').trigger('change');
-            } catch (e) {
-                showToast('处理 JSON 字符串失败: ' + e.message, 'error');
-            }
+            // 直接 POST JSON 字符串到后端解析接口（复用文件导入的同一套解析逻辑）
+            $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 解析中...');
+            
+            $.ajax({
+                url: '/web/settings/mcp/import/parse/string',
+                method: 'POST',
+                data: jsonStr,
+                contentType: 'application/json',
+                dataType: 'json',
+                success: function(resp) {
+                    if (resp.code === 200 && resp.data && resp.data.servers) {
+                        showImportPreview(resp.data, function(selectedNames) {
+                            executeImport(selectedNames, resp.data.servers);
+                        });
+                    } else {
+                        showToast('解析失败: ' + (resp.message || '未知错误'), 'error');
+                    }
+                },
+                error: function() {
+                    showToast('解析失败，请检查 JSON 字符串格式后重试', 'error');
+                },
+                complete: function() {
+                    $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导入');
+                }
+            });
         });
         
         // 点击遮罩关闭
@@ -888,9 +901,17 @@
                 return;
             }
             
-            // 用后端结构化数据构建请求体
-            var mcpBody = buildAddBodyFromParsed(serverConfig);
-            if (!mcpBody) {
+            // 后端返回的数据已包含 add 所需的全部字段（name/type/enabled/scope + 类型相关参数），
+            // 直接作为请求体使用，仅需将 timeout 转为 ISO-8601 格式并排除仅用于展示的字段
+            var mcpBody = Object.assign({}, serverConfig);
+            delete mcpBody.detail;
+            delete mcpBody.error;
+            if (mcpBody.timeout !== undefined && mcpBody.timeout !== null && mcpBody.timeout !== '') {
+                mcpBody.timeout = parseTimeout(mcpBody.timeout);
+            } else {
+                delete mcpBody.timeout;
+            }
+            if (!mcpBody.name || !mcpBody.type) {
                 result.errors.push({ name: name, reason: '配置数据不完整' });
                 appendProgressLog('✗ ' + name + ': 配置数据不完整', true);
                 processNext(index + 1);
@@ -926,45 +947,6 @@
         processNext(0);
     }
     
-    /**
-     * 将后端解析后的结构化数据构建为 /mcp/servers/add 的请求体
-     * @param {Object} srv - 后端返回的单个服务器结构化数据
-     * @returns {Object|null} 请求体对象
-     */
-    function buildAddBodyFromParsed(srv) {
-        if (!srv || !srv.name || !srv.type) return null;
-        
-        var bodyObj = {
-            name: srv.name,
-            type: srv.type,
-            enabled: true,
-            scope: 'user'
-        };
-        
-        if (srv.type === 'stdio') {
-            if (!srv.command) return null;
-            bodyObj.command = srv.command;
-            if (srv.args && srv.args.length > 0) {
-                bodyObj.args = srv.args;
-            }
-            if (srv.env && Object.keys(srv.env).length > 0) {
-                bodyObj.env = srv.env;
-            }
-        } else if (srv.type === 'sse' || srv.type === 'streamable') {
-            if (!srv.url) return null;
-            bodyObj.url = srv.url;
-            if (srv.headers && Object.keys(srv.headers).length > 0) {
-                bodyObj.headers = srv.headers;
-            }
-            if (srv.timeout) {
-                bodyObj.timeout = parseTimeout(srv.timeout);
-            }
-        } else {
-            return null;
-        }
-        
-        return bodyObj;
-    }
     
     window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
 })();

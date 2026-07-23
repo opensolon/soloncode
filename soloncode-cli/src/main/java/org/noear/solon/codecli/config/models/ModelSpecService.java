@@ -10,6 +10,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * 从 models.json 读取模型规格信息，作为备用数据源。
  */
 public class ModelSpecService {
+    private static ModelSpecService instance;
+
+    public static ModelSpecService getInstance() {
+        if (instance == null) {
+            instance = new ModelSpecService();
+        }
+
+        return instance;
+    }
+
+    private ModelSpecService() {
+
+    }
+
+    //-------
+
     private static final String MODELS_SPEC_URL = "https://models.dev/models.json";
 
     private final Map<String, ModelSpec> specs = new ConcurrentHashMap<>();
