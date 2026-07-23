@@ -233,7 +233,8 @@
 
     function showList() {
         $formView.hide();
-        $listView.show();
+        $listView.addClass('slide-back').show();
+        setTimeout(function(){ $listView.removeClass('slide-back'); }, 260);
         currentProvider = null;
         fetchedModels = [];
         loadProvidersList();

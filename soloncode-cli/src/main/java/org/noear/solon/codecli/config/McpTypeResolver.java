@@ -58,9 +58,12 @@ public class McpTypeResolver {
         // sse 及别名
         map.put("sse", TYPE_SSE);
         map.put("sse_http", TYPE_SSE);
+        map.put("ssehttp", TYPE_SSE);
         // streamable 及别名
         map.put("streamable", TYPE_STREAMABLE);
         map.put("streamable_http", TYPE_STREAMABLE);
+        map.put("streamablehttp", TYPE_STREAMABLE);
+        map.put("http", TYPE_STREAMABLE);
         map.put("remote", TYPE_STREAMABLE);
         // streamable_stateless
         map.put("streamable_stateless", TYPE_STREAMABLE_STATELESS);

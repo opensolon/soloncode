@@ -80,11 +80,32 @@ function ensureChatInHistory(sessionId, firstMsg, makeCurrent) {
 }
 
 /* Sidebar event delegation — single listener instead of per-item binding */
+function closeSidebarItemMenus() {
+    $(historyList).find('.sidebar-item-menu-wrap.open').removeClass('open');
+    $(historyList).find('.sidebar-item.menu-open').removeClass('menu-open');
+    $(historyList).find('.sidebar-item-menu-trigger').attr('aria-expanded', 'false');
+}
+
 $(historyList).on('click', function(e) {
     var $target = $(e.target);
+    var $menuTrigger = $target.closest('.sidebar-item-menu-trigger');
+    if ($menuTrigger.length) {
+        e.stopPropagation();
+        var $wrap = $menuTrigger.closest('.sidebar-item-menu-wrap');
+        var $item = $wrap.closest('.sidebar-item');
+        var shouldOpen = !$wrap.hasClass('open');
+        closeSidebarItemMenus();
+        if (shouldOpen) {
+            $wrap.addClass('open');
+            $item.addClass('menu-open');
+            $menuTrigger.attr('aria-expanded', 'true');
+        }
+        return;
+    }
     var $delBtn = $target.closest('.sidebar-item-del');
     if ($delBtn.length) {
         e.stopPropagation();
+        closeSidebarItemMenus();
         var idx = parseInt($delBtn.closest('.sidebar-item').attr('data-idx'));
         if (!isNaN(idx)) deleteSession(idx);
         return;
@@ -92,6 +113,7 @@ $(historyList).on('click', function(e) {
     var $renameBtn = $target.closest('.sidebar-item-rename');
     if ($renameBtn.length) {
         e.stopPropagation();
+        closeSidebarItemMenus();
         var idx = parseInt($renameBtn.closest('.sidebar-item').attr('data-idx'));
         if (!isNaN(idx)) startRename(idx);
         return;
@@ -99,6 +121,7 @@ $(historyList).on('click', function(e) {
     var $forkBtn = $target.closest('.sidebar-item-fork');
     if ($forkBtn.length) {
         e.stopPropagation();
+        closeSidebarItemMenus();
         var idx = parseInt($forkBtn.closest('.sidebar-item').attr('data-idx'));
         if (!isNaN(idx)) forkSession(idx);
         return;
@@ -108,6 +131,10 @@ $(historyList).on('click', function(e) {
         var idx = parseInt($item.attr('data-idx'));
         if (!isNaN(idx)) selectSession(idx);
     }
+});
+
+$(document).on('click', function(e) {
+    if (!$(e.target).closest('.sidebar-item-menu-wrap').length) closeSidebarItemMenus();
 });
 
 var _updateHistoryUIPending = false;
@@ -133,10 +160,15 @@ function updateHistoryUI() {
             if (streaming) {
                 html += '<span class="sidebar-item-spinner" title="对话进行中..."></span>';
             }
-            html += '<button class="sidebar-item-rename" title="重命名"><i class="layui-icon layui-icon-edit"></i></button>'
-                + '<button class="sidebar-item-fork" title="复制对话"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.25 2.25 0 1 1-1.5 0v-2.128h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"/></svg></button>'
-                + '<button class="sidebar-item-del" title="删除对话"><i class="layui-icon layui-icon-close"></i></button>'
-                + '</div>';
+            html += '<span class="sidebar-item-menu-wrap">'
+                + '<button type="button" class="sidebar-item-menu-trigger" title="对话操作" aria-label="对话操作" aria-expanded="false">'
+                + '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.25"/><circle cx="12" cy="12" r="1.25"/><circle cx="19" cy="12" r="1.25"/></svg>'
+                + '</button>'
+                + '<span class="sidebar-item-menu" role="menu">'
+                + '<button type="button" class="sidebar-item-rename" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>重命名</span></button>'
+                + '<button type="button" class="sidebar-item-fork" role="menuitem"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.25 2.25 0 1 1-1.5 0v-2.128h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 0 1.5Z"/></svg><span>复制对话</span></button>'
+                + '<button type="button" class="sidebar-item-del" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>删除</span></button>'
+                + '</span></span></div>';
         }
         var $list = $(historyList);
         // 仅当 HTML 真正变化时才写入 DOM，避免无效重排
@@ -161,7 +193,7 @@ function startRename(idx) {
     });
 
     $labelEl.hide();
-    $item.find('.sidebar-item-rename').hide();
+    $item.find('.sidebar-item-menu-wrap').hide();
     $labelEl.before($input);
     $input[0].focus();
     $input[0].select();
@@ -179,7 +211,7 @@ function startRename(idx) {
         }
         $input.remove();
         $labelEl.show();
-        $item.find('.sidebar-item-rename').show();
+        $item.find('.sidebar-item-menu-wrap').show();
         updateHistoryUI();
     }
 
