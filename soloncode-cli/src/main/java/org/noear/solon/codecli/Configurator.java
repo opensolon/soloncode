@@ -74,9 +74,6 @@ public class Configurator {
     @Inject
     SessionManager sessionManager;
 
-    @Inject
-    ModelsAdapterManager modelProviderFactory;
-
     private LoopScheduler loopScheduler;
 
     @Bean
@@ -284,7 +281,7 @@ public class Configurator {
         WebSocketRouter.getInstance().of("/desktop/ws", new WsGate(agentRuntime, settings));
 
         //serve desktop controller
-        BeanWrap desktopBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, settings, modelProviderFactory));
+        BeanWrap desktopBean = Solon.context().wrapAndPut(WsController.class, new WsController(agentRuntime, settings));
         Solon.app().router().add(desktopBean);
 
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());

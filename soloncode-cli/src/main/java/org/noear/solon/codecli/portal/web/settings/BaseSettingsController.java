@@ -38,7 +38,7 @@ public class BaseSettingsController {
     /**
      * 模型提供商工厂，用于拉取模型列表
      */
-    protected final ModelsAdapterManager modelProviderFactory;
+    protected final ModelsAdapterManager modelsAdapterManager;
 
     /**
      * 模型规格参考服务，用于从 models.json 获取上下文大小
@@ -72,7 +72,7 @@ public class BaseSettingsController {
 
         this.skinService = SkinService.getInstance();
         this.marketManager = MarketManager.getInstance();
-        this.modelProviderFactory = ModelsAdapterManager.getInstance();
+        this.modelsAdapterManager = ModelsAdapterManager.getInstance();
         this.modelSpecService = ModelSpecService.getInstance();
     }
 

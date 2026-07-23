@@ -33,12 +33,12 @@ public class WsController {
 
     private final HarnessEngine engine;
     private final AgentSettings settings;
-    private final ModelsAdapterManager modelProviderFactory;
+    private final ModelsAdapterManager modelsAdapterManager;
 
-    public WsController(HarnessEngine engine, AgentSettings settings, ModelsAdapterManager modelProviderFactory) {
+    public WsController(HarnessEngine engine, AgentSettings settings) {
         this.engine = engine;
         this.settings = settings;
-        this.modelProviderFactory = modelProviderFactory;
+        this.modelsAdapterManager = ModelsAdapterManager.getInstance();
     }
 
     /**
@@ -91,7 +91,7 @@ public class WsController {
             return Result.failure("apiUrl is required");
         }
 
-        ModelsAdapter modelsAdapter = modelProviderFactory.getAdapter(provider);
+        ModelsAdapter modelsAdapter = modelsAdapterManager.getAdapter(provider);
         String baseUrl = modelsAdapter.deriveBaseUrl(apiUrl);
         List<ModelInfo> models = modelsAdapter.fetchModels(settings.getGeneral().getUserAgent(), baseUrl, null, apiKey);
 

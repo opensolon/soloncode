@@ -483,7 +483,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         try {
             // 使用 ModelsAdapterManager 获取对应的提供商
-            ModelsAdapter provider = modelProviderFactory.getAdapter(standard);
+            ModelsAdapter provider = modelsAdapterManager.getAdapter(standard);
             String baseUrl = provider.deriveBaseUrl(apiUrl);
 
             // 构建请求头
