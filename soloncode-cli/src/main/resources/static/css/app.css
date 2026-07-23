@@ -168,7 +168,6 @@ body {
 @media (max-width: 768px) { .sidebar-toggle-btn { display: none !important; } }
 
 /* Streaming indicator for sidebar items */
-.sidebar-item.streaming { border-left: 3px solid var(--accent); padding-left: 9px; }
 .sidebar-item.streaming .sidebar-item-menu-wrap { display: none; }
 .sidebar-item.streaming:hover .sidebar-item-spinner,
 .sidebar-item.streaming.menu-open .sidebar-item-spinner { display: none; }
