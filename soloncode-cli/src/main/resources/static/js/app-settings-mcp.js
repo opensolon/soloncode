@@ -464,7 +464,7 @@
         var dialogHtml = '<div class="import-overlay" id="importPreviewOverlay">'
             + '<div class="import-dialog">'
             + '<div class="import-dialog-header">'
-            + '<span class="import-dialog-title">导入 MCP 服务器（测试）</span>'
+            + '<span class="import-dialog-title">导入 MCP 服务器</span>'
             + '<button class="import-dialog-close" id="importPreviewClose">&times;</button>'
             + '</div>'
             + '<div class="import-dialog-body">'

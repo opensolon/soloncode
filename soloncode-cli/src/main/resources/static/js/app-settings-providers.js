@@ -153,6 +153,12 @@
     }
 
     // ==================== 列表视图 ====================
+
+    function getStandardAbbr(standard) {
+        if (!standard) return '';
+        return standard.split('-').map(function(p) { return p.charAt(0).toUpperCase(); }).join('');
+    }
+
     function loadProvidersList() {
         $.ajax({
             url: '/web/settings/llm/providers',
@@ -185,7 +191,7 @@
         var modelsCount = (provider.models || []).length;
 
         return '<div class="mcp-server-item' + (provider.enabled === false ? ' disabled' : '') + '" data-name="' + provider.name + '">' +
-            '<div class="mcp-server-icon">P</div>' +
+            '<div class="mcp-server-icon">' + (getStandardAbbr(provider.standard) || 'F') + '</div>' +
             '<div class="mcp-server-info">' +
                 '<div class="mcp-server-name">' + provider.name + ' <span class="settings-inline-tag">[' + (provider.standard || 'openai') + ']</span></div>' +
                 '<div class="mcp-server-detail">' + (provider.apiUrl || '未配置') + '</div>' +
@@ -450,6 +456,8 @@
         $modelsList.show();
 
         var providerName = $('#providerName').val() || '';
+        var providerStandard = $('#providerStandard').val();
+        var providerStandardAbbr = getStandardAbbr(providerStandard) || 'F';
         var providerEnabled = $('#providerEnabled').val() === 'true' || currentProvider && currentProvider.enabled !== false;
         var html = '';
         fetchedModels.forEach(function (model) {
@@ -465,6 +473,7 @@
                 ? '<button class="provider-model-remove-btn" title="移除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
                 : '';
             html += '<div class="provider-model-item' + (!enabled ? ' disabled' : '') + '" data-model-id="' + model.id + '">' +
+                '<div class="provider-model-icon">' + providerStandardAbbr + '</div>' +
                 '<div class="provider-model-info">' +
                     '<div class="provider-model-name">' + model.id + manualTag + (isSynced ? ' <span class="provider-model-synced">已同步</span>' : '') + '</div>' +
                 '</div>' +

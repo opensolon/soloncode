@@ -50,6 +50,11 @@
         }
     }
 
+    function getStandardAbbr(standard) {
+        if (!standard) return '';
+        return standard.split('-').map(function(p) { return p.charAt(0).toUpperCase(); }).join('');
+    }
+
     function renderLlmList(list, selected) {
         llmCachedList = list || [];
         var html = '';
@@ -60,14 +65,14 @@
                 + '<div class="llm-empty-desc">添加至少一个大模型以开始 AI 对话</div>'
                 + '</div>';
         } else {
-            var providerIcons = { 'openai': 'OAI', 'ollama': 'OLA', 'zhipu': 'ZP', 'deepseek': 'DS', 'baidu-qianfan': 'BD', 'ali-tongyi': 'ALI', 'moonshot': 'MS', 'minimax': 'MM' };
+
             list.forEach(function (item) {
                 var model = item.model || '';
                 var standard = item.standard || '';
                 var name = item.name || '';
                 var apiUrl = item.apiUrl || '';
                 var enabled = item.enabled !== false;
-                var icon = providerIcons[standard] || model.substring(0, 2).toUpperCase();
+                var icon = getStandardAbbr(standard) || 'F';
                 var apiUrlShort = apiUrl ? apiUrl.replace(/^https?:\/\//, '').split('/')[0] : '';
 
                 var displayName = name || model;

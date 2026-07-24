@@ -1140,6 +1140,25 @@ select[disabled] {
     border-radius: 8px;
 }
 
+.provider-model-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    margin-right: 10px;
+}
+
+.provider-model-item.disabled .provider-model-icon {
+    opacity: 0.5;
+}
+
 .provider-model-item {
     display: flex;
     align-items: center;
