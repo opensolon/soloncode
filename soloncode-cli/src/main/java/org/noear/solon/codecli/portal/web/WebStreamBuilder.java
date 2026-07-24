@@ -214,10 +214,10 @@ public class WebStreamBuilder {
                             isMultitask = twc.isMultitask();
                             chunk = twc.getRealChunk();
 
-                            if (chunk instanceof ReActChunk) {
+                            if (chunk instanceof RunEndChunk) {
                                 // 子代理 ReAct 结束：发 task_done，让前端立刻结算该 task-group
                                 // （主流转 done 仍会 finalize 兜底，但并行任务不必互相等待）
-                                WebChunk taskDoneChunk = onTaskDoneChunk((ReActChunk) chunk, runId, taskId,
+                                WebChunk taskDoneChunk = onTaskDoneChunk((RunEndChunk) chunk, runId, taskId,
                                         taskAgentName, taskDescription);
                                 return Flux.just(taskDoneChunk);
                             }
@@ -629,20 +629,20 @@ public class WebStreamBuilder {
     }
 
     /**
-     * 处理子代理任务结束（TaskWrapChuck 内层为 ReActChunk）。
+     * 处理子代理任务结束（TaskWrapChuck 内层为 RunEndChunk）。
      *
      * <p>产出 {@code task_done} WebChunk，携带 taskId 与 status（done/error）。
      * 前端据此将对应 task-group 立即标为绿勾/红叉，不必等主会话整流转 done。
      * 异常时附带错误文本，供 task-group 内展示。</p>
      *
-     * @param chunk           子代理最终 ReActChunk
+     * @param chunk           子代理最终 RunEndChunk
      * @param runId           父 runId（主会话 run）
      * @param taskId          子任务 id
      * @param taskAgentName   子代理名
      * @param taskDescription 子任务描述（task-group 标题）
      * @return task_done 类型 WebChunk
      */
-    private WebChunk onTaskDoneChunk(ReActChunk chunk, String runId, String taskId,
+    private WebChunk onTaskDoneChunk(RunEndChunk chunk, String runId, String taskId,
                                      String taskAgentName, String taskDescription) {
         boolean abnormal = chunk.isAbnormal();
         WebChunk wc = WebChunk.ofTaskDone(abnormal ? "error" : "done");
