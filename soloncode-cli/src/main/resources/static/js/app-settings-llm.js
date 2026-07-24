@@ -50,6 +50,58 @@
         }
     }
 
+    var modelIconRules = [
+        { pattern: /(agnes[-_/ ]?ai|agnesai|\bagnes\b)/, icon: 'agnesai' },
+        { pattern: /(claude|sonnet|opus|haiku)/, icon: 'claude' },
+        { pattern: /anthropic/, icon: 'anthropic' },
+        { pattern: /(deepseek|deep-seek)/, icon: 'deepseek' },
+        { pattern: /gemini/, icon: 'gemini' },
+        { pattern: /gemma/, icon: 'gemma' },
+        { pattern: /(mimo|xiaomi[-_/ ]?mimo)/, icon: 'xiaomimimo' },
+        { pattern: /(longcat|meituan[-_/ ]?longcat)/, icon: 'longcat' },
+        { pattern: /(qwen|tongyi|qwq)/, icon: 'qwen' },
+        { pattern: /(internlm|书生浦语)/, icon: 'internlm' },
+        { pattern: /(chatglm|\bglm\d*)/, icon: 'chatglm' },
+        { pattern: /(zhipu|智谱|z\.ai)/, icon: 'zhipu' },
+        { pattern: /(codegeex)/, icon: 'codegeex' },
+        { pattern: /(cogview)/, icon: 'cogview' },
+        { pattern: /kimi/, icon: 'kimi' },
+        { pattern: /moonshot/, icon: 'moonshot' },
+        { pattern: /hailuo/, icon: 'hailuo' },
+        { pattern: /minimax/, icon: 'minimax' },
+        { pattern: /(kwaikat|kat-coder|kwai[-_/ ]?kat)/, icon: 'kwaikat' },
+        { pattern: /(kwaipilot|kwai[-_/ ]?pilot)/, icon: 'kwaipilot' },
+        { pattern: /(kolors|可图)/, icon: 'kolors' },
+        { pattern: /(sensenova|日日新)/, icon: 'sensenova' },
+        { pattern: /(skywork|天工)/, icon: 'skywork' },
+        { pattern: /(xuanyuan|轩辕)/, icon: 'xuanyuan' },
+        { pattern: /(mistral|mixtral|codestral)/, icon: 'mistral' },
+        { pattern: /(llama|meta-ai|meta ai)/, icon: 'meta' },
+        { pattern: /(grok|\bxai\b)/, icon: 'grok' },
+        { pattern: /ollama/, icon: 'ollama' },
+        { pattern: /(doubao|豆包)/, icon: 'doubao' },
+        { pattern: /(hunyuan|混元)/, icon: 'hunyuan' },
+        { pattern: /(wenxin|ernie|文心)/, icon: 'wenxin' },
+        { pattern: /(baichuan|百川)/, icon: 'baichuan' },
+        { pattern: /(stepfun|阶跃|\bstep[-\s]?\d)/, icon: 'stepfun' },
+        { pattern: /(spark|星火)/, icon: 'spark' },
+        { pattern: /(cohere|command-r?)/, icon: 'cohere' },
+        { pattern: /(\byi\b|零一万物)/, icon: 'yi' },
+        { pattern: /(chatgpt|openai|codex|\bgpt|\bo[134](?:-|\b))/, icon: 'openai' }
+    ];
+
+    function renderModelIcon(model) {
+        var keywords = (model || '').toLowerCase();
+        for (var i = 0; i < modelIconRules.length; i++) {
+            if (modelIconRules[i].pattern.test(keywords)) {
+                var icon = modelIconRules[i].icon;
+                return '<span class="lobe-model-icon" style="--lobe-icon:url(\'/lobe-icons/' + icon + '.svg\')" aria-hidden="true"></span>';
+            }
+        }
+        var fallback = (model || '?').trim().substring(0, 2).toUpperCase();
+        return '<span>' + escapeHtml(fallback) + '</span>';
+    }
+
     function renderLlmList(list, selected) {
         llmCachedList = list || [];
         var html = '';
@@ -60,14 +112,12 @@
                 + '<div class="llm-empty-desc">添加至少一个大模型以开始 AI 对话</div>'
                 + '</div>';
         } else {
-            var providerIcons = { 'openai': 'OAI', 'ollama': 'OLA', 'zhipu': 'ZP', 'deepseek': 'DS', 'baidu-qianfan': 'BD', 'ali-tongyi': 'ALI', 'moonshot': 'MS', 'minimax': 'MM' };
             list.forEach(function (item) {
                 var model = item.model || '';
                 var standard = item.standard || '';
                 var name = item.name || '';
                 var apiUrl = item.apiUrl || '';
                 var enabled = item.enabled !== false;
-                var icon = providerIcons[standard] || model.substring(0, 2).toUpperCase();
                 var apiUrlShort = apiUrl ? apiUrl.replace(/^https?:\/\//, '').split('/')[0] : '';
 
                 var displayName = name || model;
@@ -96,7 +146,7 @@
                 var isDefault = name === selected;
                 var standardTag = standard ? ' <span class="settings-inline-tag">[' + escapeHtml(standard) + ']</span>' : '';
                 html += '<div class="llm-model-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">'
-                    + '<div class="llm-model-icon">' + escapeHtml(icon) + '</div>'
+                    + '<div class="llm-model-icon">' + renderModelIcon(model) + '</div>'
                     + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + standardTag + (isDefault ? ' <span class="llm-default-badge">默认</span>' : '') + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div><div class="llm-model-meta">'
                     + '<span class="llm-api-hint">' + metaLine + '</span>'
                     + '</div></div><div class="llm-model-actions">'
