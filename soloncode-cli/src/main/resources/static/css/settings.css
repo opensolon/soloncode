@@ -104,7 +104,6 @@
 .llm-model-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .llm-model-item:active { transform: scale(0.997); }
 .llm-model-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
-.lobe-model-icon { width: 18px; height: 18px; display: block; background-color: var(--text-secondary); -webkit-mask: var(--lobe-icon) center / contain no-repeat; mask: var(--lobe-icon) center / contain no-repeat; }
 .llm-model-info { flex: 1; min-width: 0; }
 .llm-model-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .llm-model-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
