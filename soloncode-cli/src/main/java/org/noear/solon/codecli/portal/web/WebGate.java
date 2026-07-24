@@ -859,7 +859,7 @@ public class WebGate extends SimpleWebSocketListener {
 
             ReActTrace trace = session.getContext().getAs("__main");
             if (trace != null) {
-                emitToClient(sessionId, streamBuilder.onFinalChunk(session, trace, true, "用户已取消任务."));
+                emitToClient(sessionId, streamBuilder.onRunEndChunk(session, trace, true, "用户已取消任务."));
             }
 
             // 2) 同线程先发 done，再 dispose；doFinally 中 emitDoneOnce 因 CAS 跳过

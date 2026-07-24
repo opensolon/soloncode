@@ -16,10 +16,7 @@
 package org.noear.solon.codecli.portal.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.agent.react.ReActChunk;
-import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.RunStartChunk;
+import org.noear.solon.ai.agent.react.*;
 import org.noear.solon.ai.agent.react.intercept.ContextSizeChunk;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
@@ -41,7 +38,6 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.*;
@@ -123,15 +119,6 @@ public class WebStreamBuilder {
 
     /**
      * 构建流式响应管线
-     *
-     * <p>核心流程：
-     * <ol>
-     *   <li>处理 prompt（null兜底、/resume重置）并记录当前选择的 Agent</li>
-     *   <li>调用 {@link ReActAgent#stream()} 获取 ReAct 流式输出</li>
-     *   <li>按 chunk 类型分发到对应的处理方法（onReasonDeltaChunk / onReasonCompleteChunk / onActionEndChunk / onFinalChunk）</li>
-     *   <li>过滤空 chunk、捕获异常并生成错误 WebChunk</li>
-     *   <li>流结束后检测 HITL 状态，如有挂起的人工审批任务则追加 HITL WebChunk</li>
-     * </ol></p>
      *
      * @param session    Agent 会话，承载会话状态、属性及 HITL 上下文
      * @param agent      ReAct Agent 实例，提供流式推理能力
@@ -215,10 +202,10 @@ public class WebStreamBuilder {
                     if (chunk instanceof TaskWrapChuck) {
                         TaskWrapChuck twc = (TaskWrapChuck) chunk;
                         if (twc.getRealChunk() instanceof ContextSizeChunk ||
-                                twc.getRealChunk() instanceof ActionChunk ||
-                                twc.getRealChunk() instanceof ObservationChunk ||
-                                twc.getRealChunk() instanceof ReasonChunk ||
-                                twc.getRealChunk() instanceof ReActChunk) {
+                                twc.getRealChunk() instanceof ToolCallStartChunk ||
+                                twc.getRealChunk() instanceof ToolCallEndChunk ||
+                                twc.getRealChunk() instanceof ReasonDeltaChunk ||
+                                twc.getRealChunk() instanceof RunEndChunk) {
                             // 解包子代理包装：透传父 run / task 元信息
                             runId = twc.getParentRunId();
                             taskId = twc.getTaskId();
@@ -241,18 +228,26 @@ public class WebStreamBuilder {
                     }
 
                     WebChunk webChunk = null;
-                    if (chunk instanceof ContextSizeChunk) {
+                    if (chunk instanceof RunStartChunk) {
+                        //任务运行开始
+                    } else if (chunk instanceof ContextSizeChunk) {
                         webChunk = onContextSizeChunk(chatModel, (ContextSizeChunk) chunk);
-                    } else if (chunk instanceof ReasonChunk) {
-                        webChunk = onReasonChunk((ReasonChunk) chunk, taskAgentName);
-                    } else if (chunk instanceof ThoughtChunk) {
-                        webChunk = onThoughtChunk(session, (ThoughtChunk) chunk, taskAgentName, isMultitask);
-                    } else if (chunk instanceof ActionChunk) {
-                        webChunk = onActionChunk((ActionChunk) chunk, taskAgentName);
-                    } else if (chunk instanceof ObservationChunk) {
-                        webChunk = onObservationChunk((ObservationChunk) chunk, taskAgentName);
-                    } else if (chunk instanceof ReActChunk) {
-                        webChunk = onFinalChunk(session, (ReActChunk) chunk);
+                    } else if (chunk instanceof ReasonStartChunk) {
+                        //思考开始
+                    } else if (chunk instanceof ReasonDeltaChunk) {
+                        webChunk = onReasonDeltaChunk((ReasonDeltaChunk) chunk, taskAgentName);
+                    } else if (chunk instanceof ReasonEndChunk) {
+                        //思考结束
+                        webChunk = onReasonEndChunk(session, (ReasonEndChunk) chunk, taskAgentName, isMultitask);
+                    } else if (chunk instanceof ToolCallStartChunk) {
+                        //工具调用开始
+                        webChunk = onToolCallStartChunk((ToolCallStartChunk) chunk, taskAgentName);
+                    } else if (chunk instanceof ToolCallEndChunk) {
+                        //工具调用结束
+                        webChunk = onToolCallEndChunk((ToolCallEndChunk) chunk, taskAgentName);
+                    } else if (chunk instanceof RunEndChunk) {
+                        //运行结束
+                        webChunk = onRunEndChunk(session, (RunEndChunk) chunk);
                     }
 
                     if (webChunk == null || webChunk == WebChunk.EMPTY) {
@@ -282,8 +277,8 @@ public class WebStreamBuilder {
 
                     WebChunk errorChunk = WebChunk.ofError(e);
                     ReActTrace trace = session.getContext().getAs("__main");
-                    if(trace != null){
-                        this.onFinalChunk(session, trace, true, errorChunk.getText());
+                    if (trace != null) {
+                        this.onRunEndChunk(session, trace, true, errorChunk.getText());
                     }
 
                     return Flux.fromIterable(chunkList);
@@ -341,7 +336,7 @@ public class WebStreamBuilder {
      * @param chunk 推理阶段的 chunk 数据
      * @return 映射后的 WebChunk，或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onReasonChunk(ReasonChunk chunk, String taskAgentName) {
+    private WebChunk onReasonDeltaChunk(ReasonDeltaChunk chunk, String taskAgentName) {
         if (!chunk.isToolCalls() && Assert.isNotEmpty(chunk.getContent())) {
             WebChunk wc;
             if (chunk.getMessage().isThinking()) {
@@ -368,13 +363,13 @@ public class WebStreamBuilder {
      * 处理工具调用开始阶段的 chunk（来源引擎 ActionChunk）
      *
      * <p>在工具实际执行前发送 action_start，让前端提前渲染 loading 状态的工具卡片骨架，
-     * 待后续 {@link #onObservationChunk} 的结果到达时复用同一卡片填充并转完成态。
-     * 过滤规则与 {@link #onObservationChunk} 保持一致，避免建卡后无对应结果填充。</p>
+     * 待后续 {@link #onToolCallEndChunk} 的结果到达时复用同一卡片填充并转完成态。
+     * 过滤规则与 {@link #onToolCallEndChunk} 保持一致，避免建卡后无对应结果填充。</p>
      *
      * @param chunk 工具调用开始的 chunk 数据
      * @return 映射后的 WebChunk（含工具名与参数），或 {@link WebChunk#EMPTY}（内部工具或无名称时）
      */
-    private WebChunk onActionChunk(ActionChunk chunk, String taskAgentName) {
+    private WebChunk onToolCallStartChunk(ToolCallStartChunk chunk, String taskAgentName) {
         if (Assert.isEmpty(chunk.getToolName())) {
             return WebChunk.EMPTY;
         }
@@ -435,7 +430,7 @@ public class WebStreamBuilder {
      * @param chunk 工具调用结束的 chunk 数据
      * @return 映射后的 WebChunk（含工具信息），或 {@link WebChunk#EMPTY}（内部工具或无名称时）
      */
-    private WebChunk onObservationChunk(ObservationChunk chunk, String taskAgentName) {
+    private WebChunk onToolCallEndChunk(ToolCallEndChunk chunk, String taskAgentName) {
         if (chunk.getError() != null) {
             return WebChunk.EMPTY;
         }
@@ -599,7 +594,7 @@ public class WebStreamBuilder {
      * @param chunk   思考轮次的 chunk 数据，包含助手消息和追踪信息
      * @return 映射后的 WebChunk（多任务并行时有内容），或 {@link WebChunk#EMPTY}
      */
-    private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk chunk, String taskAgentName, boolean isMultitask) {
+    private WebChunk onReasonEndChunk(AgentSession session, ReasonEndChunk chunk, String taskAgentName, boolean isMultitask) {
         ReActTrace trace = chunk.getTrace();
         String sessionId = session.getSessionId();
         String resultContent = chunk.getAssistantMessage().getResultContent();
@@ -701,11 +696,11 @@ public class WebStreamBuilder {
      * @param chunk   ReAct 最终汇总 chunk，包含追踪信息和可能的异常内容
      * @return 包含追踪信息的 trace 类型 WebChunk
      */
-    private WebChunk onFinalChunk(AgentSession session, ReActChunk chunk) {
-        return onFinalChunk(session, chunk.getTrace(), chunk.isAbnormal(), chunk.getContent());
+    private WebChunk onRunEndChunk(AgentSession session, RunEndChunk chunk) {
+        return onRunEndChunk(session, chunk.getTrace(), chunk.isAbnormal(), chunk.getContent());
     }
 
-    public WebChunk onFinalChunk(AgentSession session, ReActTrace trace, boolean isAbnormal, String finalAnswer) {
+    public WebChunk onRunEndChunk(AgentSession session, ReActTrace trace, boolean isAbnormal, String finalAnswer) {
         if (isAbnormal) {
             // 通知 IM 任务完成了
             replyToBoundChannel(session.getSessionId(), finalAnswer, true);

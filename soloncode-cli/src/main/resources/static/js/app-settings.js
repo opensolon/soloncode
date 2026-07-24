@@ -103,6 +103,7 @@
 
     function resetCurrentTabView(targetTab) {
         if (targetTab === 'llm' && mod('_settingsLlm')) { mod('_settingsLlm').showList(); mod('_settingsLlm').reset(); }
+        else if (targetTab === 'agents' && mod('_settingsAgents')) { mod('_settingsAgents').showList(); mod('_settingsAgents').reset(); }
         else if (targetTab === 'mounts' && mod('_settingsMounts')) { mod('_settingsMounts').showList(); mod('_settingsMounts').reset(); }
         else if (targetTab === 'mcp' && mod('_settingsMcp')) { mod('_settingsMcp').showList(); mod('_settingsMcp').reset(); $('#mcpToolsToolbar').hide(); }
         else if (targetTab === 'openapi' && mod('_settingsOpenapi')) { mod('_settingsOpenapi').showList(); mod('_settingsOpenapi').reset(); }
@@ -121,6 +122,7 @@
         if (mod('_settingsMcp')) mod('_settingsMcp').showList();
         if (mod('_settingsOpenapi')) mod('_settingsOpenapi').showList();
         if (mod('_settingsLsp')) mod('_settingsLsp').showList();
+        if (mod('_settingsAgents')) mod('_settingsAgents').showList();
         if (mod('_settingsMounts')) mod('_settingsMounts').showList();
         if (window.settingsProviders) window.settingsProviders.showList();
         $('#llmCheckResult').hide();
@@ -159,6 +161,9 @@
         } else if (targetTab === 'permission') {
             $('#settingsTabPermission').addClass('active');
             if (mod('_settingsPermission')) mod('_settingsPermission').load();
+        } else if (targetTab === 'agents') {
+            $('#settingsTabAgents').addClass('active');
+            if (mod('_settingsAgents')) mod('_settingsAgents').load();
         } else if (targetTab === 'llm') {
             $('#settingsTabLlm').addClass('active');
             if (mod('_settingsLlm')) mod('_settingsLlm').load();
@@ -192,6 +197,7 @@
             if (mod('_settingsSkin')) mod('_settingsSkin').load();
         }
         else if (targetTab === 'permission') { if (mod('_settingsPermission')) mod('_settingsPermission').load(); }
+        else if (targetTab === 'agents') { if (mod('_settingsAgents')) mod('_settingsAgents').load(); }
         else if (targetTab === 'llm') { if (mod('_settingsLlm')) mod('_settingsLlm').load(); }
         else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(); }
         else if (targetTab === 'mounts') { if (mod('_settingsMounts')) mod('_settingsMounts').load(); }

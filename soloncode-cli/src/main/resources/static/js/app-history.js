@@ -416,6 +416,7 @@ function loadCommands() {
         } catch (e) {}
     });
 }
+window.reloadCommandHints = loadCommands;
 
 // hints 非首屏必需，空闲时再拉，减少启动并发
 if (window.requestIdleCallback) {

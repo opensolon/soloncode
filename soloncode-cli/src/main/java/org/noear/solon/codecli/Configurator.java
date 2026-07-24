@@ -305,6 +305,7 @@ public class Configurator {
         Solon.app().router().add(webController);
 
         addWebBean(new WebSettingsController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new AgentSettingsController(agentRuntime, settings, fileWatchService, webGate));
         addWebBean(new MountSettingsController(agentRuntime, settings, fileWatchService, webGate));
         addWebBean(new SkillSettingsController(agentRuntime, settings, fileWatchService, webGate));
         addWebBean(new LlmSettingController(agentRuntime, settings, fileWatchService, webGate));

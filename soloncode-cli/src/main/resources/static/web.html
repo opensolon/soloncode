@@ -464,6 +464,7 @@
                 <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 通用</button>
                 <button class="settings-tab" data-tab="permission"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> 工具权限</button>
                 <button class="settings-tab" data-tab="mounts"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 挂载</button>
+                <button class="settings-tab" data-tab="agents"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg> 智能体</button>
                 <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 技能市场</button>
 
                 <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">大语言模型</div>
@@ -850,6 +851,74 @@
 
                         <div class="form-actions form-actions-end settings-actions-spacious">
                             <button class="btn-primary" id="permissionSaveBtn">保存</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Agents Tab -->
+                <div class="settings-tab-content" id="settingsTabAgents">
+                    <div class="settings-view settings-view-list" id="agentsListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title">智能体</span>
+                                    <div class="settings-section-desc">管理用户全局与当前工作区的子代理定义</div>
+                                </div>
+                                <div class="settings-header-icon-actions">
+                                    <button class="mcp-action-btn" id="agentsRefreshBtn" title="从目录刷新"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                                    <button class="settings-add-btn" id="agentsAddBtn">+ 添加智能体</button>
+                                </div>
+                            </div>
+                            <div class="agents-list" id="agentsList"></div>
+                        </div>
+                    </div>
+                    <div class="settings-view settings-view-form" id="agentsFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="agentsBackBtn" title="返回"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                                    <span class="settings-section-title" id="agentsFormTitle">添加智能体</span>
+                                </div>
+                                <div class="settings-form-actions" id="agentsFormActions" style="display:none">
+                                    <button class="settings-form-action-btn" id="agentsFormCopyBtn" title="复制为新定义"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 复制</button>
+                                    <button class="settings-form-action-btn danger" id="agentsFormDeleteBtn" title="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 删除</button>
+                                </div>
+                            </div>
+                            <div class="agents-form">
+                                <div class="form-group">
+                                    <label>名称 <span class="required">*</span></label>
+                                    <input type="text" id="agentsName" placeholder="backend-dev"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>作用域</label>
+                                    <input type="hidden" id="agentsScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="agentsScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>描述 <span class="required">*</span></label>
+                                    <input type="text" id="agentsDescription" placeholder="请填写智能体职责说明"/>
+                                </div>
+                                <div class="form-group">
+                                    <label>工具权限</label>
+                                    <button type="button" class="agent-tools-trigger" id="agentsToolsBtn">
+                                        <span id="agentsToolsSummary">请选择工具</span>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                    <div class="agent-tools-selector" id="agentsToolsSelector" style="display:none">
+                                        <div class="permission-tools-grid" id="agentsToolsList"></div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>系统提示词 <span class="required">*</span></label>
+                                    <textarea id="agentsSystemPrompt" class="agents-prompt-editor" rows="5" spellcheck="false" placeholder="你是一位专项智能体。请说明职责、工作方式和输出要求。"></textarea>
+                                    <div class="form-hint">这里只填写智能体的角色、职责与工作要求，配置头由系统自动生成。内置智能体可复制到用户或工作区进行覆盖。</div>
+                                </div>
+                                <div class="form-actions form-actions-end">
+                                    <button class="btn-primary" id="agentsSaveBtn">保存</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1606,6 +1675,7 @@
     var SETTINGS_MODULES = [
         '/js/app-settings-general.js',
         '/js/app-settings-permission.js',
+        '/js/app-settings-agents.js',
         '/js/app-settings-llm.js',
         '/js/app-settings-mounts.js',
         '/js/app-settings-mcp.js',

@@ -444,6 +444,7 @@ body {
 .tool-card-body.tool-body-code { padding: 0; max-height: 320px; overflow: auto; }
 .tool-card-body.tool-body-terminal { padding: 0; max-height: 300px; overflow: auto; }
 .tool-code-pre { margin: 0; padding: 10px 12px; overflow: auto; border-radius: 0; line-height: 1.5; }
+.tool-card-body .tool-code-pre > code.hljs { padding: 0; }
 .tool-card-body.tool-body-todo .tool-code-pre { padding: 10px 12px; }
 .tool-body-deferred { color: var(--text-tertiary); }
 .tool-card > .tool-card-header[aria-expanded="true"] { background: var(--bg-hover); }
