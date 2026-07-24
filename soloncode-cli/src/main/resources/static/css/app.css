@@ -748,7 +748,7 @@ body {
 
 .loop-panel-header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border-color); gap: 8px; flex-shrink: 0; }
 .loop-panel-title { font-size: 13px; font-weight: 600; color: var(--text-primary); flex: 1; }
-.loop-panel-add-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+.loop-panel-add-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; height: 20px; width: 20px; }
 .loop-panel-add-btn:hover { background: var(--bg-hover); color: var(--accent); }
 .loop-panel-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 13px; padding: 2px 8px; border-radius: 4px; }
 .loop-panel-back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }

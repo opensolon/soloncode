@@ -172,7 +172,7 @@
     function renderProvidersList() {
         var html = '';
         if (providers.length === 0) {
-            html = '<div class="mcp-empty-state"><div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/></svg></div><div class="mcp-empty-title">暂无供应商配置</div><div class="mcp-empty-desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div></div>';
+            html = '<div class="settings-empty-state"><div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div><div class="settings-empty-title">暂无供应商配置</div><div class="settings-empty-desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div></div>';
         } else {
             providers.forEach(function (provider) {
                 html += renderProviderItem(provider);

@@ -268,9 +268,7 @@
     function buildListHeader(count) {
         var html = '<div class="loop-panel-header">';
         html += '<span class="loop-panel-title">循环任务 (' + count + ')</span>';
-        html += '<button class="loop-panel-add-btn" id="loopAddNewBtn" title="新建任务">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-            '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>';
+        html += '<button class="loop-panel-add-btn" id="loopAddNewBtn" title="新建任务"><i class="fa-solid fa-plus fa-sm"></i></button>';
         html += '</div>';
         return html;
     }
@@ -405,7 +403,7 @@
     function renderLoopForm() {
         var html = '<div class="loop-panel-header">';
         html += '<button class="loop-panel-back-btn" id="loopBackBtn">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>';
+            '<i class="fa-solid fa-angle-left"></i></button>';
         html += '<span class="loop-panel-title">' + (loopEditId ? '编辑循环 #' + escapeHtml(loopEditId) : '新建循环') + '</span>';
         // 模板按钮（仅新建时显示）
         if (!loopEditId) {

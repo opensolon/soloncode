@@ -52,10 +52,10 @@
     function renderMcpList(list) {
         var html = '';
         if (!list || list.length === 0) {
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无 MCP 服务器</div>'
-                + '<div class="mcp-empty-desc">MCP 服务器可扩展 AI 的工具能力，如文件系统访问、数据库查询、API 调用等</div>'
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">暂无 MCP 服务器</div>'
+                + '<div class="settings-empty-desc">MCP 服务器可扩展 AI 的工具能力，如文件系统访问、数据库查询、API 调用等</div>'
                 + '</div>';
         } else {
             var iconMap = { stdio: 'S', sse: 'R', streamable: 'H' };
@@ -70,7 +70,7 @@
                     + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
                     + (detail ? '<div class="mcp-server-detail">' + escapeHtml(detail) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<button class="mcp-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="mcp-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -104,15 +104,15 @@
         $mcpFormView.hide();
         $mcpToolsView.show();
         $mcpToolsTitle.text(name + ' - 工具列表');
-        $mcpToolsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $mcpToolsList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
         $.get('/web/settings/mcp/servers/tools?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) {
                 renderMcpTools(resp.data, name);
             } else {
-                $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+                $mcpToolsList.html('<div class="settings-empty-state"><div class="settings-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
             }
         }).fail(function () {
-            $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
+            $mcpToolsList.html('<div class="settings-empty-state"><div class="settings-empty-title">加载失败</div></div>');
         });
     }
 
@@ -135,19 +135,19 @@
 
         if (!connected) {
             $toolbar.hide();
-            $mcpToolsList.html('<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>'
-                + '<div class="mcp-empty-title">服务器未连接</div>'
-                + '<div class="mcp-empty-desc">请先启用并确保该 MCP 服务器可正常连接</div></div>');
+            $mcpToolsList.html('<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">服务器未连接</div>'
+                + '<div class="settings-empty-desc">请先启用并确保该 MCP 服务器可正常连接</div></div>');
             return;
         }
         var tools = data.tools || [];
         if (tools.length === 0) {
             $toolbar.hide();
-            $mcpToolsList.html('<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无工具</div>'
-                + '<div class="mcp-empty-desc">该 MCP 服务器未提供任何工具</div></div>');
+            $mcpToolsList.html('<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">暂无工具</div>'
+                + '<div class="settings-empty-desc">该 MCP 服务器未提供任何工具</div></div>');
             return;
         }
 
@@ -380,11 +380,11 @@
     });
 
     // ==================== MCP 导入（增强版） ====================
-    
+
     // 导入状态跟踪，用于回滚
     var lastImportSession = null;
     var importPreviewDialog = null;
-    
+
     /**
      * 统一解析 timeout 值，兼容多种格式
      * 支持: 30, "30", "30s", "30S", "PT30S" (ISO-8601)
@@ -415,7 +415,7 @@
         // 无法识别，原样返回（后端可能会报错）
         return str;
     }
-    
+
     /**
      * 创建导入预览对话框（适配后端返回的结构化数据）
      * @param {{format:string, servers:Array}} data - 后端返回的解析结果
@@ -427,24 +427,24 @@
             showToast('未找到有效的 MCP 服务器配置', 'error');
             return;
         }
-        
+
         // 构建各服务器的预览信息
         var previewItems = '';
         servers.forEach(function(srv) {
             var name = srv.name || '';
             var typeLabel = srv.type || 'stdio';
             var detail = srv.detail || '';
-            
+
             var exists = mcpCachedList.some(function(s) { return s.name === name; });
             var statusBadge = exists
                 ? '<span class="import-preview-badge badge-exists" title="已存在同名服务器，导入将跳过">已存在</span>'
                 : '<span class="import-preview-badge badge-new">新导入</span>';
             var disabled = exists ? ' disabled' : '';
-            
+
             var errorBadge = srv.error
                 ? '<span class="import-preview-badge badge-error" title="' + escapeAttr(srv.error) + '">格式错误</span>'
                 : '';
-            
+
             previewItems += '<div class="import-preview-item">'
                 + '<label class="import-preview-checkbox' + disabled + '">'
                 + '<input type="checkbox" class="import-server-checkbox" value="' + escapeAttr(name) + '"'
@@ -456,11 +456,11 @@
                 + '<div class="import-preview-detail">' + escapeHtml(detail || srv.error || '') + '</div>'
                 + '</div></div>';
         });
-        
+
         // 检测来源格式标签
         var formatLabel = data.format || '自动检测';
         var formatTag = '<span class="import-format-tag">' + escapeHtml(formatLabel) + '</span>';
-        
+
         var dialogHtml = '<div class="import-overlay" id="importPreviewOverlay">'
             + '<div class="import-dialog">'
             + '<div class="import-dialog-header">'
@@ -479,20 +479,20 @@
             + '</div>'
             + '</div>'
             + '</div>';
-        
+
         // 添加对话框到页面
         $('body').append(dialogHtml);
-        
+
         var $overlay = $('#importPreviewOverlay');
         var $checks = $overlay.find('.import-server-checkbox');
-        
+
         function updateCount() {
             var count = $checks.filter(':checked').length;
             $('#importSelectedCount').text(count);
         }
-        
+
         $checks.on('change', updateCount);
-        
+
         $('#importPreviewConfirm').on('click', function() {
             var selected = [];
             $checks.filter(':checked').each(function() {
@@ -505,17 +505,17 @@
                 showToast('未选择任何服务器', 'info');
             }
         });
-        
+
         $('#importPreviewCancel, #importPreviewClose').on('click', function() {
             $overlay.remove();
         });
-        
+
         // 点击遮罩层关闭
         $overlay.on('click', function(e) {
             if (e.target === this) $overlay.remove();
         });
     }
-    
+
     /**
      * 创建导入进度对话框
      */
@@ -536,30 +536,30 @@
             + '</div>';
         $('body').append(html);
     }
-    
+
     function updateProgress(current, total, statusText) {
         var pct = Math.round((current / total) * 100);
         $('#importProgressFill').css('width', pct + '%');
         $('#importProgressStatus').text(pct + '% - ' + statusText);
     }
-    
+
     function appendProgressLog(text, isError) {
         var $log = $('#importProgressLog');
         var cls = isError ? ' class="import-log-error"' : '';
         $log.append('<div' + cls + '>' + escapeHtml(text) + '</div>');
         $log.scrollTop($log[0].scrollHeight);
     }
-    
+
     /**
      * 导入完成后创建结果对话框（含回滚支持）
      */
     function showImportResult(result) {
         $('#importProgressOverlay').remove();
-        
+
         var hasImported = result.imported.length > 0;
         var hasSkipped = result.skipped.length > 0;
         var hasErrors = result.errors.length > 0;
-        
+
         var importedHtml = '';
         if (hasImported) {
             importedHtml = '<div class="import-result-section">'
@@ -572,7 +572,7 @@
             });
             importedHtml += '</div></div>';
         }
-        
+
         var skippedHtml = '';
         if (hasSkipped) {
             skippedHtml = '<div class="import-result-section">'
@@ -586,7 +586,7 @@
             });
             skippedHtml += '</div></div>';
         }
-        
+
         var errorsHtml = '';
         if (hasErrors) {
             errorsHtml = '<div class="import-result-section">'
@@ -600,11 +600,11 @@
             });
             errorsHtml += '</div></div>';
         }
-        
+
         var rollbackBtn = hasImported
             ? '<button class="btn-secondary" id="importRollbackBtn">↩ 撤销导入</button>'
             : '';
-        
+
         var dialogHtml = '<div class="import-overlay" id="importResultOverlay">'
             + '<div class="import-dialog import-dialog-result">'
             + '<div class="import-dialog-header">'
@@ -625,16 +625,16 @@
             + '</div>'
             + '</div>'
             + '</div>';
-        
+
         $('body').append(dialogHtml);
-        
+
         var $overlay = $('#importResultOverlay');
-        
+
         $('#importResultClose, #importResultDone').on('click', function() {
             $overlay.remove();
             loadMcpList();
         });
-        
+
         // 回滚逻辑
         if (hasImported) {
             $('#importRollbackBtn').on('click', function() {
@@ -650,7 +650,7 @@
                 });
             });
         }
-        
+
         $overlay.on('click', function(e) {
             if (e.target === this) {
                 $overlay.remove();
@@ -658,14 +658,14 @@
             }
         });
     }
-    
+
     /**
      * 回滚导入：逐个删除刚导入的服务器
      */
     function rollbackImport(names, callback) {
         var completed = 0;
         var successCount = 0;
-        
+
         function delNext(idx) {
             if (idx >= names.length) {
                 callback(successCount);
@@ -687,20 +687,20 @@
         }
         delNext(0);
     }
-    
+
     // ==================== 入口事件绑定 ====================
-    
+
     // 导入按钮 - 切换下拉菜单
     $('#mcpImportBtn').on('click', function (e) {
         e.stopPropagation();
         $('#mcpImportMenu').toggleClass('show');
     });
-    
+
     // 点击页面其他区域关闭下拉菜单
     $(document).on('click', function () {
         $('#mcpImportMenu').removeClass('show');
     });
-    
+
     // 下拉菜单项点击事件
     $('#mcpImportMenu').on('click', '.mcp-import-menu-item', function (e) {
         e.stopPropagation();
@@ -712,7 +712,7 @@
             showImportStringDialog();
         }
     });
-    
+
     /**
      * 显示导入 JSON 字符串对话框
      */
@@ -739,16 +739,16 @@
             + '</div>'
             + '</div>'
             + '</div>';
-        
+
         $('body').append(dialogHtml);
-        
+
         var $overlay = $('#importStringOverlay');
-        
+
         // 关闭事件
         $('#importStringClose, #importStringCancel').on('click', function () {
             $overlay.remove();
         });
-        
+
         // 确认 - 创建虚拟文件并使用现有导入流程
         $('#importStringConfirm').on('click', function () {
             var jsonStr = $('#importStringInput').val().trim();
@@ -756,7 +756,7 @@
                 showToast('请输入 JSON 字符串', 'error');
                 return;
             }
-            
+
             // 验证 JSON 格式
             try {
                 JSON.parse(jsonStr);
@@ -764,15 +764,15 @@
                 showToast('JSON 格式无效，请检查后重试', 'error');
                 return;
             }
-            
+
             // 关闭字符串对话框
             $overlay.remove();
-            
+
             // 创建虚拟文件并触发现有导入流程
             try {
                 var blob = new Blob([jsonStr], { type: 'application/json' });
                 var file = new File([blob], 'import.json', { type: 'application/json' });
-                
+
                 var dataTransfer = new DataTransfer();
                 dataTransfer.items.add(file);
                 $('#mcpImportFileInput')[0].files = dataTransfer.files;
@@ -781,16 +781,16 @@
                 showToast('处理 JSON 字符串失败: ' + e.message, 'error');
             }
         });
-        
+
         // 点击遮罩关闭
         $overlay.on('click', function (e) {
             if (e.target === this) $overlay.remove();
         });
-        
+
         // 自动聚焦
         setTimeout(function () { $('#importStringInput').focus(); }, 100);
     }
-    
+
     /**
      * 文件选择变化事件 — 将文件上传到后端解析
      * 后端使用 ONode 解析，检测格式后返回结构化数据
@@ -798,13 +798,13 @@
     $('#mcpImportFileInput').on('change', function (e) {
         var file = e.target.files[0];
         if (!file) return;
-        
+
         var formData = new FormData();
         formData.append('file', file);
-        
+
         // 上传到后端解析
         $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 解析中...');
-        
+
         $.ajax({
             url: '/web/settings/mcp/import/parse',
             method: 'POST',
@@ -829,12 +829,12 @@
                 $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导入');
             }
         });
-        
+
         // 重置文件输入，允许再次选择同一文件
         e.target.value = '';
     });
-    
-    
+
+
     /**
      * 执行导入（含进度反馈）
      * @param {string[]} names - 要导入的服务器名称列表
@@ -847,16 +847,16 @@
             skipped: [],
             errors: []
         };
-        
+
         // 构建名称 -> 服务器配置的快速查找表
         var serverMap = {};
         servers.forEach(function(s) {
             serverMap[s.name] = s;
         });
-        
+
         createProgressDialog();
         appendProgressLog('开始导入 ' + names.length + ' 个 MCP 服务器...');
-        
+
         function processNext(index) {
             if (index >= names.length) {
                 // 完成
@@ -865,12 +865,12 @@
                 showImportResult(result);
                 return;
             }
-            
+
             var name = names[index];
             var serverConfig = serverMap[name];
-            
+
             updateProgress(index + 1, names.length, '正在导入 ' + (index + 1) + '/' + names.length + ': ' + name);
-            
+
             // 检查是否已存在同名服务器
             var exists = mcpCachedList.some(function(s) { return s.name === name; });
             if (exists) {
@@ -879,7 +879,7 @@
                 processNext(index + 1);
                 return;
             }
-            
+
             // 检查是否有格式错误
             if (serverConfig.error) {
                 result.errors.push({ name: name, reason: serverConfig.error });
@@ -887,7 +887,7 @@
                 processNext(index + 1);
                 return;
             }
-            
+
             // 用后端结构化数据构建请求体
             var mcpBody = buildAddBodyFromParsed(serverConfig);
             if (!mcpBody) {
@@ -896,7 +896,7 @@
                 processNext(index + 1);
                 return;
             }
-            
+
             // 调用保存 API
             appendProgressLog('→ ' + name + ': 正在导入...');
             $.ajax({
@@ -922,10 +922,10 @@
                 }
             });
         }
-        
+
         processNext(0);
     }
-    
+
     /**
      * 将后端解析后的结构化数据构建为 /mcp/servers/add 的请求体
      * @param {Object} srv - 后端返回的单个服务器结构化数据
@@ -933,14 +933,14 @@
      */
     function buildAddBodyFromParsed(srv) {
         if (!srv || !srv.name || !srv.type) return null;
-        
+
         var bodyObj = {
             name: srv.name,
             type: srv.type,
             enabled: true,
             scope: 'user'
         };
-        
+
         if (srv.type === 'stdio') {
             if (!srv.command) return null;
             bodyObj.command = srv.command;
@@ -962,9 +962,9 @@
         } else {
             return null;
         }
-        
+
         return bodyObj;
     }
-    
+
     window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
 })();

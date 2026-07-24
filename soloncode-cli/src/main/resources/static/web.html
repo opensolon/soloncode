@@ -30,10 +30,7 @@
     <div class="sidebar-list" id="historyList"></div>
     <div class="sidebar-footer">
         <button class="settings-btn" id="settingsBtn" title="设置">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
+            <i class="fa-solid fa-gear"></i>
             <span style="margin-left:6px;font-size:12px;">设置</span>
         </button>
     </div>
@@ -147,7 +144,7 @@
                         <i class="fa-solid fa-microphone fa-sm"></i>
                     </button>
                     <button class="welcome-send-btn" id="welcomeSendBtn" title="发送">
-                        <i class="fa-regular fa-paper-plane fa-sm"></i>
+                        <i class="fa-solid fa-paper-plane fa-sm"></i>
                     </button>
                 </div>
             </div>
@@ -232,7 +229,7 @@
                             <i class="fa-solid fa-microphone fa-sm"></i>
                         </button>
                         <button class="send-btn" id="chatSendBtn" title="发送">
-                            <i class="fa-regular fa-paper-plane fa-sm"></i>
+                            <i class="fa-solid fa-paper-plane fa-sm"></i>
                         </button>
                     </div>
                 </div>
@@ -314,7 +311,7 @@
             </div>
             <div class="filer-panel-tree" id="filerTree"></div>
             <div class="filer-mount-hint" id="filerMountHint">
-                <i class="fa-regular fa-hard-drive"></i>
+                <i class="fa-solid fa-hard-drive"></i>
                 <span>添加文件类型挂载</span>
             </div>
         </div>
@@ -459,25 +456,40 @@
                 <div class="settings-sidebar-title-row">
                     <div class="sidebar-title settings-sidebar-title">设置</div>
                     <button type="button" class="settings-reload-icon-btn" id="settingsReloadBtn" title="从磁盘重新加载 settings.json 到当前实例" aria-label="从磁盘重新加载配置">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="23 4 23 10 17 10"></polyline>
-                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                        </svg>
+                        <i class="fa-solid fa-arrow-rotate-right fa-xs"></i>
                     </button>
                 </div>
-                <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 通用</button>
-                <button class="settings-tab" data-tab="permission"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> 工具权限</button>
-                <button class="settings-tab" data-tab="mounts"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 挂载</button>
-                <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 技能市场</button>
+                <button class="settings-tab active" data-tab="general">
+                    <i class="fa-solid fa-gears"></i> 通用
+                </button>
+                <button class="settings-tab" data-tab="permission">
+                    <i class="fa-solid fa-shield"></i> 工具权限
+                </button>
+                <button class="settings-tab" data-tab="mounts">
+                    <i class="fa-solid fa-hard-drive"></i> 挂载
+                </button>
+                <button class="settings-tab" data-tab="skills">
+                    <i class="fa-solid fa-hexagon-nodes"></i> 技能市场
+                </button>
 
                 <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">大语言模型</div>
-                <button class="settings-tab" data-tab="providers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/></svg> 供应商</button>
-                <button class="settings-tab" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> 模型</button>
+                <button class="settings-tab" data-tab="providers">
+                    <i class="fa-solid fa-boxes-packing"></i> 供应商
+                </button>
+                <button class="settings-tab" data-tab="llm">
+                    <i class="fa-solid fa-robot"></i> 模型
+                </button>
 
                 <div class="sidebar-title" style="padding:16px 16px 8px;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;">外部连接</div>
-                <button class="settings-tab" data-tab="mcp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> MCP 服务器</button>
-                <button class="settings-tab" data-tab="openapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> OpenAPI 服务器</button>
-                <button class="settings-tab" data-tab="lsp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> LSP 服务器</button>
+                <button class="settings-tab" data-tab="mcp">
+                    <i class="fa-solid fa-server"></i> MCP 服务器
+                </button>
+                <button class="settings-tab" data-tab="openapi">
+                    <i class="fa-solid fa-globe"></i> OpenAPI 服务器
+                </button>
+                <button class="settings-tab" data-tab="lsp">
+                    <i class="fa-solid fa-laptop-code"></i> LSP 服务器
+                </button>
 
                 <div class="settings-tabs-footer">
                     <div class="settings-product-name">SolonCode</div>
@@ -868,7 +880,7 @@
                                     <div class="settings-section-desc">配置 AI 模型的连接参数与默认设定</div>
                                 </div>
                                 <div class="llm-header-actions">
-                                    <button class="settings-add-btn" id="llmAddBtn">+ 添加模型</button>
+                                    <button class="settings-add-btn" id="llmAddBtn"><i class="fa-solid fa-plus"></i> 添加模型</button>
                                 </div>
                             </div>
                             <div class="llm-model-list" id="llmModelList"></div>
@@ -880,8 +892,7 @@
                             <div class="settings-section-header">
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="llmBackBtn" title="返回">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                    </button>
+                                        <i class="fa-solid fa-angle-left"></i>
                                     <span class="settings-section-title" id="llmFormTitle">添加模型</span>
                                 </div>
                                 <div class="settings-form-actions" id="llmFormActions" style="display:none">
@@ -1027,7 +1038,7 @@
                                     <span class="settings-section-title">挂载</span>
                                     <div class="settings-section-desc">管理本地目录映射，为 AI 提供技能与资源的加载路径</div>
                                 </div>
-                                <button class="settings-add-btn" id="mountsAddBtn">+ 添加挂载</button>
+                                <button class="settings-add-btn" id="mountsAddBtn"><i class="fa-solid fa-plus"></i> 添加挂载</button>
                             </div>
                             <div class="mounts-list" id="mountsList"></div>
                         </div>
@@ -1103,12 +1114,14 @@
                         <div class="settings-section">
                             <div class="settings-section-header">
                                 <div class="settings-title-row">
-                                    <button class="settings-back-btn" id="mountsSkillsBackBtn" title="返回"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                                    <button class="settings-back-btn" id="mountsSkillsBackBtn" title="返回">
+                                        <i class="fa-solid fa-angle-left"></i>
+                                    </button>
                                     <span class="settings-section-title" id="mountsSkillsTitle">技能包列表</span>
                                 </div>
                                 <div class="settings-header-icon-actions">
-                                    <button class="mcp-action-btn" id="mountsOpenDirBtn" title="打开目录"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
-                                    <button class="mcp-action-btn" id="mountsRefreshBtn" title="刷新"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                                    <button class="mcp-action-btn" id="mountsOpenDirBtn" title="打开目录"><i class="fa-regular fa-folder"></i></button>
+                                    <button class="mcp-action-btn" id="mountsRefreshBtn" title="刷新"><i class="fa-solid fa-arrow-rotate-right"></i></button>
                                 </div>
                             </div>
                             <div class="mounts-skills-list" id="mountsSkillsList"></div>
@@ -1137,7 +1150,7 @@
                                         </div>
                                     </div>
                                     <input type="file" id="mcpImportFileInput" accept=".json" style="display:none;"/>
-                                    <button class="settings-add-btn" id="mcpAddBtn">+ 添加服务器</button>
+                                    <button class="settings-add-btn" id="mcpAddBtn"><i class="fa-solid fa-plus"></i> 添加服务器</button>
                                 </div>
                             </div>
                             <div class="mcp-server-list" id="mcpServerList"></div>
@@ -1149,8 +1162,7 @@
                             <div class="settings-section-header">
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="mcpBackBtn" title="返回">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                    </button>
+                                        <i class="fa-solid fa-angle-left"></i>
                                     <span class="settings-section-title" id="mcpFormTitle">添加服务器</span>
                                 </div>
                                 <div class="settings-form-actions" id="mcpFormActions" style="display:none">
@@ -1264,7 +1276,7 @@
                                     <div class="settings-section-desc">接入 REST/OpenAPI 接口，控制 AI 可调用的 API 范围</div>
                                 </div>
                                 <div class="openapi-header-actions">
-                                    <button class="settings-add-btn" id="openapiAddBtn">+ 添加服务器</button>
+                                    <button class="settings-add-btn" id="openapiAddBtn"><i class="fa-solid fa-plus"></i> 添加服务器</button>
                                 </div>
                             </div>
                             <div class="openapi-server-list" id="openapiServerList"></div>
@@ -1276,7 +1288,7 @@
                             <div class="settings-section-header">
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="openapiBackBtn" title="返回">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                        <i class="fa-solid fa-angle-left"></i>
                                     </button>
                                     <span class="settings-section-title" id="openapiFormTitle">添加服务器</span>
                                 </div>
@@ -1335,7 +1347,7 @@
                             <div class="settings-section-header">
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="openapiApisBackBtn" title="返回">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                        <i class="fa-solid fa-angle-left"></i>
                                     </button>
                                     <span class="settings-section-title" id="openapiApisTitle">接口列表</span>
                                 </div>
@@ -1366,7 +1378,7 @@
                                     <div class="settings-section-desc">配置语言服务器，为代码理解和编辑提供语言能力</div>
                                 </div>
                                 <div class="openapi-header-actions">
-                                    <button class="settings-add-btn" id="lspAddBtn">+ 添加服务器</button>
+                                    <button class="settings-add-btn" id="lspAddBtn"><i class="fa-solid fa-plus"></i> 添加服务器</button>
                                 </div>
                             </div>
                             <div class="openapi-server-list" id="lspServerList"></div>
@@ -1378,7 +1390,7 @@
                             <div class="settings-section-header">
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="lspBackBtn" title="返回">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                        <i class="fa-solid fa-angle-left"></i>
                                     </button>
                                     <span class="settings-section-title" id="lspFormTitle">添加服务器</span>
                                 </div>
@@ -1444,7 +1456,7 @@
                             <div class="settings-section-header">
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="providerBackBtn" title="返回">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                        <i class="fa-solid fa-angle-left"></i>
                                     </button>
                                     <span class="settings-section-title" id="providerFormTitle">添加供应商</span>
                                 </div>

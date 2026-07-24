@@ -283,7 +283,7 @@
 .mcp-tools-select-all input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; border-radius: 3px; }
 .mcp-tools-toolbar-actions { display: flex; align-items: center; gap: 12px; }
 .mcp-tools-count { font-size: 12px; color: var(--text-secondary); }
-.mcp-action-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 6px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; }
+.mcp-action-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 6px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; width: 26px; height: 26px; }
 .mcp-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .mcp-action-btn.delete:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
 .mcp-action-btn.edit:hover { background: rgba(59,130,246,0.08); color: #3b82f6; }
@@ -296,10 +296,10 @@
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* 空状态引导 */
-.mcp-empty-state { text-align: center; padding: 40px 20px; }
-.mcp-empty-icon { margin-bottom: 12px; opacity: 0.4; }
-.mcp-empty-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
-.mcp-empty-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; }
+.settings-empty-state { text-align: center; padding: 40px 20px; }
+.settings-empty-icon { margin-bottom: 12px; opacity: 0.4; }
+.settings-empty-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.settings-empty-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; }
 .mcp-empty-templates { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .mcp-template-btn { padding: 6px 14px; border: 1px dashed var(--border-color); border-radius: 6px; background: none; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .mcp-template-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
@@ -483,7 +483,7 @@
 .settings-view-list.slide-back { animation: settings-slide-in-left 0.25s ease-out; }
 
 /* 返回按钮 */
-.settings-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px 6px; border-radius: 6px; display: inline-flex; align-items: center; transition: all 0.15s; }
+.settings-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px 6px; border-radius: 6px; display: inline-flex; align-items: center; transition: all 0.15s; width: 26px; height: 26px; }
 .settings-back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ===== 挂载 ===== */
@@ -1620,4 +1620,3 @@ select[disabled] {
     color: var(--accent, #3b82f6);
     border: 1px solid var(--border-color);
 }
-

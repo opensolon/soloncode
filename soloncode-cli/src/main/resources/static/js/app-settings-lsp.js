@@ -38,10 +38,10 @@
     function renderLspList(list) {
         var html = '';
         if (!list || list.length === 0) {
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无 LSP 服务器</div>'
-                + '<div class="mcp-empty-desc">LSP 服务器可提供代码补全、诊断等智能编辑能力</div>'
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">暂无 LSP 服务器</div>'
+                + '<div class="settings-empty-desc">LSP 服务器可提供代码补全、诊断等智能编辑能力</div>'
                 + '</div>';
         } else {
             list.forEach(function (item) {
@@ -60,7 +60,7 @@
                     + (command ? '<div class="mcp-server-detail">' + escapeHtml(command) + '</div>' : '')
                     + (extensions ? '<div class="mcp-server-detail settings-accent-text">' + escapeHtml(extensions) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="lsp-toggle"/>'
                     + '<span class="toggle-slider"></span>'

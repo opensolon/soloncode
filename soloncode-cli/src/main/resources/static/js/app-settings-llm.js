@@ -95,12 +95,12 @@
 
                 var isDefault = name === selected;
                 var standardTag = standard ? ' <span class="settings-inline-tag">[' + escapeHtml(standard) + ']</span>' : '';
-                html += '<div class="llm-model-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">' 
+                html += '<div class="llm-model-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">'
                     + '<div class="llm-model-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="llm-model-info"><div class="llm-model-name">' + escapeHtml(displayName) + standardTag + (isDefault ? ' <span class="llm-default-badge">默认</span>' : '') + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div><div class="llm-model-meta">'
                     + '<span class="llm-api-hint">' + metaLine + '</span>'
                     + '</div></div><div class="llm-model-actions">'
-                    + '<button class="llm-action-btn edit llm-edit-btn" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<button class="llm-action-btn edit llm-edit-btn" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="llm-toggle"/>'
                     + '<span class="toggle-slider"></span>'

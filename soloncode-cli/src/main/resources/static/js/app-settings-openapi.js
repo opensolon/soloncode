@@ -44,10 +44,10 @@
     function renderOpenapiList(list) {
         var html = '';
         if (!list || list.length === 0) {
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无 OpenApi 服务器</div>'
-                + '<div class="mcp-empty-desc">OpenApi 服务器可扩展 AI 的 API 调用能力，对接外部 RESTful 接口</div>'
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">暂无 OpenApi 服务器</div>'
+                + '<div class="settings-empty-desc">OpenApi 服务器可扩展 AI 的 API 调用能力，对接外部 RESTful 接口</div>'
                 + '</div>';
         } else {
             list.forEach(function (item) {
@@ -62,7 +62,7 @@
                     + (baseUrl ? '<div class="mcp-server-detail">' + escapeHtml(baseUrl) + '</div>' : '')
                     + (docUrl ? '<div class="mcp-server-detail settings-accent-text">' + escapeHtml(docUrl) + '</div>' : '')
                     + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="openapi-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -95,15 +95,15 @@
     function loadOpenapiApis(name) {
         openapiApisCurrentName = name;
         showOpenapiApisView(name + ' - 接口列表');
-        $openapiApisList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $openapiApisList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
 
         $.get('/web/settings/openapi/servers/apis?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) renderOpenapiApis(resp.data);
             else {
-                $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+                $openapiApisList.html('<div class="settings-empty-state"><div class="settings-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
             }
         }).fail(function () {
-            $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败，请检查网络</div></div>');
+            $openapiApisList.html('<div class="settings-empty-state"><div class="settings-empty-title">加载失败，请检查网络</div></div>');
         });
     }
 
@@ -123,16 +123,16 @@
         var html = '';
         if (!connected) {
             $toolbar.hide();
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>'
-                + '<div class="mcp-empty-title">未连接</div>'
-                + '<div class="mcp-empty-desc">服务器未启用或文档未加载，请先启用服务器</div></div>';
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">未连接</div>'
+                + '<div class="settings-empty-desc">服务器未启用或文档未加载，请先启用服务器</div></div>';
         } else if (apis.length === 0) {
             $toolbar.hide();
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无 API</div>'
-                + '<div class="mcp-empty-desc">该服务器未解析到任何 API 接口</div></div>';
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">暂无 API</div>'
+                + '<div class="settings-empty-desc">该服务器未解析到任何 API 接口</div></div>';
         } else {
             // 获取已禁用的 API 列表
             var disallowedTools = data.disallowedTools || [];

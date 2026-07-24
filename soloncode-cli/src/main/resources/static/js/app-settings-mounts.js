@@ -59,10 +59,10 @@
     function renderMountsList(list) {
         var html = '';
         if (!list || list.length === 0) {
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无挂载</div>'
-                + '<div class="mcp-empty-desc">挂载是本地目录映射，为 AI 提供技能加载路径</div></div>';
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">暂无挂载</div>'
+                + '<div class="settings-empty-desc">挂载是本地目录映射，为 AI 提供技能加载路径</div></div>';
         } else {
             // 系统挂载排前面
             var sorted = list.slice().sort(function (a, b) {
@@ -184,16 +184,16 @@
         var titleMap = { SKILLS: '技能包列表', AGENTS: '子代理列表', FILES: '文件列表' };
         $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || '内容列表'));
         showMountsSkillsView();
-        $mountsSkillsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $mountsSkillsList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
 
         $.get('/web/settings/mounts/content', { alias: alias, type: mountsCurrentType }, function (resp) {
             if (resp.code === 200 && resp.data) renderMountsContent(resp.data, mountsCurrentType);
             else {
-                $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+                $mountsSkillsList.html('<div class="settings-empty-state"><div class="settings-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
                 layer.msg(resp.message || '加载失败', { icon: 2, time: 3000, offset: '120px' });
             }
         }).fail(function () {
-            $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
+            $mountsSkillsList.html('<div class="settings-empty-state"><div class="settings-empty-title">加载失败</div></div>');
             layer.msg('加载失败，请检查网络', { icon: 2, time: 3000, offset: '120px' });
         });
     }
@@ -201,10 +201,10 @@
     function renderMountsContent(list, type) {
         if (type === 'AGENTS') { renderAgentsList(list); return; }
         if (type === 'FILES') {
-            $mountsSkillsList.html('<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>'
-                + '<div class="mcp-empty-title">暂不展示文件</div>'
-                + '<div class="mcp-empty-desc">文件浏览功能将在后续版本支持</div></div>');
+            $mountsSkillsList.html('<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">暂不展示文件</div>'
+                + '<div class="settings-empty-desc">文件浏览功能将在后续版本支持</div></div>');
             return;
         }
         renderSkillsList(list);
@@ -213,10 +213,10 @@
     function renderSkillsList(list) {
         var html = '';
         if (!list || list.length === 0) {
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>'
-                + '<div class="mcp-empty-title">该池暂无技能包</div>'
-                + '<div class="mcp-empty-desc">通过技能市场安装，或手动将技能文件放入池目录</div></div>';
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">该池暂无技能包</div>'
+                + '<div class="settings-empty-desc">通过技能市场安装，或手动将技能文件放入池目录</div></div>';
         } else {
             html += '<div class="mounts-skills-count">' + list.length + ' 个技能包</div>';
             list.forEach(function (skill) {
@@ -236,10 +236,10 @@
     function renderAgentsList(list) {
         var html = '';
         if (!list || list.length === 0) {
-            html = '<div class="mcp-empty-state">'
-                + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>'
-                + '<div class="mcp-empty-title">该池暂无子代理</div>'
-                + '<div class="mcp-empty-desc">将代理配置文件放入池目录即可自动加载</div></div>';
+            html = '<div class="settings-empty-state">'
+                + '<div class="settings-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
+                + '<div class="settings-empty-title">该池暂无子代理</div>'
+                + '<div class="settings-empty-desc">将代理配置文件放入池目录即可自动加载</div></div>';
         } else {
             html += '<div class="mounts-skills-count">' + list.length + ' 个子代理</div>';
             list.forEach(function (agent) {
