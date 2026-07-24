@@ -81,13 +81,16 @@
                 : '';
             if (item.valid === false) badge += '<span class="agent-status-badge invalid">配置无效</span>';
             var tools = item.tools && item.tools.length ? item.tools.join(', ') : '未授予工具权限';
-            html += '<div class="mcp-server-item agent-item" data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(sourceScope) + '">'
+            html += '<div class="mcp-server-item agent-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(sourceScope) + '">'
                 + '<div class="mcp-server-icon">A</div><div class="mcp-server-info">'
                 + '<div class="mcp-server-name">' + escapeHtml(item.name) + ' ' + badge + '</div>'
                 + '<div class="mcp-server-detail">' + escapeHtml(item.description || '') + '</div>'
                 + '<div class="mcp-server-detail settings-accent-text">' + escapeHtml(tools) + '</div>'
                 + '</div><div class="mcp-server-actions"><button class="mcp-action-btn edit" title="编辑">'
-                + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></div></div>';
+                + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                + '<label class="toggle-switch" title="' + (item.enabled !== false ? '停用' : '启用') + '">'
+                + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(sourceScope) + '" class="agents-toggle"/>'
+                + '<span class="toggle-slider"></span></label></div></div>';
         });
         $list.html(html);
     }
@@ -200,6 +203,28 @@
         e.stopPropagation();
         var $item = $(this).closest('.agent-item');
         openAgent($item.attr('data-name'), $item.attr('data-scope'));
+    });
+
+    $list.on('change', '.agents-toggle', function () {
+        var $toggle = $(this);
+        var enabled = this.checked;
+        $toggle.prop('disabled', true);
+        postJson('/web/settings/agents/toggle', {
+            name: $toggle.attr('data-name'),
+            scope: $toggle.attr('data-scope'),
+            enabled: enabled
+        }, function (resp) {
+            if (resp.code === 200) {
+                showToast(enabled ? '已启用' : '已停用');
+                loadList();
+                if (typeof window.reloadCommandHints === 'function') window.reloadCommandHints();
+            } else {
+                $toggle.prop('checked', !enabled).prop('disabled', false);
+                showToast(resp.message || '操作失败', 'error');
+            }
+        }, function () {
+            $toggle.prop('disabled', false);
+        });
     });
 
     $('#agentsAddBtn').on('click', function () {

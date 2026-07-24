@@ -170,6 +170,55 @@ public class AgentSettingsController extends BaseSettingsController {
     }
 
     @Post
+    @Mapping("/web/settings/agents/toggle")
+    public Result agentsToggle(@Body String json) {
+        Path temp = null;
+        try {
+            ONode root = ONode.ofJson(json);
+            String name = root.get("name").getString();
+            String scope = normalizeScope(root.get("scope").getString());
+            boolean enabled = root.get("enabled").getBoolean();
+            String invalid = validateName(name);
+            if (invalid != null) return Result.failure(invalid);
+
+            Path target = resolveFile(scope, name);
+            String markdown;
+            if (Files.exists(target)) {
+                if (!Files.isRegularFile(target) || Files.isSymbolicLink(target)) {
+                    return Result.failure("智能体文件不可编辑: " + name);
+                }
+                if (Files.size(target) > MAX_FILE_SIZE) return Result.failure("智能体文件过大，无法切换状态");
+                markdown = new String(Files.readAllBytes(target), StandardCharsets.UTF_8);
+                parseAndValidate(markdown, name);
+            } else if (AgentFlags.SCOPE_USER.equals(scope)) {
+                markdown = loadBuiltinMarkdown(name);
+            } else {
+                return Result.failure("智能体不存在: " + name);
+            }
+
+            markdown = setFrontMatterValue(markdown, "enabled", String.valueOf(enabled));
+            parseAndValidate(markdown, name);
+            Path targetRoot = target.getParent();
+            ensureWritableRoot(targetRoot);
+            temp = Files.createTempFile(targetRoot, ".agent-", ".tmp");
+            Files.write(temp, markdown.getBytes(StandardCharsets.UTF_8));
+            moveReplace(temp, target);
+            temp = null;
+            refresh(scope);
+            return Result.succeed(enabled ? "启用成功" : "停用成功");
+        } catch (IllegalArgumentException e) {
+            return Result.failure(e.getMessage());
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to toggle agent: {}", e.getMessage());
+            return Result.failure("操作失败: " + e.getMessage());
+        } finally {
+            if (temp != null) {
+                try { Files.deleteIfExists(temp); } catch (Exception ignored) { }
+            }
+        }
+    }
+
+    @Post
     @Mapping("/web/settings/agents/refresh")
     public Result agentsRefresh() {
         try {
@@ -386,6 +435,42 @@ public class AgentSettingsController extends BaseSettingsController {
         markdown.append("---\n\n");
         markdown.append(systemPrompt.trim()).append('\n');
         return markdown.toString();
+    }
+
+    private String setFrontMatterValue(String markdown, String key, String value) {
+        String normalized = markdown == null ? "" : markdown.replace("\r\n", "\n").replace('\r', '\n');
+        String[] lines = normalized.split("\n", -1);
+        if (lines.length == 0 || !"---".equals(lines[0].trim())) {
+            throw new IllegalArgumentException("Markdown/YAML 格式无效: 缺少 Front Matter");
+        }
+
+        int end = -1;
+        int keyLine = -1;
+        for (int i = 1; i < lines.length; i++) {
+            if ("---".equals(lines[i].trim())) {
+                end = i;
+                break;
+            }
+            if (!lines[i].isEmpty() && !Character.isWhitespace(lines[i].charAt(0))
+                    && lines[i].startsWith(key + ":")) {
+                keyLine = i;
+            }
+        }
+        if (end < 0) throw new IllegalArgumentException("Markdown/YAML 格式无效: Front Matter 未闭合");
+
+        StringBuilder result = new StringBuilder(normalized.length() + key.length() + value.length() + 4);
+        for (int i = 0; i < lines.length; i++) {
+            if (i == keyLine) {
+                result.append(key).append(": ").append(value);
+            } else {
+                if (i == end && keyLine < 0) {
+                    result.append(key).append(": ").append(value).append('\n');
+                }
+                result.append(lines[i]);
+            }
+            if (i < lines.length - 1) result.append('\n');
+        }
+        return result.toString();
     }
 
     private List<String> extractPreservedFrontMatter(String markdown) {

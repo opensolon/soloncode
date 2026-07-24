@@ -276,6 +276,35 @@ class AgentSettingsControllerTest {
 
 
     @Test
+    void toggleWorkspaceAgentPersistsEnabledState() throws Exception {
+        Path root = tempDir.resolve("workspace/.soloncode/agents");
+        Files.createDirectories(root);
+        Path file = root.resolve("toggle-agent.md");
+        Files.write(file, "---\nname: toggle-agent\ndescription: toggle\ntools: [\"read\"]\n---\n\nPrompt.\n".getBytes(StandardCharsets.UTF_8));
+
+        Result disabled = controller.agentsToggle(json("name", "toggle-agent", "scope", "workspace", "enabled", "false"));
+        assertEquals(200, disabled.getCode());
+        String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(markdown.contains("enabled: false"));
+        assertTrue(ONode.ofBean(controller.agentsList().getData()).toJson().contains("\"enabled\":false"));
+
+        Result enabled = controller.agentsToggle(json("name", "toggle-agent", "scope", "workspace", "enabled", "true"));
+        assertEquals(200, enabled.getCode());
+        markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(markdown.contains("enabled: true"));
+        assertFalse(markdown.contains("enabled: false"));
+    }
+
+    @Test
+    void toggleBuiltinCreatesUserOverride() throws Exception {
+        Result disabled = controller.agentsToggle(json("name", "general", "scope", "user", "enabled", "false"));
+        assertEquals(200, disabled.getCode());
+        Path file = tempDir.resolve("home/.soloncode/agents/general.md");
+        assertTrue(Files.exists(file));
+        assertTrue(new String(Files.readAllBytes(file), StandardCharsets.UTF_8).contains("enabled: false"));
+    }
+
+    @Test
     void rejectOversizedDescription() {
         char[] chars = new char[1001];
         Arrays.fill(chars, 'a');
@@ -306,9 +335,14 @@ class AgentSettingsControllerTest {
     }
 
     private String json(String... pairs) {
-        Map<String, String> data = new LinkedHashMap<>();
+        Map<String, Object> data = new LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) {
-            data.put(pairs[i], pairs[i + 1]);
+            String value = pairs[i + 1];
+            if ("true".equals(value) || "false".equals(value)) {
+                data.put(pairs[i], Boolean.valueOf(value));
+            } else {
+                data.put(pairs[i], value);
+            }
         }
         return ONode.ofBean(data).toJson();
     }
