@@ -104,7 +104,7 @@
         $mcpFormView.hide();
         $mcpToolsView.show();
         $mcpToolsTitle.text(name + ' - 工具列表');
-        $mcpToolsList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $mcpToolsList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i><span>加载中...</span></div></div>');
         $.get('/web/settings/mcp/servers/tools?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) {
                 renderMcpTools(resp.data, name);
@@ -359,15 +359,15 @@
         if (!bodyObj) return;
         var $btn = $(this);
         var btnOriginal = $btn.html();
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 检测中...');
+        $btn.prop('disabled', true).html('<i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i> 检测中...');
         $mcpCheckResult.hide();
 
         $.ajax({ url: '/web/settings/mcp/servers/check', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json', timeout: 15000 })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var svg = ok
-                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> '
-                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ';
+                    ? '<i class="fa-regular fa-circle-check" style="color: var(--color-success)"></i> '
+                    : '<i class="fa-regular fa-circle-xmark" style="color: var(--color-danger)"></i> ';
                 $mcpCheckResult.attr('class', 'mcp-check-result ' + (ok ? 'success' : 'error'))
                     .html(svg + escapeHtml(resp.message || (ok ? '连接成功' : '连接失败')))
                     .css('display', 'flex');
@@ -803,7 +803,7 @@
         formData.append('file', file);
 
         // 上传到后端解析
-        $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 解析中...');
+        $('#mcpImportBtn').prop('disabled', true).html('<i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i> 解析中...');
 
         $.ajax({
             url: '/web/settings/mcp/import/parse',

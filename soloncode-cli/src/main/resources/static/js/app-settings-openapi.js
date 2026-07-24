@@ -95,7 +95,7 @@
     function loadOpenapiApis(name) {
         openapiApisCurrentName = name;
         showOpenapiApisView(name + ' - 接口列表');
-        $openapiApisList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $openapiApisList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i><span>加载中...</span></div></div>');
 
         $.get('/web/settings/openapi/servers/apis?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) renderOpenapiApis(resp.data);
@@ -275,15 +275,15 @@
         if (!bodyObj) return;
         var $btn = $(this);
         var btnOriginal = $btn.html();
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
+        $btn.prop('disabled', true).html('<i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i> 测试中...');
         $openapiCheckResult.hide();
 
         $.ajax({ url: '/web/settings/openapi/servers/check', method: 'POST', data: JSON.stringify({ apiBaseUrl: bodyObj.apiBaseUrl, docUrl: bodyObj.docUrl, headers: bodyObj.headers || {} }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var svg = ok
-                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 连接成功'
-                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ' + (resp.message || '连接失败');
+                    ? '<i class="fa-regular fa-circle-check" style="color: var(--color-success)"></i> 连接成功'
+                    : '<i class="fa-regular fa-circle-xmark" style="color: var(--color-danger)"></i> ' + (resp.message || '连接失败');
                 $openapiCheckResult.attr('class', 'llm-check-result ' + (ok ? 'success' : 'error')).html(svg).css('display', 'flex');
             })
             .fail(function (jqXHR, textStatus) {

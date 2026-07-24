@@ -242,7 +242,7 @@
                 + (installs > 0 ? '<span>' + (installs >= 1000 ? (installs / 1000).toFixed(1) + 'k' : installs) + ' 安装</span>' : '')
                 + (stars > 0 ? '<span>⭐ ' + (stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : stars) + '</span>' : '')
                 + (owner ? '<span>' + escapeHtml(owner) + '</span>' : '')
-                + (skillUrl ? '<span class="skill-item-detail-link" title="查看详情">↗</span>' : '')
+                + (skillUrl ? '<span class="skill-item-detail-link" title="查看详情"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>' : '')
                 + '</div></div>'
                 + '<div class="skill-item-actions">'
                     + (isInstalled

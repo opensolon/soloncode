@@ -184,7 +184,7 @@
         var titleMap = { SKILLS: '技能包列表', AGENTS: '子代理列表', FILES: '文件列表' };
         $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || '内容列表'));
         showMountsSkillsView();
-        $mountsSkillsList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $mountsSkillsList.html('<div class="settings-empty-state"><div class="skills-loading" style="display:block"><i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i><span>加载中...</span></div></div>');
 
         $.get('/web/settings/mounts/content', { alias: alias, type: mountsCurrentType }, function (resp) {
             if (resp.code === 200 && resp.data) renderMountsContent(resp.data, mountsCurrentType);

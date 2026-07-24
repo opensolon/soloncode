@@ -55,7 +55,7 @@
         var html = '';
         if (!list || list.length === 0) {
             html = '<div class="llm-empty-state">'
-                + '<div class="llm-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>'
+                + '<div class="llm-empty-icon"><i class="fa-solid fa-inbox fa-3x"></i></div>'
                 + '<div class="llm-empty-title">暂无大模型配置</div>'
                 + '<div class="llm-empty-desc">添加至少一个大模型以开始 AI 对话</div>'
                 + '</div>';
@@ -310,7 +310,7 @@
         }
         var $btn = $(this);
         var btnOriginal = $btn.html();
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
+        $btn.prop('disabled', true).html('<i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i> 测试中...');
         $llmCheckResult.hide();
 
         $.ajax({ url: '/web/settings/llm/models/fetch', type: 'POST', contentType: 'application/json', data: JSON.stringify({ apiUrl: apiUrl, apiKey: $('#llmApiKey').val().trim(), standard: $('#llmStandard').val(), model: ($('#llmModel').val() || '').trim() }), timeout: 30000, dataType: 'json' })
@@ -318,8 +318,8 @@
                 var ok = resp.code === 200;
                 var msg = ok ? resp.data : ('连接失败: ' + (resp.description || '未知错误'));
                 var svg = ok
-                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> '
-                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ';
+                    ? '<i class="fa-regular fa-circle-check" style="color: var(--color-success)"></i> '
+                    : '<i class="fa-regular fa-circle-xmark" style="color: var(--color-danger)"></i> ';
                 $llmCheckResult.attr('class', 'llm-check-result ' + (ok ? 'success' : 'error')).html(svg + msg).css('display', 'flex');
             })
             .fail(function (jqXHR, textStatus) {
@@ -379,10 +379,10 @@
         var $input = $('#llmApiKey');
         if ($input.attr('type') === 'password') {
             $input.attr('type', 'text');
-            $(this).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>');
+            $(this).html('<i class="fa-regular fa-eye-slash"></i>');
         } else {
             $input.attr('type', 'password');
-            $(this).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>');
+            $(this).html('<i class="fa-regular fa-eye"></i>');
         }
     });
 

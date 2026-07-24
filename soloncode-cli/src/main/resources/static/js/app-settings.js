@@ -43,7 +43,7 @@
     function checkWithLoading(opts) {
         var $btn = opts.$btn;
         var btnOriginal = $btn.html();
-        var loadingSvg = '<i class="fa-solid fa-circle-notch"></i> ' + opts.loadingText;
+        var loadingSvg = '<i class="fa-solid fa-circle-notch" style="animation:spin 1s linear infinite"></i> ' + opts.loadingText;
         var okSvg = '<i class="fa-regular fa-circle-check" style="color: var(--color-success)"></i> ';
         var failSvg = '<i class="fa-regular fa-circle-xmark" style="color: var(--color-danger)"></i> ';
 
