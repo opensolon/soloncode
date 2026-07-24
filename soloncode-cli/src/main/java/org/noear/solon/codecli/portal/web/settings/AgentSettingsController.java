@@ -64,14 +64,19 @@ public class AgentSettingsController extends BaseSettingsController {
         Map<String, Map<String, Object>> candidatesByName = new LinkedHashMap<>();
         for (AgentDefinition definition : builtinMap.values()) {
             Map<String, Object> item = toItem(definition, AgentFlags.SCOPE_USER, true);
-            item.put("sourceScope", "builtin");
+            item.put("sourceScope", AgentFlags.SCOPE_USER);
             item.put("editable", true);
             candidatesByName.put(definition.getName(), item);
         }
         addFileAgents(candidatesByName, AgentFlags.SCOPE_USER, userRoot(), builtinMap);
         addFileAgents(candidatesByName, AgentFlags.SCOPE_LOCAL, workspaceRoot(), builtinMap);
 
-        List<Map<String, Object>> list = new ArrayList<>(candidatesByName.values());
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Map<String, Object> item : candidatesByName.values()) {
+            if (!Boolean.TRUE.equals(item.get("hidden"))) {
+                list.add(item);
+            }
+        }
         Collections.sort(list, new Comparator<Map<String, Object>>() {
             @Override
             public int compare(Map<String, Object> a, Map<String, Object> b) {
@@ -88,16 +93,18 @@ public class AgentSettingsController extends BaseSettingsController {
         if (invalid != null) return Result.failure(invalid);
 
         try {
-            if ("builtin".equals(scope)) {
+            String normalizedScope = normalizeScope(scope);
+            Path file = resolveFile(normalizedScope, name);
+            if (!Files.exists(file) && AgentFlags.SCOPE_USER.equals(normalizedScope)) {
                 AgentDefinition definition = findBuiltin(name);
-                if (definition == null) return Result.failure("内置智能体不存在: " + name);
-                Map<String, Object> data = toItem(definition, "builtin", true);
-                data.put("systemPrompt", definition.getSystemPrompt());
-                data.put("editable", true);
-                return Result.succeed(data);
+                if (definition != null) {
+                    Map<String, Object> data = toItem(definition, AgentFlags.SCOPE_USER, true);
+                    data.put("systemPrompt", definition.getSystemPrompt());
+                    data.put("editable", true);
+                    return Result.succeed(data);
+                }
             }
 
-            Path file = resolveFile(scope, name);
             if (!Files.exists(file) || Files.isDirectory(file)) return Result.failure("智能体不存在: " + name);
             if (Files.isSymbolicLink(file)) return Result.failure("不允许读取符号链接文件");
             if (Files.size(file) > MAX_FILE_SIZE) return Result.failure("智能体文件过大，最大允许 512 KB");
@@ -209,10 +216,11 @@ public class AgentSettingsController extends BaseSettingsController {
             } else {
                 String sourceName = root.get("sourceName").getString();
                 String sourceScope = root.get("sourceScope").getString();
-                if (!Assert.isEmpty(sourceName) && !Assert.isEmpty(sourceScope)) {
+                boolean sourceBuiltin = root.get("sourceBuiltin").getBoolean();
+                if (!Assert.isEmpty(sourceName) && (sourceBuiltin || !Assert.isEmpty(sourceScope))) {
                     String sourceInvalid = validateName(sourceName);
                     if (sourceInvalid != null) return Result.failure(sourceInvalid);
-                    if ("builtin".equals(sourceScope)) {
+                    if (sourceBuiltin) {
                         originalMarkdown = loadBuiltinMarkdown(sourceName);
                     } else {
                         Path source = resolveFile(sourceScope, sourceName);
@@ -280,13 +288,14 @@ public class AgentSettingsController extends BaseSettingsController {
                     String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
                     AgentDefinition definition = parseAndValidate(markdown, name);
                     item = toItem(definition, scope, false);
-                    item.put("sourceScope", "builtin");
+                    item.put("sourceScope", scope);
                     item.put("editable", true);
                 } catch (Exception e) {
                     item = new LinkedHashMap<>();
                     item.put("name", name);
                     item.put("description", e.getMessage());
                     item.put("scope", scope);
+                    item.put("sourceScope", scope);
                     item.put("builtin", false);
                     item.put("editable", true);
                     item.put("valid", false);

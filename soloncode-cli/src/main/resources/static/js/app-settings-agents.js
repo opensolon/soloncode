@@ -74,13 +74,14 @@
         }
         var html = '';
         items.forEach(function (item) {
-            var scope = item.scope || 'builtin';
+            var scope = item.scope || 'user';
+            var sourceScope = item.sourceScope || scope;
             var badge = scope === 'workspace'
                 ? '<span class="mounts-scope-badge scope-workspace">工作区</span>'
                 : '';
             if (item.valid === false) badge += '<span class="agent-status-badge invalid">配置无效</span>';
             var tools = item.tools && item.tools.length ? item.tools.join(', ') : '未授予工具权限';
-            html += '<div class="mcp-server-item agent-item" data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(scope) + '">'
+            html += '<div class="mcp-server-item agent-item" data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(sourceScope) + '">'
                 + '<div class="mcp-server-icon">A</div><div class="mcp-server-info">'
                 + '<div class="mcp-server-name">' + escapeHtml(item.name) + ' ' + badge + '</div>'
                 + '<div class="mcp-server-detail">' + escapeHtml(item.description || '') + '</div>'
@@ -163,7 +164,7 @@
             var data = resp.data;
             editName = name;
             editScope = scope;
-            builtinSource = scope === 'builtin';
+            builtinSource = data.builtin === true;
             sourceName = name;
             sourceScope = scope;
             showFormView(data.valid === false ? '修复智能体配置' : '编辑智能体', true);
@@ -174,7 +175,7 @@
             $('#agentsToolsSelector').hide();
             setSelectedTools(data.tools || []);
             if (data.valid === false) showToast('配置解析失败，请用当前表单重新保存修复：' + (data.parseError || ''), 'error');
-            setScopeValue('agentsScope', builtinSource ? 'user' : scope);
+            setScopeValue('agentsScope', scope);
             setScopeReadonly('agentsScope', false);
             $('#agentsFormDeleteBtn').toggle(!builtinSource);
             $('#agentsFormCopyBtn').show();
@@ -195,7 +196,7 @@
         $saveBtn.show().text('保存副本');
     }
 
-    $list.on('click', '.agent-item, .mcp-action-btn.edit', function (e) {
+    $list.on('click', '.mcp-action-btn.edit', function (e) {
         e.stopPropagation();
         var $item = $(this).closest('.agent-item');
         openAgent($item.attr('data-name'), $item.attr('data-scope'));
@@ -252,7 +253,7 @@
         if (!description) { showToast('请填写描述', 'error'); return; }
         if (!systemPrompt) { showToast('请填写系统提示词', 'error'); return; }
         var body = { name: name, scope: scope, description: description, tools: selectedTools, systemPrompt: systemPrompt };
-        if (sourceName && sourceScope) { body.sourceName = sourceName; body.sourceScope = sourceScope; }
+        if (sourceName && sourceScope) { body.sourceName = sourceName; body.sourceScope = sourceScope; body.sourceBuiltin = builtinSource; }
         var isEdit = !!editName && !builtinSource;
         if (isEdit) { body.originalName = editName; body.originalScope = editScope; }
         $saveBtn.prop('disabled', true);

@@ -201,7 +201,25 @@ class AgentSettingsControllerTest {
         assertTrue(json.contains("user override"));
         assertTrue(json.contains("workspace-only"));
         assertFalse(json.contains("\"scope\":\"builtin\""));
+        assertFalse(json.contains("\"sourceScope\":\"builtin\""));
+        assertTrue(json.contains("\"sourceScope\":\"user\""));
         assertFalse(json.contains("当前生效"));
+    }
+
+    @Test
+    void listHidesEffectiveAgentWhenHiddenIsTrue() throws Exception {
+        Path userRoot = tempDir.resolve("home/.soloncode/agents");
+        Path workspaceRoot = tempDir.resolve("workspace/.soloncode/agents");
+        Files.createDirectories(userRoot);
+        Files.createDirectories(workspaceRoot);
+        String visible = "---\nname: visible-agent\ndescription: visible\ntools: [\"read\"]\nhidden: false\n---\n\nVisible.\n";
+        String hidden = "---\nname: hidden-agent\ndescription: hidden\ntools: [\"read\"]\nhidden: true\n---\n\nHidden.\n";
+        Files.write(userRoot.resolve("visible-agent.md"), visible.getBytes(StandardCharsets.UTF_8));
+        Files.write(workspaceRoot.resolve("hidden-agent.md"), hidden.getBytes(StandardCharsets.UTF_8));
+
+        String json = ONode.ofBean(controller.agentsList().getData()).toJson();
+        assertTrue(json.contains("visible-agent"));
+        assertFalse(json.contains("hidden-agent"));
     }
 
     @Test
@@ -210,7 +228,8 @@ class AgentSettingsControllerTest {
         body.put("name", "general");
         body.put("scope", "user");
         body.put("sourceName", "general");
-        body.put("sourceScope", "builtin");
+        body.put("sourceScope", "user");
+        body.put("sourceBuiltin", true);
         body.put("description", "custom general");
         body.put("tools", Arrays.asList("read"));
         body.put("systemPrompt", "Custom general prompt.");
@@ -250,7 +269,7 @@ class AgentSettingsControllerTest {
         Files.write(root.resolve("general.md"), "---\nname: general\ndescription: override\ntools: [\"read\"]\n---\n\nOverride.\n".getBytes(StandardCharsets.UTF_8));
         engine.getAgentManager().refreshByMountAlias(AgentSettingsController.WORKSPACE_ALIAS);
 
-        Result builtin = controller.agentsGet("general", "builtin");
+        Result builtin = controller.agentsGet("general", "user");
         assertEquals(200, builtin.getCode());
         assertFalse(ONode.ofBean(builtin.getData()).toJson().contains("Override."));
     }
@@ -265,14 +284,14 @@ class AgentSettingsControllerTest {
     }
 
     @Test
-    void builtinAgentCanBeReadButNotRemovedAsBuiltin() {
-        Result detail = controller.agentsGet("general", "builtin");
+    void builtinAgentUsesUserScopeButCannotBeRemovedWithoutOverride() {
+        Result detail = controller.agentsGet("general", "user");
         assertEquals(200, detail.getCode());
         String detailJson = ONode.ofBean(detail.getData()).toJson();
         assertTrue(detailJson.contains("general"));
         assertTrue(detailJson.contains("systemPrompt"));
 
-        Result removed = controller.agentsRemove(json("name", "general", "scope", "builtin"));
+        Result removed = controller.agentsRemove(json("name", "general", "scope", "user"));
         assertNotEquals(200, removed.getCode());
     }
 
