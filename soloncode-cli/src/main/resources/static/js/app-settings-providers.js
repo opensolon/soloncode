@@ -79,12 +79,10 @@
             deleteProvider();
         });
 
-        // 列表项点击（编辑）
-        $providerList.on('click', '.mcp-server-item', function (e) {
-            // 忽略开关点击
-            if ($(e.target).closest('.toggle-switch').length) return;
-            if ($(e.target).closest('.mcp-action-btn').length) return;
-            var name = $(this).data('name');
+        // 编辑按钮（供应商列表项）
+        $providerList.on('click', '.provider-edit-btn', function (e) {
+            e.stopPropagation();
+            var name = $(this).closest('.mcp-server-item').data('name');
             editProvider(name);
         });
 
@@ -194,10 +192,10 @@
             '<div class="mcp-server-icon">' + (getStandardAbbr(provider.standard) || 'F') + '</div>' +
             '<div class="mcp-server-info">' +
                 '<div class="mcp-server-name">' + provider.name + ' <span class="settings-inline-tag">[' + (provider.standard || 'openai') + ']</span></div>' +
-                '<div class="mcp-server-detail">' + (provider.apiUrl || '未配置') + '</div>' +
+                '<div class="mcp-server-detail">' + (provider.apiUrl || '未配置') + ' - ' + modelsCount + ' 模型</div>' +
             '</div>' +
             '<div class="mcp-server-actions">' +
-                '<span class="mcp-server-detail">' + modelsCount + ' 模型</span>' +
+                '<button class="mcp-action-btn edit provider-edit-btn" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
                 '<label class="toggle-switch" title="' + (provider.enabled ? '停用' : '启用') + '">' +
                     '<input type="checkbox" ' + (provider.enabled ? 'checked' : '') + ' data-name="' + provider.name + '" class="provider-toggle"/>' +
                     '<span class="toggle-slider"></span>' +

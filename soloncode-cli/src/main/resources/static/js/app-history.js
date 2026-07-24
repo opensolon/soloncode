@@ -1165,6 +1165,17 @@ function renderModelUI() {
     $('#chatModelCurrent').attr('title', title);
     $('#welcomeModelCurrent').attr('title', title);
 
+    function buildDescLine(m) {
+        var standard = m.standard || 'openai';
+        var hasDesc = !!(m.desc);
+        var parts = [];
+        if (hasDesc) {
+            parts.push(escapeHtml(m.desc));
+        }
+        parts.push('<span class="model-item-standard">[' + escapeHtml(standard) + ']</span>');
+        return '<span class="model-item-desc">' + parts.join(' ') + '</span>';
+    }
+
     var html = '';
     for (var i = 0; i < modelList.length; i++) {
         var m = modelList[i];
@@ -1172,7 +1183,7 @@ function renderModelUI() {
         var ctxLen = m.contextLength ? (m.contextLength >= 1000000 && m.contextLength % 1000000 === 0 ? (m.contextLength / 1000000) + 'm' : (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength)) : '';
         html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
             + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
-            + (m.desc ? '<span class="model-item-desc">' + escapeHtml(m.desc) + '</span>' : '')
+            + buildDescLine(m)
             + '</div>';
     }
     $chatDropdown.find('.model-dropdown-items').html(html);
