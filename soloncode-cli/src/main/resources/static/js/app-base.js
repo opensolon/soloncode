@@ -94,6 +94,8 @@ var pendingFiles = [];
 var MAX_ATTACHMENTS = 10;
 var MAX_QUEUED_MESSAGES = 10;
 var userScrolledUp = false;
+var _scrollActive = false;   // 用户正在主动滚动（手指/惯性中），防程序化贴底抢焦
+var _scrollActiveTimer = null;
 
 var onFinishStream = null;
 
@@ -225,6 +227,12 @@ function _syncUserScrollFromGap() {
 }
 
 // 滚轮 / 触控：立即识别用户意图（程序化贴底窗口内不抢状态）
+function _onScrollActivity() {
+    if (Date.now() < _programmaticScrollUntil) return;
+    _scrollActive = true;
+    if (_scrollActiveTimer) clearTimeout(_scrollActiveTimer);
+    _scrollActiveTimer = setTimeout(function() { _scrollActive = false; }, 150);
+}
 $(messagesWrap).on('wheel', function(e) {
     if (Date.now() < _programmaticScrollUntil) return;
     var dy = (e.originalEvent && e.originalEvent.deltaY) || 0;
@@ -234,6 +242,7 @@ $(messagesWrap).on('wheel', function(e) {
         // 向下滚时按实际 gap 同步；到了底部则恢复粘底
         requestAnimationFrame(_syncUserScrollFromGap);
     }
+    _onScrollActivity();
 });
 $(messagesWrap).on('touchstart', function() {
     // 触控开始后的 scroll 视为用户操作，短暂关闭程序化忽略
@@ -241,6 +250,7 @@ $(messagesWrap).on('touchstart', function() {
 });
 $(messagesWrap).on('scroll', function() {
     if (Date.now() < _programmaticScrollUntil) return;
+    _onScrollActivity();
     _syncUserScrollFromGap();
 });
 
@@ -302,7 +312,7 @@ if (messagesWrap) observeMessagesHeight(messagesWrap);
  * - 粘底窗口内会在高度继续变化时再补滚（多 tool-call / 思考收起 / 节流 MD 增高）
  */
 function scrollToBottom(force) {
-    if (!force && userScrolledUp) return;
+    if (!force && (userScrolledUp || _scrollActive)) return;
     if (force) {
         userScrolledUp = false;
         // force：同步立即贴底，避免 RAF 前被残留惯性 wheel / 回流 scroll 重新标成上滑
