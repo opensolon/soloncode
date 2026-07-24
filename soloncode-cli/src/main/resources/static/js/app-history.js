@@ -789,7 +789,7 @@ function showHistoryPanel() {
                 + '<span class="history-item-text">' + escapeHtml(display) + '</span>'
                 + '<span class="history-item-actions">'
                 + timeStr
-                + '<button class="history-locate-btn" title="定位到该消息">◎</button>'
+                + '<button class="history-locate-btn" title="定位到该消息"><i class="fa-solid fa-location-crosshairs fa-xs"></i></button>'
                 + '</span>'
                 + '</div>';
         }

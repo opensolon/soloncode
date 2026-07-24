@@ -736,7 +736,7 @@ body {
 .history-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .history-item-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .history-item-time { font-size: 11px; color: var(--text-secondary); opacity: 0.6; }
-.history-locate-btn { background: none; border: 1px solid var(--border-color); border-radius: 6px; padding: 2px 8px; cursor: pointer; color: var(--text-secondary); font-size: 14px; line-height: 1; opacity: 0; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
+.history-locate-btn { background: none; border: 1px solid var(--border-color); border-radius: 6px; padding: 2px 8px; cursor: pointer; color: var(--text-secondary); font-size: 14px; line-height: 1; opacity: 0; transition: all 0.15s; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; }
 .history-panel-item:hover .history-locate-btn { opacity: 0.7; }
 .history-locate-btn:hover { opacity: 1 !important; background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
 .history-panel-empty { padding: 18px; text-align: center; color: var(--text-secondary); font-size: 13px; }
@@ -750,8 +750,8 @@ body {
 .loop-panel-title { font-size: 13px; font-weight: 600; color: var(--text-primary); flex: 1; }
 .loop-panel-add-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; height: 20px; width: 20px; }
 .loop-panel-add-btn:hover { background: var(--bg-hover); color: var(--accent); }
-.loop-panel-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 13px; padding: 2px 8px; border-radius: 4px; }
-.loop-panel-back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.loop-panel-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; height: 20px; width: 20px; }
+.loop-panel-back-btn:hover { background: var(--bg-hover); color: var(--accent); }
 .loop-panel-empty { padding: 24px; text-align: center; color: var(--text-secondary); font-size: 13px; }
 .loop-panel-list { padding: 4px 0; overflow-y: auto; flex: 1; min-height: 0; }
 .loop-item { padding: 8px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.12s; }
@@ -813,7 +813,7 @@ body {
 
 /* Loop Template Dropdown (form header) */
 .loop-tpl-dropdown { position: relative; margin-left: auto; }
-.loop-tpl-trigger { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: color 0.12s, background 0.12s; }
+.loop-tpl-trigger { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; height: 20px; width: 20px; }
 .loop-tpl-trigger:hover { background: var(--bg-hover); color: var(--accent); }
 .loop-tpl-menu { display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); min-width: 260px; max-width: 320px; max-height: 320px; overflow-y: auto; z-index: 200; padding: 6px; }
 .loop-tpl-menu.show { display: block; animation: drop-up 0.15s ease-out; }
@@ -848,6 +848,8 @@ body {
 .loop-panel .loop-textarea { width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; background: var(--bg-primary); color: var(--text-primary); box-sizing: border-box; outline: none; resize: vertical; min-height: 50px; }
 .loop-panel .loop-textarea:focus { border-color: var(--accent); }
 .loop-interval-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.loop-radio { display: contents !important; }
+
 /* Loop Tab Bar */
 .loop-tab-bar { display: flex; border-bottom: 1px solid var(--border-color); flex-shrink: 0; margin-bottom: 10px; }
 .loop-tab { flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; user-select: none; text-align: center; background: none; }

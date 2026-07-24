@@ -565,7 +565,7 @@
     // 复制成功反馈（SVG 图标切换为勾选再恢复）
     function showCopyFeedback(btn) {
         var origHtml = btn.innerHTML;
-        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        btn.innerHTML = '<i class="fa-solid fa-check" style="color: var(--color-success);"></i>';
         setTimeout(function() {
             btn.innerHTML = origHtml;
         }, 1500);
@@ -725,7 +725,7 @@
             // 目录：显示提示信息，不调用 diff 接口
             if (gitViewerContent) {
                 gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
-                    + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(displayDiffPath) + '</div>'
+                    + '<div style="margin-bottom:8px"><i class="fa-regular fa-folder"></i> ' + escapeHtml(displayDiffPath) + '</div>'
                     + '<div>这是一个目录，暂无可查看的文本差异。</div>'
                     + '</div>';
             }
@@ -773,7 +773,7 @@
             // 未跟踪 -> 提供 "添加到 Git" 按钮
             var addBtn = document.createElement('button');
             addBtn.className = 'git-action-btn git-action-add';
-            addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加到 Git';
+            addBtn.innerHTML = '<i class="fa-solid fa-plus"></i> 添加到 Git';
             addBtn.addEventListener('click', function() {
                 addBtn.disabled = true;
                 addBtn.textContent = '添加中...';
@@ -790,13 +790,13 @@
                     } else {
                         alert('操作失败：' + gitActionError(res));
                         addBtn.disabled = false;
-                        addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加到 Git';
+                        addBtn.innerHTML = '<i class="fa-solid fa-plus"></i> 添加到 Git';
                     }
                 })
                 .catch(function(e) {
                     alert('操作失败：' + e.message);
                     addBtn.disabled = false;
-                    addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加到 Git';
+                    addBtn.innerHTML = '<i class="fa-solid fa-plus"></i> 添加到 Git';
                 });
             });
             actionBar.appendChild(addBtn);
@@ -807,7 +807,7 @@
             // 已暂存 -> 提供 "移出暂存" 按钮
             var unstageBtn = document.createElement('button');
             unstageBtn.className = 'git-action-btn git-action-unstage';
-            unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> 移出暂存';
+            unstageBtn.innerHTML = '<i class="fa-solid fa-minus"></i> 移出暂存';
             unstageBtn.addEventListener('click', function() {
                 unstageBtn.disabled = true;
                 unstageBtn.textContent = '移出中...';
@@ -824,13 +824,13 @@
                     } else {
                         alert('操作失败：' + gitActionError(res));
                         unstageBtn.disabled = false;
-                        unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> 移出暂存';
+                        unstageBtn.innerHTML = '<i class="fa-solid fa-minus"></i> 移出暂存';
                     }
                 })
                 .catch(function(e) {
                     alert('操作失败：' + e.message);
                     unstageBtn.disabled = false;
-                    unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> 移出暂存';
+                    unstageBtn.innerHTML = '<i class="fa-solid fa-minus"></i> 移出暂存';
                 });
             });
             actionBar.appendChild(unstageBtn);
@@ -1108,7 +1108,7 @@
                 if (gitSummaryBtn) {
                     gitSummaryBtn.disabled = false;
                     gitSummaryBtn.classList.remove('loading');
-                    gitSummaryBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2L19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2L11 5"/></svg> 生成摘要';
+                    gitSummaryBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 生成摘要';
                 }
             });
         });
@@ -1165,7 +1165,7 @@
                 .finally(function() {
                     isCommitting = false;
                     gitCommitBtn.disabled = false;
-                    gitCommitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 提交';
+                    gitCommitBtn.innerHTML = '<i class="fa-solid fa-check"></i> 提交';
                 });
         });
 
@@ -1203,14 +1203,14 @@
                         alert('初始化失败：' + ((res && res.data && res.data.message) || '未知错误'));
                         gitInitBtn.disabled = false;
                         gitInitBtn.innerHTML =
-                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 初始化 Git 仓库';
+                            '<i class="fa-solid fa-plus"></i> 初始化 Git 仓库';
                     }
                 })
                 .catch(function(e) {
                     alert('初始化失败：' + e.message);
                     gitInitBtn.disabled = false;
                     gitInitBtn.innerHTML =
-                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 初始化 Git 仓库';
+                        '<i class="fa-solid fa-plus"></i> 初始化 Git 仓库';
                 })
                 .finally(function() {
                     isInitializing = false;

@@ -980,9 +980,9 @@
 
                 var $icon = $('<span>').addClass('filer-search-item-icon');
                 if (item.type === 'directory') {
-                    $icon.html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
+                    $icon.html('<i class="fa-regular fa-folder"></i>');
                 } else {
-                    $icon.html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
+                    $icon.html('<i class="fa-regular fa-file"></i>');
                 }
                 $row.append($icon);
 

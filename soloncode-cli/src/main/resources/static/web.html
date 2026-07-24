@@ -77,7 +77,7 @@
         <div class="welcome-input-box" id="welcomeDropZone">
             <div class="drop-overlay" id="welcomeDropOverlay">
                 <div class="drop-overlay-content">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <i class="fa-solid fa-upload fa-2x"></i>
                     <span>松开以添加附件</span>
                 </div>
             </div>
@@ -161,7 +161,7 @@
             <div class="input-box" id="chatDropZone">
                 <div class="drop-overlay" id="chatDropOverlay">
                     <div class="drop-overlay-content">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <i class="fa-solid fa-upload fa-2x"></i>
                         <span>松开以添加附件</span>
                     </div>
                 </div>
@@ -306,7 +306,7 @@
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <input type="text" class="filer-search-input" id="filerSearchInput" placeholder="搜索文件..." />
                 <button class="filer-search-clear" id="filerSearchClear" title="清除" style="display:none">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
             <div class="filer-panel-tree" id="filerTree"></div>
@@ -333,12 +333,7 @@
             <!-- 状态1：Git 不可用 -->
             <div class="git-unavailable" id="gitUnavailable" style="display:none">
                 <div class="git-empty-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
-                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                        <line x1="12" y1="9" x2="12" y2="13"/>
-                        <line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
+                    <i class="fa-solid fa-triangle-exclamation fa-2x"></i>
                 </div>
                 <div class="git-empty-title">Git 不可用</div>
                 <div class="git-empty-desc">系统未安装 Git 或 Git 不在 PATH 中</div>
@@ -347,17 +342,7 @@
             <!-- 状态2：未初始化仓库 -->
             <div class="git-uninitialized" id="gitUninitialized" style="display:none">
                 <div class="git-empty-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
-                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                        <path d="M15 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
-                        <path d="M11 8a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
-                        <path d="M11 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
-                        <path d="M12 15v-6" />
-                        <path d="M15 11l-2 -2" />
-                        <path d="M11 7l-1.9 -1.9" />
-                        <path d="M13.446 2.6l7.955 7.954a2.045 2.045 0 0 1 0 2.892l-7.955 7.955a2.045 2.045 0 0 1 -2.892 0l-7.955 -7.955a2.045 2.045 0 0 1 0 -2.892l7.955 -7.955a2.045 2.045 0 0 1 2.892 0" />
-                    </svg>
+                    <i class="fa-brands fa-git-alt fa-2x"></i>
                 </div>
                 <div class="git-empty-title">当前工作区不是 Git 仓库</div>
                 <div class="git-init-benefits">
@@ -375,8 +360,6 @@
                     </label>
                 </div>
                 <button class="git-init-btn" id="gitInitBtn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     初始化 Git 仓库
                 </button>
                 <div class="git-init-note">将在工作区执行 git init</div>
@@ -427,17 +410,12 @@
                         任务排队
                         <span class="queue-strip-count" id="chatQueueTitle">0</span>
                         <button type="button" class="queue-strip-clear" id="chatQueueClear" title="清空排队" aria-label="清空排队">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="3 6 5 6 21 6"/>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                <line x1="10" y1="11" x2="10" y2="17"/>
-                                <line x1="14" y1="11" x2="14" y2="17"/>
-                            </svg>
+                            <i class="fa-regular fa-trash-can"></i>
                         </button>
                     </div>
                     <div class="queue-strip-actions">
                         <button type="button" class="queue-strip-toggle" id="chatQueueToggle" title="展开" aria-label="展开">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            <i class="fa-solid fa-angle-down"></i>
                         </button>
                     </div>
                 </div>
@@ -893,16 +871,15 @@
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="llmBackBtn" title="返回">
                                         <i class="fa-solid fa-angle-left"></i>
+                                    </button>
                                     <span class="settings-section-title" id="llmFormTitle">添加模型</span>
                                 </div>
                                 <div class="settings-form-actions" id="llmFormActions" style="display:none">
                                     <button class="settings-form-action-btn" id="llmFormCopyBtn" title="复制">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                                        复制
+                                        <i class="fa-regular fa-copy"></i> 复制
                                     </button>
                                     <button class="settings-form-action-btn danger" id="llmFormDeleteBtn" title="删除">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                        删除
+                                        <i class="fa-regular fa-trash-can"></i> 删除
                                     </button>
                                 </div>
                             </div>
@@ -1008,14 +985,16 @@
                         </div>
                         <div class="skills-search-bar">
                             <div class="skills-market-wrap">
-                                <svg class="skills-market-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                                <i class="fa-solid fa-hexagon-nodes skills-market-icon"></i>
                                 <select id="skillsMarketSelect" class="skills-market-select" title="选择技能市场"></select>
                             </div>
 
                             <div class="skills-search-input-wrap">
                                 <svg class="skills-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                                 <input type="text" id="skillsSearchInput" placeholder="搜索技能..." autocomplete="off"/>
-                                <button class="skills-search-clear" id="skillsSearchClear" style="display:none" title="清除">&times;</button>
+                                <button class="skills-search-clear" id="skillsSearchClear" style="display:none" title="清除">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
                             </div>
                         </div>
                         <div class="skills-status" id="skillsStatus" style="display:none">
@@ -1052,7 +1031,9 @@
                                     <span class="settings-section-title" id="mountsFormTitle">添加挂载</span>
                                 </div>
                                 <div class="settings-form-actions" id="mountsFormActions" style="display:none">
-                                    <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" title="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 删除</button>
+                                    <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" title="删除">
+                                        <i class="fa-regular fa-trash-can"></i> 删除
+                                    </button>
                                 </div>
                             </div>
                             <div class="mounts-add-form">
@@ -1070,10 +1051,10 @@
                                 </div>
                                 <div class="form-group">
                                     <label>内容类型</label>
-                                    <div class="mcp-type-toggle" id="mountsTypeToggle">
-                                        <button class="mcp-type-btn active" data-type="SKILLS" type="button">技能 (SKILLS)</button>
-                                        <button class="mcp-type-btn" data-type="AGENTS" type="button">子代理 (AGENTS)</button>
-                                        <button class="mcp-type-btn" data-type="FILES" type="button">文件 (FILES)</button>
+                                    <div class="settings-segmented-control" id="mountsTypeToggle">
+                                        <button class="settings-segmented-btn active" data-type="SKILLS" type="button">技能 (SKILLS)</button>
+                                        <button class="settings-segmented-btn" data-type="AGENTS" type="button">子代理 (AGENTS)</button>
+                                        <button class="settings-segmented-btn" data-type="FILES" type="button">文件 (FILES)</button>
                                     </div>
                                 </div>
                                 <div class="form-group">
@@ -1120,8 +1101,8 @@
                                     <span class="settings-section-title" id="mountsSkillsTitle">技能包列表</span>
                                 </div>
                                 <div class="settings-header-icon-actions">
-                                    <button class="mcp-action-btn" id="mountsOpenDirBtn" title="打开目录"><i class="fa-regular fa-folder"></i></button>
-                                    <button class="mcp-action-btn" id="mountsRefreshBtn" title="刷新"><i class="fa-solid fa-arrow-rotate-right"></i></button>
+                                    <button class="settings-action-btn" id="mountsOpenDirBtn" title="打开目录"><i class="fa-regular fa-folder"></i></button>
+                                    <button class="settings-action-btn" id="mountsRefreshBtn" title="刷新"><i class="fa-solid fa-arrow-rotate-right"></i></button>
                                 </div>
                             </div>
                             <div class="mounts-skills-list" id="mountsSkillsList"></div>
@@ -1141,8 +1122,7 @@
                                 <div class="mcp-header-actions">
                                     <div class="mcp-import-menu-wrap">
                                         <button class="settings-add-btn" id="mcpImportBtn" title="导入 MCP 服务器配置">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                            导入
+                                            <i class="fa-solid fa-upload"></i> 导入
                                         </button>
                                         <div class="mcp-import-menu" id="mcpImportMenu">
                                             <button type="button" class="mcp-import-menu-item" data-action="file">导入 JSON 文件</button>
@@ -1163,16 +1143,15 @@
                                 <div class="settings-title-row">
                                     <button class="settings-back-btn" id="mcpBackBtn" title="返回">
                                         <i class="fa-solid fa-angle-left"></i>
+                                    </button>
                                     <span class="settings-section-title" id="mcpFormTitle">添加服务器</span>
                                 </div>
                                 <div class="settings-form-actions" id="mcpFormActions" style="display:none">
                                     <button class="settings-form-action-btn" id="mcpFormCopyBtn" title="复制">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                                        复制
+                                        <i class="fa-regular fa-copy"></i> 复制
                                     </button>
                                     <button class="settings-form-action-btn danger" id="mcpFormDeleteBtn" title="删除">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                        删除
+                                        <i class="fa-regular fa-trash-can"></i> 删除
                                     </button>
                                 </div>
                             </div>
@@ -1191,10 +1170,10 @@
                                 </div>
                                 <div class="form-group">
                                     <label>类型</label>
-                                    <div class="mcp-type-toggle">
-                                        <button class="mcp-type-btn active" data-type="stdio">stdio</button>
-                                        <button class="mcp-type-btn" data-type="sse">http sse</button>
-                                        <button class="mcp-type-btn" data-type="streamable">http streamable</button>
+                                    <div class="settings-segmented-control">
+                                        <button class="settings-segmented-btn active" data-type="stdio">stdio</button>
+                                        <button class="settings-segmented-btn" data-type="sse">http sse</button>
+                                        <button class="settings-segmented-btn" data-type="streamable">http streamable</button>
                                     </div>
                                 </div>
                                 <div class="mcp-config-stdio" id="mcpConfigStdio">
@@ -1250,13 +1229,13 @@
                                     <span class="settings-section-title" id="mcpToolsTitle">工具列表</span>
                                 </div>
                             </div>
-                            <div class="mcp-tools-toolbar" id="mcpToolsToolbar" style="display:none;">
-                                <label class="mcp-tools-select-all">
+                            <div class="settings-selection-toolbar" id="mcpToolsToolbar" style="display:none;">
+                                <label class="settings-select-all">
                                     <input type="checkbox" id="mcpToolsSelectAll" />
                                     <span>全选</span>
                                 </label>
-                                <div class="mcp-tools-toolbar-actions">
-                                    <span class="mcp-tools-count" id="mcpToolsCount"></span>
+                                <div class="settings-selection-actions">
+                                    <span class="settings-selection-count" id="mcpToolsCount"></span>
                                     <button class="settings-add-btn settings-toolbar-save-btn" id="mcpToolsSaveBtn">保存</button>
                                 </div>
                             </div>
@@ -1294,12 +1273,10 @@
                                 </div>
                                 <div class="settings-form-actions" id="openapiFormActions" style="display:none">
                                     <button class="settings-form-action-btn" id="openapiFormCopyBtn" title="复制">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                                        复制
+                                        <i class="fa-regular fa-copy"></i> 复制
                                     </button>
                                     <button class="settings-form-action-btn danger" id="openapiFormDeleteBtn" title="删除">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                        删除
+                                        <i class="fa-regular fa-trash-can"></i> 删除
                                     </button>
                                 </div>
                             </div>
@@ -1352,13 +1329,13 @@
                                     <span class="settings-section-title" id="openapiApisTitle">接口列表</span>
                                 </div>
                             </div>
-                            <div class="mcp-tools-toolbar" id="openapiApisToolbar" style="display:none;">
-                                <label class="mcp-tools-select-all">
+                            <div class="settings-selection-toolbar" id="openapiApisToolbar" style="display:none;">
+                                <label class="settings-select-all">
                                     <input type="checkbox" id="openapiApisSelectAll" />
                                     <span>全选</span>
                                 </label>
-                                <div class="mcp-tools-toolbar-actions">
-                                    <span class="mcp-tools-count" id="openapiApisCount"></span>
+                                <div class="settings-selection-actions">
+                                    <span class="settings-selection-count" id="openapiApisCount"></span>
                                     <button class="settings-add-btn settings-toolbar-save-btn" id="openapiApisSaveBtn">保存</button>
                                 </div>
                             </div>
@@ -1396,8 +1373,7 @@
                                 </div>
                                 <div class="settings-form-actions" id="lspFormActions" style="display:none">
                                     <button class="settings-form-action-btn danger" id="lspFormDeleteBtn" title="删除">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                        删除
+                                        <i class="fa-regular fa-trash-can"></i> 删除
                                     </button>
                                 </div>
                             </div>
@@ -1462,8 +1438,7 @@
                                 </div>
                                 <div class="settings-form-actions" id="providerFormActions" style="display:none">
                                     <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" title="删除">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                        删除
+                                        <i class="fa-regular fa-trash-can"></i> 删除
                                     </button>
                                 </div>
                             </div>

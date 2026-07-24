@@ -53,14 +53,14 @@
                 var badges = '<span class="settings-inline-tag">[lsp]</span>';
                 if (item.scope === 'workspace') badges += ' <span class="mounts-scope-badge scope-workspace">工作区</span>';
                 if (installed) badges += ' <span class="skill-installed-badge">已安装</span>';
-                html += '<div class="mcp-server-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
-                    + '<div class="mcp-server-icon">L</div>'
-                    + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' ' + badges + '</div>'
-                    + (command ? '<div class="mcp-server-detail">' + escapeHtml(command) + '</div>' : '')
-                    + (extensions ? '<div class="mcp-server-detail settings-accent-text">' + escapeHtml(extensions) + '</div>' : '')
-                    + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
+                html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
+                    + '<div class="settings-list-icon">L</div>'
+                    + '<div class="settings-list-info">'
+                    + '<div class="settings-list-title">' + escapeHtml(name) + ' ' + badges + '</div>'
+                    + (command ? '<div class="settings-list-desc">' + escapeHtml(command) + '</div>' : '')
+                    + (extensions ? '<div class="settings-list-desc settings-accent-text">' + escapeHtml(extensions) + '</div>' : '')
+                    + '</div><div class="settings-list-actions">'
+                    + '<button class="settings-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="lsp-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -73,7 +73,12 @@
 
     // LSP 列表事件委托
     $lspServerList
-        .on('click', '.mcp-action-btn.edit', function (e) {
+        .on('click', '.settings-list-item', function (e) {
+            if ($(e.target).closest('.settings-list-actions').length) return;
+            var name = $(this).attr('data-name');
+            if (name) lspEditServer(name);
+        })
+        .on('click', '.settings-action-btn.edit', function (e) {
             e.stopPropagation();
             var name = $(this).attr('data-name');
             if (name) lspEditServer(name);

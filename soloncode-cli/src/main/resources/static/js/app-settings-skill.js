@@ -211,9 +211,7 @@
         if (!skills || skills.length === 0) {
             $skillsList.html(
                 '<div class="skill-empty-state">'
-                + '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5">'
-                + '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'
-                + '</svg>'
+                + '<i class="fa-solid fa-inbox fa-3x"></i>'
                 + '<div style="font-size:13px;margin-top:12px;">暂无结果</div>'
                 + '</div>'
             );
@@ -249,10 +247,10 @@
                 + '<div class="skill-item-actions">'
                     + (isInstalled
                         ? '<div class="skill-install-wrap">'
-                    +   '<button class="skill-install-btn skill-reinstall-btn installed" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '" data-mount-alias="' + escapeAttr(installedMap[name]) + '" title="重新安装（升级）"><svg class="skill-install-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>'
+                    +   '<button class="skill-install-btn skill-reinstall-btn installed" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '" data-mount-alias="' + escapeAttr(installedMap[name]) + '" title="重新安装（升级）"><i class="fa-solid fa-arrow-rotate-right"></i></button>'
                     + '</div>'
                         : '<div class="skill-install-wrap">'
-                    +   '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '" title="安装到"><svg class="skill-install-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>'
+                    +   '<button class="skill-install-btn" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '" title="安装到"><i class="fa-solid fa-download"></i></button>'
                     +   '<div class="skill-install-dropdown" data-slug="' + escapeAttr(name) + '" data-display="' + escapeAttr(displayName) + '" data-market="' + escapeAttr(_currentMarketName) + '">'
                     +     '<div class="skill-install-dropdown-loading">加载中...</div>'
                     +   '</div>'
@@ -355,7 +353,7 @@
         }
 
         // 开始安装（覆盖升级）
-        $btn.addClass('installing').html('<svg class="skill-install-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>').prop('disabled', true);
+        $btn.addClass('installing').html('<i class="fa-solid fa-arrow-rotate-right"></i>').prop('disabled', true);
 
         var postData = { slug: slug, mountAlias: mountAlias };
         if (marketUrl) postData.marketName = marketUrl;
@@ -376,11 +374,11 @@
                 } else {
                     alert('技能「' + skillName + '」升级成功！');
                 }
-                $btn.removeClass('installing').html('<svg class="skill-install-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>').prop('disabled', false);
+                $btn.removeClass('installing').html('<i class="fa-solid fa-arrow-rotate-right"></i>').prop('disabled', false);
                 if (typeof loadCommands === 'function') loadCommands();
             } else {
                 var msg = (resp && resp.description) ? resp.description : '升级失败，请稍后重试';
-                $btn.removeClass('installing').html('<svg class="skill-install-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>').prop('disabled', false);
+                $btn.removeClass('installing').html('<i class="fa-solid fa-arrow-rotate-right"></i>').prop('disabled', false);
                 if (typeof layer !== 'undefined' && layer.msg) {
                     layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
                 } else {
@@ -389,7 +387,7 @@
             }
         })
         .fail(function (jqXHR) {
-            $btn.removeClass('installing').html('<svg class="skill-install-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>').prop('disabled', false);
+            $btn.removeClass('installing').html('<i class="fa-solid fa-arrow-rotate-right"></i>').prop('disabled', false);
             var msg = '升级失败，请稍后重试';
             try {
                 var err = JSON.parse(jqXHR.responseText);
@@ -419,7 +417,7 @@
         var $btn = $dropdown.closest('.skill-install-wrap').find('.skill-install-btn');
 
         // 开始安装
-        $btn.addClass('installing').html('<svg class="skill-install-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>').prop('disabled', true);
+        $btn.addClass('installing').html('<i class="fa-solid fa-download"></i>').prop('disabled', true);
         $dropdown.removeClass('active');
 
         var postData = { slug: slug, mountAlias: mountAlias };
@@ -452,7 +450,7 @@
                 }
             } else {
                 var msg = (resp && resp.description) ? resp.description : '安装失败，请稍后重试';
-                $btn.removeClass('installing').html('<svg class="skill-install-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>').prop('disabled', false);
+                $btn.removeClass('installing').html('<i class="fa-solid fa-download"></i>').prop('disabled', false);
                 if (typeof layer !== 'undefined' && layer.msg) {
                     layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
                 } else {
@@ -461,7 +459,7 @@
             }
         })
         .fail(function (jqXHR) {
-            $btn.removeClass('installing').html('<svg class="skill-install-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>').prop('disabled', false);
+            $btn.removeClass('installing').html('<i class="fa-solid fa-download"></i>').prop('disabled', false);
             var msg = '安装失败，请稍后重试';
             try {
                 var err = JSON.parse(jqXHR.responseText);

@@ -26,7 +26,7 @@
     var mountsCurrentType = null;
     var mountsCurrentRealPath = null;
     var mountsEditAlias = null;
-    var $mountsTypeBtns = $('#mountsTypeToggle .mcp-type-btn');
+    var $mountsTypeBtns = $('#mountsTypeToggle .settings-segmented-btn');
 
     function showMountsListView() { $mountsFormView.hide(); $mountsSkillsView.hide(); $mountsListView.addClass('slide-back').show(); setTimeout(function(){ $mountsListView.removeClass('slide-back'); }, 260); }
     function showMountsFormView(title) { $mountsFormTitle.text(title || '添加挂载'); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
@@ -76,18 +76,18 @@
                 var isSystem = item.system === true;
                 var typeMap = { SKILLS: 'S', FILES: 'F', AGENTS: 'A' };
                 var iconText = typeMap[item.type] || (item.type ? item.type.charAt(0).toUpperCase() : 'M');
-                html += '<div class="mcp-server-item mounts-pool-item' + (isSystem ? ' mounts-system' : '') + (item.enabled === false ? ' disabled' : '') + '" data-alias="' + escapeAttr(alias) + '">'
-                    + '<div class="mcp-server-icon">' + escapeHtml(iconText) + '</div>'
-                    + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(alias)
+                html += '<div class="settings-list-item mounts-pool-item' + (isSystem ? ' mounts-system' : '') + (item.enabled === false ? ' disabled' : '') + '" data-alias="' + escapeAttr(alias) + '">'
+                    + '<div class="settings-list-icon">' + escapeHtml(iconText) + '</div>'
+                    + '<div class="settings-list-info">'
+                    + '<div class="settings-list-title">' + escapeHtml(alias)
                     + (isSystem ? ' <span class="mounts-system-badge">系统</span>' : '')
                     + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '')
                     + (item.writeable ? ' <span class="mounts-writeable-badge">可写</span>' : '')
                     + '</div>'
-                    + (item.description ? '<div class="mcp-server-detail settings-muted-text">' + escapeHtml(item.description) + '</div>' : '')
-                    + (path ? '<div class="mcp-server-detail">' + escapeHtml(path) + '</div>' : '')
-                    + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + (item.description ? '<div class="settings-list-desc settings-muted-text">' + escapeHtml(item.description) + '</div>' : '')
+                    + (path ? '<div class="settings-list-desc">' + escapeHtml(path) + '</div>' : '')
+                    + '</div><div class="settings-list-actions">'
+                    + '<button class="settings-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="编辑"><i class="fa-regular fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-alias="' + escapeAttr(alias) + '" class="mounts-toggle"/> '
                     + '<span class="toggle-slider"></span>'
@@ -138,14 +138,14 @@
 
     // 池列表事件委托
     $mountsList
-        .on('click', '.mcp-action-btn.edit.mounts-edit-btn', function (e) {
+        .on('click', '.settings-action-btn.edit.mounts-edit-btn', function (e) {
             e.stopPropagation();
             var alias = $(this).attr('data-alias');
             mountsEditPool(alias);
         })
         .on('click', '.mounts-pool-item', function (e) {
             if ($(e.target).closest('.toggle-switch').length) return;
-            if ($(e.target).closest('.mcp-action-btn').length) return;
+            if ($(e.target).closest('.settings-action-btn').length) return;
             var alias = $(this).attr('data-alias');
             loadMountsContent(alias, getMountType(alias));
         })
@@ -220,13 +220,13 @@
         } else {
             html += '<div class="mounts-skills-count">' + list.length + ' 个技能包</div>';
             list.forEach(function (skill) {
-                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '">'
-                    + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(skill.name) + '</div>'
-                    + (skill.realPath ? '<div class="mcp-server-detail">' + escapeHtml(skill.realPath) + '</div>' : '')
-                    + (skill.description ? '<div class="mcp-server-detail">' + escapeHtml(skill.description) + '</div>' : '')
-                    + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="删除技能包"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+                html += '<div class="settings-list-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '">'
+                    + '<div class="settings-list-info">'
+                    + '<div class="settings-list-title">' + escapeHtml(skill.name) + '</div>'
+                    + (skill.realPath ? '<div class="settings-list-desc">' + escapeHtml(skill.realPath) + '</div>' : '')
+                    + (skill.description ? '<div class="settings-list-desc">' + escapeHtml(skill.description) + '</div>' : '')
+                    + '</div><div class="settings-list-actions">'
+                    + '<button class="settings-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="删除技能包"><i class="fa-regular fa-trash-can"></i></button>'
                     + '</div></div>';
             });
         }
@@ -245,10 +245,10 @@
             list.forEach(function (agent) {
                 var name = agent.name || '';
                 var filePath = agent.filePath || '';
-                html += '<div class="mcp-server-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '">'
-                    + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + '</div>'
-                    + (filePath ? '<div class="mcp-server-detail">' + escapeHtml(filePath) + '</div>' : '')
+                html += '<div class="settings-list-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '">'
+                    + '<div class="settings-list-info">'
+                    + '<div class="settings-list-title">' + escapeHtml(name) + '</div>'
+                    + (filePath ? '<div class="settings-list-desc">' + escapeHtml(filePath) + '</div>' : '')
                     + '</div></div>';
             });
         }
@@ -256,7 +256,7 @@
     }
 
     // 技能包删除事件
-    $mountsSkillsList.on('click', '.mcp-action-btn.delete', function (e) {
+    $mountsSkillsList.on('click', '.settings-action-btn.delete', function (e) {
         e.stopPropagation();
         var skillName = $(this).attr('data-skill');
         layer.confirm('确定删除技能包 "' + skillName + '"？此操作不可恢复。', { title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px' }, function(index) {
@@ -270,7 +270,7 @@
 
     // 点击技能/子代理条目 → 打开其所在目录
     $mountsSkillsList.on('click', '.mounts-skill-item', function (e) {
-        if ($(e.target).closest('.mcp-action-btn').length) return;
+        if ($(e.target).closest('.settings-action-btn').length) return;
         var realPath = $(this).data('real-path') || '';
         if (realPath) {
             $.get('/web/settings/mounts/open', { path: realPath }, function (resp) {
@@ -378,7 +378,7 @@
     });
 
     // 类型联动
-    $('#mountsTypeToggle').on('click', '.mcp-type-btn', function () {
+    $('#mountsTypeToggle').on('click', '.settings-segmented-btn', function () {
         if ($(this).prop('disabled')) return;
         $mountsTypeBtns.removeClass('active');
         $(this).addClass('active');

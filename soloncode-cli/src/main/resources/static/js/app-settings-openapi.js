@@ -55,14 +55,14 @@
                 var baseUrl = item.apiBaseUrl || '';
                 var docUrl = item.docUrl || '';
                 var enabled = item.enabled !== false;
-                html += '<div class="mcp-server-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
-                    + '<div class="mcp-server-icon">A</div>'
-                    + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
-                    + (baseUrl ? '<div class="mcp-server-detail">' + escapeHtml(baseUrl) + '</div>' : '')
-                    + (docUrl ? '<div class="mcp-server-detail settings-accent-text">' + escapeHtml(docUrl) + '</div>' : '')
-                    + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
+                html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
+                    + '<div class="settings-list-icon">A</div>'
+                    + '<div class="settings-list-info">'
+                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
+                    + (baseUrl ? '<div class="settings-list-desc">' + escapeHtml(baseUrl) + '</div>' : '')
+                    + (docUrl ? '<div class="settings-list-desc settings-accent-text">' + escapeHtml(docUrl) + '</div>' : '')
+                    + '</div><div class="settings-list-actions">'
+                    + '<button class="settings-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="openapi-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -75,13 +75,13 @@
 
     // OpenApi 列表事件委托
     $openapiServerList
-        .on('click', '.mcp-action-btn.edit', function (e) {
+        .on('click', '.settings-action-btn.edit', function (e) {
             e.stopPropagation();
             var name = $(this).attr('data-name');
             if (name) openapiEditServer(name);
         })
-        .on('click', '.mcp-server-item', function (e) {
-            if ($(e.target).closest('.mcp-action-btn').length) return;
+        .on('click', '.settings-list-item', function (e) {
+            if ($(e.target).closest('.settings-action-btn').length) return;
             if ($(e.target).closest('.toggle-switch').length) return;
             var name = $(this).attr('data-name');
             if (name) loadOpenapiApis(name);

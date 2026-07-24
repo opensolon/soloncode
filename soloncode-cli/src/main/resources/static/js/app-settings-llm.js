@@ -113,6 +113,11 @@
 
     // LLM 列表事件委托（一次绑定，无需每次 render 后重绑）
     $llmModelList
+        .on('click', '.llm-model-item', function (e) {
+            if ($(e.target).closest('.llm-model-actions').length) return;
+            var model = $(this).attr('data-model');
+            if (model) llmEditNameFunc(model);
+        })
         .on('click', '.llm-edit-btn', function (e) {
             e.stopPropagation();
             var model = $(this).closest('.llm-model-item').attr('data-model');

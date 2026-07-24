@@ -43,9 +43,9 @@
     function checkWithLoading(opts) {
         var $btn = opts.$btn;
         var btnOriginal = $btn.html();
-        var loadingSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> ' + opts.loadingText;
-        var okSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ';
-        var failSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ';
+        var loadingSvg = '<i class="fa-solid fa-circle-notch"></i> ' + opts.loadingText;
+        var okSvg = '<i class="fa-regular fa-circle-check" style="color: var(--color-success)"></i> ';
+        var failSvg = '<i class="fa-regular fa-circle-xmark" style="color: var(--color-danger)"></i> ';
 
         $btn.prop('disabled', true).html(loadingSvg);
         opts.$result.hide();

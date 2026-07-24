@@ -80,17 +80,17 @@
         });
 
         // 列表项点击（编辑）
-        $providerList.on('click', '.mcp-server-item', function (e) {
+        $providerList.on('click', '.settings-list-item', function (e) {
             // 忽略开关点击
             if ($(e.target).closest('.toggle-switch').length) return;
-            if ($(e.target).closest('.mcp-action-btn').length) return;
+            if ($(e.target).closest('.settings-action-btn').length) return;
             var name = $(this).data('name');
             editProvider(name);
         });
 
         // 启用/禁用开关
         $providerList.on('change', '.provider-toggle', function () {
-            var name = $(this).closest('.mcp-server-item').data('name');
+            var name = $(this).closest('.settings-list-item').data('name');
             var enabled = $(this).prop('checked');
             toggleProvider(name, enabled);
         });
@@ -184,14 +184,14 @@
     function renderProviderItem(provider) {
         var modelsCount = (provider.models || []).length;
 
-        return '<div class="mcp-server-item' + (provider.enabled === false ? ' disabled' : '') + '" data-name="' + provider.name + '">' +
-            '<div class="mcp-server-icon">P</div>' +
-            '<div class="mcp-server-info">' +
-                '<div class="mcp-server-name">' + provider.name + ' <span class="settings-inline-tag">[' + (provider.standard || 'openai') + ']</span></div>' +
-                '<div class="mcp-server-detail">' + (provider.apiUrl || '未配置') + '</div>' +
+        return '<div class="settings-list-item' + (provider.enabled === false ? ' disabled' : '') + '" data-name="' + provider.name + '">' +
+            '<div class="settings-list-icon">P</div>' +
+            '<div class="settings-list-info">' +
+                '<div class="settings-list-title">' + provider.name + ' <span class="settings-inline-tag">[' + (provider.standard || 'openai') + ']</span></div>' +
+                '<div class="settings-list-desc">' + (provider.apiUrl || '未配置') + '</div>' +
             '</div>' +
-            '<div class="mcp-server-actions">' +
-                '<span class="mcp-server-detail">' + modelsCount + ' 模型</span>' +
+            '<div class="settings-list-actions">' +
+                '<span class="settings-list-desc">' + modelsCount + ' 模型</span>' +
                 '<label class="toggle-switch" title="' + (provider.enabled ? '停用' : '启用') + '">' +
                     '<input type="checkbox" ' + (provider.enabled ? 'checked' : '') + ' data-name="' + provider.name + '" class="provider-toggle"/>' +
                     '<span class="toggle-slider"></span>' +

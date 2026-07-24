@@ -18,7 +18,7 @@
     var $mcpFormTitle = $('#mcpFormTitle');
     var $mcpListView = $('#mcpListView');
     var $mcpFormView = $('#mcpFormView');
-    var $mcpTypeBtns = $('#mcpAddForm .mcp-type-btn');
+    var $mcpTypeBtns = $('#mcpAddForm .settings-segmented-btn');
     var $mcpCheckResult = $('#mcpCheckResult');
     var $mcpToolsView = $('#mcpToolsView');
     var $mcpToolsList = $('#mcpToolsList');
@@ -64,13 +64,13 @@
                 var type = item.type || 'stdio';
                 var detail = type === 'stdio' ? (item.command || '') : (item.url || '');
                 var icon = iconMap[type] || 'M';
-                html += '<div class="mcp-server-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
-                    + '<div class="mcp-server-icon">' + escapeHtml(icon) + '</div>'
-                    + '<div class="mcp-server-info">'
-                    + '<div class="mcp-server-name">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
-                    + (detail ? '<div class="mcp-server-detail">' + escapeHtml(detail) + '</div>' : '')
-                    + '</div><div class="mcp-server-actions">'
-                    + '<button class="mcp-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
+                html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
+                    + '<div class="settings-list-icon">' + escapeHtml(icon) + '</div>'
+                    + '<div class="settings-list-info">'
+                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
+                    + (detail ? '<div class="settings-list-desc">' + escapeHtml(detail) + '</div>' : '')
+                    + '</div><div class="settings-list-actions">'
+                    + '<button class="settings-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><i class="fa-solid fa-pen-to-square"></i></button>'
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="mcp-toggle"/>'
                     + '<span class="toggle-slider"></span>'
@@ -83,14 +83,14 @@
 
     // MCP 列表事件委托
     $mcpServerList
-        .on('click', '.mcp-action-btn.edit.mcp-edit-btn', function (e) {
+        .on('click', '.settings-action-btn.edit.mcp-edit-btn', function (e) {
             e.stopPropagation();
             var name = $(this).attr('data-name');
             if (name) mcpEditServer(name);
         })
-        .on('click', '.mcp-server-item', function (e) {
+        .on('click', '.settings-list-item', function (e) {
             if ($(e.target).closest('.toggle-switch').length) return;
-            if ($(e.target).closest('.mcp-action-btn').length) return;
+            if ($(e.target).closest('.settings-action-btn').length) return;
             var name = $(this).attr('data-name');
             if (name) showMcpTools(name);
         })
@@ -166,15 +166,15 @@
         tools.forEach(function (tool) {
             var toolName = tool.name || '';
             var isEnabled = !disallowedMap[toolName];
-            html += '<div class="mcp-server-item mcp-tool-item" data-tool="' + escapeAttr(toolName) + '">'
+            html += '<div class="settings-list-item mcp-tool-item" data-tool="' + escapeAttr(toolName) + '">'
                 + '<label class="mcp-tool-checkbox" title="' + (isEnabled ? '禁用' : '启用') + '">'
                 + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(toolName) + '" class="mcp-tool-toggle"/>'
                 + '<span class="mcp-tool-checkmark"></span>'
                 + '</label>'
-                + '<div class="mcp-server-icon">T</div>'
-                + '<div class="mcp-server-info">'
-                + '<div class="mcp-server-name">' + escapeHtml(toolName) + '</div>'
-                + (tool.description ? '<div class="mcp-server-detail">' + escapeHtml(tool.description) + '</div>' : '')
+                + '<div class="settings-list-icon">T</div>'
+                + '<div class="settings-list-info">'
+                + '<div class="settings-list-title">' + escapeHtml(toolName) + '</div>'
+                + (tool.description ? '<div class="settings-list-desc">' + escapeHtml(tool.description) + '</div>' : '')
                 + '</div></div>';
         });
         $mcpToolsList.html(html);
@@ -252,7 +252,7 @@
 
     function buildMcpBodyObj() {
         var name = $('#mcpName').val().trim();
-        var type = $('#mcpAddForm .mcp-type-btn.active').attr('data-type') || 'stdio';
+        var type = $('#mcpAddForm .settings-segmented-btn.active').attr('data-type') || 'stdio';
         if (!name) { showToast('名称为必填项', 'error'); return null; }
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
 
@@ -826,7 +826,7 @@
                 showToast('上传解析失败，请检查文件格式后重试', 'error');
             },
             complete: function() {
-                $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导入');
+                $('#mcpImportBtn').prop('disabled', false).html('<i class="fa-solid fa-upload"></i> 导入');
             }
         });
 

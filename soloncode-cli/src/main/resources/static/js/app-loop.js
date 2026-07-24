@@ -309,16 +309,16 @@
         if (!t.cancelled) {
             html += '<button class="loop-action-btn" data-action="toggle" data-id="' + t.id + '" data-enabled="' + t.enabled + '" title="' + (t.enabled ? '停用' : '启用') + '">' +
                 (t.enabled
-                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
-                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>') +
+                    ? '<i class="fa-solid fa-pause"></i>'
+                    : '<i class="fa-solid fa-play"></i>') +
                 '</button>';
             html += '<button class="loop-action-btn" data-action="trigger" data-id="' + t.id + '" title="手动触发">' +
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>';
+                '<i class="fa-solid fa-arrow-rotate-right"></i></button>';
             html += '<button class="loop-action-btn" data-action="edit" data-id="' + t.id + '" title="编辑">' +
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+                '<i class="fa-regular fa-pen-to-square"></i></button>';
         }
         html += '<button class="loop-action-btn danger" data-action="remove" data-id="' + t.id + '" title="删除">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>';
+            '<i class="fa-regular fa-trash-can"></i></button>';
         html += '</div>';
         html += '</div>';
         html += '<div class="loop-item-prompt" title="' + escapeHtml(t.prompt) + '">' + escapeHtml(t.prompt) + '</div>';
@@ -403,13 +403,13 @@
     function renderLoopForm() {
         var html = '<div class="loop-panel-header">';
         html += '<button class="loop-panel-back-btn" id="loopBackBtn">' +
-            '<i class="fa-solid fa-angle-left"></i></button>';
+            '<i class="fa-solid fa-angle-left fa-sm"></i></button>';
         html += '<span class="loop-panel-title">' + (loopEditId ? '编辑循环 #' + escapeHtml(loopEditId) : '新建循环') + '</span>';
         // 模板按钮（仅新建时显示）
         if (!loopEditId) {
             html += '<div class="loop-tpl-dropdown" id="loopTplDropdown">';
             html += '<button class="loop-tpl-trigger" id="loopTplBtn" title="填充模板">' +
-                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>';
+                '<i class="fa-regular fa-file-lines fa-sm"></i></button>';
             html += '<div class="loop-tpl-menu" id="loopTplMenu">';
             for (var i = 0; i < LOOP_TEMPLATES.length; i++) {
                 var tpl = LOOP_TEMPLATES[i];

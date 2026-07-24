@@ -99,15 +99,15 @@
 .settings-accent-text { color: var(--accent); }
 .settings-muted-text { color: var(--text-secondary); opacity: 0.75; }
 
-/* Backward compatible aliases */
-.llm-model-item, .mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
-.llm-model-item:hover, .mcp-server-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-.llm-model-item:active, .mcp-server-item:active { transform: scale(0.997); }
-.llm-model-icon, .mcp-server-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
-.llm-model-info, .mcp-server-info { flex: 1; min-width: 0; }
-.llm-model-name, .mcp-server-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.llm-model-desc, .mcp-server-detail { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.llm-model-actions, .mcp-server-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
+/* LLM list aliases */
+.llm-model-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
+.llm-model-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.llm-model-item:active { transform: scale(0.997); }
+.llm-model-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
+.llm-model-info { flex: 1; min-width: 0; }
+.llm-model-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.llm-model-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.llm-model-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
 
 /* ===== Segmented scope selector ===== */
 .settings-scope-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--bg-input-box); }
@@ -184,8 +184,8 @@
 
 
 /* LLM 操作按钮悬停色 */
-.llm-action-btn.edit:hover { background: rgba(59,130,246,0.08); color: #3b82f6; }
-.llm-edit-btn { height: 22px; display: flex; align-items: center; justify-content: center; }
+.llm-action-btn.edit:hover { background: rgba(59,130,246,0.08); color: var(--accent); }
+.llm-edit-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
 .llm-action-btn.copy:hover { background: rgba(16,185,129,0.08); color: #10b981; }
 
 /* LLM 禁用模型项低透明度 */
@@ -259,35 +259,25 @@
 .password-toggle { position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px; border-radius: 4px; display: flex; align-items: center; transition: color 0.15s; }
 .password-toggle:hover { color: var(--text-primary); }
 
-.mcp-type-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
-.mcp-type-btn { flex: 1; padding: 6px 16px; border: none; background: none; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
-.mcp-type-btn.active { background: var(--accent); color: #fff; }
-.mcp-type-btn.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+.settings-segmented-control { display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
+.settings-segmented-btn { flex: 1; padding: 6px 16px; border: none; background: none; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.settings-segmented-btn.active { background: var(--accent); color: #fff; }
+.settings-segmented-btn.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
-.mcp-server-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; gap: 10px; transition: all 0.15s; cursor: pointer; }
-.mcp-server-item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-.mcp-server-item:active { transform: scale(0.997); }
-.mcp-server-item.disabled { opacity: 0.5; }
-.mcp-server-item.disabled .mcp-server-icon { opacity: 0.5; }
-.mcp-server-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.mcp-server-info { flex: 1; min-width: 0; }
-.mcp-server-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
-.mcp-server-detail { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mcp-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--border-color); }
-.mcp-status-dot.connected { background: #22c55e; }
-.mcp-server-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
+.mcp-status-dot.connected { background: var(--color-success); }
 
-/* MCP 工具列表工具栏 */
-.mcp-tools-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); }
-.mcp-tools-select-all { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-primary); cursor: pointer; user-select: none; }
-.mcp-tools-select-all input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; border-radius: 3px; }
-.mcp-tools-toolbar-actions { display: flex; align-items: center; gap: 12px; }
-.mcp-tools-count { font-size: 12px; color: var(--text-secondary); }
-.mcp-action-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 6px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; width: 26px; height: 26px; }
-.mcp-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.mcp-action-btn.delete:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
-.mcp-action-btn.edit:hover { background: rgba(59,130,246,0.08); color: #3b82f6; }
-.mcp-action-btn.browse:hover { background: rgba(59,130,246,0.08); color: #3b82f6; }
+/* 设置页批量选择工具栏 */
+.settings-selection-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); }
+.settings-select-all { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-primary); cursor: pointer; user-select: none; }
+.settings-select-all input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; border-radius: 3px; }
+.settings-selection-actions { display: flex; align-items: center; gap: 12px; }
+.settings-selection-count { font-size: 12px; color: var(--text-secondary); }
+.settings-action-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 6px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; width: 26px; height: 26px; }
+.settings-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-action-btn.delete:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
+.settings-action-btn.edit:hover { background: rgba(59,130,246,0.08); color: var(--accent); }
+.settings-action-btn.browse:hover { background: rgba(59,130,246,0.08); color: var(--accent); }
 
 /* MCP 检测连接 */
 .mcp-check-result { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.5; }
@@ -310,7 +300,7 @@
 .mcp-import-dialog-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; }
 
 /* MCP 工具列表 - 左侧方块复选框 */
-.mcp-tool-item .mcp-server-icon { display: none; }
+.mcp-tool-item .settings-list-icon { display: none; }
 .mcp-tool-checkbox {
     position: relative;
     display: inline-flex;
@@ -449,15 +439,15 @@
 .skill-item-icon { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
 .skill-item-info { flex: 1; min-width: 0; }
 .skill-item-name { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
-.skill-installed-badge { font-size: 10px; font-weight: 500; color: #22c55e; background: rgba(34,197,94,0.1); padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; flex-shrink: 0; }
+.skill-installed-badge { font-size: 10px; font-weight: 500; color: var(--color-success); background: rgba(34,197,94,0.1); padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; flex-shrink: 0; }
 .skill-item-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .skill-item-meta { font-size: 10px; color: var(--text-secondary); margin-top: 3px; display: flex; gap: 10px; }
 .skill-item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
-.skill-install-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 6px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
-.skill-install-btn:hover { background: rgba(59,130,246,0.08); color: #3b82f6; }
+.skill-install-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 6px; border-radius: 6px; transition: all 0.15s; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; }
+.skill-install-btn:hover { background: rgba(59,130,246,0.08); color: var(--accent); }
 .skill-install-btn.installing { opacity: 0.6; cursor: wait; }
 .skill-install-btn.installing .skill-install-spin { animation: settings-spin 0.8s linear infinite; }
-.skill-reinstall-btn:hover { background: rgba(34,197,94,0.08); color: #22c55e; }
+.skill-reinstall-btn:hover { background: rgba(34,197,94,0.08); color: var(--color-success); }
 @keyframes settings-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .skill-empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
 
@@ -491,7 +481,7 @@
 .mounts-pool-item:hover { border-color: var(--accent); }
 .mounts-pool-item.mounts-system { opacity: 0.85; }
 .mounts-system-badge { font-size: 10px; background: var(--bg-accent-subtle, rgba(59,130,246,0.1)); color: var(--accent); padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
-.mounts-writeable-badge { font-size: 10px; background: rgba(34,197,94,0.1); color: #22c55e; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+.mounts-writeable-badge { font-size: 10px; background: rgba(34,197,94,0.1); color: var(--color-success); padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
 .mounts-scope-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
 .mounts-scope-badge.scope-user { background: rgba(99,102,241,0.1); color: #6366f1; }
 .mounts-scope-badge.scope-workspace { background: rgba(245,158,11,0.1); color: #f59e0b; }
@@ -1159,7 +1149,7 @@ select[disabled] {
 .provider-model-synced {
     display: inline-block;
     font-size: 10px;
-    color: #22c55e;
+    color: var(--color-success);
     background: rgba(34,197,94,0.1);
     padding: 1px 4px;
     border-radius: 3px;
@@ -1356,7 +1346,7 @@ select[disabled] {
     padding: 1px 6px;
     border-radius: 4px;
     background: var(--accent-bg, rgba(59,130,246,0.1));
-    color: var(--accent, #3b82f6);
+    color: var(--accent, var(--accent));
     font-weight: 500;
     vertical-align: middle;
     margin-left: 4px;
@@ -1432,7 +1422,7 @@ select[disabled] {
 }
 .badge-new {
     background: rgba(34,197,94,0.1);
-    color: #22c55e;
+    color: var(--color-success);
 }
 .badge-exists {
     background: rgba(234,179,8,0.1);
@@ -1449,7 +1439,7 @@ select[disabled] {
 }
 .import-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #2563eb);
+    background: linear-gradient(90deg, var(--accent), #2563eb);
     border-radius: 3px;
     transition: width 0.3s ease;
 }
@@ -1485,9 +1475,9 @@ select[disabled] {
     font-weight: 600;
     margin-bottom: 6px;
 }
-.import-result-title.success { color: #22c55e; }
-.import-result-title.skipped { color: #eab308; }
-.import-result-title.error { color: #ef4444; }
+.import-result-title.success { color: var(--color-success); }
+.import-result-title.skipped { color: var(--color-warning); }
+.import-result-title.error { color: var(--color-danger); }
 
 .import-result-items {
     padding-left: 8px;
@@ -1508,7 +1498,7 @@ select[disabled] {
     color: var(--text-tertiary);
 }
 .imported-item {
-    color: #22c55e;
+    color: var(--color-success);
 }
 .import-result-summary {
     margin-top: 8px;
@@ -1601,7 +1591,7 @@ select[disabled] {
     transition: border-color 0.2s;
 }
 .import-string-textarea:focus {
-    border-color: var(--accent, #3b82f6);
+    border-color: var(--accent, var(--accent));
     box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
 }
 .import-string-hint {
@@ -1617,6 +1607,6 @@ select[disabled] {
     padding: 1px 5px;
     background: var(--bg-secondary, #f0f0f0);
     border-radius: 4px;
-    color: var(--accent, #3b82f6);
+    color: var(--accent, var(--accent));
     border: 1px solid var(--border-color);
 }

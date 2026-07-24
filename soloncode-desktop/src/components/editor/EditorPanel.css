@@ -198,7 +198,7 @@
 
 /* 浅色主题 - 新增行 */
 .diff-added-line-light {
-  border-left: 3px solid #3b82f6 !important;
+  border-left: 3px solid var(--accent) !important;
 }
 
 /* 深色主题 - 删除行 */
