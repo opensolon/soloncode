@@ -183,6 +183,10 @@ function getStreamTaskGroup(sess, chunk, sourceEl) {
 function scrollForStreamEvent(sess, chunk, sourceEl, force) {
     if (!sess || sess.sessionId !== activeSessionId || !isSessionContainerVisible(sess)) return false;
     var group = getStreamTaskGroup(sess, chunk, sourceEl);
+    // 已存在的折叠 task group：无论 force 都不滚动（用户折叠意味着不想被打扰）
+    if (group && chunk && chunk.taskId && sess.taskSegments && sess.taskSegments[chunk.taskId] && !$(group).hasClass('expanded')) {
+        return false;
+    }
     if (!force && group && !$(group).hasClass('expanded')) {
         sess._streamScrollSuppressedUntil = Date.now() + STREAM_SCROLL_SUPPRESS_MS;
         return false;
