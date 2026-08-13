@@ -1,8 +1,9 @@
+use crate::process_utils::silent_command;
 use serde::Serialize;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const CHECKPOINT_REF_ROOT: &str = "refs/soloncode/checkpoints";
@@ -43,7 +44,7 @@ fn canonical_workspace(workspace: &str) -> Result<PathBuf, String> {
 }
 
 fn git_output(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(args)
         .current_dir(repo)
         .output()
@@ -71,7 +72,7 @@ fn git_repo(workspace: &str) -> Result<PathBuf, String> {
 }
 
 fn git_with_temp_index(repo: &Path, index: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(args)
         .env("GIT_INDEX_FILE", index)
         .env("GIT_AUTHOR_NAME", "SolonCode")
@@ -255,7 +256,7 @@ pub fn workspace_checkpoint_restore(workspace: &str, checkpoint_id: &str) -> Res
         return Ok(());
     }
     for check_only in [true, false] {
-        let mut command = Command::new("git");
+        let mut command = silent_command("git");
         command.arg("apply").arg("--binary");
         if check_only {
             command.arg("--check");
@@ -360,7 +361,7 @@ pub async fn run_workspace_check(
             .collect::<Vec<_>>()
             .join(" ");
         let started = Instant::now();
-        let output = Command::new(&program)
+        let output = silent_command(&program)
             .args(&args)
             .current_dir(&workspace)
             .output()
@@ -391,6 +392,67 @@ pub async fn run_workspace_check(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn git_commands_do_not_create_console_windows() {
+        const PROBE_ENV: &str = "SOLONCODE_DESKTOP_CONSOLE_PROBE";
+
+        if std::env::var_os(PROBE_ENV).is_some() {
+            extern "system" {
+                fn FreeConsole() -> i32;
+            }
+
+            // Simulate the release desktop process, which has no attached console.
+            unsafe {
+                FreeConsole();
+            }
+
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!("soloncode-console-probe-{nonce}"));
+            fs::create_dir_all(&root).unwrap();
+            git_output(&root, &["init"]).unwrap();
+
+            let script = "Add-Type -Name NativeConsole -Namespace Win32 -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();'; [Win32.NativeConsole]::GetConsoleWindow().ToInt64()";
+            let script_bytes: Vec<u8> = script
+                .encode_utf16()
+                .flat_map(|unit| unit.to_le_bytes())
+                .collect();
+            let encoded =
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, script_bytes);
+            let alias = format!(
+                "alias.console=!powershell.exe -NoProfile -NonInteractive -EncodedCommand {encoded}"
+            );
+            let output =
+                String::from_utf8(git_output(&root, &["-c", &alias, "console"]).unwrap()).unwrap();
+            let console_handle = output
+                .lines()
+                .find_map(|line| line.trim().parse::<u64>().ok())
+                .expect("PowerShell should report its console window handle");
+
+            let canonical_root = fs::canonicalize(&root).unwrap();
+            let canonical_temp = fs::canonicalize(std::env::temp_dir()).unwrap();
+            assert!(canonical_root.starts_with(canonical_temp));
+            fs::remove_dir_all(canonical_root).unwrap();
+            assert_eq!(console_handle, 0, "Git descendants must remain windowless");
+            return;
+        }
+
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "desktop_ops::tests::git_commands_do_not_create_console_windows",
+                "--nocapture",
+            ])
+            .env(PROBE_ENV, "1")
+            .status()
+            .unwrap();
+        assert!(status.success(), "windowless Git probe failed");
+    }
 
     #[test]
     fn checkpoint_restores_workspace_but_not_secret_files() {

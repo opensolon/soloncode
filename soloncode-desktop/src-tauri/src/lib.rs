@@ -1,12 +1,15 @@
 mod credentials;
 mod desktop_ops;
+mod process_utils;
+
+use process_utils::silent_command;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read as IoRead, Seek as IoSeek, SeekFrom, Write as IoWrite};
 use base64::Engine;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::Child;
 use std::sync::Mutex;
 use std::net::TcpStream;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -264,13 +267,8 @@ pub struct GitLogEntry {
 
 /// 执行 git 命令的辅助函数
 fn run_git(args: &[&str], cwd: &str) -> Result<String, String> {
-    let mut command = Command::new("git");
+    let mut command = silent_command("git");
     command.args(args).current_dir(cwd);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
     let output = command.output()
         .map_err(|e| format!("执行 git 命令失败: {}", e))?;
 
@@ -1381,7 +1379,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
         }
     }
     // 1. 优先检查 soloncode 命令是否在 PATH 中
-    let check = Command::new(if cfg!(windows) { "where" } else { "which" })
+    let check = silent_command(if cfg!(windows) { "where" } else { "which" })
         .arg("soloncode")
         .output();
     if let Ok(output) = check {
@@ -1515,15 +1513,13 @@ fn terminate_reused_backend(pid: u32, port: u16) {
     }
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        let mut command = Command::new("taskkill");
+        let mut command = silent_command("taskkill");
         command.args(["/PID", &pid.to_string(), "/T", "/F"]);
-        command.creation_flags(0x08000000);
         let _ = command.output();
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).output();
+        let _ = silent_command("kill").args(["-TERM", &pid.to_string()]).output();
     }
 }
 
@@ -1531,10 +1527,8 @@ fn terminate_managed_backend(managed: &mut ManagedBackendProcess) {
     let pid = managed.child.id();
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        let mut command = Command::new("taskkill");
+        let mut command = silent_command("taskkill");
         command.args(["/PID", &pid.to_string(), "/T", "/F"]);
-        command.creation_flags(0x08000000);
         let _ = command.output();
     }
     #[cfg(not(target_os = "windows"))]
@@ -1788,8 +1782,6 @@ fn install_updates(app: tauri::AppHandle, backend_port: Option<u16>) -> Result<S
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-
         let script_path = std::env::temp_dir().join(format!(
             "soloncode-updater-{}.ps1",
             SystemTime::now()
@@ -1837,7 +1829,7 @@ try {{\n\
         fs::write(&script_path, script).map_err(|e| format!("写入更新脚本失败: {}", e))?;
 
         let script_path_str = script_path.to_string_lossy().to_string();
-        let mut command = Command::new("powershell");
+        let mut command = silent_command("powershell");
         command
             .args([
                 "-NoProfile",
@@ -1847,8 +1839,7 @@ try {{\n\
                 "Hidden",
                 "-File",
                 script_path_str.as_str(),
-            ])
-            .creation_flags(0x08000000);
+            ]);
 
         command.spawn().map_err(|e| format!("启动更新进程失败: {}", e))?;
 
@@ -2048,20 +2039,20 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
                     .unwrap_or("")
                     .to_ascii_lowercase();
                 if ext == "ps1" {
-                    let mut c = Command::new("powershell");
+                    let mut c = silent_command("powershell");
                     c.args(["-ExecutionPolicy", "Bypass", "-File", cmd_path, "serve", &port_str]);
                     c
                 } else if ext == "bat" || ext == "cmd" {
-                    let mut c = Command::new("cmd");
+                    let mut c = silent_command("cmd");
                     c.args(["/C", cmd_path, "serve", &port_str]);
                     c
                 } else {
-                    let mut c = Command::new(cmd_path);
+                    let mut c = silent_command(cmd_path);
                     c.args(["serve", &port_str]);
                     c
                 }
             } else {
-                let mut c = Command::new(cmd_path);
+                let mut c = silent_command(cmd_path);
                 c.args(["serve", &port_str]);
                 c
             }
@@ -2074,7 +2065,7 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
             }
             let jar_str = jar_path.to_string_lossy().to_string();
             app_log(&format!("[soloncode] Starting: java -jar {} serve {}", jar_str, port_str));
-            let mut c = Command::new("java");
+            let mut c = silent_command("java");
             c.args([
                 "-Dfile.encoding=UTF-8",
                 "-Dstdout.encoding=UTF-8",
@@ -2092,13 +2083,6 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
         .env("SOLONCODE_DESKTOP_MANAGED", "1")
         .stdout(log_file)
         .stderr(log_file_clone);
-
-    // Windows 下隐藏控制台窗口
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
 
     let child = cmd.spawn()
         .map_err(|e| {
