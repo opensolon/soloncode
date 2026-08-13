@@ -10,6 +10,7 @@ import { ActionGroupBlock } from './ActionGroupBlock';
 import type { Message, Theme, ContentItem } from '../types';
 import { isTodoToolName } from '../utils/todoTools';
 import { isSafeImageDataUrl } from '../utils/messageContent';
+import { resolveChatAutoFollow } from '../utils/chatAutoFollow';
 import { permissionService } from '../services/permissionService';
 import './ChatMessages.css';
 
@@ -666,6 +667,17 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
 
     // 运行期间始终保留底部状态，避免工具调用结果出现后看不到仍在执行。
     const showThinkingRow = isLoading;
+    const handleListHeightChanged = useCallback(() => {
+      const followState = resolveChatAutoFollow({
+        running: isLoading,
+        atBottom: autoFollowRef.current,
+      });
+      autoFollowRef.current = followState.enabled;
+      if (isLoading) {
+        // 流式响应会原地增高最后一项，totalCount 不变时 followOutput 不会自行触发。
+        virtuosoRef.current?.autoscrollToBottom();
+      }
+    }, [isLoading]);
 
     const itemContent = useCallback((index: number) => {
       if (showThinkingRow && index === visibleMessages.length) {
@@ -696,10 +708,14 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
           ref={virtuosoRef}
           totalCount={visibleMessages.length + (showThinkingRow ? 1 : 0)}
           itemContent={itemContent}
-          followOutput={(isAtBottom) => autoFollowRef.current && isAtBottom ? 'auto' : false}
+          followOutput={(isAtBottom) => resolveChatAutoFollow({
+            running: isLoading,
+            atBottom: autoFollowRef.current && isAtBottom,
+          }).behavior}
           atBottomStateChange={(atBottom) => {
-            autoFollowRef.current = atBottom;
+            autoFollowRef.current = resolveChatAutoFollow({ running: isLoading, atBottom }).enabled;
           }}
+          totalListHeightChanged={handleListHeightChanged}
           initialTopMostItemIndex={Math.max(0, visibleMessages.length + (showThinkingRow ? 1 : 0) - 1)}
           computeItemKey={(index) => showThinkingRow && index === visibleMessages.length ? 'thinking' : (visibleMessages[index]?.id ?? index)}
           style={{ height: '100%' }}

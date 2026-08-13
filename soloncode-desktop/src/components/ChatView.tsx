@@ -1304,6 +1304,13 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
     resolveStreamIdle(sessionId);
   }
 
+  function pauseStreamPump() {
+    if (streamPumpTimerRef.current) {
+      clearTimeout(streamPumpTimerRef.current);
+      streamPumpTimerRef.current = null;
+    }
+  }
+
   function clearLiveSession(sessionId: string) {
     backgroundContentBySessionRef.current.delete(sessionId);
     liveBaseMessagesBySessionRef.current.delete(sessionId);
@@ -1823,22 +1830,24 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           });
         }
         if (!isCurrentSession) {
+          pauseStreamPump();
           const pending = await flushPendingUserMessage(msgSessionId);
           await flushAssistantPersistence(msgSessionId);
           await appendResponseError(pending?.sessionId || msgSessionId, data.text);
           if (pending?.wasNew && onUpdateSessionTitleRef.current) {
             onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
           }
-          clearLiveSession(msgSessionId);
           if (streamingSessionIdRef.current === msgSessionId) {
+            clearLoadingTimer();
             streamingSessionIdRef.current = null;
             isStreamingRef.current = false;
             setIsLoading(false);
           }
+          onSessionRunStateChangeRef.current?.(msgSessionId, 'error', data.text || '会话执行失败');
           return;
         }
         clearLoadingTimer();
-        clearStreamQueue(msgSessionId);
+        pauseStreamPump();
 
         // 即使出错也要持久化用户消�?
         const pending = await flushPendingUserMessage(msgSessionId);
@@ -1851,12 +1860,12 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
           onUpdateSessionTitleRef.current(pending.sessionId, pending.title);
         }
 
-        clearLiveSession(msgSessionId);
         setIsLoading(false);
         isStreamingRef.current = false;
         if (streamingSessionIdRef.current === msgSessionId) {
           streamingSessionIdRef.current = null;
         }
+        onSessionRunStateChangeRef.current?.(msgSessionId, 'error', data.text || '会话执行失败');
         return;
       }
 

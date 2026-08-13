@@ -284,7 +284,7 @@ function getModelDisplayName(p: ModelProvider): string {
 }
 
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'max';
-export type ChatMode = 'default' | 'auto' | 'plan' | 'goal';
+export type ChatMode = 'default' | 'auto' | 'plan' | 'goal' | 'full';
 
 function extractGoalCommandObjective(input: string): string | null {
   const match = input.trim().match(/^\/goal(?:\s+([\s\S]*))?$/i);
@@ -1312,6 +1312,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], agen
               <option value="default">审批执行</option>
               <option value="auto">自动编辑</option>
               <option value="plan">仅规划</option>
+              <option value="full">完全访问</option>
             </select>
 
             {/* 模型 */}

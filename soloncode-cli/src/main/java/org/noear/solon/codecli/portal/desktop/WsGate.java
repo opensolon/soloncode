@@ -1353,7 +1353,7 @@ public class WsGate extends SimpleWebSocketListener {
     }
 
     static String normalizeDesktopRunMode(String mode) {
-        if ("auto".equals(mode) || "plan".equals(mode) || "goal".equals(mode)) {
+        if ("auto".equals(mode) || "plan".equals(mode) || "goal".equals(mode) || "full".equals(mode)) {
             return mode;
         }
         // 未知或缺失模式按最严格的审批执行处理，避免客户端字段异常导致静默放行。
@@ -1362,6 +1362,10 @@ public class WsGate extends SimpleWebSocketListener {
 
     static boolean requiresDesktopApproval(String mode, String toolName) {
         String normalizedMode = normalizeDesktopRunMode(mode);
+        // 完全访问模式：编辑和命令执行均无需审批
+        if ("full".equals(normalizedMode)) {
+            return false;
+        }
         if ("bash".equals(toolName)) {
             return "default".equals(normalizedMode) || "auto".equals(normalizedMode);
         }
