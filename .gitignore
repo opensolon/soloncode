@@ -47,3 +47,5 @@ soloncode-desktop/src-tauri/release/
 soloncode-desktop/src-tauri/build/
 soloncode-desktop/src-tauri/resources/
 nul
+soloncode-desktop-web/node_modules
+soloncode-desktop-web/dist
