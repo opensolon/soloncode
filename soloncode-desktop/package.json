@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "package": "node scripts/package-desktop.mjs",
+    "package:plan": "node scripts/package-desktop.mjs --dry-run"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

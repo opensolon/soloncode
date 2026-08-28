@@ -13,7 +13,7 @@ use std::process::Child;
 use std::sync::Mutex;
 use std::net::TcpStream;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
 
 /// 应用日志文件
@@ -1255,6 +1255,10 @@ enum BackendLaunchMethod {
     Jar { path: std::path::PathBuf },
 }
 
+fn bundled_cli_jar_path(resource_dir: &Path) -> PathBuf {
+    resource_dir.join("soloncode-cli.jar")
+}
+
 fn user_home_dir() -> String {
     if cfg!(windows) {
         std::env::var("USERPROFILE").unwrap_or_default()
@@ -1358,8 +1362,14 @@ fn maybe_prepare_legacy_cli_settings() {
     }
 }
 
-/// 检测启动方式：优先 soloncode 命令，回退到 JAR
-fn detect_launch_method() -> BackendLaunchMethod {
+/// 检测启动方式：优先安装包内置 JAR，缺失时使用系统已安装的 CLI。
+fn detect_launch_method(resource_dir: &Path) -> BackendLaunchMethod {
+    let bundled_jar = bundled_cli_jar_path(resource_dir);
+    if bundled_jar.exists() {
+        app_log(&format!("[soloncode] Found bundled JAR: {:?}", bundled_jar));
+        return BackendLaunchMethod::Jar { path: bundled_jar };
+    }
+
     if cfg!(windows) {
         if let Ok(home) = std::env::var("USERPROFILE") {
             let bin_dir = Path::new(&home).join(".soloncode").join("bin");
@@ -1603,6 +1613,39 @@ async fn detect_backend(port: u16) -> Result<bool, String> {
     })
     .await
     .map_err(|e| format!("检测后端线程失败: {}", e))?
+}
+
+#[cfg(test)]
+mod bundled_cli_tests {
+    use super::{bundled_cli_jar_path, detect_launch_method, BackendLaunchMethod};
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn resolves_bundled_cli_jar_from_tauri_resource_directory() {
+        assert_eq!(
+            bundled_cli_jar_path(Path::new("/app/resources")),
+            Path::new("/app/resources").join("soloncode-cli.jar")
+        );
+    }
+
+    #[test]
+    fn prefers_existing_bundled_cli_jar() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let resource_dir = std::env::temp_dir().join(format!("soloncode-bundled-cli-{unique}"));
+        fs::create_dir_all(&resource_dir).unwrap();
+        let bundled_jar = bundled_cli_jar_path(&resource_dir);
+        fs::write(&bundled_jar, b"test jar").unwrap();
+
+        let launch = detect_launch_method(&resource_dir);
+
+        match launch {
+            BackendLaunchMethod::Jar { path } => assert_eq!(path, bundled_jar),
+            BackendLaunchMethod::Command { cmd } => panic!("expected bundled jar, got command {cmd}"),
+        }
+        fs::remove_dir_all(resource_dir).unwrap();
+    }
 }
 
 /// 启动后端 CLI 进程（如果已在运行则复用）
@@ -1861,7 +1904,10 @@ try {{\n\
 }
 
 #[tauri::command]
-fn start_backend(workspace_path: String, port: u16) -> Result<u32, String> {
+fn start_backend(app: tauri::AppHandle, workspace_path: String, port: u16) -> Result<u32, String> {
+    let resource_dir = app.path().resource_dir()
+        .map_err(|error| format!("无法定位桌面应用资源目录: {}", error))?;
+
     {
         let mut task = BACKEND_START_TASK.lock().map_err(|e| format!("锁错误: {}", e))?;
         if let Some(existing) = task.as_ref() {
@@ -1890,7 +1936,7 @@ fn start_backend(workspace_path: String, port: u16) -> Result<u32, String> {
     ));
 
     std::thread::spawn(move || {
-        let result = start_backend_blocking(workspace_path.clone(), port);
+        let result = start_backend_blocking(workspace_path.clone(), port, resource_dir);
         match result {
             Ok(pid) => app_log(&format!(
                 "[soloncode] Background backend start finished for port {}, pid={}",
@@ -1915,7 +1961,7 @@ fn start_backend(workspace_path: String, port: u16) -> Result<u32, String> {
     Ok(0)
 }
 
-fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, String> {
+fn start_backend_blocking(workspace_path: String, port: u16, resource_dir: PathBuf) -> Result<u32, String> {
     // 空路径时使用用户主目录；项目路径则作为 CLI 的工作目录，以加载项目级配置与 Agent。
     let requested_work_dir = if workspace_path.is_empty() {
         let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
@@ -2016,7 +2062,7 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
     }
 
     // 检测启动方式
-    let launch = detect_launch_method();
+    let launch = detect_launch_method(&resource_dir);
     let port_str = port.to_string();
     if let BackendLaunchMethod::Jar { .. } = &launch {
         maybe_prepare_legacy_cli_settings();

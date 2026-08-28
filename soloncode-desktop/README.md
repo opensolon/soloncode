@@ -101,7 +101,27 @@ npm run dev
 
 ## 构建发布
 
-### 完整构建流程
+### 推荐：统一打包脚本
+
+在对应操作系统上执行：
+
+```bash
+cd soloncode-desktop
+npm install
+npm run package -- windows  # Windows，生成 MSI
+npm run package -- mac      # macOS，生成 APP 和 DMG
+npm run package -- linux    # Linux，生成 DEB 和 AppImage
+```
+
+不传平台时自动选择当前系统。脚本拒绝跨系统打包，并依次完成以下工作：
+
+1. 从当前源码构建 `soloncode-cli/target/soloncode-cli.jar`。
+2. 将 JAR 复制到 Tauri 打包资源目录。
+3. 构建前端、Rust 应用和当前平台安装包。
+
+使用 `npm run package:plan -- windows` 可只查看步骤而不执行构建；将 `windows` 换为当前平台即可。
+
+### 打包原理
 
 ```
 步骤 1: 构建 CLI JAR                    步骤 2: 构建桌面安装包
@@ -122,7 +142,7 @@ mvn clean package -DskipTests           npm run tauri:build
                                           └── *.deb / *.AppImage (Linux)
 ```
 
-#### 1. 构建 CLI JAR
+#### 1. 手动构建 CLI JAR
 
 ```bash
 cd soloncode-cli
@@ -131,9 +151,9 @@ mvn clean package -DskipTests
 
 构建产物：`target/soloncode-cli.jar`
 
-#### 2. 安装 CLI
+#### 2. 可选：单独安装 CLI
 
-桌面版不打包 CLI 文件，需要预先安装 CLI 到用户目录：
+统一打包脚本会把当前 JAR 放入桌面安装包。只有需要在终端中单独使用 CLI 时，才需要安装到用户目录：
 
 ```bash
 cd soloncode-cli/release
@@ -151,7 +171,7 @@ bash install.sh
 
 ```bash
 cd soloncode-desktop
-npm run tauri:build
+npm run package -- windows
 ```
 
 **macOS:**
@@ -159,17 +179,11 @@ npm run tauri:build
 ```bash
 # 前置依赖
 brew install node rust
-npm install -g pnpm
 
-# 构建 CLI JAR + 安装
-cd soloncode-cli
-mvn clean package -DskipTests
-cd release && bash install.sh && cd ..
-
-# 构建桌面安装包
-cd ../soloncode-desktop
-pnpm install
-pnpm tauri build
+# 构建当前 CLI JAR 并生成 APP/DMG
+cd soloncode-desktop
+npm install
+npm run package -- mac
 ```
 
 **macOS Universal Binary（Apple Silicon + Intel）：**
@@ -213,28 +227,22 @@ x86_64 arm64
 # 前置依赖
 sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-# 构建 CLI JAR + 安装
-cd soloncode-cli
-mvn clean package -DskipTests
-cd release && bash install.sh && cd ..
-
-# 构建桌面安装包
-cd ../soloncode-desktop
-pnpm install
-pnpm tauri build
+# 构建当前 CLI JAR 并生成 DEB/AppImage
+cd soloncode-desktop
+npm install
+npm run package -- linux
 ```
 
 默认架构的产物位于 `src-tauri/target/release/bundle/`；指定 `--target` 时，产物位于 `src-tauri/target/<target>/release/bundle/`：
 
 | 平台 | 格式 | 文件 |
 |------|------|------|
-| Windows | MSI | `soloncode-desktop_0.1.0_x64_en-US.msi` |
-| Windows | NSIS | `soloncode-desktop_0.1.0_x64-setup.exe` |
-| macOS | DMG | `soloncode-desktop_0.1.0_x64.dmg` |
+| Windows | MSI | `soloncode-desktop_<version>_x64_zh-CN.msi` |
+| macOS | DMG | `soloncode-desktop_<version>_*.dmg` |
 | macOS | App | `soloncode-desktop.app` |
 | macOS Universal | DMG / App | `src-tauri/target/universal-apple-darwin/release/bundle/` |
-| Linux | Deb | `soloncode-desktop_0.1.0_amd64.deb` |
-| Linux | AppImage | `soloncode-desktop_0.1.0_amd64.AppImage` |
+| Linux | Deb | `soloncode-desktop_<version>_amd64.deb` |
+| Linux | AppImage | `soloncode-desktop_<version>_amd64.AppImage` |
 
 > **注意**：各操作系统的正式安装包应在对应系统上构建；macOS Universal Binary 必须在 macOS 上生成。如需自动化多平台构建，建议使用对应系统的 CI Runner。
 
@@ -245,20 +253,10 @@ pnpm tauri build
 ```
 detect_launch_method()
   │
-  ├── 1. 检查 PATH 中的 soloncode 命令
-  │     → where soloncode (Windows) / which soloncode (Linux/macOS)
-  │     → 找到：powershell -ExecutionPolicy Bypass -File soloncode.ps1 serve <port>
-  │              或 soloncode serve <port>
+  ├── 1. 检查安装包内置的 soloncode-cli.jar
+  │     → 找到：java -jar <资源目录>/soloncode-cli.jar serve <port>
   │
-  ├── 2. 检查 ~/.soloncode/bin/ 中的启动脚本
-  │     → Windows: soloncode.bat / soloncode.ps1
-  │     → Linux/macOS: soloncode
-  │     → 找到：powershell -ExecutionPolicy Bypass -File <script> serve <port>
-  │
-  └── 3. 回退到 JAR 直接启动
-        → ~/.soloncode/bin/soloncode-cli.jar
-        → 找到：java -jar soloncode-cli.jar serve <port>
-        → 未找到：报错提示安装 CLI
+  └── 2. 内置 JAR 不存在时，使用 PATH 或 ~/.soloncode/bin/ 中已安装的 CLI
 ```
 
 ### 用户目录结构
