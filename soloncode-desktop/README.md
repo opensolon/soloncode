@@ -108,8 +108,8 @@ npm run dev
 ```bash
 cd soloncode-desktop
 npm install
-npm run package -- windows  # Windows，生成 MSI
-npm run package -- mac      # macOS，生成 APP 和 DMG
+npm run package -- windows  # Windows，生成 NSIS EXE
+npm run package -- mac      # macOS，生成 APP、DMG 和 PKG
 npm run package -- linux    # Linux，生成 DEB 和 AppImage
 ```
 
@@ -117,7 +117,16 @@ npm run package -- linux    # Linux，生成 DEB 和 AppImage
 
 1. 从当前源码构建 `soloncode-cli/target/soloncode-cli.jar`。
 2. 将 JAR 复制到 Tauri 打包资源目录。
-3. 构建前端、Rust 应用和当前平台安装包。
+3. 根据 `src-tauri/tauri.conf.json` 的桌面版本生成当前平台安装钩子。
+4. 构建前端、Rust 应用和当前平台安装包。
+
+安装器会在安装阶段将内置 JAR 复制到：
+
+```text
+~/.soloncode/bin/soloncode-cli_<桌面版本号>.jar
+```
+
+例如桌面版本为 `26.8.11` 时，目标文件是 `~/.soloncode/bin/soloncode-cli_26.8.11.jar`。复制失败会使安装失败；重新安装同一版本会覆盖同名文件，但不会删除旧版本 JAR。
 
 使用 `npm run package:plan -- windows` 可只查看步骤而不执行构建；将 `windows` 换为当前平台即可。
 
@@ -137,8 +146,8 @@ mvn clean package -DskipTests           npm run tauri:build
                                                │
                                                ▼
                                          生成安装包:
-                                          ├── *.msi / *.exe (Windows)
-                                          ├── *.dmg / *.app (macOS)
+                                          ├── *.exe (Windows NSIS)
+                                          ├── *.pkg / *.dmg / *.app (macOS)
                                           └── *.deb / *.AppImage (Linux)
 ```
 
@@ -180,7 +189,7 @@ npm run package -- windows
 # 前置依赖
 brew install node rust
 
-# 构建当前 CLI JAR 并生成 APP/DMG
+# 构建当前 CLI JAR 并生成 APP/DMG/PKG
 cd soloncode-desktop
 npm install
 npm run package -- mac
@@ -237,7 +246,8 @@ npm run package -- linux
 
 | 平台 | 格式 | 文件 |
 |------|------|------|
-| Windows | MSI | `soloncode-desktop_<version>_x64_zh-CN.msi` |
+| Windows | NSIS | `soloncode-desktop_<version>_x64-setup.exe` |
+| macOS | PKG | `soloncode-desktop_<version>_<arch>.pkg` |
 | macOS | DMG | `soloncode-desktop_<version>_*.dmg` |
 | macOS | App | `soloncode-desktop.app` |
 | macOS Universal | DMG / App | `src-tauri/target/universal-apple-darwin/release/bundle/` |
@@ -245,6 +255,8 @@ npm run package -- linux
 | Linux | AppImage | `soloncode-desktop_<version>_amd64.AppImage` |
 
 > **注意**：各操作系统的正式安装包应在对应系统上构建；macOS Universal Binary 必须在 macOS 上生成。如需自动化多平台构建，建议使用对应系统的 CI Runner。
+>
+> 只有 Windows NSIS、macOS PKG 和 Linux DEB 具有安装阶段，会复制版本化 JAR。DMG、APP 和 AppImage 是便携产物，不执行安装钩子。Linux DEB 安装时必须能从 `SUDO_USER` 或 `PKEXEC_UID` 确定桌面用户，否则安装会终止。
 
 ### 后端启动流程
 
@@ -264,7 +276,8 @@ detect_launch_method()
 ```
 ~/.soloncode/
 ├── bin/
-│   ├── soloncode-cli.jar    # CLI JAR
+│   ├── soloncode-cli_26.8.11.jar # 桌面安装器复制的版本化 CLI JAR
+│   ├── soloncode-cli.jar          # 单独安装 CLI 时使用的 JAR
 │   ├── soloncode.ps1        # PowerShell 启动器
 │   ├── soloncode.bat        # CMD 启动器
 │   └── uninstall.ps1        # 卸载脚本

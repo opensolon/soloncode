@@ -4,6 +4,11 @@
     "targets": [
       "deb",
       "appimage"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "postInstallScript": "target/installer-hooks/linux/postinst"
+      }
+    }
   }
 }

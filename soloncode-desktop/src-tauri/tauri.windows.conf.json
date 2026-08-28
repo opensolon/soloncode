@@ -2,7 +2,13 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "targets": [
-      "msi"
-    ]
+      "nsis"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "target/installer-hooks/windows/install-cli.nsh"
+      }
+    }
   }
 }
