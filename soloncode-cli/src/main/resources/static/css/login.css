@@ -1,0 +1,122 @@
+/* ===== Login Page ===== */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-container {
+    width: 100%;
+    max-width: 400px;
+    padding: 20px;
+}
+
+.login-card {
+    background: var(--bg-primary, #fff);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    padding: 40px 32px;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.login-logo {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 12px;
+}
+
+.login-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary, #1a1a2e);
+    margin: 0 0 4px;
+}
+
+.login-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary, #666);
+    margin: 0;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.login-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.login-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary, #333);
+}
+
+.login-input {
+    padding: 10px 14px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    font-size: 15px;
+    color: var(--text-primary, #333);
+    background: var(--bg-input, #fff);
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: inherit;
+}
+
+.login-input:focus {
+    border-color: var(--accent, #4f6ef7);
+    box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.1);
+}
+
+.login-error {
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #dc2626;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.login-btn {
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent-fill, var(--accent, #4f6ef7));
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    font-family: inherit;
+}
+
+.login-btn:hover {
+    opacity: 0.85;
+}
+
+.login-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.login-footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+}

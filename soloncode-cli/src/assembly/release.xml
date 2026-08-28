@@ -23,11 +23,11 @@
             <outputDirectory>.</outputDirectory>
             <fileMode>0755</fileMode>
             <includes>
-                <include>config.yml</include>
                 <include>AGENTS.md</include>
-                <include>install.sh</include>
-                <include>install.ps1</include>
                 <include>install.cmd</include>
+                <include>install.ps1</include>
+                <include>install.sh</include>
+                <include>README.md</include>
             </includes>
         </fileSet>
 

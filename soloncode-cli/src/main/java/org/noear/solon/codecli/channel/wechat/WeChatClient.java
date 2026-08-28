@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.channel.wechat;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.net.http.HttpResponse;
 import org.noear.solon.net.http.HttpUtils;
 
@@ -304,6 +305,7 @@ public class WeChatClient {
                 .header(HEADER_CONTENT_TYPE, "application/json")
                 .header(HEADER_UIN, generateUin())
                 .header("iLink-App-ClientVersion", "1");
+        ProxyConfig.applyIfNeeded(http);
 
         try (HttpResponse resp = http.exec("GET")) {
             int code = resp.code();
@@ -322,6 +324,7 @@ public class WeChatClient {
                 .header(HEADER_AUTH_TYPE, "ilink_bot_token")
                 .header(HEADER_AUTH, "Bearer " + botToken)
                 .header(HEADER_UIN, generateUin());
+        ProxyConfig.applyIfNeeded(http);
 
         if (jsonBody != null && !jsonBody.isEmpty()) {
             http.bodyOfJson(jsonBody);

@@ -6,43 +6,42 @@
 (function () {
     'use strict';
 
-    // 工具定义列表 - 按列分组
-    var TOOLS_COLUMNS = [
-        // 第一列：文件操作
-        [
-            { id: 'bash', name: 'bash', desc: 'Shell 命令执行', risk: 'low' },
-            { id: 'read', name: 'read', desc: '读取文件内容', risk: 'low' },
-            { id: 'write', name: 'write', desc: '写入文件内容', risk: 'low' },
-            { id: 'edit', name: 'edit', desc: '文件编辑', risk: 'low' },
-            { id: 'grep', name: 'grep', desc: '递归内容搜索', risk: 'low' },
-            { id: 'glob', name: 'glob', desc: '通配符文件搜索', risk: 'low' },
-            { id: 'ls', name: 'ls', desc: '列出目录内容', risk: 'low' }
-        ],
-        // 第二列：网络搜索
-        [
-            { id: 'codesearch', name: 'codesearch', desc: '网络代码搜索', risk: 'low' },
-            { id: 'websearch', name: 'websearch', desc: '网络搜索', risk: 'low' },
-            { id: 'webfetch', name: 'webfetch', desc: '网页内容抓取', risk: 'low' }
-        ],
-        // 第三列：任务管理
-        [
-            { id: 'code', name: 'code', desc: '编码环境识别与引导', risk: 'low' },
-            { id: 'todo', name: 'todo', desc: '任务清单管理', risk: 'low' },
-            { id: 'skill', name: 'skill', desc: '专家技能调用', risk: 'low' }
-        ]
-    ];
+    // 工具定义列表 - 按列分组（每次调用动态翻译，跟随语言切换）
+    function getToolsColumns() {
+        return [
+            // 第一列：文件操作
+            [
+                { id: 'bash', name: 'bash', desc: I18n.t('permission.tool.bash'), risk: 'low' },
+                { id: 'read', name: 'read', desc: I18n.t('permission.tool.read'), risk: 'low' },
+                { id: 'write', name: 'write', desc: I18n.t('permission.tool.write'), risk: 'low' },
+                { id: 'edit', name: 'edit', desc: I18n.t('permission.tool.edit'), risk: 'low' },
+                { id: 'grep', name: 'grep', desc: I18n.t('permission.tool.grep'), risk: 'low' },
+                { id: 'glob', name: 'glob', desc: I18n.t('permission.tool.glob'), risk: 'low' },
+                { id: 'ls', name: 'ls', desc: I18n.t('permission.tool.ls'), risk: 'low' }
+            ],
+            // 第二列：网络搜索
+            [
+                { id: 'codesearch', name: 'codesearch', desc: I18n.t('permission.tool.codesearch'), risk: 'low' },
+                { id: 'websearch', name: 'websearch', desc: I18n.t('permission.tool.websearch'), risk: 'low' },
+                { id: 'webfetch', name: 'webfetch', desc: I18n.t('permission.tool.webfetch'), risk: 'low' }
+            ],
+            // 第三列：任务管理
+            [
+                { id: 'code', name: 'code', desc: I18n.t('permission.tool.code'), risk: 'low' },
+                { id: 'todo', name: 'todo', desc: I18n.t('permission.tool.todo'), risk: 'low' },
+                { id: 'skill', name: 'skill', desc: I18n.t('permission.tool.skill'), risk: 'low' }
+            ]
+        ];
+    }
 
-    // 分类显示名称
-    var CATEGORY_NAMES = {
-        'builtin': '工具列表'
-    };
-
-    // 风险等级显示
-    var RISK_LABELS = {
-        'high': '<span class="permission-risk-high">高风险</span>',
-        'medium': '<span class="permission-risk-medium">中风险</span>',
-        'low': ''
-    };
+    // 风险等级显示（每次调用动态翻译）
+    function getRiskLabels() {
+        return {
+            'high': '<span class="permission-risk-high">' + I18n.t('permission.highRisk') + '</span>',
+            'medium': '<span class="permission-risk-medium">' + I18n.t('permission.mediumRisk') + '</span>',
+            'low': ''
+        };
+    }
 
     function showToast(msg, type) {
         if (typeof layer !== 'undefined' && layer.msg) {
@@ -82,18 +81,18 @@
         var html = '<div class="permission-tools-grid">';
         
         // 渲染三列
-        TOOLS_COLUMNS.forEach(function (column, colIndex) {
+        getToolsColumns().forEach(function (column, colIndex) {
             html += '<div class="permission-tools-column">';
             
             column.forEach(function (tool) {
                 var isEnabled = !disallowedMap[tool.id];
                 html += '<div class="permission-tool-item">';
-                html += '<label class="permission-tool-checkbox" title="' + (isEnabled ? '禁用' : '启用') + '">';
+                html += '<label class="permission-tool-checkbox" title="' + (isEnabled ? I18n.t('permission.disable') : I18n.t('permission.enable')) + '">';
                 html += '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(tool.id) + '" class="permission-tool-toggle"/>';
                 html += '<span class="permission-tool-checkmark"></span>';
                 html += '</label>';
                 html += '<div class="permission-tool-info">';
-                html += '<div class="permission-tool-name">' + escapeHtml(tool.name) + RISK_LABELS[tool.risk] + '</div>';
+                html += '<div class="permission-tool-name">' + escapeHtml(tool.name) + getRiskLabels()[tool.risk] + '</div>';
                 html += '<div class="permission-tool-desc">' + escapeHtml(tool.desc) + '</div>';
                 html += '</div>';
                 html += '</div>';
@@ -105,7 +104,7 @@
         html += '</div>';
 
         if (html === '') {
-            html = '<div class="permission-empty-state">没有找到匹配的工具</div>';
+            html = '<div class="permission-empty-state">' + I18n.t('permission.noMatch') + '</div>';
         }
 
         $list.html(html);
@@ -152,7 +151,7 @@
         return $.ajax({ url: '/web/settings/permission/save', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .then(function (resp) {
                 if (resp.code !== 200) {
-                    return $.Deferred().reject(resp.message || '未知错误').promise();
+                    return $.Deferred().reject(resp.message || I18n.t('toast.unknownError')).promise();
                 }
                 loadPermissionSettings();
                 return resp;

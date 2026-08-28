@@ -18,6 +18,8 @@ public class ModelApiUrlTest {
         assertEquals("openai", ModelApiUrl.normalizeStandard("OpenAI"));
         assertEquals("openai-responses", ModelApiUrl.normalizeStandard("openai-responses"));
         assertEquals("ollama", ModelApiUrl.normalizeStandard("ollama"));
+        assertEquals("google", ModelApiUrl.normalizeStandard("google"));
+        assertEquals("google", ModelApiUrl.normalizeStandard("gemini"));
     }
 
     @Test

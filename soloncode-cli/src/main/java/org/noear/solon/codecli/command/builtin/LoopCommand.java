@@ -18,11 +18,11 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.entity.LoopGroupDo;
+import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import reactor.core.Disposable;
 
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -93,8 +93,7 @@ public class LoopCommand implements Command {
     public void execute(CommandContext ctx) throws Exception {
         String sessionId = ctx.getSession().getSessionId();
         HarnessEngine engine = ctx.getEngine();
-        String workspace = engine.getWorkspace();
-        String harnessSessions = engine.getHarnessSessions();
+        Path sessionsRoot = WorkspaceDataUtil.sessionsPath(engine.getWorkspace());
 
         String sub = ctx.argAt(0);
 
@@ -131,17 +130,17 @@ public class LoopCommand implements Command {
             doResume(ctx, sessionId, ctx.argAt(1));
         } else if ("goal".equals(sub)) {
             // /loop goal <objective> — 简化 Goal 模式（一个参数，立即执行）
-            doScheduleGoal(ctx, sessionId, workspace, harnessSessions, 1);
+            doScheduleGoal(ctx, sessionId, sessionsRoot, 1);
         } else {
             // Schedule a new task
-            doSchedule(ctx, sessionId, workspace, harnessSessions);
+            doSchedule(ctx, sessionId, sessionsRoot);
         }
     }
 
     /**
      * 解析并创建新的 loop 任务
      */
-    private void doSchedule(CommandContext ctx, String sessionId, String workspace, String harnessSessions) {
+    private void doSchedule(CommandContext ctx, String sessionId, Path sessionsRoot) {
         int intervalMinutes = 5; // default
         String cronExpr = null;
         boolean runNow = false;
@@ -246,7 +245,7 @@ public class LoopCommand implements Command {
         }
 
 
-        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
+        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + sessionsRoot.resolve(sessionId).resolve("loop-tasks.json")));
     }
 
     /**
@@ -255,7 +254,9 @@ public class LoopCommand implements Command {
     void executeGoal(CommandContext ctx) {
         String sessionId = ctx.getSession().getSessionId();
         HarnessEngine engine = ctx.getEngine();
-        doScheduleGoal(ctx, sessionId, engine.getWorkspace(), engine.getHarnessSessions(), 0);
+        Path wsSessionsRoot = WorkspaceDataUtil.sessionsPath(engine.getWorkspace());
+        
+        doScheduleGoal(ctx, sessionId, wsSessionsRoot, 0);
     }
 
     /**
@@ -264,7 +265,7 @@ public class LoopCommand implements Command {
      * <p>与 Codex /goal &lt;objective&gt; 对齐：一个参数，立即执行，AI 自主推进。
      * prompt 即目标任务描述，type=GOAL，runNow=true，interval=0（调度器自动转 5 秒安全网）。</p>
      */
-    private void doScheduleGoal(CommandContext ctx, String sessionId, String workspace, String harnessSessions, int promptStartIndex) {
+    private void doScheduleGoal(CommandContext ctx, String sessionId, Path sessionsRoot, int promptStartIndex) {
         Long maxTokens = null;
         Long maxDurationMs = null;
         StringBuilder promptBuilder = new StringBuilder();
@@ -377,7 +378,7 @@ public class LoopCommand implements Command {
         } else if (loopCfg.getDefaultMaxDurationMsOrDefault() > 0) {
             ctx.println(ctx.color("  " + MAGENTA + "Max Duration:" + RESET + " " + (loopCfg.getDefaultMaxDurationMsOrDefault() / 60000) + "m"));
         }
-        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + Paths.get(AgentFlags.getHarnessLoops(), task.getId())));
+        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + sessionsRoot.resolve(sessionId).resolve("loop-tasks.json")));
     }
 
     private void doList(CommandContext ctx, String sessionId) {

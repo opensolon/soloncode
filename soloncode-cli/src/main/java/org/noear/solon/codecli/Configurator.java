@@ -3,29 +3,14 @@ package org.noear.solon.codecli;
 import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import org.noear.solon.Solon;
-import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.AgentSessionProvider;
-import org.noear.solon.ai.agent.session.FileAgentSession;
-import org.noear.solon.ai.chat.CacheControl;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessExtension;
-import org.noear.solon.ai.talents.mount.MountDir;
-import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
 import org.noear.solon.annotation.Inject;
-import org.noear.solon.codecli.command.builtin.*;
-import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.config.ManagerExtension;
-import org.noear.solon.codecli.config.entity.ApiSourceDo;
-import org.noear.solon.codecli.config.entity.McpServerDo;
-import org.noear.solon.codecli.config.entity.ModelDo;
-import org.noear.solon.codecli.config.entity.LspServerDo;
-import org.noear.solon.codecli.config.entity.MountDo;
-import org.noear.solon.codecli.memory.MemoryProvider;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.portal.acp.AcpLink;
 import org.noear.solon.codecli.portal.cli.CliShell;
@@ -38,23 +23,18 @@ import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.codecli.portal.web.MemoryController;
 import org.noear.solon.codecli.portal.web.WebSettingsController;
 import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.auth.*;
 import org.noear.solon.codecli.portal.web.settings.*;
 import org.noear.solon.codecli.session.SessionManager;
-import org.noear.solon.core.AppContext;
+import org.noear.solon.codecli.workspace.WorkspaceManager;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.BeanWrap;
+import org.noear.solon.codecli.util.OsOpenUtil;
 import org.noear.solon.core.util.JavaUtil;
 import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.net.websocket.WebSocketRouter;
-import org.noear.solon.codecli.config.models.ModelsAdapterManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  *
@@ -66,13 +46,13 @@ public class Configurator {
     private static final Logger LOG = LoggerFactory.getLogger(Configurator.class);
 
     @Inject
-    AppContext appContext;
-
-    @Inject
     HarnessEngine agentRuntime;
 
     @Inject
     AgentSettings agentSettings;
+
+    @Inject
+    WorkspaceManager workspaceManager;
 
     @Inject
     SessionManager sessionManager;
@@ -80,155 +60,43 @@ public class Configurator {
     private LoopScheduler loopScheduler;
 
     @Bean
+    public WorkspaceManager workspaceManager(AgentSettings settings) {
+        return new WorkspaceManager(settings);
+    }
+
+    @Bean
     public SessionManager sessionManager() {
         return new SessionManager();
     }
 
     @Bean
-    public HarnessEngine agentRuntime(AgentSettings settings, SessionManager sessionManager) throws Exception {
-        String stealthIdentity = "<!--\n" +
-                "  @poweredby: soloncode\n" +
-                "  @build: " + AgentFlags.getVersion() + "\n" +
-                "-->\n\n";
-
-        String workspace = AgentFlags.getUserDir();
-
-        HarnessEngine engine = HarnessEngine.of(workspace, AgentFlags.getHarnessHome())
-                .userAgent(settings.getGeneral().getUserAgent())
-                .systemPrompt(stealthIdentity + AgentFlags.getAgentsMd())
-                .maxTurns(settings.getGeneral().getMaxTurns())
-                .autoRethink(settings.getGeneral().isAutoRethink())
-                .sessionWindowSize(settings.getGeneral().getSessionWindowSize())
-                .sessionProvider(sessionManager)
-                .compressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getCompressionThresholdPercent() / 100.0D)
-                .memoryEnabled(settings.getGeneral().isMemoryEnabled())
-                .memoryRelevanceCount(settings.getGeneral().getMemoryRelevanceCount())
-                .memoryPriorityCount(settings.getGeneral().getMemoryPriorityCount())
-                .memorySummaryLength(settings.getGeneral().getMemorySummaryLength())
-                .memoryProvider(new MemoryProvider())
-                .sandboxEnabled(settings.getGeneral().isSandboxMode())
-                .sandboxAllowUserHome(settings.getGeneral().isSandboxAllowUserHome())
-                .sandboxSystemRestrict(settings.getGeneral().isSandboxSystemRestrict())
-                .bashAsyncEnabled(settings.getGeneral().isBashAsyncEnabled())
-                .subagentEnabled(settings.getGeneral().isSubagentEnabled())
-                .hitlEnabled(settings.getGeneral().isHitlEnabled())
-                .apiRetries(settings.getGeneral().getApiRetries())
-                .modelRetries(settings.getGeneral().getModelRetries())
-                .mcpRetries(settings.getGeneral().getModelRetries())
-                .toolsAdd(settings.getPermission().getTools())
-                .disallowedToolsAdd(settings.getPermission().getDisallowedTools())
-                .cacheControl(CacheControl.ofEphemeral())
-                .build();
-
-
-        engine.setDefaultModel(settings.getDefaultModel());
-        for (ModelDo model : agentSettings.getModels().values()) {
-            engine.addModel(model);
-        }
-
-        for (Map.Entry<String, MountDo> entry : agentSettings.getMountPools().entrySet()) {
-            MountDo mount = entry.getValue();
-            engine.addMount(MountDir.builder()
-                    .alias(entry.getKey())
-                    .description(mount.getDescription())
-                    .type(mount.getType())
-                    .path(mount.getPath())
-                    .primary(mount.isPrimary())
-                    .enabled(mount.isEnabled())
-                    .writeable(mount.isWriteable())
-                    .build());
-        }
-
-        engine.addMount(MountDir.builder().alias("@user-skills").type(MountType.SKILLS).path("~/" + engine.getHarnessSkills()).primary(true).build());
-        engine.addMount(MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path("./" + engine.getHarnessSkills()).primary(true).build());
-
-        engine.addMount(MountDir.builder().alias("@user-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
-        engine.addMount(MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path("./" + engine.getHarnessAgents()).primary(true).build());
-
-
-        engine.getCommandRegistry().load(Paths.get(AgentFlags.getUserHome(), engine.getHarnessCommands()));
-        engine.getCommandRegistry().load(Paths.get(workspace, engine.getHarnessCommands()));
-
-        engine.getCommandRegistry().register(new ExitCommand());
-        engine.getCommandRegistry().register(new ClearCommand());
-        engine.getCommandRegistry().register(new ContinueCommand());
-        engine.getCommandRegistry().register(new InterruptCommand());
-        engine.getCommandRegistry().register(new RerunCommand());
-        engine.getCommandRegistry().register(new RewindCommand());
-        engine.getCommandRegistry().register(new ModelCommand());
-
-        engine.getLspTalent().setEnabled(settings.getGeneral().isLspEnabled());
-
-        RunUtil.async(() -> addServers(engine));
-
-        // loop scheduler
-        this.loopScheduler = new LoopScheduler(engine, agentSettings);
-
-        // ★ 初始化 Goal 验证器（在 LoopScheduler 创建之后，GoalExtension 注册之前）
-        ValidatorFactory.initDefaults(workspace);
-
-        // ★ Goal 模式（受 feature flag 控制）
-        boolean goalsEnabled = settings.getGeneral().isGoalsEnabled();
-        GoalExtension goalExtension = new GoalExtension(loopScheduler);
-        goalExtension.getGoalTalent().setEnabled(goalsEnabled);
-        engine.addExtension(goalExtension);
-
-        // LoopCommand 统一管理循环任务与 Goal（pause/resume 需 GoalTool 同步 sessionId）
-        LoopCommand loopCommand = new LoopCommand(loopScheduler);
-        engine.getCommandRegistry().register(loopCommand);
-        engine.getCommandRegistry().register(new GoalCommand(loopCommand));
-
-        engine.addExtension(new ManagerExtension(engine, agentSettings, loopScheduler));
-
-        return engine;
-    }
-
-    private void addServers(HarnessEngine engine) {
-        for (Map.Entry<String, McpServerDo> entry : agentSettings.getMcpServers().entrySet()) {
-            engine.addMcpServer(entry.getKey(), entry.getValue());
-        }
-
-        for (Map.Entry<String, ApiSourceDo> entry : agentSettings.getApiServers().entrySet()) {
-            engine.addApiServer(entry.getValue());
-        }
-
-        for (Map.Entry<String, LspServerDo> entry : agentSettings.getLspServers().entrySet()) {
-            engine.addLspServer(entry.getKey(), entry.getValue());
-        }
-
-        //系统级 LSP 服务器（参考 OpenCode / Claude Code 内置列表，仅注册常见语言）
-        addSystemLspServer(engine, agentSettings, "java", Arrays.asList("jdtls"), Arrays.asList(".java"));
-        addSystemLspServer(engine, agentSettings, "typescript", Arrays.asList("typescript-language-server", "--stdio"), Arrays.asList(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"));
-        addSystemLspServer(engine, agentSettings, "go", Arrays.asList("gopls"), Arrays.asList(".go"));
-        addSystemLspServer(engine, agentSettings, "python", Arrays.asList("pyright-langserver", "--stdio"), Arrays.asList(".py", ".pyi"));
-        addSystemLspServer(engine, agentSettings, "rust", Arrays.asList("rust-analyzer"), Arrays.asList(".rs"));
-        addSystemLspServer(engine, agentSettings, "c-cpp", Arrays.asList("clangd", "--background-index", "--clang-tidy"), Arrays.asList(".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".c++", ".h++", ".hh"));
-        addSystemLspServer(engine, agentSettings, "csharp", Arrays.asList("roslyn-language-server", "--stdio", "--autoLoadProjects"), Arrays.asList(".cs", ".csx"));
-        addSystemLspServer(engine, agentSettings, "ruby", Arrays.asList("solargraph", "stdio"), Arrays.asList(".rb", ".rake", ".gemspec", ".ru"));
-        addSystemLspServer(engine, agentSettings, "php", Arrays.asList("intelephense", "--stdio"), Arrays.asList(".php"));
-        addSystemLspServer(engine, agentSettings, "bash", Arrays.asList("bash-language-server", "start"), Arrays.asList(".sh", ".bash", ".zsh", ".ksh"));
-        addSystemLspServer(engine, agentSettings, "lua", Arrays.asList("lua-language-server"), Arrays.asList(".lua"));
-        addSystemLspServer(engine, agentSettings, "dart", Arrays.asList("dart", "language-server", "--lsp"), Arrays.asList(".dart"));
-        addSystemLspServer(engine, agentSettings, "swift", Arrays.asList("sourcekit-lsp"), Arrays.asList(".swift", ".objc", ".objcpp"));
-        addSystemLspServer(engine, agentSettings, "kotlin", Arrays.asList("kotlin-language-server"), Arrays.asList(".kt", ".kts"));
-        addSystemLspServer(engine, agentSettings, "yaml", Arrays.asList("yaml-language-server", "--stdio"), Arrays.asList(".yaml", ".yml"));
-
+    public HarnessEngine agentRuntime(AgentSettings settings, SessionManager sessionManager, WorkspaceManager workspaceManager) {
+        // 复用默认工作区 engine：引擎构建逻辑已收敛到 WorkspaceManager.createWorkspaceContext，
+        // 禁止再维护第二份 200 行构建代码（同一 user.dir 双 engine 会导致内存/MCP/LSP 子进程翻倍）。
+        // 语义对齐：默认工作区 wsSettings 即注入的 settings；SessionManager(workspace) 与无参构造
+        // 均指向 AgentFlags.getUserDir()；命令注册/LoopScheduler/GoalExtension 完全一致。
+        workspaceManager.initDefaultWorkspace();
+        WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
+        this.loopScheduler = defaultCtx.getLoopScheduler();
+        return defaultCtx.getEngine();
     }
 
     @Init
     public void init() {
-        //订阅容器扩展
-        appContext.subBeansOfType(HarnessExtension.class, extension -> {
-            agentRuntime.addExtension(extension);
-        });
+        // 初始化默认工作区（幂等；agentRuntime bean 创建时可能已初始化）
+        if (workspaceManager != null) {
+            workspaceManager.initDefaultWorkspace();
+        }
 
+        // 容器扩展订阅已由 WorkspaceManager.createWorkspaceContext 统一完成
+        //（agentRuntime 即默认工作区 engine），此处禁止重复订阅，否则同一扩展被注册两遍
 
         CliShell cliShell = new CliShell(agentRuntime, agentSettings, loopScheduler);
         String flag = Solon.cfg().argx().flagAt(0);
 
         if (AgentFlags.FLAG_VERSION.equals(flag)) {
             System.out.println(Solon.cfg().appTitle() + " " + AgentFlags.getVersion());
-            Solon.stop();  // 退出进程
+            haltWith(0);  // 退出进程（退出码 0）
             return;
         }
 
@@ -241,11 +109,7 @@ public class Configurator {
                 PrintModeOptions printOpts = PrintModeOptions.parse(Solon.cfg().argx());
                 PrintMode printMode = new PrintMode(agentRuntime, agentSettings, printOpts);
                 int exitCode = printMode.execute();
-                Solon.stop();
-                if (exitCode != 0) {
-                    // 非零退出码通过 Runtime.halt 强制退出（Solon.stop 可能被拦截）
-                    Runtime.getRuntime().halt(exitCode);
-                }
+                haltWith(exitCode);
                 return;
             }
 
@@ -271,6 +135,24 @@ public class Configurator {
 
         //cli - default
         new Thread(cliShell, "CLI-Interactive-Thread").start();
+    }
+
+    /**
+     * 以指定退出码结束进程（先优雅停止容器，再强制退出）。
+     *
+     * <p>注意：不能用 {@code Solon.stop()}，它内部固定 {@code System.exit(1)}，
+     * 会让 {@code soloncode run} / {@code --version} 即便成功也返回退出码 1，
+     * 破坏 CI 与 SDK 对退出码语义的依赖。</p>
+     *
+     * @param exitCode 业务退出码（0=成功）
+     */
+    private void haltWith(int exitCode) {
+        try {
+            Solon.stopBlock(false, 0);  // 优雅停止，但不由 Solon 决定退出码
+        } catch (Throwable e) {
+            // 停止过程异常不应改变业务退出码
+        }
+        Runtime.getRuntime().halt(exitCode);
     }
 
     private void checkUpdate() {
@@ -304,69 +186,95 @@ public class Configurator {
 
     private void runWebServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell, SessionManager sessionManager) {
         //web ws gate
-        WebGate webGate = new WebGate(agentRuntime, settings);
+        // 入口单例 WebGate：仅作 WS 路由入口（onOpen 按 workspaceId 分发）与默认工作区 FileWatch 广播。
+        // 其连接池与默认工作区上下文共享同一引用，保证默认工作区推送一致。
+        WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
+        WebGate webGate = new WebGate(workspaceManager);
+        workspaceManager.setWebGate(webGate);
         WebSocketRouter.getInstance().of("/web/gate", webGate);
 
-        // 初始化文件监听服务（提前创建，以便 WebSettingsController 引用）
-        Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
-        FileWatchService fileWatchService = new FileWatchService();
-        // 默认工作区 → 前端广播
-        fileWatchService.addRoot("workspace", workspacePath)
-                .addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+        // 复用默认工作区上下文中已创建并启动的 FileWatchService：
+        // 它在 WorkspaceManager.createWorkspaceContext 中已 addRoot("workspace"+挂载点) 并 start()，
+        // 广播走 Context 内部 WebGate.broadcastRaw（与入口单例共享同一默认连接池）。
+        // 此处不再新建/重复监听同一目录，避免默认工作区文件变更向前端重复推送。
+        FileWatchService fileWatchService = defaultCtx.getFileWatchService();
+        
+        // 用户认证系统（先初始化，确保 WebController 等组件可以访问）
+        UserAuthConfig userAuthConfig = agentSettings.getUserAuth();
+        UserSessionManager userSessionManager = new UserSessionManager();
+        userSessionManager.init(userAuthConfig);
+        
+        UserStore userStore;
+        try {
+            userStore = createUserStore(userAuthConfig, userSessionManager);
+        } catch (Exception e) {
+            LOG.warn("[Configurator] Failed to create user store, using file store: {}", e.getMessage());
+            userStore = new FileUserStore();
+            try { userStore.init(userAuthConfig); } catch (Exception ignored) {}
+        }
+        
+        // 注册 userStore 和 userSessionManager 到容器
+        Solon.context().wrapAndPut(UserStore.class, userStore);
+        Solon.context().wrapAndPut(UserSessionManager.class, userSessionManager);
+        Solon.context().wrapAndPut(UserAuthConfig.class, userAuthConfig);
 
         //web
-        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler, sessionManager));
+        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(workspaceManager));
         Solon.app().router().add(webController);
 
-        addWebBean(new WebSettingsController(agentRuntime, settings, fileWatchService, webGate));
-        addWebBean(new AgentSettingsController(agentRuntime, settings, fileWatchService, webGate));
-        addWebBean(new MountSettingsController(agentRuntime, settings, fileWatchService, webGate));
-        addWebBean(new SkillSettingsController(agentRuntime, settings, fileWatchService, webGate));
-        addWebBean(new LlmSettingController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new WebSettingsController(workspaceManager));
+        addWebBean(new AgentSettingsController(workspaceManager));
+        addWebBean(new MountSettingsController(workspaceManager));
+        addWebBean(new SkillSettingsController(workspaceManager));
+        addWebBean(new LlmSettingController(workspaceManager));
 
-        addWebBean(new McpSettingsController(agentRuntime, settings, fileWatchService, webGate));
-        addWebBean(new OpenapiSettingsController(agentRuntime, settings, fileWatchService, webGate));
-        addWebBean(new LspSettingsController(agentRuntime, settings, fileWatchService, webGate));
+        addWebBean(new McpSettingsController(workspaceManager));
+        addWebBean(new OpenapiSettingsController(workspaceManager));
+        addWebBean(new LspSettingsController(workspaceManager));
 
         addWebBean(new MemoryController(agentRuntime));
+        
+        addWebBean(new UserLoginController(userStore, userSessionManager, userAuthConfig));
+        addWebBean(new UserAuthController(userStore, userSessionManager, userAuthConfig, agentSettings));
 
-        BeanWrap webChannel = Solon.context().wrapAndPut(WebChannel.class, new WebChannel(agentRuntime, webGate));
+        BeanWrap webChannel = Solon.context().wrapAndPut(WebChannel.class, new WebChannel(workspaceManager));
         Solon.app().router().add(webChannel);
 
-        // 启动微信通道
-        RunUtil.async((Runnable) webChannel.get());
+        // IM 渠道长连接（微信/飞书/钉钉）已改由各工作区的 ChannelHub.run() 统一拉起
+        // （见 WorkspaceManager.createWorkspaceContext），此处不再启动。
 
-        // 遍历所有挂载点，按类型分配不同的处理器
-        for (MountDir mount : agentRuntime.getMounts()) {
-            if (!mount.isEnabled()) continue;
-
-            FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
-
-            switch (mount.getType()) {
-                case FILES:
-                    // FILES 挂载 → 前端广播
-                    root.addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
-                    break;
-                case SKILLS:
-                    // SKILLS 挂载 → 触发技能刷新
-                    root.addHandler(changes -> agentRuntime.getSkillProvider().refreshByGroup(mount.getAlias()));
-                    break;
-                case AGENTS:
-                    // AGENTS 挂载 → 触发代理刷新
-                    root.addHandler(changes -> agentRuntime.getAgentManager().refreshByMountAlias(mount.getAlias()));
-                    break;
-            }
-        }
-
-        fileWatchService.start();
-
+        // 挂载点监听已由默认工作区上下文（WorkspaceManager.createWorkspaceContext）统一装配并 start，
+        // 此处不再重复遗历挂载点与 start，避免重复监听与重复推送。
         if (cliShell != null) {
             String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
             cliShell.printWelcome("Web interface: " + url);
         }
     }
 
-    private  void addWebBean(Object bean){
+        private UserStore createUserStore(UserAuthConfig config, UserSessionManager sessionManager) throws Exception {
+        String mode = config.getMode();
+        if (mode == null) mode = "file";
+        
+        UserStore store;
+        switch (mode) {
+            case "ldap":
+                store = new LdapUserStore();
+                break;
+            case "database":
+                // 数据库模式目前使用文件存储作为兜底
+                // 实际使用时可通过 UI 配置 JDBC 连接
+                store = new FileUserStore();
+                break;
+            case "file":
+            default:
+                store = new FileUserStore();
+                break;
+        }
+        store.init(config);
+        return store;
+    }
+    
+    private void addWebBean(Object bean) {
         BeanWrap beanWrap = Solon.context().wrapAndPut(bean.getClass(), bean);
         Solon.app().router().add(beanWrap);
     }
@@ -378,15 +286,7 @@ public class Configurator {
             try {
                 Thread.sleep(500);
 
-                if (JavaUtil.IS_WINDOWS) {
-                    new ProcessBuilder("cmd", "/c", "start", url.replace("&", "^&")).start();
-                } else if (JavaUtil.IS_MAC) {
-                    new ProcessBuilder("open", url).start();
-                } else {
-                    new ProcessBuilder("xdg-open", url).start();
-                }
-
-
+                OsOpenUtil.openBrowser(url);
             } catch (Throwable e) { // 使用 Throwable 捕获更全面
                 LOG.warn("Failed to open browser: {}", e.getMessage());
             }
@@ -405,27 +305,5 @@ public class Configurator {
 
         //不能有打印
         //cliShell.printWelcome("Acp interface: stdio");
-    }
-
-    /**
-     * 添加系统级 LSP 服务器（如果用户未自定义同名配置，则注册）
-     */
-    private void addSystemLspServer(HarnessEngine engine, AgentSettings settings, String name, List<String> command, List<String> extensions) {
-        // 如果用户已自定义同名配置，跳过系统级注册
-        if (settings.getLspServers().containsKey(name)) {
-            return;
-        }
-
-        LspServerDo lspServer = new LspServerDo();
-        lspServer.setCommand(command);
-        lspServer.setExtensions(extensions);
-        lspServer.setEnabled(false); // 默认禁用，用户按需启用
-        lspServer.setScope(AgentFlags.SCOPE_LOCAL);
-
-        // 注册到引擎（不启用不会真正加载，仅作为可选项）
-        engine.addLspServer(name, lspServer);
-
-        // 同步到 settings 以便前端展示
-        settings.getLspServers().put(name, lspServer);
     }
 }

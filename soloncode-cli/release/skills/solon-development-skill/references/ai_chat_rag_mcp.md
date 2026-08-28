@@ -2,7 +2,7 @@
 
 > 适用场景：LLM 调用、Tool Calling、RAG 流水线、MCP 协议、生成模型、方言与依赖。
 >
-> 目标版本：4.0.3。
+> 目标版本：4.0.4。
 > - Agent / Talent / Loop → `ai_agent.md`
 > - Harness → `ai_harness.md`
 > - AI UI / ACP / A2A → `ai_protocol_ui.md`
@@ -11,6 +11,35 @@
 ## ChatModel — LLM 调用
 
 Dependency: `solon-ai`（含 `solon-ai-core` 及方言）或单独 `solon-ai-core`。
+
+### 模型选项统一 API（4.0.4+）
+
+通过 `ModelOptionsAmend` 提供跨方言统一的推理控制选项：
+
+```java
+ChatModel chatModel = ChatModel.of(config)
+        .reasoning_effort("high")  // 推理水平：low / medium / high / max
+        .thinking(true)            // 思考模式开关
+        .build();
+
+// thinking(false) 关闭优先，压过 reasoning_effort
+// 仅设 reasoning_effort 时多数方言会隐式开启 thinking
+// null / 空串 / "auto" → 移除该选项
+```
+
+### ChatRequestDesc 链式方法（4.0.4+）
+
+`ChatRequestDesc` 接口新增三个链式方法：
+
+| 方法 | 说明 |
+|---|---|
+| `role(String)` | 设置智能体角色 |
+| `instruction(String)` | 设置指令文本 |
+| `systemPrompt(String)` | 设置系统提示词 |
+
+### Prompt.copy()（4.0.4+）
+
+`Prompt` 接口新增 `copy()` 方法，返回 `Prompt` 副本，用于会话快照与上下文复用。
 
 ### 配置器构建
 
@@ -136,7 +165,20 @@ ChatMessage msg = ChatMessage.ofUserAugment("查询问题", context);
 
 ## MCP — Model Context Protocol
 
-Dependency: `solon-ai-mcp`。协议 MCP_2025-03-26；可嵌入 Solon / SpringBoot 等。
+Dependency: `solon-ai-mcp`。支持协议版本：MCP_2024-11-05 / MCP_2025-03-26 / MCP_2025-06-18 / MCP_2025-11-25；可嵌入 Solon / SpringBoot 等。
+
+### 工具控制
+
+MCP 客户端支持 `allowedTools` / `disallowedTools` 白名单/黑名单控制：
+
+```java
+McpClientProvider client = McpClientProvider.builder()
+        .channel(McpChannel.STREAMABLE)
+        .url("http://localhost:8080/mcp")
+        .allowedTools("getWeather", "getTime")  // 白名单
+        .disallowedTools("deleteData")             // 黑名单
+        .build();
+```
 
 ### 传输方式
 
@@ -205,11 +247,14 @@ GenerateResponse resp = generateModel.prompt("一只猫的插画").call();
 
 | Class | Description |
 |---|---|
-| `ChatModel` / `ChatConfig` / `ChatResponse` / `ChatMessage` / `ChatSession` | 聊天核心 |
+| `ChatModel` / `ChatConfig` / `ChatResponse` / `ChatMessage` / `ChatSession` / `ChatRequestDesc` | 聊天核心 |
 | `ChatDialect` / `FunctionTool` / `ToolProvider` / `MethodToolProvider` | 方言与工具 |
 | `EmbeddingModel` / `RerankingModel` / `InMemoryRepository` / `SplitterPipeline` | RAG 核心 |
 | `McpClientProvider` / `McpChannel` | MCP |
 | `GenerateModel` | 图/音/视生成 |
+| `ModelOptionsAmend` | 模型选项统一 API（`reasoning_effort` / `thinking`） |
+| `Prompt` | 提示词接口（含 `copy()`） |
+| `AssistantMessage` | 助手消息（支持多模态内容输出） |
 
 ## 核心依赖与方言
 

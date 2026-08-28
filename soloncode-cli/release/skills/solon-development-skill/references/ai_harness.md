@@ -2,7 +2,7 @@
 
 > 适用场景：HarnessEngine、工具权限、子代理、拦截器、命令系统。
 >
-> 目标版本：4.0.3。Agent / Talent / Loop 见 `ai_agent.md`；AI UI / ACP / A2A 见 `ai_protocol_ui.md`。
+> 目标版本：4.0.4。Agent / Talent / Loop 见 `ai_agent.md`；AI UI / ACP / A2A 见 `ai_protocol_ui.md`。
 
 Dependency: `solon-ai-harness`
 
@@ -38,7 +38,7 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
-import org.noear.solon.ai.harness.permission.ToolPermission;
+import org.noear.solon.ai.harness.agent.ToolName;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,7 +58,7 @@ public class DemoApp {
         HarnessEngine engine = HarnessEngine.of("work", ".soloncode/") // 工作区、马具主目录
                 .systemPrompt("xxx")                  // Harness 侧：systemPrompt(String)
                 .modelAdd(new ChatConfig())           // Builder：modelAdd（可多个，第一个为默认）
-                .toolsAdd(ToolPermission.TOOL_WEBSEARCH) // 设定工具权限
+                .toolsAdd(ToolName.TOOL_WEBSEARCH) // 设定工具权限
                 .sessionProvider(sessionProvider)
                 .build();
         // 构建后运行时动态加模型用：engine.addModel(new ChatConfig());
@@ -87,7 +87,7 @@ public class DemoApp {
 
         AgentDefinition definition = new AgentDefinition();
         definition.setSystemPrompt("xxx");
-        definition.getMetadata().addTools(ToolPermission.TOOL_BASH);
+        definition.getMetadata().addTools(ToolName.TOOL_BASH);
 
         ReActAgent subagent = engine.createSubagent(definition).build();
         subagent.prompt(prompt)
@@ -106,10 +106,10 @@ public class DemoApp {
 HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
         .systemPrompt("你是一个 AI 助手")
         .sessionWindowSize(8)
-        .compressionThreshold(30, 30_000) // 消息条数阈值、token 阈值
+        .compressionThreshold(30, 0.75) // 消息条数阈值、上下文窗口比例阈值
         .maxTurns(30)
         .autoRethink(true)
-        .toolsAdd(ToolPermission.TOOL_ALL_FULL)
+        .toolsAdd(ToolName.TOOL_ALL_FULL)
         .sessionProvider(sessionProvider)
         .build();
 ```
@@ -120,7 +120,7 @@ HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
 engine.allowTool("websearch");
 engine.disallowTool("bash");
 engine.setMaxTurns(30);
-engine.setCompressionThreshold(30, 30_000);
+engine.setCompressionThreshold(30, 0.75);
 engine.setSandboxEnabled(true);
 engine.addModel(new ChatConfig());
 engine.setDefaultModel("deepseek-v4-flash");
@@ -128,7 +128,7 @@ engine.setDefaultModel("deepseek-v4-flash");
 
 ### 核心配置
 
-> v4 字段更名：`maxSteps`→`maxTurns`、`maxStepsAutoExtensible`→`autoRethink`、`summaryWindowSize`→`compressionMaxMessages`、`summaryWindowRatio`→`compressionMaxContxtRatio`、`summaryModel`→`compressionModel`、`sandboxMode`→`sandboxEnabled`、`mountPools`→`mounts`。`models` 由 `List` 改为 `Map`。
+> v4 字段更名：`maxSteps`→`maxTurns`、`maxStepsAutoExtensible`→`autoRethink`、`summaryWindowSize`→`compressionMaxMessages`、`summaryWindowRatio`→`compressionMaxContextRatio`、`summaryModel`→`compressionModel`、`sandboxMode`→`sandboxEnabled`、`mountPools`→`mounts`、`compressionMaxTokens`→`compressionMaxContextRatio`、`getModelOrMain`→`getModelOrDefInstance`。`models` 由 `List` 改为 `Map`。
 
 | 配置项 | 类型 | 默认值 | 描述 |
 |---|---|---|---|
@@ -142,8 +142,8 @@ engine.setDefaultModel("deepseek-v4-flash");
 | `maxTurns` | int | `20` | 根代理最大循环步数 |
 | `autoRethink` | bool | `true` | 最大步数自动续航（由 LLM 反思控制） |
 | `sessionWindowSize` | int | `8` | 会话历史窗口大小 |
-| `compressionMaxMessages` | int | `30` | 触发上下文压缩的消息条数阈值 |
-| `compressionMaxTokens` | int | `30000` | 触发上下文压缩的内容长度阈值 |
+| `compressionMaxMessages` | int | `40` | 触发上下文压缩的消息条数阈值 |
+| `compressionMaxContextRatio` | double | `0.75` | 触发上下文压缩的上下文窗口比例阈值 (0, 1] |
 | `compressionModel` | `String` | / | 压缩用大模型（不指定则使用主模型） |
 
 ### 安全与行为配置
@@ -170,7 +170,7 @@ engine.setDefaultModel("deepseek-v4-flash");
 | `lspServers` | `Map<String, LspServerParameters>` | LSP 服务 |
 | `extensions` | `List<HarnessExtension>` | 扩展接口 |
 
-## 工具权限配置 (ToolPermission)
+## 工具权限配置 (ToolName)
 
 常用枚举（`toolsAdd(...)` / `allowTool`）：
 
@@ -178,11 +178,13 @@ engine.setDefaultModel("deepseek-v4-flash");
 |---|---|---|
 | 全集 | `**`=`TOOL_ALL_FULL`；`*`=`TOOL_ALL_PUBLIC` | 全量 / 仅公域 |
 | 聚合 | `pi`=`TOOL_PI` | read+write+edit+bash |
-| 私域 | `hitl` / `generate` / `restapi` / `mcp` | 审核、生成子代理、API/MCP 接入 |
+| 私域 | `hitl` / `generate` / `openapi` / `mcp` | 审核、生成子代理、OpenAPI/MCP 接入 |
 | 公域检索 | `websearch` / `webfetch` / `codesearch` / `lsp` / `code` | 搜索与代码理解 |
 | 公域工程 | `todo` / `skill` / `task` / `bash` / `ls` / `grep` / `glob` / `edit` / `read` / `write` | 任务与文件操作 |
 
 枚举常量命名：工具名大写加 `TOOL_` 前缀（如 `TOOL_WEBSEARCH`）。
+
+> `ToolPermission`（`org.noear.solon.ai.harness.permission.ToolPermission`）自 4.0.4 起标 `@Deprecated`，由 `ToolName`（`org.noear.solon.ai.harness.agent.ToolName`）替代。差异：`TOOL_RESTAPI` 更名为 `TOOL_OPENAPI`。
 
 ## 调用与流式请求
 
@@ -247,7 +249,7 @@ HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
 ```java
 AgentDefinition definition = new AgentDefinition();
 definition.setSystemPrompt("xxx");
-definition.getMetadata().addTools(ToolPermission.TOOL_BASH);
+    definition.getMetadata().addTools(ToolName.TOOL_BASH);
 
 ReActAgent subagent = engine.createSubagent(definition)
         .defaultToolAdd(new OrderTool())
@@ -271,7 +273,7 @@ subagent.prompt(prompt)
 ```java
 HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
         .sessionProvider(sessionProvider)
-        .compressionInterceptor(new ContextCompressionInterceptor()) // v4：原 SummarizationInterceptor
+        .compressionInterceptor(new ContextCompressionInterceptor()) // v4：原 SummarizationInterceptor。构造参数：(maxMessages, maxContextLengthRatio, strategy)
         .hitlInterceptor(new HITLInterceptor())
         .build();
 ```
@@ -298,6 +300,49 @@ HarnessEngine engine = HarnessEngine.of("work", ".soloncode/")
 engine.setDefaultModel("model-name"); // v4：原 switchMainModel
 engine.addModel(new ChatConfig());
 engine.removeModel("model-name");
+engine.getModelOrDefInstance("model-name"); // v4.0.4+：原 getModelOrMain（已弃用）
+```
+
+## 工具权限动态重置（4.0.4+）
+
+`allowToolReset` / `disallowToolReset` 用于一次性重置白名单/黑名单并重建主代理（原子操作，线程安全）：
+
+```java
+// 重置白名单（先清空再加入，自动重建 mainAgent）
+engine.allowToolReset(Arrays.asList("websearch", "read"));
+
+// 重置黑名单
+engine.disallowToolReset(Arrays.asList("bash"));
+
+// 一次性重置白名单和黑名单（仅重建一次 Agent）
+engine.toolPermissionReset(tools, disallowedTools);
+```
+
+> 对比：`allowTool` / `disallowTool` 是增量添加/移除；`allowToolReset` / `disallowToolReset` 是全量重置。
+
+## 子代理流块包装（TaskWrapChuck, 4.0.4+）
+
+子代理调用产生的流块（AgentEvent）通过 `TaskWrapChuck` 包装后回传给主代理流，提高子代理调用透明度。无需手动配置，由 HarnessEngine 自动处理。
+
+## Skills / Agents 局部动态刷新（4.0.4+）
+
+运行时可局部刷新已挂载的 Skills 和 Agents，无需重启引擎：
+
+```java
+engine.refreshSkills();  // 重新扫描 skills 目录
+engine.refreshAgents();  // 重新扫描 agents 目录
+```
+
+## AgentDefinition 链式构造（4.0.4+）
+
+`AgentDefinition` 支持链式 Builder 模式构造：
+
+```java
+AgentDefinition def = AgentDefinition.builder()
+        .systemPrompt("你是一个业务助手")
+        .toolsAdd(ToolName.TOOL_BASH, ToolName.TOOL_READ)
+        .build();
+ReActAgent subagent = engine.createSubagent(def).build();
 ```
 
 ## 命令系统
@@ -336,15 +381,15 @@ agentManager.addAgent(myAgentDefinition);
 ```java
 // Pi 风格：仅 read/write/edit/bash
 HarnessEngine pi = HarnessEngine.of("work", ".soloncode/")
-        .toolsAdd(ToolPermission.TOOL_PI)
+        .toolsAdd(ToolName.TOOL_PI)
         .modelAdd(new ChatConfig())
         .sessionProvider(sessionProvider)
         .build();
 
 // 知识问答：检索类公域工具
 HarnessEngine qa = HarnessEngine.of("work", ".soloncode/")
-        .toolsAdd(ToolPermission.TOOL_CODESEARCH,
-                ToolPermission.TOOL_WEBSEARCH, ToolPermission.TOOL_WEBFETCH)
+        .toolsAdd(ToolName.TOOL_CODESEARCH,
+                ToolName.TOOL_WEBSEARCH, ToolName.TOOL_WEBFETCH)
         .modelAdd(new ChatConfig())
         .sessionProvider(sessionProvider)
         .build();

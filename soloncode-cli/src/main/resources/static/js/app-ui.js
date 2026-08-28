@@ -3,7 +3,7 @@
 /* 依赖：app-base.js */
 
 /* ===== Attachment Helpers ===== */
-var welcomeAttachmentsWrap = $('#welcomeAttachmentsWrap');
+var newChatAttachmentsWrap = $('#newChatAttachmentsWrap');
 var chatAttachmentsWrap = $('#chatAttachmentsWrap');
 
 function handlePaste(e) {
@@ -41,12 +41,12 @@ function handlePaste(e) {
 }
 
 function getAttachmentsWrap() {
-    return inChatMode ? chatAttachmentsWrap : welcomeAttachmentsWrap;
+    return inChatMode ? chatAttachmentsWrap : newChatAttachmentsWrap;
 }
 
 function renderAttachments() {
     // Render both wraps to keep them in sync when switching views
-    renderAttachmentsWrap(welcomeAttachmentsWrap);
+    renderAttachmentsWrap(newChatAttachmentsWrap);
     renderAttachmentsWrap(chatAttachmentsWrap);
 }
 
@@ -61,7 +61,7 @@ function renderAttachmentsWrap(wrap) {
         var item = pendingFiles[i];
         var el = document.createElement('div');
         el.className = 'attachment-item';
-        var typeTag = '<span class="attachment-type-tag ' + (item.attachmentsType || 'file') + '">' + (item.attachmentsType === 'image' ? '多模态' : '文件') + '</span>';
+        var typeTag = '<span class="attachment-type-tag ' + (item.attachmentsType || 'file') + '">' + (item.attachmentsType === 'image' ? I18n.t('attach.typeMultimodal') : I18n.t('attach.typeFile')) + '</span>';
         if (item.type === 'image') {
             $(el).html('<img src="' + item.dataUrl + '"/>'
                 + typeTag
@@ -121,18 +121,18 @@ function processSelectedFiles(fileList, attachmentsType) {
     }
 }
 
-$(welcomeInput).on('paste', handlePaste);
+$(newChatInput).on('paste', handlePaste);
 $(chatInput).on('paste', handlePaste);
 
 /* ===== Drag & Drop File Upload ===== */
 (function() {
-    var welcomeDropZone = $('#welcomeDropZone');
+    var newChatDropZone = $('#newChatDropZone');
     var chatDropZone = $('#chatDropZone');
-    var welcomeDropOverlay = $('#welcomeDropOverlay');
+    var newChatDropOverlay = $('#newChatDropOverlay');
     var chatDropOverlay = $('#chatDropOverlay');
 
     // Counter to track nested enter/leave events (child elements fire their own events)
-    var welcomeDragCounter = 0;
+    var newChatDragCounter = 0;
     var chatDragCounter = 0;
 
     function showOverlay(overlay) {
@@ -154,14 +154,14 @@ $(chatInput).on('paste', handlePaste);
         if (!files || files.length === 0) return;
 
         if (pendingFiles.length >= MAX_ATTACHMENTS) {
-            showToast('附件数量已达上限（' + MAX_ATTACHMENTS + '个）', 'error');
+            showToast((window.I18n ? window.I18n.t('toast.attachLimit', { max: MAX_ATTACHMENTS }) : ('\u9644\u4ef6\u6570\u91cf\u5df2\u8fbe\u4e0a\u9650\uff08' + MAX_ATTACHMENTS + '\u4e2a\uff09')), 'error');
             return;
         }
 
         // Separate files into images and non-images for proper processing
         for (var i = 0; i < files.length; i++) {
             if (pendingFiles.length >= MAX_ATTACHMENTS) {
-                showToast('部分文件未添加，附件数量已达上限（' + MAX_ATTACHMENTS + '个）', 'error');
+            showToast((window.I18n ? window.I18n.t('toast.attachLimitPartial', { max: MAX_ATTACHMENTS }) : ('\u90e8\u5206\u6587\u4ef6\u672a\u6dfb\u52a0\uff0c\u9644\u4ef6\u6570\u91cf\u5df2\u8fbe\u4e0a\u9650\uff08' + MAX_ATTACHMENTS + '\u4e2a\uff09')), 'error');
                 break;
             }
             var file = files[i];
@@ -200,12 +200,12 @@ $(chatInput).on('paste', handlePaste);
         });
     }
 
-    bindDropZone(welcomeDropZone, welcomeDropOverlay, { val: welcomeDragCounter });
+    bindDropZone(newChatDropZone, newChatDropOverlay, { val: newChatDragCounter });
     bindDropZone(chatDropZone, chatDropOverlay, { val: chatDragCounter });
 })();
 
 // Attachment remove buttons - use event delegation on both wraps
-welcomeAttachmentsWrap.on('click', function(e) {
+newChatAttachmentsWrap.on('click', function(e) {
     var btn = e.target.closest('.attachment-item-remove');
     if (btn) removeAttachment(parseInt(btn.getAttribute('data-idx')));
 });
@@ -215,15 +215,15 @@ chatAttachmentsWrap.on('click', function(e) {
 });
 
 // Attach button handlers
-$('#welcomeAttachBtn').on('click', function(e) {
+$('#newChatAttachBtn').on('click', function(e) {
     e.stopPropagation();
-    $('#welcomeAttachInput')[0].click();
+    $('#newChatAttachInput')[0].click();
 });
 $('#chatAttachBtn').on('click', function(e) {
     e.stopPropagation();
     $('#chatAttachInput')[0].click();
 });
-$('#welcomeAttachInput').on('change', function(e) {
+$('#newChatAttachInput').on('change', function(e) {
     if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'file');
     e.target.value = '';
 });
@@ -233,15 +233,15 @@ $('#chatAttachInput').on('change', function(e) {
 });
 
 // Image button handlers
-$('#welcomeImageBtn').on('click', function(e) {
+$('#newChatImageBtn').on('click', function(e) {
     e.stopPropagation();
-    $('#welcomeImageInput')[0].click();
+    $('#newChatImageInput')[0].click();
 });
 $('#chatImageBtn').on('click', function(e) {
     e.stopPropagation();
     $('#chatImageInput')[0].click();
 });
-$('#welcomeImageInput').on('change', function(e) {
+$('#newChatImageInput').on('change', function(e) {
     if (e.target.files && e.target.files.length > 0) processSelectedFiles(e.target.files, 'image');
     e.target.value = '';
 });
@@ -271,6 +271,21 @@ function createMarkdownRenderer() {
         var safeText = text || '';
 
         return '<a href="' + escapeHtmlAttr(safeHref) + '" target="_blank" rel="noopener noreferrer"' + safeTitle + '>' + safeText + '</a>';
+    };
+
+    // 多工作区隔离：Markdown 内嵌图片 ![](path) 的 <img src> 由浏览器直发，
+    // 绕过 fetch/XHR 劫持层，必须重写为 read-raw 接口并显式携带 workspaceId。
+    renderer.image = function (token) {
+        var href = token && typeof token === 'object' ? token.href : token;
+        var title = (token && typeof token === 'object' ? token.title : '') || '';
+        var text = (token && typeof token === 'object' ? token.text : '') || '';
+        var src = String(href || '');
+        // 已是完整 URL（http/https/data）则不重写
+        if (!/^(https?:|data:)/i.test(src)) {
+            src = '/web/chat/filer/read-raw?path=' + encodeURIComponent(src) + window.wsAndSuffix();
+        }
+        return '<img src="' + escapeHtmlAttr(src) + '" alt="' + escapeHtmlAttr(text) + '"'
+            + (title ? ' title="' + escapeHtmlAttr(title) + '"' : '') + ' style="max-width:100%">';
     };
 
     // 防止原始 HTML 标签破坏页面布局：转义 < 和 >，避免被浏览器解析为 DOM 元素
@@ -655,8 +670,8 @@ function ensureQrcode(cb) {
 window.ensureQrcode = ensureQrcode;
 
 function applyHljsTheme(theme) {
-    var $lightLink = $('#hljs-light-theme');
-    var $darkLink = $('#hljs-dark-theme');
+    var $lightLink = $('#hljsLightTheme');
+    var $darkLink = $('#hljsDarkTheme');
     if (!$lightLink.length || !$darkLink.length) return;
     if (theme === 'dark') {
         $lightLink.prop('disabled', true).prop('media', 'not all');
@@ -692,15 +707,119 @@ $(themeBtn).on('click', function() {
 });
 function updateThemeIcon() {
     $(themeIcon).html(currentTheme === 'light' ? '&#xe6c2;' : '&#xe748;');
-    $(themeBtn).prop('title', currentTheme === 'light' ? '切换至暗色' : '切换至浅色');
+    $(themeBtn).prop('title', currentTheme === 'light' ? (window.I18n ? window.I18n.t('header.switchToDark') : '\u5207\u6362\u81f3\u6697\u8272') : (window.I18n ? window.I18n.t('header.switchToLight') : '\u5207\u6362\u81f3\u6d45\u8272'));
 }
 window.updateThemeIcon = updateThemeIcon;
+document.addEventListener('i18n:loaded', updateThemeIcon);
+document.addEventListener('i18n:switched', updateThemeIcon);
+
+/* ===== Font (user font family + size scale) =====
+ * 优先级：用户显式设置（inline style） > 皮肤 CSS > 主题默认（theme.css :root）
+ * 字号不直接写死，统一由 theme.css 的 --fs-* 阶梯 * --font-scale 得出。
+ *
+ * 落点差异（关键，勿随意调整）：
+ * - --font-sans / --font-mono 写在 body：皮肤规则的选择器是 body[data-skin][data-theme]，
+ *   写在 body 的 inline style 才能盖过皮肤；写到 html 会被 body 上的皮肤声明反超。
+ * - --font-scale 必须写在 html(:root)：自定义属性中的 var() 在“声明它的元素”上完成替换，
+ *   --fs-* 声明在 :root，替换时只会读取 html 上的 --font-scale。写在 body 对 --fs-* 完全无效
+ *   （皮肤若把 --fs-* 声明在 body 上则又会生效，行为随皮肤翻转）。写在 html 两种情况都正确。
+ */
+var FONT_SCALE_MIN = 0.85;
+var FONT_SCALE_MAX = 1.5;
+var FONT_FAMILY_MAX = 200;
+
+/**
+ * 字族名过滤：黑名单式。
+ * 早期用的是 [\w\u4e00-\u9fa5...] 白名单，只放过拉丁与中日韩汉字，日文假名（ヒラギノ角ゴ）、
+ * 韩文谚文（맑은 고딕）、西里尔字母等会被整条丢弃 —— 在 22 语言界面里不可接受。
+ * 这里只拦真正能越出声明的字符（; { } ( ) 与注释起止），其余非法写法由 CSS 解析器自行丢弃：
+ * setProperty 对自定义属性走解析器，塞不进第二条声明，最坏结果只是这条 font-family 无效。
+ */
+function sanitizeFontFamily(v) {
+    if (!v) return '';
+    var s = String(v).trim();
+    if (!s) return '';
+    if (/[;{}()<>\\]/.test(s)) return '';
+    if (s.indexOf('/*') >= 0 || s.indexOf('*/') >= 0) return '';
+    return s.slice(0, FONT_FAMILY_MAX);
+}
+window.sanitizeFontFamily = sanitizeFontFamily;
+
+/**
+ * 用户输入是否是浏览器能接受的 font-family 值（供设置面板做可见反馈）。
+ * 空值合法（= 用默认栈）。
+ */
+function isValidFontFamily(v) {
+    if (!v) return true;
+    var s = sanitizeFontFamily(v);
+    if (!s) return false;
+    if (typeof CSS === 'undefined' || !CSS.supports) return true;
+    return CSS.supports('font-family', s);
+}
+window.isValidFontFamily = isValidFontFamily;
+
+function clampFontScale(v) {
+    var n = parseFloat(v);
+    if (isNaN(n)) return 1;
+    if (n < FONT_SCALE_MIN) return FONT_SCALE_MIN;
+    if (n > FONT_SCALE_MAX) return FONT_SCALE_MAX;
+    return Math.round(n * 100) / 100;
+}
+
+/**
+ * 应用字体设置。opts: { family, mono, scale }
+ * 传入空值 / null 表示回退到主题或皮肤定义（移除 inline 覆盖）。
+ * opts 中未出现的键保持当前值不变。
+ */
+function applyFont(opts) {
+    opts = opts || {};
+    var st = document.body.style;
+    var rootSt = document.documentElement.style;
+
+    // 用户字体只做“前插”，尾部始终接 theme.css 的 *-fallback 链：
+    // 否则用户选了本机没装的字族（如 Windows 选 PingFang SC）会直接掉到 generic family，
+    // 丢掉整条跨平台回退。
+    if ('family' in opts) {
+        var fam = sanitizeFontFamily(opts.family);
+        if (fam) st.setProperty('--font-sans', fam + ', var(--font-sans-fallback)');
+        else st.removeProperty('--font-sans');
+        window.currentFontFamily = fam;
+        localStorage.setItem('chat-font-family', fam);
+    }
+
+    if ('mono' in opts) {
+        var mono = sanitizeFontFamily(opts.mono);
+        if (mono) st.setProperty('--font-mono', mono + ', var(--font-mono-fallback)');
+        else st.removeProperty('--font-mono');
+        window.currentFontMono = mono;
+        localStorage.setItem('chat-font-mono', mono);
+    }
+
+    if ('scale' in opts) {
+        var scale = clampFontScale(opts.scale);
+        // 注意：落在 html 上，--fs-* 阶梯才会跟着变（见上方注释）
+        if (scale !== 1) rootSt.setProperty('--font-scale', String(scale));
+        else rootSt.removeProperty('--font-scale');
+        window.currentFontScale = scale;
+        localStorage.setItem('chat-font-scale', String(scale));
+    }
+}
+window.applyFont = applyFont;
+window.FONT_SCALE_MIN = FONT_SCALE_MIN;
+window.FONT_SCALE_MAX = FONT_SCALE_MAX;
+
+// 启动：先读 localStorage 立即应用（避免字号闪烁），随后由服务端配置校准
+applyFont({
+    family: localStorage.getItem('chat-font-family') || '',
+    mono: localStorage.getItem('chat-font-mono') || '',
+    scale: localStorage.getItem('chat-font-scale') || 1
+});
 
 /* ===== Skin (static/skin/<name>/skin.css + local zip) ===== */
 var BUILTIN_SKINS = {
-    default:  { name: 'default',  displayName: '默认',   source: 'builtin' },
-    eyecare:  { name: 'eyecare',  displayName: '护眼',   source: 'builtin' },
-    contrast: { name: 'contrast', displayName: '高对比', source: 'builtin' }
+    default:  { name: 'default',  get displayName() { return I18n.t('skin.default'); },   source: 'builtin' },
+    eyecare:  { name: 'eyecare',  get displayName() { return I18n.t('skin.eyecare'); },    source: 'builtin' },
+    contrast: { name: 'contrast', get displayName() { return I18n.t('skin.contrast'); },   source: 'builtin' }
 };
 window.BUILTIN_SKINS = BUILTIN_SKINS;
 
@@ -713,14 +832,19 @@ function isBuiltinSkin(name) {
 }
 
 function ensureSkinStyleLink() {
-    var el = document.getElementById('skin-style');
+    var el = document.getElementById('skinStyle');
     if (!el) {
         el = document.createElement('link');
-        el.id = 'skin-style';
+        el.id = 'skinStyle';
         el.rel = 'stylesheet';
         document.head.appendChild(el);
     }
     return el;
+}
+
+/** 当前工作区查询串（统一入口 window.wsAndSuffix，见 app-base.js） */
+function skinWsQuery() {
+    return window.wsAndSuffix();
 }
 
 /** 预置皮肤：static/skin/<name>/skin.css */
@@ -731,7 +855,7 @@ function builtinSkinCssUrl(skinName) {
 /** 本地安装皮肤：经服务端代理（含相对 url 改写） */
 function localSkinCssUrl(skinName) {
     return '/web/settings/skins/file?name=' + encodeURIComponent(skinName) +
-        '&file=skin.css&_=' + Date.now();
+        '&file=skin.css&_=' + Date.now() + skinWsQuery();
 }
 
 function loadSkinCss(skinName, source) {
@@ -744,7 +868,7 @@ function loadSkinCss(skinName, source) {
 }
 
 function clearSkinCss() {
-    var el = document.getElementById('skin-style');
+    var el = document.getElementById('skinStyle');
     if (el) {
         // 回到默认目录下的空 skin.css，避免残留本地/其它皮肤样式
         el.href = builtinSkinCssUrl('default');
@@ -828,11 +952,28 @@ try {
     });
 } catch (e) { /* ignore */ }
 
+// 字体：用服务端配置校准首屏的 localStorage 值
+// 同时记录“已持久化基线”，供设置面板放弃预览时回滚（面板自身的 GET 可能还没回来）
+try {
+    $.get('/web/settings/general').done(function (resp) {
+        if (!resp || resp.code !== 200 || !resp.data) return;
+        var d = resp.data;
+        var baseline = {
+            family: d.uiFontFamily || '',
+            mono: d.uiFontMono || '',
+            scale: d.uiFontScale != null ? d.uiFontScale : 1
+        };
+        window.savedFontBaseline = baseline;
+        // 若用户已在设置面板里预览过，别用服务端值把预览覆盖掉（仅补基线）
+        if (!window._fontPreviewDirty) applyFont(baseline);
+    });
+} catch (e) { /* ignore */ }
+
 /* ===== View Switch ===== */
 function switchToChatMode() {
     if (inChatMode) return;
     inChatMode = true;
-    $(welcomeView).hide();
+    $(newChatView).hide();
     $(chatView).addClass('active');
     chatInput.focus();
     // 欢迎页 → 聊天页后布局/clientHeight 可能晚几帧才稳定，双 rAF + 多次短延时强制贴底
@@ -857,18 +998,19 @@ function switchToWelcomeMode() {
     if (typeof forgetActiveSession === 'function') forgetActiveSession();
     SESSION_ID = 'web-' + Date.now().toString(36);
     setActiveSession(SESSION_ID);
-    $(welcomeView).show();
+    $(newChatView).show();
     $(chatView).removeClass('active');
-    welcomeInput.focus();
+    newChatInput.focus();
     // 新对话时禁用“历史消息”按钮（循环任务按钮保持可用）
-    $('#welcomeHistoryBtn').prop('disabled', true);
-    $('#welcomeLoopBtn').prop('disabled', false);
+    $('#newChatLoopBtn').prop('disabled', false);
     // Reset model UI to new session
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) renderModelUI();
+    // 重新渲染欢迎标题
+    if (typeof window._renderGreeting === 'function') window._renderGreeting();
 }
 
 /* ===== Auto-resize ===== */
-$(welcomeInput).on('input', function() { autoResize(this); });
+$(newChatInput).on('input', function() { autoResize(this); });
 $(chatInput).on('input', function() { autoResize(this); });
 
 /* ===== Voice Input (Web Speech API) - 按住说话（类似微信） ===== */
@@ -879,7 +1021,7 @@ var voiceTargetInput = null; // 当前语音目标 textarea
 var voiceBaseText = '';      // 开始录音时 textarea 已有文本
 var voiceFinalTranscript = ''; // 累计的最终识别文本
 
-var welcomeVoiceBtn = $('#welcomeVoiceBtn');
+var newChatVoiceBtn = $('#newChatVoiceBtn');
 var chatVoiceBtn = $('#chatVoiceBtn');
 
 var voiceRafPending = false; // 限制 DOM 更新频率
@@ -935,7 +1077,7 @@ function initVoice() {
     };
 
     // 显示语音按钮
-    welcomeVoiceBtn.removeClass('hidden');
+    newChatVoiceBtn.removeClass('hidden');
     chatVoiceBtn.removeClass('hidden');
 }
 
@@ -951,9 +1093,9 @@ function startVoiceRecording(inputEl) {
     try { recognition.start(); } catch(e) {}
 
     // 更新按钮状态
-    var btn = (inputEl === welcomeInput) ? welcomeVoiceBtn : chatVoiceBtn;
+    var btn = (inputEl === newChatInput) ? newChatVoiceBtn : chatVoiceBtn;
     btn.addClass('recording');
-    btn.prop('title', '松开结束');
+        btn.prop('title', (window.I18n ? window.I18n.t('voice.releaseToStop') : '\u677e\u5f00\u7ed3\u675f'));
 }
 
 function stopVoiceRecording() {
@@ -962,10 +1104,10 @@ function stopVoiceRecording() {
     try { if (recognition) recognition.stop(); } catch(e) {}
 
     // 更新按钮状态
-    welcomeVoiceBtn.removeClass('recording');
+    newChatVoiceBtn.removeClass('recording');
     chatVoiceBtn.removeClass('recording');
-    welcomeVoiceBtn.prop('title', '按住说话');
-    chatVoiceBtn.prop('title', '按住说话');
+        newChatVoiceBtn.prop('title', (window.I18n ? window.I18n.t('voice.holdToSpeak') : '\u6309\u4f4f\u8bf4\u8bdd'));
+        chatVoiceBtn.prop('title', (window.I18n ? window.I18n.t('voice.holdToSpeak') : '\u6309\u4f4f\u8bf4\u8bdd'));
 
     // 保留识别到的文本，重置基线以便下次追加
     if (voiceTargetInput) {
@@ -1004,7 +1146,7 @@ function bindVoiceHold(btn, inputEl) {
     });
 }
 
-bindVoiceHold(welcomeVoiceBtn, welcomeInput);
+bindVoiceHold(newChatVoiceBtn, newChatInput);
 bindVoiceHold(chatVoiceBtn, chatInput);
 
 initVoice();
@@ -1018,16 +1160,22 @@ initVoice();
         sidebar.toggleClass('collapsed');
         var collapsed = sidebar.hasClass('collapsed');
         btn.toggleClass('collapsed', collapsed);
-        btn.html(collapsed ? '›' : '‹');
-        btn.prop('title', collapsed ? '展开侧边栏' : '收起侧边栏');
+        var svgPath = btn.find('path');
+        if (svgPath.length) {
+            svgPath.attr('d', collapsed ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6');
+        }
+        btn.prop('title', collapsed ? (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f') : (window.I18n ? window.I18n.t('sidebar.collapse') : '\u6536\u8d77\u4fa7\u8fb9\u680f'));
         localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
     });
     // Restore state
     if (localStorage.getItem('sidebar-collapsed') === '1') {
         $('.sidebar').addClass('collapsed');
         btn.addClass('collapsed');
-        btn.html('›');
-        btn.prop('title', '展开侧边栏');
+        var svgPath = btn.find('path');
+        if (svgPath.length) {
+            svgPath.attr('d', 'm9 18 6-6-6-6');
+        }
+        btn.prop('title', (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f'));
     }
 })();
 
@@ -1103,8 +1251,11 @@ initVoice();
             $sidebar.toggleClass('collapsed');
             var collapsed = $sidebar.hasClass('collapsed');
             $toggleBtn.toggleClass('collapsed', collapsed);
-            $toggleBtn.html(collapsed ? '\u203A' : '\u2039');
-            $toggleBtn.prop('title', collapsed ? '展开侧边栏' : '收起侧边栏');
+            var $svgPath = $toggleBtn.find('path');
+            if ($svgPath.length) {
+                $svgPath.attr('d', collapsed ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6');
+            }
+            $toggleBtn.prop('title', collapsed ? (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f') : (window.I18n ? window.I18n.t('sidebar.collapse') : '\u6536\u8d77\u4fa7\u8fb9\u680f'));
             localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
             syncTogglePosition();
         });
@@ -1113,8 +1264,11 @@ initVoice();
         if (localStorage.getItem('sidebar-collapsed') === '1') {
             $sidebar.addClass('collapsed');
             $toggleBtn.addClass('collapsed');
-            $toggleBtn.html('\u203A');
-            $toggleBtn.prop('title', '展开侧边栏');
+            var $svgPath = $toggleBtn.find('path');
+            if ($svgPath.length) {
+                $svgPath.attr('d', 'm9 18 6-6-6-6');
+            }
+            $toggleBtn.prop('title', (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f'));
             syncTogglePosition();
         }
     }

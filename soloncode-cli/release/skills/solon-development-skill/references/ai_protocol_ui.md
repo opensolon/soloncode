@@ -2,7 +2,7 @@
 
 > 适用场景：Vercel AI SDK UI 流式协议、ACP 传输、A2A 多 Agent 协议。
 >
-> 目标版本：4.0.3。Agent / Talent / Loop 见 `ai_agent.md`；Harness 见 `ai_harness.md`；Chat/RAG/MCP 见 `ai_chat_rag_mcp.md`。
+> 目标版本：4.0.4。Agent / Talent / Loop 见 `ai_agent.md`；Harness 见 `ai_harness.md`；Chat/RAG/MCP 见 `ai_chat_rag_mcp.md`。
 
 ## AI UI — 对接 Vercel AI SDK
 

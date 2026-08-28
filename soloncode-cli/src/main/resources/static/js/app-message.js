@@ -11,26 +11,67 @@ var CONTINUE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" 
 /* 删除图标 */
 var DELETE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
-/* 更新用户消息的「重做」按钮：仅最后一条用户消息显示 */
+/* 更新用户消息的「重做/继续」按钮：重做仅最后一条用户消息显示；
+   继续运行仅在最后一条用户消息同时是整个消息列表末尾（其后无 AI 回复）、
+   且本会话当前不在流式运行中时显示（发出后到首段输出前不该出现「继续运行」） */
 function updateUserRerunButtons(container) {
-    var userRows = $(container).find('.msg-row.user');
+    // 插话行（.steer）不参与“最后一条用户消息”的认定：它自身的重做/继续/删除已由 CSS 隐藏，
+    // 若计入则会把真正的末条用户消息挤成“非末条”，导致其重做按钮消失。
+    var userRows = $(container).find('.msg-row.user:not(.steer)');
+    // 回放行（data-replay）是无 ndjson 记录的过程展示，不能算作「最后一行」：
+    // 否则中断的任务回放后，末条用户消息上的「继续运行」会被错误隐藏
+    var allRows = $(container).find('.msg-row:not([data-replay])');
+    var lastRowEl = allRows.length ? allRows[allRows.length - 1] : null;
+    var sid = lastRowEl ? lastRowEl.getAttribute('data-session-id') : null;
+    var lastSess = (sid && window.sessionMap) ? window.sessionMap[sid] : null;
+    var busy = !!(lastSess && lastSess.isStreaming);
     userRows.each(function(i) {
+        var isLastUserRow = (i === userRows.length - 1);
         var btn = $(this).find('.rerun-btn')[0];
         if (btn) {
-            btn.style.display = (i === userRows.length - 1) ? '' : 'none';
+            btn.style.display = isLastUserRow ? '' : 'none';
+        }
+        var cBtn = $(this).find('.user-continue-btn')[0];
+        if (cBtn) {
+            cBtn.style.display = (isLastUserRow && lastRowEl === this && !busy) ? '' : 'none';
         }
     });
 }
 
 /* ===== Message Rendering (Session-Aware) ===== */
-function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt, sourceLabel) {
-    var row = $('<div>').addClass('msg-row user')[0];
+/* 后端 WebEvent.toSourceLabel("steer") 的固定返回值，用作历史加载路径的插话识别键 */
+var STEER_SOURCE_LABEL = '插话';
+
+/* isSteer 为真表示这是运行中插话（steer）：仅用于打 data-steer 标记（隐藏重发/继续按钮）。
+ * 插话标识本身走 sourceLabel 通道渲染。
+ * 注意：新产生的插话已不再走本函数（改为 appendSteerNote 渲染进 AI 流式气泡内），
+ * 此分支只为两个回落场景保留：
+ *   a) 存量会话——历史改动前已写入 ndjson 的 source=steer 行，回放时仍按独立行展示，
+ *      且仍需计入 calcServerCount（它有对应的服务端记录），否则 rewind 会少删导致尾部残留；
+ *   b) 实时路径下 appendSteerNote 返回 false（无 AI 气泡可挂）时的上屏兼底。 */
+function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt, sourceLabel, agentName, isSteer) {
+    // 插话归一：历史加载走后端 sourceLabel（WebEvent.toSourceLabel 硬编码中文），实时推送走 isSteer；
+    // 两路在此汇聚为同一种表达（本地化文案 + 相同样式 + 相同 data-steer 行为）
+    if (sourceLabel === STEER_SOURCE_LABEL) isSteer = true;
+    if (isSteer) sourceLabel = (window.I18n ? I18n.t('streaming.steerTag') : STEER_SOURCE_LABEL);
+    var row = $('<div>').addClass('msg-row user' + (isSteer ? ' steer' : ''))[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
     row.setAttribute('data-session-id', sess.sessionId);
-    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="msg-actions"><button class="user-copy-btn" title="复制">' + COPY_SVG + '</button><button class="user-copy-btn rerun-btn" title="重做" style="display:none">' + RERUN_SVG + '</button><button class="user-del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button></div></div>';
+    if (isSteer) row.setAttribute('data-steer', '1');
+    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="msg-actions"><button class="user-copy-btn" data-i18n-title="common.copy">' + COPY_SVG + '</button><button class="user-copy-btn rerun-btn" data-i18n-title="msg.redo" style="display:none">' + RERUN_SVG + '</button><button class="user-copy-btn user-continue-btn" data-i18n-title="msg.continue" style="display:none">' + CONTINUE_SVG + '</button><button class="user-del-btn" data-i18n-title="msg.deleteHereAndAfter">' + DELETE_SVG + '</button></div></div>';
+    if (window.I18n) window.I18n.apply(row);
     var bubble = $(row).find('.msg-bubble')[0];
 
     // 来源标签（仅非空且非 "Web" 时显示；会在时间戳左侧追加）
+
+    // 子代理标记：这条消息实际交给了哪个子代理（主 Agent 不显示）
+    // 独立成行放在气泡顶部，不写入 data-md-raw，复制/重发仍是用户原文
+    if (agentName) {
+        var agentTag = $('<div>').addClass('user-agent-tag')[0];
+        agentTag.innerHTML = '<span class="user-agent-tag-at">@</span>' + escapeHtml(agentName);
+        agentTag.setAttribute('title', (window.I18n ? I18n.t('history.subagentLabel') : '') + agentName);
+        $(bubble).append(agentTag);
+    }
 
     // Multiple images（解码完成后再补滚，避免占位高度 0 导致贴底失效）
     if (imageDataUrls && imageDataUrls.length > 0) {
@@ -108,27 +149,44 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         var idx = rows.index(row);
         if (idx < 0) return;
         var serverCount = calcServerCount(sess.container, row);
-        $.post('/web/chat/rewind', {
-            sessionId: sess.sessionId,
-            count: serverCount
+        /* 必须等回退回调再发新消息：旧实现不等，新任务一旦先启动，回退会被服务端
+         * busy 守卫拒成 409，而那个 post 既无回调也无 fail 处理 —— 静默失败，旧消息留在
+         * ndjson 里形成重复。AI 行的删除一直是等回调的，两边应当一致。 */
+        $.post('/web/chat/rewind', buildRewindPayload(sess, row), function(resp) {
+            if (!resp || resp.code !== 200) {
+                handleRewindFailure(sess, resp);
+                return;
+            }
+            handleRewind(sess, rows.length - idx);
+            // 将用户消息填入输入框并发送
+            if (inChatMode) {
+                chatInput.value = text;
+            } else {
+                newChatInput.value = text;
+            }
+            if (typeof sendMessage === 'function') {
+                sendMessage();
+            }
+        }).fail(function() {
+            layer.msg(I18n.t('msg.deleteFailed') + I18n.t('toast.networkError'), { icon: 2, time: 3000, offset: '120px' });
         });
-        handleRewind(sess, rows.length - idx);
-        // 将用户消息填入输入框并发送
-        if (inChatMode) {
-            chatInput.value = text;
-        } else {
-            welcomeInput.value = text;
-        }
-        if (typeof sendMessage === 'function') {
-            sendMessage();
+    });
+
+    // 继续运行：仅当用户消息是列表末尾（无后续 AI 回复）时可见，
+    // 复用后端 /continue 命令，不删除任何消息，新回复自然追加。
+    var continueUserBtn = $(row).find('.user-continue-btn')[0];
+    $(continueUserBtn).on('click', function() {
+        if (sess.isStreaming) return;
+        if (typeof sendCommandSilent === 'function') {
+            sendCommandSilent('/continue');
         }
     });
 
     var delBtn = $(row).find('.user-del-btn')[0];
     $(delBtn).on('click', function() {
-        layer.confirm('确认删除此消息及之后的所有消息？此操作不可撤销。', {
-            title: '确认删除',
-            btn: ['删除', '取消'],
+        layer.confirm(I18n.t('msg.confirmDeleteMsg'), {
+            title: I18n.t('msg.confirmDeleteTitle'),
+            btn: [I18n.t('common.delete'), I18n.t('common.cancel')],
             icon: 3,
             offset: '120px'
         }, function(index) {
@@ -136,22 +194,18 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
             var idx = rows.index(row);
             if (idx < 0) { layer.close(index); return; }
             layer.close(index);
-            // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
-            var serverCount = calcServerCount(sess.container, row);
+            // 删除起点由 runId 锚点定位，服务端在真实消息列表上算条数
             // 后端删除成功后，前端才删除；失败则保留界面并提示
-            $.post('/web/chat/rewind', {
-                sessionId: sess.sessionId,
-                count: serverCount
-            }, function(resp) {
+            $.post('/web/chat/rewind', buildRewindPayload(sess, row), function(resp) {
                 if (resp && resp.code === 200) {
                     // 前端删所有可视行（含命令消息的无记录行），保持界面干净
                     handleRewind(sess, rows.length - idx);
                     updateUserRerunButtons(sess.container);
                 } else {
-                    showToast('删除失败：' + ((resp && (resp.description || resp.message)) || '后端未成功'), 'error');
+                    handleRewindFailure(sess, resp);
                 }
             }).fail(function() {
-                showToast('删除失败：网络错误', 'error');
+                layer.msg(I18n.t('msg.deleteFailed') + I18n.t('toast.networkError'), { icon: 2, time: 3000, offset: '120px' });
             });
         });
     });
@@ -179,6 +233,7 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
         });
     }
     updateUserRerunButtons(sess.container);
+    if (typeof scheduleMsgNavRebuild === 'function') scheduleMsgNavRebuild();
 }
 
 /* 刷新用户消息的时间戳，在编辑/重发时调用 */
@@ -217,12 +272,15 @@ function ensureAssistantBubble(sess) {
         row.innerHTML = '<div class="msg-bubble"><div class="msg-content"><div class="md-content"></div></div>'
             + '<div class="msg-time" style="display:none"></div>'
             + '<div class="msg-actions">'
-            + '<button class="user-copy-btn copy-btn" title="复制">' + COPY_SVG + '</button>'
-            + '<button class="user-copy-btn rerun-btn" title="重新运行">' + RERUN_SVG + '</button>'
-            + '<button class="user-copy-btn continue-btn" title="继续运行">' + CONTINUE_SVG + '</button>'
-            + '<button class="user-copy-btn del-btn" title="删除此处及之后消息">' + DELETE_SVG + '</button>'
+            + '<button class="user-copy-btn copy-btn" data-i18n-title="common.copy">' + COPY_SVG + '</button>'
+            + '<button class="user-copy-btn rerun-btn" data-i18n-title="msg.rerun">' + RERUN_SVG + '</button>'
+            + '<button class="user-copy-btn continue-btn" data-i18n-title="msg.continue">' + CONTINUE_SVG + '</button>'
+            + '<button class="user-copy-btn del-btn" data-i18n-title="msg.deleteHereAndAfter">' + DELETE_SVG + '</button>'
             + '</div></div>';
+        if (window.I18n) window.I18n.apply(row);
         $(sess.container).append(row);
+        // AI 回复出现后，隐藏末尾用户消息上的「继续运行」按钮
+        updateUserRerunButtons(sess.container);
         if (typeof observeMessagesHeight === 'function') observeMessagesHeight(row);
         sess.currentBubbleEl = $(row).find('.md-content')[0];
         
@@ -269,8 +327,21 @@ function ensureAssistantBubble(sess) {
                     // 删除同一 runId 的所有元素（消息行、工具卡片、思考块等）
                     var runId = row.getAttribute('data-run-id');
                     if (runId) {
-                        // 删除所有具有相同 runId 的元素
-                        $(sess.container).find('[data-run-id="' + runId + '"]').remove();
+                        /* ★ 只回收本轮「AI 侧」的可视元素，user 行必须留在屏上：
+                         * 历史加载与 trace 回放会把同一轮的 runId 也补到 user 行上
+                         * （app-history.js 补锚点 / mergeReplayRowInto），此时按 runId 无差别删除
+                         * 会把用户的提问一起删掉；而后端 /rerun 恰恰是取这条提问重跑（消息仍在会话里），
+                         * 且 sendCommandSilent 不渲染用户气泡，界面上就再也没有它了 —— 前端凭空少一条。 */
+                        $(sess.container).find('[data-run-id="' + runId + '"]').each(function() {
+                            if ($(this).hasClass('msg-row') && $(this).hasClass('user')) {
+                                /* 旧 runId 已随本轮消息被后端删除，留着会让后续 rewind 撞上
+                                 * ANCHOR_NOT_FOUND；先摘掉，等新一轮 runId 到达时补回（见 app-streaming.js）。 */
+                                this.removeAttribute('data-run-id');
+                                sess.pendingRunIdRow = this;
+                                return;
+                            }
+                            $(this).remove();
+                        });
                     } else {
                         // 兼容旧数据：如果没有 runId，只删除当前行
                         $(row).remove();
@@ -279,6 +350,8 @@ function ensureAssistantBubble(sess) {
                     sess.currentBubbleEl = null;
                     sess.thinkingBlockEl = null;
                     sess.pendingToolCard = null;
+                    // 末条 AI 行被删后，末条 user 消息重新变成列表末尾，按钮可见性需重算
+                    updateUserRerunButtons(sess.container);
                 }
             });
         }
@@ -286,9 +359,9 @@ function ensureAssistantBubble(sess) {
         if (continueBtn) $(continueBtn).on('click', function() { triggerCommand('/continue', false); });
         var delBtn = $(row).find('.del-btn')[0];
         if (delBtn) $(delBtn).on('click', function() {
-            layer.confirm('确认删除此消息及之后的所有消息？此操作不可撤销。', {
-                title: '确认删除',
-                btn: ['删除', '取消'],
+            layer.confirm(I18n.t('msg.confirmDeleteMsg'), {
+                title: I18n.t('msg.confirmDeleteTitle'),
+                btn: [I18n.t('common.delete'), I18n.t('common.cancel')],
                 icon: 3,
                 offset: '120px'
             }, function(index) {
@@ -296,21 +369,17 @@ function ensureAssistantBubble(sess) {
                 var idx = rows.index(row);
                 if (idx < 0) { layer.close(index); return; }
                 layer.close(index);
-                // 后端只删有 ndjson 记录的消息（排除命令消息），避免多删
-                var serverCount = calcServerCount(sess.container, row);
+                // 删除起点由 runId 锚点定位，服务端在真实消息列表上算条数
                 // 后端删除成功后，前端才删除；失败则保留界面并提示
-                $.post('/web/chat/rewind', {
-                    sessionId: sess.sessionId,
-                    count: serverCount
-                }, function(resp) {
+                $.post('/web/chat/rewind', buildRewindPayload(sess, row), function(resp) {
                     if (resp && resp.code === 200) {
                         // 前端删所有可视行（含命令消息的无记录行），保持界面干净
                         handleRewind(sess, rows.length - idx);
                     } else {
-                        showToast('删除失败：' + ((resp && (resp.description || resp.message)) || '后端未成功'), 'error');
+                        handleRewindFailure(sess, resp);
                     }
                 }).fail(function() {
-                    showToast('删除失败：网络错误', 'error');
+                    layer.msg(I18n.t('msg.deleteFailed') + I18n.t('toast.networkError'), { icon: 2, time: 3000, offset: '120px' });
                 });
             });
         });
@@ -326,29 +395,29 @@ function ensureAssistantBubble(sess) {
 }
 
 function streamReasonKey(segment, reasonId) {
-    return segment.id + '::' + reasonId;
+    return segment.id + '::' + (reasonId || '__default__');
 }
 
 function buildTaskGroupAriaLabel(segment, expanded) {
-    var title = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
+    var title = segment.taskDescription || segment.agentName || I18n.t('msg.subTask');
     // 双字段时补读 agent，避免仅读 description 丢失「谁在跑」
     if (segment.taskDescription && segment.agentName) {
-        title = segment.taskDescription + '\uff0c' + segment.agentName;
+        title = segment.taskDescription + I18n.t('msg.comma') + segment.agentName;
     }
-    var stateLabel = expanded ? '\u5df2\u5c55\u5f00' : '\u5df2\u6536\u8d77';
+    var stateLabel = expanded ? I18n.t('msg.expanded') : I18n.t('msg.collapsed');
     var stats = formatTaskGroupStats(segment);
     var action = formatTaskGroupMeta(segment);
     var detailParts = [];
     if (stats) detailParts.push(stats);
     if (action) detailParts.push(action);
-    var detail = detailParts.length ? detailParts.join(' \u00b7 ') + '\uff0c' : '';
+    var detail = detailParts.length ? detailParts.join(' \u00b7 ') + I18n.t('msg.comma') : '';
     if (segment.status === 'error') {
-        return title + ' \u5931\u8d25\uff0c' + detail + stateLabel + (expanded ? '' : '\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+        return title + I18n.t('msg.taskFailed', {detail: detail}) + stateLabel + (expanded ? '' : I18n.t('msg.clickToExpand'));
     }
     if (segment.status === 'done') {
-        return title + ' \u5df2\u5b8c\u6210\uff0c' + detail + stateLabel;
+        return title + I18n.t('msg.taskDone', {detail: detail}) + stateLabel;
     }
-    return title + ' \u8fd0\u884c\u4e2d\uff0c' + detail + stateLabel + (expanded ? '' : '\uff0c\u70b9\u51fb\u5c55\u5f00\u67e5\u770b');
+    return title + I18n.t('msg.taskRunning', {detail: detail}) + stateLabel + (expanded ? '' : I18n.t('msg.clickToExpand'));
 }
 
 /** 与 tool-card 同系的 22px 状态圆点：running 转圈 / done 绿勾 / error 红叉 */
@@ -492,7 +561,7 @@ function finalizeTaskGroups(sess) {
 }
 
 /**
- * 处理后端 task_done WebChunk：子代理任务结束时立即结算对应 task-group。
+ * 处理后端 task_done WebEvent：子代理任务结束时立即结算对应 task-group。
  * status=error → 红叉（可附带错误文本）；其它 → 绿勾。
  * 不依赖主流 done；主流 finalizeTaskGroups 仍作兜底。
  */
@@ -520,13 +589,13 @@ function createTaskGroupElement(sess, segment) {
     if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
     // L1：状态图标(22px) + title(文本+可选 agent-badge 贴字) + stats + toggle(右)；L2：最近 tool 动作。
     // 有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。
-    var titleText = segment.taskDescription || segment.agentName || '\u5b50\u4efb\u52a1';
+    var titleText = segment.taskDescription || segment.agentName || I18n.t('msg.subTask');
     var agentHtml = (segment.taskDescription && segment.agentName)
         ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>'
         : '';
     // hover：双字段时补全身份（badge 可能被窄屏裁进 max-width）
     var titleAttr = (segment.taskDescription && segment.agentName)
-        ? titleText + '\uff08' + segment.agentName + '\uff09'
+        ? titleText + I18n.t('msg.parenLeft') + segment.agentName + I18n.t('msg.parenRight')
         : titleText;
     var header = $('<div>').addClass('task-group-header')[0];
     // task-group 本级一律默认收起（单/多任务相同），展开由用户手动触发
@@ -562,7 +631,7 @@ function createTaskGroupElement(sess, segment) {
     // 左侧边线仅作为鼠标热区；可见标题是唯一键盘入口。
     var rail = $('<div>').addClass('task-group-rail')[0];
     rail.setAttribute('aria-hidden', 'true');
-    rail.setAttribute('title', '展开');
+    rail.setAttribute('title', I18n.t('msg.expand'));
     function toggle() {
         var expanded = !$(group).hasClass('expanded');
         segment.userToggled = true;
@@ -571,7 +640,7 @@ function createTaskGroupElement(sess, segment) {
         if (!expanded) {
             // 长内容收起后，若 group 顶部已离开视口，滚回可见，避免空白跳变
             requestAnimationFrame(function() {
-                var wrap = document.querySelector('.messages-wrap');
+                var wrap = document.querySelector('.msg-wrap');
                 if (!wrap || !document.contains(group)) return;
                 var gr = group.getBoundingClientRect();
                 var wr = wrap.getBoundingClientRect();
@@ -581,7 +650,7 @@ function createTaskGroupElement(sess, segment) {
             });
         }
         header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, expanded));
-        rail.setAttribute('title', expanded ? '收起' : '展开');
+        rail.setAttribute('title', expanded ? I18n.t('msg.collapse') : I18n.t('msg.expand'));
     }
     $(header).on('click', function(e) { e.stopPropagation(); toggle(); }).on('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
@@ -593,6 +662,16 @@ function createTaskGroupElement(sess, segment) {
     return { groupEl: group, bodyEl: body };
 }
 
+/* 在已渲染 DOM 中查找指定 taskId 的 task-group（resetStreamState 清索引但保留 DOM 的迟到场景） */
+function findTaskGroupEl(sess, taskId) {
+    if (!sess || !sess.container || !taskId) return null;
+    var els = sess.container.querySelectorAll('.task-group[data-task-id]');
+    for (var i = 0; i < els.length; i++) {
+        if (els[i].getAttribute('data-task-id') === taskId) return els[i];
+    }
+    return null;
+}
+
 /* 为 taskId 保持唯一的 task-group；主代理输出仍按连续流片段追加，避免任务组重复创建。 */
 function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
     ensureAssistantBubble(sess);
@@ -602,6 +681,43 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
             // 标题首次确定后不再变更（后续 description 仅补内存字段，不刷新 DOM）
             if (!taskSegment.taskDescription && taskDescription) taskSegment.taskDescription = taskDescription;
             if (!taskSegment.agentName && agentName) taskSegment.agentName = agentName;
+            sess.currentStreamSegment = taskSegment;
+            return taskSegment;
+        }
+        // ★ 迟到 chunk 场景：resetStreamState 清空了内存索引但保留了已渲染 DOM。
+        //   若该 taskId 的 task-group 已存在，复用外壳重建索引（不新建 DOM、不重复建组），
+        //   避免“每个思考消息新建一个分组 + 同一 taskId 出现多个 task-group”。
+        var existingGroup = findTaskGroupEl(sess, taskId);
+        if (existingGroup) {
+            var now = Date.now();
+            var bodyEl = $(existingGroup).find('.task-group-body')[0] || null;
+            taskSegment = {
+                id: 'task-' + (++sess.streamSegmentSeq),
+                laneKey: 'task:' + taskId,
+                taskId: taskId,
+                taskDescription: taskDescription || null,
+                agentName: agentName || null,
+                bodyEl: bodyEl,
+                groupEl: existingGroup,
+                reasonEntries: {},
+                // 从 DOM 状态 class 恢复终态，避免已 done/error 的分组被迟到 chunk 打回 running
+                status: existingGroup.classList.contains('is-error') ? 'error'
+                    : (existingGroup.classList.contains('is-done') ? 'done' : 'running'),
+                userToggled: false,
+                createdAt: now,
+                updatedAt: now,
+                finishedAt: null,
+                toolCount: 0,
+                reasonCount: 0,
+                errorCount: 0,
+                lastToolName: null,
+                lastActionLabel: null,
+                hasPendingTools: 0,
+                _metaRafId: null
+            };
+            sess.taskGroups[taskId] = existingGroup;
+            sess.taskSegments[taskId] = taskSegment;
+            sess.streamSegments.push(taskSegment);
             sess.currentStreamSegment = taskSegment;
             return taskSegment;
         }
@@ -655,7 +771,8 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
 }
 
 function ensureReasonGroup(sess, segment, reasonId) {
-    if (!reasonId || !segment) return null;
+    if (!segment) return null;
+    reasonId = reasonId || '__default__';
     var key = streamReasonKey(segment, reasonId);
     if (segment.reasonEntries[reasonId]) return segment.reasonEntries[reasonId];
     var group = $('<div>').addClass('reason-group')[0];
@@ -677,7 +794,7 @@ function ensureThinkingBlockInGroup(sess, group) {
     var initiallyExpanded = window.cliPrintSimplified === false;
     var block = $('<div>').addClass('reason-group-think streaming')[0];
     if (initiallyExpanded) $(block).addClass('expanded');
-    block.innerHTML = '<div class="reason-group-think-header" aria-expanded="' + initiallyExpanded + '"><span class="reason-group-think-label">思考</span>'
+    block.innerHTML = '<div class="reason-group-think-header" aria-expanded="' + initiallyExpanded + '"><span class="reason-group-think-label">' + I18n.t('msg.thinking') + '</span>'
         + '<svg class="reason-group-think-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
         + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i></div>'
         + '<div class="reason-group-think-body"><div class="md-content"></div></div>';
@@ -715,6 +832,40 @@ function insertBeforeActions(sess, el) {
     $(sess.currentBubbleEl.parentNode).find('.msg-actions').first().before(el);
 }
 
+/* 运行中插话（steer）就地渲染：作为 AI 流式气泡内的一个流片段节点，而非独立的 .msg-row。
+ * 零持久化（后端不写 ndjson），故刷新即消失，也不进 calcServerCount 视野。
+ *
+ * 两个必须遵守的约束：
+ * 1) 必须插进 main 段的 bodyEl 内部。若插在段外（.msg-content 尾部），ensureStreamSegment 的
+ *    短路会复用仍在上方的旧 main 段，后续 reason-group 追加进去会把插话反复下推造成抖动。
+ *    插在段内时，下一轮 reasonId 必为新值（ReasonTask 先跑完 onReasonStart 才 newCurrentReasonId），
+ *    reason-group 必定新建并 append 到插话下方，增长点在下，位置稳定。
+ * 2) 文本节点不得带 .md-content 与 data-md-raw。AI 气泡的复制按钮会逆序扫 .md-content 取
+ *    首个非空 data-md-raw（无则回退 innerText），带了会把插话文本当成最终答案复制出去；
+ *    finishStream 的 hasTextOutput 与空节点回收同样以 .md-content 为凭。故此处渲染纯文本。
+ * 返回 false 表示无气泡可挂，由调用方回落为独立行上屏。 */
+function appendSteerNote(sess, text) {
+    if (!sess || !sess.container) return false;
+    ensureAssistantBubble(sess);
+    if (!sess.currentBubbleEl) return false;
+
+    var el = $('<div>').addClass('steer-note')[0];
+    el.setAttribute('data-steer', '1');
+    if (sess.currentRunId) el.setAttribute('data-run-id', sess.currentRunId);
+    var label = (window.I18n ? I18n.t('streaming.steerTag') : STEER_SOURCE_LABEL);
+    el.innerHTML = '<span class="steer-note-badge">' + escapeHtml(label) + '</span>'
+        + '<span class="steer-note-text">' + escapeHtml(text) + '</span>';
+
+    // 当前段是子代理 task 段时不能插进去：插话属主 trace，放进 .task-group-body 会随分组收起而隐藏。
+    // 此时落气泡内容尾部，下一个主段由 ensureStreamSegment 新建并追加在其下方，同样不抖。
+    var seg = sess.currentStreamSegment;
+    if (seg && !seg.taskId && seg.bodyEl) $(seg.bodyEl).append(el);
+    else insertBeforeActions(sess, el);
+
+    if (sess.sessionId === activeSessionId && document.contains(sess.container)) scrollToBottom(true);
+    return true;
+}
+
 function finishThinkingBlock(sess, reasonId) {
     // 如果指定了 reasonId，只结束该 reasonId 对应的思考块
     if (reasonId && sess.reasonGroups[reasonId]) {
@@ -743,7 +894,7 @@ function finishThinkingBlock(sess, reasonId) {
             $(group.thinkingBlockEl).removeClass('expanded');
         }
         var label = $(group.thinkingBlockEl).find('.reason-group-think-label')[0];
-        if (label) $(label).text('思考');
+        if (label) $(label).text(I18n.t('msg.thinking'));
         $(group.thinkingBlockEl).find('.reason-group-think-dots').remove();
 
         // ★ 清空组内引用 + 顶层引用，防止 finishStream 再次包裹
@@ -780,7 +931,7 @@ function finishThinkingBlock(sess, reasonId) {
             $(sess.thinkingBlockEl).removeClass('expanded');
         }
         var label = $(sess.thinkingBlockEl).find('.reason-group-think-label')[0];
-        if (label) $(label).text('思考');
+        if (label) $(label).text(I18n.t('msg.thinking'));
         $(sess.thinkingBlockEl).find('.reason-group-think-dots').remove();
         
         // reason-group 已在 ensureThinkingBlock 中预创建，无需再做 DOM 包裹
@@ -816,6 +967,21 @@ function clearThinkTags(text) {
 function appendReasonChunk(sess, segment, text, reasonId, agentName) {
     var clean = clearThinkTags(text || '');
     if (!clean) return;
+    // 新 reasonId 到来时，先结束同 segment 内其他 reasonId 的思考块，
+    // 防止上一个思考块的 spinner 无限旋转（与 appendContentChunk / appendActionStartChunk 行为一致）。
+    // ★ 必须按 segment 隔离（遍历 segment.reasonEntries），不能遍历全局 sess.reasonGroups：
+    //   multitask 并行时多个 task-group 的思考流会交错到达，全局遍历会把其它子任务正在
+    //   流式输出的思考块强行结束，造成思考流被反复截断、重建，视觉上表现为“每个思考消息一个分组”。
+    if (segment) {
+        for (var _rid in segment.reasonEntries) {
+            if (_rid !== reasonId) {
+                var _entry = segment.reasonEntries[_rid];
+                if (_entry && _entry.thinkingBlockEl) {
+                    finishThinkingBlock(sess, streamReasonKey(segment, _rid));
+                }
+            }
+        }
+    }
     var group = ensureReasonGroup(sess, segment, reasonId);
     if (!group) return;
     group.activeKind = 'reason';
@@ -922,7 +1088,7 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
         var isErr = result.indexOf("成功完成") < 0;
         if (isErr) {
             html += '<div class="edit-result is-error">'
-                + '<span class="edit-result-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> \u5931\u8d25</span>'
+                + '<span class="edit-result-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> ' + I18n.t('msg.failed') + '</span>'
                 + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
         }
     }
@@ -993,7 +1159,7 @@ window._toolRenderers.grep = function(bodyEl, text, args) {
     var html = '<div class="grep-result">';
     var totalHits = 0;
     groups.forEach(function(g) { totalHits += g.hits.length; });
-    html += '<div class="tool-summary">' + groups.length + ' \u4e2a\u6587\u4ef6 / ' + totalHits + ' \u5904\u5339\u914d</div>';
+    html += '<div class="tool-summary">' + I18n.t('msg.grepSummary', {files: groups.length, hits: totalHits}) + '</div>';
     groups.forEach(function(g) {
         html += '<div class="grep-file"><span class="grep-file-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg></span>' + escapeHtml(g.path) + '</div>';
         g.hits.forEach(function(h) {
@@ -1024,7 +1190,7 @@ function renderFileListing(bodyEl, text, args) {
         else if (/[\u2502\u251c\u2514]/.test(raw)) { hasTree = true; break; }
     }
     if (hasTree || items.length === 0) return false;
-    var html = '<div class="file-listing"><div class="tool-summary">' + items.length + ' \u9879</div>';
+    var html = '<div class="file-listing"><div class="tool-summary">' + I18n.t('msg.itemCount', {count: items.length}) + '</div>';
     items.forEach(function(it) {
         var icon = it.dir
             ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>'
@@ -1045,8 +1211,15 @@ window._toolRenderers.bash = function(bodyEl, text, args) {
     bodyEl.classList.add('tool-body-terminal');
     var cmd = (args && args.command) ? args.command : '';
     var html = '<div class="bash-output">';
-    if (cmd) html += '<div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(cmd) + '</div>';
-    html += '<pre class="bash-stdout">' + escapeHtml(text || '(\u65e0\u8f93\u51fa)') + '</pre>';
+    if (cmd) {
+        html += '<div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(cmd);
+        if (args.timeout != null && args.timeout !== '' && Number(args.timeout) > 0) {
+            var t = Number(args.timeout);
+            html += ' <span class="bash-timeout"># timeout ' + (t >= 60000 ? (t / 60000) + 'm' : (t / 1000) + 's') + '</span>';
+        }
+        html += '</div>';
+    }
+    html += '<pre class="bash-stdout">' + escapeHtml(text || '(' + I18n.t('msg.noOutput') + ')') + '</pre>';
     html += '</div>';
     bodyEl.innerHTML = html;
     return true;
@@ -1082,6 +1255,86 @@ function renderToolBody(bodyEl, toolName, text, args) {
     return false;
 }
 
+/* ===== LSP 诊断展示 =====
+   payload.lsp 是后端下发的结构化字段（errorCount / items / truncated / file），
+   前端不解析工具输出文本：诊断文本是给模型看的，措辞会随 prompt 调优变化。
+   errorCount === 0 表示语言服务器检查过且无错误；lsp 为空表示没有语言服务器覆盖该文件。 */
+function hasLspErrors(lsp) {
+    return !!(lsp && lsp.errorCount > 0);
+}
+
+/* 卡片体尾部追加诊断区块：与工具种类无关，故挂在分发层而非各 renderer */
+function appendLspPanel(bodyEl, lsp) {
+    if (!bodyEl || !hasLspErrors(lsp)) return;
+
+    var items = lsp.items || [];
+    var html = '<div class="tool-lsp-panel">'
+        + '<div class="tool-lsp-panel-head">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+        + '<span>' + escapeHtml(I18n.t('msg.lspErrors', { n: lsp.errorCount })) + '</span>';
+    if (lsp.file) {
+        html += '<span class="tool-lsp-file" title="' + escapeHtml(lsp.file) + '">' + escapeHtml(lsp.file) + '</span>';
+    }
+    html += '</div><ul class="tool-lsp-list">';
+
+    for (var i = 0; i < items.length; i++) {
+        var it = items[i] || {};
+        var pos = (it.line || 0) + ':' + (it.column || 0);
+        html += '<li class="tool-lsp-item">'
+            + '<span class="tool-lsp-pos">' + escapeHtml(pos) + '</span>'
+            + '<span class="tool-lsp-msg">' + escapeHtml(it.message || '') + '</span>';
+        if (it.source) {
+            html += '<span class="tool-lsp-source">' + escapeHtml(it.source) + '</span>';
+        }
+        html += '</li>';
+    }
+
+    if (lsp.truncated && items.length < lsp.errorCount) {
+        html += '<li class="tool-lsp-item tool-lsp-more">'
+            + escapeHtml(I18n.t('msg.lspMore', { n: lsp.errorCount - items.length })) + '</li>';
+    }
+    html += '</ul></div>';
+
+    var panel = document.createElement('div');
+    panel.innerHTML = html;
+    bodyEl.appendChild(panel.firstChild);
+}
+
+/* 卡片头部徽标：让用户不展开卡片就能看出这次调用触发了语言服务器。
+   有错误 → 警示徽标 + warn 状态图标 + 自动展开；已检查无错 → 极轻量的 ✓ 徽标。 */
+function applyLspBadge(card, lsp) {
+    if (!card || !lsp) return;
+    var group = $(card).find('.tool-card-title-group')[0];
+    if (!group) return;
+
+    $(group).find('.tool-lsp-badge').remove();
+    //结论未知（冷启动索引中，等待超时）：无信息量，不渲染徽标，
+    //也不显示 ✓——不能冒充「检查过且没问题」
+    var hasErr = hasLspErrors(lsp);
+    if (!hasErr && lsp.pending) return;
+
+    var badge = document.createElement('span');
+
+    badge.className = 'tool-lsp-badge ' + (hasErr ? 'is-error' : 'is-clean');
+    if (hasErr) {
+        badge.textContent = 'LSP ' + lsp.errorCount;
+        badge.title = I18n.t('msg.lspErrors', { n: lsp.errorCount });
+    } else {
+        badge.textContent = 'LSP ✓';
+        badge.title = I18n.t('msg.lspClean');
+    }
+    group.appendChild(badge);
+
+    if (hasErr && window.cliPrintSimplified === false) {
+        // 错误值得被看到：仅在关闭精简模式（cliPrintSimplified = false）时自动展开
+        if (!$(card).hasClass('expanded')) {
+            $(card).addClass('expanded');
+            $(card).find('.tool-card-header').attr('aria-expanded', 'true');
+            if (card._pendingToolRender && !card._toolBodyRendered) card._pendingToolRender();
+        }
+    }
+}
+
 /* 检查容器内容是否超出当前 CSS 限高，若超出则添加溢出指示器 */
 function checkOverflow(el) {
     if (!el) return;
@@ -1106,7 +1359,7 @@ function formatToolArgsStr(args) {
         if (v === undefined) return 'undefined';
         if (typeof v === 'string') return v.replace(/\n/g, ' ');
         if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-        if (Array.isArray(v)) return '[' + v.length + '\u9879]';
+        if (Array.isArray(v)) return '[' + v.length + I18n.t('msg.items') + ']';
         if (typeof v === 'object') {
             var keys = Object.keys(v);
             if (keys.length === 0) return '{}';
@@ -1132,13 +1385,21 @@ function formatToolArgsStr(args) {
 function formatToolSummary(toolName, args) {
     if (!args || typeof args !== 'object') return '';
     var name = String(toolName || '').toLowerCase();
-    if (name === 'bash' && args.command) return String(args.command).replace(/\n/g, ' ');
+    if (name === 'bash' && args.command) {
+        var bashSummary = String(args.command).replace(/\n/g, ' ');
+        if (args.timeout != null && args.timeout !== '' && Number(args.timeout) > 0) {
+            var t = Number(args.timeout);
+            var ts = t >= 60000 ? (t / 60000) + 'm' : (t / 1000) + 's';
+            bashSummary += ' · timeout ' + ts;
+        }
+        return bashSummary;
+    }
     if ((name === 'read' || name === 'write' || name === 'edit') && args.file_path) {
         var fileSummary = String(args.file_path);
         if (name === 'read' && args.offset) {
             fileSummary += ' · ' + args.offset;
             if (args.limit) fileSummary += '–' + (Number(args.offset) + Number(args.limit) - 1);
-            fileSummary += ' 行';
+            fileSummary += ' ' + I18n.t('msg.lines');
         }
         return fileSummary;
     }
@@ -1147,8 +1408,12 @@ function formatToolSummary(toolName, args) {
         if (args.path) grepSummary += (grepSummary ? ' · ' : '') + args.path;
         return grepSummary;
     }
-    if (name === 'glob') return args.pattern || args.path || '';
-    if (name === 'ls') return (args.path || '') + (args.recursive ? ' · 递归' : '');
+    if (name === 'glob') {
+        var globSummary = args.pattern ? String(args.pattern) : '';
+        if (args.path) globSummary += (globSummary ? ' · ' : '') + args.path;
+        return globSummary;
+    }
+    if (name === 'ls') return (args.path || '') + (args.recursive ? ' · ' + I18n.t('msg.recursive') : '');
     return formatToolArgsStr(args);
 }
 
@@ -1239,7 +1504,7 @@ function bindToolCardToggle(card) {
     header.attr('aria-expanded', $(card).hasClass('expanded') ? 'true' : 'false');
 }
 
-function fillToolCardBody(card, toolName, text, args) {
+function fillToolCardBody(card, toolName, text, args, lsp) {
     var body = $(card).find('.tool-card-body')[0];
     if (!body) return;
     function doRender() {
@@ -1247,6 +1512,7 @@ function fillToolCardBody(card, toolName, text, args) {
         card._toolBodyRendered = true;
         body.className = 'tool-card-body';
         if (!renderToolBody(body, toolName, text, args)) body.textContent = text || '';
+        appendLspPanel(body, lsp);
         checkOverflow(body);
     }
     // 展开态或没有简化开关时立即渲染；折叠态延迟到用户展开
@@ -1262,6 +1528,24 @@ function fillToolCardBody(card, toolName, text, args) {
     }
 }
 
+/* bash 在 tool.start 时即把命令渲染进 body（终端样式 + 执行中占位），不必等 tool.end 才看到。
+   不改动展开态：卡片展开与否仍由「工具调用显示简化」配置在 createToolCard 中决定，
+   简化模式下折叠 body 不可见（命令仍在头部 tool-args 摘要中），展开后立即可见。
+   tool.end 时 fillToolCardBody 会把 body 重渲染为命令 + 实际输出。 */
+function renderBashRunningBody(card, toolName, args) {
+    if (toolName !== 'bash' || !args || !args.command) return;
+    var body = $(card).find('.tool-card-body')[0];
+    if (!body) return;
+    body.className = 'tool-card-body tool-body-terminal';
+    body.innerHTML = '<div class="bash-output"><div class="bash-cmd"><span class="bash-prompt">$</span> '
+        + escapeHtml(args.command)
+        + (args.timeout != null && args.timeout !== '' && Number(args.timeout) > 0
+            ? ' <span class="bash-timeout"># timeout '
+              + (Number(args.timeout) >= 60000 ? (Number(args.timeout) / 60000) + 'm' : (Number(args.timeout) / 1000) + 's')
+              + '</span>' : '')
+        + '</div><pre class="bash-stdout">(' + I18n.t('msg.executing') + ')</pre></div>';
+}
+
 function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reasonId, agentName, callId) {
     // 复用同 callId 的既有卡片（典型场景：HITL 批准后转执行的卡）：只把它转 loading 并
     // 刷新标题/参数，避免恢复流后 action_start 再新建一张、导致 HITL 卡沦为孤儿双卡。
@@ -1274,6 +1558,7 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
         if (reuseIcon) { reuseIcon.className = 'tool-status-icon loading'; reuseIcon.innerHTML = ''; }
         var reuseTitle = $(reused).find('.tool-name')[0];
         if (reuseTitle) reuseTitle.textContent = toolTitle || toolName || 'unknown';
+        renderBashRunningBody(reused, toolName, args);
         if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
         return reused;
     }
@@ -1281,14 +1566,7 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
     if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
     var card = createToolCard(toolName, args, toolTitle, agentName, 'loading');
     if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
-    // 非简化模式在 start 时展示 bash 的实时命令；简化模式保持所有工具一致折叠。
-    if (window.cliPrintSimplified === false && toolName === 'bash' && args && args.command) {
-        var body = $(card).find('.tool-card-body')[0];
-        if (body) {
-            body.classList.add('tool-body-terminal');
-            body.innerHTML = '<div class="bash-output"><div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(args.command) + '</div><pre class="bash-stdout">(执行中...)</pre></div>';
-        }
-    }
+    renderBashRunningBody(card, toolName, args);
     if (group) { group.activeKind = 'tool'; $(group.groupEl).append(card); } else $(segment.bodyEl).append(card);
     if (callId) card.setAttribute('data-call-id', callId);
     registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
@@ -1304,7 +1582,7 @@ function resolveTaskSegmentFromCard(sess, card) {
     return (taskId && sess.taskSegments[taskId]) || null;
 }
 
-function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, reasonId, agentName, callId) {
+function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, reasonId, agentName, callId, lsp) {
     var pendingMatch = findPendingToolCard(sess, callId, null);
     var card = pendingMatch.pending && pendingMatch.pending.started ? pendingMatch.pending.card : null;
     if (card) delete sess.pendingToolCards[pendingMatch.key];
@@ -1319,15 +1597,25 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
         bindToolCardToggle(card);
     }
     card._toolBodyRendered = false;
-    fillToolCardBody(card, toolName, text, args);
+    fillToolCardBody(card, toolName, text, args, lsp);
     var icon = $(card).find('.tool-status-icon')[0];
-    if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = '<i class="layui-icon layui-icon-ok"></i>'; }
+    // 工具本身执行成功，但 LSP 报错时用 warn 图标提醒（区别于工具失败的红色路径）
+    if (icon) {
+        if (hasLspErrors(lsp)) {
+            icon.className = 'tool-status-icon warn';
+            icon.innerHTML = '<i class="layui-icon layui-icon-tips"></i>';
+        } else {
+            icon.className = 'tool-status-icon done';
+            icon.innerHTML = '<i class="layui-icon layui-icon-ok"></i>';
+        }
+    }
+    applyLspBadge(card, lsp);
     if (callId) card.setAttribute('data-call-id', callId);
     // 优先用 chunk 上的 task segment；若 action_end 缺 taskId，则从已挂载的 tool-card 反查归属
     var taskSegment = (segment && segment.taskId) ? segment : resolveTaskSegmentFromCard(sess, card);
     if (taskSegment) {
         recordTaskGroupToolEnd(taskSegment);
-        // onWebChunk 仅在 segment.taskId 时 mark；此处覆盖 action_end 无 taskId 的反查场景
+    // onWebEvent 仅在 segment.taskId 时 mark；此处覆盖 action_end 无 taskId 的反查场景
         if (!segment || !segment.taskId) markTaskGroupUpdated(sess, taskSegment);
     }
     return card;
@@ -1537,7 +1825,7 @@ function appendHitlCard(sess, toolName, command, callId, args, toolTitle, commen
     sess.pendingHitlCount = (sess.pendingHitlCount || 0) + 1;
 
     var cardArgs = (args && typeof args === 'object') ? args : (command ? { command: command } : {});
-    var card = createToolCard(toolName, cardArgs, '\u9700\u8981\u6388\u6743\uff1a' + (toolName || 'unknown'), null, 'warn');
+    var card = createToolCard(toolName, cardArgs, I18n.t('msg.needApproval') + (toolName || 'unknown'), null, 'warn');
     $(card).addClass('hitl-pending');
     if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
     if (callId) card.setAttribute('data-call-id', callId);
@@ -1548,7 +1836,7 @@ function appendHitlCard(sess, toolName, command, callId, args, toolTitle, commen
         if (!bodyText && args && typeof args === 'object') {
             try { bodyText = JSON.stringify(args); } catch (e) { bodyText = ''; }
         }
-        body.textContent = bodyText || '\u7b49\u5f85\u6388\u6743\u4ee5\u6267\u884c\u8be5\u5de5\u5177';
+        body.textContent = bodyText || I18n.t('msg.waitingForApproval');
     }
     // 拦截理由作为副标题
     if (comment) {
@@ -1556,8 +1844,8 @@ function appendHitlCard(sess, toolName, command, callId, args, toolTitle, commen
         if (titleEl) titleEl.setAttribute('title', comment);
     }
     card.insertAdjacentHTML('beforeend', '<div class="hitl-card-actions">'
-        + '<button class="hitl-btn hitl-btn-approve">\u6279\u51c6</button>'
-        + '<button class="hitl-btn hitl-btn-reject">\u62d2\u7edd</button>'
+        + '<button class="hitl-btn hitl-btn-approve">' + I18n.t('msg.approve') + '</button>'
+        + '<button class="hitl-btn hitl-btn-reject">' + I18n.t('msg.reject') + '</button>'
         + '</div>');
 
     insertBeforeActions(sess, card);
@@ -1586,7 +1874,7 @@ function appendHitlCard(sess, toolName, command, callId, args, toolTitle, commen
         rejectBtn.disabled = true;
         var icon = $(card).find('.tool-status-icon')[0];
         if (icon) { icon.className = 'tool-status-icon reject'; icon.innerHTML = '<i class="layui-icon layui-icon-close"></i>'; }
-        $(card).find('.tool-name').text('\u5df2\u62d2\u7edd\uff1a' + (toolName || 'unknown'));
+        $(card).find('.tool-name').text(I18n.t('msg.rejected') + (toolName || 'unknown'));
         $(card).find('.hitl-card-actions').remove();
         $(card).removeClass('hitl-pending expanded');
         if (callId && sess.hitlApprovedCards) delete sess.hitlApprovedCards[callId];
@@ -1620,6 +1908,7 @@ function handleHitlResponse(sess, action, callId) {
         sess.stopRequested = false;
         sess.acceptingStream = true;
         sess._streamClosed = false;
+        sess._closedRunId = null;
         if (sess.sessionId === activeSessionId) {
             isStreaming = true;
             setBtnStopMode();
@@ -1645,6 +1934,32 @@ function handleHitlResponse(sess, action, callId) {
     });
 }
 
+/* ===== Rewind Anchor =====
+ * 回退锚点：以「同一轮任务的 runId」定位删除起点，条数交由服务端在真实消息列表上算。
+ * 前端能数的 DOM 行与 ndjson 行并非一一对应（系统通知行、被中断轮次的空气泡无服务端记录；
+ * 连续 assistant 会被历史渲染合并成一个气泡），按行数删必然多删或少删。 */
+function buildRewindPayload(sess, row) {
+    var payload = { sessionId: sess.sessionId };
+    var runId = row && row.getAttribute ? row.getAttribute('data-run-id') : null;
+    if (runId) {
+        payload.anchorRunId = runId;
+        payload.anchorRole = $(row).hasClass('user') ? 'user' : 'assistant';
+    }
+    // count 仅作老数据（无 runId）降级用；服务端有 anchorRunId 时不看它
+    payload.count = calcServerCount(sess.container, row);
+    return payload;
+}
+
+/* 回退失败的统一处理：锚点对不上时不猜条数，改为重载历史让界面回到与服务端一致的状态。 */
+function handleRewindFailure(sess, resp) {
+    var desc = (resp && (resp.description || resp.message)) || I18n.t('msg.backendNotSucceeded');
+    layer.msg(I18n.t('msg.deleteFailed') + desc, { icon: 2, time: 3000, offset: '120px' });
+    if (resp && resp.code === 409 && String(desc).indexOf('ANCHOR_NOT_FOUND') >= 0) {
+        // 服务端没找到锚点（一条未删）：界面可能已与服务端不同步，重载以对齐
+        if (typeof loadMessages === 'function') loadMessages(sess.sessionId);
+    }
+}
+
 /* ===== Server Record Count =====
  * 计算从 startRow 到末尾、在 ndjson 中有服务端记录的消息数量。
  * 命令消息（以 / 开头）在 ndjson 中无记录，不计入，避免后端多删。 */
@@ -1655,6 +1970,14 @@ function calcServerCount(container, startRow) {
     var count = 0;
     for (var i = idx; i < rows.length; i++) {
         var r = rows[i];
+        // 最后一轮执行过程的回放行（data-replay）源于 ReActTrace 而非 ndjson，服务端无对应记录，
+        // 计入则 rewind 会每行多删一条真实消息
+        if (r.getAttribute('data-replay')) continue;
+        // 系统通知行（.system-notice）由前端就地生成，ndjson 里没有它：计入会让降级删除多删一条真实消息。
+        // 它自身没有删除按钮，但循环是从锚点一路数到末尾的，删其它行时会把它扫进来。
+        if ($(r).hasClass('system-notice')) continue;
+        // 存量会话的插话行（改动前已写入 ndjson）有服务端记录，须计入不可跳过，否则 rewind 会少删；
+        // 新产生的插话已零持久化、且渲染为 AI 气泡内的 .steer-note（不是 .msg-row），不进本函数视野
         // 用户消息中，以 / 开头的命令在 ndjson 中无记录，跳过
         if ($(r).hasClass('user')) {
             var textEl = $(r).find('.user-msg-text')[0];
@@ -1663,7 +1986,7 @@ function calcServerCount(container, startRow) {
                 if (raw.trim().startsWith('/') && /^\/[a-zA-Z][a-zA-Z0-9_-]*(\s.*)?$/.test(raw.trim())) continue;
             }
         }
-        // 系统通知也可能无记录，但删除按钮不存在于系统通知上，无需处理
+        // 系统通知无服务端记录，已在上面按 .system-notice 跳过
         count++;
     }
     return count;
@@ -1691,7 +2014,8 @@ function addCodeBlockButtons(container) {
     var pres = $(container).find('pre');
     for (var i = 0; i < pres.length; i++) {
         if ($(pres[i]).find('.code-copy-btn').length) continue;
-        var btn = $('<button>').addClass('code-copy-btn').text('复制')[0];
+        var btn = $('<button>').addClass('code-copy-btn').attr('data-i18n', 'common.copy')[0];
+        if (window.I18n) window.I18n.apply(btn);
         $(btn).on('click', function(e) {
             e.stopPropagation();
             var pre = $(this).closest('pre')[0];
@@ -1700,9 +2024,9 @@ function addCodeBlockButtons(container) {
             var self = this;
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(text).then(function() {
-                    $(self).text('已复制').addClass('copied');
+                    $(self).text(I18n.t('msg.copied')).addClass('copied');
                     setTimeout(function() {
-                        $(self).text('复制').removeClass('copied');
+                        $(self).text(I18n.t('common.copy')).removeClass('copied');
                     }, 1500);
                 });
             }

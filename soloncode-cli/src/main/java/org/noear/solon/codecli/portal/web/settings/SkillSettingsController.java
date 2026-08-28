@@ -7,9 +7,8 @@ import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.portal.FileWatchService;
-import org.noear.solon.codecli.portal.web.WebGate;
-import org.noear.solon.codecli.portal.web.market.Market;
+import org.noear.solon.codecli.market.Market;
+import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
@@ -18,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
 /**
  *
@@ -33,8 +33,8 @@ public class SkillSettingsController extends BaseSettingsController{
     /**
      * 构造函数：支持自定义所有依赖。
      */
-    public SkillSettingsController(HarnessEngine engine, AgentSettings settings, FileWatchService fileWatchService, WebGate webGate) {
-        super(engine, settings, fileWatchService, webGate);
+    public SkillSettingsController(WorkspaceManager workspaceManager) {
+        super(workspaceManager);
     }
 
     // ==================== 设置：Skills 市场（委派给 Market 接口） ====================
@@ -93,23 +93,58 @@ public class SkillSettingsController extends BaseSettingsController{
         // 确定安装目标目录：若指定了挂载别名，则安装到对应池目录；否则默认 workspace/skills
         Path skillsDir;
         if (!Assert.isEmpty(mountAlias)) {
-            MountDir poolDir = engine.getMount(mountAlias);
+            MountDir poolDir = engine().getMount(mountAlias);
             if (poolDir == null) {
                 return Result.failure("挂载池不存在: " + mountAlias);
             }
 
             skillsDir = poolDir.getRealPath();
         } else {
-            skillsDir = Paths.get(engine.getWorkspace(), "skills");
+            skillsDir = Paths.get(engine().getWorkspace(), "skills");
         }
 
         Result<String> result = market.install(slug, skillsDir);
 
         // 安装成功后刷新技能池
         if (result.getCode() == 200) {
-            engine.refreshMount(mountAlias);
+            engine().refreshMount(mountAlias);
         }
 
         return result;
+    }
+
+    /**
+     * 切换技能启用/停用（按 aliasPath 记录到 settings().permission.disallowedSkills）
+     *
+     * @param aliasPath 技能唯一路径标识（如 @user-skills/foo）
+     * @param enabled   是否启用
+     */
+    @Post
+    @Mapping("/web/settings/skills/toggle")
+    public Result skillsToggle(@Param("aliasPath") String aliasPath, @Param("enabled") Boolean enabled) {
+        if (Assert.isEmpty(aliasPath)) {
+            return Result.failure("aliasPath is required");
+        }
+        if (enabled == null) {
+            return Result.failure("enabled is required");
+        }
+
+        // 更新运行时禁用集
+        if (enabled) {
+            engine().allowSkill(aliasPath);
+        } else {
+            engine().disallowSkill(aliasPath);
+        }
+
+        // 持久化到 settings().permission.disallowedSkills
+        List<String> disallowedSkills = settings().getPermission().getDisallowedSkills();
+        disallowedSkills.remove(aliasPath);
+        if (enabled == false) {
+            disallowedSkills.add(aliasPath);
+        }
+        saveSettings();
+
+        LOG.info("[Settings] Skill toggled: {} -> {}", aliasPath, enabled);
+        return Result.succeed(enabled ? "启用成功" : "停用成功");
     }
 }

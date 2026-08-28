@@ -1849,7 +1849,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
         clearLoadingTimer();
         pauseStreamPump();
 
-        // 即使出错也要持久化用户消�?
+        // 即使出错也要持久化用户消息
         const pending = await flushPendingUserMessage(msgSessionId);
         await flushAssistantPersistence(msgSessionId);
 

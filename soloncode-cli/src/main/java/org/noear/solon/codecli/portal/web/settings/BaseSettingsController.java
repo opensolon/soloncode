@@ -6,9 +6,14 @@ import org.noear.solon.codecli.config.models.ModelSpecService;
 import org.noear.solon.codecli.config.models.ModelsAdapterManager;
 import org.noear.solon.codecli.portal.FileWatchService;
 import org.noear.solon.codecli.portal.web.WebGate;
-import org.noear.solon.codecli.portal.web.market.MarketManager;
+import org.noear.solon.codecli.market.MarketManager;
 import org.noear.solon.codecli.portal.web.service.SkinService;
 
+import org.noear.solon.codecli.workspace.WorkspaceManager;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
+import org.noear.solon.core.handle.Context;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -18,17 +23,12 @@ import java.util.Map;
  *
  */
 public class BaseSettingsController {
+    private final WorkspaceManager workspaceManager;
 
     /**
      * 本地皮肤服务（Zip 安装 / 列表 / 资源代理）
      */
     protected final SkinService skinService;
-
-
-    /**
-     * AI Agent 执行引擎，提供模型配置管理能力
-     */
-    protected final HarnessEngine engine;
 
     /**
      * 技能市场适配器（通过构造函数注入，方便切换不同市场）
@@ -45,30 +45,52 @@ public class BaseSettingsController {
      */
     protected final ModelSpecService modelSpecService;
 
-    /**
-     * 统一配置管理器，管理 LLM 模型、MCP 服务器、OpenApi 服务器的持久化数据
-     */
-    protected final AgentSettings settings;
 
+    // fileWatchService()/webGate() 从当前工作区上下文动态提取；
+    // 不再构造注入全局实例——注入字段从未被使用，且跨工作区场景下全局实例语义也是错的
+
+    // 动态提取所属工作区的引擎和服务
+    public WorkspaceContext currentContext() {
+        Context ctx = Context.current();
+        org.noear.solon.codecli.workspace.WorkspaceContext wctx = null;
+
+        if (ctx != null) {
+            wctx = ctx.attr("WORKSPACE_CTX");
+        }
+
+        if (wctx == null) {
+            wctx = workspaceManager.getOrCreate(null);
+        }
+        return wctx;
+    }
+
+    protected HarnessEngine engine() { return currentContext().getEngine(); }
+    protected AgentSettings settings() { return currentContext().getSettings(); }
+    protected FileWatchService fileWatchService() { return currentContext().getFileWatchService(); }
+    protected WebGate webGate() { return currentContext().getWebGate(); }
+
+    protected WorkspaceManager workspaceManager() { return workspaceManager; }
 
     /**
-     * 文件变更监听服务（由 Configurator 注入，用于动态挂载管理）
+     * 返回所有已加载工作区的引擎（含默认工作区与当前工作区）。
+     * <p>多工作区架构下，通用设置、工具权限等“全局”配置保存后必须热更新到全部引擎，
+     * 而非仅当前 HTTP 请求所在工作区的引擎；否则其他已加载工作区的开关不会即时生效。</p>
      */
-    protected final FileWatchService fileWatchService;
-
-    /**
-     * Web 网关（用于前端 WebSocket 广播）
-     */
-    protected final WebGate webGate;
+    protected List<HarnessEngine> engines() {
+        List<HarnessEngine> list = new ArrayList<>();
+        for (WorkspaceContext ctx : workspaceManager.getContexts()) {
+            if (ctx != null && ctx.getEngine() != null) {
+                list.add(ctx.getEngine());
+            }
+        }
+        return list;
+    }
 
     /**
      * 构造函数：支持自定义所有依赖。
      */
-    public BaseSettingsController(HarnessEngine engine, AgentSettings settings,  FileWatchService fileWatchService, WebGate webGate) {
-        this.engine = engine;
-        this.settings = settings;
-        this.fileWatchService = fileWatchService;
-        this.webGate = webGate;
+    public BaseSettingsController(WorkspaceManager workspaceManager) {
+        this.workspaceManager = workspaceManager;
 
         this.skinService = SkinService.getInstance();
         this.marketManager = MarketManager.getInstance();
@@ -80,7 +102,7 @@ public class BaseSettingsController {
      * 将当前配置保存到 settings.json
      */
     protected void saveSettings() {
-        settings.saveToFile();
+        settings().saveToFile();
     }
 
     /**

@@ -18,4 +18,6 @@ public class PermissionGroupDo {
     private final List<String> tools = new ArrayList<>();
     //禁用工具
     private final List<String> disallowedTools = new ArrayList<>();
+    //禁用技能（按 aliasPath，如 @user-skills/foo）
+    private final List<String> disallowedSkills = new ArrayList<>();
 }

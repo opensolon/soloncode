@@ -38,9 +38,12 @@ public class AgentFlags {
 
     public final static String SCOPE_USER = "user"; //作用域：用户（用局）
     public final static String SCOPE_LOCAL = "workspace"; //作用域：本地
+    public final static String SCOPE_BUILTIN = "builtin"; //作用域：内置（不落配置文件，不可删除）
+
+    public final static String TRACE_KEY_MAIN = "__main";
 
     public static String getVersion() {
-        return "v2026.7.30";
+        return "v2026.8.28";
     }
 
     private static String lastVersion;
@@ -48,9 +51,10 @@ public class AgentFlags {
     public static String getLastVersion() {
         if (lastVersion == null) {
             try {
-                String json = HttpUtils.http("https://solon.noear.org/soloncode/info.json")
-                        .timeout(2)
-                        .get();
+                HttpUtils http = HttpUtils.http("https://solon.noear.org/soloncode/info.json")
+                        .timeout(2);
+                ProxyConfig.applyIfNeeded(http);
+                String json = http.get();
 
                 lastVersion = ONode.ofJson(json).get("cli_version").getValueAs();
             } catch (Throwable e) {
@@ -97,8 +101,9 @@ public class AgentFlags {
         return System.getProperty("user.home");
     }
 
-    public static String getUserExtensions() {
-        return Paths.get(getUserHome(), getHarnessHome(), "extensions").toString();
+    public static String getUserPlugins() {
+        return Paths.get(getUserHome(), getHarnessHome(), "plugins").toString();
+
     }
 
     public static URL getConfigUrl() throws MalformedURLException {
@@ -226,6 +231,8 @@ public class AgentFlags {
     public static final String getHarnessSkins() {
         return getHarnessHome() + "skins/";
     }
+
+
 
 
 }

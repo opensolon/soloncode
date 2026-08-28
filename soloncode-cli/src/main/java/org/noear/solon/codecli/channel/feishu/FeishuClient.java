@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.channel.feishu;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.net.http.HttpResponse;
 import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
@@ -275,6 +276,7 @@ public class FeishuClient {
 
     private static String httpGet(String urlStr, String accessToken) throws Exception {
         HttpUtils http = HttpUtils.http(urlStr).timeout(10, 10, 15);
+        ProxyConfig.applyIfNeeded(http);
 
         if (accessToken != null && !accessToken.isEmpty()) {
             http.header("Authorization", "Bearer " + accessToken);
@@ -292,6 +294,7 @@ public class FeishuClient {
 
     public static String httpPost(String urlStr, String jsonBody, String accessToken) throws Exception {
         HttpUtils http = HttpUtils.http(urlStr).timeout(10, 10, 15);
+        ProxyConfig.applyIfNeeded(http);
 
         if (accessToken != null && !accessToken.isEmpty()) {
             http.header("Authorization", "Bearer " + accessToken);

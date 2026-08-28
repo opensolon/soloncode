@@ -500,6 +500,82 @@ background-image:
 
 ---
 
+### 字体槽位（字族 + 字号阶梯）
+
+皮肤除配色外，还可定义字体气质。字体分两层：**字族**与**字号阶梯**。
+
+#### 字族变量
+
+```text
+--font-sans     /* 界面正文字族 */
+--font-mono     /* 代码 / 等宽字族 */
+```
+
+写法（字族与明暗无关，建议写在不带 `data-theme` 的皮肤根选择器上，避免 light/dark 重复）：
+
+```css
+[data-skin="aurora"] {
+  --font-sans: "Inter", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+}
+```
+
+规则：
+
+- **必须保留兜底字族链**。首选字用户机器上可能没装，末尾要留 `sans-serif` / `monospace`。
+- **不要在皮肤包内打包字体文件**。皮肤包只允许图片类资源，`@font-face` + `url()` 指向字体文件不受支持。只能引用系统已有字体。
+- 中文皮肤建议在链里补 `"PingFang SC"`（macOS）与 `"Microsoft YaHei"`（Windows），否则跨平台观感差异大。
+
+#### 字号阶梯变量
+
+`theme.css` 提供一套字号阶梯，界面所有文字都取自这里，不写死 px：
+
+```text
+--fs-3xs  --fs-2xs  --fs-xs  --fs-sm  --fs-base  --fs-md
+--fs-lg   --fs-xl   --fs-2xl --fs-3xl --fs-4xl   --fs-5xl
+```
+
+每一级的定义形如 `calc({基准px} * var(--font-scale))`。皮肤可以整体重定义基准值来改变文字密度：
+
+```css
+[data-skin="aurora"] {
+  /* 略微放大正文，营造宽松阅读感 */
+  --fs-base: calc(14px * var(--font-scale));
+  --fs-md:   calc(15px * var(--font-scale));
+  --fs-lg:   calc(16px * var(--font-scale));
+}
+```
+
+规则：
+
+- 重定义时**必须保留 `* var(--font-scale)`**。丢掉它，用户在设置里调字号就对这一级失效。
+- 只调需要的层级，未覆盖的沿用 `theme.css`。
+- 阶梯要保持单调递增，别让 `--fs-sm` 大于 `--fs-base`。
+- 幅度克制在 ±2px 内。改太多会顶破固定高度容器（输入框、工具卡片）。
+
+#### 优先级：用户设置 > 皮肤 > 主题默认
+
+用户在「设置 → 通用 → 界面效果」里选的字族与字号缩放，由运行时写到 `body` 的行内样式上，**优先级高于皮肤 CSS**。
+
+即：
+
+| 层 | 载体 | 覆盖关系 |
+|---|---|---|
+| 用户设置 | `body` 行内 style | 最高，赢过皮肤 |
+| 皮肤 | `skin.css` 变量 | 中间，赢过主题默认 |
+| 主题默认 | `theme.css` `:root` | 兜底 |
+
+对 Agent 的含义：皮肤里的字体定义是**默认气质**，不是强制。用户显式设过字族后，皮肤的 `--font-sans` 不再生效（`--font-mono` 与缩放同理）。不要试图用 `!important` 抢回来，那会让用户的设置失灵。
+
+#### 是否要动字体的判断
+
+- 用户只说“换个颜色/换个主题色” → **不要动字体**。
+- 用户说“想要更清爽/更紧凑/更适合大屏/杂志感” → 可以微调字号阶梯。
+- 用户点名某个字体 → 写进 `--font-sans`，并补兜底链。
+- 不确定时不动。字体改动的感知强度远高于配色，容易翻车。
+
+---
+
 ### 安全可定制 DOM（选择器增强白名单）
 
 官方槽位不够细时，允许用选择器增强。优先只动这些：
@@ -964,6 +1040,7 @@ zip 内须**扁平**可见 `skin.json` 与 `skin.css`。最终交付物是 **`.z
 - 预置皮肤 + 本地 Zip 安装/启用/卸载
 - 聊天一键安装：`POST /web/settings/skins/install?file={workspace相对zip}`（推荐 `.uploads/{name}-yyyyMMddHH.zip`；前端把 Markdown 链接渲成主按钮）
 - 分区背景槽位：body / sidebar / main / filer / settings
+- 字体槽位：`--font-sans` / `--font-mono` 与 `--fs-*` 字号阶梯（用户设置优先级更高）
 - light/dark 正交切换
 - 本地资源代理与 CSS `url()` 改写
 - 同名覆盖安装
@@ -975,6 +1052,7 @@ zip 内须**扁平**可见 `skin.json` 与 `skin.css`。最终交付物是 **`.z
 - 视频 / Lottie / 动态着色脚本
 - 在线皮肤市场自动依赖远端 CSS
 - 在皮肤包内执行脚本
+- 在皮肤包内携带字体文件（`@font-face` 引本地字体）
 - 用 zip 覆盖预置名
 - 列表预览自动识别任意文件名（请用 `preview.png`）
 
@@ -987,6 +1065,7 @@ zip 内须**扁平**可见 `skin.json` 与 `skin.css`。最终交付物是 **`.z
 ```text
 必做：skin.json + skin.css + 合法 name + light/dark
 背景：--bg-{region}-image + overlay + 必要时 surface:transparent
+字体：--font-sans/--font-mono 留兜底链；--fs-* 重定义必留 * var(--font-scale)
 设置透图：image 有结构 + 薄 overlay + surface 透明 + 卡片/Tab 半透明
 图片：./assets/* ，png/jpg/webp/gif，单文件≤2MB，zip≤8MB
 预览：preview.png（不要只给 webp）

@@ -12,6 +12,7 @@ import java.util.Map;
  */
 public class ModelDo extends ChatConfig {
     private boolean visibled = true;
+    private boolean selected = true;
 
     //作用域（全局或本地）
     private String scope = AgentFlags.SCOPE_USER;
@@ -34,8 +35,16 @@ public class ModelDo extends ChatConfig {
         this.visibled = visibled;
     }
 
+    public boolean isSelected() {
+        return selected;
+    }
+
+    public void setSelected(boolean selected) {
+        this.selected = selected;
+    }
+
     @Override
     public boolean isEnabled() {
-        return visibled && enabled;
+        return visibled && selected && enabled;
     }
 }

@@ -1,7 +1,7 @@
 package org.noear.solon.codecli.config.models;
 
-import org.noear.solon.annotation.Component;
 import org.noear.solon.codecli.config.models.adapter.AnthropicModelsAdapter;
+import org.noear.solon.codecli.config.models.adapter.GoogleModelsAdapter;
 import org.noear.solon.codecli.config.models.adapter.OllamaModelsAdapter;
 import org.noear.solon.codecli.config.models.adapter.OpenAIModelsAdapter;
 import org.noear.solon.core.util.Assert;
@@ -33,12 +33,17 @@ public class ModelsAdapterManager {
         OpenAIModelsAdapter openAIModelProvider = new OpenAIModelsAdapter();
         AnthropicModelsAdapter anthropicModelsAdapter = new AnthropicModelsAdapter();
         OllamaModelsAdapter ollamaModelsAdapter = new OllamaModelsAdapter();
+        GoogleModelsAdapter googleModelsAdapter = new GoogleModelsAdapter();
 
         adapterMap.put(openAIModelProvider.getStandard(), openAIModelProvider);
         adapterMap.put("openai-responses", openAIModelProvider);
         adapterMap.put(anthropicModelsAdapter.getStandard(), anthropicModelsAdapter);
         adapterMap.put("claude", anthropicModelsAdapter);
         adapterMap.put(ollamaModelsAdapter.getStandard(), ollamaModelsAdapter);
+        adapterMap.put(googleModelsAdapter.getStandard(), googleModelsAdapter);
+        adapterMap.put("google-models", googleModelsAdapter);
+        adapterMap.put("gemini", googleModelsAdapter);
+        adapterMap.put("gemini-models", googleModelsAdapter);
         defaultAdapter = openAIModelProvider;
     }
 

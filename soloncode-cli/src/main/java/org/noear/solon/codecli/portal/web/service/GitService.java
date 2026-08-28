@@ -129,7 +129,13 @@ public class GitService {
      * @throws Exception 进程启动或流读取异常
      */
     private ProcessResult runGitCommand(String... command) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(command);
+        // 在 "git" 后注入 "-c core.quotepath=false"，防止非 ASCII 路径被 octal 转义
+        List<String> cmd = new ArrayList<>();
+        cmd.add(command[0]); // git
+        cmd.add("-c");
+        cmd.add("core.quotepath=false");
+        for (int i = 1; i < command.length; i++) cmd.add(command[i]);
+        ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(workspaceDir);
         pb.redirectErrorStream(false);
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");

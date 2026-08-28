@@ -4,8 +4,10 @@
 #
 
 $ErrorActionPreference = "Stop"
+# Suppress PowerShell's built-in download progress UI (we render our own)
+$ProgressPreference = "SilentlyContinue"
 
-$VERSION = "v2026.7.30"
+$VERSION = "v2026.8.28"
 $PACKAGE_URL = "https://gitee.com/opensolon/soloncode/releases/download/$VERSION/soloncode-cli-bin-$VERSION.tar.gz"
 $TEMP_DIR = Join-Path $env:TEMP "soloncode-install"
 
@@ -21,6 +23,91 @@ function Write-Error {
     Write-Host $Message
 }
 
+# ---------------------------------------------------------------------------
+# Download progress (kept in sync with setup.sh)
+# ---------------------------------------------------------------------------
+
+$BAR_WIDTH = 30
+
+function Format-Size {
+    param([double]$Bytes)
+
+    if ($Bytes -lt 0) { return "?" }
+    if ($Bytes -ge 1GB) { return ("{0:0.00} GB" -f ($Bytes / 1GB)) }
+    if ($Bytes -ge 1MB) { return ("{0:0.00} MB" -f ($Bytes / 1MB)) }
+    if ($Bytes -ge 1KB) { return ("{0:0.0} KB" -f ($Bytes / 1KB)) }
+    return ("{0} B" -f [int]$Bytes)
+}
+
+function Write-ProgressBar {
+    param([long]$Current, [long]$Total)
+
+    if ($Total -gt 0) {
+        $pct = [int](($Current * 100) / $Total)
+        if ($pct -gt 100) { $pct = 100 }
+
+        $filled = [int](($pct * $BAR_WIDTH) / 100)
+        $bar = '=' * $filled
+        if ($filled -lt $BAR_WIDTH) {
+            $bar += '>' + (' ' * ($BAR_WIDTH - $filled - 1))
+        }
+
+        Write-Host ("`r  [{0}] {1,3}%  {2} / {3}   " -f $bar, $pct, (Format-Size $Current), (Format-Size $Total)) -NoNewline
+    } else {
+        Write-Host ("`r  Downloaded {0}   " -f (Format-Size $Current)) -NoNewline
+    }
+}
+
+function Invoke-DownloadWithProgress {
+    param([string]$Url, [string]$OutFile)
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+    } catch { }
+
+    $request = [Net.WebRequest]::Create($Url)
+    $request.Timeout = 60000
+    if ($request -is [Net.HttpWebRequest]) {
+        $request.UserAgent = "soloncode-setup"
+        $request.AllowAutoRedirect = $true
+    }
+
+    $response = $request.GetResponse()
+    $total = $response.ContentLength
+    $stream = $response.GetResponseStream()
+    $file = [IO.File]::Create($OutFile)
+
+    try {
+        $buffer = New-Object byte[] 81920
+        $downloaded = [long]0
+        $lastDraw = 0
+
+        Write-ProgressBar 0 $total
+
+        while ($true) {
+            $read = $stream.Read($buffer, 0, $buffer.Length)
+            if ($read -le 0) { break }
+
+            $file.Write($buffer, 0, $read)
+            $downloaded += $read
+
+            $now = [Environment]::TickCount
+            if (($now - $lastDraw) -ge 100) {
+                Write-ProgressBar $downloaded $total
+                $lastDraw = $now
+            }
+        }
+
+        if ($total -le 0) { $total = $downloaded }
+        Write-ProgressBar $downloaded $total
+        Write-Host ""
+    } finally {
+        $file.Close()
+        $stream.Close()
+        $response.Close()
+    }
+}
+
 # Cleanup temp directory
 if (Test-Path $TEMP_DIR) {
     Remove-Item -Recurse -Force $TEMP_DIR
@@ -31,7 +118,7 @@ try {
     Write-Info "Downloading SolonCode CLI $VERSION..."
 
     $packageFile = Join-Path $TEMP_DIR "package.tar.gz"
-    Invoke-WebRequest -Uri $PACKAGE_URL -OutFile $packageFile -UseBasicParsing
+    Invoke-DownloadWithProgress -Url $PACKAGE_URL -OutFile $packageFile
 
     Write-Info "Extracting package..."
 

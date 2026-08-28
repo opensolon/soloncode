@@ -63,6 +63,20 @@ public class FileService {
     ));
 
     /**
+     * 隐藏目录白名单：虽然以点号开头，但需要在文件树中展示的目录。
+     */
+    private static final Set<String> VISIBLE_HIDDEN_DIRS = new HashSet<>(Arrays.asList(
+            ".uploads"
+    ));
+
+    private static boolean isSkippedName(File f) {
+        String name = f.getName();
+        if (EXCLUDED_DIRS.contains(name)) return true;
+        if (f.isDirectory() && VISIBLE_HIDDEN_DIRS.contains(name)) return false;
+        return name.startsWith(".");
+    }
+
+    /**
      * 构造函数。
      *
      * @param workspace 工作区根目录路径
@@ -128,7 +142,7 @@ public class FileService {
         // 1. 当前工作区
         Map<String, Object> defaultWs = new LinkedHashMap<>();
         defaultWs.put("id", "workspace");
-        defaultWs.put("name", "当前工作区");
+        defaultWs.put("name", "__current_workspace__");
         defaultWs.put("type", "workspace");
         defaultWs.put("writeable", true);
         defaultWs.put("readonly", false);
@@ -409,7 +423,7 @@ public class FileService {
 
         List<Map> result = new ArrayList<>();
         for (File f : files) {
-            if (f.getName().startsWith(".") || EXCLUDED_DIRS.contains(f.getName())) continue;
+            if (isSkippedName(f)) continue;
             // 跳过符号链接，防止遍历到工作区外部的文件
             if (Files.isSymbolicLink(f.toPath())) continue;
 
@@ -445,7 +459,7 @@ public class FileService {
         if (files == null) return;
 
         for (File f : files) {
-            if (f.getName().startsWith(".") || (f.isDirectory() && EXCLUDED_DIRS.contains(f.getName()))) continue;
+            if (isSkippedName(f)) continue;
             // 跳过符号链接，防止遍历到工作区外部的文件
             if (Files.isSymbolicLink(f.toPath())) continue;
 

@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
+
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -45,6 +47,20 @@ import static java.nio.file.StandardWatchEventKinds.*;
  */
 public class FileWatchService {
     private static final Logger LOG = LoggerFactory.getLogger(FileWatchService.class);
+
+    /**
+     * 所属工作区目录（仅用于日志分流）：本服务自建的轮询/初始化线程不在任何请求上下文里，
+     * 靠它在线程入口打标，否则日志全部回退到启动工作区文件。
+     */
+    private String logWorkspacePath;
+
+    /**
+     * 设置日志归属的工作区目录（需在 {@link #start()} 之前调用才能生效）
+     */
+    public FileWatchService logWorkspacePath(String workspacePath) {
+        this.logWorkspacePath = workspacePath;
+        return this;
+    }
 
     /** 需要排除的目录名（不监听、不同步） */
     private static final Set<String> EXCLUDED_DIRS = new HashSet<>(Arrays.asList(
@@ -210,7 +226,8 @@ public class FileWatchService {
         try {
             watchService = FileSystems.getDefault().newWatchService();
             scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "file-watch-service");
+                //轮询线程入口打工作区日志标记（单线程池专属于本工作区，不会串用）
+                Thread t = new Thread(WorkspaceLogRouter.withWorkspaceLogKey(logWorkspacePath, r), "file-watch-service");
                 t.setDaemon(true);
                 return t;
             });
@@ -218,7 +235,7 @@ public class FileWatchService {
             started = true;
 
             // 异步执行所有根目录的目录树注册，避免阻塞主线程
-            Thread initThread = new Thread(() -> {
+            Thread initThread = new Thread(WorkspaceLogRouter.withWorkspaceLogKey(logWorkspacePath, () -> {
                 for (WatchRoot root : watchRoots.values()) {
                     try {
                         if (Files.exists(root.path)) {
@@ -236,7 +253,7 @@ public class FileWatchService {
                 // 无论是否有根注册失败，都启动事件轮询
                 scheduler.submit(this::pollEvents);
                 LOG.info("[FileWatchService] started for {} roots", watchRoots.size());
-            }, "file-watch-service-init");
+            }), "file-watch-service-init");
             initThread.setDaemon(true);
             initThread.start();
 
@@ -426,10 +443,16 @@ public class FileWatchService {
             changesNode.add(item);
         }
 
-        return new ONode()
-                .set("type", "filer_change")
+        // SAEP 2.0 信封：前端 AgentEventDispatcher.toWebEvent 依赖 event 字段，
+        // 缺失时会被判为 null 直接丢弃（文件树将不再自动刷新）。changes 放入 payload。
+        long now = System.currentTimeMillis();
+        ONode payload = new ONode()
                 .set("changes", changesNode)
-                .set("createdAt", System.currentTimeMillis())
+                .set("createdAt", now);
+        return new ONode()
+                .set("event", "system.filer_change")
+                .set("timestamp", now)
+                .set("payload", payload)
                 .toJson();
     }
 

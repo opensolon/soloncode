@@ -27,7 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Goal 工具 — 模型侧 Goal 生命周期控制（Codex CLI 对齐）
+ * Goal 工具 — 模型侧 Goal 生命周期控制
  *
  * <p>提供两个工具（Goal 的创建由 /loop goal: 命令驱动，模型侧只读+更新）：
  * <ul>
@@ -157,6 +157,15 @@ public class GoalTalent extends AbsTalent {
                 return errJson("ACTION_EVIDENCE_REQUIRED",
                         "目标尚未完成：本轮没有成功的实际工具操作。"
                                 + "请先创建、修改、运行或验证目标产物；goal_get/goal_update 不算执行证据。");
+            }
+
+            // Todo/Goal 完成判定联动：若 TODO 清单尚有未完成项（`- [ ]`/`- [/]`），
+            // 拒绝完成并保持 PURSUING，避免“清单未清零却宣称目标达成”的语义脱节。
+            int unfinishedTodos = scheduler.countUnfinishedTodos(__sessionId);
+            if (unfinishedTodos > 0) {
+                return errJson("TODO_UNFINISHED",
+                        "目标尚未完成：任务清单还有 " + unfinishedTodos + " 项未完成（`- [ ]` 或 `- [/]`）。"
+                                + "请先完成或用 todowrite 更新清单状态后再调用 goal_update(complete)。");
             }
 
             if (scheduler.getLoopConfig().isValidatorEnabledOrDefault()) {

@@ -3,6 +3,7 @@ package org.noear.solon.codecli.config;
 import lombok.Getter;
 import lombok.Setter;
 import org.noear.solon.Solon;
+import org.noear.solon.codecli.auth.UserAuthConfig;
 import org.noear.solon.codecli.config.entity.*;
 import org.noear.solon.core.Props;
 import org.noear.solon.core.util.Assert;
@@ -36,6 +37,8 @@ public class AgentSettings implements Serializable {
     private final GeneralGroupDo general = new GeneralGroupDo();
     //permission 权限
     private final PermissionGroupDo permission = new PermissionGroupDo();
+    //用户认证配置
+    private final UserAuthConfig userAuth = new UserAuthConfig();
     //loop Goal 配置
     private final LoopGroupDo loop = new LoopGroupDo();
 
@@ -54,6 +57,14 @@ public class AgentSettings implements Serializable {
     private Map<String, LspServerDo> lspServers = new LinkedHashMap<>();
     //供应商集
     private Map<String, ProviderDo> providers = new LinkedHashMap<>();
+
+    /**
+     * 本实例所属工作区的物理目录（local settings.json 落盘根）。
+     * <p>多工作区隔离关键：默认取启动目录 user.dir；由 {@link #loadForWorkspace(String)}
+     * 按工作区目录赋值，确保 scope=workspace 的配置写回其所属工作区目录，而非启动目录。</p>
+     * <p>transient：不参与 JSON 序列化，仅运行期路由用。</p>
+     */
+    private transient String workspaceDir = AgentFlags.getUserDir();
 
     /**
      * 与 HarnessProperties（即 AgentProperties）双向合并。
@@ -92,7 +103,7 @@ public class AgentSettings implements Serializable {
                 general.setLogLevel(cfg.get("solon.logging.appender.file.level", "INFO"));
             }
             if (general.getLogFileMaxSize() == null) {
-                general.setLogFileMaxSize(cfg.get("solon.logging.appender.file.maxSize", "10MB"));
+                general.setLogFileMaxSize(cfg.get("solon.logging.appender.file.maxFileSize", "10 MB"));
             }
             if (general.getLogMaxHistory() == null) {
                 general.setLogMaxHistory(cfg.getInt("solon.logging.appender.file.maxHistory", 7));
@@ -133,27 +144,77 @@ public class AgentSettings implements Serializable {
      * <p>语义：先 global，再 local 覆盖；文件不存在视为空配置（合法）。</p>
      */
     public static AgentSettings loadFromFileStrict() throws Exception {
+        return loadSettingsStrict(null);
+    }
+
+    /**
+     * 严格加载配置（可指定 local 层目录）。
+     *
+     * @param localDir local 层目录；null 时用启动目录（CLI 语义）。
+     *                 非默认工作区实例热重载时必须传 workspaceDir，与 saveToFile 写回路径对称，
+     *                 否则读A写B错位（启动目录内容被当工作区配置载入并写进工作区文件）。
+     */
+    private static AgentSettings loadSettingsStrict(String localDir) throws Exception {
         Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
-        Path localFile = Paths.get(AgentFlags.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
+        Path localFile = Paths.get(localDir != null ? localDir : AgentFlags.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
         boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
-                    
+
         AgentSettings agentSettings = new AgentSettings();
-                    
+
         if (Files.exists(globalFile)) {
             bindSettingsFile(globalFile, agentSettings);
         }
-                
+
         if (isLocalAsGlobal == false && Files.exists(localFile)) {
             bindSettingsFile(localFile, agentSettings);
         }
-                
+
         return agentSettings;
     }
-                    
+
+    /**
+     * 按指定工作区目录加载配置（多工作区场景）。
+     * <p>语义：先 global（~/.soloncode/settings.json），再以 workspaceDir/.soloncode/settings.json 覆盖。</p>
+     */
+    public static AgentSettings loadForWorkspace(String workspaceDir) {
+        try {
+            Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
+            Path localFile = Paths.get(workspaceDir, ".soloncode", "settings.json").toAbsolutePath();
+            boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
+
+            AgentSettings agentSettings = new AgentSettings();
+            // 记录本实例所属工作区目录，供 saveToFile 对称写回（而非启动目录）。
+            agentSettings.workspaceDir = workspaceDir;
+
+            if (Files.exists(globalFile)) {
+                bindSettingsFile(globalFile, agentSettings);
+            }
+
+            // 多工作区隔离：全局配置中 scope=user 的 FILES 类挂载点属于“数据目录”，
+            // 不应泄入其他物理工作区（否则文件树会显示默认项目目录）；
+            // SKILLS/AGENTS 类属于能力注入，保留继承。工作区自己的挂载由下方 local 文件提供。
+            if (isLocalAsGlobal == false) {
+                agentSettings.getMountPools().values().removeIf(mount ->
+                        mount.getType() == org.noear.solon.ai.talents.mount.MountType.FILES
+                                && AgentFlags.SCOPE_LOCAL.equals(mount.getScope()) == false);
+            }
+
+            if (isLocalAsGlobal == false && Files.exists(localFile)) {
+                bindSettingsFile(localFile, agentSettings);
+            }
+
+            agentSettings.mergeFrom();
+            return agentSettings;
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to load settings for workspace {}: {}", workspaceDir, e.getMessage());
+            return new AgentSettings();
+        }
+    }
+
     private static void bindSettingsFile(Path file, AgentSettings agentSettings) throws Exception {
         String json = new String(Files.readAllBytes(file), "UTF-8");
         ONode oNode = ONode.ofJson(json);
-                    
+
         ONode oModels = oNode.get("models");
         if (oModels.isArray()) { //旧格式，转成新格式
             ONode map = new ONode().asObject();
@@ -162,10 +223,10 @@ public class AgentSettings implements Serializable {
             }
             oNode.set("models", map);
         }
-                
+
         oNode.bindTo(agentSettings);
     }
-            
+
     /**
      * 从磁盘重载到当前实例（in-place）。
      * <p>语义与 {@link #loadFromFileStrict()} 一致：先 global，再 local 覆盖。
@@ -177,7 +238,9 @@ public class AgentSettings implements Serializable {
     public synchronized boolean reloadInPlace() {
         AgentSettings disk;
         try {
-            disk = loadFromFileStrict();
+            // 读路径与写路径对称：工作区实例从本工作区目录读 local 层
+            disk = loadSettingsStrict(this.workspaceDir);
+            disk.workspaceDir = this.workspaceDir;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to load settings from disk: " + e.getMessage(), e);
         }
@@ -189,7 +252,7 @@ public class AgentSettings implements Serializable {
         copyFrom(disk);
         return true;
     }
-    
+
     /**
      * 将 general/loop 中仍为 null 的字段回落到运行时默认值（不覆盖已有非 null）。
      * <p>优先走 {@link #mergeFrom()}，与启动时 Configurator 行为一致；
@@ -239,19 +302,20 @@ public class AgentSettings implements Serializable {
         if (other == null || other == this) {
             return;
         }
-        
+
         copyGeneral(this.general, other.general);
         copyPermission(this.permission, other.permission);
         copyLoop(this.loop, other.loop);
 
         this.defaultModel = other.defaultModel;
-        
+
         replaceMap(this.models, other.models);
         replaceMap(this.mountPools, other.mountPools);
         replaceMap(this.mcpServers, other.mcpServers);
         replaceMap(this.apiServers, other.apiServers);
         replaceMap(this.lspServers, other.lspServers);
         replaceMap(this.providers, other.providers);
+        copyUserAuth(this.userAuth, other.userAuth);
     }
 
     private static void copyGeneral(GeneralGroupDo target, GeneralGroupDo source) {
@@ -259,7 +323,7 @@ public class AgentSettings implements Serializable {
             source = new GeneralGroupDo();
         }
         target.setSessionWindowSize(source.getSessionWindowSize());
-        target.setSummaryWindowSize(source.getSummaryWindowSize());
+        target.setCompressionThresholdMessages(source.getCompressionThresholdMessages());
         target.setCompressionThresholdPercent(source.getCompressionThresholdPercent());
         target.setSandboxMode(source.isSandboxMode());
         target.setSandboxAllowUserHome(source.isSandboxAllowUserHome());
@@ -280,6 +344,7 @@ public class AgentSettings implements Serializable {
         target.setAutoRethink(source.isAutoRethink());
         target.setHitlEnabled(source.isHitlEnabled());
         target.setSubagentEnabled(source.isSubagentEnabled());
+        target.setManagerEnabled(source.isManagerEnabled());
         target.setCliThinkPrinted(source.isCliThinkPrinted());
         target.setCliPrintSimplified(source.isCliPrintSimplified());
         target.setGoalsEnabled(source.isGoalsEnabled());
@@ -290,10 +355,11 @@ public class AgentSettings implements Serializable {
         target.setLogFileMaxSize(source.getLogFileMaxSize());
         target.setLogMaxHistory(source.getLogMaxHistory());
     }
-    
+
     private static void copyPermission(PermissionGroupDo target, PermissionGroupDo source) {
         target.getTools().clear();
         target.getDisallowedTools().clear();
+        target.getDisallowedSkills().clear();
         if (source != null) {
             if (source.getTools() != null) {
                 target.getTools().addAll(source.getTools());
@@ -301,9 +367,12 @@ public class AgentSettings implements Serializable {
             if (source.getDisallowedTools() != null) {
                 target.getDisallowedTools().addAll(source.getDisallowedTools());
             }
+            if (source.getDisallowedSkills() != null) {
+                target.getDisallowedSkills().addAll(source.getDisallowedSkills());
+            }
         }
     }
-    
+
     private static void copyLoop(LoopGroupDo target, LoopGroupDo source) {
         if (source == null) {
             source = new LoopGroupDo();
@@ -335,9 +404,30 @@ public class AgentSettings implements Serializable {
         node.set("apiServers", ONode.ofBean(s.apiServers));
         node.set("lspServers", ONode.ofBean(s.lspServers));
         node.set("providers", ONode.ofBean(s.providers));
+        node.set("userAuth", ONode.ofBean(s.userAuth));
         return node.toJson();
     }
 
+    private static void copyUserAuth(UserAuthConfig target, UserAuthConfig source) {
+        if (source == null) {
+            source = new UserAuthConfig();
+        }
+        target.setEnabled(source.isEnabled());
+        target.setMode(source.getMode());
+        target.setDbUrl(source.getDbUrl());
+        target.setDbUser(source.getDbUser());
+        target.setDbPassword(source.getDbPassword());
+        target.setDbDriverClass(source.getDbDriverClass());
+        target.setLdapUrl(source.getLdapUrl());
+        target.setLdapAdminDn(source.getLdapAdminDn());
+        target.setLdapAdminPassword(source.getLdapAdminPassword());
+        target.setLdapBaseDn(source.getLdapBaseDn());
+        target.setLdapUserFilter(source.getLdapUserFilter());
+        target.setLdapSsl(source.isLdapSsl());
+        target.setSessionTimeoutMinutes(source.getSessionTimeoutMinutes());
+        target.setSessionTokenLength(source.getSessionTokenLength());
+    }
+    
     private static <K, V> void replaceMap(Map<K, V> target, Map<K, V> source) {
         target.clear();
         if (source != null && source.size() > 0) {
@@ -350,11 +440,15 @@ public class AgentSettings implements Serializable {
      */
     public synchronized void saveToFile() {
         try {
+            // 多工作区隔离：local 目录取本实例所属工作区（workspaceDir），而非启动目录；
+            // 确保非默认工作区的 scope=workspace 配置能写回其所属目录（与 loadForWorkspace 对称）。
+            String localDir = (workspaceDir != null && workspaceDir.length() > 0) ? workspaceDir : AgentFlags.getUserDir();
+
             Path globalFileOld = Paths.get(AgentFlags.getUserHome(), ".soloncode", "config.yml").toAbsolutePath();
-            Path localFileOld = Paths.get(AgentFlags.getUserDir(), ".soloncode", "config.yml").toAbsolutePath();
+            Path localFileOld = Paths.get(localDir, ".soloncode", "config.yml").toAbsolutePath();
 
             Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
-            Path localFile = Paths.get(AgentFlags.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
+            Path localFile = Paths.get(localDir, ".soloncode", "settings.json").toAbsolutePath();
             boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
 
             // 原子写入：先写临时文件再原子移动，防止写入过程中崩溃导致文件损坏

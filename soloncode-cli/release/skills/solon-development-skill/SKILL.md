@@ -68,7 +68,7 @@ description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solo
 | 按需 | 国际化 / Locale / 模板 i18n | `references/i18n.md` | `I18nUtil`, `I18nService`, `solon-i18n`, `LocaleResolver` |
 | 按需 | 认证 / 鉴权 / CORS / 配置加密 / 请求头安全 | `references/security.md` | `AuthAdapter`, `@CrossOrigin`, `VaultUtils` |
 | 按需 | 参数校验 / 实体校验 / 校验器扩展 | `references/validation.md` | `@Valid`, `@NotNull`, `ValidatorManager` |
-| 按需 | Nami RPC / 声明式 HttpClient | `references/remoting.md` | `@NamiClient`, `@Remoting`, `solon-rpc` |
+| 按需 | Nami RPC / 声明式 HttpClient | `references/remoting.md` | `@NamiClient`, `@Remoting`, `solon-rpc`, `NamiAttach` |
 | 按需 | Nami 过滤器 / 服务发现 / 负载均衡 | `references/remoting_filter_lb.md` | `NamiManager`, `LoadBalance`, `CloudLoadStrategy` |
 | 按需 | Socket.D 双向通信 | `references/socketd.md` | `Socket.D`, `ClientSession`, `ServerEndpoint` |
 

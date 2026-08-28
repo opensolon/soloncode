@@ -12,7 +12,9 @@
         var sid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
         if (!sid) return;
 
-        fetch('/web/chat/todos?sessionId=' + encodeURIComponent(sid))
+        var url = '/web/chat/todos?sessionId=' + encodeURIComponent(sid) + window.wsAndSuffix();
+
+        fetch(url)
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 renderTodos(sid, res && res.data ? res.data : {});
@@ -41,7 +43,7 @@
         if (!data.exists || items.length === 0) {
             todoList.innerHTML = '';
             todoEmpty.style.display = '';
-            todoEmpty.textContent = data.exists ? '暂无任务' : '当前会话暂无任务清单';
+            todoEmpty.textContent = data.exists ? I18n.t('todos.empty') : I18n.t('todos.noList');
             todoStats.style.display = 'none';
             // 清理会话级缓存
             if (requestSid) delete (window.sessionTodoMap || {})[requestSid];
@@ -81,10 +83,11 @@
         if (!items || items.length === 0) {
             todoList.innerHTML = '';
             todoEmpty.style.display = '';
-            todoEmpty.textContent = '暂无任务';
+            todoEmpty.textContent = I18n.t('todos.empty');
             return;
         }
         todoEmpty.style.display = 'none';
+        var STATUS_CSS = { pending: 'pending', in_progress: 'in-progress', done: 'done' };
         var html = '';
         var lastGroup = '';
         for (var i = 0; i < items.length; i++) {
@@ -93,9 +96,10 @@
                 html += '<div class="todo-group">' + escapeHtml(item.group) + '</div>';
                 lastGroup = item.group;
             }
-            html += '<div class="todo-item todo-' + item.status + '">' +
+            var escapedText = escapeHtml(item.text);
+            html += '<div class="todo-item todo-' + (STATUS_CSS[item.status] || item.status) + '">' +
                 '<span class="todo-check">' + statusIcon(item.status) + '</span>' +
-                '<span class="todo-text">' + escapeHtml(item.text) + '</span>' +
+                '<span class="todo-text" title="' + escapedText + '">' + escapedText + '</span>' +
                 '</div>';
         }
         todoList.innerHTML = html;
@@ -128,7 +132,7 @@
     function renderError() {
         todoList.innerHTML = '';
         todoEmpty.style.display = '';
-        todoEmpty.textContent = '\u52A0\u8F7D\u4EFB\u52A1\u6E05\u5355\u5931\u8D25';
+        todoEmpty.textContent = I18n.t('todos.loadFailed');
         todoStats.style.display = 'none';
         if (todoBadge) todoBadge.style.display = 'none';
     }

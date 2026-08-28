@@ -17,8 +17,9 @@ package org.noear.solon.codecli.channel.wechat;
 
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
-import org.noear.solon.codecli.portal.web.WebChunk;
+import org.noear.solon.codecli.portal.web.event.WebEvent;
 import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
@@ -39,8 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class WeChatLink implements Channel, Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(WeChatLink.class);
 
-    private final HarnessEngine engine;
-    private final WebGate webGate;
+    private final WorkspaceContext wsContext;
     private final WeChatCredentialStore credentialStore;
 
     /**
@@ -56,12 +56,9 @@ public class WeChatLink implements Channel, Runnable {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public WeChatLink(HarnessEngine engine, WebGate webGate) {
-        this.engine = engine;
-        this.webGate = webGate;
-        this.credentialStore = new WeChatCredentialStore(engine);
-
-        webGate.getStreamBuilder().bind(this);
+    public WeChatLink(WorkspaceContext wsContext) {
+        this.wsContext = wsContext;
+        this.credentialStore = new WeChatCredentialStore(wsContext.getEngine());
     }
 
     /**
@@ -208,8 +205,8 @@ public class WeChatLink implements Channel, Runnable {
             LOG.warn("[WeChat] Token expired for session {}, auto-unbinding", sessionId);
             unbindSession(sessionId);
             // 通知前端
-            webGate.emitToClient(sessionId, WebChunk.ofError("微信连接已过期，请重新扫码绑定"));
-            webGate.emitToClient(sessionId, WebChunk.ofDone());
+            wsContext.getWebGate().emitToClient(wsContext, sessionId, WebEvent.ofError("微信连接已过期，请重新扫码绑定"));
+            wsContext.getWebGate().emitToClient(wsContext, sessionId, WebEvent.ofDone());
             return;
         }
 
@@ -248,7 +245,7 @@ public class WeChatLink implements Channel, Runnable {
             }
 
             // 调用 AI 并回复
-            boolean accepted = webGate.safeChatInput(sessionId, text, "WeChat");
+            boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, sessionId, text, "WeChat");
             if (!accepted) {
                 // 会话繁忙，向用户发送提示而不是静默丢弃
                 WeChatClient.sendMessage(binding.botToken, fromUserId, contextToken,

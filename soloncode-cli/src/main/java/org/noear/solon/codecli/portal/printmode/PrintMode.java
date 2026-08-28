@@ -93,6 +93,8 @@ public class PrintMode {
     public static final int EXIT_NO_PROMPT = 3;
     /** 退出码：超过费用预算 */
     public static final int EXIT_BUDGET_EXCEEDED = 4;
+    /** 退出码：收到 SIGTERM（= 128 + 15，与 Unix 惯例一致） */
+    public static final int EXIT_SIGTERM = 143;
 
     /** 写入类工具集合（plan 模式下会被 DENY） */
     private static final String[] WRITE_TOOLS = {"Write", "Edit", "Bash"};
@@ -176,9 +178,12 @@ public class PrintMode {
         if (Assert.isNotEmpty(options.getPrompt())) {
             prompt = options.getPrompt();
         } else {
-            // 从 stdin 读取
+            // 从 stdin 读取。
+            // 注意：不能只依赖 available() > 0——上游（如 SDK/脚本）刚 fork 完还没来得及写入时
+            // available() 为 0，会被误判成“无提示词”而退出码 3。
+            // 因此：stdin 被重定向（无控制台，即管道/文件）时直接阻塞读到 EOF。
             try {
-                if (System.in.available() > 0) {
+                if (System.in.available() > 0 || isStdinRedirected()) {
                     byte[] bytes = readAllStdin();
                     if (bytes != null && bytes.length > 0) {
                         String stdinPrompt = new String(bytes, StandardCharsets.UTF_8).trim();
@@ -207,12 +212,31 @@ public class PrintMode {
         return prompt;
     }
 
+    /** stdin 输入上限：10MB（对齐官方 v2.1.128+ 规范） */
+    private static final int STDIN_MAX_BYTES = 10 * 1024 * 1024;
+
+    /**
+     * stdin 是否被重定向（管道 / 文件 / 父进程 stdio）。
+     *
+     * <p>交互式终端下 {@code System.console()} 非空；被重定向时为空，
+     * 此时可安全阻塞读取——写端关闭即 EOF。</p>
+     */
+    private boolean isStdinRedirected() {
+        return System.console() == null;
+    }
+
     private byte[] readAllStdin() {
         try {
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
             int len;
+            int totalRead = 0;
             while ((len = System.in.read(buffer)) != -1) {
+                totalRead += len;
+                if (totalRead > STDIN_MAX_BYTES) {
+                    System.err.println("Error: stdin input exceeds 10MB limit.");
+                    return null;
+                }
                 baos.write(buffer, 0, len);
             }
             return baos.toByteArray();
@@ -475,7 +499,14 @@ public class PrintMode {
             result.sessionId = session.getSessionId();
 
             if (options.getOutputFormat() == PrintModeOptions.OutputFormat.STREAM_JSON) {
+                // result 事件在流中发出时需要费用数据，提前计算（execute() 步骤6 会再次赋值，幂等）
+                result.estimatedCostUsd = estimateCostUsd(result.metrics);
+                result.budgetLimitUsd = options.getMaxBudgetUsd();
+                result.budgetExceeded = result.budgetLimitUsd != null
+                        && result.estimatedCostUsd > result.budgetLimitUsd;
                 emitStreamEvent(buildResultEvent(result));
+                // 标记 result 事件已发出，outputResult 阶段将不再额外发 error 事件
+                result.resultEventEmitted = true;
             }
         }
     }
@@ -489,7 +520,9 @@ public class PrintMode {
                 outputJson(result);
                 break;
             case STREAM_JSON:
-                if (result.error != null) {
+                // 仅当 result 事件尚未发出时才发 error 事件，
+                // 避免 result 作为终止符之后再出现额外事件（对齐 Claude Code 协议）
+                if (result.error != null && !result.resultEventEmitted) {
                     emitStreamEvent(buildErrorEvent(result.error));
                 }
                 break;
@@ -601,11 +634,20 @@ public class PrintMode {
             toolsNode.add(tool);
         }
 
-        // MCP 服务列表
+        // MCP 服务列表（对齐官方格式：[{name, status}] 对象数组）
         ONode mcpServersNode = node.getOrNew("mcp_servers").asArray();
         for (String name : engine.getMcpServers().keySet()) {
-            mcpServersNode.add(name);
+            ONode mcpEntry = new ONode();
+            mcpEntry.set("name", name);
+            mcpEntry.set("status", "connected");
+            mcpServersNode.add(mcpEntry);
         }
+
+        // MCP 服务错误列表（加载失败的 server，v2.1.219+；当前占位空数组，CI 可检测非空来 fail）
+        node.getOrNew("mcp_server_errors").asArray();
+
+        // 协议能力声明（v2.1.205+，消费方应忽略未知值）
+        node.getOrNew("capabilities").asArray();
 
         node.set("version", AgentFlags.getVersion());
         return node;
@@ -613,9 +655,10 @@ public class PrintMode {
 
     /**
      * assistant 文本事件：对齐 Claude Code 格式
-     * <pre>
-     * {"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
-     * </pre>
+     * <ul>
+     *   <li>普通文本：{"type":"text","text":"..."}</li>
+     *   <li>thinking 块：{"type":"thinking","thinking":"..."}（字段名与 Anthropic API 一致）</li>
+     * </ul>
      */
     private ONode buildAssistantTextEvent(String text, boolean isThinking) {
         ONode node = new ONode();
@@ -625,8 +668,14 @@ public class PrintMode {
         ONode contentArray = message.getOrNew("content").asArray();
 
         ONode contentBlock = new ONode();
-        contentBlock.set("type", isThinking ? "thinking" : "text");
-        contentBlock.set("text", text);
+        if (isThinking) {
+            // thinking 块：字段名为 "thinking"，对齐 Anthropic API 规范
+            contentBlock.set("type", "thinking");
+            contentBlock.set("thinking", text);
+        } else {
+            contentBlock.set("type", "text");
+            contentBlock.set("text", text);
+        }
         contentArray.add(contentBlock);
 
         return node;
@@ -729,12 +778,33 @@ public class PrintMode {
         return node;
     }
 
+    /**
+     * error 事件：对齐 Claude Code 格式
+     * <pre>
+     * {"type":"error","message":"...","code":"ERR_UNKNOWN"}
+     * </pre>
+     */
     private ONode buildErrorEvent(Throwable error) {
         ONode node = new ONode();
         node.set("type", "error");
-        node.set("error", error.getMessage());
+        node.set("message", error.getMessage() != null ? error.getMessage() : "Unknown error");
+        node.set("code", deriveErrorCode(error));
         return node;
     }
+
+    /**
+     * 从异常类型推导错误码（对齐 Claude Code 错误码规范）
+     */
+    private static String deriveErrorCode(Throwable error) {
+        if (error == null) return "ERR_UNKNOWN";
+        if (error instanceof java.io.IOException) return "ERR_IO";
+        if (error instanceof InterruptedException) return "ERR_INTERRUPTED";
+        if (error instanceof java.util.concurrent.TimeoutException) return "ERR_TIMEOUT";
+        if (error instanceof IllegalArgumentException) return "ERR_INVALID_ARG";
+        if (error instanceof IllegalStateException) return "ERR_INVALID_STATE";
+        return "ERR_UNKNOWN";
+    }
+
 
     // ========== 费用估算 ==========
 
@@ -862,5 +932,7 @@ public class PrintMode {
         double estimatedCostUsd;
         Double budgetLimitUsd;
         boolean budgetExceeded;
+        /** result 事件是否已在流中发出；为 true 时 outputResult 不再补发 error 事件 */
+        boolean resultEventEmitted;
     }
 }

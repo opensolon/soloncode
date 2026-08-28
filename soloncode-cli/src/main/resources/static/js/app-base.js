@@ -1,12 +1,18 @@
 /* ===== app-base.js ===== */
 /* DOM引用 + 状态 + 工具函数（最先加载，无依赖） */
 
+(function() {
+    // 工作区请求头的注入已统一由 web.html 首屏脚本完成（fetch + XMLHttpRequest 原型劫持，
+    // 已覆盖 jQuery $.get/$.ajax），此处不再重复设置，
+    // 避免双重 setRequestHeader 导致浏览器合并出 "id, id" 的非法头值
+})();
+
 /* ===== DOM ===== */
-var welcomeView = document.getElementById('welcomeView');
+var newChatView = document.getElementById('newChatView');
 var chatView = document.getElementById('chatView');
-var messagesWrap = document.getElementById('messagesWrap');
-var welcomeInput = document.getElementById('welcomeInput');
-var welcomeSendBtn = document.getElementById('welcomeSendBtn');
+var msgWrap = document.getElementById('msgWrap');
+var newChatInput = document.getElementById('newChatInput');
+var newChatSendBtn = document.getElementById('newChatSendBtn');
 var chatInput = document.getElementById('chatInput');
 var chatSendBtn = document.getElementById('chatSendBtn');
 var themeBtn = document.getElementById('themeBtn');
@@ -23,9 +29,9 @@ var DOTS_HTML = '<span class="thinking-dots"><span></span><span></span><span></s
 function SessionState(sessionId) {
     this.sessionId = sessionId;
     this.container = $('<div>')[0];
-    $(this.container).addClass('messages-inner');
+    $(this.container).addClass('msg-inner');
     $(this.container).hide();
-    $(messagesWrap).append(this.container);
+    $(msgWrap).append(this.container);
     // 监听会话容器高度变化，异步内容增高时保持贴底
     if (typeof observeMessagesHeight === 'function') {
         observeMessagesHeight(this.container);
@@ -87,6 +93,7 @@ var activeSessionId = null;
 /* ===== Global State ===== */
 var SESSION_ID = 'web-' + Date.now().toString(36);
 var isStreaming = false;
+var btnMode = 'send'; // 'send' | 'stop' —— 与按钮视觉态严格同步，消除 DOM 切换延迟窗口
 var inChatMode = false;
 var chatHistory = [];
 var currentChatIndex = -1;
@@ -133,7 +140,7 @@ function setActiveSession(sessionId) {
         && sess.messageQueue && sess.messageQueue.length) {
         var qn = sess.messageQueue.length;
         if (typeof showToast === 'function') {
-            showToast('有 ' + qn + ' 条任务排队，Enter 发送下一条', 'info', 2200);
+            showToast((window.I18n ? window.I18n.t('toast.queueItems', { count: qn }) : ('\u67093' + qn + '\u6761\u4efb\u52a1\u6392\u961f\uff0cEnter \u53d1\u9001\u4e0b\u4e00\u6761')), 'info', 2200);
         }
     }
             }
@@ -216,9 +223,9 @@ function _markUserScrolledUp() {
 }
 
 function _syncUserScrollFromGap() {
-    if (!messagesWrap) return;
+    if (!msgWrap) return;
     if (Date.now() < _programmaticScrollUntil) return;
-    var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
+    var gap = msgWrap.scrollHeight - msgWrap.scrollTop - msgWrap.clientHeight;
     if (gap > 80) {
         _markUserScrolledUp();
     } else {
@@ -233,7 +240,7 @@ function _onScrollActivity() {
     if (_scrollActiveTimer) clearTimeout(_scrollActiveTimer);
     _scrollActiveTimer = setTimeout(function() { _scrollActive = false; }, 150);
 }
-$(messagesWrap).on('wheel', function(e) {
+$(msgWrap).on('wheel', function(e) {
     if (Date.now() < _programmaticScrollUntil) return;
     var dy = (e.originalEvent && e.originalEvent.deltaY) || 0;
     if (dy < 0) {
@@ -244,24 +251,24 @@ $(messagesWrap).on('wheel', function(e) {
     }
     _onScrollActivity();
 });
-$(messagesWrap).on('touchstart', function() {
+$(msgWrap).on('touchstart', function() {
     // 触控开始后的 scroll 视为用户操作，短暂关闭程序化忽略
     _programmaticScrollUntil = 0;
 });
-$(messagesWrap).on('scroll', function() {
+$(msgWrap).on('scroll', function() {
     if (Date.now() < _programmaticScrollUntil) return;
     _onScrollActivity();
     _syncUserScrollFromGap();
 });
 
 function _applyScrollBottom() {
-    if (!messagesWrap || userScrolledUp) return;
+    if (!msgWrap || userScrolledUp) return;
     // 已经贴底时赋值不会产生 scroll 事件，无需刷新程序化窗口；
     // 否则密集流式下 followTick(48ms) 会让窗口永不关闭，wheel 上滑被一直吞掉（滚轮锁死）。
-    var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
+    var gap = msgWrap.scrollHeight - msgWrap.scrollTop - msgWrap.clientHeight;
     if (gap < 1) return;
     _programmaticScrollUntil = Date.now() + SCROLL_PROGRAMMATIC_MS;
-    messagesWrap.scrollTop = messagesWrap.scrollHeight;
+    msgWrap.scrollTop = msgWrap.scrollHeight;
 }
 
 /**
@@ -292,7 +299,7 @@ function observeMessagesHeight(el) {
             var relevant = false;
             for (var i = 0; i < entries.length; i++) {
                 var target = entries[i].target;
-                if (target === messagesWrap || (activeSess && (target === activeSess.container || $(target).closest('.messages-inner')[0] === activeSess.container))) {
+                if (target === msgWrap || (activeSess && (target === activeSess.container || $(target).closest('.msg-inner')[0] === activeSess.container))) {
                     relevant = true;
                     break;
                 }
@@ -307,7 +314,7 @@ function observeMessagesHeight(el) {
     } catch (e) {}
 }
 // 列表根容器：会话增高、滚动条出现导致 clientHeight 变化时也补贴底
-if (messagesWrap) observeMessagesHeight(messagesWrap);
+if (msgWrap) observeMessagesHeight(msgWrap);
  
  /**
  * 贴底滚动（流式粘底）。
@@ -322,8 +329,8 @@ function scrollToBottom(force) {
         // force：同步立即贴底，避免 RAF 前被残留惯性 wheel / 回流 scroll 重新标成上滑
         // 同时拉长程序化窗口，吞掉发送前上滑的 momentum
         _programmaticScrollUntil = Date.now() + Math.max(SCROLL_PROGRAMMATIC_MS, 420);
-        if (messagesWrap) {
-            messagesWrap.scrollTop = messagesWrap.scrollHeight;
+        if (msgWrap) {
+            msgWrap.scrollTop = msgWrap.scrollHeight;
         }
         // force 时给更长粘底窗口，覆盖首条切页、图片解码、finishThinking + 多 tool 连续插入
         _scrollStickUntil = Math.max(_scrollStickUntil, Date.now() + SCROLL_FORCE_STICK_MS);
@@ -392,21 +399,26 @@ function resetStreamState(sess) {
 }
 
 function setBtnStopMode() {
+    btnMode = 'stop';
     chatSendBtn.disabled = false;
     $(chatSendBtn).addClass('stop-mode');
     $(chatSendBtn).html('<div class="stop-icon"></div>');
-    chatSendBtn.title = '停止生成';
+    chatSendBtn.title = (window.I18n ? window.I18n.t('btn.stopGeneration') : '\u505c\u6b62\u751f\u6210');
 }
 function setBtnSendMode() {
+    btnMode = 'send';
     $(chatSendBtn).removeClass('stop-mode');
     $(chatSendBtn).html('<i class="layui-icon layui-icon-release"></i>');
-    chatSendBtn.title = '发送';
+    chatSendBtn.title = (window.I18n ? window.I18n.t('btn.send') : '\u53d1\u9001');
     chatSendBtn.disabled = false;
 }
 
 function autoResize(el) {
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    // 上限随 --font-scale 联动，与 CSS 中 textarea 的 max-height: calc(140px * var(--font-scale)) 保持一致
+    // --font-scale 由 applyFont 设在 <html> 上，这里直接读源头，避免依赖继承链
+    var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-scale')) || 1;
+    el.style.height = Math.min(el.scrollHeight, 140 * scale) + 'px';
 }
 
 function escapeHtml(str) {
@@ -444,11 +456,11 @@ function formatMsgTime(ts) {
 
 function getInputText() {
     if (inChatMode) return chatInput.value.trim();
-    return welcomeInput.value.trim();
+    return newChatInput.value.trim();
 }
 function clearInput() {
     if (inChatMode) { chatInput.value = ''; chatInput.style.height = 'auto'; }
-    else { welcomeInput.value = ''; welcomeInput.style.height = 'auto'; }
+    else { newChatInput.value = ''; newChatInput.style.height = 'auto'; }
 }
 
 /* ===== Toast Notification ===== */
@@ -488,3 +500,29 @@ function hideNetworkBar() {
         $(networkBar).attr('class', 'network-bar');
     }
 }
+
+/* ===== Workspace URL helpers（多工作区） ===== */
+/** 当前工作区 ID（来自页面 URL query；默认工作区/未开启多工作区时为空串） */
+window.wsId = function () {
+    return new URLSearchParams(window.location.search).get('workspaceId') || '';
+};
+/**
+ * 浏览器直发 URL（<img src>/<link>/下载/iframe srcdoc）绕过 fetch/XHR 劫持层，
+ * 必须显式在 URL 携带 workspaceId，否则多工作区下会取错工作区。
+ * 返回 '&workspaceId=xxx' 或 ''（请拼在已含 '?' 的 URL 之后）。
+ * 统一入口：禁止在业务代码内联拼参（历史多次漏拼均源于内联重复）。
+ */
+window.wsAndSuffix = function () {
+    var w = window.wsId();
+    return (w && w !== 'workspace') ? '&workspaceId=' + encodeURIComponent(w) : '';
+};
+
+/**
+ * 读取指定名称的 Cookie 值。
+ * @param {string} name Cookie 名称
+ * @returns {string|null} Cookie 值，不存在时返回 null
+ */
+window.getCookie = function (name) {
+    var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : null;
+};

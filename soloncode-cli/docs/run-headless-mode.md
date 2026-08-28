@@ -323,7 +323,7 @@ $ soloncode run "什么是依赖注入"
 
 **system/init 事件**（执行开始时）：
 ```json
-{"type":"system","subtype":"init","session_id":"print-a1b2c3d4","model":"sonnet","tools":["Read","Grep","Glob","Write","Edit","Bash"],"mcp_servers":[],"version":"2026.7.30"}
+{"type":"system","subtype":"init","session_id":"print-a1b2c3d4","model":"sonnet","tools":["Read","Grep","Glob","Write","Edit","Bash"],"mcp_servers":[],"version":"2026.xxx"}
 ```
 
 **assistant 事件**（Agent 输出文本）：

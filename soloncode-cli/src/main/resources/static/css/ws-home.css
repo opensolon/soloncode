@@ -1,0 +1,156 @@
+/* ===== Workspace Full-screen Home ===== */
+.ws-home-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001; /* 高于 settings 的 10000，确保盖在最上层 */
+    display: flex;
+    animation: settings-fade-in 0.2s ease-out;
+}
+
+.ws-home {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-settings-surface);
+    background-image:
+        linear-gradient(var(--bg-settings-overlay), var(--bg-settings-overlay)),
+        var(--bg-settings-image);
+    background-size: var(--bg-settings-image-size);
+    background-position: var(--bg-settings-image-position);
+    background-repeat: var(--bg-settings-image-repeat);
+    animation: settings-slide-up 0.25s ease-out;
+    overflow: hidden;
+}
+
+.ws-home-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border-color);
+}
+.ws-home-brand {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+.ws-home-omni {
+    flex: 1;
+    max-width: 640px;
+    margin: 0 auto;
+    display: flex;
+    gap: 8px;
+}
+.ws-home-search {
+    flex: 1;
+    height: 44px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--fs-base);
+    padding: 0 16px;
+    font-family: inherit;
+}
+.ws-home-search:focus { outline: none; border-color: var(--accent); }
+.ws-home-omni-go {
+    flex: none;
+    height: 44px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent-fill, var(--accent));
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--fs-sm);
+}
+.ws-home-omni-go:hover { filter: brightness(1.05); }
+.ws-home-omni-go:disabled { opacity: 0.5; cursor: default; }
+.ws-home-close {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+.ws-home-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.ws-home-body { flex: 1; overflow-y: auto; padding: 24px 32px; }
+.ws-home-section { margin-bottom: 28px; }
+.ws-home-section-title {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 12px;
+}
+.ws-home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+.ws-home-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--bg-primary);
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    text-decoration: none;
+    color: inherit;
+}
+.ws-home-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    transform: translateY(-1px);
+}
+.ws-home-card-name {
+    font-size: var(--fs-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 24px;
+}
+.ws-home-card-path {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+.ws-home-card-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    line-height: 1;
+}
+.ws-home-card:hover .ws-home-card-remove { opacity: 1; }
+.ws-home-card-remove:hover { color: #e55; background: rgba(229,85,85,0.12); }
+.ws-home-empty {
+    grid-column: 1 / -1;
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 24px 0;
+}
+
+

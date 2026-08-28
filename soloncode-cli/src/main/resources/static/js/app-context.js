@@ -31,9 +31,11 @@ function renderContextStatus(sess) {
 
     var hasContext = !!(sess.contextTokens != null || sess.contextLength != null);
     var elapsedText = formatRoundElapsedText(sess);
-    if (!hasContext && !elapsedText) {
+    var hasCache = sess.cacheRate != null;
+    if (!hasContext && !elapsedText && !hasCache) {
         $status.hide();
         $('.context-status-text').text('Context: -- / -- (--%)');
+        $('.context-status-cache').text('').hide();
         $('.context-status-elapsed').text('').hide();
         return;
     }
@@ -49,6 +51,13 @@ function renderContextStatus(sess) {
     }
     $('.context-status-text').text(contextText);
 
+    var $cache = $('.context-status-cache');
+    if (hasCache) {
+        $cache.text('\u00b7 Cache: ' + sess.cacheRate.toFixed(1) + '%').show();
+    } else {
+        $cache.text('').hide();
+    }
+
     var $elapsed = $('.context-status-elapsed');
     if (elapsedText) {
         $elapsed.text('\u00b7 ' + elapsedText).show();
@@ -60,7 +69,7 @@ function renderContextStatus(sess) {
 
 /**
  * 更新上下文状态 UI
- * @param {Object} chunk - type 为 context_size 的 WebChunk
+ * @param {Object} chunk - type 为 context_size 的 WebEvent/payload
  * @param {Object} [sess] - 可选；缺省写 activeSession
  */
 function updateContextIndicator(chunk, sess) {
@@ -73,7 +82,26 @@ function updateContextIndicator(chunk, sess) {
     if (chunk.args && chunk.args.contextLength) {
         sess.contextLength = Math.round(chunk.args.contextLength);
     }
+    if (chunk.args && chunk.args.cacheRate != null) {
+        sess.cacheRate = Math.round(chunk.args.cacheRate * 10) / 10;
+    }
     // 仅刷新当前可见会话的条；后台会话数据已写入 sess 供切换时恢复
+    if (sess.sessionId === activeSessionId) renderContextStatus(sess);
+}
+
+/**
+ * 更新上下文状态 UI（如缓存命中率等）
+ * @param {Object} chunk - type 为 context_status 的 WebEvent/payload
+ * @param {Object} [sess] - 可选；缺省写 activeSession
+ */
+function updateContextStatus(chunk, sess) {
+    if (!sess) {
+        if (!activeSessionId || !sessionMap[activeSessionId]) return;
+        sess = sessionMap[activeSessionId];
+    }
+    if (chunk.args && chunk.args.cacheRate != null) {
+        sess.cacheRate = Math.round(chunk.args.cacheRate * 10) / 10;
+    }
     if (sess.sessionId === activeSessionId) renderContextStatus(sess);
 }
 
@@ -159,6 +187,7 @@ function resetContextIndicator() {
     if ($status.length) {
         $status.hide();
         $('.context-status-text').text('Context: -- / -- (--%)');
+        $('.context-status-cache').text('').hide();
         $('.context-status-elapsed').text('').hide();
     }
 }

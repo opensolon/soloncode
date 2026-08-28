@@ -32,6 +32,8 @@ import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.agent.AgentTrace;
+import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -385,7 +387,12 @@ public class CliShell implements Runnable {
             if (isInterrupted.get()) {
                 terminal.writer().println(DIM + "[Task interrupted]" + RESET);
                 terminal.flush();
-                session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
+                AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
+                ReActTrace trace = session.getContext().getAs(AgentFlags.TRACE_KEY_MAIN);
+                if (trace != null) {
+                    cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
+                }
+                session.addMessage(cancelMessage);
                 LOG.info("用户已取消任务.");
                 return finalAnswer.get();
             }

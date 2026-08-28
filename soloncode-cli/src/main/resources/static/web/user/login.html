@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>登录 - SolonCode</title>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link rel="stylesheet" href="/layui/css/layui.css"/>
+    <link rel="stylesheet" href="/css/theme.css"/>
+    <link rel="stylesheet" href="/css/login.css"/>
+    <script>window._i18nVer = '20260802';</script>
+    <script src="/js/i18n.js"></script>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <img src="/img/favicon.png" alt="SolonCode" class="login-logo"/>
+                <h1 class="login-title">SolonCode</h1>
+                <p class="login-subtitle" data-i18n="login.subtitle">请登录以继续使用</p>
+            </div>
+            <div class="login-form">
+                <div class="login-field">
+                    <label class="login-label" for="loginUsername" data-i18n="login.username">用户名</label>
+                    <input type="text" id="loginUsername" class="login-input" placeholder="请输入用户名" autocomplete="username" autofocus/>
+                </div>
+                <div class="login-field">
+                    <label class="login-label" for="loginPassword" data-i18n="login.password">密码</label>
+                    <input type="password" id="loginPassword" class="login-input" placeholder="请输入密码" autocomplete="current-password"/>
+                </div>
+                <div class="login-error" id="loginError" style="display:none"></div>
+                <button type="button" class="login-btn" id="loginBtn" data-i18n="login.loginBtn">登 录</button>
+            </div>
+            <div class="login-footer">
+                <span data-i18n="login.footer">SolonCode - AI 编码助手</span>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function() {
+            var loginBtn = document.getElementById('loginBtn');
+            var usernameInput = document.getElementById('loginUsername');
+            var passwordInput = document.getElementById('loginPassword');
+            var errorDiv = document.getElementById('loginError');
+            
+            function showError(msg) {
+                errorDiv.textContent = msg;
+                errorDiv.style.display = 'block';
+            }
+            
+            function hideError() {
+                errorDiv.style.display = 'none';
+            }
+            
+            function doLogin() {
+                var username = usernameInput.value.trim();
+                var password = passwordInput.value;
+                
+                if (!username) { showError('请输入用户名'); return; }
+                if (!password) { showError('请输入密码'); return; }
+                
+                hideError();
+                loginBtn.disabled = true;
+                loginBtn.textContent = '登录中...';
+                
+                fetch('/web/user/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password)
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(resp) {
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '登 录';
+                    if (resp.code === 200 && resp.data) {
+                        // 保存 token 到 cookie
+                        document.cookie = 'user_token=' + resp.data.token + '; path=/; max-age=' + (7 * 24 * 3600);
+                        // 跳转到首页
+                        window.location.href = '/';
+                    } else {
+                        showError(resp.description || '登录失败，请检查用户名和密码');
+                    }
+                })
+                .catch(function() {
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '登 录';
+                    showError('网络错误，请稍后重试');
+                });
+            }
+            
+            loginBtn.addEventListener('click', doLogin);
+            passwordInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') doLogin();
+            });
+            usernameInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') passwordInput.focus();
+            });
+        })();
+    </script>
+</body>
+</html>

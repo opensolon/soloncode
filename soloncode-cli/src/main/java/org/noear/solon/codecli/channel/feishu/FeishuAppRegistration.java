@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.channel.feishu;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.net.http.HttpResponse;
 import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
@@ -188,11 +189,12 @@ public class FeishuAppRegistration {
      * 发送 form-urlencoded POST 请求
      */
     private String httpFormPost(String url, String formBody) throws Exception {
-        try (HttpResponse resp = HttpUtils.http(url)
+        HttpUtils http = HttpUtils.http(url)
                 .timeout(10, 10, 15)
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(formBody.getBytes("UTF-8"), "application/x-www-form-urlencoded")
-                .exec("POST")) {
+                .body(formBody.getBytes("UTF-8"), "application/x-www-form-urlencoded");
+        ProxyConfig.applyIfNeeded(http);
+        try (HttpResponse resp = http.exec("POST")) {
             int statusCode = resp.code();
             if (statusCode != 200) {
                 LOG.warn("[FeishuReg] HTTP POST {} returned {}", url, statusCode);

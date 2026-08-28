@@ -67,6 +67,10 @@ public class ManagerTalent extends AbsTalent {
         this.loopTasks = loopTasks;
     }
 
+    @Override
+    public boolean isEnabled() {
+        return settings.getGeneral().isManagerEnabled();
+    }
 
     // ==================== add_model ====================
 

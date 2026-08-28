@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.config.models;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.net.http.HttpUtils;
 
 import java.util.Map;
@@ -63,7 +64,9 @@ public class ModelSpecService {
             }
 
             try {
-                String json = HttpUtils.http(MODELS_SPEC_URL).timeout(5).get();
+                HttpUtils http = HttpUtils.http(MODELS_SPEC_URL).timeout(5);
+                ProxyConfig.applyIfNeeded(http);
+                String json = http.get();
                 if (json != null && json.isEmpty() == false) {
                     ONode root = ONode.ofJson(json);
                     for (Map.Entry<String, ONode> entry : root.getObject().entrySet()) {

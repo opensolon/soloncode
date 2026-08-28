@@ -7,6 +7,13 @@
  * - Avoid pure white / pure black glare
  * - Warm paper-green base, low blue light
  * - Soft muted green accent, comfortable for long reading
+ *
+ * Font slots (not overridden here — eyecare targets color, not typography):
+ *   --font-sans / --font-mono              font family; keep a fallback chain
+ *   --fs-3xs .. --fs-5xl                   size ladder, each calc(Npx * var(--font-scale))
+ * Redefining a --fs-* level MUST keep the "* var(--font-scale)" factor,
+ * otherwise the user's font-size setting stops affecting that level.
+ * Precedence: user setting (body inline style) > skin.css > theme.css defaults.
  */
 
 [data-skin="eyecare"][data-theme="light"] {

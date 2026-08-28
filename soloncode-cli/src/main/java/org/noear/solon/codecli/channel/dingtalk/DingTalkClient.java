@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.channel.dingtalk;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.net.http.HttpResponse;
 import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
@@ -276,6 +277,7 @@ public class DingTalkClient {
 
     public static String httpPost(String urlStr, String jsonBody, String accessToken) throws Exception {
         HttpUtils http = HttpUtils.http(urlStr).timeout(10, 10, 15);
+        ProxyConfig.applyIfNeeded(http);
 
         if (accessToken != null && !accessToken.isEmpty()) {
             http.header("x-acs-dingtalk-access-token", accessToken);

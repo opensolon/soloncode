@@ -20,10 +20,9 @@
     var $llmListView = $('#llmListView');
     var $llmFormView = $('#llmFormView');
     var llmEditName = null;
-    var llmCachedList = [];
 
     function showLlmListView() { $llmFormView.hide(); $llmListView.addClass('slide-back').show(); setTimeout(function(){ $llmListView.removeClass('slide-back'); }, 260); }
-    function showLlmFormView(title, isEdit) { $llmFormTitle.text(title || '添加模型'); $llmListView.hide(); $llmFormView.show(); $('#llmFormActions').toggle(!!isEdit); }
+    function showLlmFormView(title, isEdit) { $llmFormTitle.text(title || I18n.t('llm.formTitle.add')); $llmListView.hide(); $llmFormView.show(); $('#llmFormActions').toggle(!!isEdit); }
 
     // ==================== LLM 管理 ====================
 
@@ -56,16 +55,14 @@
     }
 
     function renderLlmList(list, selected) {
-        llmCachedList = list || [];
         var html = '';
         if (!list || list.length === 0) {
             html = '<div class="llm-empty-state">'
                 + '<div class="llm-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>'
-                + '<div class="llm-empty-title">暂无大模型配置</div>'
-                + '<div class="llm-empty-desc">添加至少一个大模型以开始 AI 对话</div>'
+                + '<div class="llm-empty-title">' + I18n.t('llm.empty') + '</div>'
+                + '<div class="llm-empty-desc">' + I18n.t('llm.emptyDesc') + '</div>'
                 + '</div>';
         } else {
-
             list.forEach(function (item) {
                 var model = item.model || '';
                 var standard = item.standard || '';
@@ -102,11 +99,11 @@
                 var standardTag = standard ? ' <span class="settings-inline-tag">[' + escapeHtml(standard) + ']</span>' : '';
                 html += '<div class="settings-list-item' + (!enabled ? ' disabled' : '') + '" data-model="' + escapeAttr(name) + '">' 
                     + '<div class="settings-list-icon">' + escapeHtml(icon) + '</div>'
-                    + '<div class="settings-list-info"><div class="settings-list-title">' + escapeHtml(displayName) + standardTag + (isDefault ? ' <span class="llm-default-badge">默认</span>' : '') + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div><div class="llm-model-meta">'
+                    + '<div class="settings-list-info"><div class="settings-list-title">' + escapeHtml(displayName) + standardTag + (isDefault ? ' <span class="llm-default-badge">' + I18n.t('llm.defaultBadge') + '</span>' : '') + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">' + I18n.t('llm.workspaceBadge') + '</span>' : '') + '</div><div class="llm-model-meta">'
                     + '<span class="llm-api-hint">' + metaLine + '</span>'
                     + '</div></div><div class="settings-list-actions">'
-                    + '<button class="settings-action-btn edit llm-edit-btn" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
-                    + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
+                    + '<button class="settings-action-btn edit llm-edit-btn" title="' + I18n.t('llm.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<label class="toggle-switch" title="' + (enabled ? I18n.t('llm.toggle.disable') : I18n.t('llm.toggle.enable')) + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="llm-toggle"/>'
                     + '<span class="toggle-slider"></span>'
                     + '</label>'
@@ -133,7 +130,7 @@
 
     function resetLlmForm() {
         llmEditName = null;
-        $llmSaveBtn.text('保存');
+        $llmSaveBtn.text(I18n.t('common.save'));
         $('#llmStandard, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
         $('#llmProvider').val('');
         $('#llmIsDefaultModel').prop('checked', false);
@@ -150,7 +147,7 @@
         } else {
             $('#llmApiKey').val('');
         }
-        $('#llmApiKey').attr('placeholder', item.apiKey ? '已配置（留空保持不变）' : 'sk-...');
+        $('#llmApiKey').attr('placeholder', item.apiKey ? I18n.t('llm.apiKeyHint') : 'sk-...');
         if (item.model) $('#llmModel').val(item.model);
         if (item.name) $('#llmName').val(item.name);
         if (item.scope) setScopeValue('llmScope', item.scope);
@@ -179,7 +176,7 @@
         var alias = $('#llmName').val().trim();
         var standard = $('#llmStandard').val();
         var timeout = $('#llmTimeout').val().trim();
-        if (!apiUrl || !model || !alias) { showToast('API 地址、模型和名称为必填项', 'error'); return null; }
+        if (!apiUrl || !model || !alias) { showToast(I18n.t('llm.requiredFields'), 'error'); return null; }
         var bodyObj = { apiUrl: apiUrl, model: model, name: alias, standard: standard, scope: $('#llmScope').val() || 'user' };
         if (apiKey) bodyObj.apiKey = apiKey;
         if (timeout) bodyObj.timeout = timeout;
@@ -193,7 +190,7 @@
         if (contextLength) bodyObj.contextLength = contextLength;
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {
-            try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { showToast('默认选项 JSON 格式无效', 'error'); return null; }
+            try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { showToast(I18n.t('llm.defaultOptionsInvalid'), 'error'); return null; }
         }
         // 编辑时保持 provider 关联（隐藏表单）
         var providerVal = $('#llmProvider').val();
@@ -204,8 +201,8 @@
     }
 
     function llmEditNameFunc(name) {
-        showLlmFormView('编辑模型', true);
-        $llmSaveBtn.text('更新');
+        showLlmFormView(I18n.t('llm.formTitle.edit'), true);
+        $llmSaveBtn.text(I18n.t('llm.update'));
         resetLlmForm();
         llmEditName = name;
 
@@ -213,15 +210,15 @@
             if (resp.code === 200 && resp.data) {
                 fillLlmForm(resp.data);
             } else {
-                showToast('获取模型详情失败: ' + (resp.message || '未知错误'), 'error');
+                showToast(I18n.t('llm.fetchDetailFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
             }
-        }).fail(function () { showToast('网络错误', 'error'); });
+        }).fail(function () { showToast(I18n.t('toast.networkError'), 'error'); });
     }
 
     function llmCopyModel(name) {
         llmEditName = null;
-        showLlmFormView('添加模型', false);
-        $llmSaveBtn.text('保存');
+        showLlmFormView(I18n.t('llm.formTitle.add'), false);
+        $llmSaveBtn.text(I18n.t('common.save'));
         resetLlmForm();
 
         $.get('/web/settings/llm/models/get?name=' + encodeURIComponent(name), function (resp) {
@@ -229,14 +226,14 @@
                 fillLlmForm(resp.data);
                 $('#llmName').val((resp.data.name || resp.data.model) + '-copy');
             } else {
-                showToast('获取模型详情失败: ' + (resp.message || '未知错误'), 'error');
+                showToast(I18n.t('llm.fetchDetailFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
             }
-        }).fail(function () { showToast('网络错误', 'error'); });
+        }).fail(function () { showToast(I18n.t('toast.networkError'), 'error'); });
     }
 
     function llmToggleModel(name, enabled) {
         postJson('/web/settings/llm/models/toggle', { name: name, enabled: enabled }, function (resp) {
-            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadLlmList(); }
+            if (resp.code !== 200) { showToast(I18n.t('toast.operateFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error'); loadLlmList(); }
             else { syncChatModelList(); loadLlmList(); }
         });
     }
@@ -247,12 +244,12 @@
                 syncChatModelList();
                 showLlmListView();
                 loadLlmList();
-            } else { showToast('删除失败: ' + (resp.message || '未知错误'), 'error'); }
-        }, 'json').fail(function () { showToast('网络错误，删除失败', 'error'); });
+            } else { showToast(I18n.t('llm.deleteFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error'); }
+        }, 'json').fail(function () { showToast(I18n.t('llm.networkDeleteFailed'), 'error'); });
     }
 
     // LLM 按钮事件
-    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView('添加模型', false); });
+    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView(I18n.t('llm.formTitle.add'), false); });
     $('#llmBackBtn').on('click', function () { showLlmListView(); resetLlmForm(); });
 
     $llmSaveBtn.on('click', function () {
@@ -264,7 +261,6 @@
         if (isDefaultModel) {
             url += (url.indexOf('?') === -1 ? '?' : '&') + 'isDefaultModel=true';
         }
-        var actionText = isEdit ? '更新' : '添加';
         if (isEdit) bodyObj.originalName = llmEditName;
 
         $llmSaveBtn.prop('disabled', true);
@@ -272,13 +268,13 @@
             .done(function (resp) {
                 if (resp.code === 200) {
                     syncChatModelList();
-                    showToast(actionText + '成功');
+                    showToast(isEdit ? I18n.t('llm.updated') : I18n.t('llm.added'));
                     loadLlmList();
                     showLlmListView();
                     resetLlmForm();
-                } else { showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error'); }
+                } else { showToast((isEdit ? I18n.t('llm.updateFailed') : I18n.t('llm.addFailed')) + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error'); }
             })
-            .fail(function () { showToast('网络错误', 'error'); })
+            .fail(function () { showToast(I18n.t('toast.networkError'), 'error'); })
             .always(function () { $llmSaveBtn.prop('disabled', false); });
     });
 
@@ -292,7 +288,7 @@
     $('#llmFormDeleteBtn').on('click', function () {
         var currentName = llmEditName;
         if (!currentName) return;
-        layer.confirm('确定删除模型 "' + currentName + '"？', { title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px' }, function(index) {
+        layer.confirm(I18n.t('llm.deleteConfirm', { name: currentName }), { title: I18n.t('common.confirm'), btn: [I18n.t('common.delete'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
             layer.close(index);
             llmRemoveModel(currentName);
         });
@@ -303,28 +299,25 @@
     $('#llmTestBtn').on('click', function () {
         var apiUrl = $('#llmApiUrl').val().trim();
         var model = $('#llmModel').val().trim();
-        if (!apiUrl || !model) { showToast('请先填写 API 地址和模型', 'error'); return; }
+        if (!apiUrl || !model) { showToast(I18n.t('llm.testRequired'), 'error'); return; }
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {
-            try { JSON.parse(optionsText); } catch (e) { showToast('默认选项 JSON 格式无效', 'error'); return; }
+            try { JSON.parse(optionsText); } catch (e) { showToast(I18n.t('llm.defaultOptionsInvalid'), 'error'); return; }
         }
         var $btn = $(this);
         var btnOriginal = $btn.html();
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
+        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> ' + I18n.t('llm.testing'));
         $llmCheckResult.hide();
 
         $.ajax({ url: '/web/settings/llm/models/fetch', type: 'POST', contentType: 'application/json', data: JSON.stringify({ apiUrl: apiUrl, apiKey: $('#llmApiKey').val().trim(), standard: $('#llmStandard').val(), model: ($('#llmModel').val() || '').trim() }), timeout: 30000, dataType: 'json' })
             .done(function (resp) {
                 var ok = resp.code === 200;
-                var msg = ok ? resp.data : ('连接失败: ' + (resp.description || '未知错误'));
-                var svg = ok
-                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> '
-                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ';
-                $llmCheckResult.attr('class', 'llm-check-result ' + (ok ? 'success' : 'error')).html(svg + msg).css('display', 'flex');
+                var msg = ok ? resp.data : (I18n.t('llm.testFailed') + ': ' + (resp.description || I18n.t('toast.unknownError')));
+                showToast(msg, ok ? 'success' : 'error');
             })
-            .fail(function (jqXHR, textStatus) {
-                var msg = textStatus === 'timeout' ? '连接超时，请检查 API 地址是否正确' : '网络错误，请重试';
-                $llmCheckResult.attr('class', 'llm-check-result error').html(msg).css('display', 'flex');
+                        .fail(function (jqXHR, textStatus) {
+                var msg = textStatus === 'timeout' ? I18n.t('llm.testTimeout') : I18n.t('llm.testNetworkError');
+                showToast(msg, 'error');
             })
             .always(function () { $btn.prop('disabled', false).html(btnOriginal); });
     });
@@ -333,12 +326,12 @@
     $('#llmFormatJsonBtn').on('click', function () {
         var $input = $('#llmDefaultOptions');
         var text = $input.val().trim();
-        if (!text) { showToast('请先填写 JSON 内容', 'error'); return; }
+        if (!text) { showToast(I18n.t('llm.jsonEmpty'), 'error'); return; }
         try {
             $input.val(JSON.stringify(JSON.parse(text), null, 2));
-            showToast('JSON 格式化成功');
+            showToast(I18n.t('llm.jsonFormatted'));
         } catch (e) {
-            showToast('默认选项 JSON 格式无效', 'error');
+            showToast(I18n.t('llm.defaultOptionsInvalid'), 'error');
         }
     });
 
@@ -346,7 +339,7 @@
         var text = $(this).val().trim();
         if (!text) return;
         try { JSON.parse(text); }
-        catch (e) { showToast('默认选项 JSON 格式无效', 'error'); }
+        catch (e) { showToast(I18n.t('llm.defaultOptionsInvalid'), 'error'); }
     });
 
     // LLM Provider 切换时更新 API 地址 placeholder
@@ -364,6 +357,7 @@
                 $ApiUrl.attr('placeholder', 'https://api.anthropic.com');
                 break;
             case 'gemini':
+            case 'google':
                 $ApiUrl.attr('placeholder', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent');
                 break;
             case 'ollama':

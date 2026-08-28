@@ -10,9 +10,35 @@
     var studioFlag = "studio";
     var isStudioPageEnabled = false;
     var pendingStudioTheme = "";
+    var pendingStudioLocale = "";
     var cliMessageSource = "soloncode-cli";
     var studioMessageSource = "soloncode-studio";
     var studioParentOrigin = "";
+    var supportedStudioLocales = [
+        "system",
+        "zh-CN",
+        "zh-TW",
+        "en",
+        "ja",
+        "ko",
+        "de",
+        "fr",
+        "es",
+        "it",
+        "ru",
+        "ar",
+        "br",
+        "th",
+        "vi",
+        "pl",
+        "bn",
+        "bs",
+        "da",
+        "gr",
+        "no",
+        "tr",
+        "uk"
+    ];
 
     try {
         studioParentOrigin = window.location.ancestorOrigins && window.location.ancestorOrigins[0];
@@ -213,6 +239,71 @@
         }
     }
 
+    function normalizeStudioLocale(locale) {
+        return supportedStudioLocales.indexOf(locale) >= 0 ? locale : "zh-CN";
+    }
+
+    function applyStudioLocale(locale) {
+        var normalizedLocale = normalizeStudioLocale(locale);
+        if (!normalizedLocale || !window.I18n || typeof window.I18n.switch !== "function") {
+            return;
+        }
+
+        // 显式语言与当前实际生效语言相同且非跟随系统模式时，视为已同步
+        if (normalizedLocale !== "system"
+            && !(window.I18n.isSystemMode && window.I18n.isSystemMode())
+            && window.I18n.getLocale() === normalizedLocale) {
+            pendingStudioLocale = "";
+            return;
+        }
+
+        pendingStudioLocale = normalizedLocale;
+        window.I18n.switch(normalizedLocale);
+    }
+
+    function reportWorkspaceLocale(locale, mode) {
+        // 跟随系统模式下向桌面端上报 system 哨兵（附实际生效语言便于桌面端展示）
+        var reported = (mode === "system") ? "system" : locale;
+        var normalizedLocale = normalizeStudioLocale(reported);
+        if (!normalizedLocale) {
+            return;
+        }
+        if (pendingStudioLocale === normalizedLocale) {
+            pendingStudioLocale = "";
+            return;
+        }
+        pendingStudioLocale = "";
+        dispatchStudioMessage("soloncode-locale-change", {
+            locale: normalizedLocale,
+            mode: mode || null,
+            resolvedLocale: locale
+        });
+    }
+
+    function bindStudioLocaleBridge() {
+        try {
+            window.addEventListener("message", function (event) {
+                var data = event && event.data ? event.data : null;
+                if (!isStudioParentMessage(event, data)) {
+                    return;
+                }
+
+                if (data.type === "studio-locale-sync") {
+                    var locale = data.payload && data.payload.locale ? data.payload.locale : data.locale;
+                    studioLog("locale synchronized from studio", locale);
+                    applyStudioLocale(locale);
+                }
+            });
+
+            document.addEventListener("i18n:switched", function (event) {
+                var detail = event && event.detail ? event.detail : {};
+                reportWorkspaceLocale(detail.locale || "", detail.mode || null);
+            });
+        } catch (e) {
+            // ignore locale listener setup failures
+        }
+    }
+
     function getStudioTaskName(sess) {
         var sessionId = sess && sess.sessionId ? sess.sessionId : window.SESSION_ID;
 
@@ -284,6 +375,7 @@
 
     bindStudioNavigationBlockedListener();
     bindStudioThemeBridge();
+    bindStudioLocaleBridge();
 
     if (!isStudioPageEnabled) {
         studioLog("inactive, missing studio=true");
@@ -291,12 +383,17 @@
     }
 
     function applyStudioAppearance() {
-        var hiddenControlIds = ["welcomeVoiceBtn", "chatVoiceBtn"];
+        var hiddenControlIds = ["newChatVoiceBtn", "chatVoiceBtn"];
         for (var i = 0; i < hiddenControlIds.length; i += 1) {
             var control = document.getElementById(hiddenControlIds[i]);
             if (control) {
                 control.style.display = "none";
             }
+        }
+
+        var wsOpenBtn = document.getElementById("wsOpenBtn");
+        if (wsOpenBtn) {
+            wsOpenBtn.style.display = "none";
         }
 
         var themeButton = document.getElementById("themeBtn");
@@ -314,6 +411,13 @@
 
         studioLog("studio appearance applied with theme:", currentTheme);
         dispatchStudioMessage("soloncode-theme-ready", {});
+        var activeLocale = window.I18n && typeof window.I18n.getLocale === "function" ? window.I18n.getLocale() : "";
+        var systemMode = !!(window.I18n && window.I18n.isSystemMode && window.I18n.isSystemMode());
+        dispatchStudioMessage("soloncode-locale-ready", {
+            locale: systemMode ? "system" : activeLocale,
+            mode: systemMode ? "system" : null,
+            resolvedLocale: activeLocale
+        });
     }
 
     studioLog("active");

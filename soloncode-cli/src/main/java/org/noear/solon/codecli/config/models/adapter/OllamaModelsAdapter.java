@@ -2,6 +2,7 @@ package org.noear.solon.codecli.config.models.adapter;
 
 import lombok.extern.slf4j.Slf4j;
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.config.models.ModelApiUrl;
 import org.noear.solon.codecli.config.models.ModelInfo;
 import org.noear.solon.codecli.config.models.ModelsAdapter;
@@ -40,6 +41,7 @@ public class OllamaModelsAdapter implements ModelsAdapter {
             HttpUtils http = HttpUtils.http(modelsUrl)
                     .userAgent(userAgent)
                     .timeout(15);
+            ProxyConfig.applyIfNeeded(http);
 
             if (headers != null) {
                 headers.forEach(http::header);
@@ -73,7 +75,7 @@ public class OllamaModelsAdapter implements ModelsAdapter {
                 }
             }
         } catch (Exception e) {
-            log.warn("[Ollama] Error fetching models from {}: {}", modelsUrl, e.getMessage());
+            log.warn("[Ollama] Error fetching models from {}: {}", modelsUrl, e.getMessage(), e);
         }
 
         return result;

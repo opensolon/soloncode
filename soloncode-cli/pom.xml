@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>soloncode-parent</artifactId>
-        <version>2026.7.30</version>
+        <version>2026.8.28</version>
         <relativePath>../soloncode-parent/pom.xml</relativePath>
     </parent>
 
@@ -20,6 +20,12 @@
         <dependency>
             <groupId>org.noear</groupId>
             <artifactId>solon-ai-harness</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>soloncode-ui-extension</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <dependency>
@@ -40,7 +46,7 @@
 
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>solon-server-smarthttp</artifactId>
+            <artifactId>solon-server-feathttp</artifactId>
         </dependency>
 
         <dependency>

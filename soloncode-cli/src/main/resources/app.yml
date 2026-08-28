@@ -24,16 +24,18 @@ solon.logging.appender:
   console:
     enable: false
   file:
+    enable: false
     level: INFO
-    name: ".soloncode/logs/${solon.app.name}"
+    name: "${user.home}/.soloncode/workspaces/${soloncode.wskey}/logs/${solon.app.name}"
     extension: ".log"
     maxFileSize: "10 MB"
     maxHistory: "7" #单位：天
+    totalSizeCap: "200 MB"
 
 solon:
   logging:
     logger:
       "org.eclipse.jetty":
-        level: WRAN
+        level: WARN
       "io.modelcontextprotocol":
         level: INFO

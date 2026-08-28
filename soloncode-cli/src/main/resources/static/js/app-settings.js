@@ -36,7 +36,7 @@
     function postJson(url, data, doneFn, alwaysFn) {
         return $.ajax({ url: url, method: 'POST', data: JSON.stringify(data), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) { doneFn(resp); })
-            .fail(function () { showToast('网络错误', 'error'); })
+            .fail(function () { showToast(I18n.t('toast.networkError'), 'error'); })
             .always(function () { if (alwaysFn) alwaysFn(); });
     }
 
@@ -55,11 +55,11 @@
                 var ok = resp.code === 200;
                 if (opts.isList && ok) ok = resp.data && resp.data.length > 0;
                 opts.$result.attr('class', opts.cls + ' ' + (ok ? 'success' : 'error'))
-                    .html((ok ? okSvg : failSvg) + escapeHtml(ok ? (opts.successMsg || '连接成功') : (resp.message || opts.failMsg || '连接失败')))
+                    .html((ok ? okSvg : failSvg) + escapeHtml(ok ? (opts.successMsg || I18n.t('settings.checkOk')) : (resp.message || opts.failMsg || I18n.t('settings.checkFail'))))
                     .css('display', 'flex');
             })
             .fail(function (jqXHR, textStatus) {
-                var msg = textStatus === 'timeout' ? '连接超时（15秒），请检查地址是否正确' : '网络错误，请重试';
+                var msg = textStatus === 'timeout' ? I18n.t('settings.checkTimeout') : I18n.t('toast.networkErrorRetry');
                 opts.$result.attr('class', opts.cls + ' error').html(msg).css('display', 'flex');
             })
             .always(function () { $btn.prop('disabled', false).html(btnOriginal); });
@@ -118,6 +118,10 @@
 
     function closeSettings() {
         $overlay.hide();
+        // 字体是即时预览的，未点保存就关闭要回滚到已持久化的值
+        if (mod('_settingsGeneral') && typeof mod('_settingsGeneral').revertFont === 'function') {
+            mod('_settingsGeneral').revertFont();
+        }
         if (mod('_settingsLlm')) mod('_settingsLlm').showList();
         if (mod('_settingsMcp')) mod('_settingsMcp').showList();
         if (mod('_settingsOpenapi')) mod('_settingsOpenapi').showList();
@@ -181,6 +185,9 @@
         } else if (targetTab === 'lsp') {
             $('#settingsTabLsp').addClass('active');
             if (mod('_settingsLsp')) mod('_settingsLsp').load();
+        } else if (targetTab === 'users') {
+            $('#settingsTabUsers').addClass('active');
+            if (mod('_settingsUsers')) mod('_settingsUsers').load();
         } else if (targetTab === 'providers') {
             $('#settingsTabProviders').addClass('active');
             if (window.settingsProviders) window.settingsProviders.loadList();
@@ -203,6 +210,7 @@
         else if (targetTab === 'mcp') { if (mod('_settingsMcp')) mod('_settingsMcp').load(); }
         else if (targetTab === 'openapi') { if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load(); }
         else if (targetTab === 'lsp') { if (mod('_settingsLsp')) mod('_settingsLsp').load(); }
+        else if (targetTab === 'users') { if (mod('_settingsUsers')) mod('_settingsUsers').load(); }
         else if (targetTab === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
     }
 
@@ -223,19 +231,19 @@
         })
             .done(function (resp) {
                 if (!resp || resp.code !== 200) {
-                    showToast((resp && resp.message) || '重新加载失败', 'error');
+                    showToast((resp && resp.message) || I18n.t('settings.reloadFailed'), 'error');
                     return;
                 }
 
                 var data = resp.data || {};
                 if (!data.reloaded) {
-                    showToast('磁盘配置无变化');
+                    showToast(I18n.t('settings.reloadNoChange'));
                 } else {
                     var warnings = data.warnings || [];
                     if (warnings.length) {
-                        showToast('已从磁盘重新加载（部分项需重启）');
+                        showToast(I18n.t('settings.reloadDoneWarn'));
                     } else {
-                        showToast('已从磁盘重新加载');
+                        showToast(I18n.t('settings.reloadDone'));
                     }
                 }
 
@@ -250,7 +258,7 @@
                 }
             })
             .fail(function (jqXHR, textStatus) {
-                var msg = textStatus === 'timeout' ? '重新加载超时' : '网络错误';
+                var msg = textStatus === 'timeout' ? I18n.t('settings.reloadTimeout') : I18n.t('toast.networkError');
                 showToast(msg, 'error');
             })
             .always(function () {
@@ -260,9 +268,9 @@
 
     $('#settingsReloadBtn').on('click', function () {
         if (typeof layer !== 'undefined' && layer.confirm) {
-            layer.confirm('将从磁盘读取 settings.json 并应用到当前实例。<br>未保存的设置表单修改会丢失，是否继续？', {
-                title: '从磁盘重新加载',
-                btn: ['重新加载', '取消'],
+            layer.confirm(I18n.t('settings.reloadConfirm'), {
+                title: I18n.t('settings.reloadTitle'),
+                btn: [I18n.t('settings.reloadBtn'), I18n.t('common.cancel')],
                 icon: 3,
                 offset: '120px'
             }, function (index) {
@@ -272,7 +280,7 @@
             return;
         }
         // layer 不可用时的降级
-        if (window.confirm('将从磁盘读取 settings.json 并应用到当前实例。\n未保存的设置表单修改会丢失，是否继续？')) {
+        if (window.confirm(I18n.t('settings.reloadConfirm').replace(/<br>/g, '\n'))) {
             reloadSettingsFromDisk();
         }
     });

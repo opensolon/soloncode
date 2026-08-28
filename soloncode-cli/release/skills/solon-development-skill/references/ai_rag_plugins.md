@@ -2,7 +2,7 @@
 
 > 适用场景：选择 RAG 文档加载器、向量库后端、联网搜索插件。
 >
-> 目标版本：4.0.3。Embedding / Reranking / 检索流水线见 `ai_chat_rag_mcp.md`。
+> 目标版本：4.0.4。Embedding / Reranking / 检索流水线见 `ai_chat_rag_mcp.md`。
 >
 > **无**独立 `solon-ai-rag` 坐标；核心在 `solon-ai-core`，插件按需引入。
 
@@ -16,6 +16,7 @@
 | `solon-ai-load-html` | HTML | `HtmlSimpleLoader` |
 | `solon-ai-load-markdown` | Markdown | `MarkdownLoader` |
 | `solon-ai-load-ppt` | PowerPoint (.ppt/.pptx) | `PptLoader` |
+| `solon-ai-load-ddl` | DDL (SQL 建表语句) | `DdlLoader` |
 
 ```java
 // 各 Loader 用法一致；写入用 save，不要用 insert
@@ -36,6 +37,12 @@ repository.save(docs);
 | `solon-ai-repo-chroma` | Chroma |
 | `solon-ai-repo-weaviate` | Weaviate |
 | `solon-ai-repo-dashvector` | DashVector |
+| `solon-ai-repo-dashvector-official` | DashVector (官方 SDK) |
+| `solon-ai-repo-mariadb` | MariaDB |
+| `solon-ai-repo-mysql` | MySQL |
+| `solon-ai-repo-opensearch` | OpenSearch |
+| `solon-ai-repo-tcvectordb` | 腾讯云 VectorDB |
+| `solon-ai-repo-vectorex` | VectorEX |
 
 内存实现：`InMemoryRepository`（在 `solon-ai-core` 内，无需额外 artifact）。
 

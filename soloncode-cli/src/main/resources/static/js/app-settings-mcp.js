@@ -27,7 +27,7 @@
     var mcpCachedList = [];
 
     function showMcpListView() { $mcpToolsView.hide(); $mcpFormView.hide(); $mcpListView.addClass('slide-back').show(); setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260); }
-    function showMcpFormView(title, isEdit) { $mcpToolsView.hide(); $mcpFormTitle.text(title || '添加服务器'); $mcpListView.hide(); $mcpFormView.show(); $('#mcpFormActions').toggle(!!isEdit); }
+    function showMcpFormView(title, isEdit) { $mcpToolsView.hide(); $mcpFormTitle.text(title || I18n.t('mcp.formTitle')); $mcpListView.hide(); $mcpFormView.show(); $('#mcpFormActions').toggle(!!isEdit); }
     function setMcpType(type) {
         $mcpTypeBtns.removeClass('active');
         $mcpTypeBtns.filter('[data-type="' + type + '"]').addClass('active');
@@ -54,8 +54,8 @@
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无 MCP 服务器</div>'
-                + '<div class="mcp-empty-desc">MCP 服务器可扩展 AI 的工具能力，如文件系统访问、数据库查询、API 调用等</div>'
+                + '<div class="mcp-empty-title">' + I18n.t('mcp.empty') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('mcp.emptyDesc') + '</div>'
                 + '</div>';
         } else {
             var iconMap = { stdio: 'S', sse: 'R', streamable: 'H' };
@@ -67,11 +67,11 @@
                 html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="settings-list-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="settings-list-info">'
-                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
+                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">' + I18n.t('mcp.scope.workspace') + '</span>' : '') + '</div>'
                     + (detail ? '<div class="settings-list-desc">' + escapeHtml(detail) + '</div>' : '')
                     + '</div><div class="settings-list-actions">'
-                    + '<button class="settings-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
-                    + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
+                    + '<button class="settings-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="' + I18n.t('mcp.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? I18n.t('mcp.toggleDisable') : I18n.t('mcp.toggleEnable')) + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="mcp-toggle"/>'
                     + '<span class="toggle-slider"></span>'
                     + '</label>'
@@ -103,16 +103,16 @@
         $mcpListView.hide();
         $mcpFormView.hide();
         $mcpToolsView.show();
-        $mcpToolsTitle.text(name + ' - 工具列表');
-        $mcpToolsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $mcpToolsTitle.text(name + I18n.t('mcp.toolListTitle'));
+        $mcpToolsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>' + I18n.t('common.loading') + '</span></div></div>');
         $.get('/web/settings/mcp/servers/tools?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) {
                 renderMcpTools(resp.data, name);
             } else {
-                $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+                $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || I18n.t('mcp.loadToolsFailed')) + '</div></div>');
             }
         }).fail(function () {
-            $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
+            $mcpToolsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + I18n.t('mcp.loadToolsFailed') + '</div></div>');
         });
     }
 
@@ -124,7 +124,7 @@
         var $toggles = $mcpToolsList.find('.mcp-tool-toggle');
         var total = $toggles.length;
         var checked = $toggles.filter(':checked').length;
-        $('#mcpToolsCount').text(checked + ' / ' + total + ' 已启用');
+        $('#mcpToolsCount').text(I18n.t('mcp.toolsEnabledPart', { n: checked, m: total }));
         $('#mcpToolsSelectAll').prop('checked', total > 0 && checked === total);
     }
 
@@ -137,8 +137,8 @@
             $toolbar.hide();
             $mcpToolsList.html('<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>'
-                + '<div class="mcp-empty-title">服务器未连接</div>'
-                + '<div class="mcp-empty-desc">请先启用并确保该 MCP 服务器可正常连接</div></div>');
+                + '<div class="mcp-empty-title">' + I18n.t('mcp.serverOffline') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('mcp.serverOfflineHint') + '</div></div>');
             return;
         }
         var tools = data.tools || [];
@@ -146,8 +146,8 @@
             $toolbar.hide();
             $mcpToolsList.html('<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无工具</div>'
-                + '<div class="mcp-empty-desc">该 MCP 服务器未提供任何工具</div></div>');
+                + '<div class="mcp-empty-title">' + I18n.t('mcp.noTools') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('mcp.noToolsDesc') + '</div></div>');
             return;
         }
 
@@ -159,7 +159,7 @@
         // 显示工具栏
         $toolbar.show();
         var checkedCount = tools.filter(function (t) { return !disallowedMap[t.name]; }).length;
-        $('#mcpToolsCount').text(checkedCount + ' / ' + tools.length + ' 已启用');
+        $('#mcpToolsCount').text(I18n.t('mcp.toolsEnabledPart', { n: checkedCount, m: tools.length }));
         $('#mcpToolsSelectAll').prop('checked', checkedCount === tools.length);
 
         var html = '';
@@ -167,7 +167,7 @@
             var toolName = tool.name || '';
             var isEnabled = !disallowedMap[toolName];
             html += '<div class="settings-list-item mcp-tool-item" data-tool="' + escapeAttr(toolName) + '">'
-                + '<label class="mcp-tool-checkbox" title="' + (isEnabled ? '禁用' : '启用') + '">'
+                + '<label class="mcp-tool-checkbox" title="' + (isEnabled ? I18n.t('mcp.toolDisable') : I18n.t('mcp.toolEnable')) + '">'
                 + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-tool="' + escapeAttr(toolName) + '" class="mcp-tool-toggle"/>'
                 + '<span class="mcp-tool-checkmark"></span>'
                 + '</label>'
@@ -211,8 +211,8 @@
         postJson('/web/settings/mcp/servers/tools/save',
             { serverName: mcpToolsServerName, disallowedTools: disallowedTools },
             function (resp) {
-                if (resp.code === 200) showToast('工具权限已保存');
-                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+                if (resp.code === 200) showToast(I18n.t('mcp.toolsSaved'));
+                else showToast(I18n.t('toast.saveFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
             },
             function () { $btn.prop('disabled', false); }
         );
@@ -222,7 +222,7 @@
 
     function resetMcpForm() {
         mcpEditName = null;
-        $mcpSaveBtn.text('保存');
+        $mcpSaveBtn.text(I18n.t('mcp.saveBtn'));
         $('#mcpName').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#mcpCommand, #mcpArgs, #mcpEnv, #mcpRemoteUrl, #mcpHeaders, #mcpTimeout').val('');
         setScopeValue('mcpScope', 'user');
@@ -253,14 +253,14 @@
     function buildMcpBodyObj() {
         var name = $('#mcpName').val().trim();
         var type = $('#mcpAddForm .mcp-type-btn.active').attr('data-type') || 'stdio';
-        if (!name) { showToast('名称为必填项', 'error'); return null; }
-        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
+        if (!name) { showToast(I18n.t('mcp.nameRequired'), 'error'); return null; }
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast(I18n.t('mcp.nameInvalid'), 'error'); return null; }
 
         var bodyObj = { name: name, type: type, enabled: true, scope: $('#mcpScope').val() || 'user' };
 
         if (type === 'stdio') {
             var command = $('#mcpCommand').val().trim();
-            if (!command) { showToast('命令为必填项', 'error'); return null; }
+            if (!command) { showToast(I18n.t('mcp.commandRequired'), 'error'); return null; }
             bodyObj.command = command;
             var argsText = $('#mcpArgs').val().trim();
             if (argsText) bodyObj.args = argsText.split('\n').filter(function (l) { return l.trim() !== ''; });
@@ -268,8 +268,8 @@
             if (Object.keys(env).length > 0) bodyObj.env = env;
         } else if (type === 'sse' || type === 'streamable') {
             var url = $('#mcpRemoteUrl').val().trim();
-            if (!url) { showToast('URL 为必填项', 'error'); return null; }
-            if (!/^https?:\/\/.+/.test(url)) { showToast('URL 必须以 http:// 或 https:// 开头', 'error'); return null; }
+            if (!url) { showToast(I18n.t('mcp.urlRequired'), 'error'); return null; }
+            if (!/^https?:\/\/.+/.test(url)) { showToast(I18n.t('mcp.urlInvalid'), 'error'); return null; }
             bodyObj.url = url;
             var headers = parseKvLines($('#mcpHeaders').val().trim());
             if (Object.keys(headers).length > 0) bodyObj.headers = headers;
@@ -283,8 +283,8 @@
         var server = mcpCachedList.find(function (s) { return s.name === name; });
         if (!server) return;
         mcpEditName = name;
-        showMcpFormView('编辑服务器', true);
-        $mcpSaveBtn.text('更新');
+        showMcpFormView(I18n.t('mcp.editTitle'), true);
+        $mcpSaveBtn.text(I18n.t('mcp.updateBtn'));
         $('#mcpName').val(server.name).prop('readOnly', true).addClass('readonly-gray');
         fillMcpForm(server);
     }
@@ -293,8 +293,8 @@
         var server = mcpCachedList.find(function (s) { return s.name === name; });
         if (!server) return;
         mcpEditName = null;
-        showMcpFormView('添加服务器', false);
-        $mcpSaveBtn.text('保存');
+        showMcpFormView(I18n.t('mcp.formTitle'), false);
+        $mcpSaveBtn.text(I18n.t('mcp.saveBtn'));
         $('#mcpName').val(server.name + '-copy').prop('readOnly', false).removeClass('readonly-gray');
         fillMcpForm(server);
     }
@@ -302,19 +302,19 @@
     function mcpRemoveServer(name) {
         postJson('/web/settings/mcp/servers/remove', { name: name }, function (resp) {
             if (resp.code === 200) { showMcpListView(); loadMcpList(); }
-            else showToast('删除失败: ' + (resp.message || '未知错误'), 'error');
+            else showToast(I18n.t('mcp.deleteFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
         });
     }
 
     function mcpToggleServer(name, enabled) {
         postJson('/web/settings/mcp/servers/toggle', { name: name, enabled: enabled }, function (resp) {
-            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadMcpList(); }
+            if (resp.code !== 200) { showToast(I18n.t('toast.operateFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error'); loadMcpList(); }
             else { loadMcpList(); }
         });
     }
 
     // MCP 按钮事件
-    $('#mcpAddBtn').on('click', function () { resetMcpForm(); showMcpFormView('添加服务器', false); });
+    $('#mcpAddBtn').on('click', function () { resetMcpForm(); showMcpFormView(I18n.t('mcp.formTitle'), false); });
     $('#mcpBackBtn').on('click', function () { showMcpListView(); resetMcpForm(); });
 
     $mcpTypeBtns.on('click', function () { setMcpType($(this).attr('data-type')); });
@@ -324,15 +324,14 @@
         if (!bodyObj) return;
         var isEdit = !!mcpEditName;
         var url = isEdit ? '/web/settings/mcp/servers/update' : '/web/settings/mcp/servers/add';
-        var actionText = isEdit ? '更新' : '添加';
 
         $mcpSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { showToast(actionText + '成功'); loadMcpList(); showMcpListView(); resetMcpForm(); }
-                else showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error');
+                if (resp.code === 200) { showToast(isEdit ? I18n.t('mcp.updated') : I18n.t('mcp.added')); loadMcpList(); showMcpListView(); resetMcpForm(); }
+                else showToast((isEdit ? I18n.t('mcp.updateFailed') : I18n.t('mcp.addFailed')) + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
             })
-            .fail(function () { showToast('网络错误', 'error'); })
+            .fail(function () { showToast(I18n.t('toast.networkError'), 'error'); })
             .always(function () { $mcpSaveBtn.prop('disabled', false); });
     });
 
@@ -346,7 +345,7 @@
     $('#mcpFormDeleteBtn').on('click', function () {
         var name = mcpEditName;
         if (!name) return;
-        layer.confirm('确定删除 MCP 服务器 "' + name + '"？', { title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px' }, function(index) {
+        layer.confirm(I18n.t('mcp.deleteConfirm', { name: name }), { title: I18n.t('mcp.deleteConfirmTitle'), btn: [I18n.t('common.delete'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
             layer.close(index);
             mcpRemoveServer(name);
         });
@@ -359,7 +358,7 @@
         if (!bodyObj) return;
         var $btn = $(this);
         var btnOriginal = $btn.html();
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 检测中...');
+        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> ' + I18n.t('mcp.testing'));
         $mcpCheckResult.hide();
 
         $.ajax({ url: '/web/settings/mcp/servers/check', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json', timeout: 15000 })
@@ -369,11 +368,11 @@
                     ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> '
                     : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ';
                 $mcpCheckResult.attr('class', 'mcp-check-result ' + (ok ? 'success' : 'error'))
-                    .html(svg + escapeHtml(resp.message || (ok ? '连接成功' : '连接失败')))
+                    .html(svg + escapeHtml(resp.message || (ok ? I18n.t('mcp.testOk') : I18n.t('mcp.testFail'))))
                     .css('display', 'flex');
             })
             .fail(function (jqXHR, textStatus) {
-                var msg = textStatus === 'timeout' ? '检测超时（15秒），请检查服务器是否可达' : '网络错误，请重试';
+                var msg = textStatus === 'timeout' ? I18n.t('mcp.testTimeout') : I18n.t('toast.networkErrorRetry');
                 $mcpCheckResult.attr('class', 'mcp-check-result error').html(msg).css('display', 'flex');
             })
             .always(function () { $btn.prop('disabled', false).html(btnOriginal); });
@@ -424,7 +423,7 @@
     function showImportPreview(data, onConfirm) {
         var servers = data.servers || [];
         if (servers.length === 0) {
-            showToast('未找到有效的 MCP 服务器配置', 'error');
+            showToast(I18n.t('mcp.noValidConfig'), 'error');
             return;
         }
         
@@ -437,12 +436,12 @@
             
             var exists = mcpCachedList.some(function(s) { return s.name === name; });
             var statusBadge = exists
-                ? '<span class="import-preview-badge badge-exists" title="已存在同名服务器，导入将跳过">已存在</span>'
-                : '<span class="import-preview-badge badge-new">新导入</span>';
+                ? '<span class="import-preview-badge badge-exists" title="' + I18n.t('mcp.existsSameNameTitle') + '">' + I18n.t('mcp.reasonExists') + '</span>'
+                : '<span class="import-preview-badge badge-new">' + I18n.t('mcp.newImport') + '</span>';
             var disabled = exists ? ' disabled' : '';
             
             var errorBadge = srv.error
-                ? '<span class="import-preview-badge badge-error" title="' + escapeAttr(srv.error) + '">格式错误</span>'
+                ? '<span class="import-preview-badge badge-error" title="' + escapeAttr(srv.error) + '">' + I18n.t('mcp.formatError') + '</span>'
                 : '';
             
             previewItems += '<div class="import-preview-item">'
@@ -458,24 +457,24 @@
         });
         
         // 检测来源格式标签
-        var formatLabel = data.format || '自动检测';
+        var formatLabel = data.format || I18n.t('mcp.autoDetect');
         var formatTag = '<span class="import-format-tag">' + escapeHtml(formatLabel) + '</span>';
         
         var dialogHtml = '<div class="import-overlay" id="importPreviewOverlay">'
             + '<div class="import-dialog">'
             + '<div class="import-dialog-header">'
-            + '<span class="import-dialog-title">导入 MCP 服务器</span>'
+            + '<span class="import-dialog-title">' + I18n.t('mcp.importDialogTitle') + '</span>'
             + '<button class="import-dialog-close" id="importPreviewClose">&times;</button>'
             + '</div>'
             + '<div class="import-dialog-body">'
             + '<div class="import-summary">'
-            + '检测到 <strong>' + servers.length + '</strong> 个 MCP 服务器配置 ' + formatTag
+            + I18n.t('mcp.importDetected', { n: servers.length }) + ' ' + formatTag
             + '</div>'
             + '<div class="import-preview-list">' + previewItems + '</div>'
             + '</div>'
             + '<div class="import-dialog-footer">'
-            + '<button class="btn-secondary" id="importPreviewCancel">取消</button>'
-            + '<button class="btn-primary" id="importPreviewConfirm">导入所选 (<span id="importSelectedCount">' + servers.filter(function(s){return !mcpCachedList.some(function(c){return c.name===s.name;}) && !s.error;}).length + '</span>)</button>'
+            + '<button class="btn-secondary" id="importPreviewCancel">' + I18n.t('common.cancel') + '</button>'
+            + '<button class="btn-primary" id="importPreviewConfirm">' + I18n.t('mcp.importSelected', { n: '<span id="importSelectedCount">' + servers.filter(function(s){return !mcpCachedList.some(function(c){return c.name===s.name;}) && !s.error;}).length + '</span>' }) + '</button>'
             + '</div>'
             + '</div>'
             + '</div>';
@@ -502,7 +501,7 @@
             if (selected.length > 0) {
                 onConfirm(selected);
             } else {
-                showToast('未选择任何服务器', 'info');
+                showToast(I18n.t('mcp.noneSelected'), 'info');
             }
         });
         
@@ -523,13 +522,13 @@
         var html = '<div class="import-overlay" id="importProgressOverlay">'
             + '<div class="import-dialog import-dialog-progress">'
             + '<div class="import-dialog-header">'
-            + '<span class="import-dialog-title">正在导入...</span>'
+            + '<span class="import-dialog-title">' + I18n.t('mcp.importing') + '</span>'
             + '</div>'
             + '<div class="import-dialog-body">'
             + '<div class="import-progress-bar-wrap">'
             + '<div class="import-progress-fill" id="importProgressFill" style="width:0%"></div>'
             + '</div>'
-            + '<div class="import-progress-status" id="importProgressStatus">准备中...</div>'
+            + '<div class="import-progress-status" id="importProgressStatus">' + I18n.t('mcp.preparing') + '</div>'
             + '<div class="import-progress-log" id="importProgressLog"></div>'
             + '</div>'
             + '</div>'
@@ -563,7 +562,7 @@
         var importedHtml = '';
         if (hasImported) {
             importedHtml = '<div class="import-result-section">'
-                + '<div class="import-result-title success">✓ 成功导入 (' + result.imported.length + ')</div>'
+                + '<div class="import-result-title success">✓ ' + I18n.t('mcp.importSuccess', { n: result.imported.length }) + '</div>'
                 + '<div class="import-result-items">';
             result.imported.forEach(function(name) {
                 importedHtml += '<div class="import-result-item imported-item" data-name="' + escapeAttr(name) + '">'
@@ -576,12 +575,12 @@
         var skippedHtml = '';
         if (hasSkipped) {
             skippedHtml = '<div class="import-result-section">'
-                + '<div class="import-result-title skipped">→ 已跳过 (' + result.skipped.length + ')</div>'
+                + '<div class="import-result-title skipped">→ ' + I18n.t('mcp.importSkipped', { n: result.skipped.length }) + '</div>'
                 + '<div class="import-result-items">';
             result.skipped.forEach(function(item) {
                 skippedHtml += '<div class="import-result-item skipped-item">'
                     + '<span class="import-result-name">' + escapeHtml(item.name) + '</span>'
-                    + '<span class="import-result-reason">' + escapeHtml(item.reason || '已存在') + '</span>'
+                    + '<span class="import-result-reason">' + escapeHtml(item.reason || I18n.t('mcp.reasonExists')) + '</span>'
                     + '</div>';
             });
             skippedHtml += '</div></div>';
@@ -590,38 +589,34 @@
         var errorsHtml = '';
         if (hasErrors) {
             errorsHtml = '<div class="import-result-section">'
-                + '<div class="import-result-title error">✗ 导入失败 (' + result.errors.length + ')</div>'
+                + '<div class="import-result-title error">✗ ' + I18n.t('mcp.importFailedCount', { n: result.errors.length }) + '</div>'
                 + '<div class="import-result-items">';
             result.errors.forEach(function(item) {
                 errorsHtml += '<div class="import-result-item error-item">'
                     + '<span class="import-result-name">' + escapeHtml(item.name) + '</span>'
-                    + '<span class="import-result-reason">' + escapeHtml(item.reason || '未知错误') + '</span>'
+                    + '<span class="import-result-reason">' + escapeHtml(item.reason || I18n.t('mcp.reasonUnknown')) + '</span>'
                     + '</div>';
             });
             errorsHtml += '</div></div>';
         }
         
         var rollbackBtn = hasImported
-            ? '<button class="btn-secondary" id="importRollbackBtn">↩ 撤销导入</button>'
+            ? '<button class="btn-secondary" id="importRollbackBtn">' + I18n.t('mcp.undoImport') + '</button>'
             : '';
         
         var dialogHtml = '<div class="import-overlay" id="importResultOverlay">'
             + '<div class="import-dialog import-dialog-result">'
             + '<div class="import-dialog-header">'
-            + '<span class="import-dialog-title">导入完成</span>'
+            + '<span class="import-dialog-title">' + I18n.t('mcp.importDone') + '</span>'
             + '<button class="import-dialog-close" id="importResultClose">&times;</button>'
             + '</div>'
             + '<div class="import-dialog-body">'
             + importedHtml + skippedHtml + errorsHtml
-            + '<div class="import-result-summary">共 ' + result.total + ' 个服务器，'
-            + '成功 ' + result.imported.length + '，'
-            + '跳过 ' + result.skipped.length + '，'
-            + '失败 ' + result.errors.length + ''
-            + '</div>'
+            + '<div class="import-result-summary">' + I18n.t('mcp.importSummary', { total: result.total, ok: result.imported.length, skip: result.skipped.length, fail: result.errors.length }) + '</div>'
             + '</div>'
             + '<div class="import-dialog-footer">'
             + rollbackBtn
-            + '<button class="btn-primary" id="importResultDone">完成</button>'
+            + '<button class="btn-primary" id="importResultDone">' + I18n.t('mcp.doneBtn') + '</button>'
             + '</div>'
             + '</div>'
             + '</div>';
@@ -639,13 +634,13 @@
         if (hasImported) {
             $('#importRollbackBtn').on('click', function() {
                 var $btn = $(this);
-                layer.confirm('确定要撤销刚刚导入的 ' + result.imported.length + ' 个 MCP 服务器吗？', { title: '确认撤销', btn: ['撤销', '取消'], icon: 3, offset: '120px' }, function(index) {
+                layer.confirm(I18n.t('mcp.undoConfirm', { n: result.imported.length }), { title: I18n.t('mcp.undoConfirmTitle'), btn: [I18n.t('mcp.undoBtn'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
                     layer.close(index);
-                    $btn.prop('disabled', true).text('撤销中...');
+                    $btn.prop('disabled', true).text(I18n.t('mcp.undoing'));
                     rollbackImport(result.imported, function(successCount) {
                         $overlay.remove();
                         loadMcpList();
-                        showToast('已撤销 ' + successCount + ' 个服务器', 'info');
+                        showToast(I18n.t('mcp.undoDone', { n: successCount }), 'info');
                     });
                 });
             });
@@ -720,22 +715,20 @@
         var dialogHtml = '<div class="import-overlay" id="importStringOverlay">'
             + '<div class="import-dialog">'
             + '<div class="import-dialog-header">'
-            + '<span class="import-dialog-title">导入 JSON 字符串</span>'
+            + '<span class="import-dialog-title">' + I18n.t('mcp.jsonDialogTitle') + '</span>'
             + '<button class="import-dialog-close" id="importStringClose">&times;</button>'
             + '</div>'
             + '<div class="import-dialog-body">'
-            + '<div class="import-summary">粘贴 MCP 服务器配置 JSON 字符串，支持以下格式：</div>'
+            + '<div class="import-summary">' + I18n.t('mcp.jsonHint') + '</div>'
             + '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;line-height:1.8;">'
-            + '<span class="import-string-code">{"mcpServers": {...}}</span> Claude Desktop / Cursor 格式<br/>'
-            + '<span class="import-string-code">{"mcp": {...}}</span> OpenCode 格式<br/>'
-            + '<span class="import-string-code">{"format":"mcp","servers":{...}}</span> 标准格式'
+            + I18n.t('mcp.jsonFormatHint')
             + '</div>'
-            + '<textarea class="import-string-textarea" id="importStringInput" placeholder="在此粘贴 JSON 字符串..." spellcheck="false"></textarea>'
-            + '<div class="import-string-hint">粘贴后点击「解析」进行预览，确认后再批量添加</div>'
+            + '<textarea class="import-string-textarea" id="importStringInput" placeholder="' + I18n.t('mcp.jsonPlaceholder') + '" spellcheck="false"></textarea>'
+            + '<div class="import-string-hint">' + I18n.t('mcp.jsonParseHint') + '</div>'
             + '</div>'
             + '<div class="import-dialog-footer">'
-            + '<button class="btn-secondary" id="importStringCancel">取消</button>'
-            + '<button class="btn-primary" id="importStringConfirm">解析</button>'
+            + '<button class="btn-secondary" id="importStringCancel">' + I18n.t('common.cancel') + '</button>'
+            + '<button class="btn-primary" id="importStringConfirm">' + I18n.t('mcp.parseBtn') + '</button>'
             + '</div>'
             + '</div>'
             + '</div>';
@@ -753,7 +746,7 @@
         $('#importStringConfirm').on('click', function () {
             var jsonStr = $('#importStringInput').val().trim();
             if (!jsonStr) {
-                showToast('请输入 JSON 字符串', 'error');
+                showToast(I18n.t('mcp.jsonEmpty'), 'error');
                 return;
             }
             
@@ -761,7 +754,7 @@
             try {
                 JSON.parse(jsonStr);
             } catch (e) {
-                showToast('JSON 格式无效，请检查后重试', 'error');
+                showToast(I18n.t('mcp.jsonInvalid'), 'error');
                 return;
             }
             
@@ -769,7 +762,7 @@
             $overlay.remove();
             
             // 直接 POST JSON 字符串到后端解析接口（复用文件导入的同一套解析逻辑）
-            $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 解析中...');
+            $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> ' + I18n.t('mcp.parsing'));
             
             $.ajax({
                 url: '/web/settings/mcp/import/parse/string',
@@ -783,14 +776,14 @@
                             executeImport(selectedNames, resp.data.servers);
                         });
                     } else {
-                        showToast('解析失败: ' + (resp.message || '未知错误'), 'error');
+                        showToast(I18n.t('mcp.parseFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
                     }
                 },
                 error: function() {
-                    showToast('解析失败，请检查 JSON 字符串格式后重试', 'error');
+                    showToast(I18n.t('mcp.parseFailedRetry'), 'error');
                 },
                 complete: function() {
-                    $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导入');
+                    $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> ' + I18n.t('mcp.importBtn'));
                 }
             });
         });
@@ -816,7 +809,7 @@
         formData.append('file', file);
         
         // 上传到后端解析
-        $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 解析中...');
+        $('#mcpImportBtn').prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> ' + I18n.t('mcp.parsing'));
         
         $.ajax({
             url: '/web/settings/mcp/import/parse',
@@ -832,14 +825,14 @@
                         executeImport(selectedNames, resp.data.servers);
                     });
                 } else {
-                    showToast('解析失败: ' + (resp.message || '未知错误'), 'error');
+                    showToast(I18n.t('mcp.parseFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
                 }
             },
             error: function() {
-                showToast('上传解析失败，请检查文件格式后重试', 'error');
+                showToast(I18n.t('mcp.uploadParseFailed'), 'error');
             },
             complete: function() {
-                $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导入');
+                $('#mcpImportBtn').prop('disabled', false).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> ' + I18n.t('mcp.importBtn'));
             }
         });
         
@@ -868,12 +861,12 @@
         });
         
         createProgressDialog();
-        appendProgressLog('开始导入 ' + names.length + ' 个 MCP 服务器...');
+        appendProgressLog(I18n.t('mcp.startImport', { n: names.length }));
         
         function processNext(index) {
             if (index >= names.length) {
                 // 完成
-                appendProgressLog('导入完成！');
+                appendProgressLog(I18n.t('mcp.importCompleted'));
                 lastImportSession = result;
                 showImportResult(result);
                 return;
@@ -882,13 +875,13 @@
             var name = names[index];
             var serverConfig = serverMap[name];
             
-            updateProgress(index + 1, names.length, '正在导入 ' + (index + 1) + '/' + names.length + ': ' + name);
+            updateProgress(index + 1, names.length, I18n.t('mcp.importProgress', { i: index + 1, n: names.length, name: name }));
             
             // 检查是否已存在同名服务器
             var exists = mcpCachedList.some(function(s) { return s.name === name; });
             if (exists) {
-                result.skipped.push({ name: name, reason: '已存在同名服务器' });
-                appendProgressLog('✖ ' + name + ': 已跳过（已存在）', false);
+                result.skipped.push({ name: name, reason: I18n.t('mcp.existsSameName') });
+                appendProgressLog('✖ ' + name + ': ' + I18n.t('mcp.skippedExists'), false);
                 processNext(index + 1);
                 return;
             }
@@ -912,14 +905,14 @@
                 delete mcpBody.timeout;
             }
             if (!mcpBody.name || !mcpBody.type) {
-                result.errors.push({ name: name, reason: '配置数据不完整' });
-                appendProgressLog('✗ ' + name + ': 配置数据不完整', true);
+                result.errors.push({ name: name, reason: I18n.t('mcp.configIncomplete') });
+                appendProgressLog('✗ ' + name + ': ' + I18n.t('mcp.configIncomplete'), true);
                 processNext(index + 1);
                 return;
             }
             
             // 调用保存 API
-            appendProgressLog('→ ' + name + ': 正在导入...');
+            appendProgressLog('→ ' + name + ': ' + I18n.t('mcp.importing'));
             $.ajax({
                 url: '/web/settings/mcp/servers/add',
                 method: 'POST',
@@ -929,16 +922,16 @@
                 success: function(resp) {
                     if (resp.code === 200) {
                         result.imported.push(name);
-                        appendProgressLog('✓ ' + name + ': 导入成功');
+                        appendProgressLog('✓ ' + name + ': ' + I18n.t('mcp.importedOne'));
                     } else {
-                        result.errors.push({ name: name, reason: resp.message || '导入失败' });
-                        appendProgressLog('✗ ' + name + ': ' + (resp.message || '失败'), true);
+                        result.errors.push({ name: name, reason: resp.message || I18n.t('mcp.importFailedOne') });
+                        appendProgressLog('✗ ' + name + ': ' + (resp.message || I18n.t('mcp.importFailedOne')), true);
                     }
                     processNext(index + 1);
                 },
                 error: function(jqXHR, textStatus) {
-                    result.errors.push({ name: name, reason: '网络错误: ' + textStatus });
-                    appendProgressLog('✗ ' + name + ': 网络错误', true);
+                    result.errors.push({ name: name, reason: I18n.t('toast.networkError') + ': ' + textStatus });
+                    appendProgressLog('✗ ' + name + ': ' + I18n.t('toast.networkError'), true);
                     processNext(index + 1);
                 }
             });

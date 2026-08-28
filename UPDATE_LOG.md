@@ -1,4 +1,133 @@
 
+### v2026.8.28
+
+* 优化 soloncode web 最后一条历史消息改用 trace 里获取（可以显示过程记录）
+* 优化 soloncode llm 协议兼容处理
+* 优化 soloncode llm 缓存率
+* 细节优化
+
+### v2026.8.27
+
+* 添加 soloncode web 对话即时 "插话" 功能（起到，“调整方式”或“补充想法”）
+* 优化 soloncode web 对话的最后一条历史消息采用流式风格展示
+* 细节优化
+
+### v2026.8.26
+
+* 优化 soloncode 大模型上下文的默认长度配置为 1M（之前是 128K）
+* 优化 soloncode lsp 体验（集成在 edit, write 工具中）
+* 优化 soloncode glob 工具摘要同时展示匹配模式与搜索路径
+* 优化 soloncode web 文件树、Git文件列表深层缩进支持横向滚动，待办文本改为自动换行不再截断省略
+* 优化 soloncode code.md 扫描层数
+* 细节优化
+
+### v2026.8.24
+
+* 调整 soloncode 工作区本地数据布局，按工作区聚合到 "~/.soloncode/workspaces/{workspaceKey}/" 下面（logs、sessions）
+* 调整 soloncode 会话存放位置，转出工作区（旧会话在工作区上下文创建时自动迁移，日志不迁移仅清理）
+* 优化 soloncode web 系统打开处理（浏览器，目录，文件）
+* 优化 soloncode web 文件树展开效果（之前到第6层就平层展开了）
+* 优化 soloncode web 用户侧消息增加子代理标识（方便识别是向谁请求的）
+* 优化 soloncode code 引导处理（增加4层扫描和缓存机制）
+* 细节优化
+
+### v2026.8.23
+
+* 添加 soloncode web 设置 Manage 工具支持开关（默认开启会占位置）
+* 添加 soloncode web 首次使用引导
+* 优化 soloncode web bash window 深度体验（之前的体验不好）
+* 优化 soloncode web 文件树体验（只有一个目录节点时，自动展开）
+* 修复 soloncode web 多语言有些 key 没有翻译的问题
+* 细节优化
+
+### v2026.8.22
+
+* 添加 soloncode web .uploads 等隐藏目录白名单使其在文件树中可见并统一目录过滤逻辑
+* 修复 soloncode web 有工具调用时输出文本会重复的问题（v2026.8.20 引起的）
+* 修复 soloncode web 当前任务列表没有时实同步的问题
+* 修复 soloncode web 文件节点名称溢出及箭头图标被压缩问题
+* 优化 soloncode llm 测试连接提示方式
+* 细节优化
+
+### v2026.8.21
+
+* 优化 soloncode llm 缓存率，并保持1位小数
+* 修复 soloncode llm anthropic 缓存率计算错误的问题
+* 修复 soloncode web 子代理执行时没有显示子代理名的问题
+* 细节优化
+
+### v2026.8.20
+
+* 新增 soloncode web 多工作区支持（一个工作区一个浏览器tab）
+* 添加 soloncode web 智能体选择模型支持
+* 优化 soloncode web 设置/供应商/模型管理体验
+* 重构 soloncode web 流式输出消息格式（SAEP 2.0 更规范）
+* 细节优化
+
+### v2026.8.17
+
+* 添加 soloncode web 供应商 google 方言支持
+* 优化 soloncode 缓存处理
+* 细节优化
+
+### v2026.8.15
+
+* 添加 soloncode web 缓存率显示
+* 添加 soloncode web 思考模式开关控制
+* 优化 soloncode llm 方言的兼容处理（有些 toolCalls 可能参数格式缺）
+* 优化 soloncode llm 思考与强度的兼容处理
+* 细节优化
+
+### v2026.8.11
+
+* 优化 soloncode proxy 和 user-agent 的传导（改为全局控制）
+* 细节优化
+
+### v2026.8.07
+
+* 添加 soloncode web diff 视图（文件路径）加入对话的功能
+* 优化 soloncode proxy 和 user-agent 的传导
+* 修复 soloncode websearch 总是失败的问题（默认 ua 被拦截了）
+* 修复 soloncode web 设置挂载添加时描述信息丢失的问题
+* 修复 soloncode web 初始加载后模型面板失真问题
+* 细节优化
+
+### v2026.8.6
+
+* 添加 soloncode web http 代理设置
+* 添加 soloncode web Modelscope 技能市场适配 
+* 优化 soloncode `/goal` 更新状态时的检测
+* 优化 soloncode openai-resposes 方言适配
+* 细节优化
+
+### v2026.8.5
+
+* 添加 soloncode http 代理支持
+* 添加 soloncode web 技能管理 启用开关
+* 优化 soloncode 沙盒处理细节
+* 修复 soloncode Windows 环境变量可能识别失误的问题
+* 修复 soloncode openapi2 可能无限递归解析的问题
+* 细节优化
+
+### v2026.8.4
+
+* 添加 soloncode web 调整字体功能
+* 优化 soloncode 心智记忆引导词和搜索能力
+
+### v2026.8.3
+
+* 添加 soloncode web 兼容 `glm-5.2[1m]` 风格的模型名解析
+* 优化 soloncode web 国际化多语言支持
+
+### v2026.8.2
+
+* 优化 soloncode run 模式（参考 run-headless-mode.md）
+* 添加 soloncode web 国际化多语言支持
+* 添加 soloncode web 消息列表消息导航支持
+* 修复 soloncode web 文件详情初次显示时语法高亮失效的问题
+* 修复 soloncode web 审查详情文件名中文乱码的问题
+* 细节优化
+
 ### v2026.7.30
 
 * 优化 soloncode acp 模式

@@ -6,7 +6,6 @@ import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 
-
 /**
  *
  * @author noear 2026/6/8 created
@@ -24,7 +23,7 @@ public class ManagerExtension implements HarnessExtension {
     }
 
     @Override
-    public void configure(String agentName, ReActAgent.Builder agentBuilder) {
+    public void configure(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
         if (AgentDefinition.AGENT_MAIN.equals(agentName)) {
             agentBuilder.defaultTalentAdd(managerTalent);
         }

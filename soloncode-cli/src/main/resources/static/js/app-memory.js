@@ -1,16 +1,16 @@
 /**
  * 心智记忆管理面板
- * 复用 gitDiffViewer 容器在中间大面板展示：左侧条目列表 + 右侧编辑区。
+ * 复用 gitViewer 容器在中间大面板展示：左侧条目列表 + 右侧编辑区。
  * 后端接口：/web/chat/memory/{list,get,save,remove}
  */
 (function () {
     'use strict';
 
-    var gitDiffViewer = document.getElementById('gitDiffViewer');
+    var gitViewer = document.getElementById('gitViewer');
     var gitViewerContent = document.getElementById('gitViewerContent');
     var gitViewerLabel = document.getElementById('gitViewerLabel');
     var gitViewerFile = document.getElementById('gitViewerFile');
-    var welcomeView = document.getElementById('welcomeView');
+    var newChatView = document.getElementById('newChatView');
     var chatView = document.getElementById('chatView');
     var memoryNavBtn = document.getElementById('memoryNavBtn');
     var memoryBadge = document.getElementById('memoryBadge');
@@ -32,14 +32,14 @@
 
     // ---- 中间面板显隐（参与 flex 布局：占据左侧边栏之后的整个区域，随边栏收起响应式变宽）----
     function showViewer() {
-        if (!gitDiffViewer) return;
-        if (welcomeView) welcomeView.style.display = 'none';
+        if (!gitViewer) return;
+        if (newChatView) newChatView.style.display = 'none';
         if (chatView) chatView.style.display = 'none';
         document.body.classList.add('memory-active');
-        gitDiffViewer.classList.add('mem-overlay');
-        gitDiffViewer.style.display = 'flex';
+        gitViewer.classList.add('mem-overlay');
+        gitViewer.style.display = 'flex';
 
-        if (gitViewerLabel) gitViewerLabel.textContent = '心智记忆';
+        if (gitViewerLabel) gitViewerLabel.textContent = I18n.t('memory.title');
         if (gitViewerFile) gitViewerFile.textContent = '';
 
         // 记忆面板 header 保留「新建」「全屏」「关闭」：显式复位 header 按钮，
@@ -48,21 +48,23 @@
         var _copyBtn = document.getElementById('gitViewerCopyBtn');
         var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
         var _memNewBtn = document.getElementById('gitViewerMemNew');
+        var _memClearBtn = document.getElementById('gitViewerMemClear');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
         if (_fullscreenBtn) _fullscreenBtn.style.display = '';
         if (_memNewBtn) _memNewBtn.style.display = '';
+        if (_memClearBtn) _memClearBtn.style.display = '';
 
         // 清理 git 模块可能残留的操作栏
-        var oldActions = gitDiffViewer.querySelector('.git-viewer-actions');
+        var oldActions = gitViewer.querySelector('.git-viewer-actions');
         if (oldActions) oldActions.remove();
     }
 
     // ---- 关闭：移除状态类，恢复顶部条与右侧任务面板，避免残留影响 git diff 内嵌视图 ----
     function closeOverlay() {
-        if (!gitDiffViewer) return;
+        if (!gitViewer) return;
         document.body.classList.remove('memory-active');
-        gitDiffViewer.classList.remove('mem-overlay');
+        gitViewer.classList.remove('mem-overlay');
     }
 
     // ---- 打开面板 ----
@@ -77,8 +79,8 @@
     function renderShell() {
         if (!gitViewerContent) return;
         gitViewerContent.innerHTML =
-            '<div class="mem-panel">' +
-            '  <div class="mem-list" id="memList"></div>' +
+            '<div class="memory-panel">' +
+            '  <div class="memory-list" id="memoryList"></div>' +
             '</div>';
     }
 
@@ -115,7 +117,7 @@
 
     // ---- 渲染列表（手风琴，单栏全宽）----
     function renderList(filter) {
-        var listEl = document.getElementById('memList');
+        var listEl = document.getElementById('memoryList');
         if (!listEl) return;
 
         var items = memoryList;
@@ -135,7 +137,7 @@
         }
 
         if (items.length === 0 && expandedKey !== NEW_KEY) {
-            listEl.innerHTML = '<div class="mem-list-empty">暂无记忆</div>';
+            listEl.innerHTML = '<div class="mem-list-empty">' + I18n.t('memory.empty') + '</div>';
             return;
         }
 
@@ -151,12 +153,12 @@
     // ---- 单行 HTML（收起头 + 可选展开体）----
     function rowHtml(it, isOpen, isNew) {
         var imp = Math.round(it.importance || 0);
-        var keyText = isNew ? '新建记忆' : escapeHtml(it.key);
+        var keyText = isNew ? I18n.t('memory.newMemory') : escapeHtml(it.key);
         var caret = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 4 10 8 6 12"></polyline></svg>';
         var openCls = isOpen ? ' open' : '';
         var dataKey = isNew ? NEW_KEY : escapeHtml(it.key);
 
-        var scopeLabel = it.scope === 'user' ? '' : '工作区';
+        var scopeLabel = it.scope === 'user' ? '' : I18n.t('memory.scopeWorkspace');
         var scopeCls = it.scope === 'user' ? '' : 'mem-scope-workspace';
 
         var head =
@@ -190,26 +192,26 @@
         var userActive = currentScope === 'user' ? ' active' : '';
         var wsActive = currentScope !== 'user' ? ' active' : '';
         var scopeField = '' +
-            '      <label class="mem-field mem-field-scope"><span>作用域</span>' +
+            '      <label class="mem-field mem-field-scope"><span>' + I18n.t('memory.scope') + '</span>' +
             '        <div class="mem-scope-toggle">' +
-            '          <button class="mem-scope-btn' + userActive + '" data-scope="user" type="button">全局</button>' +
-            '          <button class="mem-scope-btn' + wsActive + '" data-scope="workspace" type="button">工作区</button>' +
+            '          <button class="mem-scope-btn' + userActive + '" data-scope="user" type="button">' + I18n.t('memory.scopeGlobal') + '</button>' +
+            '          <button class="mem-scope-btn' + wsActive + '" data-scope="workspace" type="button">' + I18n.t('memory.scopeWorkspace') + '</button>' +
             '        </div></label>';
 
         return '<div class="mem-row-body">' +
             '  <div class="mem-form">' +
             '    <div class="mem-form-row">' +
             '      <label class="mem-field mem-field-key"><span>Key</span>' +
-            '        <input type="text" class="mem-key" value="' + escapeHtml(keyVal) + '" ' + keyReadonly + ' placeholder="唯一标识，如 project-build" /></label>' +
-            '      <label class="mem-field mem-field-imp"><span>权重 (1-10)</span>' +
+            '        <input type="text" class="mem-key" value="' + escapeHtml(keyVal) + '" ' + keyReadonly + ' placeholder="' + I18n.t('memory.keyPlaceholder') + '" /></label>' +
+            '      <label class="mem-field mem-field-imp"><span>' + I18n.t('memory.weight') + '</span>' +
             '        <input type="number" class="mem-imp" min="1" max="10" value="' + imp + '" /></label>' +
             scopeField +
             '    </div>' +
-            '    <label class="mem-field"><span>内容</span>' +
-            '      <textarea class="mem-content" placeholder="记忆内容（支持 markdown，建议 200 字以内）">' + escapeHtml(content) + '</textarea></label>' +
+            '    <label class="mem-field"><span>' + I18n.t('memory.content') + '</span>' +
+            '      <textarea class="mem-content" placeholder="' + I18n.t('memory.contentPlaceholder') + '">' + escapeHtml(content) + '</textarea></label>' +
             '    <div class="mem-actions">' +
-            '      <button class="mem-btn mem-btn-primary mem-save">保存</button>' +
-            (isNew ? '      <button class="mem-btn mem-cancel">取消</button>' : '      <button class="mem-btn mem-btn-danger mem-del">删除</button>') +
+            '      <button class="memory-btn memory-btn-primary memory-save">' + I18n.t('common.save') + '</button>' +
+            (isNew ? '      <button class="memory-btn memory-cancel">' + I18n.t('common.cancel') + '</button>' : '      <button class="memory-btn memory-btn-danger memory-del">' + I18n.t('common.delete') + '</button>') +
             '' +
             '    </div>' +
             '  </div>' +
@@ -224,7 +226,7 @@
             });
         });
         Array.prototype.forEach.call(listEl.querySelectorAll('.mem-row.open'), function (row) {
-            var saveBtn = row.querySelector('.mem-save');
+            var saveBtn = row.querySelector('.memory-save');
             if (saveBtn) saveBtn.addEventListener('click', function (e) { e.stopPropagation(); saveMemory(row); });
             var scopeBtns = row.querySelectorAll('.mem-scope-btn');
             Array.prototype.forEach.call(scopeBtns, function (btn) {
@@ -235,9 +237,9 @@
                     btn.classList.add('active');
                 });
             });
-            var cancelBtn = row.querySelector('.mem-cancel');
+            var cancelBtn = row.querySelector('.memory-cancel');
             if (cancelBtn) cancelBtn.addEventListener('click', function (e) { e.stopPropagation(); expandedKey = null; renderList(currentFilter()); });
-            var delBtn = row.querySelector('.mem-del');
+            var delBtn = row.querySelector('.memory-del');
             if (delBtn) delBtn.addEventListener('click', function (e) { e.stopPropagation(); removeMemory(row.getAttribute('data-key')); });
             // 阻止点 body 冒泡到 head 触发收起
             var body = row.querySelector('.mem-row-body');
@@ -283,7 +285,7 @@
     }
 
     function fillOpenRow(key) {
-        var listEl = document.getElementById('memList');
+        var listEl = document.getElementById('memoryList');
         if (!listEl) return;
         var row = listEl.querySelector('.mem-row.open[data-key="' + cssEscape(key) + '"]');
         if (!row) return;
@@ -325,9 +327,9 @@
         var scopeBtn = row.querySelector('.mem-scope-btn.active');
         var scope = scopeBtn ? scopeBtn.getAttribute('data-scope') : null;
 
-        if (!key) { memToast('Key 不能为空', true); return; }
-        if (!content) { memToast('内容不能为空', true); return; }
-        if (isNaN(imp) || imp < 1 || imp > 10) { memToast('重要度需在 1-10 之间', true); return; }
+        if (!key) { memToast(I18n.t('memory.keyRequired'), true); return; }
+        if (!content) { memToast(I18n.t('memory.contentRequired'), true); return; }
+        if (isNaN(imp) || imp < 1 || imp > 10) { memToast(I18n.t('memory.importanceRange'), true); return; }
 
         var form = new URLSearchParams();
         form.append('key', key);
@@ -346,12 +348,12 @@
                     detailCache[key] = { content: content, importance: imp, scope: scope || 'workspace' };
                     expandedKey = key;
                     loadMemoryList();
-                    memToast('保存成功', false);
+                    memToast(I18n.t('toast.saveSuccess'), false);
                 } else {
-                    memToast((res && res.description) || '保存失败', true);
+                    memToast((res && res.description) || I18n.t('toast.saveFailed'), true);
                 }
             })
-            .catch(function (e) { memToast('保存失败: ' + e.message, true); });
+            .catch(function (e) { memToast(I18n.t('toast.saveFailed') + ': ' + e.message, true); });
     }
 
     // ---- 删除 ----
@@ -379,11 +381,11 @@
         };
 
         if (typeof layer !== 'undefined' && layer.confirm) {
-            layer.confirm('确定删除记忆「' + key + '」？', { title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px' }, function (index) {
+            layer.confirm(I18n.t('memory.confirmDelete', {key: key}), { title: I18n.t('memory.confirmDeleteTitle'), btn: [I18n.t('common.delete'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function (index) {
                 layer.close(index);
                 doRemove();
             });
-        } else if (window.confirm('确定删除记忆「' + key + '」？')) {
+        } else if (window.confirm(I18n.t('memory.confirmDelete', {key: key}))) {
             doRemove();
         }
     }
@@ -403,6 +405,39 @@
     var gitViewerMemNew = document.getElementById('gitViewerMemNew');
     if (gitViewerMemNew) {
         gitViewerMemNew.addEventListener('click', function () { startCreate(); });
+    }
+
+    // header 「清空记忆」按钮：确认后调用后端 clear 接口
+    var gitViewerMemClear = document.getElementById('gitViewerMemClear');
+    if (gitViewerMemClear) {
+        gitViewerMemClear.addEventListener('click', function () {
+            if (!memoryList.length) { memToast(I18n.t('memory.empty'), false); return; }
+
+            var doClear = function () {
+                fetch('/web/chat/memory/clear', { method: 'POST' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (res && res.code === 200) {
+                            detailCache = {};
+                            expandedKey = null;
+                            loadMemoryList();
+                            memToast(I18n.t('memory.confirmClearTitle') + ' ✓', false);
+                        } else {
+                            memToast((res && res.description) || I18n.t('toast.operateFailed'), true);
+                        }
+                    })
+                    .catch(function (e) { memToast(I18n.t('toast.saveFailed') + ': ' + e.message, true); });
+            };
+
+            if (typeof layer !== 'undefined' && layer.confirm) {
+                layer.confirm(I18n.t('memory.confirmClear'), { title: I18n.t('memory.confirmClearTitle'), btn: [I18n.t('common.delete'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function (index) {
+                    layer.close(index);
+                    doClear();
+                });
+            } else if (window.confirm(I18n.t('memory.confirmClear'))) {
+                doClear();
+            }
+        });
     }
     // Esc 关闭时一并清理
     document.addEventListener('keydown', function (e) {

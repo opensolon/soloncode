@@ -13,14 +13,15 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.portal.FileWatchService;
-import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.util.OsOpenUtil;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
+import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.*;
 import java.io.File;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -42,8 +43,8 @@ public class MountSettingsController extends BaseSettingsController {
     /**
      * 构造函数：支持自定义所有依赖。
      */
-    public MountSettingsController(HarnessEngine engine, AgentSettings settings, FileWatchService fileWatchService, WebGate webGate) {
-        super(engine, settings, fileWatchService, webGate);
+    public MountSettingsController(WorkspaceManager workspaceManager) {
+        super(workspaceManager);
     }
 
     // ==================== 设置：挂载池管理 ====================
@@ -59,7 +60,7 @@ public class MountSettingsController extends BaseSettingsController {
         // 同一目录可能同时保留旧版自定义别名和新版系统别名。
         // 安装目标只保留一个，并优先使用能明确表达 user/workspace 作用域的系统挂载。
         Map<String, MountDir> uniqueMounts = new LinkedHashMap<>();
-        for (MountDir entry : engine.getMounts()) {
+        for (MountDir entry : engine().getMounts()) {
             String storageKey = mountStorageKey(entry);
             MountDir current = uniqueMounts.get(storageKey);
             if (current == null || (!current.isPrimary() && entry.isPrimary())) {
@@ -79,7 +80,7 @@ public class MountSettingsController extends BaseSettingsController {
             item.put("description", entry.getDescription());
 
 
-            MountDo mountDo = settings.getMountPools().get(entry.getAlias());
+            MountDo mountDo = settings().getMountPools().get(entry.getAlias());
             if (mountDo == null) {
                 item.put("scope", entry.getAlias().startsWith("@workspace-")
                         ? AgentFlags.SCOPE_LOCAL
@@ -121,7 +122,7 @@ public class MountSettingsController extends BaseSettingsController {
             alias = "@" + alias;
         }
 
-        if (engine.hasMount(alias)) return Result.failure("别名已存在");
+        if (engine().hasMount(alias)) return Result.failure("别名已存在");
 
 
         if (type == null) {
@@ -138,17 +139,18 @@ public class MountSettingsController extends BaseSettingsController {
                 type,
                 path,
                 false, true, writeable);
-        settings.getMountPools().put(alias, mountDo);
+        settings().getMountPools().put(alias, mountDo);
         saveSettings();
-        engine.addMount(MountDir.builder()
+        engine().addMount(MountDir.builder()
                 .alias(alias)
+                .description(description)
                 .type(type)
                 .path(path)
                 .writeable(writeable)
                 .build());
 
         // 同步注册文件监听
-        MountDir newMount = engine.getMount(alias);
+        MountDir newMount = engine().getMount(alias);
         if (newMount != null) {
             registerMountWatch(newMount);
         }
@@ -168,17 +170,17 @@ public class MountSettingsController extends BaseSettingsController {
             alias = "@" + alias;
         }
 
-        if (!engine.hasMount(alias)) return Result.failure("挂载池不存在");
+        if (!engine().hasMount(alias)) return Result.failure("挂载池不存在");
 
         // 更新配置中的数据
-        MountDo mountDo = settings.getMountPools().get(alias);
+        MountDo mountDo = settings().getMountPools().get(alias);
         if (mountDo != null) {
             mountDo.setDescription(description);
             mountDo.setWriteable(writeable);
         }
 
         // 更新运行时挂载
-        for (MountDir entry : engine.getMounts()) {
+        for (MountDir entry : engine().getMounts()) {
             if (alias.equals(entry.getAlias())) {
                 entry.setDescription(description);
                 entry.setWriteable(writeable);
@@ -200,7 +202,7 @@ public class MountSettingsController extends BaseSettingsController {
             return Result.failure("alias is required");
         }
 
-        MountDir mountDir = engine.getMount(alias);
+        MountDir mountDir = engine().getMount(alias);
         if (mountDir == null) {
             return Result.failure("挂载池不存在: " + alias);
         } else {
@@ -208,19 +210,19 @@ public class MountSettingsController extends BaseSettingsController {
         }
 
         // 更新配置
-        MountDo mountDo = settings.getMountPools().get(alias);
+        MountDo mountDo = settings().getMountPools().get(alias);
         if (mountDo != null) {
             mountDo.setEnabled(enabled);
         }
 
         saveSettings();
 
-        // 同步文件监听：启用时注册，停用时移除
-        if (fileWatchService != null) {
+        // 同步文件监听：启用时注册，停用时移除（判空与取值统一走访问器，避免不对称 NPE）
+        if (fileWatchService() != null) {
             if (Boolean.TRUE.equals(enabled)) {
                 registerMountWatch(mountDir);
             } else {
-                fileWatchService.removeRoot(alias);
+                fileWatchService().removeRoot(alias);
             }
         }
 
@@ -234,7 +236,7 @@ public class MountSettingsController extends BaseSettingsController {
     @Post
     @Mapping("/web/settings/mounts/remove")
     public Result mountsRemove(@Param("alias") String alias) {
-        MountDir mountDir = engine.getMount(alias);
+        MountDir mountDir = engine().getMount(alias);
         if (mountDir == null) {
             return Result.failure("挂载池不存在");
         }
@@ -243,13 +245,13 @@ public class MountSettingsController extends BaseSettingsController {
             return Result.failure("系统挂载池不可移除");
         }
 
-        settings.getMountPools().remove(alias);
+        settings().getMountPools().remove(alias);
         saveSettings();
-        engine.removeMount(alias);
+        engine().removeMount(alias);
 
-        // 同步移除文件监听
-        if (fileWatchService != null) {
-            fileWatchService.removeRoot(alias);
+        // 同步移除文件监听（判空与取值统一走访问器）
+        if (fileWatchService() != null) {
+            fileWatchService().removeRoot(alias);
         }
 
         return Result.succeed("移除成功");
@@ -261,7 +263,7 @@ public class MountSettingsController extends BaseSettingsController {
     @Get
     @Mapping("/web/settings/mounts/content")
     public Result mountsContent(@Param("alias") String alias, @Param("type") String type) {
-        if (engine.hasMount(alias) == false) {
+        if (engine().hasMount(alias) == false) {
             return Result.failure("挂载池不存在: " + alias);
         }
 
@@ -276,15 +278,17 @@ public class MountSettingsController extends BaseSettingsController {
 
 
     private Result loadSkillsContent(String alias) {
-        Collection<SkillDir> skillDirList = engine.getSkillsByMount(alias);
-        List<Map<String, String>> skills = new ArrayList<>();
+        Collection<SkillDir> skillDirList = engine().getSkillsByMount(alias);
+        List<Map<String, Object>> skills = new ArrayList<>();
 
         for (SkillDir subDir : skillDirList) {
-            Map<String, String> skillItem = new LinkedHashMap<>();
+            Map<String, Object> skillItem = new LinkedHashMap<>();
             skillItem.put("name", subDir.getName());
             skillItem.put("description", subDir.getDescription());
             skillItem.put("realPath", subDir.getRealPath() != null ? subDir.getRealPath().toString() : "");
             skillItem.put("version", subDir.getVersion());
+            skillItem.put("aliasPath", subDir.getAliasPath());
+            skillItem.put("enabled", engine().isSkillDisallowed(subDir.getAliasPath()) == false);
             skills.add(skillItem);
         }
 
@@ -292,7 +296,7 @@ public class MountSettingsController extends BaseSettingsController {
     }
 
     private Result loadAgentsContent(String alias) {
-        Collection<AgentMd> agentList = engine.getAgentsByMount(alias);
+        Collection<AgentMd> agentList = engine().getAgentsByMount(alias);
         List<Map<String, String>> agents = new ArrayList<>();
 
         for (AgentMd agent : agentList) {
@@ -314,30 +318,7 @@ public class MountSettingsController extends BaseSettingsController {
     public Result mountsOpen(@Param("path") String path) {
         if (Assert.isEmpty(path)) return Result.failure("路径为空");
         try {
-            File dir = new File(path);
-            if (!dir.exists()) return Result.failure("目录不存在: " + path);
-
-            // 优先尝试 Desktop.open，失败时 fallback 到系统命令
-            try {
-                if (Desktop.isDesktopSupported()) {
-                    Desktop.getDesktop().open(dir);
-                    return Result.succeed("已打开");
-                }
-            } catch (Exception ignored) {
-                // Desktop.open 失败，尝试 fallback
-            }
-
-            // Fallback: 使用系统命令打开目录
-            String os = System.getProperty("os.name", "").toLowerCase();
-            String[] cmd;
-            if (os.contains("mac")) {
-                cmd = new String[]{"open", dir.getAbsolutePath()};
-            } else if (os.contains("win")) {
-                cmd = new String[]{"explorer", dir.getAbsolutePath()};
-            } else {
-                cmd = new String[]{"xdg-open", dir.getAbsolutePath()};
-            }
-            new ProcessBuilder(cmd).start();
+            OsOpenUtil.openDirectory(new File(path));
             return Result.succeed("已打开");
         } catch (Exception e) {
             return Result.failure("打开失败: " + e.getMessage());
@@ -350,7 +331,7 @@ public class MountSettingsController extends BaseSettingsController {
     @Post
     @Mapping("/web/settings/mounts/skills/remove")
     public Result mountsSkillsRemove(@Param("alias") String alias, @Param("skillName") String skillName) {
-        MountDir mountDir = engine.getMount(alias);
+        MountDir mountDir = engine().getMount(alias);
         if (mountDir == null) return Result.failure("挂载池不存在: " + alias);
 
 
@@ -364,7 +345,7 @@ public class MountSettingsController extends BaseSettingsController {
 
         try {
             deleteRecursively(skillDir);
-            engine.refreshMount(alias);
+            engine().refreshMount(alias);
             return Result.succeed("删除成功");
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());
@@ -394,19 +375,20 @@ public class MountSettingsController extends BaseSettingsController {
      * 注册挂载点的文件监听（根据类型分配不同的处理器）
      */
     private void registerMountWatch(MountDir mount) {
-        if (fileWatchService == null || !mount.isEnabled()) return;
+        if (fileWatchService() == null || !mount.isEnabled()) return;
 
-        FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
+        WorkspaceContext wsContext = currentContext();
+        FileWatchService.WatchRoot root = fileWatchService().addRoot(mount.getAlias(), mount.getRealPath());
 
         switch (mount.getType()) {
             case FILES:
-                root.addHandler(changes -> webGate.broadcastRaw(FileWatchService.buildFrontendJson(changes)));
+                root.addHandler(changes -> webGate().broadcastRaw(wsContext, FileWatchService.buildFrontendJson(changes)));
                 break;
             case SKILLS:
-                root.addHandler(changes -> engine.getSkillProvider().refreshByGroup(mount.getAlias()));
+                root.addHandler(changes -> engine().getSkillProvider().refreshByGroup(mount.getAlias()));
                 break;
             case AGENTS:
-                root.addHandler(changes -> engine.getAgentManager().refreshByMountAlias(mount.getAlias()));
+                root.addHandler(changes -> engine().getAgentManager().refreshByMountAlias(mount.getAlias()));
                 break;
         }
     }

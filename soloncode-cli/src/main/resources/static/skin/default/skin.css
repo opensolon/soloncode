@@ -2,4 +2,11 @@
  * Builtin skin: default
  * Applied via <body data-skin="default"> or no data-skin (theme.css values as-is).
  * Intentionally empty: default uses theme.css variables without override.
+ *
+ * Font slots (available to every skin, left untouched here):
+ *   --font-sans / --font-mono              font family; keep a fallback chain
+ *   --fs-3xs .. --fs-5xl                   size ladder, each calc(Npx * var(--font-scale))
+ * Redefining a --fs-* level MUST keep the "* var(--font-scale)" factor,
+ * otherwise the user's font-size setting stops affecting that level.
+ * Precedence: user setting (body inline style) > skin.css > theme.css defaults.
  */

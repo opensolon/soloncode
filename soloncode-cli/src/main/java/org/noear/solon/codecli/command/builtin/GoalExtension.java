@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 
@@ -22,7 +23,7 @@ public class GoalExtension implements HarnessExtension {
     }
 
     @Override
-    public void configure(String agentName, ReActAgent.Builder agentBuilder) {
+    public void configure(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
         if (AgentDefinition.AGENT_MAIN.equals(agentName)) {
             agentBuilder.defaultTalentAdd(goalTalent);
         }

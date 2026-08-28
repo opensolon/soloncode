@@ -16,9 +16,13 @@
 
     <modules>
         <module>soloncode-parent</module>
+        <module>soloncode-ui-extension</module>
         <module>soloncode-cli</module>
+<!--        <module>soloncode-sdk-java</module>-->
 
         <module>examples/extension_demo</module>
+        <module>examples/ui_extension_demo</module>
+        <module>examples/markdown_table_excel</module>
     </modules>
 
 </project>

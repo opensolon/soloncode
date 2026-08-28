@@ -27,8 +27,8 @@
     var openapiCachedList = [];
 
     function showOpenapiListView() { $openapiFormView.hide(); $openapiApisView.hide(); $openapiListView.addClass('slide-back').show(); setTimeout(function(){ $openapiListView.removeClass('slide-back'); }, 260); }
-    function showOpenapiApisView(title) { $openapiListView.hide(); $openapiFormView.hide(); $openapiApisTitle.text(title || 'API 列表'); $openapiApisView.show(); }
-    function showOpenapiFormView(title, isEdit) { $openapiApisView.hide(); $openapiFormTitle.text(title || '添加服务器'); $openapiListView.hide(); $openapiFormView.show(); $('#openapiFormActions').toggle(!!isEdit); }
+    function showOpenapiApisView(title) { $openapiListView.hide(); $openapiFormView.hide(); $openapiApisTitle.text(title || I18n.t('openapi.apiListTitleFallback')); $openapiApisView.show(); }
+    function showOpenapiFormView(title, isEdit) { $openapiApisView.hide(); $openapiFormTitle.text(title || I18n.t('openapi.addTitle')); $openapiListView.hide(); $openapiFormView.show(); $('#openapiFormActions').toggle(!!isEdit); }
 
     // ==================== OpenApi 管理 ====================
 
@@ -46,8 +46,8 @@
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无 OpenApi 服务器</div>'
-                + '<div class="mcp-empty-desc">OpenApi 服务器可扩展 AI 的 API 调用能力，对接外部 RESTful 接口</div>'
+                + '<div class="mcp-empty-title">' + I18n.t('openapi.empty') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('openapi.emptyDesc') + '</div>'
                 + '</div>';
         } else {
             list.forEach(function (item) {
@@ -58,12 +58,12 @@
                 html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="settings-list-icon">A</div>'
                     + '<div class="settings-list-info">'
-                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '') + '</div>'
+                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[openapi]</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">' + I18n.t('openapi.scope.workspace') + '</span>' : '') + '</div>'
                     + (baseUrl ? '<div class="settings-list-desc">' + escapeHtml(baseUrl) + '</div>' : '')
                     + (docUrl ? '<div class="settings-list-desc settings-accent-text">' + escapeHtml(docUrl) + '</div>' : '')
                     + '</div><div class="settings-list-actions">'
-                    + '<button class="settings-action-btn edit" data-name="' + escapeAttr(name) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
-                    + '<label class="toggle-switch" title="' + (enabled ? '停用' : '启用') + '">'
+                    + '<button class="settings-action-btn edit" data-name="' + escapeAttr(name) + '" title="' + I18n.t('openapi.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<label class="toggle-switch" title="' + (enabled ? I18n.t('openapi.toggle.disable') : I18n.t('openapi.toggle.enable')) + '">'
                     + '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-name="' + escapeAttr(name) + '" class="openapi-toggle"/>'
                     + '<span class="toggle-slider"></span>'
                     + '</label>'
@@ -94,16 +94,16 @@
 
     function loadOpenapiApis(name) {
         openapiApisCurrentName = name;
-        showOpenapiApisView(name + ' - 接口列表');
-        $openapiApisList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        showOpenapiApisView(name + I18n.t('openapi.apiListTitle'));
+        $openapiApisList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>' + I18n.t('common.loading') + '</span></div></div>');
 
         $.get('/web/settings/openapi/servers/apis?name=' + encodeURIComponent(name), function (resp) {
             if (resp.code === 200 && resp.data) renderOpenapiApis(resp.data);
             else {
-                $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
+                $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || I18n.t('openapi.loadFailed')) + '</div></div>');
             }
         }).fail(function () {
-            $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败，请检查网络</div></div>');
+            $openapiApisList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + I18n.t('openapi.loadFailed') + '</div></div>');
         });
     }
 
@@ -112,7 +112,7 @@
         var $toggles = $openapiApisList.find('.openapi-api-toggle');
         var total = $toggles.length;
         var checked = $toggles.filter(':checked').length;
-        $('#openapiApisCount').text(checked + ' / ' + total + ' 已启用');
+        $('#openapiApisCount').text(I18n.t('openapi.toolsEnabledPart', { n: checked, m: total }));
         $('#openapiApisSelectAll').prop('checked', total > 0 && checked === total);
     }
 
@@ -125,14 +125,14 @@
             $toolbar.hide();
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>'
-                + '<div class="mcp-empty-title">未连接</div>'
-                + '<div class="mcp-empty-desc">服务器未启用或文档未加载，请先启用服务器</div></div>';
+                + '<div class="mcp-empty-title">' + I18n.t('openapi.serverOffline') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('openapi.serverOfflineHint') + '</div></div>';
         } else if (apis.length === 0) {
             $toolbar.hide();
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无 API</div>'
-                + '<div class="mcp-empty-desc">该服务器未解析到任何 API 接口</div></div>';
+                + '<div class="mcp-empty-title">' + I18n.t('openapi.noApi') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('openapi.noApiDesc') + '</div></div>';
         } else {
             // 获取已禁用的 API 列表
             var disallowedTools = data.disallowedTools || [];
@@ -142,7 +142,7 @@
             // 显示工具栏
             $toolbar.show();
             var checkedCount = apis.filter(function (api) { return !disallowedMap[api.name]; }).length;
-            $('#openapiApisCount').text(checkedCount + ' / ' + apis.length + ' 已启用');
+            $('#openapiApisCount').text(I18n.t('openapi.toolsEnabledPart', { n: checkedCount, m: apis.length }));
             $('#openapiApisSelectAll').prop('checked', checkedCount === apis.length);
 
             apis.forEach(function (api) {
@@ -151,7 +151,7 @@
                 var isEnabled = !disallowedMap[apiName];
                 html += '<div class="openapi-api-item" data-name="' + escapeAttr(apiName) + '">'
                     + '<div class="openapi-api-checkbox">'
-                    + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-api="' + escapeAttr(apiName) + '" class="openapi-api-toggle" title="' + (isEnabled ? '禁用' : '启用') + '"/>'
+                    + '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' data-api="' + escapeAttr(apiName) + '" class="openapi-api-toggle" title="' + (isEnabled ? I18n.t('openapi.toolDisable') : I18n.t('openapi.toolEnable')) + '"/>'
                     + '</div>'
                     + '<div class="openapi-api-method">' + escapeHtml(method) + '</div>'
                     + '<div class="openapi-api-info">'
@@ -168,7 +168,7 @@
 
     function resetOpenapiForm() {
         openapiEditName = null;
-        $openapiSaveBtn.text('保存');
+        $openapiSaveBtn.text(I18n.t('common.save'));
         $('#openapiName').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#openapiBaseUrl, #openapiDocUrl, #openapiHeaders').val('');
         setScopeValue('openapiScope', 'user');
@@ -189,10 +189,10 @@
         var baseUrl = $('#openapiBaseUrl').val().trim();
         var docUrl = $('#openapiDocUrl').val().trim();
         var headersText = $('#openapiHeaders').val().trim();
-        if (!name) { showToast('名称为必填项', 'error'); return null; }
-        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast('名称仅允许字母、数字、下划线和连字符', 'error'); return null; }
-        if (!baseUrl) { showToast('API 基地址为必填项', 'error'); return null; }
-        if (!docUrl) { showToast('文档地址为必填项', 'error'); return null; }
+        if (!name) { showToast(I18n.t('openapi.nameRequired'), 'error'); return null; }
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast(I18n.t('openapi.nameInvalid'), 'error'); return null; }
+        if (!baseUrl) { showToast(I18n.t('openapi.baseUrlRequired'), 'error'); return null; }
+        if (!docUrl) { showToast(I18n.t('openapi.docUrlRequired'), 'error'); return null; }
         var bodyObj = { name: name, apiBaseUrl: baseUrl, docUrl: docUrl, enabled: true, scope: $('#openapiScope').val() || 'user' };
         var headers = parseKvLines(headersText);
         if (Object.keys(headers).length > 0) bodyObj.headers = headers;
@@ -203,8 +203,8 @@
         var server = openapiCachedList.find(function (s) { return s.name === name; });
         if (!server) return;
         openapiEditName = name;
-        showOpenapiFormView('编辑服务器', true);
-        $openapiSaveBtn.text('更新');
+        showOpenapiFormView(I18n.t('openapi.editTitle'), true);
+        $openapiSaveBtn.text(I18n.t('openapi.updateBtn'));
         $('#openapiName').val(server.name).prop('readOnly', true).addClass('readonly-gray');
         fillOpenapiForm(server);
     }
@@ -213,8 +213,8 @@
         var server = openapiCachedList.find(function (s) { return s.name === name; });
         if (!server) return;
         openapiEditName = null;
-        showOpenapiFormView('添加服务器', false);
-        $openapiSaveBtn.text('保存');
+        showOpenapiFormView(I18n.t('openapi.addTitle'), false);
+        $openapiSaveBtn.text(I18n.t('common.save'));
         $('#openapiName').val(server.name + '-copy').prop('readOnly', false).removeClass('readonly-gray');
         fillOpenapiForm(server);
     }
@@ -222,19 +222,19 @@
     function openapiRemoveServer(name) {
         postJson('/web/settings/openapi/servers/remove', { name: name }, function (resp) {
             if (resp.code === 200) { showOpenapiListView(); loadOpenapiList(); }
-            else showToast('删除失败: ' + (resp.message || '未知错误'), 'error');
+            else showToast(I18n.t('openapi.deleteFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
         });
     }
 
     function openapiToggleServer(name, enabled) {
         postJson('/web/settings/openapi/servers/toggle', { name: name, enabled: enabled }, function (resp) {
-            if (resp.code !== 200) { showToast('操作失败: ' + (resp.message || '未知错误'), 'error'); loadOpenapiList(); }
+            if (resp.code !== 200) { showToast(I18n.t('toast.operateFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error'); loadOpenapiList(); }
             else { loadOpenapiList(); }
         });
     }
 
     // OpenApi 按钮事件
-    $('#openapiAddBtn').on('click', function () { resetOpenapiForm(); showOpenapiFormView('添加服务器', false); });
+    $('#openapiAddBtn').on('click', function () { resetOpenapiForm(); showOpenapiFormView(I18n.t('openapi.addTitle'), false); });
     $('#openapiBackBtn').on('click', function () { showOpenapiListView(); resetOpenapiForm(); });
     $('#openapiApisBackBtn').on('click', function () { showOpenapiListView(); loadOpenapiList(); });
 
@@ -262,8 +262,8 @@
         postJson('/web/settings/openapi/servers/apis/save',
             { serverName: openapiApisCurrentName, disallowedTools: disallowedTools },
             function (resp) {
-                if (resp.code === 200) showToast('API 权限已保存');
-                else showToast('保存失败: ' + (resp.message || '未知错误'), 'error');
+                if (resp.code === 200) showToast(I18n.t('openapi.permissionsSaved'));
+                else showToast(I18n.t('toast.saveFailed') + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
             },
             function () { $btn.prop('disabled', false); }
         );
@@ -275,19 +275,19 @@
         if (!bodyObj) return;
         var $btn = $(this);
         var btnOriginal = $btn.html();
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 测试中...');
+        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> ' + I18n.t('openapi.testing'));
         $openapiCheckResult.hide();
 
         $.ajax({ url: '/web/settings/openapi/servers/check', method: 'POST', data: JSON.stringify({ apiBaseUrl: bodyObj.apiBaseUrl, docUrl: bodyObj.docUrl, headers: bodyObj.headers || {} }), contentType: 'application/json', dataType: 'json', timeout: 15000 })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var svg = ok
-                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 连接成功'
-                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ' + (resp.message || '连接失败');
+                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ' + I18n.t('openapi.testOk')
+                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ' + (resp.message || I18n.t('openapi.testFail'));
                 $openapiCheckResult.attr('class', 'llm-check-result ' + (ok ? 'success' : 'error')).html(svg).css('display', 'flex');
             })
             .fail(function (jqXHR, textStatus) {
-                var msg = textStatus === 'timeout' ? '连接超时（15秒），请检查地址是否正确' : '网络错误，请重试';
+                var msg = textStatus === 'timeout' ? I18n.t('openapi.testTimeout') : I18n.t('openapi.testNetworkError');
                 $openapiCheckResult.attr('class', 'llm-check-result error').html(msg).css('display', 'flex');
             })
             .always(function () { $btn.prop('disabled', false).html(btnOriginal); });
@@ -298,16 +298,15 @@
         if (!bodyObj) return;
         var isEdit = !!openapiEditName;
         var url = isEdit ? '/web/settings/openapi/servers/update' : '/web/settings/openapi/servers/add';
-        var actionText = isEdit ? '更新' : '添加';
         if (isEdit) bodyObj.originalName = openapiEditName;
 
         $openapiSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { showToast(actionText + '成功'); loadOpenapiList(); showOpenapiListView(); resetOpenapiForm(); }
-                else showToast(actionText + '失败: ' + (resp.message || '未知错误'), 'error');
+                if (resp.code === 200) { showToast(isEdit ? I18n.t('openapi.updated') : I18n.t('openapi.added')); loadOpenapiList(); showOpenapiListView(); resetOpenapiForm(); }
+                else showToast((isEdit ? I18n.t('openapi.updateFailed') : I18n.t('openapi.addFailed')) + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
             })
-            .fail(function () { showToast('网络错误', 'error'); })
+            .fail(function () { showToast(I18n.t('toast.networkError'), 'error'); })
             .always(function () { $openapiSaveBtn.prop('disabled', false); });
     });
 
@@ -321,7 +320,7 @@
     $('#openapiFormDeleteBtn').on('click', function () {
         var name = openapiEditName;
         if (!name) return;
-        layer.confirm('确定删除 OpenApi 服务器 "' + name + '"？', { title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px' }, function(index) {
+        layer.confirm(I18n.t('openapi.deleteConfirm', { name: name }), { title: I18n.t('openapi.deleteConfirmTitle'), btn: [I18n.t('openapi.deleteBtn'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
             layer.close(index);
             openapiRemoveServer(name);
         });

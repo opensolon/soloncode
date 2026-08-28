@@ -49,6 +49,8 @@ public class SessionMeta {
     private boolean pinned;
     /** 会话创建时间（epoch millis）；0 表示未知，读时会尽量回填。 */
     private long createdAt;
+    /** 会话所有者用户 ID（用户认证启用时设置，用于会话隔离）。 */
+    private String ownerUserId;
 
     public String getLabel() {
         return label;
@@ -72,6 +74,14 @@ public class SessionMeta {
 
     public void setCreatedAt(long createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getOwnerUserId() {
+        return ownerUserId;
+    }
+
+    public void setOwnerUserId(String ownerUserId) {
+        this.ownerUserId = ownerUserId;
     }
 
     /**
@@ -116,6 +126,9 @@ public class SessionMeta {
                         }
                         if (root.hasKey("createdAt")) {
                             meta.createdAt = root.get("createdAt").getLong(0L);
+                        }
+                        if (root.hasKey("ownerUserId")) {
+                            meta.ownerUserId = root.get("ownerUserId").getString();
                         }
                     }
                 }
@@ -192,6 +205,7 @@ public class SessionMeta {
         root.set("label", label == null ? "" : label);
         root.set("pinned", pinned);
         root.set("createdAt", createdAt);
+        root.set("ownerUserId", ownerUserId == null ? "" : ownerUserId);
         String json = root.toJson();
 
         Path metaFile = sessionDir.resolve(FILE_NAME);
@@ -233,6 +247,7 @@ public class SessionMeta {
         SessionMeta target = new SessionMeta();
         target.setLabel(meta.getLabel());
         target.setPinned(meta.isPinned());
+        target.setOwnerUserId(meta.getOwnerUserId());
         target.setCreatedAt(System.currentTimeMillis());
         target.save(targetDir);
     }

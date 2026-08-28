@@ -308,13 +308,13 @@ public class PrintModeOptions {
         parseToolListArg(argx, "disallowedTools", opts.disallowedTools, opts.disallowedToolRules);
 
         // 解析 flag 类型参数
-        if (argx.containsKey("verbose")) {
+        if (argx.flags().contains("verbose")) {
             opts.verbose = true;
         }
-        if (argx.containsKey("bare")) {
+        if (argx.flags().contains("bare")) {
             opts.bare = true;
         }
-        if (argx.containsKey("continue")) {
+        if (argx.flags().contains("continue")) {
             opts.continueSession = true;
         }
 

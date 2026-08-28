@@ -23,10 +23,10 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.noear.java_websocket.client.SimpleWebSocketClient;
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChunkedSender;
-import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
+import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
@@ -59,8 +59,7 @@ import org.slf4j.LoggerFactory;
 public class FeishuLink implements Channel, Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(FeishuLink.class);
 
-    private final HarnessEngine engine;
-    private final WebGate webGate;
+    private final WorkspaceContext wsContext;
     private final FeishuCredentialStore credentialStore;
 
     /**
@@ -80,12 +79,9 @@ public class FeishuLink implements Channel, Runnable {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public FeishuLink(HarnessEngine engine, WebGate webGate) {
-        this.engine = engine;
-        this.webGate = webGate;
-        this.credentialStore = new FeishuCredentialStore(engine);
-
-        webGate.getStreamBuilder().bind(this);
+    public FeishuLink(WorkspaceContext wsContext) {
+        this.wsContext = wsContext;
+        this.credentialStore = new FeishuCredentialStore(wsContext.getEngine());
 
         // 尝试恢复已保存的绑定（含 appId/appSecret）
         loadBindings();
@@ -303,6 +299,14 @@ public class FeishuLink implements Channel, Runnable {
         return Collections.unmodifiableSet(bindings.keySet());
     }
 
+    /**
+     * 指定 appId 是否已存在活跃连接（供跨工作区绑定冲突检查）。
+     * 同一 appId 若被多个工作区各自建立 Stream 连接，飞书服务端会随机路由消息，必须避免。
+     */
+    public boolean isAppInUse(String appId) {
+        return appId != null && connections.containsKey(appId);
+    }
+
     // ==================== WS 消息处理（由 StreamConnection 回调） ====================
 
     /**
@@ -513,7 +517,7 @@ public class FeishuLink implements Channel, Runnable {
         final String finalMsgId = msgId;
         RunUtil.async(() -> {
             try {
-                boolean accepted = webGate.safeChatInput(finalSessionId, finalText, "Feishu");
+                boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, finalSessionId, finalText, "Feishu");
                 if (accepted) {
                     // 消息被接受进入处理流程后才记录 lastMessageId，
                     // 避免 WS 断连重试时因 lastMessageId 已设置而跳过未处理的消息
@@ -697,7 +701,7 @@ public class FeishuLink implements Channel, Runnable {
          */
         void start() {
             String threadName = "feishu-stream-" + appId.substring(0, Math.min(6, appId.length()));
-            streamThread = new Thread(this::doStart, threadName);
+            streamThread = new Thread(WorkspaceLogRouter.withWorkspaceLogKey(wsContext.getMeta().getPath(), this::doStart), threadName);
             streamThread.setDaemon(true);
             streamThread.start();
         }
@@ -881,7 +885,7 @@ public class FeishuLink implements Channel, Runnable {
 
                 LOG.info("[Feishu] Reconnecting in 5 seconds, appId={}",
                         appId.substring(0, Math.min(8, appId.length())) + "...");
-                reconnectThread = new Thread(() -> {
+                reconnectThread = new Thread(WorkspaceLogRouter.withWorkspaceLogKey(wsContext.getMeta().getPath(), () -> {
                     try {
                         Thread.sleep(5000);
                     } catch (InterruptedException e) {
@@ -890,7 +894,7 @@ public class FeishuLink implements Channel, Runnable {
                     if (!streamStarted && running.get()) {
                         doStart();
                     }
-                }, "feishu-reconnect");
+                }), "feishu-reconnect");
                 reconnectThread.setDaemon(true);
                 reconnectThread.start();
             }

@@ -32,4 +32,8 @@ public class ModelInfo {
     /** 是否为手动添加的模型（动态刷新时不被清除） */
     @Builder.Default
     private boolean manual = false;
+
+    /** 是否被选中（供应商编辑页勾选状态，同步到 ModelDo.selected） */
+    @Builder.Default
+    private boolean selected = true;
 }

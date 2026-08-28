@@ -52,13 +52,13 @@
     }
 
     function renderUploadCard() {
-        return '<div class="skin-card skin-card--upload" id="skinUploadCard" title="上传 Zip 自定义皮肤">' +
+        return '<div class="skin-card skin-card--upload" id="skinUploadCard" title="' + I18n.t('skin.uploadZipTitle') + '">' +
             '<div class="skin-card-preview skin-card-preview--upload" aria-hidden="true">+</div>' +
             '<div class="skin-card-body">' +
-            '<div class="skin-card-title">上传皮肤</div>' +
-            '<div class="skin-card-desc">Zip 安装，立即加入列表</div>' +
+            '<div class="skin-card-title">' + I18n.t('skin.uploadTitle') + '</div>' +
+            '<div class="skin-card-desc">' + I18n.t('skin.uploadDesc') + '</div>' +
             '<div class="skin-card-actions">' +
-            '<span class="skin-manage-hint" style="margin:0">自定义</span>' +
+            '<span class="skin-manage-hint" style="margin:0">' + I18n.t('skin.custom') + '</span>' +
             '</div></div></div>';
     }
 
@@ -71,12 +71,12 @@
             var isActive = s.name === active;
             var isLocal = s.source === 'local';
             var badge = isLocal
-                ? '<span class="skin-badge local">本地</span>'
-                : '<span class="skin-badge">预置</span>';
+                ? '<span class="skin-badge local">' + I18n.t('skin.local') + '</span>'
+                : '<span class="skin-badge">' + I18n.t('skin.builtin') + '</span>';
             var preview = '';
             if (isLocal && s.hasPreview) {
                 preview = '<div class="skin-card-preview" style="background-image:url(\'/web/settings/skins/file?name=' +
-                    encodeURIComponent(s.name) + '&file=preview.png\')"></div>';
+                    encodeURIComponent(s.name) + '&file=preview.png' + window.wsAndSuffix() + '\')"></div>';
             } else {
                 preview = '<div class="skin-card-preview skin-card-preview--' + escapeAttr(s.name) + '"></div>';
             }
@@ -90,8 +90,8 @@
                 '<div class="skin-card-desc">' + escapeHtml(s.description || s.name) + '</div>' +
                 (isLocal
                     ? '<div class="skin-card-actions skin-card-actions--local">' +
-                      '<button type="button" class="settings-mini-btn skin-uninstall-btn">卸载</button>' +
-                      '<button type="button" class="settings-mini-btn skin-export-btn">导出</button>' +
+                      '<button type="button" class="settings-mini-btn skin-uninstall-btn">' + I18n.t('skin.uninstall') + '</button>' +
+                      '<button type="button" class="settings-mini-btn skin-export-btn">' + I18n.t('skin.export') + '</button>' +
                       '</div>'
                     : '') +
                 '</div></div>';
@@ -167,12 +167,12 @@
                     window.applySkin(_activeSkin, { source: src, forceLocal: src === 'local' });
                 }
                 renderCards(_skinsCache, _activeSkin);
-                showToast('已切换皮肤');
+                showToast(I18n.t('skin.activateSuccess'));
             } else {
-                showToast((resp && resp.message) || '切换失败', 'error');
+                showToast((resp && resp.message) || I18n.t('skin.activateFailed'), 'error');
             }
         }).fail(function () {
-            showToast('网络错误', 'error');
+            showToast(I18n.t('toast.networkError'), 'error');
         });
     }
 
@@ -186,7 +186,7 @@
             data: JSON.stringify({ name: name })
         }).done(function (resp) {
             if (resp && resp.code === 200) {
-                showToast('已卸载');
+                showToast(I18n.t('skin.uninstallSuccess'));
                 if (resp.data && resp.data.activeSkin) {
                     _activeSkin = resp.data.activeSkin;
                 }
@@ -197,17 +197,17 @@
                     window.applySkin(active, { source: src, forceLocal: src === 'local' });
                 }
             } else {
-                showToast((resp && resp.message) || '卸载失败', 'error');
+                showToast((resp && resp.message) || I18n.t('skin.uninstallFailed'), 'error');
             }
         }).fail(function () {
-            showToast('网络错误', 'error');
+            showToast(I18n.t('toast.networkError'), 'error');
         });
     }
 
     function onInstallSuccess(resp) {
         if (resp && resp.code === 200) {
             var name = resp.data && resp.data.name;
-            showToast('安装成功' + (name ? (': ' + name) : ''));
+            showToast(name ? I18n.t('skin.installSuccessNamed', { name: name }) : I18n.t('skin.installSuccess'));
             // 先刷新列表，再自动启用（避免 LOCAL_SKINS 尚未更新）
             $.get('/web/settings/skins/list').done(function (listResp) {
                 if (listResp && listResp.code === 200 && listResp.data) {
@@ -224,7 +224,7 @@
             });
             return true;
         }
-        showToast((resp && resp.message) || '安装失败', 'error');
+        showToast((resp && resp.message) || I18n.t('skin.installFailed'), 'error');
         return false;
     }
 
@@ -242,7 +242,7 @@
         }).done(function (resp) {
             onInstallSuccess(resp);
         }).fail(function () {
-            showToast('上传失败', 'error');
+            showToast(I18n.t('skin.uploadFailed'), 'error');
         });
     }
 
@@ -254,10 +254,10 @@
         if (!relativeFile) return;
         var file = String(relativeFile).trim().replace(/^\.\//, '');
         if (!file || file.indexOf('..') >= 0) {
-            showToast('非法皮肤路径', 'error');
+            showToast(I18n.t('skin.invalidPath'), 'error');
             return;
         }
-        showToast('正在安装皮肤…');
+        showToast(I18n.t('skin.installing'));
         $.ajax({
             url: '/web/settings/skins/install?file=' + encodeURIComponent(file),
             method: 'POST',
@@ -265,7 +265,7 @@
         }).done(function (resp) {
             onInstallSuccess(resp);
         }).fail(function (xhr) {
-            var msg = '安装失败';
+            var msg = I18n.t('skin.installFailed');
             try {
                 if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
                     msg = xhr.responseJSON.message;
@@ -334,7 +334,7 @@
         e.preventDefault();
         e.stopPropagation();
         var name = $(this).closest('.skin-card').data('name');
-        if (name && confirm('确认卸载本地皮肤「' + name + '」？')) {
+        if (name && confirm(I18n.t('skin.confirmUninstall', { name: name }))) {
             uninstallSkin(name);
         }
     });
@@ -346,13 +346,13 @@
         if (!name) return;
         // 触发浏览器下载本地皮肤 zip，便于分享给朋友导入
         var a = document.createElement('a');
-        a.href = '/web/settings/skins/export?name=' + encodeURIComponent(name);
+        a.href = '/web/settings/skins/export?name=' + encodeURIComponent(name) + window.wsAndSuffix();
         a.download = name + '.zip';
         a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        showToast('开始导出: ' + name + '.zip');
+        showToast(I18n.t('skin.exportStart', { name: name + '.zip' }));
     });
 
     $(document).on('click', '.skin-card', function (e) {

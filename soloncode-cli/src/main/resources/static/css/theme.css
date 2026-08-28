@@ -14,8 +14,46 @@
 
 /* ===== Common ===== */
 :root {
-    --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+    /* Font stacks — latin faces first, CJK after: CSS falls back per character, so a
+     * CJK font placed early would also render the ASCII glyphs (e.g. YaHei's narrow
+     * latin on Windows). Emoji families sit after sans-serif on purpose: entries past
+     * a generic family are normally dead, but no font above carries emoji glyphs, so
+     * per-character fallback still reaches them.
+     *
+     * The *-fallback pair is kept as a separate variable so a user-picked font can be
+     * prepended without losing the chain: app-ui.js writes
+     *   --font-sans: <user font>, var(--font-sans-fallback)
+     * Otherwise picking "PingFang SC" on Windows would drop straight to generic
+     * sans-serif instead of walking Segoe UI / YaHei / Noto.
+     */
+    --font-sans-fallback: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    --font-mono-fallback: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+
+    --font-sans: var(--font-sans-fallback);
+    --font-mono: var(--font-mono-fallback);
+
+    /* Font scale (user adjustable, 0.85 ~ 1.5; set on <html> via style.setProperty).
+     * MUST be set on <html>, not <body>: the --fs-* ladder below is declared here on
+     * :root, and custom-property var() substitution happens on the declaring element,
+     * so it only ever reads the --font-scale present on <html>.
+     */
+    --font-scale: 1;
+
+    /* Font size ladder — all UI text should use these instead of hard-coded px.
+     * Skins may override the base px values; users override --font-scale.
+     */
+    --fs-3xs:  calc(9px  * var(--font-scale));
+    --fs-2xs:  calc(10px * var(--font-scale));
+    --fs-xs:   calc(11px * var(--font-scale));
+    --fs-sm:   calc(12px * var(--font-scale));
+    --fs-base: calc(13px * var(--font-scale));
+    --fs-md:   calc(14px * var(--font-scale));
+    --fs-lg:   calc(15px * var(--font-scale));
+    --fs-xl:   calc(16px * var(--font-scale));
+    --fs-2xl:  calc(18px * var(--font-scale));
+    --fs-3xl:  calc(20px * var(--font-scale));
+    --fs-4xl:  calc(26px * var(--font-scale));
+    --fs-5xl:  calc(32px * var(--font-scale));
 }
 
 /* ===== Light Theme ===== */
@@ -52,6 +90,7 @@
 
     /* Accent */
     --accent: #4f6ef7;
+    --accent-rgb: 79, 110, 247;
     --accent-hover: #3b5de7;
     --accent-light: #eef1fe;
 
@@ -142,37 +181,38 @@
 /* ===== Dark Theme ===== */
 [data-theme="dark"] {
     /* Background */
-    --bg-body: #0f0f1a;
-    --bg-sidebar: #16162a;
-    --bg-main: #1a1a2e;
-    --bg-input-box: #1e1e36;
-    --bg-hover: #22223a;
+    --bg-body: #0d0d0d;
+    --bg-sidebar: #111111;
+    --bg-main: #161616;
+    --bg-input-box: #1c1c1c;
+    --bg-hover: #222222;
     --bg-code: rgba(255, 255, 255, 0.06);
-    --bg-code-block: #0d1117;
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16162a;
+    --bg-code-block: #0d0d0d;
+    --bg-primary: #161616;
+    --bg-secondary: #111111;
 
     /* Message */
     --bg-user-msg: #4f6ef7;
     --bg-action: #1a2a1a;
 
     /* Text */
-    --text-primary: #e4e4ed;
-    --text-secondary: #8b8ba0;
+    --text-primary: #e8e8e8;
+    --text-secondary: #888888;
     --text-user-msg: #ffffff;
     --text-user-msg-link: #ffffff;
     --text-user-msg-link-hover: #d0d8ff;
-    --text-ai-msg: #e4e4ed;
-    --text-sidebar: #c0c0d0;
+    --text-ai-msg: #e8e8e8;
+    --text-sidebar: #c0c0c0;
     --text-code: #d4d4d4;
-    --text-tertiary: #666680;
+    --text-tertiary: #666666;
 
     /* Border */
-    --border-color: #2a2a44;
-    --border-input: #333355;
+    --border-color: #2a2a2a;
+    --border-input: #333333;
 
     /* Accent */
     --accent: #6b8aff;
+    --accent-rgb: 107, 138, 255;
     --accent-hover: #5a75e6;
     --accent-light: #1e2240;
 
@@ -209,10 +249,10 @@
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.3);
     --thinking-dot: #6b8aff;
-    --tag-bg: #22223a;
-    --tag-border: #333355;
-    --reason-group-think-bg: #1a1a30;
-    --reason-group-think-border: #2a2a44;
+    --tag-bg: #222222;
+    --tag-border: #333333;
+    --reason-group-think-bg: #1a1a1a;
+    --reason-group-think-border: #2a2a2a;
 
     /* Skin background slots (default: none)
      * Regions: body / sidebar(left) / main(center) / filer(right) / settings(modal)
@@ -278,37 +318,38 @@
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme]) {
         /* Background */
-        --bg-body: #0f0f1a;
-        --bg-sidebar: #16162a;
-        --bg-main: #1a1a2e;
-        --bg-input-box: #1e1e36;
-        --bg-hover: #22223a;
+        --bg-body: #0d0d0d;
+        --bg-sidebar: #111111;
+        --bg-main: #161616;
+        --bg-input-box: #1c1c1c;
+        --bg-hover: #222222;
         --bg-code: rgba(255, 255, 255, 0.06);
-        --bg-code-block: #0d1117;
-        --bg-primary: #1a1a2e;
-        --bg-secondary: #16162a;
+        --bg-code-block: #0d0d0d;
+        --bg-primary: #161616;
+        --bg-secondary: #111111;
 
         /* Message */
         --bg-user-msg: #4f6ef7;
         --bg-action: #1a2a1a;
 
         /* Text */
-        --text-primary: #e4e4ed;
-        --text-secondary: #8b8ba0;
+        --text-primary: #e8e8e8;
+        --text-secondary: #888888;
         --text-user-msg: #ffffff;
         --text-user-msg-link: #ffffff;
         --text-user-msg-link-hover: #d0d8ff;
-        --text-ai-msg: #e4e4ed;
-        --text-sidebar: #c0c0d0;
+        --text-ai-msg: #e8e8e8;
+        --text-sidebar: #c0c0c0;
         --text-code: #d4d4d4;
-        --text-tertiary: #666680;
+        --text-tertiary: #666666;
 
         /* Border */
-        --border-color: #2a2a44;
-        --border-input: #333355;
+        --border-color: #2a2a2a;
+        --border-input: #333333;
 
         /* Accent */
         --accent: #6b8aff;
+        --accent-rgb: 107, 138, 255;
         --accent-hover: #5a75e6;
         --accent-light: #1e2240;
 
@@ -326,10 +367,10 @@
         --shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.3);
         --thinking-dot: #6b8aff;
-        --tag-bg: #22223a;
-        --tag-border: #333355;
-        --reason-group-think-bg: #1a1a30;
-        --reason-group-think-border: #2a2a44;
+        --tag-bg: #222222;
+        --tag-border: #333333;
+        --reason-group-think-bg: #1a1a1a;
+        --reason-group-think-border: #2a2a2a;
 
         /* Skin background slots (default: none) */
         --bg-image-size: cover;

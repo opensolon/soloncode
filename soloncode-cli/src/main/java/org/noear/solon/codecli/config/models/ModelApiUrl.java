@@ -18,6 +18,9 @@ public final class ModelApiUrl {
         if ("claude".equalsIgnoreCase(value)) {
             return "anthropic";
         }
+        if ("gemini".equalsIgnoreCase(value)) {
+            return "google";
+        }
         return value.toLowerCase();
     }
 

@@ -14,9 +14,9 @@ import java.io.Serializable;
 @Setter
 public class GeneralGroupDo implements Serializable {
     //会话历史窗口大小（即，新指令时使用几条历史消息）
-    private int sessionWindowSize = 8;
+    private int sessionWindowSize = 12;
     //上下文压缩触发消息数（达到这个数，就开始触发）
-    private int summaryWindowSize = 100;
+    private int compressionThresholdMessages = 100;
     //上下文压缩触发上下文比例（百分比，达到这个比例，就开始触发）
     private int compressionThresholdPercent = 75;
 
@@ -66,6 +66,8 @@ public class GeneralGroupDo implements Serializable {
     private boolean hitlEnabled = false; //false
     //是否启用子代理模式
     private boolean subagentEnabled = true; // true
+    //是否启用 Manage 工具（ManagerTalent：AI 动态添加模型/MCP/OpenAPI/定时任务）
+    private boolean managerEnabled = false; // false
 
     //内心思考，是否打印
     private boolean cliThinkPrinted = false; //true
@@ -78,6 +80,13 @@ public class GeneralGroupDo implements Serializable {
     //当前激活的皮肤（default / 预置名 / 本地安装名；空或 default 表示默认）
     private String activeSkin;
 
+    //界面字体-正文字族（空表示跟随主题/皮肤默认）
+    private String uiFontFamily;
+    //界面字体-等宽字族（空表示跟随主题/皮肤默认）
+    private String uiFontMono;
+    //界面字体-缩放倍率（0.85 ~ 1.5；空或 1 表示默认）
+    private Double uiFontScale;
+
 
     //===================
 
@@ -85,6 +94,15 @@ public class GeneralGroupDo implements Serializable {
     private String webAuthUser;
     //Web 访问认证密码（登录页用，留空则不启用）
     private String webAuthPass;
+
+    //===================
+
+    //HTTP 代理主机地址（如 "127.0.0.1"），留空则不启用代理
+    private String proxyHost;
+    //HTTP 代理端口（如 1080），默认 0 表示不启用
+    private int proxyPort;
+    //NO_PROXY 排除列表（逗号分隔），匹配的主机/域名将不使用代理
+    private String noProxy;
 
     //===================
 

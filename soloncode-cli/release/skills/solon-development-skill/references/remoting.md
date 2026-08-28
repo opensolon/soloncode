@@ -58,6 +58,7 @@ RPC 开发由三部分组成：服务接口声明（独立项目）、服务端�
 | Protostuff | nami-coder-protostuff | solon-serialization-protostuff |
 
 > 选择序列化方案时，客户端与服务端的框架应一一对应。客户端需一个 channel + 一个 coder；服务端需一个 server + 一个 serialization。
+> `nami-channel-http` 在 v3.3.0 后支持文件上传（配合 `UploadedFile` 参数）。
 
 ---
 
@@ -192,6 +193,19 @@ UserService userService;
 
 ### 构建器模式（手动创建）
 
+不依赖 Solon 的最小用法（Hello World 风格，可运行在任何 Java 环境）：
+
+```java
+GitHub github = Nami.builder()
+        .decoder(Snack4Decoder.instance)   // 编码组件（序列化）
+        .encoder(Snack4Encoder.instance)
+        .channel(HttpChannel.instance)     // 通道组件（http）
+        .upstream(() -> "https://api.github.com") // 服务地址提供者
+        .create(GitHub.class);
+```
+
+在 Solon 中结合服务发现 / 本地配置路由：
+
 ```java
 UserService userService = Nami.builder()
         .name("userapi")
@@ -201,14 +215,39 @@ UserService userService = Nami.builder()
         .create(UserService.class);
 ```
 
-### 超时与心跳
+其他常用构建方法：`url(String)`（直接指定地址）、`group(String)`（服务组）、`timeout(int)` / `heartbeat(int)`（超时/心跳，秒）、`headerSet(name, val)`（设置头）、`filterAdd(Filter)`（添加过滤器）。
+
+### 超时设置
+
+**全局性设置**（不宜设太大）：
+
+```java
+NamiGlobal.setConnectTimeout(10);     // 连接超时（秒）
+NamiGlobal.setReadTimeout(10);        // 读超时（秒）
+NamiGlobal.setWriteTimeout(10);       // 写超时（秒）
+NamiGlobal.setMaxConnections(10000);  // 最大连接数
+```
+
+或全局配置器风格（同样全局生效，还可配置其它内容）：
+
+```java
+@Component
+public class DemoNamiConfiguration implements NamiConfiguration {
+    @Override
+    public void config(NamiClient client, NamiBuilder builder) {
+        builder.timeout(10); // 秒
+    }
+}
+```
+
+**接口专用设置**（按需设长/短）：
 
 ```java
 // 注解方式
 @NamiClient(name = "userapi", path = "/rpc/v1/user", timeout = 300, heartbeat = 30)
 UserService userService;
 
-// 构建器方式
+// 构建器方式（也可直接 .url(...)）
 UserService userService = Nami.builder()
         .name("userapi").path("/rpc/v1/user")
         .timeout(300).heartbeat(30)
@@ -241,6 +280,7 @@ UserService userService = Nami.builder()
 | 字段 | 说明 |
 |---|---|
 | value | 映射值，支持三种情况 |
+| headers | 声明时添加头信息，如 `{"a=1", "b=2"}` |
 
 映射值的三种情况：
 
@@ -355,6 +395,68 @@ public interface HelloService {
     String test05(int type, @Body Order order);
 }
 ```
+
+---
+
+## Nami 头信息的设置方式
+
+三种添加头信息的方式：
+
+### 1、声明时添加（`@NamiMapping` 上）
+
+```java
+public interface GitHub {
+    @NamiMapping(headers = {"a=1", "b=2"})
+    List<Contributor> contributors(String owner, String repo);
+}
+```
+
+> 注意声明位置是 `@NamiMapping`（方法级）；接口级头信息用 `@NamiClient(headers = ...)`。
+
+### 2、过滤器时添加（接口自身或全局过滤器）
+
+```java
+public interface GitHub extends Filter {
+    @NamiMapping(headers = {"a=1", "b=2"})
+    List<Contributor> contributors(String owner, String repo);
+
+    @Override
+    default Result doFilter(Invocation inv) throws Throwable {
+        inv.headers.put(CloudClient.trace().HEADER_TRACE_ID_NAME(), CloudClient.trace().getTraceId());
+        return inv.invoke();
+    }
+}
+```
+
+### 3、运行时添加
+
+- **NamiAttach（4.x 推荐，since 3.8.1）**：基于域上下文（ScopeLocal），只对 `apply` 内的调用链生效，可携带返回值：
+
+```java
+@Controller
+public class Demo {
+    @NamiClient(url = "https://api.github.com")
+    GitHub gitHub;
+
+    @Mapping
+    public Object test() {
+        return NamiAttach.apply(attach -> {
+            attach.put("a", "1");        // 本次调用链的附加头
+            attach.put("traceId", Utils.guid());
+            return gitHub.contributors("OpenSolon", "solon");
+        });
+    }
+}
+```
+
+- **NamiAttachment（3.x 旧方式，4.x 已移除）**：线程上下文静态方式：
+
+```java
+NamiAttachment.put("a", "1");
+return gitHub.contributors("OpenSolon", "solon");
+```
+
+> `NamiAttach` 支持 `put/get/remove/clear` 及 `current()`；`apply` 有两种重载：`apply(consumer)`（无返回值）与 `apply(function)`（返回函数结果，推荐）。
 
 ---
 

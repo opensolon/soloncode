@@ -29,7 +29,7 @@
     var $mountsTypeBtns = $('#mountsTypeToggle .mcp-type-btn');
 
     function showMountsListView() { $mountsFormView.hide(); $mountsSkillsView.hide(); $mountsListView.addClass('slide-back').show(); setTimeout(function(){ $mountsListView.removeClass('slide-back'); }, 260); }
-    function showMountsFormView(title) { $mountsFormTitle.text(title || '添加挂载'); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
+    function showMountsFormView(title) { $mountsFormTitle.text(title || I18n.t('mounts.addTitle')); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
     function showMountsSkillsView() { $mountsListView.hide(); $mountsFormView.hide(); $mountsSkillsView.show(); }
     function setMountsType(type) {
         $mountsTypeBtns.removeClass('active');
@@ -61,8 +61,8 @@
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>'
-                + '<div class="mcp-empty-title">暂无挂载</div>'
-                + '<div class="mcp-empty-desc">挂载是本地目录映射，为 AI 提供技能加载路径</div></div>';
+                + '<div class="mcp-empty-title">' + I18n.t('mounts.empty') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('mounts.emptyDesc') + '</div></div>';
         } else {
             // 系统挂载排前面
             var sorted = list.slice().sort(function (a, b) {
@@ -80,15 +80,15 @@
                     + '<div class="settings-list-icon">' + escapeHtml(iconText) + '</div>'
                     + '<div class="settings-list-info">'
                     + '<div class="settings-list-title">' + escapeHtml(alias)
-                    + (isSystem ? ' <span class="mounts-system-badge">系统</span>' : '')
-                    + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">工作区</span>' : '')
-                    + (item.writeable ? ' <span class="mounts-writeable-badge">可写</span>' : '')
+                    + (isSystem ? ' <span class="mounts-system-badge">' + I18n.t('mounts.systemBadge') + '</span>' : '')
+                    + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">' + I18n.t('mounts.scopeBadge.workspace') + '</span>' : '')
+                    + (item.writeable ? ' <span class="mounts-writeable-badge">' + I18n.t('mounts.writeableBadge') + '</span>' : '')
                     + '</div>'
                     + (item.description ? '<div class="settings-list-desc settings-muted-text">' + escapeHtml(item.description) + '</div>' : '')
                     + (path ? '<div class="settings-list-desc">' + escapeHtml(path) + '</div>' : '')
                     + '</div><div class="settings-list-actions">'
-                    + '<button class="settings-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="编辑"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
-                    + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? '停用' : '启用') + '">'
+                    + '<button class="settings-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="' + I18n.t('mounts.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? I18n.t('mounts.toggle.disable') : I18n.t('mounts.toggle.enable')) + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-alias="' + escapeAttr(alias) + '" class="mounts-toggle"/> '
                     + '<span class="toggle-slider"></span>'
                     + '</label>'
@@ -132,8 +132,8 @@
         if (isSystem) { $('#mountsDescription').addClass('readonly-gray'); }
         else { $('#mountsDescription').removeClass('readonly-gray'); }
 
-        $mountsSaveBtn.text('更新');
-        showMountsFormView('编辑挂载');
+        $mountsSaveBtn.text(I18n.t('mounts.updateBtn'));
+        showMountsFormView(I18n.t('mounts.editTitle'));
     }
 
     // 池列表事件委托
@@ -159,15 +159,15 @@
                 data: JSON.stringify({ alias: alias, enabled: enabled }),
                 success: function (resp) {
                     if (resp.code === 200) {
-                        layer.msg(enabled ? '已启用' : '已停用', { icon: 1, time: 1500, offset: '120px' });
+                        layer.msg(enabled ? I18n.t('mounts.enabled') : I18n.t('mounts.disabled'), { icon: 1, time: 1500, offset: '120px' });
                         refreshPanels();
                         loadMountsList();
                     } else {
-                        layer.msg(resp.message || '操作失败', { icon: 2, time: 3000, offset: '120px' });
+                        layer.msg(resp.message || I18n.t('toast.operateFailed'), { icon: 2, time: 3000, offset: '120px' });
                     }
                 },
                 error: function () {
-                    layer.msg('操作失败，请检查网络', { icon: 2, time: 3000, offset: '120px' });
+                    layer.msg(I18n.t('toast.operateFailedNetwork'), { icon: 2, time: 3000, offset: '120px' });
                 }
             });
         });
@@ -181,20 +181,20 @@
         var mountItem = mountsCachedList.find(function (m) { return m.alias === alias; });
         mountsCurrentRealPath = mountItem ? (mountItem.realPath || '') : '';
 
-        var titleMap = { SKILLS: '技能包列表', AGENTS: '子代理列表', FILES: '文件列表' };
-        $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || '内容列表'));
+        var titleMap = { SKILLS: I18n.t('mounts.skillsListTitle'), AGENTS: I18n.t('mounts.agentsListTitle'), FILES: I18n.t('mounts.filesListTitle') };
+        $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || I18n.t('mounts.contentListTitle')));
         showMountsSkillsView();
-        $mountsSkillsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>加载中...</span></div></div>');
+        $mountsSkillsList.html('<div class="mcp-empty-state"><div class="skills-loading" style="display:block"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>' + I18n.t('common.loading') + '</span></div></div>');
 
         $.get('/web/settings/mounts/content', { alias: alias, type: mountsCurrentType }, function (resp) {
             if (resp.code === 200 && resp.data) renderMountsContent(resp.data, mountsCurrentType);
             else {
-                $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || '加载失败') + '</div></div>');
-                layer.msg(resp.message || '加载失败', { icon: 2, time: 3000, offset: '120px' });
+                $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + escapeHtml(resp.message || I18n.t('mounts.loadFailed')) + '</div></div>');
+                layer.msg(resp.message || I18n.t('mounts.loadFailed'), { icon: 2, time: 3000, offset: '120px' });
             }
         }).fail(function () {
-            $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">加载失败</div></div>');
-            layer.msg('加载失败，请检查网络', { icon: 2, time: 3000, offset: '120px' });
+            $mountsSkillsList.html('<div class="mcp-empty-state"><div class="mcp-empty-title">' + I18n.t('mounts.loadFailed') + '</div></div>');
+            layer.msg(I18n.t('mounts.loadFailedNetwork'), { icon: 2, time: 3000, offset: '120px' });
         });
     }
 
@@ -203,8 +203,8 @@
         if (type === 'FILES') {
             $mountsSkillsList.html('<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>'
-                + '<div class="mcp-empty-title">暂不展示文件</div>'
-                + '<div class="mcp-empty-desc">文件浏览功能将在后续版本支持</div></div>');
+                + '<div class="mcp-empty-title">' + I18n.t('mounts.filesNotShown') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('mounts.filesNotShownDesc') + '</div></div>');
             return;
         }
         renderSkillsList(list);
@@ -215,10 +215,10 @@
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>'
-                + '<div class="mcp-empty-title">该池暂无技能包</div>'
-                + '<div class="mcp-empty-desc">通过技能市场安装，或手动将技能文件放入池目录</div></div>';
+                + '<div class="mcp-empty-title">' + I18n.t('mounts.noSkills') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('mounts.noSkillsDesc') + '</div></div>';
         } else {
-            html += '<div class="mounts-skills-count">' + list.length + ' 个技能包</div>';
+            html += '<div class="mounts-skills-count">' + I18n.t('mounts.skillCount', { n: list.length }) + '</div>';
             list.forEach(function (skill) {
                 html += '<div class="settings-list-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '">'
                     + '<div class="settings-list-info">'
@@ -226,7 +226,7 @@
                     + (skill.realPath ? '<div class="settings-list-desc">' + escapeHtml(skill.realPath) + '</div>' : '')
                     + (skill.description ? '<div class="settings-list-desc">' + escapeHtml(skill.description) + '</div>' : '')
                     + '</div><div class="settings-list-actions">'
-                    + '<button class="settings-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="删除技能包"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+                    + '<button class="settings-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="' + I18n.t('mounts.deleteSkillTitle') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
                     + '</div></div>';
             });
         }
@@ -238,10 +238,10 @@
         if (!list || list.length === 0) {
             html = '<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>'
-                + '<div class="mcp-empty-title">该池暂无子代理</div>'
-                + '<div class="mcp-empty-desc">将代理配置文件放入池目录即可自动加载</div></div>';
+                + '<div class="mcp-empty-title">' + I18n.t('mounts.noAgents') + '</div>'
+                + '<div class="mcp-empty-desc">' + I18n.t('mounts.noAgentsDesc') + '</div></div>';
         } else {
-            html += '<div class="mounts-skills-count">' + list.length + ' 个子代理</div>';
+            html += '<div class="mounts-skills-count">' + I18n.t('mounts.agentCount', { n: list.length }) + '</div>';
             list.forEach(function (agent) {
                 var name = agent.name || '';
                 var filePath = agent.filePath || '';
@@ -259,11 +259,11 @@
     $mountsSkillsList.on('click', '.settings-action-btn.delete', function (e) {
         e.stopPropagation();
         var skillName = $(this).attr('data-skill');
-        layer.confirm('确定删除技能包 "' + skillName + '"？此操作不可恢复。', { title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px' }, function(index) {
+        layer.confirm(I18n.t('mounts.deleteSkillConfirm', { name: skillName }), { title: I18n.t('mounts.deleteConfirmTitle'), btn: [I18n.t('common.delete'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
             layer.close(index);
             postJson('/web/settings/mounts/skills/remove', { alias: mountsCurrentAlias, skillName: skillName }, function (resp) {
-                if (resp.code === 200) { showToast('删除成功'); loadMountsContent(mountsCurrentAlias, mountsCurrentType); }
-                else showToast('删除失败: ' + (resp.message || ''), 'error');
+                if (resp.code === 200) { showToast(I18n.t('mounts.deleteSkillSuccess')); loadMountsContent(mountsCurrentAlias, mountsCurrentType); }
+                else showToast(I18n.t('mounts.deleteSkillFailed') + ': ' + (resp.message || ''), 'error');
             });
         });
     });
@@ -275,10 +275,10 @@
         if (realPath) {
             $.get('/web/settings/mounts/open', { path: realPath }, function (resp) {
                 if (resp && resp.code !== 200) {
-                    layer.msg(resp.message || '打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                    layer.msg(resp.message || I18n.t('mounts.openDirFailed'), { icon: 2, time: 3000, offset: '120px' });
                 }
             }).fail(function () {
-                layer.msg('打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                layer.msg(I18n.t('mounts.openDirFailed'), { icon: 2, time: 3000, offset: '120px' });
             });
         }
     });
@@ -288,10 +288,10 @@
         if (mountsCurrentRealPath) {
             $.get('/web/settings/mounts/open', { path: mountsCurrentRealPath }, function (resp) {
                 if (resp && resp.code !== 200) {
-                    layer.msg(resp.message || '打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                    layer.msg(resp.message || I18n.t('mounts.openDirFailed'), { icon: 2, time: 3000, offset: '120px' });
                 }
             }).fail(function () {
-                layer.msg('打开目录失败', { icon: 2, time: 3000, offset: '120px' });
+                layer.msg(I18n.t('mounts.openDirFailed'), { icon: 2, time: 3000, offset: '120px' });
             });
         }
     });
@@ -310,12 +310,12 @@
     $('#mountsFormDeleteBtn').on('click', function () {
         var alias = mountsEditAlias;
         if (!alias) return;
-        layer.confirm('确定移除挂载 "' + alias + '"？（磁盘文件不会被删除）', { title: '确认移除', btn: ['移除', '取消'], icon: 3, offset: '120px' }, function(index) {
+        layer.confirm(I18n.t('mounts.removeConfirm', { name: alias }), { title: I18n.t('mounts.removeConfirmTitle'), btn: [I18n.t('mounts.removeBtn'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
             layer.close(index);
             $.post('/web/settings/mounts/remove', { alias: alias }, function (resp) {
-                if (resp && resp.code === 200) { showToast('已移除'); mountsEditAlias = null; showMountsListView(); loadMountsList(); refreshPanels(); }
-                else showToast('移除失败: ' + ((resp && resp.message) || '未知错误'), 'error');
-            }, 'json').fail(function () { showToast('网络错误', 'error'); });
+                if (resp && resp.code === 200) { showToast(I18n.t('mounts.removed')); mountsEditAlias = null; showMountsListView(); loadMountsList(); refreshPanels(); }
+                else showToast(I18n.t('mounts.removeFailed') + ': ' + ((resp && resp.message) || I18n.t('toast.unknownError')), 'error');
+            }, 'json').fail(function () { showToast(I18n.t('toast.networkError'), 'error'); });
         });
     });
 
@@ -332,8 +332,8 @@
         setScopeReadonly('mountsScope', false);
         $('#mountsFormActions').hide();
         $('#mountsPresetsDivider, .mounts-presets').show();
-        $mountsSaveBtn.text('保存').show();
-        showMountsFormView('添加挂载');
+        $mountsSaveBtn.text(I18n.t('mounts.saveBtn')).show();
+        showMountsFormView(I18n.t('mounts.addTitle'));
     });
     $('#mountsBackBtn').on('click', function () { mountsEditAlias = null; showMountsListView(); });
     $('#mountsSkillsBackBtn').on('click', function () { showMountsListView(); loadMountsList(); });
@@ -341,9 +341,9 @@
     $mountsSaveBtn.on('click', function () {
         var alias = $('#mountsAlias').val().trim();
         var path = $('#mountsPath').val().trim();
-        if (!alias) { showToast('别名为必填项', 'error'); return; }
-        if (!/^@/.test(alias)) { showToast('别名必须以 @ 开头', 'error'); return; }
-        if (!path) { showToast('路径为必填项', 'error'); return; }
+        if (!alias) { showToast(I18n.t('mounts.aliasRequired'), 'error'); return; }
+        if (!/^@/.test(alias)) { showToast(I18n.t('mounts.aliasAtPrefix'), 'error'); return; }
+        if (!path) { showToast(I18n.t('mounts.pathRequired'), 'error'); return; }
 
         var type = getMountsType();
         var writeable = $('#mountsWriteable').is(':checked');
@@ -351,17 +351,16 @@
 
         var isEdit = !!mountsEditAlias;
         var url = isEdit ? '/web/settings/mounts/update' : '/web/settings/mounts/add';
-        var actionText = isEdit ? '更新' : '添加';
 
         var bodyObj = { alias: alias, path: path, type: type, writeable: writeable, description: description, scope: $('#mountsScope').val() || 'user' };
 
         $mountsSaveBtn.prop('disabled', true);
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code === 200) { showToast(actionText + '成功'); mountsEditAlias = null; loadMountsList(); showMountsListView(); refreshPanels(); }
-                else showToast(actionText + '失败: ' + (resp.message || ''), 'error');
+                if (resp.code === 200) { showToast(isEdit ? I18n.t('mounts.updateSuccess') : I18n.t('mounts.addSuccess')); mountsEditAlias = null; loadMountsList(); showMountsListView(); refreshPanels(); }
+                else showToast((isEdit ? I18n.t('mounts.updateFailed') : I18n.t('mounts.addFailed')) + ': ' + (resp.message || ''), 'error');
             })
-            .fail(function () { showToast('网络错误', 'error'); })
+            .fail(function () { showToast(I18n.t('toast.networkError'), 'error'); })
             .always(function () { $mountsSaveBtn.prop('disabled', false); });
     });
 

@@ -40,7 +40,8 @@ class AgentSettingsControllerTest {
                 .mountAdd(MountDir.builder().alias(AgentSettingsController.USER_ALIAS).type(MountType.AGENTS).path("~/.soloncode/agents/").primary(true).build())
                 .mountAdd(MountDir.builder().alias(AgentSettingsController.WORKSPACE_ALIAS).type(MountType.AGENTS).path("./.soloncode/agents/").primary(true).build())
                 .build();
-        controller = new AgentSettingsController(engine, new AgentSettings(), null, null);
+
+        controller = new AgentSettingsController(null);
     }
 
     @AfterEach
@@ -322,6 +323,64 @@ class AgentSettingsControllerTest {
 
         Result removed = controller.agentsRemove(json("name", "general", "scope", "user"));
         assertNotEquals(200, removed.getCode());
+    }
+
+    @Test
+    void addAgentWithModelWritesFrontMatterAndEchoesBack() throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", "model-agent");
+        body.put("scope", "workspace");
+        body.put("description", "with model");
+        body.put("tools", Arrays.asList("read"));
+        body.put("model", "glm-4.7");
+        body.put("systemPrompt", "Prompt.");
+
+        assertEquals(200, controller.agentsAdd(ONode.ofBean(body).toJson()).getCode());
+        Path file = java.nio.file.Paths.get(engine.getWorkspace(), ".soloncode/agents/model-agent.md").toAbsolutePath().normalize();
+        String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(markdown.contains("model: \"glm-4.7\""));
+
+        Result detail = controller.agentsGet("model-agent", "workspace");
+        assertEquals(200, detail.getCode());
+        assertTrue(ONode.ofBean(detail.getData()).toJson().contains("glm-4.7"));
+    }
+
+    @Test
+    void emptyModelDoesNotWriteModelLine() throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", "no-model");
+        body.put("scope", "workspace");
+        body.put("description", "no model");
+        body.put("tools", Arrays.asList("read"));
+        body.put("model", "");
+        body.put("systemPrompt", "Prompt.");
+
+        assertEquals(200, controller.agentsAdd(ONode.ofBean(body).toJson()).getCode());
+        Path file = java.nio.file.Paths.get(engine.getWorkspace(), ".soloncode/agents/no-model.md").toAbsolutePath().normalize();
+        String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertFalse(markdown.contains("model:"));
+    }
+
+    @Test
+    void updateWithEmptyModelClearsExistingModel() throws Exception {
+        Path root = java.nio.file.Paths.get(engine.getWorkspace(), ".soloncode/agents").toAbsolutePath().normalize();
+        Files.createDirectories(root);
+        Path file = root.resolve("clear-model.md");
+        Files.write(file, ("---\nname: \"clear-model\"\ndescription: \"old\"\ntools: [\"read\"]\nmodel: \"coder\"\n---\n\nOld.\n").getBytes(StandardCharsets.UTF_8));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", "clear-model");
+        body.put("scope", "workspace");
+        body.put("originalName", "clear-model");
+        body.put("originalScope", "workspace");
+        body.put("description", "new");
+        body.put("tools", Arrays.asList("read"));
+        body.put("model", "");
+        body.put("systemPrompt", "New.");
+
+        assertEquals(200, controller.agentsUpdate(ONode.ofBean(body).toJson()).getCode());
+        String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertFalse(markdown.contains("model:"));
     }
 
     private String formJson(String name, String scope, String description, String systemPrompt) {

@@ -19,12 +19,15 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.codecli.command.builtin.GoalExtension;
 import org.noear.solon.codecli.portal.web.settings.BaseSettingsController;
+import org.noear.solon.codecli.workspace.WorkspaceManager;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.handle.UploadedFile;
 
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.config.entity.LoopGroupDo;
 import org.noear.solon.codecli.config.entity.PermissionGroupDo;
@@ -33,8 +36,11 @@ import org.noear.solon.codecli.config.entity.LspServerDo;
 import org.noear.solon.codecli.config.entity.McpServerDo;
 import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.MountDo;
-import org.noear.solon.codecli.portal.FileWatchService;
-import org.noear.solon.codecli.portal.web.market.Market;
+import org.noear.solon.codecli.util.LogDirUtil;
+import org.noear.solon.codecli.util.OsOpenUtil;
+import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
+import org.noear.solon.Solon;
+import org.noear.solon.codecli.market.Market;
 import org.noear.solon.codecli.portal.web.service.SkinService;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -42,8 +48,7 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.*;
-import java.net.*;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -77,8 +82,8 @@ public class WebSettingsController extends BaseSettingsController {
      */
     private static final Logger LOG = LoggerFactory.getLogger(WebSettingsController.class);
 
-    public WebSettingsController(HarnessEngine engine, AgentSettings settings, FileWatchService fileWatchService, WebGate webGate) {
-        super(engine, settings, fileWatchService, webGate);
+    public WebSettingsController(WorkspaceManager workspaceManager) {
+        super(workspaceManager);
     }
 
 
@@ -109,20 +114,22 @@ public class WebSettingsController extends BaseSettingsController {
             Map<String, LspServerDo> oldLsp;
             boolean changed;
 
-            synchronized (settings) {
-                oldDefaultModel = settings.getDefaultModel();
-                oldGeneralFp = configFingerprint(settings.getGeneral());
-                oldPermissionFp = configFingerprint(settings.getPermission());
-                oldLoopFp = configFingerprint(settings.getLoop());
-                oldProvidersFp = configFingerprint(settings.getProviders());
-                oldModels = new LinkedHashMap<>(settings.getModels());
-                oldMcp = new LinkedHashMap<>(settings.getMcpServers());
-                oldApi = new LinkedHashMap<>(settings.getApiServers());
-                oldMounts = new LinkedHashMap<>(settings.getMountPools());
-                oldLsp = new LinkedHashMap<>(settings.getLspServers());
+            // 锁当前工作区的 settings 实例（同一请求内 currentContext 稳定返回同一 WorkspaceContext）
+            AgentSettings curSettings = settings();
+            synchronized (curSettings) {
+                oldDefaultModel = settings().getDefaultModel();
+                oldGeneralFp = configFingerprint(settings().getGeneral());
+                oldPermissionFp = configFingerprint(settings().getPermission());
+                oldLoopFp = configFingerprint(settings().getLoop());
+                oldProvidersFp = configFingerprint(settings().getProviders());
+                oldModels = new LinkedHashMap<>(settings().getModels());
+                oldMcp = new LinkedHashMap<>(settings().getMcpServers());
+                oldApi = new LinkedHashMap<>(settings().getApiServers());
+                oldMounts = new LinkedHashMap<>(settings().getMountPools());
+                oldLsp = new LinkedHashMap<>(settings().getLspServers());
 
                 // 2) 读盘 in-place（parse 成功后才 mutate；含 null→默认回落）
-                changed = settings.reloadInPlace();
+                changed = settings().reloadInPlace();
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -137,22 +144,22 @@ public class WebSettingsController extends BaseSettingsController {
             }
 
             // 3) 变更摘要（按内容指纹；group 也按指纹，避免无变仍强制 apply）
-            boolean generalChanged = !Objects.equals(oldGeneralFp, configFingerprint(settings.getGeneral()));
-            boolean permissionChanged = !Objects.equals(oldPermissionFp, configFingerprint(settings.getPermission()));
-            boolean loopChanged = !Objects.equals(oldLoopFp, configFingerprint(settings.getLoop()));
-            boolean providersChanged = !Objects.equals(oldProvidersFp, configFingerprint(settings.getProviders()));
-            boolean defaultModelChanged = !Objects.equals(oldDefaultModel, settings.getDefaultModel());
+            boolean generalChanged = !Objects.equals(oldGeneralFp, configFingerprint(settings().getGeneral()));
+            boolean permissionChanged = !Objects.equals(oldPermissionFp, configFingerprint(settings().getPermission()));
+            boolean loopChanged = !Objects.equals(oldLoopFp, configFingerprint(settings().getLoop()));
+            boolean providersChanged = !Objects.equals(oldProvidersFp, configFingerprint(settings().getProviders()));
+            boolean defaultModelChanged = !Objects.equals(oldDefaultModel, settings().getDefaultModel());
 
             Map<String, Object> changedMap = new LinkedHashMap<>();
             changedMap.put("general", generalChanged);
             changedMap.put("permission", permissionChanged);
             changedMap.put("loop", loopChanged);
             changedMap.put("defaultModel", defaultModelChanged);
-            List<String> modelChanges = diffConfigMap(oldModels, settings.getModels());
-            List<String> mcpChanges = diffConfigMap(oldMcp, settings.getMcpServers());
-            List<String> apiChanges = diffConfigMap(oldApi, settings.getApiServers());
-            List<String> mountChanges = diffConfigMap(oldMounts, settings.getMountPools());
-            List<String> lspChanges = diffConfigMap(oldLsp, settings.getLspServers());
+            List<String> modelChanges = diffConfigMap(oldModels, settings().getModels());
+            List<String> mcpChanges = diffConfigMap(oldMcp, settings().getMcpServers());
+            List<String> apiChanges = diffConfigMap(oldApi, settings().getApiServers());
+            List<String> mountChanges = diffConfigMap(oldMounts, settings().getMountPools());
+            List<String> lspChanges = diffConfigMap(oldLsp, settings().getLspServers());
             changedMap.put("models", modelChanges);
             changedMap.put("mcpServers", mcpChanges);
             changedMap.put("apiServers", apiChanges);
@@ -164,25 +171,26 @@ public class WebSettingsController extends BaseSettingsController {
             List<String> applied = new ArrayList<>();
             List<String> warnings = new ArrayList<>();
 
-            // 4) apply engine（仅对真正变更的分组）
+            // 4) apply engine（仅对真正变更的分组；general/permission 为全局配置，广播到所有已加载工作区引擎）
             if (apply) {
                 if (generalChanged) {
-                    applyGeneralToEngine(settings.getGeneral(), applied, warnings);
+                    applyGeneralToAllEngines(applied, warnings);
                 }
                 if (permissionChanged) {
-                    applyPermissionToEngine(settings.getPermission(), applied, warnings);
+                    // 其他工作区引擎同样需要重建主 Agent 使权限即时生效
+                    applyPermissionToAllEngines(applied, warnings);
                 }
                 if (loopChanged) {
                     applied.add("loop"); // loop 仅内存，LoopScheduler 读 settings
                 }
 
                 if (defaultModelChanged) {
-                    applyDefaultModel(settings.getDefaultModel(), settings.getModels(), applied, warnings);
+                    applyDefaultModel(settings().getDefaultModel(), settings().getModels(), applied, warnings);
                 }
 
-                applyModelsDiff(oldModels, settings.getModels(), applied, warnings);
-                applyMcpDiff(oldMcp, settings.getMcpServers(), applied, warnings);
-                applyApiDiff(oldApi, settings.getApiServers(), applied, warnings);
+                applyModelsDiff(oldModels, settings().getModels(), applied, warnings);
+                applyMcpDiff(oldMcp, settings().getMcpServers(), applied, warnings);
+                applyApiDiff(oldApi, settings().getApiServers(), applied, warnings);
 
                 if (!mountChanges.isEmpty()) {
                     warnings.add("mountPools changed; memory updated, restart recommended for full runtime effect");
@@ -195,13 +203,14 @@ public class WebSettingsController extends BaseSettingsController {
             data.put("applied", applied);
             data.put("warnings", warnings);
 
-            // 5) 通知前端
-            if (webGate != null) {
+            // 5) 通知前端（广播通道与内容均取当前工作区）
+            WebGate curWebGate = webGate();
+            if (curWebGate != null) {
                 try {
                     ONode evt = new ONode().asObject()
                             .set("type", "settings_reloaded")
                             .set("changed", changedMap);
-                    webGate.broadcastRaw(evt.toJson());
+                    curWebGate.broadcastRaw(currentContext(), evt.toJson());
                 } catch (Exception e) {
                     LOG.debug("[Settings] broadcast settings_reloaded failed: {}", e.getMessage());
                 }
@@ -217,7 +226,8 @@ public class WebSettingsController extends BaseSettingsController {
 
     private Map<String, Object> buildReloadSourceInfo() {
         Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
-        Path localFile = Paths.get(AgentFlags.getUserDir(), ".soloncode", "settings.json").toAbsolutePath();
+        // 多工作区隔离：local 取当前工作区目录，而非启动目录
+        Path localFile = Paths.get(engine().getWorkspace(), ".soloncode", "settings.json").toAbsolutePath();
         Map<String, Object> source = new LinkedHashMap<>();
         source.put("global", globalFile.toString());
         source.put("local", localFile.toString());
@@ -267,7 +277,7 @@ public class WebSettingsController extends BaseSettingsController {
                 warnings.add("defaultModel points to missing model: " + defaultModel);
                 return;
             }
-            engine.setDefaultModel(defaultModel);
+            engine().setDefaultModel(defaultModel);
             applied.add("defaultModel");
         } catch (Exception e) {
             warnings.add("defaultModel apply failed: " + e.getMessage());
@@ -275,12 +285,14 @@ public class WebSettingsController extends BaseSettingsController {
     }
 
     /**
-     * 将 general 配置热应用到引擎（对齐 generalSave + 启动期可热更新字段）。
+     * 将 general 配置热应用到指定引擎（对齐 generalSave + 启动期可热更新字段）。
      * 调用前 settings 已 fillRuntimeDefaults，关键字段通常非 null。
+     * <p>多工作区架构：全局设置保存后需对每个已加载工作区的引擎调用，
+     * 引擎对象由调用方传入（默认传 engine() 即当前工作区引擎）。</p>
      */
-    private void applyGeneralToEngine(GeneralGroupDo g, List<String> applied, List<String> warnings) {
+    private void applyGeneralToEngine(HarnessEngine engine, GeneralGroupDo g, List<String> applied, List<String> warnings) {
         try {
-            engine.setCompressionThreshold(g.getSummaryWindowSize(), g.getCompressionThresholdPercent() / 100.0D);
+            engine.setCompressionThreshold(g.getCompressionThresholdMessages(), g.getCompressionThresholdPercent() / 100.0D);
             engine.setSessionWindowSize(g.getSessionWindowSize());
             engine.setModelRetries(g.getModelRetries());
             engine.setMcpRetries(g.getMcpRetries());
@@ -331,16 +343,13 @@ public class WebSettingsController extends BaseSettingsController {
 
             applied.add("general");
 
-            // 无公开热更新 API 的字段：仅提示一次
-            if (g.getLogFileMaxSize() != null || g.getLogMaxHistory() != null) {
-                warnings.add("log rotation: memory updated; restart recommended for full runtime effect");
-            }
+            // 日志滚动/级别配置：同步到 Solon.cfg() 后由调用方统一 rebuildAll 重建 appender（热生效）
         } catch (Exception e) {
             warnings.add("general apply failed: " + e.getMessage());
         }
     }
 
-    private void applyPermissionToEngine(PermissionGroupDo p, List<String> applied, List<String> warnings) {
+    private void applyPermissionToEngine(HarnessEngine engine, PermissionGroupDo p, List<String> applied, List<String> warnings) {
         try {
             // 白名单 + 黑名单一次重置，只重建一次主 Agent（避免双次 createMainAgent）
             try {
@@ -357,6 +366,55 @@ public class WebSettingsController extends BaseSettingsController {
     }
 
     /**
+     * 将 general 配置热广播到所有已加载工作区的引擎。
+     * <p>当前工作区直接使用内存 settings（已 bindTo 更新）；
+     * 其他工作区先从磁盘 reloadInPlace（global 已写盘，保留各自 local 覆盖语义），
+     * 再用各自 settings 的 general 值热更新其引擎。</p>
+     */
+    private void applyGeneralToAllEngines(List<String> applied, List<String> warnings) {
+        WorkspaceContext cur = currentContext();
+
+        // 1) 当前工作区：内存 settings 已是最新，直接应用
+        applyGeneralToEngine(engine(), settings().getGeneral(), applied, warnings);
+
+        // 2) 其他已加载工作区：reload 后按各自配置应用（尊重 local 覆盖）
+        for (WorkspaceContext ctx : workspaceManager().getContexts()) {
+            if (ctx == cur || ctx == null || ctx.getEngine() == null) {
+                continue;
+            }
+            try {
+                AgentSettings ws = ctx.getSettings();
+                ws.reloadInPlace();
+                applyGeneralToEngine(ctx.getEngine(), ws.getGeneral(), applied, warnings);
+            } catch (Exception e) {
+                warnings.add("general broadcast to workspace " + ctx.getMeta().getId() + " failed: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 将工具权限热广播到所有已加载工作区的引擎。
+     * <p>当前工作区直接用内存 settings；其他工作区先从磁盘 reloadInPlace 后按各自配置应用，
+     * 尊重各自 local 覆盖；重建各自主 Agent 即时生效。</p>
+     */
+    private void applyPermissionToAllEngines(List<String> applied, List<String> warnings) {
+        WorkspaceContext cur = currentContext();
+        for (WorkspaceContext ctx : workspaceManager().getContexts()) {
+            if (ctx == null || ctx.getEngine() == null) {
+                continue;
+            }
+            try {
+                if (ctx != cur) {
+                    ctx.getSettings().reloadInPlace();
+                }
+                applyPermissionToEngine(ctx.getEngine(), ctx.getSettings().getPermission(), applied, warnings);
+            } catch (Exception e) {
+                warnings.add("permission broadcast to workspace " + ctx.getMeta().getId() + " failed: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
      * 模型差分应用。
      * <p>与 {@code llmModelsToggle} 对齐：仅 enabled/visibled 变化时只改内存标志、不卸引擎模型；
      * 连接参数等实质内容变更才 remove+add；删除/新增按需处理。</p>
@@ -369,7 +427,7 @@ public class WebSettingsController extends BaseSettingsController {
             for (String name : oldModels.keySet()) {
                 if (!newModels.containsKey(name)) {
                     try {
-                        engine.removeModel(name);
+                        engine().removeModel(name);
                         any = true;
                     } catch (Exception e) {
                         warnings.add("remove model " + name + " failed: " + e.getMessage());
@@ -384,12 +442,12 @@ public class WebSettingsController extends BaseSettingsController {
                 try {
                     if (old == null) {
                         // 新增：与启动路径一致，始终 add（引擎按 enabled 过滤使用）
-                        engine.addModel(config);
+                        engine().addModel(config);
                         any = true;
                     } else if (!modelRuntimeFingerprint(old).equals(modelRuntimeFingerprint(config))) {
                         // 连接/身份等实质内容变更：先删后加
-                        engine.removeModel(name);
-                        engine.addModel(config);
+                        engine().removeModel(name);
+                        engine().addModel(config);
                         any = true;
                     }
                     // 仅 enabled/visibled/scope 等 UI 标志变化：与 toggle 一致，不 rebuild
@@ -430,7 +488,7 @@ public class WebSettingsController extends BaseSettingsController {
             for (String name : oldMap.keySet()) {
                 if (!newMap.containsKey(name)) {
                     try {
-                        engine.removeMcpServer(name);
+                        engine().removeMcpServer(name);
                         any = true;
                     } catch (Exception e) {
                         warnings.add("remove mcp " + name + " failed: " + e.getMessage());
@@ -445,13 +503,13 @@ public class WebSettingsController extends BaseSettingsController {
                 try {
                     if (old == null) {
                         if (params.isEnabled()) {
-                            engine.addMcpServer(name, params);
+                            engine().addMcpServer(name, params);
                             any = true;
                         }
                     } else if (!configFingerprint(old).equals(configFingerprint(params))) {
-                        engine.removeMcpServer(name);
+                        engine().removeMcpServer(name);
                         if (params.isEnabled()) {
-                            engine.addMcpServer(name, params);
+                            engine().addMcpServer(name, params);
                         }
                         any = true;
                     }
@@ -478,7 +536,7 @@ public class WebSettingsController extends BaseSettingsController {
                     try {
                         ApiSourceDo src = e.getValue();
                         if (src != null && Assert.isNotEmpty(src.getDocUrl())) {
-                            engine.removeApiServer(src.getDocUrl());
+                            engine().removeApiServer(src.getDocUrl());
                             any = true;
                         }
                     } catch (Exception ex) {
@@ -494,15 +552,15 @@ public class WebSettingsController extends BaseSettingsController {
                 try {
                     if (old == null) {
                         if (source != null && source.isEnabled()) {
-                            engine.addApiServer(source);
+                            engine().addApiServer(source);
                             any = true;
                         }
                     } else if (!configFingerprint(old).equals(configFingerprint(source))) {
                         if (Assert.isNotEmpty(old.getDocUrl())) {
-                            engine.removeApiServer(old.getDocUrl());
+                            engine().removeApiServer(old.getDocUrl());
                         }
                         if (source != null && source.isEnabled()) {
-                            engine.addApiServer(source);
+                            engine().addApiServer(source);
                         }
                         any = true;
                     }
@@ -526,7 +584,49 @@ public class WebSettingsController extends BaseSettingsController {
     @Get
     @Mapping("/web/settings/general")
     public Result<GeneralGroupDo> generalGet() {
-        return Result.succeed(settings.getGeneral());
+        return Result.succeed(settings().getGeneral());
+    }
+
+    /**
+     * 打开当前请求所属工作区的日志目录（~/.soloncode/workspaces/&lt;工作区标识&gt;/logs/）
+     * <p>启用 WorkspaceLogRouter 后，每个工作区的日志分流到各自目录，按当前工作区定位即真实写入位置。</p>
+     */
+    @Get
+    @Mapping("/web/settings/logs/open")
+    public Result logsOpen() {
+        try {
+            //按当前工作区定位（WorkspaceFilter 已解析并注入 WORKSPACE_CTX）
+            File dir = LogDirUtil.logDir(currentContext().getMeta().getPath());
+
+            //尚未产生日志文件时目录可能还不存在，直接建出来再打开
+            if (dir.isDirectory() == false && dir.mkdirs() == false) {
+                return Result.failure("无法创建日志目录: " + dir.getAbsolutePath());
+            }
+
+            OsOpenUtil.openDirectory(dir);
+            return Result.succeed(dir.getAbsolutePath());
+        } catch (Exception e) {
+            return Result.failure("打开失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 将日志配置同步到 Solon.cfg()（与 App.syncLogPropertiesToCfg 对齐，供保存后热更新使用）。
+     */
+    private static void syncLogPropertiesToCfg(GeneralGroupDo g) {
+        try {
+            if (g.getLogLevel() != null && !g.getLogLevel().isEmpty()) {
+                Solon.cfg().setProperty("solon.logging.appender.file.level", g.getLogLevel());
+            }
+            if (g.getLogFileMaxSize() != null && !g.getLogFileMaxSize().isEmpty()) {
+                Solon.cfg().setProperty("solon.logging.appender.file.maxFileSize", g.getLogFileMaxSize());
+            }
+            if (g.getLogMaxHistory() != null) {
+                Solon.cfg().setProperty("solon.logging.appender.file.maxHistory", String.valueOf(g.getLogMaxHistory()));
+            }
+        } catch (Exception e) {
+            //日志配置同步失败不影响设置保存链路
+        }
     }
 
     /**
@@ -537,56 +637,94 @@ public class WebSettingsController extends BaseSettingsController {
     public Result generalSave(@Body String json) throws Exception {
         ONode tmp = ONode.ofJson(json);
         if (tmp.isObject()) {
-            tmp.bindTo(settings.getGeneral());
+            tmp.bindTo(settings().getGeneral());
 
             // 处理 webAuthUser/webAuthPass 清空：bindTo 遇到 null 值会跳过，需要手动处理
             if (tmp.get("webAuthUser").isNull()) {
-                settings.getGeneral().setWebAuthUser(null);
+                settings().getGeneral().setWebAuthUser(null);
             }
             if (tmp.get("webAuthPass").isNull()) {
-                settings.getGeneral().setWebAuthPass(null);
+                settings().getGeneral().setWebAuthPass(null);
             }
 
-            engine.setCompressionThreshold(settings.getGeneral().getSummaryWindowSize(), settings.getGeneral().getCompressionThresholdPercent() / 100.0D);
-            engine.setSessionWindowSize(settings.getGeneral().getSessionWindowSize());
+            // 处理 proxyHost/proxyPort/noProxy 清空：bindTo 遇到 null 值会跳过，需要手动处理
+            if (tmp.get("proxyHost").isNull()) {
+                settings().getGeneral().setProxyHost(null);
+            }
+            if (tmp.get("noProxy").isNull()) {
+                settings().getGeneral().setNoProxy(null);
+            }
+            if (tmp.get("proxyPort").isNull()) {
+                settings().getGeneral().setProxyPort(0);
+            }
 
-            engine.setModelRetries(settings.getGeneral().getModelRetries());
-            engine.setMcpRetries(settings.getGeneral().getMcpRetries());
-            engine.setApiRetries(settings.getGeneral().getApiRetries());
-
-            engine.setSandboxEnabled(settings.getGeneral().isSandboxMode());
-            engine.setSandboxAllowUserHome(settings.getGeneral().isSandboxAllowUserHome());
-            engine.setSandboxSystemRestrict(settings.getGeneral().isSandboxSystemRestrict());
-
-            engine.setBashAsyncEnabled(settings.getGeneral().isBashAsyncEnabled());
-            engine.setMemoryEnabled(settings.getGeneral().isMemoryEnabled());
-            engine.setMemoryRelevanceCount(settings.getGeneral().getMemoryRelevanceCount());
-            engine.setMemoryPriorityCount(settings.getGeneral().getMemoryPriorityCount());
-            engine.setMemorySummaryLength(settings.getGeneral().getMemorySummaryLength());
-            engine.setSubagentEnabled(settings.getGeneral().isSubagentEnabled());
-
-
-            engine.getMcpGatewayTalent().setEnabled(settings.getGeneral().isMcpEnabled());
-            engine.getOpenApiGatewayTalent().setEnabled(settings.getGeneral().isOpenApiEnabled());
-            engine.getLspTalent().setEnabled(settings.getGeneral().isLspEnabled());
-
-            // 动态应用日志级别
-            if (tmp.hasKey("logLevel") && !tmp.get("logLevel").isNull()) {
-                String logLevel = tmp.get("logLevel").getString();
-                if (logLevel != null && !logLevel.isEmpty()) {
-                    ch.qos.logback.classic.Level level = ch.qos.logback.classic.Level.toLevel(logLevel, null);
-                    if (level != null) {
-                        ch.qos.logback.classic.Logger rootLogger =
-                                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(
-                                        org.slf4j.Logger.ROOT_LOGGER_NAME);
-                        rootLogger.setLevel(level);
-                    }
-                }
+            // 字体设置：字族名过滤（前端已过滤，这里做服务端兜底，防 CSS 注入）
+            GeneralGroupDo g = settings().getGeneral();
+            g.setUiFontFamily(sanitizeFontFamily(g.getUiFontFamily()));
+            g.setUiFontMono(sanitizeFontFamily(g.getUiFontMono()));
+            g.setUiFontScale(clampFontScale(g.getUiFontScale()));
+            if (tmp.hasKey("uiFontFamily") && tmp.get("uiFontFamily").isNull()) {
+                g.setUiFontFamily(null);
+            }
+            if (tmp.hasKey("uiFontMono") && tmp.get("uiFontMono").isNull()) {
+                g.setUiFontMono(null);
+            }
+            if (tmp.hasKey("uiFontScale") && tmp.get("uiFontScale").isNull()) {
+                g.setUiFontScale(null);
             }
         }
 
+        // 更新 HTTP 代理配置（热生效）
+        ProxyConfig.update(settings().getGeneral());
+
+        // 先写盘（global settings.json），再广播到所有已加载工作区引擎：
+        // 其他工作区 reloadInPlace 需读到最新的磁盘全局值，才能正确叠加各自 local 覆盖
         saveSettings();
+
+        // 日志滚动/级别配置热更新：同步到 Solon.cfg()，再重建路由 appender（懒加载时按新参数构建）
+        syncLogPropertiesToCfg(settings().getGeneral());
+        WorkspaceLogRouter.rebuildAll();
+
+        // 热更新到所有已加载工作区的引擎（全局设置广播；含当前引擎 + 其他工作区引擎）
+        applyGeneralToAllEngines(new ArrayList<>(), new ArrayList<>());
+
         return Result.succeed();
+    }
+
+    /**
+     * 字体名过滤：黑名单式（与前端 app-ui.js sanitizeFontFamily 保持一致）。
+     * 原先是 [\w\u4e00-\u9fa5...] 白名单，只放过拉丁与中日韩汉字，日文假名、韩文谚文、
+     * 西里尔字母等字族名会被整条丢弃 —— 界面有 22 种语言，白名单在这里站不住。
+     * 只拦真正能越出 CSS 声明的字符（; { } ( ) < > \ 与注释起止），其余非法写法交给
+     * 浏览器解析器丢弃：自定义属性经 setProperty 走解析器，塞不进第二条声明。
+     */
+    private static String sanitizeFontFamily(String v) {
+        if (v == null) {
+            return null;
+        }
+        String s = v.trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        if (s.matches(".*[;{}()<>\\\\].*") || s.contains("/*") || s.contains("*/")) {
+            return null;
+        }
+        return s.length() > 200 ? s.substring(0, 200) : s;
+    }
+
+    /** 字号缩放钳制到 0.85 ~ 1.5；1.0 视为默认（存 null） */
+    private static Double clampFontScale(Double v) {
+        if (v == null) {
+            return null;
+        }
+        double n = v;
+        if (n < 0.85D) {
+            n = 0.85D;
+        } else if (n > 1.5D) {
+            n = 1.5D;
+        }
+        n = Math.round(n * 100D) / 100D;
+        return n == 1.0D ? null : n;
     }
 
     // ==================== 设置：皮肤 Skin ====================
@@ -605,7 +743,7 @@ public class WebSettingsController extends BaseSettingsController {
                 {"eyecare", "护眼", "柔和暖绿，长时间阅读更舒适"},
                 {"contrast", "高对比", "强化可读性，无装饰背景"}
         };
-        String active = normalizeActiveSkin(settings.getGeneral().getActiveSkin());
+        String active = normalizeActiveSkin(settings().getGeneral().getActiveSkin());
         for (String[] b : builtins) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", b[0]);
@@ -686,7 +824,7 @@ public class WebSettingsController extends BaseSettingsController {
             throw new IllegalArgumentException("仅支持 .zip 皮肤包");
         }
 
-        Path workspace = Paths.get(engine.getWorkspace()).toAbsolutePath().normalize();
+        Path workspace = Paths.get(engine().getWorkspace()).toAbsolutePath().normalize();
         Path zipPath = workspace.resolve(rel).normalize();
         if (!zipPath.startsWith(workspace)) {
             throw new IllegalArgumentException("非法文件路径");
@@ -712,7 +850,7 @@ public class WebSettingsController extends BaseSettingsController {
             return Result.failure("皮肤不存在: " + name);
         }
 
-        settings.getGeneral().setActiveSkin("default".equals(name) ? null : name);
+        settings().getGeneral().setActiveSkin("default".equals(name) ? null : name);
         saveSettings();
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -737,9 +875,9 @@ public class WebSettingsController extends BaseSettingsController {
             return Result.failure(e.getMessage());
         }
 
-        String active = normalizeActiveSkin(settings.getGeneral().getActiveSkin());
+        String active = normalizeActiveSkin(settings().getGeneral().getActiveSkin());
         if (name.equals(active)) {
-            settings.getGeneral().setActiveSkin(null);
+            settings().getGeneral().setActiveSkin(null);
             active = "default";
             saveSettings();
         }
@@ -841,7 +979,7 @@ public class WebSettingsController extends BaseSettingsController {
     @Get
     @Mapping("/web/settings/loop")
     public Result<LoopGroupDo> loopGet() {
-        return Result.succeed(settings.getLoop());
+        return Result.succeed(settings().getLoop());
     }
 
     /**
@@ -852,7 +990,7 @@ public class WebSettingsController extends BaseSettingsController {
     public Result loopSave(@Body String json) throws Exception {
         ONode tmp = ONode.ofJson(json);
         if (tmp.isObject()) {
-            tmp.bindTo(settings.getLoop());
+            tmp.bindTo(settings().getLoop());
         }
         saveSettings();
         return Result.succeed();
@@ -866,7 +1004,7 @@ public class WebSettingsController extends BaseSettingsController {
     @Get
     @Mapping("/web/settings/permission")
     public Result<PermissionGroupDo> permissionGet() {
-        return Result.succeed(settings.getPermission());
+        return Result.succeed(settings().getPermission());
     }
 
     /**
@@ -894,13 +1032,14 @@ public class WebSettingsController extends BaseSettingsController {
         }
 
         // 先清空再写入，避免 final List 叠加导致重复
-        settings.getPermission().getDisallowedTools().clear();
-        settings.getPermission().getDisallowedTools().addAll(disallowedTools);
+        settings().getPermission().getDisallowedTools().clear();
+        settings().getPermission().getDisallowedTools().addAll(disallowedTools);
 
-        // 热更新到引擎（会重建主 Agent 即时生效）
-        engine.disallowToolReset(settings.getPermission().getDisallowedTools());
-
+        // 先写盘（global settings.json），再广播到所有已加载工作区的引擎（重建各自主 Agent 即时生效）：
+        // 其他工作区 reloadInPlace 需读到最新的磁盘全局值，才能正确叠加各自 local 覆盖
         saveSettings();
+        applyPermissionToAllEngines(new ArrayList<>(), new ArrayList<>());
+
         LOG.info("[Settings] Permission updated: disallowedTools={}", disallowedTools);
         return Result.succeed();
     }

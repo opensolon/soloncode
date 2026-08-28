@@ -163,7 +163,7 @@ public class AgentSettingsReloadTest {
         assertNull(target.getGeneral().getWebAuthUser());
         assertNull(target.getGeneral().getWebAuthPass());
         assertNull(target.getGeneral().getLogLevel());
-        assertNull(target.getGeneral().getMaxTurns());
+        assertEquals(20, target.getGeneral().getMaxTurns());
         assertNull(target.getGeneral().getActiveSkin());
         assertNull(target.getLoop().getBudgetWarningPercent());
         assertNull(target.getLoop().getValidatorEnabled());
@@ -231,13 +231,12 @@ public class AgentSettingsReloadTest {
     void fillRuntimeDefaults_fillsNullOnly() {
         AgentSettings settings = new AgentSettings();
         settings.getGeneral().setSandboxMode(false);
-        settings.getGeneral().setMaxTurns(0);
+        settings.getGeneral().setMaxTurns(10);
     
         settings.fillRuntimeDefaults();
     
         assertEquals(Boolean.FALSE, settings.getGeneral().isSandboxMode());
-        assertNotNull(settings.getGeneral().getMaxTurns());
-        assertEquals(Integer.valueOf(20), settings.getGeneral().getMaxTurns());
+        assertEquals(10, settings.getGeneral().getMaxTurns());
         assertNotNull(settings.getGeneral().isMemoryEnabled());
         assertNotNull(settings.getLoop().getBudgetWarningPercent());
     }

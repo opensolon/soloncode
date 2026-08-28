@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.channel.dingtalk;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.net.http.HttpResponse;
 import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
@@ -208,11 +209,12 @@ public class DingTalkAppRegistration {
      * 发送 JSON POST 请求（钉钉 Device Registration API 要求 JSON body）
      */
     protected String httpJsonPost(String url, String jsonBody) throws Exception {
-        try (HttpResponse resp = HttpUtils.http(url)
+        HttpUtils http = HttpUtils.http(url)
                 .timeout(10, 10, 15)
                 .header("Content-Type", "application/json;charset=utf-8")
-                .body(jsonBody.getBytes(StandardCharsets.UTF_8), "application/json")
-                .exec("POST")) {
+                .body(jsonBody.getBytes(StandardCharsets.UTF_8), "application/json");
+        ProxyConfig.applyIfNeeded(http);
+        try (HttpResponse resp = http.exec("POST")) {
             int statusCode = resp.code();
             if (statusCode != 200) {
                 String errorBody = "";

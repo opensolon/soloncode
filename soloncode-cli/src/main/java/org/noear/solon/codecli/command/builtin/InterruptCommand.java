@@ -16,9 +16,13 @@
 package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.AgentTrace;
+import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.core.util.Assert;
 import reactor.core.Disposable;
 
@@ -70,7 +74,14 @@ public class InterruptCommand implements Command {
         Disposable disposable = (Disposable) session.attrs().remove("disposable");
         if (disposable != null) {
             disposable.dispose();
-            session.addMessage(ChatMessage.ofAssistant("用户已取消任务."));
+            ReActTrace trace = session.getContext().getAs(AgentFlags.TRACE_KEY_MAIN);
+            AssistantMessage assistantMessage = ChatMessage.ofAssistant("用户已取消任务.");
+
+            if (trace != null) {
+                assistantMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
+            }
+
+            session.addMessage(assistantMessage);
             ctx.println("用户已取消任务（或中断）");
         } else {
             ctx.println("当前没有正在执行的任务");

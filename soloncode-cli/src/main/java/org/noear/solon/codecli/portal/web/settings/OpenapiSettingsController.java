@@ -10,8 +10,7 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
 import org.noear.solon.codecli.config.entity.LspServerDo;
-import org.noear.solon.codecli.portal.FileWatchService;
-import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
@@ -37,8 +36,8 @@ public class OpenapiSettingsController extends BaseSettingsController{
     /**
      * 构造函数：支持自定义所有依赖。
      */
-    public OpenapiSettingsController(HarnessEngine engine, AgentSettings settings, FileWatchService fileWatchService, WebGate webGate) {
-        super(engine, settings, fileWatchService, webGate);
+    public OpenapiSettingsController(WorkspaceManager workspaceManager) {
+        super(workspaceManager);
     }
 
     // ==================== 设置：OpenApi 服务器管理 ====================
@@ -50,7 +49,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
     @Mapping("/web/settings/openapi/servers")
     public Result<List<Map>> openapiServers() throws Exception {
         List<Map> list = new ArrayList<>();
-        for (Map.Entry<String, ApiSourceDo> entry : settings.getApiServers().entrySet()) {
+        for (Map.Entry<String, ApiSourceDo> entry : settings().getApiServers().entrySet()) {
             String name = entry.getKey();
             ApiSourceDo source = entry.getValue();
             Map<String, Object> item = new LinkedHashMap<>();
@@ -85,7 +84,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
         }
 
         // 检查重名
-        if (settings.getApiServers().containsKey(name)) {
+        if (settings().getApiServers().containsKey(name)) {
             return Result.failure("Server name already exists: " + name);
         }
 
@@ -114,11 +113,11 @@ public class OpenapiSettingsController extends BaseSettingsController{
             source.setHeaders(headersMap);
         }
 
-        settings.getApiServers().put(name, source);
+        settings().getApiServers().put(name, source);
 
         // 如果启用，同步到引擎
         if (enabled) {
-            engine.addApiServer(source);
+            engine().addApiServer(source);
         }
 
         saveSettings();
@@ -143,17 +142,17 @@ public class OpenapiSettingsController extends BaseSettingsController{
         // 如果 name 变了，使用 originalName 查找旧记录
         String lookupName = (originalName != null && !originalName.isEmpty()) ? originalName : name;
 
-        ApiSourceDo existing = settings.getApiServers().get(lookupName);
+        ApiSourceDo existing = settings().getApiServers().get(lookupName);
         if (existing == null) {
             return Result.failure("Server not found: " + lookupName);
         }
 
         // 从引擎移除旧的
-        engine.removeApiServer(existing.getDocUrl());
+        engine().removeApiServer(existing.getDocUrl());
 
         // 如果名称变更，移除旧 key
         if (!lookupName.equals(name)) {
-            settings.getApiServers().remove(lookupName);
+            settings().getApiServers().remove(lookupName);
         }
 
         boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
@@ -185,11 +184,11 @@ public class OpenapiSettingsController extends BaseSettingsController{
             source.setHeaders(existing.getHeaders());
         }
 
-        settings.getApiServers().put(name, source);
+        settings().getApiServers().put(name, source);
 
         // 如果启用，同步到引擎
         if (enabled) {
-            engine.addApiServer(source);
+            engine().addApiServer(source);
         }
 
         saveSettings();
@@ -207,13 +206,13 @@ public class OpenapiSettingsController extends BaseSettingsController{
             return Result.failure("name is required");
         }
 
-        ApiSourceDo source = settings.getApiServers().get(name);
+        ApiSourceDo source = settings().getApiServers().get(name);
         if (source != null) {
             // 从引擎移除
-            engine.removeApiServer(source.getDocUrl());
+            engine().removeApiServer(source.getDocUrl());
         }
 
-        settings.getApiServers().remove(name);
+        settings().getApiServers().remove(name);
         saveSettings();
         LOG.info("[Settings] OpenApi server removed: {}", name);
         return Result.succeed();
@@ -229,7 +228,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
             return Result.failure("name is required");
         }
 
-        ApiSource source = settings.getApiServers().get(name);
+        ApiSource source = settings().getApiServers().get(name);
         if (source == null) {
             return Result.failure("Server not found: " + name);
         } else {
@@ -238,10 +237,10 @@ public class OpenapiSettingsController extends BaseSettingsController{
 
         if (enabled) {
             // 启用：添加到引擎
-            engine.addApiServer(source);
+            engine().addApiServer(source);
         } else {
             // 停用：从引擎移除
-            engine.removeApiServer(source.getDocUrl());
+            engine().removeApiServer(source.getDocUrl());
         }
 
         saveSettings();
@@ -364,12 +363,12 @@ public class OpenapiSettingsController extends BaseSettingsController{
     @Get
     @Mapping("/web/settings/openapi/servers/apis")
     public Result openapiServerApis(@Param("name") String name) {
-        ApiSource source = settings.getApiServers().get(name);
+        ApiSource source = settings().getApiServers().get(name);
         if (source == null) {
             return Result.failure("Server not found: " + name);
         }
 
-        ApiSourceClient client = engine.getApiServer(source.getDocUrl());
+        ApiSourceClient client = engine().getApiServer(source.getDocUrl());
         if (client == null) {
             // 服务器未启用或未加载
             Map<String, Object> data = new LinkedHashMap<>();
@@ -400,13 +399,13 @@ public class OpenapiSettingsController extends BaseSettingsController{
 
     /**
      * 更新指定 OpenApi 服务器的 API 权限（allowedTools）
-     * <p>通过 engine.refreshApiServer 影子交换策略热重载，无需重启。</p>
+     * <p>通过 engine().refreshApiServer 影子交换策略热重载，无需重启。</p>
      */
     @Post
     @Mapping("/web/settings/openapi/servers/apis/save")
     public Result openapiServerApisSave(@Param("serverName") String serverName,
                                         @Param(value = "disallowedTools", required = false) String[] disallowedTools) {
-        ApiSource source = settings.getApiServers().get(serverName);
+        ApiSource source = settings().getApiServers().get(serverName);
         if (source == null) {
             return Result.failure("Server not found: " + serverName);
         }
@@ -417,10 +416,10 @@ public class OpenapiSettingsController extends BaseSettingsController{
                 : Arrays.asList(disallowedTools));
 
         // 同步到引擎 client 并热重载
-        ApiSourceClient client = engine.getApiServer(source.getDocUrl());
+        ApiSourceClient client = engine().getApiServer(source.getDocUrl());
         if (client != null) {
             client.setDisallowedTools(source.getDisallowedTools());
-            engine.refreshApiServer(source.getDocUrl());
+            engine().refreshApiServer(source.getDocUrl());
         }
 
         saveSettings();

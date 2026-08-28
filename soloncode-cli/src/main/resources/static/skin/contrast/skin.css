@@ -2,23 +2,31 @@
  * Builtin skin: contrast (high contrast)
  * Applied via <body data-skin="contrast">.
  * Works on top of data-theme="light|dark".
+ *
+ * Font slots (not overridden here — contrast targets color, not typography):
+ *   --font-sans / --font-mono              font family; keep a fallback chain
+ *   --fs-3xs .. --fs-5xl                   size ladder, each calc(Npx * var(--font-scale))
+ * Redefining a --fs-* level MUST keep the "* var(--font-scale)" factor,
+ * otherwise the user's font-size setting stops affecting that level.
+ * Precedence: user setting (body inline style) > skin.css > theme.css defaults.
  */
 
 [data-skin="contrast"][data-theme="light"] {
-    --accent: #1d4ed8;
-    --accent-hover: #1e40af;
-    --accent-light: #dbeafe;
-    --bg-user-msg: #dbeafe;
+    --accent: #1a1a1a;
+    --accent-hover: #333333;
+    --accent-rgb: 26, 26, 26;
+    --accent-light: #f0f0f0;
+    --bg-user-msg: #efefef;
     --text-primary: #0a0a0a;
     --text-secondary: #374151;
     --text-sidebar: #111827;
     --text-user-msg: #0a0a0a;
-    --text-user-msg-link: #1d4ed8;
-    --text-user-msg-link-hover: #1e40af;
+    --text-user-msg-link: #1a1a1a;
+    --text-user-msg-link-hover: #444444;
     --text-ai-msg: #0a0a0a;
     --border-color: #9ca3af;
     --border-input: #6b7280;
-    --thinking-dot: #1d4ed8;
+    --thinking-dot: #1a1a1a;
     --bg-body: #f3f4f6;
     --bg-main: #ffffff;
     --bg-sidebar: #ffffff;
@@ -45,31 +53,37 @@
 }
 
 [data-skin="contrast"][data-theme="dark"] {
-    --accent: #93c5fd;
-    --accent-hover: #60a5fa;
-    --accent-light: #1e293b;
-    --bg-user-msg: #1e3a5f;
+    --accent: #e0e0e0;
+    --accent-hover: #ffffff;
+    --accent-rgb: 224, 224, 224;
+    --accent-fill: #3a3a3a;
+    --accent-light: #333333;
+    --bg-user-msg: #3a3a3a;
     --text-primary: #f8fafc;
     --text-secondary: #cbd5e1;
     --text-sidebar: #e2e8f0;
-    --text-user-msg: #f8fafc;
-    --text-user-msg-link: #dbeafe;
-    --text-user-msg-link-hover: #ffffff;
+    --text-user-msg: #ffffff;
+    --text-user-msg-link: #ffffff;
+    --text-user-msg-link-hover: #d1d1d1;
     --text-ai-msg: #f8fafc;
     --border-color: #64748b;
     --border-input: #94a3b8;
-    --thinking-dot: #93c5fd;
-    --bg-body: #020617;
-    --bg-main: #0f172a;
-    --bg-sidebar: #0b1220;
-    --bg-hover: #1e293b;
-    --bg-input-box: #111827;
-    --bg-primary: #0f172a;
-    --bg-secondary: #0b1220;
-    --tag-bg: #1e293b;
-    --tag-border: #64748b;
-    --reason-group-think-bg: #111827;
-    --reason-group-think-border: #64748b;
+    --thinking-dot: #e0e0e0;
+    --bg-body: #0a0a0a;
+    --bg-main: #161616;
+    --bg-sidebar: #111111;
+    --bg-hover: #2e2e2e;
+    --bg-input-box: #1c1c1c;
+    --bg-primary: #161616;
+    --bg-secondary: #111111;
+    --tag-bg: #222222;
+    --tag-border: #444444;
+    --reason-group-think-bg: #1a1a1a;
+    --reason-group-think-border: #444444;
+    --bg-code: #242424;
+    --bg-code-block: #101010;
+    --text-code: #e6e6e6;
+    --text-tertiary: #9ca3af;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
     --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.45);
 
@@ -86,37 +100,3 @@
     --bg-settings-overlay: transparent;
 }
 
-/* Keep one clear boundary per streaming group in high-contrast mode. */
-[data-skin="contrast"] .tool-card {
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
-}
-
-[data-skin="contrast"] .reason-group {
-    border: 1px solid var(--border-color);
-}
-
-/* A task already owns the group boundary; do not draw another box inside it. */
-[data-skin="contrast"] .task-group-body .reason-group {
-    border: none;
-}
-
-[data-skin="contrast"] .task-group {
-    border-top: 1px solid var(--border-color);
-    border-right: 1px solid var(--border-color);
-    border-bottom: 1px solid var(--border-color);
-    border-radius: 8px;
-}
-
-[data-skin="contrast"] .reason-group > .reason-group-think,
-[data-skin="contrast"] .reason-group > .tool-card,
-[data-skin="contrast"] .task-group-body .tool-card {
-    border: none;
-    border-radius: 0;
-}
-
-[data-skin="contrast"] .reason-group .tool-card.hitl-pending,
-[data-skin="contrast"] .task-group-body .tool-card.hitl-pending {
-    border: 1px solid var(--color-warning);
-    border-radius: 8px;
-}

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.noear</groupId>
+        <artifactId>soloncode-parent</artifactId>
+        <version>2026.8.28</version>
+        <relativePath>../../soloncode-parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ui_extension_demo</artifactId>
+    <name>${project.artifactId}</name>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai-harness</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!-- UI 协议类（UiRenderEvent 等）所在的普通 jar 模块，由 soloncode-ui-extension 在运行时提供 -->
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>soloncode-ui-extension</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -42,13 +42,292 @@
         return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '_');
     }
 
+    /* ===== 字体设置 ===== */
+
+    // 预设字族。分两组：界面字体（sans）与代码字体（mono）。
+    // 顺序按“命中率 + 常用度”排：本机装了的排前面用户更容易看到效果。
+    var FONT_PRESETS = {
+        sans: [
+            'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC',
+            'HarmonyOS Sans SC', 'Hiragino Sans GB', 'Segoe UI', 'Helvetica Neue',
+            'Inter', 'Roboto', 'system-ui'
+        ],
+        mono: [
+            'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas',
+            'Source Code Pro', 'IBM Plex Mono', 'Sarasa Mono SC', 'Maple Mono', 'ui-monospace'
+        ]
+    };
+
+    // 字体是否已安装：document.fonts.check 对系统字体判定不完全可靠，
+    // 拿不到结论时按“已安装”处理（宁可不标记，也不误标为缺失）。
+    function fontInstalled(name) {
+        if (!document.fonts || typeof document.fonts.check !== 'function') return true;
+        try {
+            return document.fonts.check('12px "' + name + '"');
+        } catch (e) {
+            return true;
+        }
+    }
+
+    // 字族输入框为自研 combobox（input + 下拉面板，结构同 .locale-selector）：预设可选、也可自行输入。
+    // 空值 = 用 theme.css 的默认字体栈（由 placeholder 与下拉首项提示）。
+    function setFontFamilyInput($el, value) {
+        if (!$el.length) return;
+        $el.val(value || '');
+        markFontFamilyValid($el);
+    }
+
+    /* ---- 字体下拉面板 ---- */
+
+    function fontSelectorOf($el) {
+        return $el.closest('.font-selector');
+    }
+
+    // 渲染下拉项。keyword 非空时按子串过滤（大小写不敏感）。
+    function renderFontDropdown($sel, keyword) {
+        var $dropdown = $sel.find('.font-selector-dropdown');
+        if (!$dropdown.length) return;
+        var type = $sel.data('font-type') === 'mono' ? 'mono' : 'sans';
+        var current = ($sel.find('.font-selector-input').val() || '').trim();
+        var kw = (keyword || '').trim().toLowerCase();
+        var list = FONT_PRESETS[type].filter(function (name) {
+            return !kw || name.toLowerCase().indexOf(kw) >= 0;
+        });
+
+        $dropdown.empty();
+
+        // 首项：清空 = 回到默认字体栈（combobox 没有空 option 可用，这里补上入口）
+        var defaultLabel = window.I18n ? window.I18n.t('general.ui.fontPlaceholder') : '系统默认';
+        $dropdown.append(
+            $('<div>').addClass('font-selector-item is-default')
+                .attr({ role: 'option', 'data-value': '' })
+                .toggleClass('active', !current)
+                .text(defaultLabel)
+        );
+
+        if (!list.length) {
+            $dropdown.append(
+                $('<div>').addClass('font-selector-empty')
+                    .text(window.I18n ? window.I18n.t('general.ui.fontNoMatch') : '无匹配字体')
+            );
+            return;
+        }
+
+        list.forEach(function (name) {
+            var $item = $('<div>').addClass('font-selector-item')
+                .attr({ role: 'option', 'data-value': name })
+                .toggleClass('active', name === current)
+                // 用字体自身渲染：装了就能直接看出字形
+                .css('font-family', '"' + name + '", var(--font-' + (type === 'mono' ? 'mono' : 'sans') + '-fallback)')
+                .text(name);
+            if (!fontInstalled(name)) {
+                $item.append(
+                    $('<span>').addClass('font-selector-item-preview')
+                        .css('font-family', 'var(--font-sans)')
+                        .text(window.I18n ? window.I18n.t('general.ui.fontNotInstalled') : '未安装')
+                );
+            }
+            $dropdown.append($item);
+        });
+    }
+
+    function openFontDropdown($sel, keyword) {
+        if (!$sel.length) return;
+        // 同一时刻只开一个
+        $('.font-selector.open').not($sel).each(function () { closeFontDropdown($(this)); });
+        renderFontDropdown($sel, keyword);
+        $sel.addClass('open');
+        $sel.find('.font-selector-input').attr('aria-expanded', 'true');
+    }
+
+    function closeFontDropdown($sel) {
+        if (!$sel || !$sel.length) return;
+        $sel.removeClass('open');
+        $sel.find('.font-selector-item').removeClass('hover');
+        $sel.find('.font-selector-input').attr('aria-expanded', 'false');
+    }
+
+    function closeAllFontDropdowns() {
+        $('.font-selector.open').each(function () { closeFontDropdown($(this)); });
+    }
+
+    // 键盘高亮项在面板内滚动可见
+    function moveFontHover($sel, delta) {
+        var $items = $sel.find('.font-selector-item');
+        if (!$items.length) return;
+        var idx = $items.index($sel.find('.font-selector-item.hover'));
+        idx = idx < 0 ? (delta > 0 ? 0 : $items.length - 1) : idx + delta;
+        if (idx < 0) idx = $items.length - 1;
+        if (idx >= $items.length) idx = 0;
+        $items.removeClass('hover');
+        var $target = $items.eq(idx).addClass('hover');
+        var el = $target[0];
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    }
+
+    function commitFontValue($sel, value) {
+        var $input = $sel.find('.font-selector-input');
+        setFontFamilyInput($input, value);
+        closeFontDropdown($sel);
+        previewFont();
+    }
+
+    // 无效输入给可见反馈：过去是静默变空，用户不知道自己输错了
+    function markFontFamilyValid($el) {
+        if (!$el.length) return true;
+        var ok = typeof window.isValidFontFamily !== 'function'
+            || window.isValidFontFamily($el.val());
+        $el.toggleClass('input-invalid', !ok);
+        return ok;
+    }
+
+    function currentFontScale() {
+        var v = parseInt($('#generalUiFontScale').val(), 10);
+        return isNaN(v) ? 1 : v / 100;
+    }
+
+    // 同步读数与滑块已选段填充比（--range-fill 供 settings.css 的轨道渐变使用）
+    function updateFontScaleLabel() {
+        var $range = $('#generalUiFontScale');
+        var pct = Math.round(currentFontScale() * 100);
+        $('#generalUiFontScaleValue').text(pct + '%');
+        if (!$range.length) return;
+        var min = parseInt($range.attr('min'), 10);
+        var max = parseInt($range.attr('max'), 10);
+        if (isNaN(min)) min = 85;
+        if (isNaN(max)) max = 150;
+        var ratio = max > min ? (pct - min) / (max - min) : 0;
+        ratio = Math.max(0, Math.min(1, ratio));
+        $range[0].style.setProperty('--range-fill', (ratio * 100).toFixed(2) + '%');
+    }
+
+    // 已持久化的字体基线（服务端值）。预览未保存时用它回滚。
+    // app-ui.js 首屏校准也会写 window.savedFontBaseline，作为本面板 GET 未返回时的兜底。
+    var savedFont = null;
+
+    function fontBaseline() {
+        return savedFont || window.savedFontBaseline || null;
+    }
+
+    function setFontBaseline(f) {
+        savedFont = f;
+        window.savedFontBaseline = f;
+        window._fontPreviewDirty = false;
+    }
+
+    function readFontForm() {
+        return {
+            family: ($('#generalUiFontFamily').val() || '').trim(),
+            mono: ($('#generalUiFontMono').val() || '').trim(),
+            scale: currentFontScale()
+        };
+    }
+
+    // 即时应用（仅运行时预览，持久化由保存按钮完成）
+    // 置 dirty 标记：避免首屏那次异步校准把用户正在看的预览覆盖掉
+    function previewFont() {
+        if (typeof window.applyFont !== 'function') return;
+        window._fontPreviewDirty = true;
+        window.applyFont(readFontForm());
+    }
+
+    // 放弃未保存的预览，恢复到基线（关闭设置面板时调用）
+    function revertFont() {
+        var base = fontBaseline();
+        if (!base || typeof window.applyFont !== 'function') return;
+        window._fontPreviewDirty = false;
+        window.applyFont(base);
+        setFontFamilyInput($('#generalUiFontFamily'), base.family);
+        setFontFamilyInput($('#generalUiFontMono'), base.mono);
+        $('#generalUiFontScale').val(Math.round(base.scale * 100));
+        updateFontScaleLabel();
+    }
+
+    /* ---- 字体 combobox 事件（委托绑定：设置面板是后插入的 DOM）---- */
+
+    // 手打：即时预览 + 按关键字过滤下拉
+    $(document).on('input', '.font-selector-input', function () {
+        var $input = $(this);
+        markFontFamilyValid($input);
+        openFontDropdown(fontSelectorOf($input), $input.val());
+        previewFont();
+    });
+
+    // change 兜住非 input 触发的赋值路径（如浏览器自动填充）
+    $(document).on('change', '.font-selector-input', function () {
+        markFontFamilyValid($(this));
+        previewFont();
+    });
+
+    // 点输入框：展开全部预设（不按当前值过滤，方便换字体）
+    $(document).on('focus click', '.font-selector-input', function (e) {
+        e.stopPropagation();
+        var $sel = fontSelectorOf($(this));
+        if (!$sel.hasClass('open')) openFontDropdown($sel, '');
+    });
+
+    // 点箭头：开合切换
+    $(document).on('click', '.font-selector-toggle', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        var $sel = fontSelectorOf($(this));
+        if ($sel.hasClass('open')) {
+            closeFontDropdown($sel);
+        } else {
+            openFontDropdown($sel, '');
+            $sel.find('.font-selector-input').focus();
+        }
+    });
+
+    // 选中下拉项（首项 data-value="" 即回到默认字体栈）
+    $(document).on('click', '.font-selector-item', function (e) {
+        e.stopPropagation();
+        var $item = $(this);
+        commitFontValue(fontSelectorOf($item), $item.attr('data-value') || '');
+    });
+
+    // 键盘：上下移动高亮、回车选中、Esc 关闭
+    $(document).on('keydown', '.font-selector-input', function (e) {
+        var $sel = fontSelectorOf($(this));
+        var open = $sel.hasClass('open');
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!open) { openFontDropdown($sel, ''); return; }
+            moveFontHover($sel, e.key === 'ArrowDown' ? 1 : -1);
+        } else if (e.key === 'Enter') {
+            var $hover = $sel.find('.font-selector-item.hover');
+            if (open && $hover.length) {
+                e.preventDefault();
+                commitFontValue($sel, $hover.attr('data-value') || '');
+            } else {
+                closeFontDropdown($sel);
+            }
+        } else if (e.key === 'Escape') {
+            if (open) { e.stopPropagation(); closeFontDropdown($sel); }
+        }
+    });
+
+    // 点面板外关闭（不吞事件，避免影响设置面板其它交互）
+    $(document).on('click', function () { closeAllFontDropdowns(); });
+    $(document).on('input change', '#generalUiFontScale', function () {
+        updateFontScaleLabel();
+        previewFont();
+    });
+    $(document).on('click', '#generalUiFontReset', function () {
+        setFontFamilyInput($('#generalUiFontFamily'), '');
+        setFontFamilyInput($('#generalUiFontMono'), '');
+        $('#generalUiFontScale').val(100);
+        updateFontScaleLabel();
+        previewFont();
+    });
+
     function loadGeneralSettings() {
         $.get('/web/settings/general', function (resp) {
             if (resp.code === 200 && resp.data) {
                 var d = resp.data;
                 $('#generalSessionWindowSize').val(d.sessionWindowSize != null ? formatNum(d.sessionWindowSize) : '');
-                $('#generalSummaryWindowSize').val(d.summaryWindowSize != null ? formatNum(d.summaryWindowSize) : '');
-                $('#generalCompressionThresholdPercent').val(d.compressionThresholdPercent != null ? formatNum(d.compressionThresholdPercent) : '');
+                $('#generalCompressionMsgs').val((d.compressionThresholdMessages ?? d.summaryWindowSize) != null ? formatNum(d.compressionThresholdMessages ?? d.summaryWindowSize) : '');
+                $('#generalCompressionPct').val(d.compressionThresholdPercent != null ? formatNum(d.compressionThresholdPercent) : '');
                 $('#generalSandboxMode').prop('checked', !!d.sandboxMode);
                 $('#generalSandboxAllowUserHome').prop('checked', d.sandboxAllowUserHome !== false);
                 $('#generalSandboxSystemRestrict').prop('checked', !!d.sandboxSystemRestrict);
@@ -63,6 +342,7 @@
                 $('#generalOpenApiEnabled').prop('checked', d.openApiEnabled !== false);
                 $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
                 $('#generalSubagentEnabled').prop('checked', d.subagentEnabled !== false);
+                $('#generalManagerEnabled').prop('checked', d.managerEnabled !== false);
                 $('#generalLspEnabled').prop('checked', !!d.lspEnabled);
                 $('#generalCliPrintSimplified').prop('checked', d.cliPrintSimplified !== false);
                 window.cliPrintSimplified = d.cliPrintSimplified !== false;
@@ -75,6 +355,31 @@
                 $('#generalLogLevel').val(d.logLevel || '');
                 $('#generalLogFileMaxSize').val(d.logFileMaxSize || '');
                 $('#generalLogMaxHistory').val(d.logMaxHistory != null ? d.logMaxHistory : '');
+
+                // HTTP 代理
+                $('#generalProxyHost').val(d.proxyHost || '');
+                $('#generalProxyPort').val(d.proxyPort != null && d.proxyPort > 0 ? d.proxyPort : '');
+                $('#generalNoProxy').val(d.noProxy || '');
+
+                // 字体：基线取服务端值（不经表单，避免与用户正在进行的预览互相污染）
+                var serverFont = {
+                    family: d.uiFontFamily || '',
+                    mono: d.uiFontMono || '',
+                    scale: d.uiFontScale != null ? d.uiFontScale : 1
+                };
+                var dirty = !!window._fontPreviewDirty;
+                setFontBaseline(serverFont);
+                // 用户已在预览：保留其表单与预览效果，只更新基线；否则按服务端值回填 + 校准
+                // （localStorage 可能是上次未保存的预览残留）
+                if (dirty) {
+                    window._fontPreviewDirty = true;
+                } else {
+                    setFontFamilyInput($('#generalUiFontFamily'), serverFont.family);
+                    setFontFamilyInput($('#generalUiFontMono'), serverFont.mono);
+                    $('#generalUiFontScale').val(Math.round(serverFont.scale * 100));
+                    updateFontScaleLabel();
+                    if (typeof window.applyFont === 'function') window.applyFont(serverFont);
+                }
             }
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
 
@@ -99,8 +404,8 @@
         var $generalSaveBtn = $('#generalSaveBtn');
         var bodyObj = {
             sessionWindowSize: parseNumStr($('#generalSessionWindowSize').val().trim()),
-            summaryWindowSize: parseNumStr($('#generalSummaryWindowSize').val().trim()),
-            compressionThresholdPercent: parseNumStr($('#generalCompressionThresholdPercent').val().trim()),
+            compressionThresholdMessages: parseNumStr($('#generalCompressionMsgs').val().trim()),
+            compressionThresholdPercent: parseNumStr($('#generalCompressionPct').val().trim()),
             sandboxMode: $('#generalSandboxMode').is(':checked'),
             sandboxAllowUserHome: $('#generalSandboxAllowUserHome').is(':checked'),
             sandboxSystemRestrict: $('#generalSandboxSystemRestrict').is(':checked'),
@@ -115,13 +420,20 @@
             openApiEnabled: $('#generalOpenApiEnabled').is(':checked'),
             bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked'),
             subagentEnabled: $('#generalSubagentEnabled').is(':checked'),
+            managerEnabled: $('#generalManagerEnabled').is(':checked'),
             lspEnabled: $('#generalLspEnabled').is(':checked'),
             cliPrintSimplified: $('#generalCliPrintSimplified').is(':checked'),
             webAuthUser: $('#generalWebAuthUser').val().trim() || null,
             webAuthPass: $('#generalWebAuthPass').val().trim() || null,
             logLevel: $('#generalLogLevel').val().trim() || null,
             logFileMaxSize: $('#generalLogFileMaxSize').val().trim() || null,
-            logMaxHistory: parseNumStr($('#generalLogMaxHistory').val().trim())
+            logMaxHistory: parseNumStr($('#generalLogMaxHistory').val().trim()),
+            proxyHost: $('#generalProxyHost').val().trim() || null,
+            proxyPort: parseInt($('#generalProxyPort').val().trim(), 10) || 0,
+            noProxy: $('#generalNoProxy').val().trim() || null,
+            uiFontFamily: ($('#generalUiFontFamily').val() || '').trim() || null,
+            uiFontMono: ($('#generalUiFontMono').val() || '').trim() || null,
+            uiFontScale: currentFontScale()
         };
 
         $generalSaveBtn.prop('disabled', true);
@@ -134,9 +446,10 @@
             $.ajax({ url: '/web/settings/general/save', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
                 .then(function (resp) {
                     if (resp.code !== 200) {
-                        return $.Deferred().reject(resp.message || '未知错误').promise();
+                        return $.Deferred().reject(resp.message || I18n.t('toast.unknownError')).promise();
                     }
                     window.cliPrintSimplified = bodyObj.cliPrintSimplified;
+                    setFontBaseline(readFontForm());
                     return resp;
                 })
         );
@@ -155,7 +468,7 @@
             $.ajax({ url: '/web/settings/loop/save', method: 'POST', data: JSON.stringify(loopObj), contentType: 'application/json', dataType: 'json' })
                 .then(function (resp) {
                     if (resp.code !== 200) {
-                        return $.Deferred().reject(resp.message || '未知错误').promise();
+                        return $.Deferred().reject(resp.message || I18n.t('toast.unknownError')).promise();
                     }
                     return resp;
                 })
@@ -169,12 +482,27 @@
 
         // 统一处理所有请求的结果
         $.when.apply($, promises)
-            .done(function () { showToast('保存成功'); })
-            .fail(function () { showToast('保存失败', 'error'); })
+            .done(function () { showToast(window.I18n ? window.I18n.t('toast.saveSuccess') : '\u4fdd\u5b58\u6210\u529f'); })
+            .fail(function () { showToast(window.I18n ? window.I18n.t('toast.saveFailed') : '\u4fdd\u5b58\u5931\u8d25', 'error'); })
             .always(function () { $generalSaveBtn.prop('disabled', false); });
     });
 
-    window._settingsGeneral = {
-        load: loadGeneralSettings
+        // 打开日志目录（在系统文件管理器中打开）
+        $(document).on('click', '#generalLogOpenDirBtn', function () {
+            var $btn = $(this).prop('disabled', true);
+            $.get('/web/settings/logs/open').done(function (resp) {
+                if (resp.code !== 200) {
+                    showToast(resp.message || (window.I18n ? window.I18n.t('toast.unknownError') : '打开失败'), 'error');
+                }
+            }).fail(function () {
+                showToast(window.I18n ? window.I18n.t('toast.unknownError') : '打开失败', 'error');
+            }).always(function () {
+                $btn.prop('disabled', false);
+            });
+        });
+
+        window._settingsGeneral = {
+        load: loadGeneralSettings,
+        revertFont: revertFont
     };
 })();

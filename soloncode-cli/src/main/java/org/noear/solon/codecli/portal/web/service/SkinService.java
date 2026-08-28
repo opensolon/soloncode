@@ -17,7 +17,6 @@ package org.noear.solon.codecli.portal.web.service;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.portal.web.market.MarketManager;
 import org.noear.solon.core.util.Assert;
 
 import java.io.BufferedInputStream;

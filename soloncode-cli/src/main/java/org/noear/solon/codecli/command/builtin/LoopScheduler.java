@@ -20,12 +20,15 @@ import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.LoopGroupDo;
+import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.scheduling.ScheduledAnno;
 import org.noear.solon.scheduling.scheduled.manager.IJobManager;
 import org.noear.solon.scheduling.simple.JobManager;
+import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -456,6 +459,36 @@ public class LoopScheduler {
         deleteFile(sessionId);
     }
 
+    // ==================== 生命周期 ====================
+
+    /**
+     * 是否存在活跃（未停止）的循环/goal 任务。
+     * 供工作区 LRU 回收判定使用：有活跃任务的工作区不应被回收。
+     */
+    public boolean hasActiveTasks() {
+        for (List<LoopTask> tasks : sessionTasks.values()) {
+            if (tasks != null && !tasks.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 关闭调度器：停止本工作区全部会话的任务并注销调度。
+     * 注意：jobManager 为进程级单例（跨工作区共享），此处只按本工作区会话逐个 stopAll，
+     * 不 shutdown 全局 JobManager。
+     */
+    public void shutdown() {
+        for (String sessionId : new ArrayList<>(sessionTasks.keySet())) {
+            try {
+                stopAll(sessionId);
+            } catch (Exception e) {
+                LOG.warn("[Loop] shutdown session {} failed: {}", sessionId, e.getMessage());
+            }
+        }
+    }
+
     // ==================== 会话恢复 ====================
 
     public synchronized void restore(String sessionId) {
@@ -506,12 +539,12 @@ public class LoopScheduler {
      * 恢复会话目录中持久化的全部循环任务。
      */
     public void restoreAll() {
-        Path sessionsPath = Paths.get(engine.getWorkspace(), engine.getHarnessSessions());
-        if (!Files.isDirectory(sessionsPath)) {
+        Path wsSessionsRoot = WorkspaceDataUtil.sessionsPath(engine.getWorkspace());
+        if (!Files.isDirectory(wsSessionsRoot)) {
             return;
         }
 
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(sessionsPath)) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(wsSessionsRoot)) {
             for (Path sessionPath : stream) {
                 if (Files.isDirectory(sessionPath) && Files.exists(sessionPath.resolve(TASKS_FILE))) {
                     restore(sessionPath.getFileName().toString());
@@ -579,6 +612,17 @@ public class LoopScheduler {
     }
 
     private void onTrigger(String sessionId, LoopTask task) {
+        // 调度线程（定时/手动触发/续行/重试）无工作区标记，统一在此打标：
+        // 本方法内所有日志（守卫、预算、轮次、错误）随工作区分流，不落到启动工作区文件
+        Object logScope = WorkspaceLogRouter.beginScope(engine.getWorkspace());
+        try {
+            doTrigger(sessionId, task);
+        } finally {
+            WorkspaceLogRouter.endScope(logScope);
+        }
+    }
+
+    private void doTrigger(String sessionId, LoopTask task) {
         // ① 前置守卫（禁用/过期/取消 → 繁忙 → 预算/状态/最大迭代）
         if (!checkGuardConditions(sessionId, task)) {
             notifyGoalChanged(sessionId, task, false);
@@ -1013,6 +1057,70 @@ public class LoopScheduler {
         }
     }
 
+    /**
+     * 统计当前会话 TODO 清单中的未完成项（`- [ ]` 待办 + `- [/]` 进行中）。
+     *
+     * <p>用于 Goal 完成判定联动：模型声明 goal_update(complete) 时，若清单尚有未完成项，
+     * 应拒绝完成并退回继续执行，避免“清单未清零却宣称目标达成”的语义脱节。
+     *
+     * <p>识别规则与 {@link TodoTalent} 的进度页脚保持一致：仅识别形如 {@code - [x]} 的
+     * checkbox 行，状态字符大小写兼容。若 TODO.md 不存在或无 checkbox 行，返回 0（不拦截）。
+     *
+     * @return 未完成项数量；无清单或解析失败时返回 0
+     */
+    int countUnfinishedTodos(String sessionId) {
+        if (sessionId == null) {
+            return 0;
+        }
+
+        try {
+            TodoTalent todoTalent = engine.getTodoTalent();
+            if (todoTalent == null) {
+                return 0;
+            }
+
+            Path todoPath = todoTalent.getTodoPath(engine.getWorkspace(), sessionId);
+            if (!Files.exists(todoPath)) {
+                return 0;
+            }
+            String content = new String(Files.readAllBytes(todoPath), StandardCharsets.UTF_8);
+            return countUnfinishedCheckboxes(content);
+        } catch (Throwable e) {
+            LOG.debug("countUnfinishedTodos failed for session '{}': {}", sessionId, e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * 统计 Markdown 文本中的未完成 checkbox 行（`- [ ]` 待办 + `- [/]` 进行中）。
+     *
+     * <p>识别规则与 {@link TodoTalent} 的进度页脚保持一致：仅识别形如 {@code - [x]} 的
+     * checkbox 行，第 4 字符须为 {@code ']'}，状态字符大小写兼容。已完成（{@code x}）
+     * 及非 checkbox 行不计入。提取为静态方法以便独立单元测试。
+     *
+     * @param content TODO.md 文本内容；null 时返回 0
+     * @return 未完成项数量
+     */
+    static int countUnfinishedCheckboxes(String content) {
+        if (content == null) {
+            return 0;
+        }
+
+        int unfinished = 0;
+        for (String line : content.split("\n")) {
+            String trimmed = line.trim();
+            // 仅识别形如 "- [x]" 的 checkbox 行（第 4 字符须为 ']'）
+            if (trimmed.length() < 5 || !trimmed.startsWith("- [") || trimmed.charAt(4) != ']') {
+                continue;
+            }
+            char mark = Character.toLowerCase(trimmed.charAt(3));
+            if (mark == ' ' || mark == '/') {
+                unfinished++;
+            }
+        }
+        return unfinished;
+    }
+
     // ==================== 清理过期任务 ====================
 
     private void cleanExpired(String sessionId, List<LoopTask> tasks) {
@@ -1035,7 +1143,8 @@ public class LoopScheduler {
     // ==================== JSON 持久化 ====================
 
     private Path getTasksFilePath(String sessionId) {
-        return Paths.get(engine.getWorkspace(), engine.getHarnessSessions(), sessionId, TASKS_FILE);
+        Path wsSessionsRoot = WorkspaceDataUtil.sessionsPath(engine.getWorkspace());
+        return wsSessionsRoot.resolve(sessionId).resolve(TASKS_FILE);
     }
 
     private void saveToFile(String sessionId, List<LoopTask> tasks) {
