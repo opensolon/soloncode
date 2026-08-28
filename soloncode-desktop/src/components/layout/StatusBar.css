@@ -147,6 +147,11 @@
 
 /* 编码和语言 */
 .status-encoding,
-.status-language {
+.status-language,
+.status-version {
   opacity: 0.7;
+}
+
+.status-version {
+  font-variant-numeric: tabular-nums;
 }

@@ -68,3 +68,8 @@ export function mergeStreamingMessage(previous: Message | undefined, snapshot: M
     metadata: snapshot.metadata ?? previous.metadata,
   };
 }
+
+/** Sum only token usage reported by completed backend responses. */
+export function sumReportedTokens(messages: readonly Message[]): number {
+  return messages.reduce((total, message) => total + (message.metadata?.totalTokens ?? 0), 0);
+}

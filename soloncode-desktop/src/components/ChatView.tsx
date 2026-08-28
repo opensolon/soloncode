@@ -17,7 +17,7 @@ import {
   type GeneratedAutomationPlan,
 } from '../utils/automationPlan';
 import { isTodoToolName } from '../utils/todoTools';
-import { buildUserMessageContents, isSafeImageDataUrl, mergeStreamingMessage } from '../utils/messageContent';
+import { buildUserMessageContents, isSafeImageDataUrl, mergeStreamingMessage, sumReportedTokens } from '../utils/messageContent';
 import {
   EMPTY_RESPONSE_ERROR,
   RESPONSE_PROTOCOL_ERROR,
@@ -2590,10 +2590,7 @@ export function ChatView({ currentConversation, plugins, workspacePath, projectN
   const currentSession = useMemo(() => {
     return sessions.find(session => session.id === currentConversationIdString);
   }, [sessions, currentConversationIdString]);
-  const metadataTokens = useMemo(() => {
-    return messages.reduce((total, message) => total + (message.metadata?.totalTokens || 0), 0);
-  }, [messages]);
-  const headerTotalTokens = metadataTokens > 0 ? metadataTokens : baseContextTokens;
+  const headerTotalTokens = useMemo(() => sumReportedTokens(messages), [messages]);
   const headerMessageCount = Math.max(messages.length, currentSession?.messageCount || 0);
   const headerStartedAt = currentSession?.timestamp || currentConversation.timestamp;
   const totalConversationCount = useMemo(() => {
