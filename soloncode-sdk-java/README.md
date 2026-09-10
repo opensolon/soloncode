@@ -204,9 +204,9 @@ soloncode CLI 的 `stream` 子命令支持 stdin JSON 双向协议；`run` 和 H
 | 3 | 未提供提示词 |
 | 4 | 超过 `--max-budget-usd` |
 
-> 需要 soloncode **v2026.9.8+**：更早版本的 `soloncode run` / `--version` 走 `Solon.stop()`，
+> 需要 soloncode **v2026.9.10+**：更早版本的 `soloncode run` / `--version` 走 `Solon.stop()`，
 > 而它内部固定 `System.exit(1)`，即便成功也返回退出码 1。若必须对接旧版 CLI，请以 `result`
-> 事件的 `is_error` 判定成功与否，不要依赖退出码。v2026.9.8 同时引入 `soloncode help`
+> 事件的 `is_error` 判定成功与否，不要依赖退出码。v2026.9.10 同时引入 `soloncode help`
 > 与 `soloncode run --help`，`CLIFlagParityIT` 以后者为基准校验 SDK 与 CLI 的选项对齐。
 
 ## 构建
