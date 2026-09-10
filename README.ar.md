@@ -1,7 +1,7 @@
 <div dir="rtl" align="right">
 <h1>SolonCode</h1>
 <p>وكيل برمجة مفتوح المصدر مبني باستخدام <a href="https://github.com/opensolon/solon-ai">Solon AI</a> وجافا (يدعم بيئات تشغيل Java8 إلى Java26)</p>
-<p>أحدث إصدار: v2026.9.8</p>
+<p>أحدث إصدار: v2026.9.10</p>
 <img height="260" src="SHOW_CLI.png" />
 <img height="260" src="SHOW_WEB.png" />
 <br />
@@ -50,7 +50,7 @@ soloncode web 0
 
 ```bash
 demo@MacBook-Pro ~ % soloncode cli
-SolonCode v2026.9.8 PID-87950 Model:deepseek-v4-flash
+SolonCode v2026.9.10 PID-87950 Model:deepseek-v4-flash
 /Users/demo
 Tips: (esc) interrupt | /(tab) command | $(tab) skill | @(tab) agent
 
@@ -62,7 +62,7 @@ User
 
 ```bash
 demo@MacBook-Pro ~ % soloncode web 0
-SolonCode v2026.9.8 PID-73617 Model:deepseek-v4-flash
+SolonCode v2026.9.10 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
 Web interface: http://localhost:50488/
