@@ -377,9 +377,9 @@ public class LastTraceService {
      * <p>不切段的后果是：第二段思考被当成答案铺进气泡、段间没有边界，且 {@code <think>}
      * 字面标签直接显示给用户 —— 也就是「几个思考消息和答案消息合到了一起」。</p>
      *
-     * <p>{@code isThinking()} 不参与判定：该标记取自聚合时<b>最后一帧</b>的通道状态
-     * （{@code ChatResponseDefault#getAggregationMessage}），只说明流末停在哪，不代表整条都是思考；
-     * 据它短路会把正文与工具卡一并吞进思考块。</p>
+     * <p>旧版 {@code isThinking()} 标记不参与判定：该标记只取自聚合时最后一帧的通道状态，
+     * 不能代表整条消息的内容类型；新版消息已移除该状态，直接以 {@code thinking}/{@code text}
+     * 双通道和旧数据中的标签为准。</p>
      */
     private List<Segment> splitSegments(AssistantMessage msg) {
         List<Segment> out = new ArrayList<>();
@@ -404,14 +404,11 @@ public class LastTraceService {
         boolean hasOpen = text.indexOf(THINK_OPEN) >= 0;
         boolean hasClose = text.indexOf(THINK_CLOSE) >= 0;
         if (hasOpen || hasClose) {
-            // 若 thinking 已由新版双通道明确提供，text 始终是正文；标签只作为旧数据
-            // 的兼容格式解析，不能再用 isThinking() 把独立正文误判为思考。
+            // text 中的标签仅作为旧数据兼容格式解析；新版独立 text 始终按正文处理。
             splitTaggedText(out, text, hasClose
                     && (!hasOpen || text.indexOf(THINK_CLOSE) < text.indexOf(THINK_OPEN)));
         } else {
-            // 没有标签时，新版双通道的 text 明确是正文；只有旧式消息没有独立
-            // thinking 时，才用末帧状态判断未分栏的 content。
-            addSegment(out, thinking == null && msg.isThinking(), text);
+            addSegment(out, false, text);
         }
 
         return out;

@@ -185,13 +185,7 @@ public class SessionRewindServiceTest {
     }
 
     private ChatMessage toolCallAssistant(String runId) {
-        Map<String, Object> funcMap = new LinkedHashMap<>();
-        Map<String, String> funcNameMap = new LinkedHashMap<>();
-        funcNameMap.put("name", "getWeather");
-        funcMap.put("function", funcNameMap);
-
-        AssistantMessage msg = new AssistantMessage("", "", false, null,
-                Collections.singletonList(funcMap),
+        AssistantMessage msg = new AssistantMessage("", "",
                 Collections.singletonList(new ToolCall("0", "call_1", "getWeather", "{}", new LinkedHashMap<>())),
                 null);
         msg.addMetadata(AgentTrace.META_RUN_ID, runId);
