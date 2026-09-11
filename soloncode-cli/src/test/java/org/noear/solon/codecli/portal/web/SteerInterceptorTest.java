@@ -41,11 +41,10 @@ public class SteerInterceptorTest {
         interceptor = new SteerInterceptor(null, null);
     }
 
-    @SuppressWarnings("unchecked")
-    private ConcurrentLinkedQueue<String> newBox(String... texts) {
-        ConcurrentLinkedQueue<String> box = new ConcurrentLinkedQueue<>();
-        for (String t : texts) {
-            box.offer(t);
+    private ConcurrentLinkedQueue<SteerMessage> newBox(String... texts) {
+        ConcurrentLinkedQueue<SteerMessage> box = new ConcurrentLinkedQueue<>();
+        for (int i = 0; i < texts.length; i++) {
+            box.offer(new SteerMessage("s" + i, texts[i]));
         }
         session.attrs().put(SteerInterceptor.ATTR_STEER_BOX, box);
         return box;
@@ -66,7 +65,7 @@ public class SteerInterceptorTest {
     @Test
     @DisplayName("守卫1：首轮（turnCount=1）不注入，邮箱保留到下一轮")
     public void firstTurn_notInjected() {
-        ConcurrentLinkedQueue<String> box = newBox("改用方案B");
+        ConcurrentLinkedQueue<SteerMessage> box = newBox("改用方案B");
         trace.nextTurn(); // 首轮
 
         StringBuilder sp = new StringBuilder("base");
@@ -81,7 +80,7 @@ public class SteerInterceptorTest {
     @Test
     @DisplayName("非首轮：注入工作记忆（带前缀+metadata）、不污染 systemPrompt、清空邮箱、记录 runId")
     public void laterTurn_injected() {
-        ConcurrentLinkedQueue<String> box = newBox("改用方案B", "注意性能");
+        ConcurrentLinkedQueue<SteerMessage> box = newBox("改用方案B", "注意性能");
         trace.nextTurn();
         trace.nextTurn(); // 第二轮
 
@@ -103,7 +102,7 @@ public class SteerInterceptorTest {
     @Test
     @DisplayName("守卫3：工作记忆尾部 tool_calls 未闭合（HITL 挂起窄窗）跳过注入")
     public void openToolCalls_skipped() {
-        ConcurrentLinkedQueue<String> box = newBox("纠偏");
+        ConcurrentLinkedQueue<SteerMessage> box = newBox("纠偏");
         trace.getWorkingMemory().addMessage(toolCallMessage());
         trace.nextTurn();
         trace.nextTurn();
@@ -144,7 +143,7 @@ public class SteerInterceptorTest {
     @Test
     @DisplayName("onAgentEnd 残留兜底：未消费文本清空邮箱并清理 attrs（dropped 事件由通知通道发出）")
     public void agentEnd_droppedAndCleaned() {
-        ConcurrentLinkedQueue<String> box = newBox("未消费1", "未消费2");
+        ConcurrentLinkedQueue<SteerMessage> box = newBox("未消费1", "未消费2");
 
         interceptor.onAgentEnd(trace);
 
@@ -158,5 +157,16 @@ public class SteerInterceptorTest {
     public void agentEnd_noResidue_clean() {
         interceptor.onAgentEnd(trace);
         assertNull(session.attrs().get(SteerInterceptor.ATTR_STEER_BOX));
+    }
+
+    @Test
+    @DisplayName("按稳定 ID 撤销：只移除目标插话，重复文本不误删")
+    public void cancelById_removesOnlyTarget() {
+        ConcurrentLinkedQueue<SteerMessage> box = newBox("相同文本", "相同文本");
+
+        assertTrue(SteerInterceptor.cancel(box, "s0"));
+        assertEquals(1, box.size());
+        assertEquals("s1", box.peek().getId());
+        assertFalse(SteerInterceptor.cancel(box, "s0"), "重复取消不得误删另一条同文本插话");
     }
 }

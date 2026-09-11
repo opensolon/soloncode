@@ -446,7 +446,8 @@
         var $nodeEl = $('<div>').addClass('file-node')
             .attr('data-indent', indent)
             .attr('data-workspace-id', wsId)
-            .attr('data-path', ws.name);
+            .attr('data-path', ws.name)
+            .attr('data-type', 'directory');
 
         var wsDisplayName = ws.name === '__current_workspace__' ? I18n.t('gitdiff.currentWorkspace') : ws.name;
         var $row = applyIndent($('<div>').addClass('file-node-row'), indent)
@@ -1067,10 +1068,14 @@
         return $el.attr('data-workspace-id') || $el.attr('data-path') || '';
     }
 
-    /** 在临时容器里建一个新节点（复用 appendNode 的渲染与事件绑定） */
+    /** 在临时容器里建一个新节点（工作区根与普通文件节点分别复用各自的完整渲染/事件绑定） */
     function buildNodeEl(node, indent) {
         var $tmp = $('<div>');
-        appendNode(node, $tmp, indent);
+        if (node && node.id) {
+            appendWorkspaceNode(node, $tmp, indent);
+        } else {
+            appendNode(node, $tmp, indent);
+        }
         return $tmp.children('.file-node').first();
     }
 
@@ -1123,7 +1128,7 @@
             var $existing = (key in midKeys) ? $midNodes.eq(midKeys[key]) : null;
             if (!$existing || !$existing.length) {
                 var expanded = !!(expandedSet && node.type === 'directory' && expandedSet[node.path]);
-                var n2 = { name: node.name, path: node.path, type: node.type };
+                var n2 = $.extend({}, node);
                 if (expanded) n2.expanded = true;
                 var $newEl = buildNodeEl(n2, indent);
                 if ($newEl.length) {
@@ -1132,7 +1137,7 @@
                 }
             } else {
                 if (($existing.attr('data-type') || '') !== node.type) {
-                    var n3 = { name: node.name, path: node.path, type: node.type };
+                    var n3 = $.extend({}, node);
                     if (expandedSet && node.type === 'directory' && expandedSet[node.path]) n3.expanded = true;
                     var $replaced = buildNodeEl(n3, parseInt($existing.attr('data-indent') || '0', 10));
                     if ($replaced.length) {

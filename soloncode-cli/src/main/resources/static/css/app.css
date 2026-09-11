@@ -3119,6 +3119,10 @@ pre:hover .code-copy-btn { opacity: 1; }
     background: var(--bg-input-box);
     color: var(--accent);
 }
+.queue-item-actions button:disabled {
+    cursor: wait;
+    opacity: 0.45;
+}
 
 /* 运行中插话（steer）：待生效项 */
 .queue-item-steer {

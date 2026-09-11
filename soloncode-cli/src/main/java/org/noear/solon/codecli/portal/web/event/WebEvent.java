@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.noear.solon.codecli.portal.web.SteerMessage;
 import org.noear.solon.codecli.portal.web.event.payload.*;
 import org.noear.solon.codecli.portal.web.event.payload.UiPatchPayload;
 import org.noear.solon.codecli.portal.web.event.payload.UiRenderPayload;
@@ -202,17 +203,37 @@ public class WebEvent<T> implements Serializable {
     }
 
     public static WebEvent<SteerPayload> ofSteerApplied(String runId, List<String> texts) {
-        return buildSteerEvent(WebEventNames.SYSTEM_STEER_APPLIED, runId, texts);
+        return buildSteerEvent(WebEventNames.SYSTEM_STEER_APPLIED, runId, texts, null);
     }
 
     public static WebEvent<SteerPayload> ofSteerDropped(String runId, List<String> texts) {
-        return buildSteerEvent(WebEventNames.SYSTEM_STEER_DROPPED, runId, texts);
+        return buildSteerEvent(WebEventNames.SYSTEM_STEER_DROPPED, runId, texts, null);
     }
 
-    private static WebEvent<SteerPayload> buildSteerEvent(String event, String runId, List<String> texts) {
+    public static WebEvent<SteerPayload> ofSteerAppliedItems(String runId, List<SteerMessage> items) {
+        return buildSteerEvent(WebEventNames.SYSTEM_STEER_APPLIED, runId, steerTexts(items), items);
+    }
+
+    public static WebEvent<SteerPayload> ofSteerDroppedItems(String runId, List<SteerMessage> items) {
+        return buildSteerEvent(WebEventNames.SYSTEM_STEER_DROPPED, runId, steerTexts(items), items);
+    }
+
+    private static List<String> steerTexts(List<SteerMessage> items) {
+        List<String> texts = new java.util.ArrayList<>();
+        if (items != null) {
+            for (SteerMessage item : items) {
+                texts.add(item.getText());
+            }
+        }
+        return texts;
+    }
+
+    private static WebEvent<SteerPayload> buildSteerEvent(String event, String runId,
+                                                           List<String> texts, List<SteerMessage> items) {
         WebEvent<SteerPayload> evt = of(event, SteerPayload.builder()
                 .runId(runId)
                 .texts(texts)
+                .items(items)
                 .build());
         evt.setRunId(runId);
         return evt;

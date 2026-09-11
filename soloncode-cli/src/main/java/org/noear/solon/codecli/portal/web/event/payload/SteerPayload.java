@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import org.noear.solon.codecli.portal.web.SteerMessage;
+
 import java.io.Serializable;
 import java.util.List;
 
@@ -19,6 +21,8 @@ import java.util.List;
 public class SteerPayload implements Serializable {
     /** 关联任务运行 ID */
     private String runId;
-    /** 插话文本列表 */
+    /** 插话文本列表（兼容旧前端） */
     private List<String> texts;
+    /** 带稳定 ID 的插话列表，用于精确处理取消及重复文本 */
+    private List<SteerMessage> items;
 }

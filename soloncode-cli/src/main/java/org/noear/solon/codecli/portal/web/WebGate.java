@@ -366,16 +366,16 @@ public class WebGate extends SimpleWebSocketListener {
             // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律广播 dropped 让前端转排队
             session.attrs().remove(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
             @SuppressWarnings("unchecked")
-            Queue<String> staleBox = (Queue<String>) session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
+            Queue<SteerMessage> staleBox = (Queue<SteerMessage>) session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
 
             emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
 
             if (staleBox != null && staleBox.isEmpty() == false) {
-                java.util.List<String> stale = new java.util.ArrayList<>();
-                for (String t; (t = staleBox.poll()) != null; ) {
-                    stale.add(t);
+                java.util.List<SteerMessage> stale = new java.util.ArrayList<>();
+                for (SteerMessage message; (message = staleBox.poll()) != null; ) {
+                    stale.add(message);
                 }
-                emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDropped(null, stale));
+                emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(null, stale));
             }
         }
     }

@@ -1262,6 +1262,7 @@ public class WebController {
      *
      * @param sessionId 会话 ID
      * @param runId     前端所见的当前运行 ID（可选；来自事件信封 runId，防跨任务错投）
+     * @param steerId   前端生成的稳定 ID（可选；旧客户端未传时由后端生成）
      * @param text      插话文本
      * @return 操作结果
      */
@@ -1269,6 +1270,7 @@ public class WebController {
     @Mapping("/web/chat/steer")
     public Result steerSession(@Param("sessionId") String sessionId,
                                @Param(value = "runId", required = false) String runId,
+                               @Param(value = "steerId", required = false) String steerId,
                                @Param("text") String text) {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
@@ -1279,6 +1281,14 @@ public class WebController {
         text = text.trim();
         if (text.length() > SteerInterceptor.MAX_TEXT_LENGTH) {
             return Result.failure(400, "TEXT_TOO_LONG");
+        }
+        if (steerId == null || steerId.trim().isEmpty()) {
+            steerId = "s_" + UUID.randomUUID().toString();
+        } else {
+            steerId = steerId.trim();
+            if (steerId.length() > SteerInterceptor.MAX_ID_LENGTH) {
+                return Result.failure(400, "INVALID_STEER_ID");
+            }
         }
         if (!webGate().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "NOT_RUNNING");
@@ -1298,13 +1308,19 @@ public class WebController {
         }
 
         @SuppressWarnings("unchecked")
-        java.util.Queue<String> box = (java.util.Queue<String>) session.attrs()
+        java.util.Queue<SteerMessage> box = (java.util.Queue<SteerMessage>) session.attrs()
                 .computeIfAbsent(SteerInterceptor.ATTR_STEER_BOX,
-                        k -> new java.util.concurrent.ConcurrentLinkedQueue<String>());
+                        k -> new java.util.concurrent.ConcurrentLinkedQueue<SteerMessage>());
         if (box.size() >= SteerInterceptor.MAX_BOX_SIZE) {
             return Result.failure(409, "BOX_FULL");
         }
-        box.offer(text);
+        for (SteerMessage existing : box) {
+            if (steerId.equals(existing.getId())) {
+                return Result.failure(409, "DUPLICATE_STEER_ID");
+            }
+        }
+        SteerMessage steer = new SteerMessage(steerId, text);
+        box.offer(steer);
 
         // offer 后复查（决策点原子性兜底）：本方法与 SteerInterceptor.onAgentEnd 的
         // attrs().remove(ATTR_STEER_BOX) 存在竞态。若在 remove 之后才 offer，本条会写进
@@ -1312,13 +1328,54 @@ public class WebController {
         // 此处发现任务已结束或邮箱已被摘掉则回滚本条，改报 NOT_RUNNING 让前端回落为普通发送
         if (!webGate().isSessionBusy(engine(), sessionId)
                 || session.attrs().get(SteerInterceptor.ATTR_STEER_BOX) != box) {
-            box.remove(text);
+            box.remove(steer);
             session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX, box);
             return Result.failure(409, "NOT_RUNNING");
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("status", "STEERED");
+        data.put("steerId", steerId);
+        data.put("queued", box.size());
+        return Result.succeed(data);
+    }
+
+    /**
+     * 撤销一条尚未到达采样边界的运行中插话。
+     *
+     * <p>只有消息仍在会话邮箱中时才返回成功；若消费线程已将其取出，则返回 NOT_PENDING，
+     * 前端保留待生效项，等待 applied/dropped 终态事件，避免把“已经生效”伪装成“删除成功”。</p>
+     */
+    @Post
+    @Mapping("/web/chat/steer/cancel")
+    public Result cancelSteerSession(@Param("sessionId") String sessionId,
+                                     @Param(value = "runId", required = false) String runId,
+                                     @Param("steerId") String steerId) {
+        if (!isValidSessionId(sessionId)) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (steerId == null || steerId.trim().isEmpty()
+                || steerId.length() > SteerInterceptor.MAX_ID_LENGTH) {
+            return Result.failure(400, "INVALID_STEER_ID");
+        }
+
+        AgentSession session = engine().getSession(sessionId);
+        if (session == null) {
+            return Result.failure(409, "NOT_PENDING");
+        }
+        String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
+        if (runId != null && activeRunId != null && !runId.equals(activeRunId)) {
+            return Result.failure(409, "TURN_CHANGED");
+        }
+
+        java.util.Queue<SteerMessage> box = SteerInterceptor.steerBox(session);
+        if (!SteerInterceptor.cancel(box, steerId.trim())) {
+            return Result.failure(409, "NOT_PENDING");
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("status", "CANCELED");
+        data.put("steerId", steerId.trim());
         data.put("queued", box.size());
         return Result.succeed(data);
     }

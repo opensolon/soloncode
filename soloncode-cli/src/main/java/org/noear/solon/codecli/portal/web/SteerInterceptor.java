@@ -57,6 +57,8 @@ public class SteerInterceptor implements ReActInterceptor {
     public static final int MAX_BOX_SIZE = 5;
     /** 单条插话长度上限 */
     public static final int MAX_TEXT_LENGTH = 4096;
+    /** 前端生成的插话 ID 长度上限 */
+    public static final int MAX_ID_LENGTH = 128;
 
     /** 注入到工作记忆的消息前缀，向模型标识这是运行中的用户补充。
      * 同时是 LastTraceService 回放时识别插话的兜底判据（metadata 可能在快照序列化中丢失） */
@@ -84,7 +86,7 @@ public class SteerInterceptor implements ReActInterceptor {
         // 供 steer 接口比对。首轮 reason 之前提交的 steer 不受影响（此时比对端为 null，按接受处理）
         session.attrs().put(ATTR_ACTIVE_RUN_ID, trace.getRunId());
 
-        Queue<String> box = steerBox(session);
+        Queue<SteerMessage> box = steerBox(session);
         if (box == null || box.isEmpty()) {
             return;
         }
@@ -99,13 +101,13 @@ public class SteerInterceptor implements ReActInterceptor {
             return;
         }
 
-        List<String> texts = drain(box);
-        if (texts.isEmpty()) {
+        List<SteerMessage> messages = drain(box);
+        if (messages.isEmpty()) {
             return;
         }
 
-        for (String text : texts) {
-            ChatMessage message = ChatMessage.ofUser(STEER_PREFIX + text);
+        for (SteerMessage steer : messages) {
+            ChatMessage message = ChatMessage.ofUser(STEER_PREFIX + steer.getText());
             message.addMetadata("source", STEER_SOURCE);
             trace.getWorkingMemory().addMessage(message);
         }
@@ -114,7 +116,7 @@ public class SteerInterceptor implements ReActInterceptor {
 
         // 必须广播 applied：它是「注入已生效」的唯一信号。前端据此清除待生效态并落气泡；
         // 若不发，前端 finishStream 的防御定时器会把已执行过的插话当作未消费重新入队，导致重复执行
-        emitSteer(session, WebEvent.ofSteerApplied(trace.getRunId(), texts));
+        emitSteer(session, WebEvent.ofSteerAppliedItems(trace.getRunId(), messages));
     }
 
     @Override
@@ -128,15 +130,15 @@ public class SteerInterceptor implements ReActInterceptor {
         // 若先 drain 再 remove，落在两步之间的 offer 会随 remove 静默丢失。
         // 摘下后并发到达的 offer 会写进一个新建的孤儿队列，由 steer 接口的 offer 后复查兜住
         @SuppressWarnings("unchecked")
-        Queue<String> box = (Queue<String>) session.attrs().remove(ATTR_STEER_BOX);
+        Queue<SteerMessage> box = (Queue<SteerMessage>) session.attrs().remove(ATTR_STEER_BOX);
         session.attrs().remove(ATTR_ACTIVE_RUN_ID);
 
         if (box != null && !box.isEmpty()) {
             // 残留兜底：任务已结束（单轮直接回答、守卫持续跳过后 END 等），
             // 未消费的插话绝不能静默丢弃——广播 dropped，前端转为排队消息发送
-            List<String> dropped = drain(box);
+            List<SteerMessage> dropped = drain(box);
             if (!dropped.isEmpty()) {
-                emitSteer(session, WebEvent.ofSteerDropped(trace.getRunId(), dropped));
+                emitSteer(session, WebEvent.ofSteerDroppedItems(trace.getRunId(), dropped));
             }
         }
     }
@@ -145,16 +147,31 @@ public class SteerInterceptor implements ReActInterceptor {
      * 获取（不创建）会话插话邮箱
      */
     @SuppressWarnings("unchecked")
-    public static Queue<String> steerBox(AgentSession session) {
-        return (Queue<String>) session.attrs().get(ATTR_STEER_BOX);
+    public static Queue<SteerMessage> steerBox(AgentSession session) {
+        return (Queue<SteerMessage>) session.attrs().get(ATTR_STEER_BOX);
     }
 
-    private static List<String> drain(Queue<String> box) {
-        List<String> texts = new ArrayList<>();
-        for (String text; (text = box.poll()) != null; ) {
-            texts.add(text);
+    /**
+     * 仅取消仍留在邮箱中的插话。若消费线程已经 poll 出该项，则返回 false，调用方不得宣称取消成功。
+     */
+    public static boolean cancel(Queue<SteerMessage> box, String steerId) {
+        if (box == null || steerId == null) {
+            return false;
         }
-        return texts;
+        for (SteerMessage item : box) {
+            if (steerId.equals(item.getId())) {
+                return box.remove(item);
+            }
+        }
+        return false;
+    }
+
+    private static List<SteerMessage> drain(Queue<SteerMessage> box) {
+        List<SteerMessage> messages = new ArrayList<>();
+        for (SteerMessage message; (message = box.poll()) != null; ) {
+            messages.add(message);
+        }
+        return messages;
     }
 
     private static boolean hasOpenToolCalls(ReActTrace trace) {
