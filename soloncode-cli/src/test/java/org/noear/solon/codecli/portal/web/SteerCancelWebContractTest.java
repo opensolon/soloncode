@@ -27,14 +27,24 @@ public class SteerCancelWebContractTest {
     }
 
     @Test
-    public void terminalEventsUseIdsAndIgnoreCanceledMessages() throws IOException {
+    public void asyncCancelKeepsTruthfulStateAndNeverGuessesDropped() throws IOException {
         String javascript = resourceText("/static/js/app-streaming.js");
 
-        assertTrue(javascript.contains("var items = (p && p.items) || []"));
+        assertTrue(javascript.contains("var submittedRunId = sess.currentRunId || null"),
+                "提交与取消必须使用同一个 runId 快照");
+        assertTrue(javascript.contains("status: 'submitting'"),
+                "HTTP 回执前也必须纳入可取消范围");
+        assertTrue(javascript.contains("item.status = 'pending';\n                if (item.discardRequested) cancelSteerMessage(sess, item.id, true)"),
+                "提交成功后必须先退出 submitting，再真正发起取消请求");
+        assertFalse(javascript.contains("if (item.status === 'submitting') {\n            item.status = 'canceling';"),
+                "提交未确认时不能抢先进入 canceling，否则成功回调会被防重复分支拦截");
+        assertTrue(javascript.contains("if (item.discardRequested) cancelSteerMessage(sess, item.id, true)"),
+                "Stop 后迟到的成功回执只能继续撤销");
+        assertTrue(javascript.contains("item.status = 'unknown'"),
+                "取消失败不能伪装成已经删除");
         assertTrue(javascript.contains("incoming.id && isSteerResolved(sess, incoming.id)"));
-        assertTrue(javascript.contains("removePendingSteer(sess, incoming.id, incoming.text)"));
-        assertTrue(javascript.contains("{items: fallbackItems}"),
-                "流结束兜底必须使用提交时的 ID 快照，不能按当前全量文本回退");
+        assertFalse(javascript.contains("handleSteerEvent(sess, 'system.steer_dropped', {items:"),
+                "超时不能凭空推导 dropped 并把可能已执行的插话再次入队");
     }
 
     private static String resourceText(String path) throws IOException {

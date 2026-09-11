@@ -11,8 +11,14 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -144,6 +150,7 @@ public class SteerInterceptorTest {
     @DisplayName("onAgentEnd 残留兜底：未消费文本清空邮箱并清理 attrs（dropped 事件由通知通道发出）")
     public void agentEnd_droppedAndCleaned() {
         ConcurrentLinkedQueue<SteerMessage> box = newBox("未消费1", "未消费2");
+        session.attrs().put(SteerInterceptor.ATTR_ACTIVE_RUN_ID, trace.getRunId());
 
         interceptor.onAgentEnd(trace);
 
@@ -155,6 +162,7 @@ public class SteerInterceptorTest {
     @Test
     @DisplayName("onAgentEnd 无残留：静默清理，不抛异常")
     public void agentEnd_noResidue_clean() {
+        session.attrs().put(SteerInterceptor.ATTR_ACTIVE_RUN_ID, trace.getRunId());
         interceptor.onAgentEnd(trace);
         assertNull(session.attrs().get(SteerInterceptor.ATTR_STEER_BOX));
     }
@@ -168,5 +176,92 @@ public class SteerInterceptorTest {
         assertEquals(1, box.size());
         assertEquals("s1", box.peek().getId());
         assertFalse(SteerInterceptor.cancel(box, "s0"), "重复取消不得误删另一条同文本插话");
+    }
+
+    @Test
+    @DisplayName("并发入队：容量上限是硬约束")
+    public void concurrentOffer_neverExceedsCapacity() throws Exception {
+        ConcurrentLinkedQueue<SteerMessage> box = new ConcurrentLinkedQueue<>();
+        ExecutorService pool = Executors.newFixedThreadPool(12);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger offered = new AtomicInteger();
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (int i = 0; i < 24; i++) {
+                final int index = i;
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    if (SteerInterceptor.offer(box, new SteerMessage("s" + index, "text"))
+                            == SteerInterceptor.OfferResult.OFFERED) {
+                        offered.incrementAndGet();
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) future.get();
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(SteerInterceptor.MAX_BOX_SIZE, offered.get());
+        assertEquals(SteerInterceptor.MAX_BOX_SIZE, box.size());
+    }
+
+    @Test
+    @DisplayName("并发入队：相同 steerId 最多接受一次")
+    public void concurrentOffer_duplicateIdAcceptedOnce() throws Exception {
+        ConcurrentLinkedQueue<SteerMessage> box = new ConcurrentLinkedQueue<>();
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger offered = new AtomicInteger();
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (int i = 0; i < 16; i++) {
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    if (SteerInterceptor.offer(box, new SteerMessage("same", "text"))
+                            == SteerInterceptor.OfferResult.OFFERED) {
+                        offered.incrementAndGet();
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) future.get();
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(1, offered.get());
+        assertEquals(1, box.size());
+    }
+
+    @Test
+    @DisplayName("满邮箱中的重复 ID：优先返回重复，不能误报容量已满")
+    public void fullBox_duplicateIdStillReportedAsDuplicate() {
+        ConcurrentLinkedQueue<SteerMessage> box = new ConcurrentLinkedQueue<>();
+        for (int i = 0; i < SteerInterceptor.MAX_BOX_SIZE; i++) {
+            assertEquals(SteerInterceptor.OfferResult.OFFERED,
+                    SteerInterceptor.offer(box, new SteerMessage("s" + i, "text")));
+        }
+
+        assertEquals(SteerInterceptor.OfferResult.DUPLICATE_ID,
+                SteerInterceptor.offer(box, new SteerMessage("s0", "retry")));
+        assertEquals(SteerInterceptor.MAX_BOX_SIZE, box.size());
+    }
+
+    @Test
+    @DisplayName("旧任务结束：不能清除新任务已写入的 runId 和邮箱")
+    public void oldAgentEnd_doesNotClearNewRunState() {
+        String newRunId = trace.getRunId() + "-new";
+        ConcurrentLinkedQueue<SteerMessage> newBox = newBox("新任务插话");
+        session.attrs().put(SteerInterceptor.ATTR_ACTIVE_RUN_ID, newRunId);
+
+        interceptor.onAgentEnd(trace);
+
+        assertEquals(newRunId, session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID));
+        assertSame(newBox, session.attrs().get(SteerInterceptor.ATTR_STEER_BOX));
+        assertEquals(1, newBox.size(), "旧任务结束不得丢弃新任务插话");
     }
 }

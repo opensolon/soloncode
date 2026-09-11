@@ -12,6 +12,8 @@ $(chatSendBtn).on('click', function() {
         sess.stopRequested = true;
         // 标记本轮因 Stop 结束：finish 时不再 drain 排队
         sess._stoppedTurn = true;
+        // 尚在提交中的插话也必须进入放弃态；HTTP 迟到后只允许撤销，不能回落重发。
+        markSubmittingSteersDiscarded(sess);
         // Stop = 中断当前 + 清空排队
         if (sess.messageQueue && sess.messageQueue.length) {
             sess.messageQueue = [];
@@ -377,6 +379,8 @@ function sendMessageCore(sess, text, filesToSend, options) {
     sess.acceptingStream = true;
     sess._streamClosed = false;
     sess._closedRunId = null;
+    // 新任务首个事件到达前不能沿用上一任务的 runId。
+    sess.currentRunId = null;
     sess.messageStartTime = Date.now();
 
     if (!inChatMode) switchToChatMode();
@@ -424,18 +428,34 @@ function sendQueuedItem(sess, item) {
 
 /* ===== 运行中插话（steer） =====
  * 参考方案：docs/steering-inject-plan.md（对齐 Codex steering）。
- * 提交后仅进入“待生效”态（queue dock 徽标），注入真正发生在下一个推理回合
- * （后端 SteerInterceptor.onReasonStart），收到 system.steer_applied 才落气泡。
- * 应答分派：200=STEERED；409 NOT_RUNNING=回落普通发送；TURN_CHANGED/BOX_FULL 等=转排队或提示。 */
+ * 请求发出即进入 submitting，确保 Stop/清空不会漏掉尚未返回的请求；后端接受后转 pending，
+ * 注入真正发生在下一个推理回合（SteerInterceptor.onReasonStart）。 */
 function steerMessage(sess, text) {
     if (!sess || !text) return;
     if (!isChatInputWithinLimit(text, true)) return;
     var steerId = 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    var submittedRunId = sess.currentRunId || null;
+    var item = {
+        id: steerId,
+        text: text,
+        runId: submittedRunId,
+        status: 'submitting',
+        discardRequested: false,
+        createdAt: Date.now()
+    };
+    if (!sess.steerPending) sess.steerPending = [];
+    sess.steerPending.push(item);
+    // 发送动作立即消费当前输入，避免 HTTP 回执前重复按 Enter 提交相同文本；
+    // 后续回执不得再无条件清空输入框，否则会擦掉用户新输入的草稿。
+    clearInput();
+    clearAttachmentPreview();
+    if (typeof renderQueueDock === 'function') renderQueueDock();
+
     var body = new URLSearchParams();
     body.append('sessionId', sess.sessionId);
     body.append('steerId', steerId);
     body.append('text', text);
-    if (sess.currentRunId) body.append('runId', sess.currentRunId);
+    if (submittedRunId) body.append('runId', submittedRunId);
 
     fetch('/web/chat/steer', {
         method: 'POST',
@@ -446,31 +466,29 @@ function steerMessage(sess, text) {
     }).then(function (res) {
         if (res && res.code === 200) {
             // applied/dropped 可能经 WebSocket 抢先到达；终态已处理时不可重新挂回待生效列表
-            clearInput();
-            clearAttachmentPreview();
             if (!isSteerResolved(sess, steerId)) {
-                if (!sess.steerPending) sess.steerPending = [];
-                sess.steerPending.push({
-                    id: (res.data && res.data.steerId) || steerId,
-                    text: text,
-                    runId: sess.currentRunId || null,
-                    status: 'pending',
-                    createdAt: Date.now()
-                });
-                if (typeof renderQueueDock === 'function') renderQueueDock();
+                item.id = (res.data && res.data.steerId) || steerId;
+                item.status = 'pending';
+                if (item.discardRequested) cancelSteerMessage(sess, item.id, true);
+                else if (typeof renderQueueDock === 'function') renderQueueDock();
             }
             chatInput.focus();
             return;
         }
         // 若终态事件先于 HTTP 回执到达，说明插话实际已被接收，禁止再回落造成重复执行
         if (isSteerResolved(sess, steerId)) {
-            clearInput();
-            clearAttachmentPreview();
+            return;
+        }
+        removePendingSteer(sess, steerId, null);
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        // Stop、/clear 或用户在 submitting 阶段取消后，迟到响应只负责收尾，绝不重新发送。
+        if (item.discardRequested) {
+            markSteerResolved(sess, steerId);
             return;
         }
         var msg = (res && res.description) || '';
         if (msg === 'NOT_RUNNING') {
-            // 会话已空闲：回落为普通发送（保持“不丢消息”优先）
+            // 会话自然结束：回落为普通发送（保持“不丢消息”优先）
             showToast(I18n.t('streaming.steerNotRunning'), 'info', 1800);
             sendMessageCore(sess, text, [], {displayText: text});
             return;
@@ -485,9 +503,11 @@ function steerMessage(sess, text) {
         }
         showToast(I18n.t('streaming.steerFailed'), 'error', 2000);
     }).catch(function () {
-        if (!isSteerResolved(sess, steerId)) {
-            showToast(I18n.t('streaming.steerFailed'), 'error', 2000);
-        }
+        if (isSteerResolved(sess, steerId)) return;
+        // 网络错误无法证明服务端未接收：保留可取消的未知项，不自动重发。
+        item.status = 'unknown';
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        showToast(I18n.t('streaming.steerFailed'), 'error', 2000);
     });
 }
 
@@ -512,6 +532,19 @@ function removePendingSteer(sess, id, text) {
     return null;
 }
 
+/** 将尚未收到提交回执的插话标记为放弃，防止 Stop 后的迟到响应重新发起任务。 */
+function markSubmittingSteersDiscarded(sess) {
+    if (!sess || !sess.steerPending) return;
+    for (var i = 0; i < sess.steerPending.length; i++) {
+        var item = sess.steerPending[i];
+        if (item.status === 'submitting') {
+            // 仍保持 submitting：只有提交成功回调把它转成 pending 后，才能真正发 cancel 请求。
+            item.discardRequested = true;
+        }
+    }
+    if (typeof renderQueueDock === 'function') renderQueueDock();
+}
+
 /** 撤销仍在后端邮箱中的插话；discard=true 用于 Stop、/clear 等明确放弃整轮的路径。 */
 function cancelSteerMessage(sess, steerId, discard) {
     if (!sess || !steerId) return Promise.resolve(false);
@@ -522,13 +555,19 @@ function cancelSteerMessage(sess, steerId, discard) {
             break;
         }
     }
-    if (!item || item.status === 'canceling') return Promise.resolve(false);
+    if (!item) return Promise.resolve(false);
+    // 无论单条取消还是批量放弃，若后端随后确认 dropped，都不能再转成普通排队任务。
+    item.discardRequested = true;
+    // 提交请求尚未确认时不能抢先调用 cancel（可能先于入队到达）；提交成功回调会继续撤销。
+    if (item.status === 'submitting') {
+        // 仅登记“提交成功后取消”，不能先进入 canceling；否则成功回调再次调用本函数时
+        // 会被下面的防重复分支拦住，实际永远不会向后端发送取消请求。
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        return Promise.resolve(true);
+    }
+    if (item.status === 'canceling') return Promise.resolve(false);
 
     item.status = 'canceling';
-    if (discard) {
-        markSteerResolved(sess, steerId);
-        removePendingSteer(sess, steerId, null);
-    }
     if (typeof renderQueueDock === 'function') renderQueueDock();
 
     var body = new URLSearchParams();
@@ -547,17 +586,18 @@ function cancelSteerMessage(sess, steerId, discard) {
             if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
             return true;
         }
-        if (!discard) {
-            item.status = 'pending';
-            if (typeof renderQueueDock === 'function') renderQueueDock();
-            if (typeof showToast === 'function') showToast(I18n.t('history.operateFailedRetry'), 'error', 2000);
+        // NOT_PENDING 可能表示已被采样；保留真实状态，等待 applied/dropped，不能伪装成已删除。
+        item.status = 'unknown';
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        if (!discard && typeof showToast === 'function') {
+            showToast(I18n.t('history.operateFailedRetry'), 'error', 2000);
         }
         return false;
     }).catch(function() {
-        if (!discard) {
-            item.status = 'pending';
-            if (typeof renderQueueDock === 'function') renderQueueDock();
-            if (typeof showToast === 'function') showToast(I18n.t('toast.networkErrorRetry'), 'error', 2000);
+        item.status = 'unknown';
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        if (!discard && typeof showToast === 'function') {
+            showToast(I18n.t('toast.networkErrorRetry'), 'error', 2000);
         }
         return false;
     });
@@ -567,7 +607,6 @@ function discardPendingSteers(sess) {
     if (!sess || !sess.steerPending || !sess.steerPending.length) return;
     var ids = sess.steerPending.map(function(item) { return item.id; });
     for (var i = 0; i < ids.length; i++) cancelSteerMessage(sess, ids[i], true);
-    if (sess._steerFallbackTimer) { clearTimeout(sess._steerFallbackTimer); sess._steerFallbackTimer = null; }
 }
 
 /** 在运行中插话落到时间线前，结束当前流片段的思考块。
@@ -630,7 +669,8 @@ function handleSteerEvent(sess, event, p) {
     for (var i = 0; i < items.length; i++) {
         var incoming = items[i] || {};
         if (!incoming.text || (incoming.id && isSteerResolved(sess, incoming.id))) continue;
-        removePendingSteer(sess, incoming.id, incoming.text);
+        var pendingItem = removePendingSteer(sess, incoming.id, incoming.text);
+        if (pendingItem && pendingItem.discardRequested) incoming.discardRequested = true;
         if (incoming.id) markSteerResolved(sess, incoming.id);
         accepted.push(incoming);
     }
@@ -647,7 +687,10 @@ function handleSteerEvent(sess, event, p) {
     } else if (accepted.length) {
         // 任务结束仍未消费：后端兜底广播，前端转为排队消息（绝不“已接受但永不生效”）
         if (!sess.messageQueue) sess.messageQueue = [];
+        var droppedQueued = 0;
         for (var d = 0; d < accepted.length; d++) {
+            // Stop、/clear 已明确放弃的插话，真实 dropped 后直接结束，不再转普通队列。
+            if (accepted[d].discardRequested) continue;
             var droppedText = accepted[d].text;
             sess.messageQueue.push({
                 id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
@@ -661,21 +704,17 @@ function handleSteerEvent(sess, event, p) {
                 selectedAgent: '',
                 createdAt: Date.now()
             });
+            droppedQueued++;
         }
-        if (typeof showToast === 'function') {
+        if (droppedQueued && typeof showToast === 'function') {
             showToast(I18n.t('streaming.steerDropped'), 'info', 2500);
         }
-        if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
+        if (droppedQueued && typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
     }
 
     if (accepted.length && sess.sessionId === activeSessionId) {
         if (!inChatMode) switchToChatMode();
         scrollToBottom(true);
-    }
-    // 待生效项已全部出清时，取消 finishStream 挂的防御定时器
-    if (sess._steerFallbackTimer && (!sess.steerPending || !sess.steerPending.length)) {
-        clearTimeout(sess._steerFallbackTimer);
-        sess._steerFallbackTimer = null;
     }
     if (typeof renderQueueDock === 'function') renderQueueDock();
     if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
@@ -794,7 +833,7 @@ function renderQueueDock() {
     var html = '';
     // 待生效插话项置顶（比排队更“热”），后端按稳定 ID 精确撤销
     for (var s = 0; s < steers.length; s++) {
-        var steerCanceling = steers[s].status === 'canceling';
+        var steerCanceling = steers[s].status === 'canceling' || !!steers[s].discardRequested;
         html += '<div class="queue-item queue-item-steer" data-qid="' + escapeHtml(steers[s].id) + '">' +
             '<span class="queue-item-steer-badge">' + I18n.t('streaming.steerBadgePending') + '</span>' +
             '<span class="queue-item-text" title="' + escapeHtml(steers[s].text) + '">' +
@@ -1045,6 +1084,7 @@ function sendCommandSilent(cmdText, onBeforeSend) {
     sess.acceptingStream = true;
     sess._streamClosed = false;
     sess._closedRunId = null;
+    sess.currentRunId = null;
     isStreaming = true;
     sess.messageStartTime = Date.now();
     setActiveSession(sess.sessionId);
@@ -1606,16 +1646,6 @@ function finishStream(sess) {
     // delta（短轮次可能一帧都没来得及 drain），提前取会拿到 null/上一轮的值，导致本轮迟到尾包被
     // 误判成“新一轮”而把已收尾的 UI 重新拉起。
     sess._closedRunId = sess.currentRunId || null;
-
-    // steer 防御兜底：后端 onAgentEnd 的 steer_dropped 与 done 并行推送，若 5s 内仍未收到
-    // applied/dropped（事件丢失、连接断开等），将待生效项就地转排队，杜绝“已接受但永不生效”
-    if (sess.steerPending && sess.steerPending.length && !sess._steerFallbackTimer) {
-        var fallbackItems = sess.steerPending.map(function(it) { return {id: it.id, text: it.text}; });
-        sess._steerFallbackTimer = setTimeout(function() {
-            sess._steerFallbackTimer = null;
-            handleSteerEvent(sess, 'system.steer_dropped', {items: fallbackItems});
-        }, 5000);
-    }
 
     // --- 强刷逻辑：必须在 resetStreamState 之前执行 ---
     // 1. 取消还没跑的动画帧
@@ -2252,6 +2282,11 @@ function handleWebGateChunk(raw) {
         if (!sid) return;
         var sess = sessionMap[sid] || getOrCreateSession(sid);
         if (p.createdAt) sess._lastCreatedAt = p.createdAt;
+        // 已知当前任务后，迟到的旧 run done 只能被忽略，不能结束新任务。
+        // 先校验再写 currentRunId，避免旧事件反向覆盖当前归属。
+        if (webEvt.runId && sess.currentRunId && webEvt.runId !== sess.currentRunId) return;
+        // done 自己也带 runId；短任务可能没有更早事件可用于更新 currentRunId。
+        if (webEvt.runId) sess.currentRunId = webEvt.runId;
         // 历史还在加载：先缓存，加载完再收尾
         if (sess._loadingHistory) {
             bufferPendingStreamChunk(sess, webEvt);
@@ -2287,9 +2322,7 @@ function handleWebGateChunk(raw) {
         sess._closedRunId = null;
         sess.acceptingStream = true;
         sess.stopRequested = false;
-        // 后端 beginStreamTurn 已摘掉残留插话邮箱并紧随其后广播 dropped，
-        // 此处撤掉防御定时器，避免与该 dropped 事件重复入队
-        if (sess._steerFallbackTimer) { clearTimeout(sess._steerFallbackTimer); sess._steerFallbackTimer = null; }
+        sess.currentRunId = null;
         return;
     }
 

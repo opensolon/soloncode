@@ -1299,38 +1299,49 @@ public class WebController {
             return Result.failure(409, "NOT_RUNNING");
         }
 
-        // runId 防护：仅在前端携带 runId 且后端已记录活跃 runId 时比对。
-        // 任务刚启动、首个 reason 事件未到达时后端值为 null，此时接受是安全的
-        // （守卫1会把注入推迟到第二轮，仍属本任务）
-        String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-        if (runId != null && activeRunId != null && !runId.equals(activeRunId)) {
-            return Result.failure(409, "TURN_CHANGED");
-        }
+        // 必须绑定明确的 runId。任务首个事件到达前尚不能确认归属，此时让前端转普通排队，
+        // 避免无 runId 请求落入任务结束/切换窄窗后成为无人消费的孤儿插话。
+        java.util.Queue<SteerMessage> box;
+        SteerMessage steer = new SteerMessage(steerId, text);
+        SteerInterceptor.OfferResult offerResult;
+        synchronized (session.attrs()) {
+            String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
+            if (runId == null || !runId.equals(activeRunId)) {
+                return Result.failure(409, "TURN_CHANGED");
+            }
 
-        @SuppressWarnings("unchecked")
-        java.util.Queue<SteerMessage> box = (java.util.Queue<SteerMessage>) session.attrs()
-                .computeIfAbsent(SteerInterceptor.ATTR_STEER_BOX,
-                        k -> new java.util.concurrent.ConcurrentLinkedQueue<SteerMessage>());
-        if (box.size() >= SteerInterceptor.MAX_BOX_SIZE) {
+            @SuppressWarnings("unchecked")
+            java.util.Queue<SteerMessage> currentBox = (java.util.Queue<SteerMessage>) session.attrs()
+                    .computeIfAbsent(SteerInterceptor.ATTR_STEER_BOX,
+                            k -> new java.util.concurrent.ConcurrentLinkedQueue<SteerMessage>());
+            box = currentBox;
+            offerResult = SteerInterceptor.offer(box, steer);
+        }
+        if (offerResult == SteerInterceptor.OfferResult.BOX_FULL) {
             return Result.failure(409, "BOX_FULL");
         }
-        for (SteerMessage existing : box) {
-            if (steerId.equals(existing.getId())) {
-                return Result.failure(409, "DUPLICATE_STEER_ID");
+        if (offerResult == SteerInterceptor.OfferResult.DUPLICATE_ID) {
+            return Result.failure(409, "DUPLICATE_STEER_ID");
+        }
+
+        // offer 后复查任务与邮箱身份。任务若在校验和入队之间切换，回滚本条，禁止错投下一任务。
+        boolean busyAfterOffer = webGate().isSessionBusy(engine(), sessionId);
+        boolean sameBox;
+        boolean sameRun;
+        synchronized (session.attrs()) {
+            sameBox = session.attrs().get(SteerInterceptor.ATTR_STEER_BOX) == box;
+            sameRun = runId.equals(session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID));
+            if (!busyAfterOffer || !sameBox || !sameRun) {
+                box.remove(steer);
+                // 只清理本次创建后仍为空的邮箱；邮箱里若还有别的插话，必须留给任务收尾统一
+                // applied/dropped，不能因当前请求回滚而把其它用户消息静默摘掉。
+                if (box.isEmpty()) {
+                    session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX, box);
+                }
             }
         }
-        SteerMessage steer = new SteerMessage(steerId, text);
-        box.offer(steer);
-
-        // offer 后复查（决策点原子性兜底）：本方法与 SteerInterceptor.onAgentEnd 的
-        // attrs().remove(ATTR_STEER_BOX) 存在竞态。若在 remove 之后才 offer，本条会写进
-        // 一个无人排空的孤儿队列——既不会生效也不会有 dropped 事件（悬挂）。
-        // 此处发现任务已结束或邮箱已被摘掉则回滚本条，改报 NOT_RUNNING 让前端回落为普通发送
-        if (!webGate().isSessionBusy(engine(), sessionId)
-                || session.attrs().get(SteerInterceptor.ATTR_STEER_BOX) != box) {
-            box.remove(steer);
-            session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX, box);
-            return Result.failure(409, "NOT_RUNNING");
+        if (!busyAfterOffer || !sameBox || !sameRun) {
+            return Result.failure(409, sameRun ? "NOT_RUNNING" : "TURN_CHANGED");
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -1363,14 +1374,17 @@ public class WebController {
         if (session == null) {
             return Result.failure(409, "NOT_PENDING");
         }
-        String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-        if (runId != null && activeRunId != null && !runId.equals(activeRunId)) {
-            return Result.failure(409, "TURN_CHANGED");
-        }
+        java.util.Queue<SteerMessage> box;
+        synchronized (session.attrs()) {
+            String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
+            if (runId == null || !runId.equals(activeRunId)) {
+                return Result.failure(409, "TURN_CHANGED");
+            }
 
-        java.util.Queue<SteerMessage> box = SteerInterceptor.steerBox(session);
-        if (!SteerInterceptor.cancel(box, steerId.trim())) {
-            return Result.failure(409, "NOT_PENDING");
+            box = SteerInterceptor.steerBox(session);
+            if (!SteerInterceptor.cancel(box, steerId.trim())) {
+                return Result.failure(409, "NOT_PENDING");
+            }
         }
 
         Map<String, Object> data = new LinkedHashMap<>();

@@ -55,6 +55,16 @@ public class SteerInterceptor implements ReActInterceptor {
     public static final String ATTR_ACTIVE_RUN_ID = "web.activeRunId";
     /** 邮箱容量上限（Codex 建议：频繁 steer 加速上下文膨胀，高频场景应改用排队） */
     public static final int MAX_BOX_SIZE = 5;
+
+    /** 插话入队结果。 */
+    enum OfferResult {
+        /** 已成功加入当前任务的插话邮箱。 */
+        OFFERED,
+        /** 邮箱已达到容量上限，未加入。 */
+        BOX_FULL,
+        /** 当前邮箱中已存在相同 steerId，未重复加入。 */
+        DUPLICATE_ID
+    }
     /** 单条插话长度上限 */
     public static final int MAX_TEXT_LENGTH = 4096;
     /** 前端生成的插话 ID 长度上限 */
@@ -82,11 +92,13 @@ public class SteerInterceptor implements ReActInterceptor {
             return;
         }
 
-        // 记录本次任务的 runId（getRunId 惰性且幂等，与事件流的 runId 同源），
-        // 供 steer 接口比对。首轮 reason 之前提交的 steer 不受影响（此时比对端为 null，按接受处理）
-        session.attrs().put(ATTR_ACTIVE_RUN_ID, trace.getRunId());
-
-        Queue<SteerMessage> box = steerBox(session);
+        // 记录本次任务的 runId（getRunId 惰性且幂等，与事件流的 runId 同源）。
+        // 与 onAgentEnd 使用同一短临界区，避免旧任务结束时摘走新任务刚建立的邮箱。
+        Queue<SteerMessage> box;
+        synchronized (session.attrs()) {
+            session.attrs().put(ATTR_ACTIVE_RUN_ID, trace.getRunId());
+            box = steerBox(session);
+        }
         if (box == null || box.isEmpty()) {
             return;
         }
@@ -115,7 +127,7 @@ public class SteerInterceptor implements ReActInterceptor {
         // 不追加 systemPrompt 说明：注入消息自带 STEER_PREFIX 已足够表意，避免重复提示
 
         // 必须广播 applied：它是「注入已生效」的唯一信号。前端据此清除待生效态并落气泡；
-        // 若不发，前端 finishStream 的防御定时器会把已执行过的插话当作未消费重新入队，导致重复执行
+        // 客户端不会用超时猜测终态，避免把已执行过的插话再次入队。
         emitSteer(session, WebEvent.ofSteerAppliedItems(trace.getRunId(), messages));
     }
 
@@ -126,12 +138,17 @@ public class SteerInterceptor implements ReActInterceptor {
             return;
         }
 
-        // 先摘下邮箱再排空（方案 A：任务结束即失效）。顺序不可颠倒：
-        // 若先 drain 再 remove，落在两步之间的 offer 会随 remove 静默丢失。
-        // 摘下后并发到达的 offer 会写进一个新建的孤儿队列，由 steer 接口的 offer 后复查兜住
-        @SuppressWarnings("unchecked")
-        Queue<SteerMessage> box = (Queue<SteerMessage>) session.attrs().remove(ATTR_STEER_BOX);
-        session.attrs().remove(ATTR_ACTIVE_RUN_ID);
+        // 仅结束属于本 trace 的邮箱。旧 trace 的迟到回调不得摘走新任务的 runId 或邮箱。
+        Queue<SteerMessage> box;
+        synchronized (session.attrs()) {
+            if (!trace.getRunId().equals(session.attrs().get(ATTR_ACTIVE_RUN_ID))) {
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            Queue<SteerMessage> currentBox = (Queue<SteerMessage>) session.attrs().remove(ATTR_STEER_BOX);
+            box = currentBox;
+            session.attrs().remove(ATTR_ACTIVE_RUN_ID, trace.getRunId());
+        }
 
         if (box != null && !box.isEmpty()) {
             // 残留兜底：任务已结束（单轮直接回答、守卫持续跳过后 END 等），
@@ -149,6 +166,23 @@ public class SteerInterceptor implements ReActInterceptor {
     @SuppressWarnings("unchecked")
     public static Queue<SteerMessage> steerBox(AgentSession session) {
         return (Queue<SteerMessage>) session.attrs().get(ATTR_STEER_BOX);
+    }
+
+    /** 容量校验、ID 去重与入队必须在同一邮箱的短临界区内完成。 */
+    static OfferResult offer(Queue<SteerMessage> box, SteerMessage steer) {
+        synchronized (box) {
+            // 先判重再判容量：满邮箱中的同 ID 重试仍应返回准确的重复结果，
+            // 不能误报 BOX_FULL 后被前端降级为普通任务而造成重复执行。
+            for (SteerMessage existing : box) {
+                if (steer.getId().equals(existing.getId())) {
+                    return OfferResult.DUPLICATE_ID;
+                }
+            }
+            if (box.size() >= MAX_BOX_SIZE) {
+                return OfferResult.BOX_FULL;
+            }
+            return box.offer(steer) ? OfferResult.OFFERED : OfferResult.BOX_FULL;
+        }
     }
 
     /**

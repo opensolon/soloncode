@@ -363,10 +363,16 @@ public class WebGate extends SimpleWebSocketListener {
             // 新任务开流：清上一轮 runId 与残留插话邮箱。
             // onAgentEnd 不在 finally 中（interrupt/异常路径不触发），若不在此清理，
             // 上一任务未消费的插话会在新任务第二轮被注入，破坏方案 A 的任务级隔离。
-            // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律广播 dropped 让前端转排队
-            session.attrs().remove(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-            @SuppressWarnings("unchecked")
-            Queue<SteerMessage> staleBox = (Queue<SteerMessage>) session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
+            // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律广播 dropped 让前端转排队。
+            // 与 steer 提交及 onAgentEnd 共用短临界区，保证 runId 与邮箱按同一任务边界切换。
+            Queue<SteerMessage> staleBox;
+            synchronized (session.attrs()) {
+                session.attrs().remove(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
+                @SuppressWarnings("unchecked")
+                Queue<SteerMessage> currentBox =
+                        (Queue<SteerMessage>) session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
+                staleBox = currentBox;
+            }
 
             emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
 
