@@ -709,24 +709,28 @@ function replaceCompletionToken(value, context, name) {
 }
 
 /**
- * 关闭所有工具栏弹出面板（互斥核心）
- * 包括：命令补全、输入历史、循环任务、模型下拉
+ * 关闭所有输入区弹出面板（互斥核心）
+ * 包括：命令补全、输入历史、循环任务、任务排队、模型与子代理下拉
  */
 function closeAllToolbarPanels() {
-    // 命令补全
     hideCmdComplete();
-    // 输入历史
     if (typeof $chatHistoryPanel !== 'undefined' && $chatHistoryPanel) $chatHistoryPanel.removeClass('show');
-    // 循环任务面板
-    $('#chatLoopPanel, #newChatLoopPanel').hide();
-    // 模型下拉
+    if (typeof window.hideLoopPanel === 'function') window.hideLoopPanel();
+    else $('#chatLoopPanel, #newChatLoopPanel').hide();
+    if (typeof window.collapseQueueDock === 'function') window.collapseQueueDock();
     $('#chatModelSelector, #newChatModelSelector').removeClass('open');
-    // 子代理下拉
     $('#chatAgentSelector, #newChatAgentSelector').removeClass('open');
-    // 更多菜单
     $('#chatMoreMenu, #newChatMoreMenu').removeClass('open');
+    $('#chatModelCurrent, #newChatModelCurrent, #chatAgentCurrent, #newChatAgentCurrent, #chatMoreBtn, #newChatMoreBtn')
+        .attr('aria-expanded', 'false');
 }
 window.closeAllToolbarPanels = closeAllToolbarPanels;
+
+function hasOpenToolbarPanel() {
+    return $('.cmd-complete.show, .history-panel.show, #chatLoopPanel:visible, #newChatLoopPanel:visible, .model-selector.open, .agent-selector.open, .more-menu.open').length > 0
+        || (typeof window.isQueueDockExpanded === 'function' && window.isQueueDockExpanded());
+}
+window.hasOpenToolbarPanel = hasOpenToolbarPanel;
 
 function showCmdComplete(inputEl, completeEl, tokenContext) {
     if (!commandsLoaded || commandList.length === 0 || !tokenContext) return;
@@ -986,7 +990,13 @@ $(newChatInput).on('keydown', function(e) {
 $(chatInput).on('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
     if (isInputComposing(e)) return;
-    // ESC：输入为空时取消队尾并回填
+    // Esc 优先关闭当前可见面板，避免误删队尾消息
+    if (e.key === 'Escape' && hasOpenToolbarPanel()) {
+        e.preventDefault();
+        closeAllToolbarPanels();
+        return;
+    }
+    // 没有浮层时，空输入 Esc 才取消队尾并回填
     if (e.key === 'Escape') {
         var escSess = activeSessionId && sessionMap[activeSessionId];
         if (escSess && escSess.messageQueue && escSess.messageQueue.length

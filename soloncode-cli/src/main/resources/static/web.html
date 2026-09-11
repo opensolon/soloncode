@@ -222,6 +222,32 @@
         </div>
         <div class="input-wrap">
             <div class="context-status" id="chatContextStatus" style="display:none"><span class="context-status-text">Context: -- / -- (--%)</span><span class="context-status-cache" style="display:none"></span><span class="context-status-elapsed" style="display:none"></span></div>
+            <!-- 当前会话任务排队：靠近输入行为，空队列时完全隐藏 -->
+            <div class="queue-strip collapsed" id="chatQueueDock" style="display:none" role="region" aria-live="polite" aria-label="任务排队" data-i18n-aria="workspace.taskQueue">
+                <div class="queue-strip-header" id="chatQueueHeader">
+                    <div class="queue-strip-title-row">
+                        <div class="queue-strip-title">
+                            <span class="queue-strip-status-dot" aria-hidden="true"></span>
+                            <span data-i18n="workspace.taskQueue">任务排队</span>
+                            <span class="queue-strip-count" id="chatQueueTitle">0</span>
+                        </div>
+                        <div class="queue-strip-preview" id="chatQueuePreview"></div>
+                        <div class="queue-strip-actions">
+                            <button type="button" class="queue-strip-clear" id="chatQueueClear" title="清空排队" data-i18n-title="workspace.clearQueue" aria-label="清空排队" data-i18n-aria="workspace.clearQueue">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </button>
+                            <button type="button" class="queue-strip-toggle" id="chatQueueToggle" title="展开" data-i18n-title="workspace.expandQueue" aria-label="展开" data-i18n-aria="workspace.expandQueue" aria-expanded="false" aria-controls="chatQueueList">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="queue-strip-hint" id="chatQueueHint" data-i18n="workspace.queueAutoSendHint">当前任务结束后自动发送</div>
+                </div>
+                <div class="queue-strip-list" id="chatQueueList" role="list"></div>
+            </div>
             <div class="input-box" id="chatDropZone">
                 <div class="drop-overlay" id="chatDropOverlay">
                     <div class="drop-overlay-content">
@@ -389,31 +415,6 @@
                 <div class="todo-empty" id="todoEmpty" style="display:none" data-i18n="workspace.noTasks">
                 当前会话暂无任务清单
             </div>
-        </div>
-        <!-- 任务面板底部：任务排队 -->
-        <div class="queue-strip collapsed" id="chatQueueDock" style="display:none" aria-live="polite">
-            <div class="queue-strip-header" id="chatQueueHeader">
-                <div class="queue-strip-title-row">
-                    <div class="queue-strip-title">
-                        <span data-i18n="workspace.taskQueue">任务排队</span>
-                        <span class="queue-strip-count" id="chatQueueTitle">0</span>
-                        <button type="button" class="queue-strip-clear" id="chatQueueClear" title="清空排队" data-i18n-title="workspace.clearQueue" aria-label="清空排队" data-i18n-aria="workspace.clearQueue">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="3 6 5 6 21 6"/>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="queue-strip-actions">
-                        <button type="button" class="queue-strip-toggle" id="chatQueueToggle" title="展开" data-i18n-title="workspace.expandQueue" aria-label="展开" data-i18n-aria="workspace.expandQueue">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="queue-strip-preview" id="chatQueuePreview"></div>
-                <div class="queue-strip-hint" data-i18n="workspace.queueAutoSendHint">当前任务结束后自动发送</div>
-            </div>
-            <div class="queue-strip-list" id="chatQueueList"></div>
         </div>
     </div>
 

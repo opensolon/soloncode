@@ -323,10 +323,6 @@
             localStorage.setItem('files-collapsed', collapsed ? '1' : '0');
             syncHeaderPadding(collapsed);
             syncToggleBtnPosition();
-            // 折叠后重新同步排队角标（CSS 仅在 collapsed 时显示）
-            if (typeof window.renderQueueDock === 'function') {
-                window.renderQueueDock();
-            }
         });
     }
 
@@ -1324,23 +1320,6 @@
         return true;
     }
     
-    /** 折叠态下在 toggle 按钮显示排队条数；展开或无排队时隐藏 */
-    function updateFilerQueueBadge(count) {
-        if (!$toggleBtn.length) return;
-        var n = count | 0;
-        var $badge = $toggleBtn.find('.workspace-queue-badge');
-        if (n <= 0) {
-            if ($badge.length) $badge.remove();
-            return;
-        }
-        var label = n > 99 ? '99+' : String(n);
-        if (!$badge.length) {
-            $badge = $('<span>').addClass('workspace-queue-badge');
-            $toggleBtn.append($badge);
-        }
-        $badge.text(label);
-    }
-    
     /* ---- 对账入口（给可见性恢复 / 网络恢复等「可能漏了推送」的时机用）----
      * 直接无条件 loadTree() 偏重：每次切回标签页都是 1 + 展开目录数 个请求，
      * 而此时文件面板可能根本不可见（用户在聊天页）。因此：面板不可见时只标脏延后做，
@@ -1387,7 +1366,6 @@
     window.reconcileFilerTree = reconcileFilerTree;
     window.onFilerChange = onFilerChange;
     window.expandFilerPanel = expandFilerPanel;
-    window.updateFilerQueueBadge = updateFilerQueueBadge;
 
     // ---- 搜索（后端全量搜索） ----
     var $searchInput = $('#fileSearchInput');

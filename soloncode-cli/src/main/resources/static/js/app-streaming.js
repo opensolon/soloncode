@@ -354,10 +354,7 @@ function enqueueMessage(sess, text, files) {
     if (typeof renderQueueDock === 'function') renderQueueDock();
     if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
     if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
-    // 首次入队且右栏折叠时自动展开，避免「队列进了黑洞」
-    if (sess.messageQueue.length === 1 && typeof window.expandFilerPanel === 'function') {
-        window.expandFilerPanel();
-    }
+    // 队列状态直接常驻在输入区上方，不改变用户正在使用的右侧工作区布局
     return true;
 }
 
@@ -765,6 +762,7 @@ function editQueuedMessageToInput(sess, id) {
     }
     var item = removeQueuedMessage(sess, id);
     if (!item) return;
+    sess.queueDockExpanded = false;
     applyQueuedItemToInput(item);
 }
 
@@ -788,7 +786,32 @@ function clearMessageQueue(sess, discardSteers) {
     if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
 }
 
-var _queueDockExpanded = false;
+function isQueueDockExpanded() {
+    var sess = activeSessionId && sessionMap[activeSessionId];
+    return !!(sess && sess.queueDockExpanded);
+}
+
+function collapseQueueDock() {
+    var sess = activeSessionId && sessionMap[activeSessionId];
+    if (!sess || !sess.queueDockExpanded) return false;
+    sess.queueDockExpanded = false;
+    renderQueueDock();
+    return true;
+}
+
+function toggleQueueDock() {
+    var sess = activeSessionId && sessionMap[activeSessionId];
+    if (!sess) return;
+    var opening = !sess.queueDockExpanded;
+    if (opening && typeof window.closeAllToolbarPanels === 'function') {
+        window.closeAllToolbarPanels();
+    }
+    sess.queueDockExpanded = opening;
+    renderQueueDock();
+}
+
+window.isQueueDockExpanded = isQueueDockExpanded;
+window.collapseQueueDock = collapseQueueDock;
 
 function renderQueueDock() {
     var dock = document.getElementById('chatQueueDock');
@@ -796,17 +819,14 @@ function renderQueueDock() {
     var sess = activeSessionId && sessionMap[activeSessionId];
     var q = (sess && sess.messageQueue) || [];
     var steers = (sess && sess.steerPending) || [];
-    // 折叠按钮角标：即使 strip 不可见也能感知排队数（含待生效插话）
-    if (typeof window.updateFilerQueueBadge === 'function') {
-        window.updateFilerQueueBadge(q.length + steers.length);
-    }
     if (!q.length && !steers.length) {
+        if (sess) sess.queueDockExpanded = false;
         dock.style.display = 'none';
         return;
     }
-    // 右栏底部 strip：用 flex 布局，避免 display:block 破坏 workspace-panel 列排布
+    var expanded = !!(sess && sess.queueDockExpanded);
     dock.style.display = 'flex';
-    if (_queueDockExpanded) $(dock).removeClass('collapsed');
+    if (expanded) $(dock).removeClass('collapsed');
     else $(dock).addClass('collapsed');
 
     var total = q.length + steers.length;
@@ -816,15 +836,26 @@ function renderQueueDock() {
     var previewEl = document.getElementById('chatQueuePreview');
     if (previewEl) {
         var first = steers.length ? steers[0].text : (q[0].displayText || q[0].text);
-        previewEl.textContent = I18n.t('streaming.nextMessage') + truncateQueueText(first, 36);
-        previewEl.style.display = _queueDockExpanded ? 'none' : 'block';
+        previewEl.textContent = I18n.t('streaming.nextMessage') + truncateQueueText(first, 48);
+    }
+
+    var hintEl = document.getElementById('chatQueueHint');
+    if (hintEl) {
+        if (sess.isStreaming) {
+            hintEl.textContent = I18n.t('workspace.queueAutoSendHint');
+        } else if (q.length) {
+            hintEl.textContent = I18n.t('streaming.queueWaiting', {n: q.length});
+        } else {
+            hintEl.textContent = I18n.t('streaming.steerBadgePending');
+        }
     }
 
     var toggleEl = document.getElementById('chatQueueToggle');
     if (toggleEl) {
-        toggleEl.title = _queueDockExpanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand');
-        toggleEl.setAttribute('aria-label', _queueDockExpanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand'));
-        if (_queueDockExpanded) toggleEl.classList.add('expanded');
+        toggleEl.title = expanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand');
+        toggleEl.setAttribute('aria-label', expanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand'));
+        toggleEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (expanded) toggleEl.classList.add('expanded');
         else toggleEl.classList.remove('expanded');
     }
 
@@ -834,7 +865,7 @@ function renderQueueDock() {
     // 待生效插话项置顶（比排队更“热”），后端按稳定 ID 精确撤销
     for (var s = 0; s < steers.length; s++) {
         var steerCanceling = steers[s].status === 'canceling' || !!steers[s].discardRequested;
-        html += '<div class="queue-item queue-item-steer" data-qid="' + escapeHtml(steers[s].id) + '">' +
+        html += '<div class="queue-item queue-item-steer" role="listitem" data-qid="' + escapeHtml(steers[s].id) + '">' +
             '<span class="queue-item-steer-badge">' + I18n.t('streaming.steerBadgePending') + '</span>' +
             '<span class="queue-item-text" title="' + escapeHtml(steers[s].text) + '">' +
             escapeHtml(truncateQueueText(steers[s].text, 48)) +
@@ -850,14 +881,14 @@ function renderQueueDock() {
             (fileCount > 0 ? I18n.t('streaming.attachCount', {n: fileCount}) : I18n.t('streaming.attachNotPersisted')) +
             '">📎' + (fileCount > 0 ? fileCount : '!') + '</span>'
             : '';
-        html += '<div class="queue-item" data-qid="' + escapeHtml(item.id) + '">' +
+        html += '<div class="queue-item" role="listitem" data-qid="' + escapeHtml(item.id) + '">' +
             '<span class="queue-item-idx">' + (i + 1) + '.</span>' +
             '<span class="queue-item-text" title="' + escapeHtml(item.displayText || item.text || '') + '">' +
             escapeHtml(truncateQueueText(item.displayText || item.text, 48)) +
             '</span>' + attachBadge +
             '<span class="queue-item-actions">' +
             '<button type="button" data-act="edit">' + I18n.t('streaming.edit') + '</button>' +
-            '<button type="button" data-act="cancel">' + I18n.t('common.cancel') + '</button>' +
+            '<button type="button" data-act="cancel">' + I18n.t('common.delete') + '</button>' +
             '</span></div>';
     }
     listEl.innerHTML = html;
@@ -891,7 +922,7 @@ function updateStreamingPlaceholder() {
 }
 window.updateStreamingPlaceholder = updateStreamingPlaceholder;
 
-// 任务排队 strip 事件（右栏底部，跨 Tab 常驻）—— DOM 就绪后绑定一次
+// 任务排队卡片事件（聊天输入区上方）—— DOM 就绪后绑定一次
 (function bindQueueDockEvents() {
     function bind() {
         var dock = document.getElementById('chatQueueDock');
@@ -900,13 +931,11 @@ window.updateStreamingPlaceholder = updateStreamingPlaceholder;
 
         $(dock).on('click', '#chatQueueHeader', function(e) {
             if ($(e.target).closest('#chatQueueClear, #chatQueueToggle').length) return;
-            _queueDockExpanded = !_queueDockExpanded;
-            renderQueueDock();
+            toggleQueueDock();
         });
         $(dock).on('click', '#chatQueueToggle', function(e) {
             e.stopPropagation();
-            _queueDockExpanded = !_queueDockExpanded;
-            renderQueueDock();
+            toggleQueueDock();
         });
         $(dock).on('click', '#chatQueueClear', function(e) {
             e.stopPropagation();
@@ -941,6 +970,12 @@ window.updateStreamingPlaceholder = updateStreamingPlaceholder;
             if (act === 'edit') editQueuedMessageToInput(sess, qid);
             else if (act === 'cancel') removeQueuedMessage(sess, qid);
             else if (act === 'cancel-steer') cancelSteerMessage(sess, qid, false);
+        });
+
+        // mousedown 早于侧栏会话切换的 click，保证折叠的是当前可见会话
+        $(document).on('mousedown.queuedock', function(e) {
+            if (!isQueueDockExpanded()) return;
+            if (!$(e.target).closest('#chatQueueDock').length) collapseQueueDock();
         });
     }
     if (document.readyState === 'loading') {

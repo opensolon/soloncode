@@ -87,6 +87,8 @@ function SessionState(sessionId) {
     this.streamSegmentSeq = 0;
     // 运行中 follow-up 消息排队（FIFO）；会话目录 queue-tasks.json 可恢复文本项（冷恢复不自动发）
     this.messageQueue = [];
+    // 输入区队列卡片的展开状态只属于当前会话，刷新后默认折叠
+    this.queueDockExpanded = false;
     // 已被后端接受、等待下一采样边界生效的插话；resolved 表用于处理 HTTP 与 WS 乱序
     this.steerPending = [];
     this._steerResolved = {};

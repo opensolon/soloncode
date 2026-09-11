@@ -1594,29 +1594,6 @@ body {
 }
 .workspace-panel-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .workspace-panel-toggle-btn.collapsed { right: 4px !important; }
-/* 折叠态任务排队条数角标（不展开也能感知） */
-.workspace-queue-badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    border-radius: 8px;
-    background: var(--accent-fill, var(--accent));
-    color: #fff;
-    font-size: var(--fs-2xs);
-    font-weight: 600;
-    line-height: 16px;
-    text-align: center;
-    box-sizing: border-box;
-    pointer-events: none;
-    box-shadow: 0 0 0 1px var(--bg-sidebar);
-}
-.workspace-panel-toggle-btn:not(.collapsed) .workspace-queue-badge {
-    display: none !important;
-}
-
 .file-node { user-select: none; }
 /* 文件树右键菜单（挂在 body 下，fixed 定位） */
 .filer-context-menu { position: fixed; z-index: 9999; display: none; min-width: 180px; padding: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); animation: drop-up 0.12s ease-out; }
@@ -2916,29 +2893,40 @@ pre:hover .code-copy-btn { opacity: 1; }
     }
 }
 
-/* ========== 任务排队（右栏底部常驻 strip） ==========
-   跨 Tab 可见；空队列时整块隐藏，不占高度 */
+/* ========== 任务排队（聊天输入区上方） ==========
+   会话级状态卡片；空队列时隐藏，折叠态只占一行，展开后列表内部滚动。 */
 .queue-strip {
-    flex-shrink: 0;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-filer-surface);
+    width: 100%;
+    max-width: 780px;
+    max-height: 320px;
+    margin: 0 auto 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-input-box);
+    box-shadow: var(--shadow);
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    max-height: 42%;
     min-width: 0;
     overflow: hidden;
+    animation: queue-strip-in 0.16s ease-out;
+}
+@keyframes queue-strip-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
 }
 .queue-strip-header {
-    padding: 10px 12px 8px;
+    padding: 9px 12px;
     cursor: pointer;
     user-select: none;
     flex-shrink: 0;
 }
+.queue-strip-header:hover { background: var(--bg-hover); }
 .queue-strip-title-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
+    min-height: 24px;
 }
 .queue-strip-title {
     font-size: var(--fs-base);
@@ -2948,11 +2936,28 @@ pre:hover .code-copy-btn { opacity: 1; }
     align-items: center;
     gap: 6px;
     min-width: 0;
+    flex-shrink: 0;
+}
+.queue-strip-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-fill, var(--accent));
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 79, 110, 247), 0.12);
+    flex-shrink: 0;
 }
 .queue-strip-count {
-    font-size: var(--fs-sm);
-    font-weight: 400;
-    color: var(--text-tertiary, var(--text-secondary));
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    box-sizing: border-box;
+    background: rgba(var(--accent-rgb, 79, 110, 247), 0.10);
+    color: var(--accent);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
 }
 /* ===== 删除类图标按钮统一规约（与 app-base.js 的 SVG_TRASH / SVG_TRASH_PLAIN 配套） ===== */
 /* .icon-btn-clear：批量清空（Clear）专用。常态低调，hover 强警示红。 */
@@ -2989,96 +2994,85 @@ pre:hover .code-copy-btn { opacity: 1; }
     color: var(--color-danger);
 }
 
+.queue-strip-preview {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .queue-strip-actions {
     display: flex;
     align-items: center;
-    gap: 0;
+    gap: 2px;
     flex-shrink: 0;
+    margin-left: auto;
 }
-/* 清空：贴标题旁的垃圾桶图标，与展开按钮拆开避免误点 */
-.queue-strip-clear {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    margin-left: 2px;
-    border: none;
-    background: transparent;
-    color: var(--text-tertiary, var(--text-secondary));
-    cursor: pointer;
-    border-radius: 4px;
-    flex-shrink: 0;
-    opacity: 0.75;
-}
-.queue-strip-clear svg {
-    width: 13px;
-    height: 13px;
-    display: block;
-}
-.queue-strip-clear:hover {
-    color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.08);
-    opacity: 1;
-}
+.queue-strip-clear,
 .queue-strip-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
 }
+.queue-strip-clear:hover {
+    color: var(--color-danger);
+    background: rgba(239, 68, 68, 0.08);
+}
+.queue-strip-toggle:hover { color: var(--text-primary); background: var(--bg-primary); }
+.queue-strip-clear:focus-visible,
+.queue-strip-toggle:focus-visible,
+.queue-item-actions button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.queue-strip-clear svg { width: 14px; height: 14px; display: block; }
 .queue-strip-toggle svg {
     width: 14px;
     height: 14px;
     display: block;
     transition: transform 0.15s ease;
 }
-.queue-strip-toggle.expanded svg {
-    transform: rotate(180deg);
-}
-.queue-strip-toggle:hover { color: var(--text-primary); }
-.queue-strip-preview {
-    margin-top: 4px;
-    font-size: var(--fs-sm);
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+.queue-strip-toggle.expanded svg { transform: rotate(180deg); }
 .queue-strip-hint {
-    margin-top: 2px;
-    font-size: var(--fs-xs);
+    margin: 5px 0 0 23px;
     color: var(--text-secondary);
-    opacity: 0.75;
+    font-size: var(--fs-xs);
+    line-height: 1.4;
+    opacity: 0.78;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 .queue-strip-list {
-    flex: 1;
     min-height: 0;
+    max-height: 240px;
     overflow-y: auto;
     padding: 0 10px 10px;
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
-.queue-strip.collapsed .queue-strip-list { display: none; }
-.queue-strip.collapsed .queue-strip-hint { display: none; }
+.queue-strip.collapsed .queue-strip-list,
+.queue-strip.collapsed .queue-strip-hint,
+.queue-strip.collapsed .queue-strip-clear { display: none; }
+.queue-strip:not(.collapsed) .queue-strip-preview { display: none; }
 .queue-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
-    padding: 6px 8px;
+    padding: 8px 9px;
     border-radius: 8px;
     background: var(--bg-hover);
     font-size: var(--fs-sm);
@@ -3088,40 +3082,58 @@ pre:hover .code-copy-btn { opacity: 1; }
     color: var(--text-secondary);
     flex-shrink: 0;
     font-size: var(--fs-xs);
+    line-height: 1.55;
 }
 .queue-item-text {
     flex: 1;
     min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.5;
+    word-break: break-word;
 }
 .queue-item-attach {
     flex-shrink: 0;
     font-size: var(--fs-xs);
     color: var(--text-secondary);
+    line-height: 1.55;
 }
 .queue-item-actions {
     display: flex;
+    align-items: center;
     gap: 2px;
     flex-shrink: 0;
 }
 .queue-item-actions button {
+    min-height: 26px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: var(--fs-xs);
     cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 3px 7px;
+    border-radius: 5px;
 }
-.queue-item-actions button:hover {
-    background: var(--bg-input-box);
-    color: var(--accent);
+.queue-item-actions button:hover { background: var(--bg-input-box); color: var(--accent); }
+.queue-item-actions button[data-act="cancel"]:hover,
+.queue-item-actions button[data-act="cancel-steer"]:hover { color: var(--color-danger); }
+.queue-item-actions button:disabled { cursor: wait; opacity: 0.45; }
+
+@media (max-width: 768px) {
+    .queue-strip { max-height: min(42vh, 320px); margin-bottom: 6px; border-radius: 10px; }
+    .queue-strip-header { padding: 8px 10px; }
+    .queue-strip-title-row { gap: 7px; }
+    .queue-strip-title { font-size: var(--fs-sm); }
+    .queue-strip-preview { font-size: var(--fs-xs); }
+    .queue-strip-list { max-height: calc(min(42vh, 320px) - 58px); padding: 0 8px 8px; }
+    .queue-item { padding: 8px; }
+    .queue-item-actions button { min-width: 44px; min-height: 32px; }
 }
-.queue-item-actions button:disabled {
-    cursor: wait;
-    opacity: 0.45;
+@media (prefers-reduced-motion: reduce) {
+    .queue-strip { animation: none; }
+    .queue-strip-toggle svg { transition: none; }
 }
 
 /* 运行中插话（steer）：待生效项 */

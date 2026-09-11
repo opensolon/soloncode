@@ -202,6 +202,7 @@
         loopPanelVisible = false;
         loopEditId = null;
     }
+    window.hideLoopPanel = hideLoopPanel;
 
     $newChatLoopBtn.on('click', function(e) {
         e.stopPropagation();
