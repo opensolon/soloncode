@@ -2903,7 +2903,8 @@ pre:hover .code-copy-btn { opacity: 1; }
     border: 1px solid var(--border-color);
     border-radius: 12px;
     background: var(--bg-input-box);
-    box-shadow: var(--shadow);
+    /* 输入框是主操作面，队列只做轻量状态提示，避免上下两个阴影卡片粘成一块。 */
+    box-shadow: none;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -2921,7 +2922,15 @@ pre:hover .code-copy-btn { opacity: 1; }
     user-select: none;
     flex-shrink: 0;
 }
-.queue-strip-header:hover { background: var(--bg-hover); }
+.queue-strip-header {
+    transition: background-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    /* 父级只提供极弱的整体反馈，不再与子按钮叠加独立色块。 */
+    .queue-strip-header:hover {
+        background: rgba(var(--accent-rgb, 79, 110, 247), 0.035);
+    }
+}
 .queue-strip-title-row {
     display: flex;
     align-items: center;
@@ -3006,7 +3015,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 .queue-strip-actions {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
     flex-shrink: 0;
     margin-left: auto;
 }
@@ -3028,9 +3037,12 @@ pre:hover .code-copy-btn { opacity: 1; }
 }
 .queue-strip-clear:hover {
     color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.08);
+    background: transparent;
 }
-.queue-strip-toggle:hover { color: var(--text-primary); background: var(--bg-primary); }
+.queue-strip-toggle:hover {
+    color: var(--text-primary);
+    background: transparent;
+}
 .queue-strip-clear:focus-visible,
 .queue-strip-toggle:focus-visible,
 .queue-item-actions button:focus-visible {
@@ -3046,7 +3058,8 @@ pre:hover .code-copy-btn { opacity: 1; }
 }
 .queue-strip-toggle.expanded svg { transform: rotate(180deg); }
 .queue-strip-hint {
-    margin: 5px 0 0 23px;
+    /* 与状态圆点后的“任务排队”标题文字左边缘对齐。 */
+    margin: 5px 0 0 13px;
     color: var(--text-secondary);
     font-size: var(--fs-xs);
     line-height: 1.4;
@@ -3059,10 +3072,11 @@ pre:hover .code-copy-btn { opacity: 1; }
     min-height: 0;
     max-height: 240px;
     overflow-y: auto;
-    padding: 0 10px 10px;
+    /* 把 Header 与首条任务明确分开，避免 hover 背景连成整块。 */
+    padding: 0;
+    border-top: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    gap: 6px;
 }
 .queue-strip.collapsed .queue-strip-list,
 .queue-strip.collapsed .queue-strip-hint,
@@ -3070,19 +3084,21 @@ pre:hover .code-copy-btn { opacity: 1; }
 .queue-strip:not(.collapsed) .queue-strip-preview { display: none; }
 .queue-item {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
-    padding: 8px 9px;
-    border-radius: 8px;
-    background: var(--bg-hover);
+    padding: 10px 14px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     font-size: var(--fs-sm);
     color: var(--text-primary);
+    transition: background-color 0.12s ease;
 }
 .queue-item-idx {
     color: var(--text-secondary);
     flex-shrink: 0;
     font-size: var(--fs-xs);
-    line-height: 1.55;
+    line-height: 1.5;
 }
 .queue-item-text {
     flex: 1;
@@ -3098,25 +3114,37 @@ pre:hover .code-copy-btn { opacity: 1; }
     flex-shrink: 0;
     font-size: var(--fs-xs);
     color: var(--text-secondary);
-    line-height: 1.55;
+    line-height: 1.5;
 }
 .queue-item-actions {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
     flex-shrink: 0;
 }
 .queue-item-actions button {
     min-height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: var(--fs-xs);
+    line-height: 1.5;
     cursor: pointer;
     padding: 3px 7px;
     border-radius: 5px;
 }
-.queue-item-actions button:hover { background: var(--bg-input-box); color: var(--accent); }
+@media (hover: hover) and (pointer: fine) {
+    .queue-item:hover {
+        background: var(--bg-hover);
+    }
+    .queue-item-actions button:hover {
+        background: transparent;
+        color: var(--accent);
+    }
+}
 .queue-item-actions button[data-act="cancel"]:hover,
 .queue-item-actions button[data-act="cancel-steer"]:hover { color: var(--color-danger); }
 .queue-item-actions button:disabled { cursor: wait; opacity: 0.45; }
@@ -3127,8 +3155,8 @@ pre:hover .code-copy-btn { opacity: 1; }
     .queue-strip-title-row { gap: 7px; }
     .queue-strip-title { font-size: var(--fs-sm); }
     .queue-strip-preview { font-size: var(--fs-xs); }
-    .queue-strip-list { max-height: calc(min(42vh, 320px) - 58px); padding: 0 8px 8px; }
-    .queue-item { padding: 8px; }
+    .queue-strip-list { max-height: calc(min(42vh, 320px) - 58px); }
+    .queue-item { padding: 10px 12px; }
     .queue-item-actions button { min-width: 44px; min-height: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3138,7 +3166,8 @@ pre:hover .code-copy-btn { opacity: 1; }
 
 /* 运行中插话（steer）：待生效项 */
 .queue-item-steer {
-    /* 同 .steer-note：--accent-fill 是实心填充色，此处需随皮肤的淡底 */
+    /* 用淡色背景区分待生效项，不增加额外线框。 */
+    border: none;
     background: rgba(var(--accent-rgb, 79, 110, 247), 0.07);
 }
 .queue-item-steer .queue-item-text {

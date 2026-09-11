@@ -59,6 +59,10 @@ public class TaskQueueDockWebContractTest {
         assertTrue(css.contains("max-height: min(42vh, 320px)"));
         assertTrue(css.contains("@media (prefers-reduced-motion: reduce)"));
         assertTrue(css.contains(".queue-item-actions button:focus-visible"));
+        assertTrue(css.contains(".queue-item {\n    display: flex;\n    align-items: center;"),
+                "队列正文、序号和右侧操作必须纵向居中对齐");
+        assertTrue(css.contains(".queue-item-actions button {\n    min-height: 26px;\n    display: inline-flex;\n    align-items: center;"),
+                "右侧操作按钮的文字必须在按钮内部纵向居中");
     }
 
     private static String resourceText(String path) throws IOException {
