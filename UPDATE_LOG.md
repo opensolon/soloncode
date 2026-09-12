@@ -1,7 +1,10 @@
 
-### v2026.9.10
+### v2026.9.12
 
 * 优化 soloncode llm 方言适配
+* 调整 soloncode web 排队任务面板转到输入面板上方
+* 修复 soloncode web 添加文件挂载后，文件树不能展开问题
+* 修复 soloncode web 排队任务不能删除问题
 * 细节优化
 
 ### v2026.9.8
