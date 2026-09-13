@@ -129,6 +129,7 @@ public class MountSettingsController extends BaseSettingsController {
             registerMountWatch(newMount);
         }
 
+        syncMountPoolsToOtherWorkspaces();
         return Result.succeed("添加成功");
     }
 
@@ -163,6 +164,7 @@ public class MountSettingsController extends BaseSettingsController {
         }
 
         saveSettings();
+        syncMountPoolsToOtherWorkspaces();
         return Result.succeed("更新成功");
     }
 
@@ -190,6 +192,7 @@ public class MountSettingsController extends BaseSettingsController {
         }
 
         saveSettings();
+        syncMountPoolsToOtherWorkspaces();
 
         // 同步文件监听：启用时注册，停用时移除（判空与取值统一走访问器，避免不对称 NPE）
         if (fileWatchService() != null) {
@@ -222,6 +225,7 @@ public class MountSettingsController extends BaseSettingsController {
         settings().getMountPools().remove(alias);
         saveSettings();
         engine().removeMount(alias);
+        syncMountPoolsToOtherWorkspaces();
 
         // 同步移除文件监听（判空与取值统一走访问器）
         if (fileWatchService() != null) {
@@ -320,6 +324,7 @@ public class MountSettingsController extends BaseSettingsController {
         try {
             deleteRecursively(skillDir);
             engine().refreshMount(alias);
+            refreshMountInOtherWorkspaces(alias);
             return Result.succeed("删除成功");
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to delete skill: {}", e.getMessage());

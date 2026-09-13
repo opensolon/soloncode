@@ -161,6 +161,7 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server added: {}", name);
         return Result.succeed();
     }
@@ -181,6 +182,7 @@ public class McpSettingsController extends BaseSettingsController{
         settings().getMcpServers().remove(name);
         saveSettings();
         engine().removeMcpServer(name);
+        syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server removed: {}", name);
         return Result.succeed();
     }
@@ -278,6 +280,7 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server updated: {}", name);
         return Result.succeed();
     }
@@ -308,6 +311,7 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server toggled: {} -> {}", name, enabled);
         return Result.succeed();
     }
@@ -720,6 +724,7 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server tools permissions updated: {}", serverName);
         return Result.succeed();
     }

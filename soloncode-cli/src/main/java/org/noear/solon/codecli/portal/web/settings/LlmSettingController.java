@@ -173,6 +173,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getModels().put(config.getNameOrModel(), config);
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         LOG.info("[Settings] Model added: {}", config.getNameOrModel());
         return Result.succeed(config.getNameOrModel());
@@ -192,6 +193,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getModels().remove(name);
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         LOG.info("[Settings] Model removed: {}", name);
         return Result.succeed();
@@ -229,6 +231,7 @@ public class LlmSettingController extends BaseSettingsController {
             engine().setDefaultModel(config.getNameOrModel());
         }
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         LOG.info("[Settings] Model updated: {} -> {}", originalName, config.getNameOrModel());
         return Result.succeed(config.getNameOrModel());
@@ -247,6 +250,8 @@ public class LlmSettingController extends BaseSettingsController {
             if (name.equals(config.getNameOrModel())) {
                 config.setEnabled(enabled);
                 saveSettings();
+                // enabled 属于公用模型配置：其它工作区需重读以避免设置面板显示过期
+                reloadOtherWorkspaces();
                 LOG.info("[Settings] Model {} {}", name, enabled ? "enabled" : "disabled");
                 return Result.succeed();
             }
@@ -337,6 +342,7 @@ public class LlmSettingController extends BaseSettingsController {
         // 解析模型列表（直接存储 ModelInfo）
         settings().getProviders().put(name, provider);
         saveSettings();
+        reloadOtherWorkspaces();
         LOG.info("[Settings] Provider added: {}", name);
         return Result.succeed();
     }
@@ -396,6 +402,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getProviders().put(name, provider);
         saveSettings();
+        reloadOtherWorkspaces();
         LOG.info("[Settings] Provider updated: {}", name);
         return Result.succeed();
     }
@@ -433,6 +440,8 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getProviders().remove(name);
         saveSettings();
+        // 供应删除会级联删除模型（并可能清空默认模型），需同步到其它工作区引擎
+        syncModelsToOtherWorkspaces();
         LOG.info("[Settings] Provider removed: {}, cascaded models: {}", name, removedModels);
         return Result.succeed();
     }
@@ -462,6 +471,7 @@ public class LlmSettingController extends BaseSettingsController {
         }
 
         saveSettings();
+        reloadOtherWorkspaces();
         LOG.info("[Settings] Provider {} {}", name, enabled ? "enabled" : "disabled");
         return Result.succeed();
     }
@@ -673,6 +683,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         if (syncCount > 0 || deselectCount > 0) {
             saveSettings();
+            syncModelsToOtherWorkspaces();
         }
 
         LOG.info("[Settings] Synced {} models from provider: {} (deselected {} orphans)", syncCount, providerName, deselectCount);
@@ -897,6 +908,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         // 保存配置
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         return Result.succeed(generatedModels);
     }

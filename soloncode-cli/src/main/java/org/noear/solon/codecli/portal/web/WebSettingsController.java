@@ -186,12 +186,12 @@ public class WebSettingsController extends BaseSettingsController {
                 }
 
                 if (defaultModelChanged) {
-                    applyDefaultModel(settings().getDefaultModel(), settings().getModels(), applied, warnings);
+                    applyDefaultModel(engine(), settings().getDefaultModel(), settings().getModels(), applied, warnings);
                 }
 
-                applyModelsDiff(oldModels, settings().getModels(), applied, warnings);
-                applyMcpDiff(oldMcp, settings().getMcpServers(), applied, warnings);
-                applyApiDiff(oldApi, settings().getApiServers(), applied, warnings);
+                applyModelsDiff(engine(), oldModels, settings().getModels(), applied, warnings);
+                applyMcpDiff(engine(), oldMcp, settings().getMcpServers(), applied, warnings);
+                applyApiDiff(engine(), oldApi, settings().getApiServers(), applied, warnings);
 
                 if (!mountChanges.isEmpty()) {
                     warnings.add("mountPools changed; memory updated, restart recommended for full runtime effect");
@@ -235,54 +235,6 @@ public class WebSettingsController extends BaseSettingsController {
         source.put("globalExists", Files.exists(globalFile));
         source.put("localExists", Files.exists(localFile) && !localFile.toString().equals(globalFile.toString()));
         return source;
-    }
-
-    /**
-     * 按内容指纹做 map 差分：+ 新增，- 删除，~ 内容变更。内容相同则不列入。
-     */
-    private static <V> List<String> diffConfigMap(Map<String, V> oldMap, Map<String, V> newMap) {
-        List<String> changes = new ArrayList<>();
-        Set<String> oldKeys = oldMap != null ? oldMap.keySet() : Collections.emptySet();
-        Set<String> newKeys = newMap != null ? newMap.keySet() : Collections.emptySet();
-
-        for (String k : oldKeys) {
-            if (!newKeys.contains(k)) {
-                changes.add("-" + k);
-            }
-        }
-        for (String k : newKeys) {
-            if (!oldKeys.contains(k)) {
-                changes.add("+" + k);
-            } else if (!configFingerprint(oldMap.get(k)).equals(configFingerprint(newMap.get(k)))) {
-                changes.add("~" + k);
-            }
-        }
-        return changes;
-    }
-
-    private static String configFingerprint(Object value) {
-        if (value == null) {
-            return "";
-        }
-        return ONode.ofBean(value).toJson();
-    }
-
-    private void applyDefaultModel(String defaultModel, Map<String, ModelDo> models,
-                                   List<String> applied, List<String> warnings) {
-        try {
-            if (Assert.isEmpty(defaultModel)) {
-                warnings.add("defaultModel cleared in settings; engine default kept (no empty default API)");
-                return;
-            }
-            if (models == null || !models.containsKey(defaultModel)) {
-                warnings.add("defaultModel points to missing model: " + defaultModel);
-                return;
-            }
-            engine().setDefaultModel(defaultModel);
-            applied.add("defaultModel");
-        } catch (Exception e) {
-            warnings.add("defaultModel apply failed: " + e.getMessage());
-        }
     }
 
     /**
@@ -417,167 +369,6 @@ public class WebSettingsController extends BaseSettingsController {
         }
     }
 
-    /**
-     * 模型差分应用。
-     * <p>与 {@code llmModelsToggle} 对齐：仅 enabled/visibled 变化时只改内存标志、不卸引擎模型；
-     * 连接参数等实质内容变更才 remove+add；删除/新增按需处理。</p>
-     */
-    private void applyModelsDiff(Map<String, ModelDo> oldModels, Map<String, ModelDo> newModels,
-                                 List<String> applied, List<String> warnings) {
-        try {
-            boolean any = false;
-
-            for (String name : oldModels.keySet()) {
-                if (!newModels.containsKey(name)) {
-                    try {
-                        engine().removeModel(name);
-                        any = true;
-                    } catch (Exception e) {
-                        warnings.add("remove model " + name + " failed: " + e.getMessage());
-                    }
-                }
-            }
-
-            for (Map.Entry<String, ModelDo> e : newModels.entrySet()) {
-                String name = e.getKey();
-                ModelDo config = e.getValue();
-                ModelDo old = oldModels.get(name);
-                try {
-                    if (old == null) {
-                        // 新增：与启动路径一致，始终 add（引擎按 enabled 过滤使用）
-                        engine().addModel(config);
-                        any = true;
-                    } else if (!modelRuntimeFingerprint(old).equals(modelRuntimeFingerprint(config))) {
-                        // 连接/身份等实质内容变更：先删后加
-                        engine().removeModel(name);
-                        engine().addModel(config);
-                        any = true;
-                    }
-                    // 仅 enabled/visibled/scope 等 UI 标志变化：与 toggle 一致，不 rebuild
-                } catch (Exception ex) {
-                    warnings.add("apply model " + name + " failed: " + ex.getMessage());
-                }
-            }
-            if (any) {
-                applied.add("models");
-            }
-        } catch (Exception e) {
-            warnings.add("models diff failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 模型“引擎重建”指纹：忽略 enabled/visibled 等仅影响列表展示的字段，
-     * 与 llmModelsToggle（只改 enabled、不卸引擎）语义对齐。
-     */
-    private static String modelRuntimeFingerprint(ModelDo m) {
-        if (m == null) {
-            return "";
-        }
-        ONode n = ONode.ofBean(m);
-        if (n.isObject()) {
-            n.remove("enabled");
-            n.remove("visibled");
-            n.remove("scope");
-        }
-        return n.toJson();
-    }
-
-    private void applyMcpDiff(Map<String, McpServerDo> oldMap, Map<String, McpServerDo> newMap,
-                              List<String> applied, List<String> warnings) {
-        try {
-            boolean any = false;
-
-            for (String name : oldMap.keySet()) {
-                if (!newMap.containsKey(name)) {
-                    try {
-                        engine().removeMcpServer(name);
-                        any = true;
-                    } catch (Exception e) {
-                        warnings.add("remove mcp " + name + " failed: " + e.getMessage());
-                    }
-                }
-            }
-
-            for (Map.Entry<String, McpServerDo> e : newMap.entrySet()) {
-                String name = e.getKey();
-                McpServerDo params = e.getValue();
-                McpServerDo old = oldMap.get(name);
-                try {
-                    if (old == null) {
-                        if (params.isEnabled()) {
-                            engine().addMcpServer(name, params);
-                            any = true;
-                        }
-                    } else if (!configFingerprint(old).equals(configFingerprint(params))) {
-                        engine().removeMcpServer(name);
-                        if (params.isEnabled()) {
-                            engine().addMcpServer(name, params);
-                        }
-                        any = true;
-                    }
-                } catch (Exception ex) {
-                    warnings.add("apply mcp " + name + " failed: " + ex.getMessage());
-                }
-            }
-            if (any) {
-                applied.add("mcpServers");
-            }
-        } catch (Exception e) {
-            warnings.add("mcpServers diff failed: " + e.getMessage());
-        }
-    }
-
-    private void applyApiDiff(Map<String, ApiSourceDo> oldMap, Map<String, ApiSourceDo> newMap,
-                              List<String> applied, List<String> warnings) {
-        try {
-            boolean any = false;
-
-            for (Map.Entry<String, ApiSourceDo> e : oldMap.entrySet()) {
-                String name = e.getKey();
-                if (!newMap.containsKey(name)) {
-                    try {
-                        ApiSourceDo src = e.getValue();
-                        if (src != null && Assert.isNotEmpty(src.getDocUrl())) {
-                            engine().removeApiServer(src.getDocUrl());
-                            any = true;
-                        }
-                    } catch (Exception ex) {
-                        warnings.add("remove api " + name + " failed: " + ex.getMessage());
-                    }
-                }
-            }
-
-            for (Map.Entry<String, ApiSourceDo> e : newMap.entrySet()) {
-                String name = e.getKey();
-                ApiSourceDo source = e.getValue();
-                ApiSourceDo old = oldMap.get(name);
-                try {
-                    if (old == null) {
-                        if (source != null && source.isEnabled()) {
-                            engine().addApiServer(source);
-                            any = true;
-                        }
-                    } else if (!configFingerprint(old).equals(configFingerprint(source))) {
-                        if (Assert.isNotEmpty(old.getDocUrl())) {
-                            engine().removeApiServer(old.getDocUrl());
-                        }
-                        if (source != null && source.isEnabled()) {
-                            engine().addApiServer(source);
-                        }
-                        any = true;
-                    }
-                } catch (Exception ex) {
-                    warnings.add("apply api " + name + " failed: " + ex.getMessage());
-                }
-            }
-            if (any) {
-                applied.add("apiServers");
-            }
-        } catch (Exception e) {
-            warnings.add("apiServers diff failed: " + e.getMessage());
-        }
-    }
 
     // ==================== 设置：General 通用配置 ====================
 
@@ -880,6 +671,7 @@ public class WebSettingsController extends BaseSettingsController {
 
         settings().getGeneral().setActiveSkin("default".equals(name) ? null : name);
         saveSettings();
+        reloadOtherWorkspaces();
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("activeSkin", name);
@@ -908,6 +700,7 @@ public class WebSettingsController extends BaseSettingsController {
             settings().getGeneral().setActiveSkin(null);
             active = "default";
             saveSettings();
+            reloadOtherWorkspaces();
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -1021,6 +814,9 @@ public class WebSettingsController extends BaseSettingsController {
             tmp.bindTo(settings().getLoop());
         }
         saveSettings();
+        // loop 为公用（无 scope）配置：其它工作区的 LoopScheduler 读取各自 settings.loop，
+        // 必须重读磁盘才能拿到最新值
+        reloadOtherWorkspaces();
         return Result.succeed();
     }
 

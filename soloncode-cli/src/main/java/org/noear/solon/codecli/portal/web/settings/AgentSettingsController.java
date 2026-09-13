@@ -158,6 +158,9 @@ public class AgentSettingsController extends BaseSettingsController {
             if (Files.isDirectory(file) || Files.isSymbolicLink(file)) return Result.failure("拒绝删除非普通智能体文件");
             Files.delete(file);
             refresh(scope);
+            if (AgentFlags.SCOPE_USER.equals(scope)) {
+                refreshAgentsInOtherWorkspaces(USER_ALIAS);
+            }
             return Result.succeed("删除成功");
         } catch (IllegalArgumentException e) {
             return Result.failure(e.getMessage());
@@ -203,6 +206,9 @@ public class AgentSettingsController extends BaseSettingsController {
             moveReplace(temp, target);
             temp = null;
             refresh(scope);
+            if (AgentFlags.SCOPE_USER.equals(scope)) {
+                refreshAgentsInOtherWorkspaces(USER_ALIAS);
+            }
             return Result.succeed(enabled ? "启用成功" : "停用成功");
         } catch (IllegalArgumentException e) {
             return Result.failure(e.getMessage());
@@ -222,6 +228,7 @@ public class AgentSettingsController extends BaseSettingsController {
         try {
             engine().getAgentManager().refreshByMountAlias(USER_ALIAS);
             engine().getAgentManager().refreshByMountAlias(WORKSPACE_ALIAS);
+            refreshAgentsInOtherWorkspaces(USER_ALIAS);
             return Result.succeed("刷新成功");
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to refresh agents: {}", e.getMessage());
@@ -310,6 +317,10 @@ public class AgentSettingsController extends BaseSettingsController {
 
             refresh(scope);
             if (update && !scope.equals(originalScope)) refresh(originalScope);
+            // 用户级智能体文件为公用资产：其它工作区的 @user-agents 也需刷新
+            if (AgentFlags.SCOPE_USER.equals(scope)) {
+                refreshAgentsInOtherWorkspaces(USER_ALIAS);
+            }
             return Result.succeed(update ? "更新成功" : "添加成功");
         } catch (IllegalArgumentException e) {
             return Result.failure(e.getMessage());

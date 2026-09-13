@@ -121,6 +121,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncApiServersToOtherWorkspaces();
         LOG.info("[Settings] OpenApi server added: {}", name);
         return Result.succeed();
     }
@@ -192,6 +193,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncApiServersToOtherWorkspaces();
         LOG.info("[Settings] OpenApi server updated: {}", name);
         return Result.succeed();
     }
@@ -214,6 +216,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
 
         settings().getApiServers().remove(name);
         saveSettings();
+        syncApiServersToOtherWorkspaces();
         LOG.info("[Settings] OpenApi server removed: {}", name);
         return Result.succeed();
     }
@@ -244,6 +247,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncApiServersToOtherWorkspaces();
         LOG.info("[Settings] OpenApi server toggled: {} -> {}", name, enabled);
         return Result.succeed();
     }
@@ -423,6 +427,7 @@ public class OpenapiSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncApiServersToOtherWorkspaces();
         LOG.info("[Settings] OpenApi server apis permissions updated: {}", serverName);
         return Result.succeed();
     }

@@ -177,6 +177,7 @@ public class LspSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncLspServersToOtherWorkspaces();
         LOG.info("[Settings] LSP server added: {}", name);
         return Result.succeed();
     }
@@ -269,6 +270,7 @@ public class LspSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncLspServersToOtherWorkspaces();
         LOG.info("[Settings] LSP server updated: {}", name);
         return Result.succeed();
     }
@@ -307,6 +309,7 @@ public class LspSettingsController extends BaseSettingsController{
             engine().addLspServer(name, builtin);
             LOG.info("[Settings] LSP server override removed, built-in default restored: {}", name);
         }
+        syncLspServersToOtherWorkspaces();
         return Result.succeed();
     }
 
@@ -344,6 +347,7 @@ public class LspSettingsController extends BaseSettingsController{
         }
 
         saveSettings();
+        syncLspServersToOtherWorkspaces();
         LOG.info("[Settings] LSP server toggled: {} -> {}", name, enabled);
         return Result.succeed();
     }

@@ -1,8 +1,8 @@
 package org.noear.solon.codecli.portal.web.event;
 
 import org.noear.solon.ai.agent.AbsAgentEvent;
+import org.noear.solon.ai.agent.react.AbsReActEvent;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.codecli.portal.web.event.payload.UiRenderPayload;
 
 /**
@@ -11,27 +11,15 @@ import org.noear.solon.codecli.portal.web.event.payload.UiRenderPayload;
  *
  * <p>构造时复用 trace 的 runId / agentName / session / reasonId，保持与 tool.* 等同级归属。</p>
  */
-public class UiRenderEvent extends AbsAgentEvent {
-    private final ReActTrace trace;
+public class UiRenderEvent extends AbsReActEvent {
     private final UiRenderPayload payload;
-    private final String reasonId;
 
     public UiRenderEvent(ReActTrace trace, UiRenderPayload payload) {
-        super(trace.getRunId(), trace.getAgentName(), trace.getSession());
-        this.trace = trace;
+        super(trace);
         this.payload = payload;
-        this.reasonId = trace.getCurrentReasonId();
-    }
-
-    public ReActTrace getTrace() {
-        return trace;
     }
 
     public UiRenderPayload getPayload() {
         return payload;
-    }
-
-    public String getReasonId() {
-        return reasonId;
     }
 }
