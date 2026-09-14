@@ -149,6 +149,37 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
 
 public static class SolonShellNative
 {
+    // PowerShell 5.1 is DPI-unaware by default. Set the creating STA thread to Per-Monitor V2
+    // before any helper or Shell window is created, otherwise Windows bitmap-scales IFileDialog.
+    private static readonly IntPtr DpiAwarenessContextPerMonitorAwareV2 = new IntPtr(-4);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetThreadDpiAwarenessContext();
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AreDpiAwarenessContextsEqual(IntPtr first, IntPtr second);
+
+    public static void ConfigureHighDpiAwareness()
+    {
+        // This can legitimately fail with ERROR_ACCESS_DENIED when the host already selected a
+        // process mode. The thread override is what deterministically controls the new dialog.
+        SetProcessDpiAwarenessContext(DpiAwarenessContextPerMonitorAwareV2);
+        if (SetThreadDpiAwarenessContext(DpiAwarenessContextPerMonitorAwareV2) == IntPtr.Zero)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),
+                "Unable to enable Per-Monitor V2 DPI awareness for the directory picker thread.");
+    }
+
+    public static bool IsCurrentThreadPerMonitorV2()
+    {
+        return AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(),
+            DpiAwarenessContextPerMonitorAwareV2);
+    }
+
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     public static extern int SHCreateItemFromParsingName(
         [MarshalAs(UnmanagedType.LPWStr)] string path, IntPtr pbc, ref Guid riid,
@@ -259,8 +290,15 @@ public static class SolonModernFolderPicker
 }
 '@ -ReferencedAssemblies System.Windows.Forms,System.Drawing
 
+    # Must run on this STA thread before CaptureForegroundOwner, WinForms, or IFileOpenDialog
+    # creates an HWND. Per-Monitor V2 prevents bitmap scaling on 125%/150%/200% displays.
+    [SolonShellNative]::ConfigureHighDpiAwareness()
+    if (-not [SolonShellNative]::IsCurrentThreadPerMonitorV2()) {
+        throw 'The Windows directory picker thread is not Per-Monitor V2 DPI aware.'
+    }
+
     if ($SoloncodeProbe) {
-        Write-Output ('PICK_PROBE_OK foregroundOwner=' + [SolonShellNative]::CaptureForegroundOwner())
+        Write-Output ('PICK_PROBE_OK dpi=PerMonitorV2 foregroundOwner=' + [SolonShellNative]::CaptureForegroundOwner())
         return
     }
 

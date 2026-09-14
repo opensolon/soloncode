@@ -120,6 +120,15 @@ public class DirectoryPickerUtilTest {
         assertTrue(script.contains("SolonFileDialogOptions.FOS_FORCEFILESYSTEM"));
         assertTrue(script.contains("SolonFileDialogOptions.FOS_PATHMUSTEXIST"));
         assertTrue(script.contains("SetFolder"), "start directory support should be embedded");
+        assertTrue(script.contains("DpiAwarenessContextPerMonitorAwareV2 = new IntPtr(-4)"),
+                "the picker must request Windows Per-Monitor V2 DPI awareness");
+        assertTrue(script.contains("SetProcessDpiAwarenessContext"));
+        assertTrue(script.contains("SetThreadDpiAwarenessContext"),
+                "the creating STA thread must override PowerShell 5.1's DPI-unaware default");
+        int configureDpi = script.indexOf("[SolonShellNative]::ConfigureHighDpiAwareness()");
+        int invokePicker = script.indexOf("[SolonModernFolderPicker]::Pick(");
+        assertTrue(configureDpi >= 0 && configureDpi < invokePicker,
+                "Per-Monitor V2 must be enabled before IFileOpenDialog creates a window");
 
         int captureOwner = script.indexOf("SolonShellNative.CaptureForegroundOwner()");
         int createHelper = script.indexOf("owner = new Form()");
@@ -174,6 +183,8 @@ public class DirectoryPickerUtilTest {
                 System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("windows"));
         String output = DirectoryPickerUtil.probeWindowsPicker(30_000L);
         assertTrue(output.contains("PICK_PROBE_OK"));
+        assertTrue(output.contains("dpi=PerMonitorV2"),
+                "the real PowerShell STA thread must run with Per-Monitor V2 DPI awareness");
         assertTrue(output.contains("foregroundOwner="));
     }
 

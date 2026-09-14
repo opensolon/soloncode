@@ -45,6 +45,10 @@ import java.util.zip.ZipFile;
  * 发起点击的浏览器），并把它作为 {@code IModalWindow.Show} 的真实 owner；同时通过
  * {@code IFileDialogEvents + IOleWindow} 获取真实对话框 HWND，在对话框存活期间持续维持 topmost z-order。
  * <p>
+ * <b>Windows 高 DPI：</b>Windows PowerShell 5.1 默认不声明高 DPI 感知，因此脚本会在创建任何 HWND 前，
+ * 将当前 STA 线程设置为 Per-Monitor V2，使现代目录选择器在 125%～200% 缩放以及跨显示器移动时由系统
+ * 按目标显示器 DPI 原生渲染，而不是先按 96 DPI 绘制再做位图放大。
+ * <p>
  * <b>为何 Swing 兜底要用子进程：</b>Solon 框架类初始化时会把 {@code java.awt.headless}
  * 默认置为 true，CLI 宿主 JVM 内 AWT 因此永远是 headless、无法直接弹框；且该状态在 Toolkit
  * 首次加载后不可逆。故在子 JVM 中以 {@code -Djava.awt.headless=false} 运行 Swing 兜底选择器。
