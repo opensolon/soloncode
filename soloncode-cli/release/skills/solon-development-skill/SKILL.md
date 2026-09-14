@@ -11,7 +11,7 @@ description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solo
 **GitHub**: https://github.com/opensolon/solon  
 **License**: Apache 2.0  
 **JDK**: Java 8 ~ 26，GraalVM Native Image  
-**目标版本**: **4.0.3**（升级时全局替换此标记 + 复核 AI/Nami 变更段）
+**目标版本**: **4.1.0**（升级时全局替换此标记 + 复核 AI/Nami 变更段）
 
 ## Critical Rules
 
@@ -20,7 +20,7 @@ description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solo
 3. **配置文件是 `app.yml`**（或 `app.properties`），**不是** `application.yml`。
 4. **入口**是 `Solon.start(App.class, args)`，不是 `SpringApplication.run()`。
 5. **组件注解用 `@Component`**，不要用 `@Service` / `@Repository`。
-6. **示例默认目标版本 4.0.3**（除非用户指定其它版本）。
+6. **示例默认目标版本 4.1.0**（除非用户指定其它版本）。
 7. **Parent POM** 为 `solon-parent`（`groupId=org.noear`）。
 8. **中文支持。** 用户使用中文时，回复与代码注释使用中文。
 9. **不确定的 API 不要臆造。** 优先查本 skill 的 reference；仍不确定时查官网/源码，禁止用 Spring 习惯补全。
@@ -41,7 +41,7 @@ description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solo
 7. **Flow 分流**：YAML/Graph/节点 → `references/flow_orchestration.md`；中断恢复/Workflow/拦截器 → `references/flow_workflow.md`。
 8. **Security 分流**：Auth/CORS/Vault → `references/security.md`；参数校验 → `references/validation.md`。
 9. **从 Spring 迁移** → 使用 `spring-to-solon-skill`，本 skill 仅保留精简对照。
-10. 用户中文提问 → 中文回复与注释；默认版本 **4.0.3**。
+10. 用户中文提问 → 中文回复与注释；默认版本 **4.1.0**。
 11. **API 不确定时**查 reference 或源码；禁止用 Spring 习惯或臆造坐标补全（例如不存在 `solon-ai-rag` / `solon-ai-a2a`）。
 
 ## Scene Navigation（含阅读优先级）

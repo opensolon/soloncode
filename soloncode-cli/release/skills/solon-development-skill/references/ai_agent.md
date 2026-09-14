@@ -2,7 +2,7 @@
 
 > 适用场景：Agent（Simple/ReAct/Team）、Talent 才能、Loop。
 >
-> 目标版本：4.0.4。Harness 见 `ai_harness.md`；ChatModel / RAG / MCP 见 `ai_chat_rag_mcp.md`；AI UI / ACP / A2A 见 `ai_protocol_ui.md`。
+> 目标版本：4.1.0。本文保留历史版本迁移提示；Harness 见 `ai_harness.md`；ChatModel / RAG / MCP 见 `ai_chat_rag_mcp.md`；AI UI / ACP / A2A 见 `ai_protocol_ui.md`。
 
 ## Agent — 智能体
 
@@ -196,7 +196,7 @@ ChatModel chatModel = ChatModel.of(config)
 
 > AI UI / ACP / A2A 协议对接见 **`ai_protocol_ui.md`**。
 >
-> A2A 协议入口：`TeamProtocols.A2A`（依赖 `solon-ai-agent`，无独立 `solon-ai-a2a` 模块）。
+> A2A 团队协议入口：`TeamProtocols.A2A`（依赖 `solon-ai-agent`）；当前源码同时提供独立的 `solon-ai-a2a` 模块，详见 `ai_protocol_ui.md`。
 
 ## AI Talents — 才能体系
 
@@ -328,7 +328,7 @@ LoopResult result = session.getResult();
 | `solon-ai-talent-code` | 代码工程规范才能（从 harness 拆出） |
 | `GenerateTalent` | 原 harness 内 `GenerateTool` 更名为 `GenerateTalent`，便于动态启停 |
 | `Talent.setEnabled` | 接口级开关 |
-| A2A | 使用 `TeamProtocols.A2A`（`solon-ai-agent`），无独立 `solon-ai-a2a` 模块 |
+| A2A | 团队内置入口为 `TeamProtocols.A2A`；源码同时提供独立的 `solon-ai-a2a` 模块 |
 
 ## 4.0.4 AI 增量要点
 
@@ -343,13 +343,13 @@ LoopResult result = session.getResult();
 | `getModelOrDefInstance` | 替代 `getModelOrMain`（`@Deprecated`） |
 | `allowToolReset` / `disallowToolReset` | 工具权限全量重置（原子操作，自动重建 Agent） |
 | `AgentDefinition.builder()` | 链式 Builder 构造方法 |
-| `TaskWrapChuck` | 子代理流块包装，提高调用透明度 |
+| `TaskWrapEvent` | 子代理事件包装，提高调用透明度 |
 | Skills/Agents 局部刷新 | `refreshSkills()` / `refreshAgents()`，无需重启引擎 |
 | `ChatRequestDesc` | 新增 `role()` / `instruction()` / `systemPrompt()` 链式方法 |
 | `Prompt.copy()` | Prompt 复制方法 |
 | 新增 Talent | `diff`（ApplyDiffTalent/ApplyPatchTalent）、`lucene`（LuceneTalent）、`lsp`（LspTalent）、`mount`（MountManager）、`memory`（MemoryTalent） |
 
-## 4.0.5 AI 增量要点（待发布）
+## 4.0.5 AI 增量要点
 
 > 以下内容基于源码 UPDATE_LOG 预览，4.0.5 尚未正式发布。
 
@@ -370,3 +370,17 @@ LoopResult result = session.getResult();
     <artifactId>solon-ai-talent-code</artifactId>
 </dependency>
 ```
+
+
+## 4.1.0 AI 增量要点
+
+> 以下内容依据当前源码及 `UPDATE_LOG.md` 的 4.1.0 记录整理。
+
+| 能力 | 说明 |
+|---|---|
+| `ChatModel.stream()` | 返回 `Flux<ChatEvent>`，不再是 `Flux<ChatResponse>`；流式终态从 `RESPONSE_END` 获取。 |
+| `ChatEvent` 事件模型 | 增加事件分组、内容块边界、并行工具调用、`ChatEventFilter`、`ChatEventNormalizer`、`ChatStreamSession` 和 `ChatStreamContext`。 |
+| `ChatResponse` | 作为只读终态结果使用；流式聚合结果由 `RESPONSE_END` 携带。 |
+| Agent 事件 | Agent 事件直接携带 `ChatEvent`；Harness 终态统一使用 `RunEndEvent`。 |
+| `AgUiStreamWrapper` | `solon-ai-ui-agui` 提供 AG-UI 事件流转换；AI SDK UI 的旧响应流适配方法为 `toAiSdkStreamOfResponses`。 |
+| `GenerateModel` | 继续作为图像、音频、视频等生成模型的统一入口。 |

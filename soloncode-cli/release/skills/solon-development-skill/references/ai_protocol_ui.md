@@ -2,13 +2,13 @@
 
 > 适用场景：Vercel AI SDK UI 流式协议、ACP 传输、A2A 多 Agent 协议。
 >
-> 目标版本：4.0.4。Agent / Talent / Loop 见 `ai_agent.md`；Harness 见 `ai_harness.md`；Chat/RAG/MCP 见 `ai_chat_rag_mcp.md`。
+> 目标版本：4.1.0。Agent / Talent / Loop 见 `ai_agent.md`；Harness 见 `ai_harness.md`；Chat/RAG/MCP 见 `ai_chat_rag_mcp.md`。
 
 ## AI UI — 对接 Vercel AI SDK
 
 Dependency: `solon-ai-ui-aisdk`
 
-将 `ChatModel.prompt().stream()` 的 `Flux<ChatResponse>` 自动转换为 [UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) 格式的 SSE 事件流，前端可直接使用 `@ai-sdk/vue` 或 `@ai-sdk/react` 的 `useChat`。
+将 `ChatModel.prompt().stream()` 的 `Flux<ChatEvent>` 自动转换为 [UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) 格式的 SSE 事件流，前端可直接使用 `@ai-sdk/vue` 或 `@ai-sdk/react` 的 `useChat`。
 
 支持：文本流、深度思考(reasoning)、工具调用(tool-calls)、搜索结果引用(source-url)、文档引用(source-document)、文件(file)、自定义数据(data-*)、元数据(metadata)。
 
@@ -88,6 +88,19 @@ DataPart weatherPart = DataPart.of("weather", data);
 // → {"type":"data-weather","data":{"location":"SF","temperature":100}}
 ```
 
+## AG-UI — Agent-User Interaction Protocol
+
+Dependency: `solon-ai-ui-agui`。
+
+4.1.0 新增 `AgUiStreamWrapper`，将 `Flux<ChatEvent>` 转换为 AG-UI 事件流；支持文本、思考、工具调用、步骤/运行生命周期，并将暂未标准化的媒体、安全、用量和自定义事件保留为自定义/原始事件。核心用法：
+
+```java
+AgUiStreamWrapper wrapper = AgUiStreamWrapper.of("thread-1", "run-1");
+Flux<Event> events = wrapper.toAgUiStream(chatModel.prompt(prompt).stream());
+```
+
+Agent 事件流可使用 `toAgUiAgentStream(...)`；该适配层通过 `getChatEvent()` 和事件类型映射，不要求 UI 模块依赖 `solon-ai-agent`。
+
 ## ACP — Agent Client Protocol
 
 Dependency: `solon-ai-acp`
@@ -116,6 +129,7 @@ WebSocketSolonAcpAgentTransport transport =
 A2A **不是**独立 artifact。入口在 `solon-ai-agent` 的 `TeamProtocols.A2A`：
 
 ```xml
+<!-- TeamProtocols.A2A 团队协议 -->
 <dependency>
     <groupId>org.noear</groupId>
     <artifactId>solon-ai-agent</artifactId>
