@@ -84,6 +84,9 @@ public interface SolonIFileDialogEvents
     [PreserveSig] int OnOverwrite(SolonIFileDialog dialog, SolonIShellItem item, out int response);
 }
 
+[UnmanagedFunctionPointer(CallingConvention.StdCall)]
+public delegate IntPtr SolonHookProc(int code, IntPtr wParam, IntPtr lParam);
+
 [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
 public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
 {
@@ -97,15 +100,14 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
     private int lastDialogWidth;
     private int lastDialogHeight;
     private long centerUntilUtcTicks;
-    private bool centered;
 
     public SolonFileDialogEvents(bool smokeTest, SolonIFileDialog dialog, IntPtr centerOwnerWindow)
     {
         smoke = smokeTest;
         centerOwnerHwnd = centerOwnerWindow;
-        // Poll the real dialog HWND independently of Shell callbacks: callbacks are not guaranteed
-        // during initial creation, which previously left the dialog behind the browser.
-        promotionTimer = new System.Threading.Timer(delegate { Promote(dialog); }, null, 50, 100);
+        // The CBT hook centers synchronously during the dialog's first activation, before Windows
+        // paints it. The timer only maintains z-order afterwards; it must never move a visible dialog.
+        promotionTimer = new System.Threading.Timer(delegate { Promote(dialog); }, null, 100, 250);
         if (smoke)
             smokeTimer = new System.Threading.Timer(delegate { try { dialog.Close(ErrorCancelled); } catch { } }, null, 750, Timeout.Infinite);
     }
@@ -154,29 +156,14 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
     private void PromoteWindow(object state)
     {
         IntPtr hwnd;
-        bool shouldCenter;
-        lock (sync)
-        {
-            hwnd = dialogHwnd;
-            shouldCenter = centerUntilUtcTicks != 0 && DateTime.UtcNow.Ticks <= centerUntilUtcTicks;
-        }
+        lock (sync) { hwnd = dialogHwnd; }
         if (hwnd == IntPtr.Zero || !SolonShellNative.IsWindow(hwnd)) return;
-        if (shouldCenter && SolonShellNative.CenterAndPromoteWindow(hwnd, centerOwnerHwnd))
-        {
-            lock (sync) { centered = true; }
-        }
-        else
-        {
-            SolonShellNative.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0,
-                0x0001u | 0x0002u | 0x0010u | 0x0200u);
-        }
+        // Do not recalculate coordinates here: this callback runs after the first paint and would
+        // create the visible top-left-to-center jump. Initial placement is done by the CBT hook.
+        SolonShellNative.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0,
+            0x0001u | 0x0002u | 0x0010u | 0x0200u);
         SolonShellNative.BringWindowToTop(hwnd);
         SolonShellNative.SetForegroundWindow(hwnd);
-    }
-
-    public bool Centered
-    {
-        get { lock (sync) { return centered; } }
     }
 
     public void Dispose()
@@ -300,6 +287,41 @@ public static class SolonShellNative
             && Math.Abs(centeredRect.Top - y) <= 2;
     }
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, SolonHookProc callback, IntPtr module, uint threadId);
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+    public static IntPtr InstallDialogCenterHook(IntPtr ownerHwnd)
+    {
+        SolonHookProc callback = delegate(int code, IntPtr wParam, IntPtr lParam)
+        {
+            if (code >= 0 && (code == 3 || code == 5) && IsWindow(wParam))
+            {
+                SolonRect rect;
+                if (GetWindowRect(wParam, out rect) && rect.Right > rect.Left && rect.Bottom > rect.Top
+                    && CenterAndPromoteWindow(wParam, ownerHwnd))
+                    SolonModernFolderPicker.MarkDialogCentered();
+            }
+            return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
+        };
+        // WH_CBT is synchronous and thread-local: HCBT_ACTIVATE runs before the first dialog paint.
+        // Keep the delegate alive through the hook lifetime (the returned handle owns the callback).
+        IntPtr hook = SetWindowsHookEx(5, callback, IntPtr.Zero, GetCurrentThreadId());
+        SolonDialogHookKeepAlive.Callback = callback;
+        return hook;
+    }
+
+    public static void UninstallDialogCenterHook(IntPtr hook)
+    {
+        if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
+        SolonDialogHookKeepAlive.Callback = null;
+    }
+
     public static IntPtr CaptureForegroundOwner()
     {
         IntPtr hwnd = GetForegroundWindow();
@@ -313,12 +335,19 @@ public static class SolonShellNative
     }
 }
 
+public static class SolonDialogHookKeepAlive
+{
+    public static SolonHookProc Callback;
+}
+
 public static class SolonModernFolderPicker
 {
     private const int ErrorCancelled = unchecked((int)0x800704C7);
     private const uint SigDnFileSystemPath = 0x80058000u;
 
     public static bool LastDialogCentered { get; private set; }
+
+    public static void MarkDialogCentered() { LastDialogCentered = true; }
 
     private static void Check(int hr) { if (hr < 0) Marshal.ThrowExceptionForHR(hr); }
 
@@ -333,6 +362,7 @@ public static class SolonModernFolderPicker
         IntPtr pathPtr = IntPtr.Zero;
         uint cookie = 0;
         bool advised = false;
+        IntPtr centerHook = IntPtr.Zero;
         LastDialogCentered = false;
         try
         {
@@ -374,6 +404,9 @@ public static class SolonModernFolderPicker
             events = new SolonFileDialogEvents(smoke, dialog, centerOwnerHwnd);
             Check(dialog.Advise(events, out cookie));
             advised = true;
+            // Install immediately before Show: WH_CBT/HCBT_ACTIVATE centers the real HWND
+            // synchronously, before the first frame is painted, eliminating the visible jump.
+            centerHook = SolonShellNative.InstallDialogCenterHook(centerOwnerHwnd);
             int showHr = dialog.Show(hwnd);
             if (showHr == ErrorCancelled) return null;
             Check(showHr);
@@ -387,8 +420,9 @@ public static class SolonModernFolderPicker
         }
         finally
         {
+            if (centerHook != IntPtr.Zero) SolonShellNative.UninstallDialogCenterHook(centerHook);
             if (advised && dialog != null) { try { dialog.Unadvise(cookie); } catch { } }
-            if (events != null) LastDialogCentered = events.Centered;
+
             if (events != null) events.Dispose();
             if (pathPtr != IntPtr.Zero) Marshal.FreeCoTaskMem(pathPtr);
             if (result != null) try { Marshal.FinalReleaseComObject(result); } catch { }
