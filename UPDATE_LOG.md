@@ -1,4 +1,10 @@
 
+
+### v2026.9.15
+
+* 优化 soloncode web 浏览本地目录界面 for window
+* 细节优化
+
 ### v2026.9.14
 
 * 优化 soloncode web 工作区共享设置同步

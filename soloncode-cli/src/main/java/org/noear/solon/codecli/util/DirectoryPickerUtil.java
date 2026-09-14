@@ -36,13 +36,14 @@ import java.util.zip.ZipFile;
 /**
  * 系统级“选择目录”工具：在宿主机桌面弹出系统原生目录选择框，返回用户选中的绝对路径。
  * <p>
- * 优先使用操作系统提供的选择器：macOS 使用 Finder（osascript choose folder），Windows 使用 Shell 的
- * {@code IFileOpenDialog + FOS_PICKFOLDERS}（Win10/Win11 资源管理器同款现代目录对话框，脚本内失败时
- * 回退 {@code Shell.Application.BrowseForFolder}），Linux 依次使用 Zenity、KDialog；原生能力不可用或
- * 执行失败时，再回退到 {@link DirectoryPickerSubprocess} 中的 Swing {@code JFileChooser}。
+ * 优先使用操作系统提供的选择器：macOS 使用 Finder（osascript choose folder），Windows 仅使用 Shell 的
+ * {@code IFileOpenDialog + FOS_PICKFOLDERS}（Win10/Win11 资源管理器同款现代目录对话框），Linux 依次使用
+ * Zenity、KDialog。Windows 原生选择器失败时直接报错，不回退到 Swing，避免出现非系统样式组件；其它
+ * 平台在原生能力不可用或执行失败时，回退到 {@link DirectoryPickerSubprocess}。
  * <p>
- * <b>Windows 弹窗为何不会沉到浏览器后面：</b>对话框以隐藏的置顶窗口作为 owner（owned window 必然
- * 位于属主之上），规避 Windows 对无属主后台窗口的前台锁定限制。
+ * <b>Windows 弹窗为何不会沉到浏览器后面：</b>脚本在创建任何辅助窗口前捕获当前前台根窗口（通常就是
+ * 发起点击的浏览器），并把它作为 {@code IModalWindow.Show} 的真实 owner；同时通过
+ * {@code IFileDialogEvents + IOleWindow} 获取真实对话框 HWND，在对话框存活期间持续维持 topmost z-order。
  * <p>
  * <b>为何 Swing 兜底要用子进程：</b>Solon 框架类初始化时会把 {@code java.awt.headless}
  * 默认置为 true，CLI 宿主 JVM 内 AWT 因此永远是 headless、无法直接弹框；且该状态在 Toolkit
@@ -111,9 +112,9 @@ public class DirectoryPickerUtil {
      * @throws IOException 子进程启动或通信失败
      */
     public static String pick(String title, long timeoutMs, File startDir) throws IOException {
+        String osName = System.getProperty("os.name", "");
         try {
-            NativePickResult nativeResult = pickNative(
-                    System.getProperty("os.name", ""), title, timeoutMs, startDir);
+            NativePickResult nativeResult = pickNative(osName, title, timeoutMs, startDir);
             if (nativeResult.supported) {
                 return nativeResult.path;
             }
@@ -121,6 +122,9 @@ public class DirectoryPickerUtil {
             Thread.currentThread().interrupt();
             return null;
         } catch (IOException e) {
+            if (isWindows(osName.toLowerCase(Locale.ROOT))) {
+                throw e;
+            }
             warn("native picker failed, falling back to Swing: " + e);
         }
 
@@ -292,31 +296,19 @@ public class DirectoryPickerUtil {
     }
 
     /**
-     * 资源缺失时的降级脚本：保留旧版对话框（带 owner 与 BIF_NEWDIALOGSTYLE），避免 Windows 端整体不可用。
-     */
-    private static final String LEGACY_WINDOWS_SCRIPT =
-            "[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false);"
-                    + "$OutputEncoding=[Console]::OutputEncoding;"
-                    + "$shell=New-Object -ComObject Shell.Application;"
-                    + "$folder=$shell.BrowseForFolder(0,$__soloncodeTitle,0x41,0);"
-                    + "if($null -eq $folder){Write-Output 'PICK_NONE'}"
-                    + "else{$p=$folder.Self.Path;if([string]::IsNullOrEmpty($p)){Write-Output 'PICK_NONE'}"
-                    + "else{Write-Output ('PICK '+$p)}}";
-
-    /**
      * Windows 目录选择器脚本（包内资源）。
      * <p>
-     * 优先使用 Shell 的 {@code IFileOpenDialog + FOS_PICKFOLDERS}（Win10/Win11 资源管理器同款现代目录
-     * 对话框），并以隐藏置顶窗口作为 owner 解决“被浏览器挡住”；脚本内失败时再回退
-     * {@code Shell.Application.BrowseForFolder}。
+     * 使用临时 ps1 文件而不是 {@code -EncodedCommand}，避免脚本增长后撞上 Windows 32767 字符的
+     * CreateProcess 命令行上限，也让测试可以真实执行 PowerShell/C# 编译探针。
      */
     static final String WINDOWS_PICKER_SCRIPT = loadWindowsPickerScript();
+    private static volatile File windowsPickerScriptFile;
 
     private static String loadWindowsPickerScript() {
         InputStream in = DirectoryPickerUtil.class.getResourceAsStream("win-folder-picker.ps1");
         if (in == null) {
-            warn("missing resource win-folder-picker.ps1, Windows picker degrades to legacy dialog");
-            return LEGACY_WINDOWS_SCRIPT;
+            warn("missing resource win-folder-picker.ps1; modern Windows picker is unavailable");
+            return null;
         }
 
         try {
@@ -328,8 +320,8 @@ public class DirectoryPickerUtil {
             }
             return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            warn("read win-folder-picker.ps1 failed, Windows picker degrades to legacy dialog: " + e);
-            return LEGACY_WINDOWS_SCRIPT;
+            warn("read win-folder-picker.ps1 failed; modern Windows picker is unavailable: " + e);
+            return null;
         } finally {
             try {
                 in.close();
@@ -340,41 +332,89 @@ public class DirectoryPickerUtil {
     }
 
     /**
-     * Windows 选择器命令：脚本以 {@code -EncodedCommand}（Base64/UTF-16LE）下发，
-     * 彻底规避引号、换行与中文标题的转义问题。
+     * Windows 选择器命令。参数由 {@link ProcessBuilder} 直接传递，不经过 shell 字符串拼接。
      *
      * @param title    对话框标题
      * @param startDir 起始目录（null 表示交给系统默认位置）
      */
-    static List<String> windowsCommand(String title, File startDir) {
-        StringBuilder script = new StringBuilder();
-        script.append("$__soloncodeTitle='").append(psLiteral(safeTitle(title))).append("'\n");
-        script.append("$__soloncodeStartDir='")
-                .append(psLiteral(startDir == null ? "" : startDir.getAbsolutePath())).append("'\n");
-        script.append(WINDOWS_PICKER_SCRIPT);
+    static List<String> windowsCommand(String title, File startDir) throws IOException {
+        List<String> cmd = windowsPowerShellCommand();
+        cmd.add("-SoloncodeTitle");
+        cmd.add(safeTitle(title));
+        cmd.add("-SoloncodeStartDir");
+        cmd.add(startDir == null ? "" : startDir.getAbsolutePath());
+        return cmd;
+    }
 
+    static List<String> windowsProbeCommand() throws IOException {
+        List<String> cmd = windowsPowerShellCommand();
+        cmd.add("-SoloncodeProbe");
+        return cmd;
+    }
+
+    static List<String> windowsSmokeCommand() throws IOException {
+        List<String> cmd = windowsPowerShellCommand();
+        cmd.add("-SoloncodeTitle");
+        cmd.add("SolonCode directory picker smoke test");
+        cmd.add("-SoloncodeSmoke");
+        return cmd;
+    }
+
+    static String probeWindowsPicker(long timeoutMs) throws IOException, InterruptedException {
+        CommandResult result = runCommand(windowsProbeCommand(), timeoutMs);
+        if (result.timedOut) {
+            throw new IOException("Windows directory picker probe timed out");
+        }
+        if (result.exitCode != 0 || !result.output.contains("PICK_PROBE_OK")) {
+            throw commandFailure("Windows probe", result);
+        }
+        return result.output;
+    }
+
+    static String smokeWindowsPicker(long timeoutMs) throws IOException, InterruptedException {
+        CommandResult result = runCommand(windowsSmokeCommand(), timeoutMs);
+        if (result.timedOut) {
+            throw new IOException("Windows directory picker smoke test timed out");
+        }
+        if (result.exitCode != 0 || !result.output.contains("PICK_SMOKE_OK")) {
+            throw commandFailure("Windows smoke test", result);
+        }
+        return result.output;
+    }
+
+    private static List<String> windowsPowerShellCommand() throws IOException {
+        File script = windowsPickerScriptFile();
         List<String> cmd = new ArrayList<String>();
         cmd.add("powershell.exe");
         cmd.add("-NoProfile");
         cmd.add("-NonInteractive");
+        cmd.add("-ExecutionPolicy");
+        cmd.add("Bypass");
         cmd.add("-STA");
-        cmd.add("-EncodedCommand");
-        cmd.add(encodePowerShell(script.toString()));
+        cmd.add("-File");
+        cmd.add(script.getAbsolutePath());
         return cmd;
     }
 
-    /**
-     * PowerShell 单引号字面量转义：内部单引号写成两个；换行会破坏命令行参数，折叠为单个空格。
-     */
-    static String psLiteral(String value) {
-        return value.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ').replace("'", "''");
-    }
-
-    /**
-     * PowerShell {@code -EncodedCommand} 要求 Base64(UTF-16LE)
-     */
-    static String encodePowerShell(String script) {
-        return java.util.Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE));
+    private static File windowsPickerScriptFile() throws IOException {
+        if (WINDOWS_PICKER_SCRIPT == null || WINDOWS_PICKER_SCRIPT.isEmpty()) {
+            throw new IOException("Modern Windows directory picker resource is unavailable");
+        }
+        File current = windowsPickerScriptFile;
+        if (current != null && current.isFile()) {
+            return current;
+        }
+        synchronized (DirectoryPickerUtil.class) {
+            current = windowsPickerScriptFile;
+            if (current == null || !current.isFile()) {
+                Path path = Files.createTempFile("soloncode-win-folder-picker-", ".ps1");
+                Files.write(path, WINDOWS_PICKER_SCRIPT.getBytes(StandardCharsets.UTF_8));
+                current = path.toFile();
+                current.deleteOnExit();
+                windowsPickerScriptFile = current;
+            }
+            return current;
+        }
     }
 
     private static File effectiveStartDir(File startDir) {
