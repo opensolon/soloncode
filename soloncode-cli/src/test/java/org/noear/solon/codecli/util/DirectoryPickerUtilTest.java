@@ -92,15 +92,56 @@ public class DirectoryPickerUtilTest {
     }
 
     @Test
-    void windowsCommand_usesStaAndEscapesTitle() {
-        List<String> command = DirectoryPickerUtil.windowsCommand("Choose Bob's folder");
+    void windowsCommand_usesEncodedModernPicker() {
+        List<String> command = DirectoryPickerUtil.windowsCommand("Choose Bob's folder", null);
         assertEquals("powershell.exe", command.get(0));
         assertTrue(command.contains("-STA"));
-        String script = command.get(command.size() - 1);
-        assertTrue(script.contains("Choose Bob''s folder"));
-        assertTrue(script.contains("BrowseForFolder"));
-        assertTrue(script.contains("UTF8Encoding"));
+        assertTrue(command.contains("-NonInteractive"));
+        assertEquals("-EncodedCommand", command.get(command.size() - 2));
+
+        String encoded = command.get(command.size() - 1);
+        assertTrue(encoded.length() < 30000,
+                "encoded script must stay under the Windows command line limit");
+
+        String script = decodePowerShell(encoded);
+        assertTrue(script.contains("$__soloncodeTitle='Choose Bob''s folder'"),
+                "title should be injected as a PowerShell single-quoted literal");
+        assertTrue(script.contains("IFileDialog"), "modern dialog interop should be embedded");
+        assertTrue(script.contains("FOS_PICKFOLDERS"), "folder mode flag should be set");
+        assertTrue(script.contains("SetFolder"), "start directory support should be embedded");
+        assertTrue(script.contains("TopMost"), "owner window must be topmost to avoid being hidden");
+        assertTrue(script.contains("BrowseForFolder"), "legacy in-script fallback should be kept");
         assertTrue(script.contains("PICK_NONE"));
+    }
+
+    @Test
+    void windowsCommand_forwardsStartDirectory() throws IOException {
+        File startDir = java.nio.file.Files.createTempDirectory("soloncode-pick-test").toFile();
+        startDir.deleteOnExit();
+
+        List<String> command = DirectoryPickerUtil.windowsCommand("Choose", startDir);
+        String script = decodePowerShell(command.get(command.size() - 1));
+        assertTrue(script.contains("$__soloncodeStartDir='" + startDir.getAbsolutePath() + "'"),
+                "start directory should be forwarded to the dialog");
+    }
+
+    @Test
+    void psLiteral_escapesQuotesAndFlattensLineBreaks() {
+        assertEquals("a''b", DirectoryPickerUtil.psLiteral("a'b"));
+        assertEquals("a b", DirectoryPickerUtil.psLiteral("a\r\nb"));
+        assertEquals("a b", DirectoryPickerUtil.psLiteral("a\nb"));
+    }
+
+    @Test
+    void windowsCommand_blankStartDirIsInjectedEmpty() {
+        List<String> command = DirectoryPickerUtil.windowsCommand("Choose", null);
+        String script = decodePowerShell(command.get(command.size() - 1));
+        assertTrue(script.contains("$__soloncodeStartDir=''"));
+    }
+
+    private static String decodePowerShell(String encoded) {
+        return new String(java.util.Base64.getDecoder().decode(encoded),
+                java.nio.charset.StandardCharsets.UTF_16LE);
     }
 
     @Test

@@ -272,6 +272,70 @@ public class FileWatchServiceTest {
     }
 
     /**
+     * 测试：浅监听（shallow）只挂根目录自身
+     *
+     * <p>对应「在 ~ 下启动」的默认工作区场景：前端不展示文件树，后端也不应递归注册整棵树。</p>
+     * <p>预期：根目录下的直接变更仍能捕获（便于未来解锁时可用），但预存的子目录不入监听，
+     * 其内部变更不被推送；在该子目录下新建目录也不会触发递归注册。</p>
+     */
+    @Test
+    public void testShallowRootSkipsSubtree() throws Exception {
+        // 预先存在的子目录：浅监听下不应注册
+        Path existingSub = tempRoot.resolve("bigsub");
+        Files.createDirectories(existingSub);
+
+        List<ChangeEntry> received = new CopyOnWriteArrayList<>();
+        service.addRoot("test-ws", tempRoot)
+                .shallow(true)
+                .addHandler(received::addAll);
+
+        startAndWait();
+
+        // 1) 子目录内部的文件变更不应被推送
+        Files.write(existingSub.resolve("inside.txt"), "x".getBytes());
+        // 2) 子目录内新建目录也不应触发递归注册（shallow 下不深入）
+        Path innerDir = existingSub.resolve("inner");
+        Files.createDirectories(innerDir);
+        Files.write(innerDir.resolve("deep.txt"), "y".getBytes());
+        Thread.sleep(5000);
+
+        assertTrue(received.stream().noneMatch(e -> e.path.startsWith("bigsub/")),
+                "shallow root should not receive changes from subtree, but got: " + received);
+
+        // 3) 根目录下的直接变更仍应被捕获
+        received.clear();
+        Files.write(tempRoot.resolve("atRoot.txt"), "z".getBytes());
+        assertTrue(waitUntil(() -> received.stream().anyMatch(e -> "atRoot.txt".equals(e.path)), AWAIT_SEC),
+                "shallow root should still receive changes of its own direct children");
+    }
+
+    /**
+     * 测试：非浅监听（默认）仍会递归注册子树（与浅监听形成对照）
+     */
+    @Test
+    public void testDefaultRootRecursesSubtree() throws Exception {
+        Path existingSub = tempRoot.resolve("sub");
+        Files.createDirectories(existingSub);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        service.addRoot("test-ws", tempRoot)
+                .addHandler(changes -> {
+                    for (ChangeEntry e : changes) {
+                        if ("sub/inside.txt".equals(e.path)) {
+                            latch.countDown();
+                            break;
+                        }
+                    }
+                });
+
+        startAndWait();
+        Files.write(existingSub.resolve("inside.txt"), "x".getBytes());
+
+        assertTrue(latch.await(AWAIT_SEC, TimeUnit.SECONDS),
+                "default (non-shallow) root should receive changes from pre-existing subtree");
+    }
+
+    /**
      * 测试：排除目录下的文件变更不应被捕获
      */
     @Test

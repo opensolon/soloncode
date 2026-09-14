@@ -407,6 +407,26 @@ public class WorkspaceManager {
     }
 
     /**
+     * 判断一个工作区是否属于「在用户主目录下启动的默认工作区」（即前端的 isHomeWorkspace）。
+     *
+     * <p>这是「把 ~ 当工作区代价过高」的<b>唯一判据</b>，前端展示与后端资源投入必须同口径，
+     * 否则会出现「界面根本不展示文件树、后端却在为它铺开全树监听」的浪费：</p>
+     * <ul>
+     *   <li>前端：据此锁定为工作区面板，不渲染文件树（不铺开则前端根本不看）</li>
+     *   <li>后端：据此把文件监听降为「只挂根目录自身」，不递归注册整棵主目录树</li>
+     * </ul>
+     *
+     * <p>注意必须同时满足 {@code meta.isDefault()}：用户 <b>显式</b> 选择 ~ 作为工作区时
+     * 走的是 {@code getOrCreate(path)}，生成的 meta 非 default，此时前端会正常展示文件树，
+     * 后端也应保留完整监听，不适用本判据。</p>
+     */
+    public static boolean isHomeStartupWorkspace(WorkspaceMeta meta) {
+        return meta != null
+                && meta.isDefault()
+                && isUserHomePath(meta.getPath());
+    }
+
+    /**
      * 关闭并销毁工作区上下文
      */
     public synchronized void closeWorkspace(String workspaceIdOrPath) {
@@ -717,7 +737,17 @@ public class WorkspaceManager {
 
         // FileWatchService（自建轮询/初始化线程，需显式带上工作区日志归属）
         FileWatchService fileWatchService = new FileWatchService().logWorkspacePath(workspacePath);
+
+        // 「在 ~ 下启动」的默认工作区：前端已锁定为工作区面板、根本不展示文件树，
+        // 为它递归注册整棵主目录（~/Library 等动辄上万目录，macOS 下还是轮询实现）纯属浪费，
+        // 且会持续消耗 CPU/IO 与系统 watch 配额。降为只监听根目录自身。
+        // 用户一旦选定真实项目目录，会另建独立工作区上下文（独立 FileWatchService），监听自然恢复完整。
+        boolean shallowWatch = WorkspaceManager.isHomeStartupWorkspace(meta);
+        if (shallowWatch) {
+            LOG.info("[Workspace] Home startup workspace detected, file watch is shallow (root only): {}", workspacePath);
+        }
         fileWatchService.addRoot("workspace", Paths.get(workspacePath).toAbsolutePath().normalize())
+                .shallow(shallowWatch)
                 .addHandler(changes -> {
                     // 动态取 gate：默认工作区创建早于 setWebGate，字段快照可能为 null
                     WebGate gate = getWebGate();

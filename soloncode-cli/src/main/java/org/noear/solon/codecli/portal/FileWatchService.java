@@ -128,9 +128,25 @@ public class FileWatchService {
         /** 该根注册的所有 WatchKey，用于 removeRoot 时批量取消（Set 去重，避免重复注册时膨胀） */
         final Set<WatchKey> watchKeys = Collections.synchronizedSet(new LinkedHashSet<>());
 
+        /**
+         * 仅监听根目录自身，不递归注册其子树。
+         *
+         * <p>用于「根目录过于庞大、铺开监听得不偿失」的场景（如用户主目录）：此时前端本就不展示
+         * 该根下的内容，递归注册只是在白白消耗轮询开销/系统 watch 配额。</p>
+         */
+        boolean shallow = false;
+
         WatchRoot(String id, Path path) {
             this.id = id;
             this.path = path.toAbsolutePath().normalize();
+        }
+
+        /**
+         * 设置「仅监听根目录自身，不递归子树」（需在注册前调用，即 {@code addRoot} 链上）
+         */
+        public WatchRoot shallow(boolean shallow) {
+            this.shallow = shallow;
+            return this;
         }
 
         /**
@@ -213,7 +229,8 @@ public class FileWatchService {
             try {
                 if (Files.exists(root.path)) {
                     registerTree(root.path, root);
-                    LOG.info("[FileWatchService] dynamically registered root: {} -> {}", id, root.path);
+                    LOG.info("[FileWatchService] dynamically registered root: {}{} -> {}",
+                            id, root.shallow ? " (shallow)" : "", root.path);
                 } else {
                     LOG.warn("[FileWatchService] root path not exists, skip: {} -> {}", id, root.path);
                 }
@@ -301,7 +318,8 @@ public class FileWatchService {
                     try {
                         if (Files.exists(root.path)) {
                             registerTree(root.path, root);
-                            LOG.info("[FileWatchService] registered root: {} -> {}", root.id, root.path);
+                            LOG.info("[FileWatchService] registered root: {}{} -> {}",
+                                    root.id, root.shallow ? " (shallow)" : "", root.path);
                         } else {
                             LOG.warn("[FileWatchService] root path not exists, skip: {} -> {}", root.id, root.path);
                         }
@@ -357,6 +375,11 @@ public class FileWatchService {
      * @param root 所属的监听根，用于关联 WatchKey
      */
     private void registerTree(Path dir, WatchRoot root) throws Exception {
+        // 本次注册失败的目录数：单点失败会被忽略（权限不足等属正常），但成片失败通常是
+        // 触及系统 watch 配额（Linux inotify max_user_watches），必须让人看得见，
+        // 否则表现为「某些目录永远不刷新」却毫无日志线索
+        final int[] failures = {0};
+
         Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes attrs) {
@@ -366,7 +389,15 @@ public class FileWatchService {
                 }
                 try {
                     root.watchKeys.add(registerDir(d));
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    failures[0]++;
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("[FileWatchService] register dir failed: {} ({})", d, e.getMessage());
+                    }
+                }
+                // 浅监听：只挂根目录自身，不再深入子树
+                if (root.shallow && d.equals(dir)) {
+                    return FileVisitResult.SKIP_SUBTREE;
                 }
                 return FileVisitResult.CONTINUE;
             }
@@ -377,6 +408,12 @@ public class FileWatchService {
                 return FileVisitResult.CONTINUE;
             }
         });
+
+        if (failures[0] > 0) {
+            LOG.warn("[FileWatchService] registerTree for root '{}' finished with {} failed director{} "
+                            + "(possibly hit the system watch limit, e.g. fs.inotify.max_user_watches): {}",
+                    root.id, failures[0], failures[0] > 1 ? "ies" : "y", dir);
+        }
     }
 
     /**
@@ -529,7 +566,7 @@ public class FileWatchService {
                 // 记录结构化变更条目（同路径合并为净效果）
                 putChange(new ChangeEntry(root.id, relativize(root, fullPath), kind, nodeType));
 
-                if (newDir) {
+                if (newDir && !root.shallow) {
                     // 新增目录：递归注册子目录监听，并补扫注册窗口内已落盘的子项
                     try {
                         registerTree(fullPath, root);

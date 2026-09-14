@@ -2,6 +2,8 @@
 ### v2026.9.14
 
 * 优化 soloncode web 工作区共享设置同步
+* 优化 soloncode web 浏览本地目录界面 for window
+* 优化 soloncode web `~` 目录启动时弱化文件扫描
 * 细节优化
 
 ### v2026.9.12

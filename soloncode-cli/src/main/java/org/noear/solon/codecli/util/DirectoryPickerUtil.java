@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.util;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,9 +36,13 @@ import java.util.zip.ZipFile;
 /**
  * 系统级“选择目录”工具：在宿主机桌面弹出系统原生目录选择框，返回用户选中的绝对路径。
  * <p>
- * 优先使用操作系统提供的选择器：macOS 使用 Finder（osascript choose folder），Windows 使用
- * Shell.Application 的系统目录对话框，Linux 依次使用 Zenity、KDialog；原生能力不可用或执行失败时，
- * 再回退到 {@link DirectoryPickerSubprocess} 中的 Swing {@code JFileChooser}。
+ * 优先使用操作系统提供的选择器：macOS 使用 Finder（osascript choose folder），Windows 使用 Shell 的
+ * {@code IFileOpenDialog + FOS_PICKFOLDERS}（Win10/Win11 资源管理器同款现代目录对话框，脚本内失败时
+ * 回退 {@code Shell.Application.BrowseForFolder}），Linux 依次使用 Zenity、KDialog；原生能力不可用或
+ * 执行失败时，再回退到 {@link DirectoryPickerSubprocess} 中的 Swing {@code JFileChooser}。
+ * <p>
+ * <b>Windows 弹窗为何不会沉到浏览器后面：</b>对话框以隐藏的置顶窗口作为 owner（owned window 必然
+ * 位于属主之上），规避 Windows 对无属主后台窗口的前台锁定限制。
  * <p>
  * <b>为何 Swing 兜底要用子进程：</b>Solon 框架类初始化时会把 {@code java.awt.headless}
  * 默认置为 true，CLI 宿主 JVM 内 AWT 因此永远是 headless、无法直接弹框；且该状态在 Toolkit
@@ -142,7 +147,7 @@ public class DirectoryPickerUtil {
         }
 
         if (isWindows(os)) {
-            List<String> cmd = windowsCommand(title);
+            List<String> cmd = windowsCommand(title, effectiveStartDir);
             CommandResult result = runCommand(cmd, timeoutMs);
             if (result.timedOut) {
                 return NativePickResult.handled(null);
@@ -286,23 +291,90 @@ public class DirectoryPickerUtil {
         return cmd;
     }
 
-    static List<String> windowsCommand(String title) {
-        String escapedTitle = safeTitle(title).replace("'", "''");
-        String script = "[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false);"
-                + "$OutputEncoding=[Console]::OutputEncoding;"
-                + "$shell=New-Object -ComObject Shell.Application;"
-                + "$folder=$shell.BrowseForFolder(0,'" + escapedTitle + "',0,0);"
-                + "if($null -eq $folder){Write-Output 'PICK_NONE'}"
-                + "else{$path=$folder.Self.Path;if([string]::IsNullOrEmpty($path)){Write-Output 'PICK_NONE'}"
-                + "else{Write-Output ('PICK '+$path)}}";
+    /**
+     * 资源缺失时的降级脚本：保留旧版对话框（带 owner 与 BIF_NEWDIALOGSTYLE），避免 Windows 端整体不可用。
+     */
+    private static final String LEGACY_WINDOWS_SCRIPT =
+            "[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false);"
+                    + "$OutputEncoding=[Console]::OutputEncoding;"
+                    + "$shell=New-Object -ComObject Shell.Application;"
+                    + "$folder=$shell.BrowseForFolder(0,$__soloncodeTitle,0x41,0);"
+                    + "if($null -eq $folder){Write-Output 'PICK_NONE'}"
+                    + "else{$p=$folder.Self.Path;if([string]::IsNullOrEmpty($p)){Write-Output 'PICK_NONE'}"
+                    + "else{Write-Output ('PICK '+$p)}}";
+
+    /**
+     * Windows 目录选择器脚本（包内资源）。
+     * <p>
+     * 优先使用 Shell 的 {@code IFileOpenDialog + FOS_PICKFOLDERS}（Win10/Win11 资源管理器同款现代目录
+     * 对话框），并以隐藏置顶窗口作为 owner 解决“被浏览器挡住”；脚本内失败时再回退
+     * {@code Shell.Application.BrowseForFolder}。
+     */
+    static final String WINDOWS_PICKER_SCRIPT = loadWindowsPickerScript();
+
+    private static String loadWindowsPickerScript() {
+        InputStream in = DirectoryPickerUtil.class.getResourceAsStream("win-folder-picker.ps1");
+        if (in == null) {
+            warn("missing resource win-folder-picker.ps1, Windows picker degrades to legacy dialog");
+            return LEGACY_WINDOWS_SCRIPT;
+        }
+
+        try {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[4096];
+            int count;
+            while ((count = in.read(chunk)) > 0) {
+                buffer.write(chunk, 0, count);
+            }
+            return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            warn("read win-folder-picker.ps1 failed, Windows picker degrades to legacy dialog: " + e);
+            return LEGACY_WINDOWS_SCRIPT;
+        } finally {
+            try {
+                in.close();
+            } catch (IOException ignored) {
+                // 读取资源失败已在上面处理
+            }
+        }
+    }
+
+    /**
+     * Windows 选择器命令：脚本以 {@code -EncodedCommand}（Base64/UTF-16LE）下发，
+     * 彻底规避引号、换行与中文标题的转义问题。
+     *
+     * @param title    对话框标题
+     * @param startDir 起始目录（null 表示交给系统默认位置）
+     */
+    static List<String> windowsCommand(String title, File startDir) {
+        StringBuilder script = new StringBuilder();
+        script.append("$__soloncodeTitle='").append(psLiteral(safeTitle(title))).append("'\n");
+        script.append("$__soloncodeStartDir='")
+                .append(psLiteral(startDir == null ? "" : startDir.getAbsolutePath())).append("'\n");
+        script.append(WINDOWS_PICKER_SCRIPT);
+
         List<String> cmd = new ArrayList<String>();
         cmd.add("powershell.exe");
         cmd.add("-NoProfile");
         cmd.add("-NonInteractive");
         cmd.add("-STA");
-        cmd.add("-Command");
-        cmd.add(script);
+        cmd.add("-EncodedCommand");
+        cmd.add(encodePowerShell(script.toString()));
         return cmd;
+    }
+
+    /**
+     * PowerShell 单引号字面量转义：内部单引号写成两个；换行会破坏命令行参数，折叠为单个空格。
+     */
+    static String psLiteral(String value) {
+        return value.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ').replace("'", "''");
+    }
+
+    /**
+     * PowerShell {@code -EncodedCommand} 要求 Base64(UTF-16LE)
+     */
+    static String encodePowerShell(String script) {
+        return java.util.Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE));
     }
 
     private static File effectiveStartDir(File startDir) {
