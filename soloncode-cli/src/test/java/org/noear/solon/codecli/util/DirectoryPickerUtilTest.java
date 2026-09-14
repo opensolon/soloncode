@@ -11,7 +11,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * DirectoryPickerUtil 单测（不弹真框）：覆盖类路径解析与常量可达性。
+ * DirectoryPickerUtil 单测：覆盖类路径解析、脚本约束和 Windows 原生选择器烟测。
  *
  * @author noear
  */
@@ -147,6 +147,23 @@ public class DirectoryPickerUtilTest {
         assertTrue(script.contains("new System.Threading.Timer(delegate { Promote(dialog); }, null, 50, 100)"),
                 "real HWND promotion must start independently of optional Shell callbacks");
         assertTrue(script.contains("SolonShellNative.SetWindowPos(hwnd"));
+        assertTrue(script.contains("GetWindowRect(hwnd, out bounds)"),
+                "the promotion loop must read the live dialog bounds");
+        assertTrue(script.contains("lastDialogWidth") && script.contains("lastDialogHeight"),
+                "the picker must detect restored size changes");
+        assertTrue(script.contains("sizeChanged"),
+                "a restored dialog size must restart the centering window");
+        assertTrue(script.contains("AddMilliseconds(1200)"),
+                "the initial centering window must cover asynchronous Shell size restoration");
+        assertTrue(script.contains("CenterAndPromoteWindow(hwnd, centerOwnerHwnd)"),
+                "the real dialog should be centered while it is promoted");
+        assertTrue(script.contains("MonitorFromWindow(monitorSource, 2u)"),
+                "centering should target the monitor containing the browser owner");
+        assertTrue(script.contains("info.Work.Right - info.Work.Left"),
+                "centering should use the monitor work area rather than raw desktop bounds");
+        assertTrue(script.contains("Math.Max(0, (workWidth - width) / 2)"));
+        assertTrue(script.contains("new SolonFileDialogEvents(smoke, dialog, centerOwnerHwnd)"),
+                "the captured browser must select the destination monitor");
         assertTrue(script.contains("events.Dispose()"), "the promotion timer must always be disposed");
         assertFalse(script.contains("AttachThreadInput"));
         assertFalse(script.contains("AllowSetForegroundWindow"));
@@ -193,7 +210,8 @@ public class DirectoryPickerUtilTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(
                 System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("windows"));
         String output = DirectoryPickerUtil.smokeWindowsPicker(30_000L);
-        assertTrue(output.contains("PICK_SMOKE_OK"));
+        assertTrue(output.contains("PICK_SMOKE_OK centered=true"),
+                "the real dialog must report successful monitor-work-area centering");
     }
 
     @Test

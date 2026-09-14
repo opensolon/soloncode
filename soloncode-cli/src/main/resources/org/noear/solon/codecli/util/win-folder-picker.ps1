@@ -89,14 +89,20 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
 {
     private const int ErrorCancelled = unchecked((int)0x800704C7);
     private readonly bool smoke;
+    private readonly IntPtr centerOwnerHwnd;
     private readonly object sync = new object();
     private System.Threading.Timer promotionTimer;
     private System.Threading.Timer smokeTimer;
     private IntPtr dialogHwnd;
+    private int lastDialogWidth;
+    private int lastDialogHeight;
+    private long centerUntilUtcTicks;
+    private bool centered;
 
-    public SolonFileDialogEvents(bool smokeTest, SolonIFileDialog dialog)
+    public SolonFileDialogEvents(bool smokeTest, SolonIFileDialog dialog, IntPtr centerOwnerWindow)
     {
         smoke = smokeTest;
+        centerOwnerHwnd = centerOwnerWindow;
         // Poll the real dialog HWND independently of Shell callbacks: callbacks are not guaranteed
         // during initial creation, which previously left the dialog behind the browser.
         promotionTimer = new System.Threading.Timer(delegate { Promote(dialog); }, null, 50, 100);
@@ -111,7 +117,35 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
             SolonIOleWindow window = (SolonIOleWindow)dialog;
             IntPtr hwnd;
             if (window.GetWindow(out hwnd) < 0 || hwnd == IntPtr.Zero) return;
-            lock (sync) { dialogHwnd = hwnd; }
+
+            SolonShellNative.SolonRect bounds;
+            if (!SolonShellNative.GetWindowRect(hwnd, out bounds)) return;
+            int width = bounds.Right - bounds.Left;
+            int height = bounds.Bottom - bounds.Top;
+            if (width <= 0 || height <= 0) return;
+
+            lock (sync)
+            {
+                bool newWindow = dialogHwnd != hwnd;
+                bool sizeChanged = lastDialogWidth != width || lastDialogHeight != height;
+                if (newWindow)
+                {
+                    dialogHwnd = hwnd;
+                    lastDialogWidth = width;
+                    lastDialogHeight = height;
+                    // The Shell restores the previous dialog size asynchronously. Keep the
+                    // initial centering window long enough to observe that restored size.
+                    centerUntilUtcTicks = DateTime.UtcNow.AddMilliseconds(1200).Ticks;
+                }
+                else if (sizeChanged && DateTime.UtcNow.Ticks <= centerUntilUtcTicks)
+                {
+                    // Re-centering uses GetWindowRect again, so the next tick is based on the
+                    // restored dimensions rather than the default dimensions.
+                    lastDialogWidth = width;
+                    lastDialogHeight = height;
+                    centerUntilUtcTicks = DateTime.UtcNow.AddMilliseconds(300).Ticks;
+                }
+            }
             PromoteWindow(null);
         }
         catch { }
@@ -120,12 +154,29 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
     private void PromoteWindow(object state)
     {
         IntPtr hwnd;
-        lock (sync) { hwnd = dialogHwnd; }
+        bool shouldCenter;
+        lock (sync)
+        {
+            hwnd = dialogHwnd;
+            shouldCenter = centerUntilUtcTicks != 0 && DateTime.UtcNow.Ticks <= centerUntilUtcTicks;
+        }
         if (hwnd == IntPtr.Zero || !SolonShellNative.IsWindow(hwnd)) return;
-        SolonShellNative.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0,
-            0x0001u | 0x0002u | 0x0010u | 0x0200u);
+        if (shouldCenter && SolonShellNative.CenterAndPromoteWindow(hwnd, centerOwnerHwnd))
+        {
+            lock (sync) { centered = true; }
+        }
+        else
+        {
+            SolonShellNative.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0,
+                0x0001u | 0x0002u | 0x0010u | 0x0200u);
+        }
         SolonShellNative.BringWindowToTop(hwnd);
         SolonShellNative.SetForegroundWindow(hwnd);
+    }
+
+    public bool Centered
+    {
+        get { lock (sync) { return centered; } }
     }
 
     public void Dispose()
@@ -135,6 +186,9 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
             if (promotionTimer != null) { promotionTimer.Dispose(); promotionTimer = null; }
             if (smokeTimer != null) { smokeTimer.Dispose(); smokeTimer = null; }
             dialogHwnd = IntPtr.Zero;
+            lastDialogWidth = 0;
+            lastDialogHeight = 0;
+            centerUntilUtcTicks = 0;
         }
     }
 
@@ -149,6 +203,24 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
 
 public static class SolonShellNative
 {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SolonRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SolonMonitorInfo
+    {
+        public int Size;
+        public SolonRect Monitor;
+        public SolonRect Work;
+        public uint Flags;
+    }
+
     // PowerShell 5.1 is DPI-unaware by default. Set the creating STA thread to Per-Monitor V2
     // before any helper or Shell window is created, otherwise Windows bitmap-scales IFileDialog.
     private static readonly IntPtr DpiAwarenessContextPerMonitorAwareV2 = new IntPtr(-4);
@@ -194,6 +266,39 @@ public static class SolonShellNative
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool BringWindowToTop(IntPtr hwnd);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetWindowRect(IntPtr hwnd, out SolonRect rect);
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetMonitorInfo(IntPtr monitor, ref SolonMonitorInfo info);
+
+    public static bool CenterAndPromoteWindow(IntPtr dialogHwnd, IntPtr ownerHwnd)
+    {
+        SolonRect dialogRect;
+        if (!GetWindowRect(dialogHwnd, out dialogRect)) return false;
+        int width = dialogRect.Right - dialogRect.Left;
+        int height = dialogRect.Bottom - dialogRect.Top;
+        if (width <= 0 || height <= 0) return false;
+
+        IntPtr monitorSource = IsWindow(ownerHwnd) ? ownerHwnd : dialogHwnd;
+        IntPtr monitor = MonitorFromWindow(monitorSource, 2u);
+        if (monitor == IntPtr.Zero) return false;
+        SolonMonitorInfo info = new SolonMonitorInfo();
+        info.Size = Marshal.SizeOf(typeof(SolonMonitorInfo));
+        if (!GetMonitorInfo(monitor, ref info)) return false;
+
+        int workWidth = info.Work.Right - info.Work.Left;
+        int workHeight = info.Work.Bottom - info.Work.Top;
+        int x = info.Work.Left + Math.Max(0, (workWidth - width) / 2);
+        int y = info.Work.Top + Math.Max(0, (workHeight - height) / 2);
+        if (!SetWindowPos(dialogHwnd, new IntPtr(-1), x, y, 0, 0,
+            0x0001u | 0x0010u | 0x0200u)) return false;
+
+        SolonRect centeredRect;
+        return GetWindowRect(dialogHwnd, out centeredRect)
+            && Math.Abs(centeredRect.Left - x) <= 2
+            && Math.Abs(centeredRect.Top - y) <= 2;
+    }
 
     public static IntPtr CaptureForegroundOwner()
     {
@@ -213,6 +318,8 @@ public static class SolonModernFolderPicker
     private const int ErrorCancelled = unchecked((int)0x800704C7);
     private const uint SigDnFileSystemPath = 0x80058000u;
 
+    public static bool LastDialogCentered { get; private set; }
+
     private static void Check(int hr) { if (hr < 0) Marshal.ThrowExceptionForHR(hr); }
 
     public static string Pick(string title, string startDir, bool smoke)
@@ -226,9 +333,11 @@ public static class SolonModernFolderPicker
         IntPtr pathPtr = IntPtr.Zero;
         uint cookie = 0;
         bool advised = false;
+        LastDialogCentered = false;
         try
         {
             IntPtr hwnd = SolonShellNative.CaptureForegroundOwner();
+            IntPtr centerOwnerHwnd = hwnd;
             if (hwnd == IntPtr.Zero)
             {
                 owner = new Form();
@@ -262,7 +371,7 @@ public static class SolonModernFolderPicker
                 Check(dialog.SetFolder(folder));
             }
 
-            events = new SolonFileDialogEvents(smoke, dialog);
+            events = new SolonFileDialogEvents(smoke, dialog, centerOwnerHwnd);
             Check(dialog.Advise(events, out cookie));
             advised = true;
             int showHr = dialog.Show(hwnd);
@@ -279,6 +388,7 @@ public static class SolonModernFolderPicker
         finally
         {
             if (advised && dialog != null) { try { dialog.Unadvise(cookie); } catch { } }
+            if (events != null) LastDialogCentered = events.Centered;
             if (events != null) events.Dispose();
             if (pathPtr != IntPtr.Zero) Marshal.FreeCoTaskMem(pathPtr);
             if (result != null) try { Marshal.FinalReleaseComObject(result); } catch { }
@@ -304,7 +414,10 @@ public static class SolonModernFolderPicker
 
     $path = [SolonModernFolderPicker]::Pick($SoloncodeTitle, $SoloncodeStartDir, $SoloncodeSmoke.IsPresent)
     if ($SoloncodeSmoke) {
-        Write-Output 'PICK_SMOKE_OK'
+        if (-not [SolonModernFolderPicker]::LastDialogCentered) {
+            throw 'The Windows directory picker smoke test did not center the real dialog window.'
+        }
+        Write-Output 'PICK_SMOKE_OK centered=true'
     } elseif ([string]::IsNullOrEmpty($path)) {
         Write-Output 'PICK_NONE'
     } else {
