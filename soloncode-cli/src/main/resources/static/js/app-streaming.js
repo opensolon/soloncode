@@ -285,7 +285,7 @@ function truncateQueueText(text, maxLen) {
 }
 
 function hasDraftInput() {
-    return !!(chatInput && chatInput.value.trim()) || (pendingFiles && pendingFiles.length > 0);
+    return !!(chatInput && chatInput.value.trim()) || getActiveDraftFiles().length > 0;
 }
 
 /* 判定名称是否为已知子代理（commandList 由 app-history.js 加载） */
@@ -311,13 +311,14 @@ function resolveEffectiveAgent(text, selectedAgent) {
 function applyQueuedItemToInput(item) {
     if (!item) return;
     if (!inChatMode) switchToChatMode();
+    var sess = getActiveSessionDraft();
     chatInput.value = item.text || '';
+    syncActiveSessionDraft(chatInput);
     autoResize(chatInput);
     if (item.files && item.files.length) {
-        pendingFiles = item.files.slice();
-        if (typeof renderAttachments === 'function') renderAttachments();
+        setSessionDraftFiles(sess, item.files);
     } else {
-        clearAttachmentPreview();
+        clearAttachmentPreview(sess);
     }
     chatInput.focus();
 }
@@ -349,8 +350,8 @@ function enqueueMessage(sess, text, files) {
         selectedAgent: typeof getSelectedAgent === 'function' ? getSelectedAgent() : '',
         createdAt: Date.now()
     });
-    clearInput();
-    clearAttachmentPreview();
+    clearInput(sess);
+    clearAttachmentPreview(sess);
     if (typeof renderQueueDock === 'function') renderQueueDock();
     if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
     if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
@@ -444,8 +445,8 @@ function steerMessage(sess, text) {
     sess.steerPending.push(item);
     // 发送动作立即消费当前输入，避免 HTTP 回执前重复按 Enter 提交相同文本；
     // 后续回执不得再无条件清空输入框，否则会擦掉用户新输入的草稿。
-    clearInput();
-    clearAttachmentPreview();
+    clearInput(sess);
+    clearAttachmentPreview(sess);
     if (typeof renderQueueDock === 'function') renderQueueDock();
 
     var body = new URLSearchParams();
@@ -989,6 +990,7 @@ window.updateStreamingPlaceholder = updateStreamingPlaceholder;
 function sendMessage() {
     var text = getInputText();
     var streamSess = activeSessionId && sessionMap[activeSessionId];
+    var draftFiles = getActiveDraftFiles();
 
     /* 无可用模型：拦截发送并引导配置 */
     if (typeof modelList !== 'undefined' && modelList && modelList.length === 0) {
@@ -1007,7 +1009,7 @@ function sendMessage() {
     if (streamSess && !streamSess.isStreaming
         && !streamSess.stopRequested && !streamSess._stoppedTurn
         && streamSess.messageQueue && streamSess.messageQueue.length) {
-        if (!text && pendingFiles.length === 0) {
+        if (!text && draftFiles.length === 0) {
             drainMessageQueue(streamSess);
             chatInput.focus();
             return;
@@ -1017,13 +1019,13 @@ function sendMessage() {
             return;
         }
         // 入队失败（如超限）时仍尝试 drain 已有队列，避免卡住
-        enqueueMessage(streamSess, text, pendingFiles.slice());
+        enqueueMessage(streamSess, text, draftFiles.slice());
         drainMessageQueue(streamSess);
         chatInput.focus();
         return;
     }
 
-    if (!text && pendingFiles.length === 0) return;
+    if (!text && draftFiles.length === 0) return;
 
     /* 活动会话 streaming：Enter=立即插话（steer）；附件降级排队（附件语义属“新任务”） */
     if (streamSess && streamSess.isStreaming) {
@@ -1036,9 +1038,9 @@ function sendMessage() {
             showToast(I18n.t('streaming.stopBeforeCommand'), 'error', 2000);
             return;
         }
-        if (pendingFiles.length > 0) {
+        if (draftFiles.length > 0) {
             showToast(I18n.t('streaming.steerAttachDemote'), 'info', 1800);
-            enqueueMessage(streamSess, text, pendingFiles.slice());
+            enqueueMessage(streamSess, text, draftFiles.slice());
             chatInput.focus();
             return;
         }
@@ -1050,8 +1052,8 @@ function sendMessage() {
 
     /* /clear 命令：先发送到服务端清后端数据，流结束后再清前端 UI */
     if (text === '/clear') {
-        clearInput();
-        clearAttachmentPreview();
+        clearInput(streamSess);
+        clearAttachmentPreview(streamSess);
         if (!inChatMode) switchToChatMode();
         setActiveSession(SESSION_ID);
         var clearSess = sessionMap[SESSION_ID];
@@ -1068,14 +1070,13 @@ function sendMessage() {
         return;
     }
 
-    var filesToSend = pendingFiles.slice(); // snapshot
+    var filesToSend = draftFiles.slice(); // snapshot
     var displayText = buildDisplayText(text, filesToSend);
 
-    clearInput();
-    clearAttachmentPreview();
-
     // 统一由 sendMessageCore 负责 setActiveSession / 开流，避免重复调度 drain
-    var sess = getOrCreateSession(SESSION_ID);
+    var sess = streamSess || getOrCreateSession(SESSION_ID);
+    clearInput(sess);
+    clearAttachmentPreview(sess);
     sendMessageCore(sess, text, filesToSend, { displayText: displayText });
 }
 

@@ -85,6 +85,11 @@ function SessionState(sessionId) {
     this.streamSegments = [];
     this.currentStreamSegment = null;
     this.streamSegmentSeq = 0;
+    // 未发送草稿只保存在当前页面内，并严格归属于本会话
+    this.draftText = '';
+    this.draftFiles = [];
+    this.draftGeneration = 0;
+    this.draftFileSeq = 0;
     // 运行中 follow-up 消息排队（FIFO）；会话目录 queue-tasks.json 可恢复文本项（冷恢复不自动发）
     this.messageQueue = [];
     // 输入区队列卡片的展开状态只属于当前会话，刷新后默认折叠
@@ -110,7 +115,6 @@ var btnMode = 'send'; // 'send' | 'stop' —— 与按钮视觉态严格同步�
 var inChatMode = false;
 var chatHistory = [];
 var currentChatIndex = -1;
-var pendingFiles = [];
 var MAX_ATTACHMENTS = 10;
 var MAX_QUEUED_MESSAGES = 10;
 var userScrolledUp = false;
@@ -131,14 +135,53 @@ function getOrCreateSession(sessionId) {
     return sessionMap[sessionId];
 }
 
+function getActiveSessionDraft() {
+    return activeSessionId && sessionMap[activeSessionId] ? sessionMap[activeSessionId] : null;
+}
+
+function getActiveDraftFiles() {
+    var sess = getActiveSessionDraft();
+    return sess && sess.draftFiles ? sess.draftFiles : [];
+}
+
+function syncActiveSessionDraft(inputEl) {
+    var sess = getActiveSessionDraft();
+    if (sess && inputEl) sess.draftText = inputEl.value || '';
+}
+
+function restoreSessionDraft(sess) {
+    if (!sess) return;
+    var text = sess.draftText || '';
+    newChatInput.value = text;
+    chatInput.value = text;
+    if (typeof autoResize === 'function') {
+        autoResize(newChatInput);
+        autoResize(chatInput);
+    }
+    if (typeof renderAttachments === 'function') renderAttachments();
+}
+
+function setSessionDraftFiles(sess, files) {
+    if (!sess) return;
+    // 替换整份附件草稿时，使此前尚未完成的 FileReader 回调失效
+    sess.draftGeneration++;
+    sess.draftFiles = (files || []).slice();
+    if (sess.sessionId === activeSessionId && typeof renderAttachments === 'function') {
+        renderAttachments();
+    }
+}
+
 function setActiveSession(sessionId) {
     if (activeSessionId && sessionMap[activeSessionId]) {
-        $(sessionMap[activeSessionId].container).hide();
+        var previous = sessionMap[activeSessionId];
+        syncActiveSessionDraft(inChatMode ? chatInput : newChatInput);
+        $(previous.container).hide();
     }
     var sess = getOrCreateSession(sessionId);
     $(sess.container).show();
     activeSessionId = sessionId;
     SESSION_ID = sessionId;
+    restoreSessionDraft(sess);
     isStreaming = sess.isStreaming;
     userScrolledUp = false;
     if (isStreaming) setBtnStopMode();
@@ -471,9 +514,15 @@ function getInputText() {
     if (inChatMode) return chatInput.value.trim();
     return newChatInput.value.trim();
 }
-function clearInput() {
-    if (inChatMode) { chatInput.value = ''; chatInput.style.height = 'auto'; }
-    else { newChatInput.value = ''; newChatInput.style.height = 'auto'; }
+function clearInput(sess) {
+    var target = sess || getActiveSessionDraft();
+    if (target) target.draftText = '';
+    if (!target || target.sessionId === activeSessionId) {
+        newChatInput.value = '';
+        newChatInput.style.height = 'auto';
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+    }
 }
 
 /* ===== Toast Notification ===== */

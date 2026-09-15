@@ -45,24 +45,25 @@ function getAttachmentsWrap() {
 }
 
 function renderAttachments() {
-    // Render both wraps to keep them in sync when switching views
+    // 两套输入视图展示同一个活动会话草稿，但不会与其它会话共享
     renderAttachmentsWrap(newChatAttachmentsWrap);
     renderAttachmentsWrap(chatAttachmentsWrap);
 }
 
 function renderAttachmentsWrap(wrap) {
+    var draftFiles = getActiveDraftFiles();
     wrap.html('');
-    if (pendingFiles.length === 0) {
+    if (draftFiles.length === 0) {
         wrap.removeClass('has-items');
         return;
     }
     wrap.addClass('has-items');
-    for (var i = 0; i < pendingFiles.length; i++) {
-        var item = pendingFiles[i];
+    for (var i = 0; i < draftFiles.length; i++) {
+        var item = draftFiles[i];
         var el = document.createElement('div');
         el.className = 'attachment-item';
         var typeTag = '<span class="attachment-type-tag ' + (item.attachmentsType || 'file') + '">' + (item.attachmentsType === 'image' ? I18n.t('attach.typeMultimodal') : I18n.t('attach.typeFile')) + '</span>';
-        if (item.type === 'image') {
+        if (item.type === 'image' && item.dataUrl) {
             $(el).html('<img src="' + item.dataUrl + '"/>'
                 + typeTag
                 + '<button class="attachment-item-remove" data-idx="' + i + '">&times;</button>');
@@ -78,46 +79,74 @@ function renderAttachmentsWrap(wrap) {
     }
 }
 
-function clearAttachmentPreview() {
-    pendingFiles = [];
-    renderAttachments();
+function clearAttachmentPreview(sess) {
+    var target = sess || getActiveSessionDraft();
+    if (!target) return;
+    // 发送、排队或 /clear 后，迟到的 FileReader 不得修改已消费附件
+    target.draftGeneration++;
+    target.draftFiles = [];
+    if (target.sessionId === activeSessionId) renderAttachments();
 }
 
 function removeAttachment(idx) {
-    pendingFiles.splice(idx, 1);
+    var draftFiles = getActiveDraftFiles();
+    draftFiles.splice(idx, 1);
     renderAttachments();
 }
 
-function processSelectedFile(file, attachmentsType) {
-    if (!file) return;
-    if (pendingFiles.length >= MAX_ATTACHMENTS) return;
+function draftAttachmentCount(sess) {
+    // 图片在 FileReader 开始前即加入草稿，既预占名额，也可立即随消息发送
+    return sess ? sess.draftFiles.length : 0;
+}
 
-    if (attachmentsType === 'image') {
-        // Image attachment: always treated as multimodal image
-        var reader = new FileReader();
-        reader.onload = function(evt) {
-            pendingFiles.push({ type: 'image', name: file.name, size: file.size, file: file, dataUrl: evt.target.result, attachmentsType: 'image' });
-            renderAttachments();
+function appendDraftFile(target, item) {
+    // 同 ID 会话删除后可能被推送重建，必须同时校验原 SessionState 对象身份
+    if (!target || sessionMap[target.sessionId] !== target || target.draftFiles.length >= MAX_ATTACHMENTS) return false;
+    target.draftFiles.push(item);
+    target.draftFiles.sort(function(a, b) { return (a._draftOrder || 0) - (b._draftOrder || 0); });
+    if (target.sessionId === activeSessionId) renderAttachments();
+    return true;
+}
+
+function finishDraftFileRead(target, generation, item, dataUrl) {
+    if (!target || sessionMap[target.sessionId] !== target || target.draftGeneration !== generation) return;
+    if (target.draftFiles.indexOf(item) < 0) return;
+    item.dataUrl = dataUrl;
+    if (target.sessionId === activeSessionId) renderAttachments();
+}
+
+function processSelectedFile(file, attachmentsType, targetSessionId) {
+    if (!file) return;
+    var sessionId = targetSessionId || activeSessionId || SESSION_ID;
+    var target = sessionMap[sessionId] || getOrCreateSession(sessionId);
+    if (draftAttachmentCount(target) >= MAX_ATTACHMENTS) return;
+    var order = ++target.draftFileSeq;
+
+    if (attachmentsType === 'image' || file.type.indexOf('image') !== -1) {
+        var generation = target.draftGeneration;
+        var item = {
+            type: 'image', name: file.name, size: file.size, file: file,
+            dataUrl: null, attachmentsType: attachmentsType === 'image' ? 'image' : 'file',
+            _draftOrder: order
         };
-        reader.readAsDataURL(file);
-    } else if (file.type.indexOf('image') !== -1) {
-        // File attachment + image file: show preview but mark as file type
+        // 先加入草稿再异步生成预览，避免用户立即发送时漏掉刚选择的图片
+        if (!appendDraftFile(target, item)) return;
         var reader = new FileReader();
         reader.onload = function(evt) {
-            pendingFiles.push({ type: 'image', name: file.name, size: file.size, file: file, dataUrl: evt.target.result, attachmentsType: 'file' });
-            renderAttachments();
+            finishDraftFileRead(target, generation, item, evt.target.result);
         };
         reader.readAsDataURL(file);
     } else {
-        pendingFiles.push({ type: 'file', name: file.name, size: file.size, file: file, attachmentsType: 'file' });
-        renderAttachments();
+        appendDraftFile(target, { type: 'file', name: file.name, size: file.size, file: file, attachmentsType: 'file', _draftOrder: order });
     }
 }
 
 function processSelectedFiles(fileList, attachmentsType) {
+    var sessionId = activeSessionId || SESSION_ID;
     for (var i = 0; i < fileList.length; i++) {
-        if (pendingFiles.length >= MAX_ATTACHMENTS) break;
-        processSelectedFile(fileList[i], attachmentsType);
+        var target = sessionMap[sessionId];
+        if (!target || draftAttachmentCount(target) >= MAX_ATTACHMENTS) break;
+        processSelectedFile(fileList[i], attachmentsType, sessionId);
     }
 }
 
@@ -153,14 +182,14 @@ $(chatInput).on('paste', handlePaste);
         var files = dt && dt.files;
         if (!files || files.length === 0) return;
 
-        if (pendingFiles.length >= MAX_ATTACHMENTS) {
+        if (draftAttachmentCount(getActiveSessionDraft()) >= MAX_ATTACHMENTS) {
             showToast((window.I18n ? window.I18n.t('toast.attachLimit', { max: MAX_ATTACHMENTS }) : ('\u9644\u4ef6\u6570\u91cf\u5df2\u8fbe\u4e0a\u9650\uff08' + MAX_ATTACHMENTS + '\u4e2a\uff09')), 'error');
             return;
         }
 
         // Separate files into images and non-images for proper processing
         for (var i = 0; i < files.length; i++) {
-            if (pendingFiles.length >= MAX_ATTACHMENTS) {
+            if (draftAttachmentCount(getActiveSessionDraft()) >= MAX_ATTACHMENTS) {
             showToast((window.I18n ? window.I18n.t('toast.attachLimitPartial', { max: MAX_ATTACHMENTS }) : ('\u90e8\u5206\u6587\u4ef6\u672a\u6dfb\u52a0\uff0c\u9644\u4ef6\u6570\u91cf\u5df2\u8fbe\u4e0a\u9650\uff08' + MAX_ATTACHMENTS + '\u4e2a\uff09')), 'error');
                 break;
             }
@@ -1057,7 +1086,9 @@ try {
 /* ===== View Switch ===== */
 function switchToChatMode() {
     if (inChatMode) return;
+    syncActiveSessionDraft(newChatInput);
     inChatMode = true;
+    restoreSessionDraft(getActiveSessionDraft());
     $(newChatView).hide();
     $(chatView).addClass('active');
     chatInput.focus();
@@ -1079,10 +1110,11 @@ function switchToChatMode() {
     }
 }
 function switchToWelcomeMode() {
-    inChatMode = false;
     if (typeof forgetActiveSession === 'function') forgetActiveSession();
-    SESSION_ID = 'web-' + Date.now().toString(36);
-    setActiveSession(SESSION_ID);
+    var newSessionId = 'web-' + Date.now().toString(36);
+    // 在视图模式改变前切会话，确保旧聊天输入被保存到旧会话
+    setActiveSession(newSessionId);
+    inChatMode = false;
     $(newChatView).show();
     $(chatView).removeClass('active');
     newChatInput.focus();
@@ -1094,9 +1126,9 @@ function switchToWelcomeMode() {
     if (typeof window._renderGreeting === 'function') window._renderGreeting();
 }
 
-/* ===== Auto-resize ===== */
-$(newChatInput).on('input', function() { autoResize(this); });
-$(chatInput).on('input', function() { autoResize(this); });
+/* ===== Auto-resize + per-session draft sync ===== */
+$(newChatInput).on('input', function() { syncActiveSessionDraft(this); autoResize(this); });
+$(chatInput).on('input', function() { syncActiveSessionDraft(this); autoResize(this); });
 
 /* ===== Voice Input (Web Speech API) - 按住说话（类似微信） ===== */
 var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

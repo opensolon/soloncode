@@ -435,10 +435,10 @@ function selectSession(idx) {
     if (!entry) return;
 
     currentChatIndex = idx;
-    SESSION_ID = entry.sessionId;
     rememberActiveSession(entry.sessionId);
-    if (!inChatMode) switchToChatMode();
+    // 先切会话再切视图，避免欢迎页草稿因输入源变化而保存到错误会话
     setActiveSession(entry.sessionId);
+    if (!inChatMode) switchToChatMode();
     updateHistoryUI();
 
     var sess = sessionMap[entry.sessionId];
@@ -1000,7 +1000,7 @@ $(chatInput).on('keydown', function(e) {
     if (e.key === 'Escape') {
         var escSess = activeSessionId && sessionMap[activeSessionId];
         if (escSess && escSess.messageQueue && escSess.messageQueue.length
-            && !chatInput.value.trim() && pendingFiles.length === 0) {
+            && !chatInput.value.trim() && getActiveDraftFiles().length === 0) {
             e.preventDefault();
             if (typeof cancelLastQueuedToInput === 'function') cancelLastQueuedToInput(escSess);
             return;
@@ -1018,8 +1018,9 @@ $(chatInput).on('keydown', function(e) {
         var tabSess = activeSessionId && sessionMap[activeSessionId];
         if (tabSess && tabSess.isStreaming && !tabSess.stopRequested) {
             e.preventDefault();
-            if (chatInput.value.trim() || pendingFiles.length) {
-                enqueueMessage(tabSess, getInputText(), pendingFiles.slice());
+            var draftFiles = getActiveDraftFiles();
+            if (chatInput.value.trim() || draftFiles.length) {
+                enqueueMessage(tabSess, getInputText(), draftFiles.slice());
                 chatInput.focus();
             }
             return;
