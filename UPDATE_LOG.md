@@ -2,6 +2,7 @@
 
 ### v2026.9.15
 
+* 添加 soloncode web 输入草案隔离
 * 优化 soloncode web 浏览本地目录界面 for window
 * 细节优化
 
