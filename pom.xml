@@ -10,15 +10,11 @@
     <version>dev</version>
     <packaging>pom</packaging>
 
-    <properties>
-        <java.version>1.8</java.version>
-    </properties>
-
     <modules>
         <module>soloncode-parent</module>
         <module>soloncode-ui-extension</module>
         <module>soloncode-cli</module>
-<!--        <module>soloncode-sdk-java</module>-->
+        <module>soloncode-sdk-java</module>
 
         <module>examples/extension_demo</module>
         <module>examples/ui_extension_demo</module>

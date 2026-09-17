@@ -6,6 +6,9 @@ import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.config.models.ModelApiUrl;
 import org.noear.solon.codecli.config.models.ModelInfo;
 import org.noear.solon.codecli.config.models.ModelsAdapter;
+import org.noear.solon.codecli.config.models.ModelsFetchException;
+import org.noear.solon.codecli.config.models.ModelsFetchReason;
+import org.noear.solon.codecli.config.models.ModelsHttp;
 import org.noear.solon.net.http.HttpUtils;
 
 import java.util.ArrayList;
@@ -44,13 +47,13 @@ public class OpenAIModelsAdapter implements ModelsAdapter {
     @Override
     public List<ModelInfo> fetchModels(String userAgent, String baseUrl, Map<String, String> headers, String apiKey) {
         final String modelsUrl = buildModelsUrl(baseUrl);
+        // 地址非法时立即失败，不必白等一轮连接超时
+        ModelsHttp.requireHttpUrl(modelsUrl, "OpenAI");
 
         List<ModelInfo> result = new ArrayList<>();
 
         try {
-            HttpUtils http = HttpUtils.http(modelsUrl)
-                    .userAgent(userAgent)
-                    .timeout(15);
+            HttpUtils http = ModelsHttp.create(modelsUrl, userAgent);
             ProxyConfig.applyIfNeeded(http);
 
             if (headers != null) {
@@ -61,17 +64,25 @@ public class OpenAIModelsAdapter implements ModelsAdapter {
                 http.header("Authorization", "Bearer " + apiKey);
             }
 
-            String body = http.get();
+            String body = ModelsHttp.getBody(http, "OpenAI");
 
-            ONode root = ONode.ofJson(body);
+            ONode root = ModelsHttp.parseJson(body, "OpenAI");
             ONode data = root.get("data");
             if (data.isArray()) {
                 for (ONode item : data.getArray()) {
                     result.add(item.toBean(ModelInfo.class));
                 }
+            } else {
+                // 状态码正常但结构不是模型列表，多为地址或协议选错
+                throw new ModelsFetchException("OpenAI model list response has no data array",
+                        ModelsFetchReason.INVALID_RESPONSE, 200, null);
             }
+        } catch (ModelsFetchException e) {
+            log.warn("[OpenAI] Failed to fetch model list: reason={}, status={}", e.getReason(), e.getStatus());
+            throw e;
         } catch (Exception e) {
-            log.warn("[OpenAI] Error fetching models from {}: {}", modelsUrl, e.getMessage(), e);
+            log.warn("[OpenAI] Failed to fetch model list");
+            throw new ModelsFetchException("OpenAI model list request failed", ModelsFetchReason.UNKNOWN, e);
         }
 
         return result;

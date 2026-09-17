@@ -22,6 +22,7 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
+import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,13 +64,21 @@ public class SessionRewindService {
      * 回退结果。
      */
     public static class RewindResult {
-        /** 锚点未命中：调用方应拒绝本次回退（不要退化成按条数删） */
+        /**
+         * 锚点未命中：调用方应拒绝本次回退（不要退化成按条数删）
+         */
         private boolean anchorMissing;
-        /** 实际删除的消息条数 */
+        /**
+         * 实际删除的消息条数
+         */
         private int removed;
-        /** 实际切点（链式回溯后可能小于请求锚点），前端据此对齐界面删除 */
+        /**
+         * 实际切点（链式回溯后可能小于请求锚点），前端据此对齐界面删除
+         */
         private int effectiveAnchor;
-        /** 降级：未提供 runId（老数据），按调用方给的条数删 */
+        /**
+         * 降级：未提供 runId（老数据），按调用方给的条数删
+         */
         private boolean degraded;
 
         public boolean isAnchorMissing() {
@@ -93,12 +102,11 @@ public class SessionRewindService {
      * 回退会话消息。
      *
      * @param session       目标会话（须是运行时正在用的那个实例，否则缓存不同步）
-     * @param traceKey      主代理轨迹在会话上下文中的键；为空时不清理轨迹
      * @param anchorRunId   锚点运行 ID；为空则退化为按 fallbackCount 删除
      * @param anchorRole    锚点角色（{@code assistant} / {@code user}）；为空则不限角色
      * @param fallbackCount 降级条数（仅当 anchorRunId 为空时生效）
      */
-    public RewindResult rewind(AgentSession session, String traceKey,
+    public RewindResult rewind(AgentSession session,
                                String anchorRunId, String anchorRole, int fallbackCount) {
         Assert.notNull(session, "session is required");
 
@@ -147,11 +155,9 @@ public class SessionRewindService {
         session.removeLatestMessage(iterations);
 
         // 3. 被删范围覆盖到的轨迹一并清掉，否则刷新后「最后一轮执行过程」会把已删的思考与工具卡长回来
-        if (Assert.isNotEmpty(traceKey)) {
-            clearTraceIfCovered(session, traceKey,
-                    collectRunIds(origin, 0, result.effectiveAnchor),
-                    collectRunIds(origin, result.effectiveAnchor, size));
-        }
+        clearTraceIfCovered(session,
+                collectRunIds(origin, 0, result.effectiveAnchor),
+                collectRunIds(origin, result.effectiveAnchor, size));
 
         session.updateSnapshot();
         return result;
@@ -252,27 +258,27 @@ public class SessionRewindService {
      *
      * <p>只动 traceKey 一项，不碰上下文里其它数据（HITL 决策、循环任务状态）。</p>
      */
-    private void clearTraceIfCovered(AgentSession session, String traceKey,
-                                     Set<String> keptRunIds, Set<String> removedRunIds) {
+    private void clearTraceIfCovered(AgentSession session, Set<String> keptRunIds, Set<String> removedRunIds) {
         try {
-            if (session.getContext() == null) {
+            if (session == null || session.getContext() == null) {
                 return;
             }
-            Object obj = session.getContext().get(traceKey);
-            if (obj == null) {
+
+            ReActTrace trace = TraceUtil.getCurrentTrace(session);
+            if (trace == null) {
                 return;
             }
+
             // 快照反序列化后类型可能退化：认不出就清掉（它已无法回放，留着只会残留）
-            if (obj instanceof ReActTrace) {
-                String traceRunId = ((ReActTrace) obj).getRunId();
-                if (traceRunId != null
-                        && keptRunIds.contains(traceRunId)
-                        && !removedRunIds.contains(traceRunId)) {
-                    // 属于未被删除的那一轮：留着它，回放仍然有效
-                    return;
-                }
+            String traceRunId = trace.getRunId();
+            if (traceRunId != null
+                    && keptRunIds.contains(traceRunId)
+                    && !removedRunIds.contains(traceRunId)) {
+                // 属于未被删除的那一轮：留着它，回放仍然有效
+                return;
             }
-            session.getContext().remove(traceKey);
+
+            TraceUtil.removeCurrentTrace(session);
         } catch (Throwable e) {
             // 清理失败只影响回放残留，不能让回退主流程失败
             LOG.debug("[SessionRewind] clear trace failed: {}", e.getMessage());

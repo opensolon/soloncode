@@ -8,8 +8,8 @@ var OK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 /* 重新运行（循环箭头）与继续运行（快进）图标 */
 var RERUN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
 var CONTINUE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>';
-/* 删除图标 */
-var DELETE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+/* 删除图标：全局统一常量（app-base.js），此处仅保留旧名兼容 */
+var DELETE_SVG = SVG_TRASH;
 
 /* 更新用户消息的「重做/继续」按钮：重做仅最后一条用户消息显示；
    继续运行仅在最后一条用户消息同时是整个消息列表末尾（其后无 AI 回复）、
@@ -39,8 +39,15 @@ function updateUserRerunButtons(container) {
 }
 
 /* ===== Message Rendering (Session-Aware) ===== */
-/* 后端 WebEvent.toSourceLabel("steer") 的固定返回值，用作历史加载路径的插话识别键 */
-var STEER_SOURCE_LABEL = '插话';
+/* 来源徽标一律原样展示服务端下发的 sourceLabel（WebEvent.toSourceLabel 直通 source，仅空值归一为 "Web"），
+ * 前端不做任何映射或 i18n 转换：文案归服务端一处决定，换语言不影响渠道名。
+ * STEER_SOURCE 仅用于识别（判断该行是不是插话），比较前统一转小写，
+ * 从而一次覆盖「历史走 sourceLabel」与「实时兜底走 source」两条路。 */
+var STEER_SOURCE = 'steer';
+/* 纯前端产生的插话（appendSteerNote / 无 AI 气泡时的回落行）没有服务端标签，用此兜底 */
+var STEER_SOURCE_LABEL = 'Steer';
+/* Web 端直接输入不展示来源徽标（对应后端 WebEvent.SOURCE_LABEL_WEB） */
+var WEB_SOURCE = 'web';
 
 /* isSteer 为真表示这是运行中插话（steer）：仅用于打 data-steer 标记（隐藏重发/继续按钮）。
  * 插话标识本身走 sourceLabel 通道渲染。
@@ -50,10 +57,13 @@ var STEER_SOURCE_LABEL = '插话';
  *      且仍需计入 calcServerCount（它有对应的服务端记录），否则 rewind 会少删导致尾部残留；
  *   b) 实时路径下 appendSteerNote 返回 false（无 AI 气泡可挂）时的上屏兼底。 */
 function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt, sourceLabel, agentName, isSteer) {
-    // 插话归一：历史加载走后端 sourceLabel（WebEvent.toSourceLabel 硬编码中文），实时推送走 isSteer；
-    // 两路在此汇聚为同一种表达（本地化文案 + 相同样式 + 相同 data-steer 行为）
-    if (sourceLabel === STEER_SOURCE_LABEL) isSteer = true;
-    if (isSteer) sourceLabel = (window.I18n ? I18n.t('streaming.steerTag') : STEER_SOURCE_LABEL);
+    // 来源键：历史加载传后端 sourceLabel（"WeChat"/"steer"…），实时推送传 sourceLabel 或原始 source。
+    // 仅用于判定（是否插话、是否 Web 自家输入），展示始终用未加工的 sourceLabel
+    var sourceKey = sourceLabel ? String(sourceLabel).toLowerCase() : '';
+    // 插话归一：两路（sourceKey 命中 / 实时的 isSteer）在此汇聚为同一种 data-steer 行为与样式
+    if (sourceKey === STEER_SOURCE) isSteer = true;
+    // 服务端给了标签就照原样显示；仅前端自造的插话行（无标签可用）才回落到常量
+    if (isSteer && !sourceLabel) sourceLabel = STEER_SOURCE_LABEL;
     var row = $('<div>').addClass('msg-row user' + (isSteer ? ' steer' : ''))[0];
     row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
     row.setAttribute('data-session-id', sess.sessionId);
@@ -213,8 +223,8 @@ function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt
     // 时间戳（实时发送不传 createdAt 时兜底为当前时间，与历史加载行为一致）
     var msgTime = createdAt || Date.now();
     var timeEl = $('<div>').addClass('msg-time')[0];
-    // 来源标签放在时间左侧，同样浅色
-    if (sourceLabel && sourceLabel !== 'Web') {
+    // 来源标签放在时间左侧，同样浅色；Web 端自家输入不标注（大小写不敏感，兼容原始 source 直传）
+    if (sourceLabel && sourceKey !== WEB_SOURCE) {
         var srcSpan = $('<span>').addClass('msg-source-label').text(sourceLabel)[0];
         $(timeEl).append(srcSpan);
     }
@@ -582,21 +592,60 @@ function applyTaskDoneChunk(sess, chunk) {
     }
 }
 
+/** L1 标题簇文案：有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。 */
+function buildTaskGroupTitleParts(segment) {
+    var titleText = segment.taskDescription || segment.agentName || I18n.t('msg.subTask');
+    var hasBoth = !!(segment.taskDescription && segment.agentName);
+    return {
+        titleText: titleText,
+        agentHtml: hasBoth ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>' : '',
+        // hover：双字段时补全身份（badge 可能被窄屏裁进 max-width）
+        titleAttr: hasBoth
+            ? titleText + I18n.t('msg.parenLeft') + segment.agentName + I18n.t('msg.parenRight')
+            : titleText
+    };
+}
+
+/**
+ * 描述迟到时重绘 L1 标题：建组时可能只有 agentName（首个事件未带 taskDescription），
+ * 若不重绘，后续拿到的描述只能停在内存字段上，界面永远显示代理名。
+ */
+function updateTaskGroupTitle(segment) {
+    if (!segment || !segment.groupEl) return;
+    var parts = buildTaskGroupTitleParts(segment);
+    var $g = $(segment.groupEl);
+
+    var textEl = $g.find('.task-group-title-text')[0];
+    if (textEl) $(textEl).text(parts.titleText);
+
+    var titleEl = $g.find('.task-group-title')[0];
+    if (titleEl) {
+        titleEl.setAttribute('title', parts.titleAttr);
+        var badge = $(titleEl).children('.agent-badge')[0];
+        if (parts.agentHtml) {
+            if (badge) $(badge).text(segment.agentName);
+            else $(titleEl).append(parts.agentHtml);
+        } else if (badge) {
+            $(badge).remove();
+        }
+    }
+
+    var header = $g.find('.task-group-header')[0];
+    if (header) {
+        header.setAttribute('aria-label', buildTaskGroupAriaLabel(segment, $g.hasClass('expanded')));
+    }
+}
+
 function createTaskGroupElement(sess, segment) {
     var group = $('<div>').addClass('task-group is-running')[0];
     group.setAttribute('data-task-id', segment.taskId);
     group.setAttribute('data-stream-segment-id', segment.id);
     if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
     // L1：状态图标(22px) + title(文本+可选 agent-badge 贴字) + stats + toggle(右)；L2：最近 tool 动作。
-    // 有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。
-    var titleText = segment.taskDescription || segment.agentName || I18n.t('msg.subTask');
-    var agentHtml = (segment.taskDescription && segment.agentName)
-        ? '<span class="agent-badge">' + escapeHtml(segment.agentName) + '</span>'
-        : '';
-    // hover：双字段时补全身份（badge 可能被窄屏裁进 max-width）
-    var titleAttr = (segment.taskDescription && segment.agentName)
-        ? titleText + I18n.t('msg.parenLeft') + segment.agentName + I18n.t('msg.parenRight')
-        : titleText;
+    var titleParts = buildTaskGroupTitleParts(segment);
+    var titleText = titleParts.titleText;
+    var agentHtml = titleParts.agentHtml;
+    var titleAttr = titleParts.titleAttr;
     var header = $('<div>').addClass('task-group-header')[0];
     // task-group 本级一律默认收起（单/多任务相同），展开由用户手动触发
     var bodyId = 'task-body-' + segment.id;
@@ -678,9 +727,17 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
     if (taskId) {
         var taskSegment = sess.taskSegments[taskId];
         if (taskSegment) {
-            // 标题首次确定后不再变更（后续 description 仅补内存字段，不刷新 DOM）
-            if (!taskSegment.taskDescription && taskDescription) taskSegment.taskDescription = taskDescription;
-            if (!taskSegment.agentName && agentName) taskSegment.agentName = agentName;
+            // 描述/代理名可能晚于建组到达（首个事件未带），补上后同步重绘 L1 标题
+            var titleChanged = false;
+            if (!taskSegment.taskDescription && taskDescription) {
+                taskSegment.taskDescription = taskDescription;
+                titleChanged = true;
+            }
+            if (!taskSegment.agentName && agentName) {
+                taskSegment.agentName = agentName;
+                titleChanged = true;
+            }
+            if (titleChanged) updateTaskGroupTitle(taskSegment);
             sess.currentStreamSegment = taskSegment;
             return taskSegment;
         }
@@ -719,6 +776,8 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
             sess.taskSegments[taskId] = taskSegment;
             sess.streamSegments.push(taskSegment);
             sess.currentStreamSegment = taskSegment;
+            // 旧 DOM 的标题可能建于描述到达之前，重建索引后按最新字段刷一次
+            if (taskSegment.taskDescription || taskSegment.agentName) updateTaskGroupTitle(taskSegment);
             return taskSegment;
         }
         var now = Date.now();
@@ -852,7 +911,8 @@ function appendSteerNote(sess, text) {
     var el = $('<div>').addClass('steer-note')[0];
     el.setAttribute('data-steer', '1');
     if (sess.currentRunId) el.setAttribute('data-run-id', sess.currentRunId);
-    var label = (window.I18n ? I18n.t('streaming.steerTag') : STEER_SOURCE_LABEL);
+    // 运行中插话是纯前端渲染（后端不写 ndjson、也无 sourceLabel 下发），使用流式消息专用 i18n 文案
+    var label = I18n.t('streaming.steerLabel');
     el.innerHTML = '<span class="steer-note-badge">' + escapeHtml(label) + '</span>'
         + '<span class="steer-note-text">' + escapeHtml(text) + '</span>';
 
@@ -1206,24 +1266,82 @@ function renderFileListing(bodyEl, text, args) {
 window._toolRenderers.glob = renderFileListing;
 window._toolRenderers.ls = renderFileListing;
 
-/* bash：紧凑终端风格输出块，保留换行但不增加命令/输出分隔线 */
-window._toolRenderers.bash = function(bodyEl, text, args) {
-    bodyEl.classList.add('tool-body-terminal');
-    var cmd = (args && args.command) ? args.command : '';
+/* ===== bash 系列工具（bash / bash_start / bash_wait / bash_stdin / bash_stop）=====
+   全部按同一套终端风格展示入参：头部摘要、tool.start 执行中占位、tool.end 结果体三处共用
+   formatBashInvoke 的解析结果，保证同一次调用在各阶段呈现一致。 */
+function isBashTool(toolName) {
+    var name = String(toolName || '').toLowerCase();
+    return name === 'bash' || name.indexOf('bash_') === 0;
+}
+
+function formatBashMillis(v) {
+    if (v == null || v === '' || !(Number(v) > 0)) return '';
+    var n = Number(v);
+    return n >= 60000 ? (n / 60000) + 'm' : (n / 1000) + 's';
+}
+
+/* 解析 bash 系列入参为 { text, notes[] }：text 为主命令行内容（保留换行），
+   notes 为附注（超时 / 会话 / 工作目录等）。无可展示入参时返回 null，交调用方兜底。 */
+function formatBashInvoke(toolName, args) {
+    if (!args || typeof args !== 'object') return null;
+    var name = String(toolName || '').toLowerCase();
+    var notes = [];
+    function pushNote(label, v) { if (v != null && v !== '') notes.push(label + ' ' + v); }
+    var text = '';
+    if (name === 'bash' || name === 'bash_start') {
+        if (!args.command) return null;
+        text = String(args.command);
+        pushNote('cwd', args.workdir);
+        pushNote('timeout', formatBashMillis(args.timeout));
+        pushNote('yield', formatBashMillis(args.yield_time_ms));
+        pushNote('hard timeout', formatBashMillis(args.hard_timeout_ms));
+    } else if (name === 'bash_stdin') {
+        text = 'stdin' + (args.chars != null && args.chars !== '' ? ' ' + String(args.chars) : '');
+        pushNote('session', args.session_id);
+        pushNote('yield', formatBashMillis(args.yield_time_ms));
+    } else if (name === 'bash_wait') {
+        text = 'wait' + (args.session_id ? ' ' + args.session_id : '');
+        pushNote('yield', formatBashMillis(args.yield_time_ms));
+    } else if (name === 'bash_stop') {
+        text = 'stop' + (args.session_id ? ' ' + args.session_id : '');
+        pushNote('reason', args.reason);
+    } else if (name.indexOf('bash_') === 0) {
+        // 未知的 bash_ 系列工具：优先 command，否则退化为通用参数串
+        text = args.command ? String(args.command) : formatToolArgsStr(args);
+        pushNote('session', args.session_id);
+    } else {
+        return null;
+    }
+    if (!text) return null;
+    return { text: text, notes: notes };
+}
+
+/* 紧凑终端风格输出块：命令行 + 附注 + 输出，保留换行但不增加命令/输出分隔线 */
+function buildBashOutputHtml(toolName, args, outputText) {
+    var invoke = formatBashInvoke(toolName, args);
     var html = '<div class="bash-output">';
-    if (cmd) {
-        html += '<div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(cmd);
-        if (args.timeout != null && args.timeout !== '' && Number(args.timeout) > 0) {
-            var t = Number(args.timeout);
-            html += ' <span class="bash-timeout"># timeout ' + (t >= 60000 ? (t / 60000) + 'm' : (t / 1000) + 's') + '</span>';
+    if (invoke) {
+        html += '<div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(invoke.text);
+        if (invoke.notes.length) {
+            html += ' <span class="bash-timeout"># ' + escapeHtml(invoke.notes.join(' · ')) + '</span>';
         }
         html += '</div>';
     }
-    html += '<pre class="bash-stdout">' + escapeHtml(text || '(' + I18n.t('msg.noOutput') + ')') + '</pre>';
+    html += '<pre class="bash-stdout">' + escapeHtml(outputText) + '</pre>';
     html += '</div>';
-    bodyEl.innerHTML = html;
-    return true;
-};
+    return html;
+}
+
+function makeBashToolRenderer(toolName) {
+    return function(bodyEl, text, args) {
+        bodyEl.classList.add('tool-body-terminal');
+        bodyEl.innerHTML = buildBashOutputHtml(toolName, args, text || '(' + I18n.t('msg.noOutput') + ')');
+        return true;
+    };
+}
+['bash', 'bash_start', 'bash_wait', 'bash_stdin', 'bash_stop'].forEach(function(bashToolName) {
+    window._toolRenderers[bashToolName] = makeBashToolRenderer(bashToolName);
+});
 
 /* todowrite / todoread：内容为 markdown 任务清单，按 markdown 语法高亮展示原文（不做 HTML 渲染，保留 #、-、[ ] 等原始符号）。
    todowrite 优先取入参 todos（提交的清单原文），todoread 取返回值 text。 */
@@ -1245,6 +1363,8 @@ window._toolRenderers.todoread = renderTodoMarkdown;
 /* 分发：命中专用 renderer 且渲染成功返回 true，否则交由调用方做纯文本兜底 */
 function renderToolBody(bodyEl, toolName, text, args) {
     var renderer = window._toolRenderers[toolName];
+    // 未登记的 bash_ 系列工具（后续新增的）同样按终端风格渲染
+    if (typeof renderer !== 'function' && isBashTool(toolName)) renderer = makeBashToolRenderer(toolName);
     if (typeof renderer === 'function') {
         try {
             if (renderer(bodyEl, text, args)) return true;
@@ -1385,14 +1505,13 @@ function formatToolArgsStr(args) {
 function formatToolSummary(toolName, args) {
     if (!args || typeof args !== 'object') return '';
     var name = String(toolName || '').toLowerCase();
-    if (name === 'bash' && args.command) {
-        var bashSummary = String(args.command).replace(/\n/g, ' ');
-        if (args.timeout != null && args.timeout !== '' && Number(args.timeout) > 0) {
-            var t = Number(args.timeout);
-            var ts = t >= 60000 ? (t / 60000) + 'm' : (t / 1000) + 's';
-            bashSummary += ' · timeout ' + ts;
+    if (isBashTool(name)) {
+        var bashInvoke = formatBashInvoke(name, args);
+        if (bashInvoke) {
+            var bashSummary = bashInvoke.text.replace(/\n/g, ' ');
+            if (bashInvoke.notes.length) bashSummary += ' · ' + bashInvoke.notes.join(' · ');
+            return bashSummary;
         }
-        return bashSummary;
     }
     if ((name === 'read' || name === 'write' || name === 'edit') && args.file_path) {
         var fileSummary = String(args.file_path);
@@ -1419,7 +1538,7 @@ function formatToolSummary(toolName, args) {
 
 function getToolKind(toolName) {
     var name = String(toolName || '').toLowerCase();
-    if (name === 'bash') return 'terminal';
+    if (isBashTool(name)) return 'terminal';
     if (name === 'edit') return 'diff';
     if (name === 'read' || name === 'write') return 'code';
     if (name === 'grep') return 'search';
@@ -1528,22 +1647,18 @@ function fillToolCardBody(card, toolName, text, args, lsp) {
     }
 }
 
-/* bash 在 tool.start 时即把命令渲染进 body（终端样式 + 执行中占位），不必等 tool.end 才看到。
+/* bash 系列工具（bash / bash_start / bash_wait / bash_stdin / bash_stop）在 tool.start 时
+   即把入参渲染进 body（终端样式 + 执行中占位），不必等 tool.end 才看到。
    不改动展开态：卡片展开与否仍由「工具调用显示简化」配置在 createToolCard 中决定，
    简化模式下折叠 body 不可见（命令仍在头部 tool-args 摘要中），展开后立即可见。
    tool.end 时 fillToolCardBody 会把 body 重渲染为命令 + 实际输出。 */
 function renderBashRunningBody(card, toolName, args) {
-    if (toolName !== 'bash' || !args || !args.command) return;
+    if (!isBashTool(toolName)) return;
+    if (!formatBashInvoke(toolName, args)) return;
     var body = $(card).find('.tool-card-body')[0];
     if (!body) return;
     body.className = 'tool-card-body tool-body-terminal';
-    body.innerHTML = '<div class="bash-output"><div class="bash-cmd"><span class="bash-prompt">$</span> '
-        + escapeHtml(args.command)
-        + (args.timeout != null && args.timeout !== '' && Number(args.timeout) > 0
-            ? ' <span class="bash-timeout"># timeout '
-              + (Number(args.timeout) >= 60000 ? (Number(args.timeout) / 60000) + 'm' : (Number(args.timeout) / 1000) + 's')
-              + '</span>' : '')
-        + '</div><pre class="bash-stdout">(' + I18n.t('msg.executing') + ')</pre></div>';
+    body.innerHTML = buildBashOutputHtml(toolName, args, '(' + I18n.t('msg.executing') + ')');
 }
 
 function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reasonId, agentName, callId) {
@@ -2078,3 +2193,127 @@ function openLightbox(src) {
     });
     $(document.body).append(overlay);
 }
+
+/* ===== 消息区选中文本右键菜单：复制 / 在对话中引用 =====
+ * 仅当右键点击落在 .msg-area 内且有选中文本时拦截默认菜单；
+ * 未选中或点在输入框/代码块时不拦截，交回浏览器原生菜单。
+ * 「在对话中引用」把选中内容以 markdown 引用块插入当前输入框（跟随 inChatMode），
+ * 多行逐行加 > 前缀，发送后可被 AI 正确还原为上下文。 */
+var selectionMenuEl = null;
+var selectionMenuRange = null;
+
+function getSelectionMenuTarget() {
+    var input = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : newChatInput;
+    if (!input) input = document.getElementById('chatInput') || document.getElementById('newChatInput');
+    return input;
+}
+
+function buildQuoteBlock(text) {
+    var lines = String(text).replace(/\r\n/g, '\n').split('\n');
+    var quoted = [];
+    for (var i = 0; i < lines.length; i++) {
+        quoted.push('> ' + lines[i]);
+    }
+    return quoted.join('\n');
+}
+
+function insertQuoteToInput(text) {
+    var input = getSelectionMenuTarget();
+    if (!input) return;
+    var quote = buildQuoteBlock(text);
+    var currentVal = input.value || '';
+    var cursorPos = input.selectionStart != null ? input.selectionStart : currentVal.length;
+    var before = currentVal.substring(0, cursorPos);
+    var after = currentVal.substring(cursorPos);
+    var sep = '';
+    if (before.length > 0 && !before.endsWith('\n')) sep = '\n\n';
+    var insert = sep + quote + '\n\n';
+    input.value = before + insert + after;
+    input.focus();
+    var newPos = (before + insert).length;
+    input.setSelectionRange(newPos, newPos);
+    if (typeof autoResize === 'function') autoResize(input);
+}
+
+function closeSelectionMenu() {
+    if (selectionMenuEl) {
+        $(selectionMenuEl).remove();
+        selectionMenuEl = null;
+    }
+    selectionMenuRange = null;
+}
+
+function showSelectionMenu(x, y, selectedText) {
+    closeSelectionMenu();
+    var menu = $('<div>').addClass('selection-menu')[0];
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = ''
+        + '<button type="button" class="selection-menu-item" data-act="copy">'
+        + '<svg class="more-menu-icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
+        + '<span data-i18n="common.copy">复制</span></button>'
+        + '<button type="button" class="selection-menu-item" data-act="quote">'
+        + '<svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+        + '<span data-i18n="msg.addToChat">加入对话</span></button>';
+    if (window.I18n) window.I18n.apply(menu);
+    $(document.body).append(menu);
+    selectionMenuEl = menu;
+    selectionMenuRange = selectedText;
+
+    // 边界翻转：右/下溢出时反向展开，避免被视口裁切
+    var $menu = $(menu);
+    var mw = $menu.outerWidth();
+    var mh = $menu.outerHeight();
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var left = x + 2, top = y + 2;
+    if (left + mw > vw - 8) left = Math.max(8, x - mw - 2);
+    if (top + mh > vh - 8) top = Math.max(8, y - mh - 2);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    $menu.on('mousedown', function(e) { e.preventDefault(); });
+    $menu.find('.selection-menu-item').on('click', function() {
+        var act = this.getAttribute('data-act');
+        var text = selectionMenuRange;
+        closeSelectionMenu();
+        if (act === 'copy') {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    showToast(I18n.t('msg.copied'), 'success');
+                }, function() {
+                    showToast(I18n.t('msg.copyFailed'), 'error');
+                });
+            }
+        } else if (act === 'quote') {
+            insertQuoteToInput(text);
+        }
+    });
+}
+
+(function initSelectionContextMenu() {
+    var msgArea = document.getElementById('msgArea') || document.querySelector('.msg-area');
+    if (!msgArea) return;
+    $(msgArea).on('contextmenu', function(e) {
+        // 输入框、代码块内的右键交回原生菜单（代码区有复制按钮，且原生菜单更符合直觉）
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || $(e.target).closest('pre, code, .code-block').length > 0)) return;
+        var sel = window.getSelection ? window.getSelection() : null;
+        var text = sel ? String(sel.toString()) : '';
+        if (!text || !text.trim()) return; // 未选中文字：保持原生菜单
+        var range = sel.getRangeAt ? sel.getRangeAt(0) : null;
+        // 选区必须落在消息区内，才弹自定义菜单
+        if (range && msgArea.contains(range.commonAncestorContainer)) {
+            e.preventDefault();
+            showSelectionMenu(e.clientX, e.clientY, text);
+        }
+    });
+    $(document).on('mousedown', function(e) {
+        if (!selectionMenuEl) return;
+        if (e.target === selectionMenuEl || $(e.target).closest(selectionMenuEl).length > 0) return;
+        closeSelectionMenu();
+    });
+    $(document).on('keydown', function(e) {
+        if (!selectionMenuEl) return;
+        if (e.key === 'Escape') closeSelectionMenu();
+    });
+    $(window).on('resize scroll blur', closeSelectionMenu);
+})();

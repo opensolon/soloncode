@@ -68,6 +68,26 @@
 }
 .ws-home-omni-go:hover { filter: brightness(1.05); }
 .ws-home-omni-go:disabled { opacity: 0.5; cursor: default; }
+/* 目录选择按钮（后端弹原生对话框） */
+.ws-home-omni-pick {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+}
+.ws-home-omni-pick:hover { border-color: var(--accent); color: var(--accent); }
+.ws-home-omni-pick:disabled { opacity: 0.45; cursor: default; }
+/* 等待选择结果时图标旋转（打开的文件夹样式） */
+.ws-home-omni-pick.spin svg { animation: ws-pick-spin 1.2s linear infinite; }
+@keyframes ws-pick-spin { to { transform: rotate(360deg); } }
 .ws-home-close {
     width: 40px;
     height: 40px;
@@ -82,6 +102,10 @@
 .ws-home-close:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .ws-home-body { flex: 1; overflow-y: auto; padding: 24px 32px; }
+/* 锁定模式（主目录裸启动）：只保留工作区面板，不显露背后的对话界面。
+   Layui 的确认框与遮罩会动态挂到 body 下，必须保持可见，否则点击“移除”后
+   实际在等待一个不可见的确认框，表现为按钮完全无响应。 */
+body.ws-home-locked > *:not(#wsHomeOverlay):not(.layui-layer):not(.layui-layer-shade):not(.layui-layer-move) { visibility: hidden; }
 .ws-home-section { margin-bottom: 28px; }
 .ws-home-section-title {
     font-size: var(--fs-sm);
@@ -140,11 +164,19 @@
     padding: 4px;
     border-radius: 6px;
     opacity: 0;
-    transition: opacity 0.15s;
-    line-height: 1;
+    transition: opacity 0.15s, color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-.ws-home-card:hover .ws-home-card-remove { opacity: 1; }
-.ws-home-card-remove:hover { color: #e55; background: rgba(229,85,85,0.12); }
+.ws-home-card-remove svg { width: 14px; height: 14px; display: block; }
+.ws-home-card:hover .ws-home-card-remove,
+.ws-home-card-remove:focus-visible { opacity: 1; }
+.ws-home-card-remove:hover { color: var(--color-danger); }
+.ws-home-card-remove:disabled { opacity: 0.45; cursor: default; }
+@media (hover: none) {
+    .ws-home-card-remove { opacity: 1; }
+}
 .ws-home-empty {
     grid-column: 1 / -1;
     font-size: var(--fs-sm);

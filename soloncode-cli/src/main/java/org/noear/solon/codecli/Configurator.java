@@ -14,13 +14,16 @@ import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.portal.*;
 import org.noear.solon.codecli.portal.acp.AcpLink;
 import org.noear.solon.codecli.portal.cli.CliShell;
+import org.noear.solon.codecli.portal.help.HelpMode;
 import org.noear.solon.codecli.portal.desktop.WsController;
 import org.noear.solon.codecli.portal.printmode.PrintMode;
 import org.noear.solon.codecli.portal.printmode.PrintModeOptions;
+import org.noear.solon.codecli.portal.printmode.StreamMode;
 import org.noear.solon.codecli.portal.desktop.WsGate;
 import org.noear.solon.codecli.portal.web.WebChannel;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.codecli.portal.web.MemoryController;
+import org.noear.solon.codecli.portal.web.run.RunController;
 import org.noear.solon.codecli.portal.web.WebSettingsController;
 import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.codecli.auth.*;
@@ -94,13 +97,24 @@ public class Configurator {
         CliShell cliShell = new CliShell(agentRuntime, agentSettings, loopScheduler);
         String flag = Solon.cfg().argx().flagAt(0);
 
+        // help 优先于其它一切分支：不做更新检查，保证帮助输出可被工具链解析
+        if (HelpMode.isHelpRequest(Solon.cfg().argx())) {
+            HelpMode helpMode = new HelpMode(HelpMode.resolveTopic(Solon.cfg().argx()), AgentFlags.getVersion());
+            haltWith(helpMode.execute());
+            return;
+        }
+
         if (AgentFlags.FLAG_VERSION.equals(flag)) {
             System.out.println(Solon.cfg().appTitle() + " " + AgentFlags.getVersion());
             haltWith(0);  // 退出进程（退出码 0）
             return;
         }
 
-        checkUpdate();
+        // stream 的 stdout 是严格 JSONL 协议通道，不能夹入版本更新文本。
+        // 常驻 SDK 通道也不应在启动时做联网更新检查。
+        if (!AgentFlags.FLAG_STREAM.equals(flag)) {
+            checkUpdate();
+        }
 
         //flag
         if (Solon.cfg().argx().flags().size() > 0) {
@@ -110,6 +124,15 @@ public class Configurator {
                 PrintMode printMode = new PrintMode(agentRuntime, agentSettings, printOpts);
                 int exitCode = printMode.execute();
                 haltWith(exitCode);
+                return;
+            }
+
+            if (AgentFlags.FLAG_STREAM.equals(flag)) { // soloncode stream --verbose  （stdin 为 JSONL 消息流，进程常驻）
+                // Stream / 常驻无头模式（对齐 claude -p --input-format stream-json）
+                // 与 run 分开暴露：run 永远单次，stream 永远常驻，同一子命令不存在两种生命周期
+                PrintModeOptions streamOpts = PrintModeOptions.parseStream(Solon.cfg().argx());
+                StreamMode streamMode = new StreamMode(agentRuntime, agentSettings, streamOpts);
+                haltWith(streamMode.execute());
                 return;
             }
 
@@ -231,8 +254,12 @@ public class Configurator {
         addWebBean(new McpSettingsController(workspaceManager));
         addWebBean(new OpenapiSettingsController(workspaceManager));
         addWebBean(new LspSettingsController(workspaceManager));
+        addWebBean(new ProfileSettingsController(workspaceManager));
 
         addWebBean(new MemoryController(agentRuntime));
+        
+        // /web/run：soloncode run 的 HTTP/SSE 远程执行入口（Bearer token 鉴权，子进程隔离执行）
+        addWebBean(new RunController(workspaceManager));
         
         addWebBean(new UserLoginController(userStore, userSessionManager, userAuthConfig));
         addWebBean(new UserAuthController(userStore, userSessionManager, userAuthConfig, agentSettings));

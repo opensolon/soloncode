@@ -18,6 +18,7 @@ package org.noear.solon.codecli.portal.web.service;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.codecli.portal.FilerIgnoreRules;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.core.handle.Result;
 
@@ -54,26 +55,13 @@ public class FileService {
     private final HarnessEngine engine;
 
     /**
-     * 文件树浏览时排除的目录名称集合。
-     * <p>包含各类构建产物、IDE 配置、版本控制等无需展示的目录，
-     * 如 .git、.idea、node_modules、target、__pycache__ 等。</p>
+     * 文件树浏览时的忽略判定。
+     *
+     * <p>规则与文件监听侧共用 {@link FilerIgnoreRules}：树里能看见的目录必须也在监听范围内，
+     * 否则会出现「展示了但改动永远不推送」的静默不刷新。</p>
      */
-    private static final Set<String> EXCLUDED_DIRS = new HashSet<>(Arrays.asList(
-            ".git", ".idea", ".soloncode", "node_modules", "target", "__pycache__", ".gradle", ".mvn", "build"
-    ));
-
-    /**
-     * 隐藏目录白名单：虽然以点号开头，但需要在文件树中展示的目录。
-     */
-    private static final Set<String> VISIBLE_HIDDEN_DIRS = new HashSet<>(Arrays.asList(
-            ".uploads"
-    ));
-
     private static boolean isSkippedName(File f) {
-        String name = f.getName();
-        if (EXCLUDED_DIRS.contains(name)) return true;
-        if (f.isDirectory() && VISIBLE_HIDDEN_DIRS.contains(name)) return false;
-        return name.startsWith(".");
+        return FilerIgnoreRules.isIgnoredName(f.getName(), f.isDirectory());
     }
 
     /**
@@ -178,7 +166,7 @@ public class FileService {
     /**
      * 工作区文件树浏览（指定工作区）。
      * <p>以指定工作区根目录为基准，按指定路径和深度返回目录结构。
-     * 排除以点号开头的隐藏文件和 {@link #EXCLUDED_DIRS} 中的目录。</p>
+     * 排除以点号开头的隐藏文件和 {@link FilerIgnoreRules} 定义的目录。</p>
      *
      * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
      * @param path        相对路径，基于工作区根目录；为空时从根目录开始
@@ -231,7 +219,7 @@ public class FileService {
     /**
      * 工作区文件搜索（指定工作区）。
      * <p>递归扫描指定工作区，返回路径中包含关键词的文件列表。
-     * 排除规则与文件树接口一致：隐藏文件和 EXCLUDED_DIRS 中的目录。</p>
+     * 排除规则与文件树接口一致：见 {@link FilerIgnoreRules}。</p>
      *
      * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
      * @param keyword     搜索关键词，匹配文件路径（大小写不敏感）
@@ -402,7 +390,7 @@ public class FileService {
     /**
      * 递归构建文件树结构。
      * <p>对指定目录进行扫描，目录排在前面、文件排在后面，均按名称字典序排列。
-     * 跳过以点号开头的隐藏文件和 {@link #EXCLUDED_DIRS} 中定义的目录。
+     * 跳过以点号开头的隐藏文件和 {@link FilerIgnoreRules} 定义的目录。
      * 当达到最大深度时，目录节点不再展开（children 为 null）。</p>
      *
      * @param dir          当前扫描的目录路径

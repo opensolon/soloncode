@@ -2,7 +2,7 @@
 
 > 适用场景：HarnessEngine、工具权限、子代理、拦截器、命令系统。
 >
-> 目标版本：4.0.4。Agent / Talent / Loop 见 `ai_agent.md`；AI UI / ACP / A2A 见 `ai_protocol_ui.md`。
+> 目标版本：4.1.0。Agent / Talent / Loop 见 `ai_agent.md`；AI UI / ACP / A2A 见 `ai_protocol_ui.md`。
 
 Dependency: `solon-ai-harness`
 
@@ -320,9 +320,9 @@ engine.toolPermissionReset(tools, disallowedTools);
 
 > 对比：`allowTool` / `disallowTool` 是增量添加/移除；`allowToolReset` / `disallowToolReset` 是全量重置。
 
-## 子代理流块包装（TaskWrapChuck, 4.0.4+）
+## 子代理流事件包装（TaskWrapEvent, 4.1.0）
 
-子代理调用产生的流块（AgentEvent）通过 `TaskWrapChuck` 包装后回传给主代理流，提高子代理调用透明度。无需手动配置，由 HarnessEngine 自动处理。
+子代理调用产生的事件（`AgentEvent`）通过 `TaskWrapEvent` 包装后回传给主代理流，提高子代理调用透明度。无需手动配置，由 HarnessEngine 自动处理。
 
 ## Skills / Agents 局部动态刷新（4.0.4+）
 

@@ -6,6 +6,9 @@ import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.config.models.ModelApiUrl;
 import org.noear.solon.codecli.config.models.ModelInfo;
 import org.noear.solon.codecli.config.models.ModelsAdapter;
+import org.noear.solon.codecli.config.models.ModelsFetchException;
+import org.noear.solon.codecli.config.models.ModelsFetchReason;
+import org.noear.solon.codecli.config.models.ModelsHttp;
 import org.noear.solon.net.http.HttpUtils;
 
 import java.util.ArrayList;
@@ -36,13 +39,13 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
     @Override
     public List<ModelInfo> fetchModels(String userAgent, String baseUrl, Map<String, String> headers, String apiKey) {
         final String modelsUrl = buildModelsUrl(baseUrl);
+        // 地址非法时立即失败，不必白等一轮连接超时
+        ModelsHttp.requireHttpUrl(modelsUrl, "Anthropic");
 
         List<ModelInfo> result = new ArrayList<>();
 
         try {
-            HttpUtils http = HttpUtils.http(modelsUrl)
-                    .userAgent(userAgent)
-                    .timeout(15);
+            HttpUtils http = ModelsHttp.create(modelsUrl, userAgent);
             ProxyConfig.applyIfNeeded(http);
 
             if (headers != null) {
@@ -57,28 +60,35 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
                 http.header("anthropic-version", "2023-06-01");
             }
 
-            String body = http.get();
+            String body = ModelsHttp.getBody(http, "Anthropic");
 
-            ONode root = ONode.ofJson(body);
+            ONode root = ModelsHttp.parseJson(body, "Anthropic");
             ONode data = root.get("data");
-            if (data.isArray()) {
-                for (ONode item : data.getArray()) {
-                    ModelInfo modelInfo = ModelInfo.builder()
-                            .id(item.get("id").getString())
-                            .object(item.get("type").getString())
-                            .created(parseCreatedAt(item.get("created_at").getString()))
-                            .ownedBy("anthropic")
-                            .type("chat")
-                            .displayName(item.get("display_name").getString())
-                            .maxInputTokens(item.get("max_input_tokens").getLong())
-                            .maxTokens(item.get("max_tokens").getLong())
-                            .capabilities(parseCapabilities(item.get("capabilities")))
-                            .build();
-                    result.add(modelInfo);
-                }
+            if (!data.isArray()) {
+                // 状态码正常但结构不是模型列表，多为地址或协议选错
+                throw new ModelsFetchException("Anthropic model list response has no data array",
+                        ModelsFetchReason.INVALID_RESPONSE, 200, null);
             }
+            for (ONode item : data.getArray()) {
+                ModelInfo modelInfo = ModelInfo.builder()
+                        .id(item.get("id").getString())
+                        .object(item.get("type").getString())
+                        .created(parseCreatedAt(item.get("created_at").getString()))
+                        .ownedBy("anthropic")
+                        .type("chat")
+                        .displayName(item.get("display_name").getString())
+                        .maxInputTokens(item.get("max_input_tokens").getLong())
+                        .maxTokens(item.get("max_tokens").getLong())
+                        .capabilities(parseCapabilities(item.get("capabilities")))
+                        .build();
+                result.add(modelInfo);
+            }
+        } catch (ModelsFetchException e) {
+            log.warn("[Anthropic] Failed to fetch model list: reason={}, status={}", e.getReason(), e.getStatus());
+            throw e;
         } catch (Exception e) {
-            log.warn("[Anthropic] Error fetching models from {}: {}", modelsUrl, e.getMessage(), e);
+            log.warn("[Anthropic] Failed to fetch model list");
+            throw new ModelsFetchException("Anthropic model list request failed", ModelsFetchReason.UNKNOWN, e);
         }
 
         return result;

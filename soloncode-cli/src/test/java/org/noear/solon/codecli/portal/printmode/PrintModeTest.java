@@ -17,6 +17,7 @@ package org.noear.solon.codecli.portal.printmode;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.noear.solon.core.util.MultiMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -468,5 +469,36 @@ public class PrintModeTest {
         // 999.999999 * 1000000 = 999999999.0, round = 999999999, / 1000000 = 999.999999
         double result = PrintMode.roundCost(999.999999);
         assertEquals(999.999999, result, 0.0000001);
+    }
+
+    // ========== run 的单次语义边界 ==========
+
+    @Test
+    @DisplayName("run 拒绝 --input-format stream-json，且在碰到引擎前就拒")
+    public void testRunRejectsStreamJsonInput() {
+        PrintModeOptions opts = PrintModeOptions.parse(
+                MultiMap.from(new String[]{"run", "hi", "--input-format", "stream-json"}));
+
+        // engine/settings 传 null：若校验不在最前面，这里会 NPE 而不是返回退出码
+        int exitCode = new PrintMode(null, null, opts).execute();
+
+        assertEquals(PrintMode.EXIT_ERROR, exitCode);
+    }
+
+    @Test
+    @DisplayName("退出码推导优先级：预算 > 错误 > 轮次超限 > 成功")
+    public void testExitCodePrecedence() {
+        assertEquals(PrintMode.EXIT_SUCCESS, PrintMode.exitCodeOf(result(false, false, false)));
+        assertEquals(PrintMode.EXIT_MAX_TURNS, PrintMode.exitCodeOf(result(false, false, true)));
+        assertEquals(PrintMode.EXIT_ERROR, PrintMode.exitCodeOf(result(false, true, true)));
+        assertEquals(PrintMode.EXIT_BUDGET_EXCEEDED, PrintMode.exitCodeOf(result(true, true, true)));
+    }
+
+    private static PrintMode.PrintResult result(boolean budgetExceeded, boolean error, boolean maxTurns) {
+        PrintMode.PrintResult r = new PrintMode.PrintResult();
+        r.budgetExceeded = budgetExceeded;
+        r.error = error ? new IllegalStateException("boom") : null;
+        r.maxTurnsExceeded = maxTurns;
+        return r;
     }
 }

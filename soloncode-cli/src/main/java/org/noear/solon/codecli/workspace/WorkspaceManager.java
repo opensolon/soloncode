@@ -56,7 +56,24 @@ public class WorkspaceManager {
      * jdtls 启动所需的最低 JDK 主版本
      */
     private static final int JDTLS_MIN_JDK = 21;
-    private static final String WORKSPACES_FILE_PATH = Paths.get(AgentFlags.getUserHome(), ".soloncode", "workspaces.json").toString();
+
+    /**
+     * workspaces.json 路径：动态计算（不能静态缓存，测试会临时修改 user.home，
+     * 类加载期固化会导致后续读写都指向真实主目录）
+     */
+    private static Path workspacesFile() {
+        return Paths.get(AgentFlags.getUserHome(), ".soloncode", "workspaces.json");
+    }
+
+    /**
+     * 默认（启动目录）工作区的内部 ID
+     */
+    public static final String ID_DEFAULT = "default";
+    /**
+     * 默认工作区的对外别名：前端把启动目录显式称作 launch（见 /web/workspace/list 的 launch 段、
+     * URL 参数 ?workspaceId=launch），此处等价映射到 default。
+     */
+    public static final String ID_LAUNCH = "launch";
 
     private final Map<String, WorkspaceContext> contexts = new ConcurrentHashMap<>();
 
@@ -155,7 +172,8 @@ public class WorkspaceManager {
      * @param workspaceIdOrPath 工作区ID或物理绝对路径
      */
     public synchronized WorkspaceContext getOrCreate(String workspaceIdOrPath) {
-        if (workspaceIdOrPath == null || workspaceIdOrPath.trim().isEmpty() || "default".equals(workspaceIdOrPath)) {
+        workspaceIdOrPath = normalizeWorkspaceKey(workspaceIdOrPath);
+        if (workspaceIdOrPath == null || workspaceIdOrPath.isEmpty() || ID_DEFAULT.equals(workspaceIdOrPath)) {
             if (defaultContext == null) {
                 initDefaultWorkspace();
             }
@@ -173,52 +191,49 @@ public class WorkspaceManager {
             return context;
         }
 
-        // 2. 如果是以 "ws-" 开头的 ID，在内存中没找到，则尝试从历史记录 workspaces.json 中寻找匹配的物理路径
-        if (workspaceIdOrPath.startsWith("ws-")) {
-            for (WorkspaceMeta meta : listWorkspaces()) {
-                if (workspaceIdOrPath.equals(meta.getId())) {
-                    // 找到了历史记录，沿用原有 meta（保留原 ID）加载，避免生成新 ID 造成历史重复
-                    Path histPath;
-                    try {
-                        histPath = normalizePath(Paths.get(meta.getPath()));
-                    } catch (Exception pe) {
-                        LOG.warn("[Workspace] Illegal history path, skip: {} -> {}", meta.getId(), meta.getPath());
-                        break;
-                    }
-                    if (!Files.isDirectory(histPath)) {
-                        LOG.warn("[Workspace] History path missing, reject: {} -> {}", meta.getId(), meta.getPath());
-                        break;
-                    }
-                    // 沿用原有 meta（保留原 ID），但把 path 归一化，避免同路径因格式差异匹配失败
-                    meta.setPath(histPath.toString());
-                    WorkspaceContext ctx;
-                    try {
-                        ctx = createWorkspaceContext(meta);
-                    } catch (Exception e) {
-                        LOG.error("[Workspace] Failed to load history workspace: " + meta.getId(), e);
-                        break;
-                    }
-                    meta.setLastAccessed(System.currentTimeMillis());
-                    contexts.put(meta.getId(), ctx);
-                    contexts.put(histPath.toString(), ctx);
-                    // 历史加载为低频事件，直接回写 lastAccessed，保证重启后 MRU 顺序准确
-                    saveWorkspaceToHistory(meta);
-                    return ctx;
+        // 2. 内存未命中时，先查历史记录 workspaces.json 的精确 key（不再用 ws- 前缀推断输入类型：
+        //    旧版本存在随机 ID，恰好以 ws- 开头的旧随机 ID 与新 ID 无法靠前缀区分，
+        //    统一按「先 ID 后路径」的顺序解析，I1）
+        for (WorkspaceMeta meta : listWorkspaces()) {
+            if (workspaceIdOrPath.equals(meta.getId())) {
+                // 找到了历史记录，沿用原有 meta（保留原 ID）加载，避免生成新 ID 造成历史重复
+                Path histPath;
+                try {
+                    histPath = normalizePath(Paths.get(meta.getPath()));
+                } catch (Exception pe) {
+                    LOG.warn("[Workspace] Illegal history path, skip: {} -> {}", meta.getId(), meta.getPath());
+                    break;
                 }
+                if (!Files.isDirectory(histPath)) {
+                    LOG.warn("[Workspace] History path missing, reject: {} -> {}", meta.getId(), meta.getPath());
+                    break;
+                }
+                // 沿用原有 meta（保留原 ID），但把 path 归一化，避免同路径因格式差异匹配失败
+                meta.setPath(histPath.toString());
+                WorkspaceContext ctx;
+                try {
+                    ctx = createWorkspaceContext(meta);
+                } catch (Exception e) {
+                    LOG.error("[Workspace] Failed to load history workspace: " + meta.getId(), e);
+                    break;
+                }
+                meta.setLastAccessed(System.currentTimeMillis());
+                contexts.put(meta.getId(), ctx);
+                contexts.put(histPath.toString(), ctx);
+                // 历史加载为低频事件，直接回写 lastAccessed，保证重启后 MRU 顺序准确
+                saveWorkspaceToHistory(meta);
+                return ctx;
             }
-            // 如果历史记录里也没有这个 ws-xxx ID，说明是非法或不存在的 ID：
-            // 返回 null（绝不回退默认工作区，回退会掩盖错误），由调用方决定 404/失败响应
-            LOG.warn("[Workspace] Unknown workspace id, reject: {}", workspaceIdOrPath);
-            return null;
         }
 
-        // 3. 此时 workspaceIdOrPath 应该是物理绝对路径。先做参数防护：
+        // 3. 历史中无此 ID：可能是个非法/不存在的 ID，也可能是物理绝对路径。先做参数防护：
         //    挂载别名（@ 开头）、含 .. 的相对路径、非绝对路径均为非法参数，
         //    一律返回 null，绝不据此创建目录。
         if (workspaceIdOrPath.startsWith("@")
                 || workspaceIdOrPath.contains("..")
                 || Paths.get(workspaceIdOrPath).isAbsolute() == false) {
-            LOG.warn("[Workspace] Illegal workspace parameter, reject: {}", workspaceIdOrPath);
+            // 相对输入且历史未命中：按非法 ID 拒绝（不回退默认工作区，回退会掩盖错误）
+            LOG.warn("[Workspace] Unknown workspace id, reject: {}", workspaceIdOrPath);
             return null;
         }
 
@@ -289,33 +304,33 @@ public class WorkspaceManager {
      * 仅查内存缓存，不创建（供 WS onClose 等回调用，防止复活已释放工作区）
      */
     public WorkspaceContext getContextsCached(String workspaceIdOrPath) {
-        if (Assert.isEmpty(workspaceIdOrPath) || "default".equals(workspaceIdOrPath)) {
+        workspaceIdOrPath = normalizeWorkspaceKey(workspaceIdOrPath);
+        if (Assert.isEmpty(workspaceIdOrPath) || ID_DEFAULT.equals(workspaceIdOrPath)) {
             return defaultContext;
         }
         return contexts.get(workspaceIdOrPath);
     }
 
     /**
-     * 校验工作区 ID 是否有效（存在于内存或 workspaces.json 历史中）。
-     * 仅对 ws- 前缀的多工作区 ID 有意义。
+     * 校验工作区 ID 是否有效（存在于内存或 workspaces.json 历史中，或是一个合法目录路径）。
+     * 不用前缀推断：旧随机 ID 与新 ws- ID 同等对待（I1）。
      */
     public boolean isValidWorkspaceId(String wsId) {
-        if (wsId == null || wsId.trim().isEmpty() || "default".equals(wsId)) {
+        wsId = normalizeWorkspaceKey(wsId);
+        if (wsId == null || wsId.isEmpty() || ID_DEFAULT.equals(wsId)) {
             return true;
         }
         if (contexts.containsKey(wsId)) {
             return true;
         }
-        if (wsId.startsWith("ws-")) {
-            for (WorkspaceMeta meta : listWorkspaces()) {
-                if (wsId.equals(meta.getId())) {
-                    return true;
-                }
+        for (WorkspaceMeta meta : listWorkspaces()) {
+            if (wsId.equals(meta.getId())) {
+                return true;
             }
-            return false;
         }
-        // 物理路径形式：先做参数防护（与 getOrCreate 一致），再判目录存在
-        if (wsId.startsWith("@") || wsId.contains("..")) {
+        // 物理路径形式：先做参数防护（与 getOrCreate 一致），再判目录存在；
+        // 相对输入且历史未命中 => 非法（避免 ./xxx 被当作存在性探测）
+        if (wsId.startsWith("@") || wsId.contains("..") || Paths.get(wsId).isAbsolute() == false) {
             return false;
         }
         try {
@@ -356,14 +371,71 @@ public class WorkspaceManager {
     }
 
     /**
+     * 工作区标识归一化：把对外别名 launch 收敛为内部 ID default。
+     *
+     * <p>必须在所有以「ID 或物理路径」为入参的入口统一调用：否则 launch 会掉进
+     * 物理路径分支被当作相对目录 ./launch 解析——启动目录下恰好存在同名目录时，
+     * 会静默创建出一个错误的 ws- 工作区。</p>
+     */
+    private static String normalizeWorkspaceKey(String workspaceIdOrPath) {
+        if (workspaceIdOrPath == null) {
+            return null;
+        }
+        String key = workspaceIdOrPath.trim();
+        return ID_LAUNCH.equals(key) ? ID_DEFAULT : key;
+    }
+
+    /**
+     * 判断给定路径是否就是当前用户主目录（归一化后比较；Windows 下忽略大小写）。
+     *
+     * <p>用于识别「在 ~ 下启动」这一特殊场景：此时把整个主目录当工作区代价过高
+     * （沙盒范围、文件监听、全文检索都会铺满主目录），前端据此引导用户先选项目目录。</p>
+     */
+    public static boolean isUserHomePath(String pathStr) {
+        if (pathStr == null || pathStr.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String target = normalizePathStr(pathStr);
+            String home = normalizePathStr(AgentFlags.getUserHome());
+            return File.separatorChar == '\\'
+                    ? target.equalsIgnoreCase(home)
+                    : target.equals(home);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 判断一个工作区是否属于「在用户主目录下启动的默认工作区」（即前端的 isHomeWorkspace）。
+     *
+     * <p>这是「把 ~ 当工作区代价过高」的<b>唯一判据</b>，前端展示与后端资源投入必须同口径，
+     * 否则会出现「界面根本不展示文件树、后端却在为它铺开全树监听」的浪费：</p>
+     * <ul>
+     *   <li>前端：据此锁定为工作区面板，不渲染文件树（不铺开则前端根本不看）</li>
+     *   <li>后端：据此把文件监听降为「只挂根目录自身」，不递归注册整棵主目录树</li>
+     * </ul>
+     *
+     * <p>注意必须同时满足 {@code meta.isDefault()}：用户 <b>显式</b> 选择 ~ 作为工作区时
+     * 走的是 {@code getOrCreate(path)}，生成的 meta 非 default，此时前端会正常展示文件树，
+     * 后端也应保留完整监听，不适用本判据。</p>
+     */
+    public static boolean isHomeStartupWorkspace(WorkspaceMeta meta) {
+        return meta != null
+                && meta.isDefault()
+                && isUserHomePath(meta.getPath());
+    }
+
+    /**
      * 关闭并销毁工作区上下文
      */
     public synchronized void closeWorkspace(String workspaceIdOrPath) {
-        if (workspaceIdOrPath == null || workspaceIdOrPath.trim().isEmpty()) {
+        workspaceIdOrPath = normalizeWorkspaceKey(workspaceIdOrPath);
+        if (workspaceIdOrPath == null || workspaceIdOrPath.isEmpty()) {
             return;
         }
         // default 是虚拟工作区（随启动目录变化），不允许被关闭销毁
-        if ("default".equals(workspaceIdOrPath)) {
+        if (ID_DEFAULT.equals(workspaceIdOrPath)) {
             return;
         }
         WorkspaceContext context = contexts.remove(workspaceIdOrPath);
@@ -409,30 +481,102 @@ public class WorkspaceManager {
     }
 
     /**
-     * 从 workspaces.json 历史中彻底移除工作区条目（用于 /web/workspace/remove）
+     * 从 workspaces.json 历史中彻底移除工作区条目（用于 /web/workspace/remove）。
+     *
+     * @return {@code true} 表示目标存在且已成功持久化移除；否则返回 {@code false}
      */
-    public synchronized void removeFromHistory(String workspaceId) {
-        if (workspaceId == null || "default".equals(workspaceId)) {
-            return;
+    public synchronized boolean removeFromHistory(String workspaceId) {
+        workspaceId = normalizeWorkspaceKey(workspaceId);
+        if (workspaceId == null || ID_DEFAULT.equals(workspaceId)) {
+            return false;
         }
         try {
-            // 必须先关内存 context：否则后续任何 getOrCreate 内存命中会重新同步写盘，
-            // 把刚删的条目写回文件——删除被静默回滚
-            closeWorkspace(workspaceId);
-
-            Path file = Paths.get(WORKSPACES_FILE_PATH);
+            Path file = workspacesFile();
             if (!Files.exists(file)) {
-                return;
+                return false;
             }
+
+            // 删除属于持久化操作，必须严格读取：历史文件损坏时禁止拿空集合覆盖原文件。
+            // 不限 ws- 前缀：旧随机 ID 同样允许移除（I1）。
             Map<String, WorkspaceMeta> map = new LinkedHashMap<>();
-            for (WorkspaceMeta w : readWorkspaceEntries()) {
-                if (!workspaceId.equals(w.getId())) {
+            boolean found = false;
+            for (WorkspaceMeta w : readWorkspaceEntriesStrict(file)) {
+                if (workspaceId.equals(w.getId())) {
+                    found = true;
+                } else {
                     map.put(w.getId(), w);
                 }
             }
+            if (!found) {
+                return false;
+            }
+
+            // 先成功落盘，再关闭内存 context。整个方法持有同一把锁，期间 getOrCreate
+            // 无法把条目写回；同时避免写盘失败却先断开活跃工作区的半成功状态。
             writeHistoryFile(file, map);
-        } catch (Throwable e) {
+            closeWorkspace(workspaceId);
+            return true;
+        } catch (Exception e) {
             LOG.warn("Failed to remove workspace from history: " + workspaceId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 为工作区数据目录补写/提升 _meta.json 元数据（读-合并-原子写，失败仅告警不影响创建）。
+     *
+     * <p>retention 时序（方案 7.4）：创建起点先写 EPHEMERAL（上下文尚未建成，任何中途失败
+     * 留下的目录都是清理候选），上下文完整建成后由 {@link #promoteWorkspaceMeta} 提升为
+     * PERSISTENT。合并协议保证只升不降，成功打开过的目录不会被中途状态覆盖。</p>
+     */
+    private static void writeWorkspaceMeta(String workspacePath, String workspaceId, boolean isDefault) {
+        try {
+            Path dataDir = WorkspaceDataUtil.dataDir(workspacePath).toPath();
+            WorkspaceDataMeta meta = WorkspaceDataMeta.load(dataDir);
+            if (meta.isWritable() == false) {
+                return; // 未来 schema 只读，禁止改写（I6）
+            }
+            if (meta.isTrusted() == false) {
+                return; // 身份不可信：不重写，避免每次打开的 updatedAt 抖动与 storageKey 永不修复的死循环
+            }
+            if (meta.getWorkspaceId() == null || meta.getWorkspaceId().isEmpty()) {
+                meta.setWorkspaceId(workspaceId);
+                meta.setCreatedAt(System.currentTimeMillis());
+                meta.setCreatedSource(isDefault ? "LAUNCH" : "USER_API");
+            }
+            meta.setPath(WorkspaceDataUtil.normalizeWorkspacePath(Paths.get(workspacePath)).toString());
+            meta.setName(WorkspaceDataUtil.readableDirName(WorkspaceDataUtil.normalizeWorkspacePath(Paths.get(workspacePath))));
+            meta.setStorageKey(dataDir.getFileName().toString());
+            meta.setLayoutVersion(WorkspaceDataUtil.layoutVersion(workspacePath));
+            // 创建起点写 EPHEMERAL：中途失败残留可被后续阶段识别为清理候选
+            meta.setRetention(WorkspaceDataMeta.Retention.EPHEMERAL);
+            meta.setLastOpenedSource(isDefault ? "LAUNCH" : "USER_API");
+            meta.setLastAccessedAt(System.currentTimeMillis());
+            meta.setUpdatedAt(System.currentTimeMillis());
+            meta.setAppVersion(AgentFlags.getVersion());
+            meta.save(dataDir);
+        } catch (Throwable e) {
+            LOG.debug("Write workspace meta failed: {}", workspacePath, e);
+        }
+    }
+
+    /**
+     * 上下文完整建成后提升 retention 为 PERSISTENT（合并协议只升不降，失败仅告警）。
+     */
+    private static void promoteWorkspaceMeta(String workspacePath) {
+        try {
+            Path dataDir = WorkspaceDataUtil.dataDir(workspacePath).toPath();
+            WorkspaceDataMeta meta = WorkspaceDataMeta.load(dataDir);
+            if (meta.isWritable() == false || meta.isTrusted() == false) {
+                return;
+            }
+            meta.setRetention(WorkspaceDataMeta.Retention.PERSISTENT);
+            meta.setLastAccessedAt(System.currentTimeMillis());
+            meta.setUpdatedAt(System.currentTimeMillis());
+            meta.setAppVersion(AgentFlags.getVersion());
+            meta.save(dataDir);
+        } catch (Throwable e) {
+            LOG.debug("Promote workspace meta failed: {}", workspacePath, e);
         }
     }
 
@@ -457,6 +601,9 @@ public class WorkspaceManager {
         LogDirUtil.cleanLegacyLogs(workspacePath);
 
         //会话已改存到 ~/.soloncode/workspaces/<标识>/sessions/：记录反查标记，并把旧版工作区内的会话搬迁过去
+        //元数据先于日志目录创建写入（方案第八章）：创建起点写 EPHEMERAL（中途失败残留可识别），
+        //上下文建成后由方法末尾的 promoteWorkspaceMeta 提升为 PERSISTENT
+        writeWorkspaceMeta(workspacePath, meta.getId(), meta.isDefault());
         WorkspaceDataUtil.markWorkspace(workspacePath);
         WorkspaceDataUtil.migrateLegacySessions(workspacePath);
 
@@ -574,7 +721,8 @@ public class WorkspaceManager {
         engine.getCommandRegistry().register(loopCommand);
         engine.getCommandRegistry().register(new GoalCommand(loopCommand));
 
-        engine.addExtension(new ManagerExtension(engine, wsSettings, loopScheduler));
+        engine.addExtension(new LoopExtension(loopScheduler, wsSettings));
+        engine.addExtension(new ManagerExtension(engine, wsSettings));
 
         // 注入 HarnessExtension 扩展
         Solon.context().subBeansOfType(HarnessExtension.class, extension -> {
@@ -589,7 +737,17 @@ public class WorkspaceManager {
 
         // FileWatchService（自建轮询/初始化线程，需显式带上工作区日志归属）
         FileWatchService fileWatchService = new FileWatchService().logWorkspacePath(workspacePath);
+
+        // 「在 ~ 下启动」的默认工作区：前端已锁定为工作区面板、根本不展示文件树，
+        // 为它递归注册整棵主目录（~/Library 等动辄上万目录，macOS 下还是轮询实现）纯属浪费，
+        // 且会持续消耗 CPU/IO 与系统 watch 配额。降为只监听根目录自身。
+        // 用户一旦选定真实项目目录，会另建独立工作区上下文（独立 FileWatchService），监听自然恢复完整。
+        boolean shallowWatch = WorkspaceManager.isHomeStartupWorkspace(meta);
+        if (shallowWatch) {
+            LOG.info("[Workspace] Home startup workspace detected, file watch is shallow (root only): {}", workspacePath);
+        }
         fileWatchService.addRoot("workspace", Paths.get(workspacePath).toAbsolutePath().normalize())
+                .shallow(shallowWatch)
                 .addHandler(changes -> {
                     // 动态取 gate：默认工作区创建早于 setWebGate，字段快照可能为 null
                     WebGate gate = getWebGate();
@@ -629,6 +787,9 @@ public class WorkspaceManager {
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
         // Link.run() 内部有 running CAS 幂等保护，重复调用安全。
         RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, context.getChannelHub()::start));
+
+        // 上下文完整建成：retention 由 EPHEMERAL 提升为 PERSISTENT（失败不回滚，见方案 7.4）
+        promoteWorkspaceMeta(workspacePath);
 
         return context;
     }
@@ -817,6 +978,8 @@ public class WorkspaceManager {
         } catch (Exception e) {
             defaultPathStr = null;
         }
+        // 默认工作区即用户主目录（在 ~ 下启动）：循环外算一次即可，与逐条条目无关
+        boolean defaultIsUserHome = isUserHomePath(defaultPathStr);
 
         List<WorkspaceMeta> result = new ArrayList<>();
         for (WorkspaceMeta w : raw) {
@@ -837,13 +1000,6 @@ public class WorkspaceManager {
             // b) path 指向默认工作区目录内部（非默认本身）的误建目录条目。
             //    例外：默认工作区即用户主目录（在 ~ 下启动）时跳过该过滤——
             //    ~ 下的子项目目录是正常工作区，不能被当作脏条目清洗，否则最近列表整体消失。
-            boolean defaultIsUserHome = false;
-            try {
-                defaultIsUserHome = defaultPathStr != null
-                        && normalizePathStr(AgentFlags.getUserHome()).equals(defaultPathStr);
-            } catch (Exception ignore) {
-            }
-
             if (!defaultIsUserHome
                     && defaultPathStr != null && !w.isDefault()
                     && normalized.startsWith(defaultPathStr + File.separator)) {
@@ -863,36 +1019,52 @@ public class WorkspaceManager {
      * 存储格式为 object/map：{ "ws-xxx": { name, path, lastAccessed }, ... }，key 即工作区 id。
      */
     private Collection<WorkspaceMeta> readWorkspaceEntries() {
-        List<WorkspaceMeta> list = new ArrayList<>();
         try {
-            Path file = Paths.get(WORKSPACES_FILE_PATH);
-            if (!Files.exists(file)) {
-                return list;
-            }
-            String json = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-            ONode node = ONode.ofJson(json);
-            if (node.isObject()) {
-                for (Map.Entry<String, ONode> entry : node.getObject().entrySet()) {
-                    String id = entry.getKey();
-                    ONode item = entry.getValue();
-                    // default 是虚拟工作区，持久化文件中不允许存在（存量脏数据自动清洗）
-                    if (item == null || id == null || "default".equals(id)) {
-                        continue;
-                    }
-                    WorkspaceMeta w = new WorkspaceMeta();
-                    w.setId(id);
-                    w.setName(item.get("name").getString());
-                    w.setPath(item.get("path").getString());
-                    w.setLastAccessed(item.get("lastAccessed").getLong());
-                    if (w.getPath() != null) {
-                        list.add(w);
-                    }
-                }
-            }
+            return readWorkspaceEntriesStrict(workspacesFile());
         } catch (Exception e) {
             LOG.warn("Failed to read workspaces", e);
+            return new ArrayList<>();
         }
-        return list;
+    }
+
+    /**
+     * 严格读取工作区历史。供删除等写操作使用，读取或解析失败必须中止写回，
+     * 防止损坏的历史文件被误判为空列表后整体覆盖。
+     */
+    static Collection<WorkspaceMeta> readWorkspaceEntriesStrict(Path file) throws IOException {
+        List<WorkspaceMeta> list = new ArrayList<>();
+        if (!Files.exists(file)) {
+            return list;
+        }
+
+        try {
+            String json = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+            ONode node = ONode.ofJson(json);
+            if (!node.isObject()) {
+                throw new IOException("Workspace history root must be a JSON object");
+            }
+            for (Map.Entry<String, ONode> entry : node.getObject().entrySet()) {
+                String id = entry.getKey();
+                ONode item = entry.getValue();
+                // default 是虚拟工作区，持久化文件中不允许存在（存量脏数据自动清洗）
+                if (item == null || id == null || "default".equals(id)) {
+                    continue;
+                }
+                WorkspaceMeta w = new WorkspaceMeta();
+                w.setId(id);
+                w.setName(item.get("name").getString());
+                w.setPath(item.get("path").getString());
+                w.setLastAccessed(item.get("lastAccessed").getLong());
+                if (w.getPath() != null) {
+                    list.add(w);
+                }
+            }
+            return list;
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Failed to parse workspace history", e);
+        }
     }
 
     /**
@@ -904,7 +1076,7 @@ public class WorkspaceManager {
             return;
         }
         try {
-            Path file = Paths.get(WORKSPACES_FILE_PATH);
+            Path file = workspacesFile();
             if (!Files.exists(file.getParent())) {
                 Files.createDirectories(file.getParent());
             }
@@ -927,11 +1099,12 @@ public class WorkspaceManager {
     }
 
     /**
-     * 原子写入历史文件（tmp + move），避免进程中断导致 workspaces.json 截断损坏
+     * 原子写入历史文件（唯一 tmp + move），避免进程中断导致 workspaces.json 截断损坏。
+     * tmp 带进程内随机后缀：固定共享 .tmp 在多进程并发写时会互相覆盖。
      */
     private void writeHistoryFile(Path file, Map<String, WorkspaceMeta> map) throws IOException {
         String newJson = ONode.ofBean(map, Feature.Write_PrettyFormat).toJson();
-        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+        Path tmp = file.resolveSibling(file.getFileName() + ".tmp." + UUID.randomUUID().toString().substring(0, 8));
         try {
             Files.write(tmp, newJson.getBytes(StandardCharsets.UTF_8));
             try {

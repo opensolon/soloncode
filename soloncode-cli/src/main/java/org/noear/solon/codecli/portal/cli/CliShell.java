@@ -25,8 +25,8 @@ import org.jline.terminal.TerminalBuilder;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
@@ -47,6 +47,7 @@ import org.noear.solon.codecli.command.builtin.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
 import org.noear.solon.lang.Preview;
@@ -346,18 +347,18 @@ public class CliShell implements Runnable {
                     .stream()
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
-                        if (chunk instanceof ReasonChunk) {
+                        if (chunk instanceof ReasonDeltaEvent) {
                             // ReasonChunk （思考）为增量块（工具调用时为全量，不需要打印）
-                            onReasonChunk((ReasonChunk) chunk, isFirstReasonDeltaChunk, isFirstConversation);
-                        } else if (chunk instanceof ThoughtChunk) {
+                            onReasonDeltaEvent((ReasonDeltaEvent) chunk, isFirstReasonDeltaChunk, isFirstConversation);
+                        } else if (chunk instanceof ReasonEndEvent) {
                             //ThoughtChunk （想法）为完成块
-                            onThoughtChunk(session, (ThoughtChunk) chunk);
-                        } else if (chunk instanceof ObservationChunk) {
+                            onReasonEndEvent(session, (ReasonEndEvent) chunk);
+                        } else if (chunk instanceof ToolCallEndEvent) {
                             //ObservationChunk 为全量，一次工具调用产生一个 ObservationChunk
-                            onObservationChunk((ObservationChunk) chunk, isFirstReasonDeltaChunk);
-                        } else if (chunk instanceof ReActChunk) {
+                            onToolCallEndEvent((ToolCallEndEvent) chunk, isFirstReasonDeltaChunk);
+                        } else if (chunk instanceof RunEndEvent) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            String answer = onFinalChunk(session, (ReActChunk) chunk);
+                            String answer = onRunEndEvent(session, (RunEndEvent) chunk);
                             if (Assert.isNotEmpty(answer)) {
                                 finalAnswer.set(answer);
                             }
@@ -388,11 +389,13 @@ public class CliShell implements Runnable {
                 terminal.writer().println(DIM + "[Task interrupted]" + RESET);
                 terminal.flush();
                 AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
-                ReActTrace trace = session.getContext().getAs(AgentFlags.TRACE_KEY_MAIN);
+                ReActTrace trace = TraceUtil.getCurrentTrace(session);
                 if (trace != null) {
                     cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
                 }
                 session.addMessage(cancelMessage);
+                // 补快照：中断时 agent 收尾被跳过，需将当前 trace 与取消消息一并持久化，避免重载后 trace 丢失
+                session.updateSnapshot();
                 LOG.info("用户已取消任务.");
                 return finalAnswer.get();
             }
@@ -506,17 +509,15 @@ public class CliShell implements Runnable {
         return buf;
     }
 
-    private void onReasonChunk(ReasonChunk reason, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
-        if (!reason.isToolCalls() && reason.hasContent()) {
-            String delta = clearThink(reason.getContent());
+    private void onReasonDeltaEvent(ReasonDeltaEvent reasonDeltaEvent, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
+        String delta = clearThink(reasonDeltaEvent.getText());
 
-            if (reason.getMessage().isThinking()) {
-                if (agentProps.getGeneral().isCliThinkPrinted()) {
-                    onReasonDeltaChunkDo(DIM + delta + RESET, isFirstReasonDeltaChunk, isFirstConversation);
-                }
-            } else {
-                onReasonDeltaChunkDo(delta, isFirstReasonDeltaChunk, isFirstConversation);
+        if (reasonDeltaEvent.isThinking()) {
+            if (agentProps.getGeneral().isCliThinkPrinted()) {
+                onReasonDeltaChunkDo(DIM + delta + RESET, isFirstReasonDeltaChunk, isFirstConversation);
             }
+        } else {
+            onReasonDeltaChunkDo(delta, isFirstReasonDeltaChunk, isFirstConversation);
         }
     }
 
@@ -544,8 +545,8 @@ public class CliShell implements Runnable {
     }
 
 
-    private void onThoughtChunk(AgentSession session, ThoughtChunk thought) {
-        ReActTrace trace = thought.getTrace();
+    private void onReasonEndEvent(AgentSession session, ReasonEndEvent reasonEndEvent) {
+        ReActTrace trace = reasonEndEvent.getTrace();
 
         Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
         // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
@@ -553,9 +554,9 @@ public class CliShell implements Runnable {
             session.attrs().put("_loop_last_total_tokens", totalTokens);
         }
 
-        if (thought.hasMeta(TaskTalent.TOOL_MULTITASK)) {
+        if (reasonEndEvent.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
-            String content = thought.getAssistantMessage().getResultContent();
+            String content = reasonEndEvent.getText();
             if (Assert.isNotEmpty(content)) {
 
                 //content = content + DIM + "(" + thought.getTrace().getOptions().getChatModel().getNameOrModel() + ")" + RESET;
@@ -569,8 +570,8 @@ public class CliShell implements Runnable {
         }
     }
 
-    private String onFinalChunk(AgentSession session, ReActChunk react) {
-        ReActTrace trace = react.getTrace();
+    private String onRunEndEvent(AgentSession session, RunEndEvent runEndEvent) {
+        ReActTrace trace = runEndEvent.getTrace();
         StringBuilder traceInfo = getTraceInfo(trace);
 
         if (traceInfo.length() > 4) {
@@ -584,34 +585,34 @@ public class CliShell implements Runnable {
         }
 
         // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。
-        return clearThink(react.getContent());
+        return clearThink(runEndEvent.getText());
     }
 
-    private void onObservationChunk(ObservationChunk action, AtomicBoolean isFirstReasonDeltaChunk) {
-        if (action.getError() != null) {
+    private void onToolCallEndEvent(ToolCallEndEvent toolCallEndEvent, AtomicBoolean isFirstReasonDeltaChunk) {
+        if (toolCallEndEvent.getError() != null) {
             return;
         }
 
-        if (Assert.isNotEmpty(action.getToolName())) {
-            if (TaskTalent.TOOL_MULTITASK.equals(action.getToolName()) ||
-                    TaskTalent.TOOL_TASK.equals(action.getToolName()) ||
-                    MemoryTalent.isMemoryTool(action.getToolName()) ||
-                    GoalTalent.isGoalTool(action.getToolName())) {
+        if (Assert.isNotEmpty(toolCallEndEvent.getToolName())) {
+            if (TaskTalent.TOOL_MULTITASK.equals(toolCallEndEvent.getToolName()) ||
+                    TaskTalent.TOOL_TASK.equals(toolCallEndEvent.getToolName()) ||
+                    MemoryTalent.isMemoryTool(toolCallEndEvent.getToolName()) ||
+                    GoalTalent.isGoalTool(toolCallEndEvent.getToolName())) {
                 return;
             }
 
             final String fullToolName;
 
-            if (engine.getName().equals(action.getAgentName())) {
-                fullToolName = action.getToolName();
+            if (engine.getName().equals(toolCallEndEvent.getAgentName())) {
+                fullToolName = toolCallEndEvent.getToolName();
             } else {
-                fullToolName = action.getAgentName() + "/" + action.getToolName();
+                fullToolName = toolCallEndEvent.getAgentName() + "/" + toolCallEndEvent.getToolName();
             }
 
 
             // 1. 准备参数字符串
             StringBuilder argsBuilder = new StringBuilder();
-            Map<String, Object> args = action.getArgs();
+            Map<String, Object> args = toolCallEndEvent.getArgs();
             if (args != null && !args.isEmpty()) {
                 args.forEach((k, v) -> {
                     if (argsBuilder.length() > 0) {
@@ -626,13 +627,13 @@ public class CliShell implements Runnable {
                 });
             }
 
-            boolean isTodo = TodoTalent.TOOL_TODOREAD.equals(action.getToolName()) || TodoTalent.TOOL_TODOWRITE.equals(action.getToolName());
+            boolean isTodo = TodoTalent.TOOL_TODOREAD.equals(toolCallEndEvent.getToolName()) || TodoTalent.TOOL_TODOWRITE.equals(toolCallEndEvent.getToolName());
             String argsStr = argsBuilder.toString().replace("\n", " ");
             boolean hasBigArgs = argsStr.length() > 100 || (args != null && args.values().stream().anyMatch(v -> v instanceof String && ((String) v).contains("\n")));
 
             if (agentProps.getGeneral().isCliPrintSimplified() && isTodo == false) {
                 // --- 简化风格：单行摘要模式 ---
-                String content = action.getContent() == null ? "" : action.getContent().trim();
+                String content = toolCallEndEvent.getText() == null ? "" : toolCallEndEvent.getText().trim();
                 String summary;
 
                 if (Assert.isEmpty(content)) {
@@ -657,7 +658,7 @@ public class CliShell implements Runnable {
                 // --- 全量风格 ---
                 // 1. 打印指令行
                 terminal.writer().println();
-                if (TodoTalent.TOOL_TODOWRITE.equals(action.getToolName())) {
+                if (TodoTalent.TOOL_TODOWRITE.equals(toolCallEndEvent.getToolName())) {
                     //优化 todowrite 打印
                     argsStr = "\n" + ((String) args.get("todos")).trim();
                     terminal.writer().println(PURPLE + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
@@ -684,9 +685,9 @@ public class CliShell implements Runnable {
                 }
 
                 // 2. 处理工具返回的结果内容 (getContent)
-                if (Assert.isNotEmpty(action.getContent())) {
+                if (Assert.isNotEmpty(toolCallEndEvent.getText())) {
                     // 在参数和结果之间如果内容较多，可以加个小分隔，或者直接缩进打印
-                    String indentedContent = "  " + action.getContent().trim().replace("\n", "\n  ");
+                    String indentedContent = "  " + toolCallEndEvent.getText().trim().replace("\n", "\n  ");
                     terminal.writer().println(DIM + indentedContent + RESET);
                 }
 

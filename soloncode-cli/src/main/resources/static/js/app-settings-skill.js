@@ -73,7 +73,7 @@
     var SVG_SPIN_REFRESH  = '<svg class="skill-install-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
     var SVG_SPIN_DOWNLOAD  = '<svg class="skill-install-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
     var SVG_REFRESH_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
-    var SVG_DELETE_SM  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+    var SVG_DELETE_SM  = SVG_TRASH; /* 全局统一删除图标（app-base.js），不再内联副本 */
 
     // ==================== 工具函数 ====================
 
@@ -477,7 +477,7 @@
                 $item.toggleClass('disabled', !enabled);
                 if (typeof loadCommands === 'function') loadCommands();
                 if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(enabled ? I18n.t('skills.enabled') : I18n.t('skills.disabled'), { icon: 1, time: 1500, offset: '120px' });
+                    layer.msg(enabled ? I18n.t('skills.enabled') : I18n.t('skills.disabled'), { icon: 1, time: 2200, offset: '120px' });
                 }
             } else {
                 $chk.prop('checked', !enabled);
@@ -506,7 +506,7 @@
             }).done(function (resp) {
                 if (resp && resp.code === 200) {
                     if (typeof layer !== 'undefined' && layer.msg) {
-                        layer.msg(I18n.t('skills.deleted', {name: escapeHtml(skillName)}), { icon: 1, time: 2000, offset: '120px' });
+                        layer.msg(I18n.t('skills.deleted', {name: escapeHtml(skillName)}), { icon: 1, time: 2200, offset: '120px' });
                     }
                     // 市场徒章需重算
                     _installedSkillsCache = null;
@@ -564,7 +564,7 @@
         .done(function (resp) {
             if (resp && resp.code === 200 && resp.data) {
                 if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(I18n.t('skills.upgraded', {name: escapeHtml((resp.data || slug) + '')}), { icon: 1, time: 2500, offset: '120px' });
+                    layer.msg(I18n.t('skills.upgraded', {name: escapeHtml((resp.data || slug) + '')}), { icon: 1, time: 2200, offset: '120px' });
                 }
                 _installedSkillsCache = null;
                 if (typeof loadCommands === 'function') loadCommands();
@@ -575,7 +575,7 @@
                 if (msg.indexOf('技能不存在') >= 0 || msg.indexOf('not found') >= 0) {
                     msg = I18n.t('skills.notFoundInMarket', {name: slug});
                 }
-                if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: 2, time: 4000, offset: '120px' });
+                if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: 2, time: 3000, offset: '120px' });
                 $btn.removeClass('installing').prop('disabled', false).html(originHtml);
             }
         })
@@ -590,7 +590,7 @@
             if (msg.indexOf('技能不存在') >= 0) {
                 msg = I18n.t('skills.notFoundInMarket', {name: slug});
             }
-            if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: 2, time: 4000, offset: '120px' });
+            if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: 2, time: 3000, offset: '120px' });
             $btn.removeClass('installing').prop('disabled', false).html(originHtml);
         });
     });
@@ -848,11 +848,7 @@
             var isSuccess = resp && resp.code === 200 && resp.data;
             if (isSuccess) {
                 var skillName = (resp.data || slug) + '';
-                if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(I18n.t('skills.upgradeOk', {name: escapeHtml(skillName)}), {icon: 1, time: 2500, offset: '120px'});
-                } else {
-                    alert(I18n.t('skills.upgradeOk', {name: skillName}));
-                }
+                showToast(I18n.t('skills.upgradeOk', {name: escapeHtml(skillName)}), 'success');
                 $btn.removeClass('installing').html(SVG_REFRESH).prop('disabled', false);
                 _installedSkillsCache = null;  // 市场已安装徽章需重算
                 _installedDirty = true;   // 已安装列表需重载
@@ -860,11 +856,7 @@
             } else {
                 var msg = (resp && (resp.description || resp.message)) || I18n.t('skills.upgradeFailed');
                 $btn.removeClass('installing').html(SVG_REFRESH).prop('disabled', false);
-                if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
-                } else {
-                    alert(msg);
-                }
+                showToast(msg, 'error');
             }
         })
         .fail(function (jqXHR) {
@@ -877,11 +869,7 @@
             } catch (e) {
                 if (jqXHR.status) msg = I18n.t('skills.upgradeFailedHttp', {n: jqXHR.status});
             }
-            if (typeof layer !== 'undefined' && layer.msg) {
-                layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
-            } else {
-                alert(msg);
-            }
+            showToast(msg, 'error');
         });
     });
 
@@ -925,19 +913,11 @@
                 _installedSkillsCache[slug] = mountAlias || true;
                 _installedDirty = true;   // 已安装列表需重载
                 if (typeof loadCommands === 'function') loadCommands();
-                if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(I18n.t('skills.installOk', {name: escapeHtml(skillName)}), {icon: 1, time: 2500, offset: '120px'});
-                } else {
-                    alert(I18n.t('skills.installOk', {name: skillName}));
-                }
+                showToast(I18n.t('skills.installOk', {name: escapeHtml(skillName)}), 'success');
             } else {
                 var msg = (resp && (resp.description || resp.message)) || I18n.t('skills.installFailed');
                 $btn.removeClass('installing').html(SVG_DOWNLOAD).prop('disabled', false);
-                if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
-                } else {
-                    alert(msg);
-                }
+                showToast(msg, 'error');
             }
         })
         .fail(function (jqXHR) {
@@ -950,11 +930,7 @@
             } catch (e) {
                 if (jqXHR.status) msg = I18n.t('skills.installFailedHttp', {n: jqXHR.status});
             }
-            if (typeof layer !== 'undefined' && layer.msg) {
-                layer.msg(msg, {icon: 2, time: 3000, offset: '120px'});
-            } else {
-                alert(msg);
-            }
+            showToast(msg, 'error');
         });
     });
 

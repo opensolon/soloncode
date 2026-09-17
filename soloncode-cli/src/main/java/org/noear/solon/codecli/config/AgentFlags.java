@@ -30,8 +30,10 @@ public class AgentFlags {
     public final static String X_SESSION_CWD = "X-Session-Cwd";
 
     public final static String FLAG_VERSION = "version";
+    public final static String FLAG_HELP = "help";
 
     public final static String FLAG_RUN = "run";
+    public final static String FLAG_STREAM = "stream";
     public final static String FLAG_SERVE = "serve";
     public final static String FLAG_ACP = "acp";
     public final static String FLAG_WEB = "web";
@@ -43,7 +45,7 @@ public class AgentFlags {
     public final static String TRACE_KEY_MAIN = "__main";
 
     public static String getVersion() {
-        return "v2026.8.28";
+        return "v2026.9.15";
     }
 
     private static String lastVersion;

@@ -1,0 +1,234 @@
+package org.noear.solon.codecli.util;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * DirectoryPickerUtil 单测：覆盖类路径解析、脚本约束和 Windows 原生选择器烟测。
+ *
+ * @author noear
+ */
+public class DirectoryPickerUtilTest {
+
+    /**
+     * 开发模式（surefire 下 classes 目录）能解析出非空 classpath，
+     * 且该位置确实包含子进程类
+     */
+    @Test
+    void resolveClasspath_devMode_found() {
+        String cp = DirectoryPickerUtil.resolveClasspath();
+        assertNotNull("classpath should resolve under test (classes dir mode)", cp);
+
+        File base = new File(cp);
+        assertTrue(base.exists(), "resolved classpath should exist");
+        File sub = new File(base, DirectoryPickerUtil.SUBPROCESS_ENTRY);
+        assertTrue(sub.isFile(), "subprocess class should be reachable from resolved classpath");
+    }
+
+    /**
+     * isAvailable 不抛异常（返回值随环境变化，不强断言）
+     */
+    @Test
+    void isAvailable_noThrow() {
+        DirectoryPickerUtil.isAvailable();
+    }
+
+    @Test
+    void isAvailable_detectsHeadlessAndRemoteSessions() {
+        Map<String, String> env = new HashMap<String, String>();
+        assertFalse(DirectoryPickerUtil.isAvailable("Linux", env, null));
+
+        env.put("DISPLAY", ":0");
+        assertTrue(DirectoryPickerUtil.isAvailable("Linux", env, null));
+
+        env.put("SSH_CONNECTION", "client server");
+        assertFalse(DirectoryPickerUtil.isAvailable("Linux", env, null));
+        assertFalse(DirectoryPickerUtil.isAvailable("Mac OS X", env, null));
+
+        env.clear();
+        env.put("SESSIONNAME", "Services");
+        assertFalse(DirectoryPickerUtil.isAvailable("Windows Server 2022", env, null));
+    }
+
+    @Test
+    void isAvailable_allowsExplicitOverride() {
+        Map<String, String> env = new HashMap<String, String>();
+        assertTrue(DirectoryPickerUtil.isAvailable("Linux", env, "true"));
+
+        env.put("DISPLAY", ":0");
+        assertFalse(DirectoryPickerUtil.isAvailable("Linux", env, "false"));
+    }
+
+    @Test
+    void outputPath_onlyStripsLineBreaks() {
+        assertEquals("/Users/test/project/", DirectoryPickerUtil.outputPath("/Users/test/project/\r\n"));
+        assertEquals("/Users/test/space ", DirectoryPickerUtil.outputPath("/Users/test/space \n"));
+        assertNull(DirectoryPickerUtil.outputPath("\r\n"));
+    }
+
+    @Test
+    void protocolPath_distinguishesPickAndCancel() throws IOException {
+        assertEquals("C:\\work\\目录 ", DirectoryPickerUtil.protocolPath("PICK C:\\work\\目录 \r\n"));
+        assertNull(DirectoryPickerUtil.protocolPath("PICK_NONE\n"));
+        assertThrows(IOException.class, () -> DirectoryPickerUtil.protocolPath("PICK \n"));
+        assertThrows(IOException.class, () -> DirectoryPickerUtil.protocolPath("unexpected\n"));
+    }
+
+    @Test
+    void macCommand_usesFinderAndStartDirectory() {
+        File startDir = new File("/Users/test");
+        List<String> command = DirectoryPickerUtil.macCommand("Choose \"workspace\"", startDir);
+        assertEquals("osascript", command.get(0));
+        assertTrue(command.get(2).contains("choose folder"));
+        assertTrue(command.get(2).contains("default location"));
+        assertTrue(command.get(2).contains(startDir.getAbsolutePath().replace("\\", "\\\\")),
+                "the assertion must account for AppleScript escaping on every test platform");
+        assertTrue(command.get(2).contains("\\\"workspace\\\""));
+    }
+
+    @Test
+    void windowsCommand_usesModernPickerScriptFile() throws IOException {
+        List<String> command = DirectoryPickerUtil.windowsCommand("Choose Bob's folder", null);
+        assertEquals("powershell.exe", command.get(0));
+        assertTrue(command.contains("-STA"));
+        assertTrue(command.contains("-NonInteractive"));
+        assertTrue(command.contains("-ExecutionPolicy"));
+        assertTrue(command.contains("Bypass"));
+        assertTrue(command.contains("-File"));
+        assertFalse(command.contains("-EncodedCommand"),
+                "a growing embedded script must not approach the Windows command-line limit");
+        assertEquals("Choose Bob's folder", command.get(command.indexOf("-SoloncodeTitle") + 1));
+        assertEquals("", command.get(command.indexOf("-SoloncodeStartDir") + 1));
+        assertTrue(new File(command.get(command.indexOf("-File") + 1)).isFile(),
+                "the packaged picker resource should be materialized as a ps1 file");
+
+        String script = DirectoryPickerUtil.WINDOWS_PICKER_SCRIPT;
+        assertNotNull(script);
+        assertTrue(script.contains("IFileDialog"), "modern dialog interop should be embedded");
+        assertTrue(script.contains("42f85136-db7e-439c-85f1-e4075d135fc8"),
+                "the declared COM interface must be IFileDialog");
+        assertTrue(script.contains("dc1c5a9c-e88a-4dde-a5a1-60f82a20aef7"),
+                "the modern FileOpenDialog COM class must be instantiated");
+        assertTrue(script.contains("SolonFileDialogOptions.FOS_PICKFOLDERS"));
+        assertTrue(script.contains("SolonFileDialogOptions.FOS_FORCEFILESYSTEM"));
+        assertTrue(script.contains("SolonFileDialogOptions.FOS_PATHMUSTEXIST"));
+        assertTrue(script.contains("SetFolder"), "start directory support should be embedded");
+        assertTrue(script.contains("DpiAwarenessContextPerMonitorAwareV2 = new IntPtr(-4)"),
+                "the picker must request Windows Per-Monitor V2 DPI awareness");
+        assertTrue(script.contains("SetProcessDpiAwarenessContext"));
+        assertTrue(script.contains("SetThreadDpiAwarenessContext"),
+                "the creating STA thread must override PowerShell 5.1's DPI-unaware default");
+        int configureDpi = script.indexOf("[SolonShellNative]::ConfigureHighDpiAwareness()");
+        int invokePicker = script.indexOf("[SolonModernFolderPicker]::Pick(");
+        assertTrue(configureDpi >= 0 && configureDpi < invokePicker,
+                "Per-Monitor V2 must be enabled before IFileOpenDialog creates a window");
+
+        int captureOwner = script.indexOf("SolonShellNative.CaptureForegroundOwner()");
+        int createHelper = script.indexOf("owner = new Form()");
+        assertTrue(captureOwner >= 0 && captureOwner < createHelper,
+                "the foreground browser must be captured before any helper window is created");
+        assertTrue(script.contains("dialog.Show(hwnd)"),
+                "the captured browser/root HWND must be the dialog owner");
+        assertTrue(script.contains("GetAncestor(hwnd, 2u)"), "the foreground root window must be used");
+        assertTrue(script.contains("processId == GetCurrentProcessId()"),
+                "the picker must reject its own process window as an external owner");
+
+        assertTrue(script.contains("SolonIFileDialogEvents"));
+        assertTrue(script.contains("SolonIOleWindow"));
+        assertTrue(script.contains("dialog.Advise(events"));
+        assertTrue(script.contains("dialog.Unadvise(cookie)"));
+        assertTrue(script.contains("new System.Threading.Timer(delegate { Promote(dialog); }, null, 100, 250)"),
+                "real HWND promotion must start independently of optional Shell callbacks");
+        assertTrue(script.contains("InstallDialogCenterHook(centerOwnerHwnd)"),
+                "the dialog must install a synchronous CBT hook before Show");
+        assertTrue(script.contains("UninstallDialogCenterHook(centerHook)"),
+                "the synchronous centering hook must always be removed");
+        assertTrue(script.contains("HCBT_ACTIVATE") || script.contains("code == 5"),
+                "centering must happen during activation, before the first paint");
+        assertTrue(script.contains("must never move a visible dialog"),
+                "the promotion timer must not cause a visible post-show position jump");
+        assertTrue(script.contains("SolonShellNative.SetWindowPos(hwnd"));
+        assertTrue(script.contains("GetWindowRect(hwnd, out bounds)"),
+                "the promotion loop must read the live dialog bounds");
+        assertTrue(script.contains("lastDialogWidth") && script.contains("lastDialogHeight"),
+                "the picker must detect restored size changes");
+        assertTrue(script.contains("sizeChanged"),
+                "a restored dialog size must restart the centering window");
+        assertTrue(script.contains("AddMilliseconds(1200)"),
+                "the initial size observation window must cover asynchronous Shell size restoration");
+        assertTrue(script.contains("CenterAndPromoteWindow(wParam, ownerHwnd)"),
+                "the real dialog should be centered synchronously by the CBT hook");
+        assertTrue(script.contains("MonitorFromWindow(monitorSource, 2u)"),
+                "centering should target the monitor containing the browser owner");
+        assertTrue(script.contains("info.Work.Right - info.Work.Left"),
+                "centering should use the monitor work area rather than raw desktop bounds");
+        assertTrue(script.contains("Math.Max(0, (workWidth - width) / 2)"));
+        assertTrue(script.contains("new SolonFileDialogEvents(smoke, dialog, centerOwnerHwnd)"),
+                "the captured browser must select the destination monitor");
+        assertTrue(script.contains("events.Dispose()"), "the promotion timer must always be disposed");
+        assertTrue(script.contains("LastDialogCentered = true"),
+                "the smoke test must observe the synchronous initial placement");
+        assertFalse(script.contains("AttachThreadInput"));
+        assertFalse(script.contains("AllowSetForegroundWindow"));
+        assertFalse(script.contains("BrowseForFolder"), "the obsolete directory picker must not be present");
+        assertFalse(script.contains("Shell.Application"), "the legacy Shell automation fallback must not be present");
+        assertTrue(script.contains("SigDnFileSystemPath = 0x80058000u"));
+        assertTrue(script.contains("PICK_NONE"));
+        assertTrue(script.contains("PICK_PROBE_OK"), "a non-interactive native compilation probe is required");
+        assertTrue(script.contains("PICK_SMOKE_OK"), "an auto-closing real dialog smoke test is required");
+
+        int interfaceStart = script.indexOf("public interface SolonIFileDialog");
+        int interfaceEnd = script.indexOf("\n}", interfaceStart);
+        assertTrue(interfaceStart >= 0 && interfaceEnd > interfaceStart);
+        String interfaceBlock = script.substring(interfaceStart, interfaceEnd);
+        int showMethod = interfaceBlock.indexOf("int Show(IntPtr parent)");
+        int setFileTypesMethod = interfaceBlock.indexOf("int SetFileTypes(");
+        assertTrue(showMethod >= 0 && showMethod < setFileTypesMethod,
+                "IModalWindow.Show must be the first COM method to preserve IFileDialog vtable order");
+    }
+
+    @Test
+    void windowsCommand_forwardsStartDirectory() throws IOException {
+        File startDir = java.nio.file.Files.createTempDirectory("soloncode-pick-test").toFile();
+        startDir.deleteOnExit();
+
+        List<String> command = DirectoryPickerUtil.windowsCommand("Choose", startDir);
+        assertEquals(startDir.getAbsolutePath(), command.get(command.indexOf("-SoloncodeStartDir") + 1),
+                "start directory should be forwarded as a direct process argument");
+    }
+
+    @Test
+    void windowsPickerProbe_compilesInteropAndCallsWin32WithoutOpeningDialog() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("windows"));
+        String output = DirectoryPickerUtil.probeWindowsPicker(30_000L);
+        assertTrue(output.contains("PICK_PROBE_OK"));
+        assertTrue(output.contains("dpi=PerMonitorV2"),
+                "the real PowerShell STA thread must run with Per-Monitor V2 DPI awareness");
+        assertTrue(output.contains("foregroundOwner="));
+    }
+
+    @Test
+    void windowsPickerSmoke_opensRealDialogAndClosesAutomatically() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("windows"));
+        String output = DirectoryPickerUtil.smokeWindowsPicker(30_000L);
+        assertTrue(output.contains("PICK_SMOKE_OK centered=true"),
+                "the real dialog must report successful monitor-work-area centering");
+    }
+
+    @Test
+    void unsupportedPlatform_requestsSwingFallback() throws Exception {
+        DirectoryPickerUtil.NativePickResult result =
+                DirectoryPickerUtil.pickNative("Plan 9", "Choose", 1000L, null);
+        assertFalse(result.supported);
+        assertNull(result.path);
+    }
+}

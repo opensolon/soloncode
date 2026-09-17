@@ -49,22 +49,38 @@
         var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
         var _memNewBtn = document.getElementById('gitViewerMemNew');
         var _memClearBtn = document.getElementById('gitViewerMemClear');
+        var _memOrganizeBtn = document.getElementById('gitViewerMemOrganize');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
         if (_fullscreenBtn) _fullscreenBtn.style.display = '';
         if (_memNewBtn) _memNewBtn.style.display = '';
         if (_memClearBtn) _memClearBtn.style.display = '';
+        if (_memOrganizeBtn) _memOrganizeBtn.style.display = '';
 
         // 清理 git 模块可能残留的操作栏
         var oldActions = gitViewer.querySelector('.git-viewer-actions');
         if (oldActions) oldActions.remove();
     }
 
-    // ---- 关闭：移除状态类，恢复顶部条与右侧任务面板，避免残留影响 git diff 内嵌视图 ----
+    // ---- 关闭：完整隐藏共享 Viewer，并恢复打开前的主视图 ----
     function closeOverlay() {
         if (!gitViewer) return;
+
+        // 「整理记忆」和 Esc 不会触发 app-git.js 绑定在关闭按钮上的处理，
+        // 因此这里不能只移除状态类，否则 gitViewer 仍以 display:flex 占据主区。
+        if (document.fullscreenElement === gitViewer && document.exitFullscreen) {
+            document.exitFullscreen().catch(function () {});
+        }
+        gitViewer.style.display = 'none';
         document.body.classList.remove('memory-active');
         gitViewer.classList.remove('mem-overlay');
+
+        // showViewer() 写入了内联 display:none；关闭时必须清除，交还给原有 CSS 状态控制。
+        if (chatView) chatView.style.display = '';
+        if (newChatView) newChatView.style.display = '';
+        if (chatView && chatView.classList.contains('active') && newChatView) {
+            newChatView.style.display = 'none';
+        }
     }
 
     // ---- 打开面板 ----
@@ -211,7 +227,7 @@
             '      <textarea class="mem-content" placeholder="' + I18n.t('memory.contentPlaceholder') + '">' + escapeHtml(content) + '</textarea></label>' +
             '    <div class="mem-actions">' +
             '      <button class="memory-btn memory-btn-primary memory-save">' + I18n.t('common.save') + '</button>' +
-            (isNew ? '      <button class="memory-btn memory-cancel">' + I18n.t('common.cancel') + '</button>' : '      <button class="memory-btn memory-btn-danger memory-del">' + I18n.t('common.delete') + '</button>') +
+            (isNew ? '      <button class="memory-btn memory-cancel">' + I18n.t('common.cancel') + '</button>' : '      <button class="memory-btn memory-btn-danger memory-del">' + SVG_TRASH + ' ' + I18n.t('common.delete') + '</button>') +
             '' +
             '    </div>' +
             '  </div>' +
@@ -312,6 +328,7 @@
     }
 
     function memToast(msg, isError) {
+        if (typeof window.showToast === 'function') { window.showToast(msg, isError ? 'error' : 'success'); return; }
         if (typeof layer !== 'undefined' && layer.msg) {
             layer.msg(msg, { icon: isError ? 2 : 1, time: 2500, offset: '120px' });
         } else {
@@ -405,6 +422,20 @@
     var gitViewerMemNew = document.getElementById('gitViewerMemNew');
     if (gitViewerMemNew) {
         gitViewerMemNew.addEventListener('click', function () { startCreate(); });
+    }
+
+    // header 「整理记忆」按钮：关闭面板并填入 /memory 命令，交由 Agent 执行整理
+    var gitViewerMemOrganize = document.getElementById('gitViewerMemOrganize');
+    if (gitViewerMemOrganize) {
+        gitViewerMemOrganize.addEventListener('click', function () {
+            closeOverlay();
+            if (typeof window.fillMemoryText === 'function') {
+                window.fillMemoryText();
+            } else {
+                var input = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : newChatInput;
+                if (input) { input.value = '/memory'; input.focus(); }
+            }
+        });
     }
 
     // header 「清空记忆」按钮：确认后调用后端 clear 接口

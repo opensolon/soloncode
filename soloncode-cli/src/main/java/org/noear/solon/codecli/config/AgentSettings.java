@@ -348,7 +348,10 @@ public class AgentSettings implements Serializable {
         target.setCliThinkPrinted(source.isCliThinkPrinted());
         target.setCliPrintSimplified(source.isCliPrintSimplified());
         target.setGoalsEnabled(source.isGoalsEnabled());
+        target.setLoopsEnabled(source.isLoopsEnabled());
         target.setActiveSkin(source.getActiveSkin());
+        target.setDefaultThinkingMode(source.getDefaultThinkingMode());
+        target.setDefaultReasoningEffort(source.getDefaultReasoningEffort());
         target.setWebAuthUser(source.getWebAuthUser());
         target.setWebAuthPass(source.getWebAuthPass());
         target.setLogLevel(source.getLogLevel());

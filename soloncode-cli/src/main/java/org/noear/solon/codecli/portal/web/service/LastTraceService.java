@@ -30,6 +30,7 @@ import org.noear.solon.codecli.portal.web.event.WebEventNames;
 import org.noear.solon.codecli.portal.web.event.payload.ToolEndPayload;
 import org.noear.solon.codecli.portal.web.pipeline.ToolPresentationFilter;
 import org.noear.solon.codecli.portal.web.pipeline.ToolViewUtil;
+import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 
 import java.util.ArrayList;
@@ -111,12 +112,11 @@ public class LastTraceService {
      * 还原指定会话最后一轮的执行过程。
      *
      * @param session     会话（可为 null）
-     * @param traceKey    trace 在会话上下文中的键（主代理为 {@code __main}）
      * @param running     该会话当前是否仍在运行
      * @param lastUserMsg ndjson 中最后一条用户消息内容，用于对齐校验（可为 null 表示跳过校验）
      * @return 供前端回放的结构化数据，永不返回 null
      */
-    public Map<String, Object> buildLastTrace(AgentSession session, String traceKey, boolean running, String lastUserMsg) {
+    public Map<String, Object> buildLastTrace(AgentSession session, boolean running, String lastUserMsg) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("aligned", false);
         data.put("running", running);
@@ -124,7 +124,7 @@ public class LastTraceService {
         data.put("events", new ArrayList<>());
         data.put("truncated", false);
 
-        ReActTrace trace = resolveTrace(session, traceKey);
+        ReActTrace trace = TraceUtil.getCurrentTrace(session);
         if (trace == null) {
             return data;
         }
@@ -156,16 +156,6 @@ public class LastTraceService {
         data.put("events", events);
         data.put("truncated", truncated);
         return data;
-    }
-
-    private ReActTrace resolveTrace(AgentSession session, String traceKey) {
-        if (session == null || session.getContext() == null) {
-            return null;
-        }
-
-        // 快照反序列化后类型可能退化，非 ReActTrace 一律视为不可用（宁缺勿错）
-        Object obj = session.getContext().get(traceKey);
-        return (obj instanceof ReActTrace) ? (ReActTrace) obj : null;
     }
 
     /**
@@ -387,24 +377,64 @@ public class LastTraceService {
      * <p>不切段的后果是：第二段思考被当成答案铺进气泡、段间没有边界，且 {@code <think>}
      * 字面标签直接显示给用户 —— 也就是「几个思考消息和答案消息合到了一起」。</p>
      *
-     * <p>{@code isThinking()} 不参与判定：该标记取自聚合时<b>最后一帧</b>的通道状态
-     * （{@code ChatResponseDefault#getAggregationMessage}），只说明流末停在哪，不代表整条都是思考；
-     * 据它短路会把正文与工具卡一并吞进思考块。</p>
+     * <p>旧版 {@code isThinking()} 标记不参与判定：该标记只取自聚合时最后一帧的通道状态，
+     * 不能代表整条消息的内容类型；新版消息已移除该状态，直接以 {@code thinking}/{@code text}
+     * 双通道和旧数据中的标签为准。</p>
      */
     private List<Segment> splitSegments(AssistantMessage msg) {
         List<Segment> out = new ArrayList<>();
 
-        String thinking = msg.getThinking();
+        // 新版消息把 thinking 与 text 分开；使用 raw getter，避免旧字段兼容 getter
+        // 把 content 截成第一对标签，导致后续交替段丢失。
+        String thinking = msg.getThinkingRaw();
         if (Assert.isNotEmpty(thinking)) {
             addSegment(out, true, thinking);
         }
 
-        String text = msg.getText();
-        if (Assert.isNotEmpty(text)) {
+        String text = msg.getTextRaw();
+        if (text == null && thinking == null) {
+            // 旧快照只有 content 字段；不能调用 getText()，因为它会先剥掉
+            // 第一对标签，使后续交替段和未闭合思考无法恢复。
+            text = msg.getContent();
+        }
+        if (Assert.isEmpty(text)) {
+            return out;
+        }
+
+        boolean hasOpen = text.indexOf(THINK_OPEN) >= 0;
+        boolean hasClose = text.indexOf(THINK_CLOSE) >= 0;
+        if (hasOpen || hasClose) {
+            // text 中的标签仅作为旧数据兼容格式解析；新版独立 text 始终按正文处理。
+            splitTaggedText(out, text, hasClose
+                    && (!hasOpen || text.indexOf(THINK_CLOSE) < text.indexOf(THINK_OPEN)));
+        } else {
             addSegment(out, false, text);
         }
 
         return out;
+    }
+
+    /**
+     * 解析兼容旧快照/部分模型产生的内嵌 think 标签。
+     * 标签本身不下发；未闭合的开标签把剩余内容视为 thinking。
+     * 若只剩孤立闭标签，则闭标签前的内容按 thinking 处理，保护被截断的旧快照。
+     */
+    private void splitTaggedText(List<Segment> out, String text, boolean startsThinking) {
+        int offset = 0;
+        boolean thinking = startsThinking;
+
+        while (offset < text.length()) {
+            String tag = thinking ? THINK_CLOSE : THINK_OPEN;
+            int tagIndex = text.indexOf(tag, offset);
+            if (tagIndex < 0) {
+                addSegment(out, thinking, text.substring(offset));
+                return;
+            }
+
+            addSegment(out, thinking, text.substring(offset, tagIndex));
+            offset = tagIndex + tag.length();
+            thinking = !thinking;
+        }
     }
 
     /**

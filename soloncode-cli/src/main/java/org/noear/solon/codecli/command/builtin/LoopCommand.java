@@ -224,7 +224,7 @@ public class LoopCommand implements Command {
 
         try {
             scheduler.schedule(sessionId, task);
-        } catch (IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
             return;
         }
@@ -358,7 +358,7 @@ public class LoopCommand implements Command {
 
         try {
             scheduler.schedule(sessionId, task);
-        } catch (IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             ctx.println(ctx.color(RED + "Failed: " + e.getMessage() + RESET));
             return;
         }

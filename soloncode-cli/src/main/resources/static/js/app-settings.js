@@ -26,6 +26,8 @@
     }
 
     function showToast(msg, type) {
+        // 统一委托全局 showToast（app-base.js，标准 = layer.msg）
+        if (typeof window.showToast === 'function') { window.showToast(msg, type); return; }
         if (typeof layer !== 'undefined' && layer.msg) {
             layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' });
         } else {
@@ -191,6 +193,9 @@
         } else if (targetTab === 'providers') {
             $('#settingsTabProviders').addClass('active');
             if (window.settingsProviders) window.settingsProviders.loadList();
+        } else if (targetTab === 'backup') {
+            $('#settingsTabBackup').addClass('active');
+            // 清单由 app-settings-profile.js 的懒加载处理器填充
         }
     });
 
@@ -212,12 +217,14 @@
         else if (targetTab === 'lsp') { if (mod('_settingsLsp')) mod('_settingsLsp').load(); }
         else if (targetTab === 'users') { if (mod('_settingsUsers')) mod('_settingsUsers').load(); }
         else if (targetTab === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
+        else if (targetTab === 'backup') { if (window.backupLoadManifest) window.backupLoadManifest(); }
     }
 
     /**
      * 从磁盘重新加载 settings.json 到当前实例（多实例共享全局配置时使用）
      */
     function reloadSettingsFromDisk() {
+        window.settingsReloadFromDisk = reloadSettingsFromDisk;
         var $btn = $('#settingsReloadBtn');
         if ($btn.prop('disabled')) return;
 

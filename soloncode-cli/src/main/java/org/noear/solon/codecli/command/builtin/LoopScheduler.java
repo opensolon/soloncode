@@ -15,6 +15,7 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
+import org.noear.java_cron.CronUtils;
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
@@ -36,6 +37,8 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -57,6 +60,7 @@ public class LoopScheduler {
     private static final Logger LOG = LoggerFactory.getLogger(LoopScheduler.class);
     private static final int MAX_TASKS_PER_SESSION = 50;
     private static final String TASKS_FILE = "loop-tasks.json";
+    private static final DateTimeFormatter NOW_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     private static volatile boolean interruptHandlerInstalled = false;
 
@@ -203,7 +207,19 @@ public class LoopScheduler {
 
     // ==================== 任务注册 ====================
 
+    /**
+     * 注册任务并开始调度。
+     *
+     * @throws IllegalArgumentException cron 无法解析，或已无未来触发时刻
+     * @throws IllegalStateException    会话任务数已达上限
+     */
     public LoopTask schedule(String sessionId, LoopTask task) {
+        if (task.isCronMode()) {
+            // 创建入口统一收口（模型侧 loop_add、/loop cron:、Web 端共用此处）：
+            // 无法解析或已无未来触发时刻的 cron 一律拒绝创建
+            requireNextFireTime(task.getCron());
+        }
+
         List<LoopTask> tasks = sessionTasks.computeIfAbsent(sessionId,
                 k -> Collections.synchronizedList(new ArrayList<>()));
         if (tasks.size() >= MAX_TASKS_PER_SESSION) {
@@ -566,6 +582,16 @@ public class LoopScheduler {
 
         ScheduledAnno scheduled;
         if (task.isCronMode()) {
+            // 恢复(restore)/更新(update)/启用(toggle) 这些路径不像 schedule() 那样能拒绝创建：
+            // 此时若 cron 已不可触发，注册出去的 job 会被底层立即判为 expired 而停掉，
+            // 任务却仍是 enabled=true（永不执行且不会自动清理）。故直接停用并留痕，保持状态诚实。
+            try {
+                requireNextFireTime(task.getCron());
+            } catch (IllegalArgumentException e) {
+                task.setEnabled(false);
+                LOG.warn("Loop task '{}' disabled, not schedulable: {}", task.getId(), e.getMessage());
+                return;
+            }
             scheduled = new ScheduledAnno().cron(task.getCron());
         } else {
             long intervalMs = (long) task.getIntervalMinutes() * 60_000L;
@@ -584,8 +610,31 @@ public class LoopScheduler {
             if (!task.isEnabled()) {
                 return;
             }
-            onTrigger(sessionId, task);
+            onTrigger(sessionId, task, true);
         });
+    }
+
+    /**
+     * 计算 cron 的下次触发时刻 —— 与 SimpleScheduler 使用同一个解析器，
+     * 保证校验语义与实际调度行为一致。
+     *
+     * @return 下次触发时刻（不为 null）
+     * @throws IllegalArgumentException 表达式无法解析，或已无未来触发时刻
+     */
+    static Date requireNextFireTime(String cron) {
+        Date nextTime;
+        try {
+            nextTime = CronUtils.getNextTime(cron, new Date());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("cron 表达式无法解析: " + cron
+                    + "（需 6 或 7 位：秒 分 时 日 月 周 [年]，日与周必须有一个为 ?）");
+        }
+        if (nextTime == null) {
+            // 带年份的 cron 整体过期，或日期永不存在（如 2 月 31 日）
+            throw new IllegalArgumentException("cron 无有效触发时刻: " + cron
+                    + "（时刻已过或日期不存在，服务器当前时间 " + LocalDateTime.now().format(NOW_FORMAT) + "）");
+        }
+        return nextTime;
     }
 
     // ==================== 定时触发回调 ====================
@@ -612,17 +661,21 @@ public class LoopScheduler {
     }
 
     private void onTrigger(String sessionId, LoopTask task) {
+        onTrigger(sessionId, task, false);
+    }
+
+    private void onTrigger(String sessionId, LoopTask task, boolean fromSchedule) {
         // 调度线程（定时/手动触发/续行/重试）无工作区标记，统一在此打标：
         // 本方法内所有日志（守卫、预算、轮次、错误）随工作区分流，不落到启动工作区文件
         Object logScope = WorkspaceLogRouter.beginScope(engine.getWorkspace());
         try {
-            doTrigger(sessionId, task);
+            doTrigger(sessionId, task, fromSchedule);
         } finally {
             WorkspaceLogRouter.endScope(logScope);
         }
     }
 
-    private void doTrigger(String sessionId, LoopTask task) {
+    private void doTrigger(String sessionId, LoopTask task, boolean fromSchedule) {
         // ① 前置守卫（禁用/过期/取消 → 繁忙 → 预算/状态/最大迭代）
         if (!checkGuardConditions(sessionId, task)) {
             notifyGoalChanged(sessionId, task, false);
@@ -648,8 +701,22 @@ public class LoopScheduler {
         } catch (Exception e) {
             handleExecutionError(sessionId, task, e);
         } finally {
+            // ★ oneShot 一次性任务：调度触发执行完一轮后自动注销（手动 trigger 不消耗配额）
+            if (fromSchedule && task.isOneShot() && !task.isGoalMode()) {
+                unregisterOneShot(sessionId, task);
+            }
             task.finish();
             notifyGoalChanged(sessionId, task, false);
+        }
+    }
+
+    /** 一次性任务善后：注销 job + 移除任务行 + 持久化（异常也消耗，避免失败任务长期残留） */
+    private void unregisterOneShot(String sessionId, LoopTask task) {
+        try {
+            LOG.info("One-shot loop task '{}' executed, unregistering", task.getId());
+            remove(sessionId, task);
+        } catch (Exception e) {
+            LOG.warn("Failed to unregister one-shot task '{}': {}", task.getId(), e.getMessage());
         }
     }
 

@@ -40,7 +40,7 @@ public class MessageLineUtilTest {
     @Test
     @DisplayName("新版助手消息：content 键缺失，正文取 text")
     public void assistant_newFormat() {
-        ONode node = toNode(new AssistantMessage("最终回答", "想一下", false));
+        ONode node = toNode(new AssistantMessage("最终回答", "想一下"));
 
         // 定点确认写侧形态：真的没有 content 键（本用例的前提）
         assertEquals(true, node.get("content").isNull() || node.get("content").getString() == null);
@@ -50,7 +50,7 @@ public class MessageLineUtilTest {
     @Test
     @DisplayName("末帧停在推理通道且正文为空：退回想法，不让整条消息消失")
     public void assistant_thinkingOnly() {
-        ONode node = toNode(new AssistantMessage("", "只有想法", true));
+        ONode node = toNode(new AssistantMessage("", "只有想法"));
         assertEquals("只有想法", MessageLineUtil.readContent(node));
     }
 
@@ -88,13 +88,13 @@ public class MessageLineUtilTest {
     @Test
     @DisplayName("内存助手消息：正常取 text")
     public void memory_assistantText() {
-        assertEquals("最终回答", MessageLineUtil.readContent(new AssistantMessage("最终回答", "想一下", false)));
+        assertEquals("最终回答", MessageLineUtil.readContent(new AssistantMessage("最终回答", "想一下")));
     }
 
     @Test
-    @DisplayName("内存助手消息：末帧停在推理通道且非 thinking 帧，getContent() 不回退，须补回想法")
+    @DisplayName("内存助手消息：正文为空时补回想法")
     public void memory_assistantThinkingFallback() {
-        AssistantMessage msg = new AssistantMessage("", "只有想法", false);
+        AssistantMessage msg = new AssistantMessage("", "只有想法");
 
         // 定点确认本用例的前提：直接取 getContent() 拿不到正文
         assertEquals("", msg.getContent());
@@ -117,9 +117,8 @@ public class MessageLineUtilTest {
     @DisplayName("两条读取路径同构：同一条消息走内存与走 ndjson 得到相同正文")
     public void memory_fileParity() {
         ChatMessage[] samples = new ChatMessage[]{
-                new AssistantMessage("最终回答", "想一下", false),
-                new AssistantMessage("", "只有想法", false),
-                new AssistantMessage("", "只有想法", true),
+                new AssistantMessage("最终回答", "想一下"),
+                new AssistantMessage("", "只有想法"),
                 ChatMessage.ofUser("你好")
         };
 

@@ -2,7 +2,7 @@
 
 > 适用场景：选择 RAG 文档加载器、向量库后端、联网搜索插件。
 >
-> 目标版本：4.0.4。Embedding / Reranking / 检索流水线见 `ai_chat_rag_mcp.md`。
+> 目标版本：4.1.0。Embedding / Reranking / 检索流水线见 `ai_chat_rag_mcp.md`。
 >
 > **无**独立 `solon-ai-rag` 坐标；核心在 `solon-ai-core`，插件按需引入。
 

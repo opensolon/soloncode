@@ -50,10 +50,12 @@ if ($env:SOLONCODE_INSTALL_DIR -and (Test-Path $env:SOLONCODE_INSTALL_DIR)) {
 }
 $SOURCE_BIN_DIR = Join-Path $SOURCE_DIR "bin"
 $SOURCE_SKILLS_DIR = Join-Path $SOURCE_DIR "skills"
+$SOURCE_COMMANDS_DIR = Join-Path $SOURCE_DIR "commands"
 $SOURCE_AGENTS = Join-Path $SOURCE_DIR "AGENTS.md"
 $TARGET_DIR = Join-Path $env:USERPROFILE ".soloncode"
 $TARGET_BIN_DIR = Join-Path $TARGET_DIR "bin"
 $TARGET_SKILLS_DIR = Join-Path $TARGET_DIR "skills"
+$TARGET_COMMANDS_DIR = Join-Path $TARGET_DIR "commands"
 $TARGET_AGENTS = Join-Path $TARGET_DIR "AGENTS.md"
 $OLD_TARGET_AGENTS = Join-Path $TARGET_BIN_DIR "AGENTS.md"
 # =============================================
@@ -92,6 +94,7 @@ Write-Host "[2/5] Preparing target directory: $TARGET_DIR" -ForegroundColor Yell
 if (-not (Test-Path $TARGET_DIR)) { New-Item -ItemType Directory -Path $TARGET_DIR | Out-Null }
 if (-not (Test-Path $TARGET_BIN_DIR)) { New-Item -ItemType Directory -Path $TARGET_BIN_DIR | Out-Null }
 if (-not (Test-Path $TARGET_SKILLS_DIR)) { New-Item -ItemType Directory -Path $TARGET_SKILLS_DIR | Out-Null }
+if (-not (Test-Path $TARGET_COMMANDS_DIR)) { New-Item -ItemType Directory -Path $TARGET_COMMANDS_DIR | Out-Null }
 Write-Host "      Created directory structure" -ForegroundColor Gray
 # =============================================
 # [3/5] 复制文件
@@ -125,6 +128,31 @@ if (Test-Path $SOURCE_SKILLS_DIR) {
     }
 } else {
     Write-Host "      No skills/ directory to copy" -ForegroundColor Gray
+}
+
+# 复制 commands 目录（仅替换安装包自带的同名命令文件，保留用户自建命令）
+if (Test-Path -LiteralPath $SOURCE_COMMANDS_DIR -PathType Container) {
+    if (-not (Test-Path -LiteralPath $TARGET_COMMANDS_DIR)) {
+        New-Item -ItemType Directory -Path $TARGET_COMMANDS_DIR | Out-Null
+    }
+    $sourceCommandsRoot = (Resolve-Path -LiteralPath $SOURCE_COMMANDS_DIR).Path
+    Get-ChildItem -LiteralPath $SOURCE_COMMANDS_DIR -File -Recurse -Force | ForEach-Object {
+        $relativeCommandPath = $_.FullName.Substring($sourceCommandsRoot.Length + 1)
+        $targetCommandPath = Join-Path $TARGET_COMMANDS_DIR $relativeCommandPath
+        $targetCommandParent = Split-Path -Parent $targetCommandPath
+
+        if (-not (Test-Path -LiteralPath $targetCommandParent)) {
+            New-Item -ItemType Directory -Path $targetCommandParent -Force | Out-Null
+        }
+        if (Test-Path -LiteralPath $targetCommandPath -PathType Container) {
+            throw "Command target is a directory: $targetCommandPath"
+        }
+
+        Copy-Item -LiteralPath $_.FullName -Destination $targetCommandPath -Force
+        Write-Host "      Updated command: $relativeCommandPath" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "      No commands/ directory to copy" -ForegroundColor Gray
 }
 Write-Host "      Files copied successfully" -ForegroundColor Green
 # =============================================
@@ -298,7 +326,8 @@ Write-Host "    |   +-- soloncode.bat   (CMD launcher)"
 Write-Host "    |   +-- soloncode       (Git Bash launcher)"
 Write-Host "    |   +-- uninstall.ps1   (uninstall script)"
 Write-Host "    |   +-- uninstall.cmd   (uninstall script)"
-Write-Host "    +-- skills/        (skill modules)"
+Write-Host "    +-- skills/         (skill modules)"
+Write-Host "    +-- commands/       (custom commands)"
 Write-Host ""
 Write-Host "  [Tip] To use soloncode immediately in current terminal:" -ForegroundColor Yellow
 Write-Host "    PowerShell: `$env:Path = [Environment]::GetEnvironmentVariable('Path','User')"

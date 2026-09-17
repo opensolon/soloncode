@@ -41,6 +41,7 @@ import org.noear.solon.codecli.portal.web.event.WebEventNames;
 import org.noear.solon.codecli.portal.web.event.payload.SystemTracePayload;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.codecli.util.LogDirUtil;
+import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.handle.UploadedFile;
@@ -362,19 +363,25 @@ public class WebGate extends SimpleWebSocketListener {
             // 新任务开流：清上一轮 runId 与残留插话邮箱。
             // onAgentEnd 不在 finally 中（interrupt/异常路径不触发），若不在此清理，
             // 上一任务未消费的插话会在新任务第二轮被注入，破坏方案 A 的任务级隔离。
-            // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律广播 dropped 让前端转排队
-            session.attrs().remove(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-            @SuppressWarnings("unchecked")
-            Queue<String> staleBox = (Queue<String>) session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
+            // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律广播 dropped 让前端转排队。
+            // 与 steer 提交及 onAgentEnd 共用短临界区，保证 runId 与邮箱按同一任务边界切换。
+            Queue<SteerMessage> staleBox;
+            synchronized (session.attrs()) {
+                session.attrs().remove(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
+                @SuppressWarnings("unchecked")
+                Queue<SteerMessage> currentBox =
+                        (Queue<SteerMessage>) session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
+                staleBox = currentBox;
+            }
 
             emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
 
             if (staleBox != null && staleBox.isEmpty() == false) {
-                java.util.List<String> stale = new java.util.ArrayList<>();
-                for (String t; (t = staleBox.poll()) != null; ) {
-                    stale.add(t);
+                java.util.List<SteerMessage> stale = new java.util.ArrayList<>();
+                for (SteerMessage message; (message = staleBox.poll()) != null; ) {
+                    stale.add(message);
                 }
-                emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDropped(null, stale));
+                emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(null, stale));
             }
         }
     }
@@ -1021,7 +1028,7 @@ public class WebGate extends SimpleWebSocketListener {
                 /* 被回退的那一轮，其执行过程还留在上下文快照里（__main 的 ReActTrace）。
                  * 不清掉的话，刷新页面时 /messages/last-trace 会把已删掉的思考与工具卡
                  * 原样回放回来 —— 与 /web/chat/rewind 同理。 */
-                session.getContext().remove(AgentFlags.TRACE_KEY_MAIN);
+                TraceUtil.removeCurrentTrace(session);
                 session.updateSnapshot();
 
                 emitToClient(wsContext, session.getSessionId(), WebEvent.ofRewind(rewindCount + 1));
@@ -1096,6 +1103,17 @@ public class WebGate extends SimpleWebSocketListener {
      * @return true 表示输入已接受并进入处理流程；false 表示会话繁忙已跳过
      */
     public boolean safeChatInput(WorkspaceContext wsContext,String sessionId, String input, String source) {
+        return safeChatInput(wsContext, sessionId, input, source, null);
+    }
+
+    /**
+     * 安全聊天输入入口，并在输入确认受理、启动处理前执行回调。
+     *
+     * <p>回调适合发布与本次输入绑定的请求级上下文。它不会在会话繁忙时执行，
+     * 且发生在 {@link #onChatInput} 之前，避免异步任务已经产生输出后才发布上下文。</p>
+     */
+    public boolean safeChatInput(WorkspaceContext wsContext, String sessionId, String input, String source,
+                                 Runnable acceptedHook) {
         try {
             AgentSession session = wsContext.getEngine().getSession(sessionId);
             if (isSessionBusy(session)) {
@@ -1112,6 +1130,11 @@ public class WebGate extends SimpleWebSocketListener {
 
                 LOG.warn("[WebGate] {} event skipped for session {}: task in progress", source, sessionId);
                 return false;
+            }
+
+            // 必须在 onChatInput 之前发布：onChatInput 会异步调度任务，快速任务可能立即输出。
+            if (acceptedHook != null) {
+                acceptedHook.run();
             }
         } catch (Exception e) {
             LOG.warn("[WebGate] {} event check failed for session {}: {}", source, sessionId, e.getMessage());
@@ -1299,11 +1322,15 @@ public class WebGate extends SimpleWebSocketListener {
 
             // 1) 取消语义：error + 可选 final/trace（落库消息带上 runId，便于按 runId 锚点删除）
             AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
-            ReActTrace trace = session.getContext().getAs(AgentFlags.TRACE_KEY_MAIN);
+            ReActTrace trace = TraceUtil.getCurrentTrace(session);
             if (trace != null) {
                 cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
             }
             session.addMessage(cancelMessage);
+            // 中断时 agent 的 call() 收尾被跳过，这里必须补快照：把当前 trace（含已完成的思考/工具调用）
+            // 与取消消息一起持久化，否则进程重启/会话重载后本轮 trace 会丢失。
+            // 参照 rewind 路径（见上方 /rewind 处理）的做法。
+            session.updateSnapshot();
             emitToClient(wsContext, sessionId, WebEvent.ofError("用户已取消任务."));
 
             if (trace != null) {

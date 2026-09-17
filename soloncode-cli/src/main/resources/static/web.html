@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/css/settings.css"/>
     <link rel="stylesheet" href="/css/ws-home.css"/>
     <!-- 当前皮肤：由 app-ui.js 按 static/skin/<name>/skin.css 动态加载 -->
-    <script>window._i18nVer = '20260802';</script>
+    <script>window._i18nVer = '20260907';</script>
     <script src="/js/i18n.js"></script>
     <link rel="stylesheet" id="skinStyle" href="/skin/default/skin.css"/>
     <link rel="stylesheet" href="/highlight/github.min.css" media="(prefers-color-scheme: light)" id="hljsLightTheme"/>
@@ -58,7 +58,12 @@
             <span class="sidebar-nav-label" data-i18n="sidebar.workspace">工作区</span>
         </button>
     </div>
-    <div class="sidebar-title" data-i18n="sidebar.recentChats">最近对话</div>
+    <div class="sidebar-title-row">
+        <div class="sidebar-title" data-i18n="sidebar.recentChats">最近对话</div>
+        <button type="button" class="sidebar-clear-history-btn icon-btn-clear" id="clearHistoryBtn" title="清空未置顶对话" data-i18n-title="history.clearTitle" data-i18n-aria="history.clearTitle" aria-label="清空未置顶对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+    </div>
     <div class="sidebar-list" id="historyList"></div>
     <div class="sidebar-footer">
         <button class="settings-btn" id="settingsBtn" title="设置" data-i18n-title="sidebar.settings">
@@ -217,6 +222,32 @@
         </div>
         <div class="input-wrap">
             <div class="context-status" id="chatContextStatus" style="display:none"><span class="context-status-text">Context: -- / -- (--%)</span><span class="context-status-cache" style="display:none"></span><span class="context-status-elapsed" style="display:none"></span></div>
+            <!-- 当前会话任务排队：靠近输入行为，空队列时完全隐藏 -->
+            <div class="queue-strip collapsed" id="chatQueueDock" style="display:none" role="region" aria-live="polite" aria-label="任务排队" data-i18n-aria="workspace.taskQueue">
+                <div class="queue-strip-header" id="chatQueueHeader">
+                    <div class="queue-strip-title-row">
+                        <div class="queue-strip-title">
+                            <span class="queue-strip-status-dot" aria-hidden="true"></span>
+                            <span data-i18n="workspace.taskQueue">任务排队</span>
+                            <span class="queue-strip-count" id="chatQueueTitle">0</span>
+                        </div>
+                        <div class="queue-strip-preview" id="chatQueuePreview"></div>
+                        <div class="queue-strip-actions">
+                            <button type="button" class="queue-strip-clear" id="chatQueueClear" title="清空排队" data-i18n-title="workspace.clearQueue" aria-label="清空排队" data-i18n-aria="workspace.clearQueue">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </button>
+                            <button type="button" class="queue-strip-toggle" id="chatQueueToggle" title="展开" data-i18n-title="workspace.expandQueue" aria-label="展开" data-i18n-aria="workspace.expandQueue" aria-expanded="false" aria-controls="chatQueueList">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="queue-strip-hint" id="chatQueueHint" data-i18n="workspace.queueAutoSendHint">当前任务结束后自动发送</div>
+                </div>
+                <div class="queue-strip-list" id="chatQueueList" role="list"></div>
+            </div>
             <div class="input-box" id="chatDropZone">
                 <div class="drop-overlay" id="chatDropOverlay">
                     <div class="drop-overlay-content">
@@ -332,7 +363,10 @@
                 <button class="git-viewer-action-btn" id="gitViewerMemNew" title="新建记忆" data-i18n-title="gitViewer.newMemory" style="display:none">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </button>
-                <button class="git-viewer-action-btn" id="gitViewerMemClear" title="清空记忆" data-i18n-title="gitViewer.clearMemory" style="display:none">
+                <button class="git-viewer-action-btn" id="gitViewerMemOrganize" title="整理记忆" data-i18n-title="toolbar.organizeMemory" style="display:none">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-2.5 2.5A2.5 2.5 0 0 1 7 19.5V17H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5-2.5V17h2a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2"/></svg>
+                </button>
+                <button class="git-viewer-action-btn icon-btn-clear" id="gitViewerMemClear" title="清空记忆" data-i18n-title="gitViewer.clearMemory" style="display:none">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 </button>
                 <button class="git-viewer-action-btn" id="gitViewerFullscreen" title="全屏" data-i18n-title="gitViewer.fullscreen">
@@ -373,7 +407,7 @@
         <div class="todo-panel">
             <div class="todo-header">
                 <div class="todo-title" data-i18n-partial><span data-i18n="workspace.currentTask">当前任务</span> <span class="todo-stats-count" id="todoStats" style="display:none"></span></div>
-                <button class="todo-refresh-btn" id="todoRefreshBtn" title="刷新" data-i18n-title="common.refresh" data-i18n-title="workspace.refreshBtn">
+                <button class="todo-refresh-btn" id="todoRefreshBtn" title="刷新" data-i18n-title="workspace.refreshBtn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                 </button>
             </div>
@@ -382,33 +416,6 @@
                 当前会话暂无任务清单
             </div>
         </div>
-        <!-- 任务面板底部：任务排队 -->
-        <div class="queue-strip collapsed" id="chatQueueDock" style="display:none" aria-live="polite">
-            <div class="queue-strip-header" id="chatQueueHeader">
-                <div class="queue-strip-title-row">
-                    <div class="queue-strip-title">
-                        <span data-i18n="workspace.taskQueue">任务排队</span>
-                        <span class="queue-strip-count" id="chatQueueTitle">0</span>
-                        <button type="button" class="queue-strip-clear" id="chatQueueClear" title="清空排队" data-i18n-title="workspace.clearQueue" aria-label="清空排队" data-i18n-aria="workspace.clearQueue">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="3 6 5 6 21 6"/>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                <line x1="10" y1="11" x2="10" y2="17"/>
-                                <line x1="14" y1="11" x2="14" y2="17"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="queue-strip-actions">
-                        <button type="button" class="queue-strip-toggle" id="chatQueueToggle" title="展开" data-i18n-title="workspace.expandQueue" aria-label="展开" data-i18n-aria="workspace.expandQueue">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="queue-strip-preview" id="chatQueuePreview"></div>
-                <div class="queue-strip-hint" data-i18n="workspace.queueAutoSendHint">当前任务结束后自动发送</div>
-            </div>
-            <div class="queue-strip-list" id="chatQueueList"></div>
-        </div>
     </div>
 
     <!-- Tab Content: 文件树 -->
@@ -416,8 +423,11 @@
         <div class="file-search-bar">
             <svg class="file-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" class="file-search-input" id="fileSearchInput" placeholder="搜索文件..." data-i18n-placeholder="workspace.searchFiles" />
-            <button class="file-search-clear" id="fileSearchClear" title="清除" data-i18n-title="workspace.clearSearch" style="display:none">
+            <button class="file-search-clear" id="fileSearchClear" title="清除" data-i18n-title="workspace.clearSearch">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <button class="file-refresh-btn" id="fileRefreshBtn" title="刷新" data-i18n-title="workspace.refreshBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
         </div>
         <div class="file-panel-tree" id="fileTree"></div>
@@ -512,7 +522,10 @@
             </div>
             <div class="git-diff-file-list" id="gitDiffFileList"></div>
             <div class="git-commit-bar" id="gitCommitBar">
-                <textarea class="git-commit-input" id="gitCommitMsg" placeholder="审查摘要..." data-i18n-placeholder="git.reviewPlaceholder" rows="1"></textarea>
+                <div class="git-commit-input-wrap">
+                    <textarea class="git-commit-input" id="gitCommitMsg" placeholder="审查摘要..." data-i18n-placeholder="git.reviewPlaceholder" rows="1" aria-haspopup="listbox" aria-controls="gitCommitHistory"></textarea>
+                    <div class="git-commit-history" id="gitCommitHistory" role="listbox" aria-label="Git 提交历史" style="display:none"></div>
+                </div>
                 <div class="git-commit-actions">
                     <button class="git-summary-btn" id="gitSummaryBtn" title="AI 生成变更摘要" data-i18n-title="git.generateSummaryTitle">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2L19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2L11 5"/></svg>
@@ -533,13 +546,17 @@
 
 </div>
 
-<!-- 工作区全屏 Home（放在 body 最外层，铺满视口，盖在当前工作区之上，ESC/关闭退回） -->
+<!-- 工作区全屏 Home（放在 body 最外层，铺满视口，盖在当前工作区之上，ESC/关闭退回；
+     主目录裸启动时进入锁定模式：隐藏关闭按钮、ESC 失效，必须先选定工作区） -->
 <div class="ws-home-overlay" id="wsHomeOverlay" style="display:none" role="dialog" aria-modal="true" aria-label="工作区" data-i18n-aria-label="sidebar.workspace">
     <div class="ws-home">
         <header class="ws-home-header">
             <div class="ws-home-brand" data-i18n="sidebar.workspace">工作区</div>
             <div class="ws-home-omni">
                 <input type="text" class="ws-home-search" id="wsHomeSearch" placeholder="搜索工作区，或输入绝对路径打开…" data-i18n-placeholder="sidebar.wsOmniPlaceholder" autocomplete="off">
+                <button class="ws-home-omni-pick" id="wsHomePickBtn" type="button" data-i18n-title="sidebar.wsPickFolder" aria-label="浏览本地目录" data-i18n-aria-label="sidebar.wsPickFolder" disabled style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 3.5h4l1.5 2h7.5v7a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5v-9Z"/><path d="M6 10.5h4"/></svg>
+                </button>
                 <button class="ws-home-omni-go" id="wsHomeGoBtn" data-i18n="sidebar.open">打开</button>
             </div>
             <button class="ws-home-close" id="wsHomeCloseBtn" title="关闭" data-i18n-title="common.close" aria-label="关闭" data-i18n-aria-label="common.close">✕</button>
@@ -590,6 +607,7 @@
                         </svg>
                     </button>
                 </div>
+                <div class="settings-tabs-scroll">
                 <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> <span data-i18n="settings.tab.general">通用</span></button>
 
                 <button class="settings-tab" data-tab="agents"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg> <span data-i18n="settings.tab.agents">智能体</span></button>
@@ -605,10 +623,15 @@
                 <button class="settings-tab" data-tab="openapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> <span data-i18n="settings.tab.openapi">OpenAPI 服务器</span></button>
                 <button class="settings-tab" data-tab="lsp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> <span data-i18n="settings.tab.lsp">LSP 服务器</span></button>
 
+                <div class="sidebar-title" style="padding:16px 16px 8px;font-size:var(--fs-xs);color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;" data-i18n="settings.group.backup">备份</div>
+                <button class="settings-tab" data-tab="backup"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12a9 3 0 0 1-18 0"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/></svg> <span data-i18n="settings.tab.backup">配置备份</span></button>
+
                 <!-- //暂时不启用
                 <div class="sidebar-title" style="padding:16px 16px 8px;font-size:var(--fs-xs);color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;" data-i18n="settings.group.users">用户管理</div>
                 <button class="settings-tab" data-tab="users"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> <span data-i18n="settings.tab.users">用户管理</span></button>
                 -->
+                </div>
+
                 <div class="settings-tabs-footer">
                     <div class="settings-product-name">SolonCode</div>
                     <span id="appVersionLabel" class="settings-version"></span>
@@ -672,6 +695,38 @@
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.conversation.desc">历史窗口控制新指令时使用几条历史消息；压缩策略控制对话上下文的自动压缩，防止超出模型窗口限制</div>
+                                </div>
+                            </div>
+
+                            <!-- 新建对话默认 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="general.chatDefaults.title">新建对话默认</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="general.chatDefaults.thinkingMode">思考模式</label>
+                                            <select class="general-input form-select-custom" id="generalDefaultThinkingMode">
+                                                <option value="" data-i18n="general.chatDefaults.followModel">自动（跟随模型）</option>
+                                                <option value="on" data-i18n="general.chatDefaults.thinkingOn">开启</option>
+                                                <option value="off" data-i18n="general.chatDefaults.thinkingOff">关闭</option>
+                                            </select>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="general.chatDefaults.reasoningEffort">推理强度</label>
+                                            <select class="general-input form-select-custom" id="generalDefaultReasoningEffort">
+                                                <option value="" data-i18n="general.chatDefaults.followModel">自动（跟随模型）</option>
+                                                <option value="low" data-i18n="history.effortLabelLow">低</option>
+                                                <option value="medium" data-i18n="history.effortLabelMedium">中</option>
+                                                <option value="high" data-i18n="history.effortLabelHigh">高</option>
+                                                <option value="max" data-i18n="history.effortLabelMax">极高</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.chatDefaults.desc">只影响新建对话；已在输入框里手选过的对话保持自己的档位。超出模型支持范围的档位会自动回调到最近一档</div>
                                 </div>
                             </div>
 
@@ -898,11 +953,21 @@
                                     </div>
                                     <div class="general-toggle-row settings-gap-top-md">
                                         <div class="general-toggle-info">
-                                            <span class="general-toggle-name" data-i18n="general.features.managerName">Manage 工具支持</span>
-                                             <span class="general-toggle-desc" data-i18n="general.features.managerDesc">开启后允许 AI 动态添加/管理 LLM 模型、MCP 服务、OpenAPI 源与定时任务；关闭可减少上下文消耗</span>
+                                            <span class="general-toggle-name" data-i18n="general.features.managerName">Manage 配置管理支持</span>
+                                             <span class="general-toggle-desc" data-i18n="general.features.managerDesc">开启后允许 AI 动态添加/管理 LLM 模型、MCP 服务与 OpenAPI 源；关闭可减少上下文消耗</span>
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="generalManagerEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="general.features.loopName">Loop 定时任务支持</span>
+                                             <span class="general-toggle-desc" data-i18n="general.features.loopDesc">开启后允许 AI 管理定时/循环任务（查询、暂停、停止、指定时刻执行等）；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalLoopEnabled"/>
                                             <span class="toggle-slider"></span>
                                         </label>
                                     </div>
@@ -1036,7 +1101,7 @@
                                     <div class="general-card-text">
                                         <div class="general-card-title" data-i18n="general.logging.title">日志保存</div>
                                     </div>
-                                    <button type="button" class="settings-btn" id="generalLogOpenDirBtn" title="" data-i18n-title="general.logging.openDir">
+                                    <button type="button" class="settings-btn general-log-open-dir-btn" id="generalLogOpenDirBtn" title="" data-i18n-title="general.logging.openDir">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                         <span data-i18n="general.logging.openDir">打开日志目录</span>
                                     </button>
@@ -1117,7 +1182,7 @@
                                 </div>
                                 <div class="settings-form-actions" id="agentsFormActions" style="display:none">
                                     <button class="settings-form-action-btn" id="agentsFormCopyBtn" title="复制为新定义" data-i18n-title="agents.copyTitle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> <span data-i18n="agents.copy">复制</span></button>
-                                     <button class="settings-form-action-btn danger" id="agentsFormDeleteBtn" title="删除" data-i18n-title="agents.deleteTitle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span data-i18n="agents.delete">删除</span></button>
+                                     <button class="settings-form-action-btn danger" id="agentsFormDeleteBtn" title="删除" data-i18n-title="agents.deleteTitle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> <span data-i18n="agents.delete">删除</span></button>
                                 </div>
                             </div>
                             <div class="agents-form">
@@ -1209,7 +1274,7 @@
                                          <span data-i18n="llm.copy">复制</span>
                                     </button>
                                     <button class="settings-form-action-btn danger" id="llmFormDeleteBtn" title="删除" data-i18n-title="common.delete">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                          <span data-i18n="llm.delete">删除</span>
                                     </button>
                                 </div>
@@ -1394,7 +1459,7 @@
                                     <span class="settings-section-title" id="mountsFormTitle">添加挂载</span>
                                 </div>
                                 <div class="settings-form-actions" id="mountsFormActions" style="display:none">
-                                    <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" title="删除" data-i18n-title="common.delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span data-i18n="common.delete">删除</span></button>
+                                    <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" title="删除" data-i18n-title="common.delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> <span data-i18n="common.delete">删除</span></button>
                                 </div>
                             </div>
                             <div class="mounts-add-form">
@@ -1512,7 +1577,7 @@
                                          <span data-i18n="mcp.copyBtn">复制</span>
                                      </button>
                                      <button class="settings-form-action-btn danger" id="mcpFormDeleteBtn" title="删除" data-i18n-title="mcp.deleteTitle">
-                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                          <span data-i18n="mcp.deleteBtn">删除</span>
                                      </button>
                                 </div>
@@ -1639,7 +1704,7 @@
                                          <span data-i18n="openapi.edit">复制</span>
                                      </button>
                                      <button class="settings-form-action-btn danger" id="openapiFormDeleteBtn" title="删除" data-i18n-title="openapi.deleteTitle">
-                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                          <span data-i18n="openapi.deleteBtn">删除</span>
                                      </button>
                                 </div>
@@ -1737,7 +1802,7 @@
                                 </div>
                                 <div class="settings-form-actions" id="lspFormActions" style="display:none">
                                     <button class="settings-form-action-btn danger" id="lspFormDeleteBtn" title="删除" data-i18n-title="lsp.deleteTitle">
-                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                          <span data-i18n="lsp.deleteBtn">删除</span>
                                      </button>
                                 </div>
@@ -1772,6 +1837,35 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <!-- Backup Tab -->
+                <div class="settings-tab-content" id="settingsTabBackup">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div>
+                                <span class="settings-section-title" data-i18n="backup.title">配置备份</span>
+                                <div class="settings-section-desc" data-i18n="backup.desc">导出配置与资产为 zip 备份，或从备份包导入还原</div>
+                            </div>
+                            <div class="mcp-header-actions">
+                                <button class="settings-add-btn" id="backupExportBtn" data-i18n="backup.exportBtn">导出备份 (zip)</button>
+                                <button class="settings-add-btn" id="backupImportBtn" data-i18n="backup.importBtn">导入备份…</button>
+                            </div>
+                        </div>
+
+                        <label class="backup-item backup-item-secrets" for="backupIncludeSecrets">
+                            <span class="backup-item-checkbox">
+                                <input type="checkbox" id="backupIncludeSecrets"/>
+                                <span class="backup-item-checkmark"></span>
+                            </span>
+                            <span class="backup-item-info">
+                                <span class="backup-item-name" data-i18n="backup.includeSecrets">包含密钥（apiKey 等敏感字段明文写入包内）</span>
+                                <span class="backup-item-path" data-i18n="backup.includeSecretsPath">留空或不勾选时，导出包内密钥以 __MASKED__ 占位，导入时不会覆盖本机现有密钥</span>
+                            </span>
+                        </label>
+
+                        <div id="backupItemList" class="backup-item-list"></div>
+                        <input type="file" id="backupImportFileInput" accept=".zip" style="display:none;"/>
                     </div>
                 </div>
                 <!-- Users Tab -->
@@ -1995,7 +2089,7 @@
                                 </div>
                                 <div class="settings-form-actions" id="providerFormActions" style="display:none">
                                     <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" title="删除" data-i18n-title="provider.deleteTitle">
-                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                          <span data-i18n="provider.deleteBtn">删除</span>
                                      </button>
                                 </div>
@@ -2041,14 +2135,14 @@
                                         <div class="provider-model-header-actions">
                                             <button type="button" class="provider-model-text-btn" id="providerModelsSelectAll" data-i18n="provider.selectAll">全选</button>
                                             <button type="button" class="provider-model-text-btn" id="providerModelsInvert" data-i18n="provider.invert">反选</button>
-                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型" data-i18n-title="provider.addBtn">
+                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型" data-i18n-title="provider.models.addTitle">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                             </button>
                                             <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表" data-i18n-title="provider.models.fetchTitle">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                                             </button>
-                                            <button class="provider-model-icon-btn" id="providerClearModelsBtn" title="清空模型列表" data-i18n-title="provider.models.clearTitle">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-1 2h14l-1 14H4L3 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/><line x1="18" y1="11" x2="18" y2="17"/></svg>
+                                            <button class="provider-model-icon-btn icon-btn-clear" id="providerClearModelsBtn" title="清空模型列表" data-i18n-title="provider.models.clearTitle">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                             </button>
                                         </div>
                                     </div>
@@ -2076,7 +2170,10 @@
 <script>
     (function() {
         var urlParams = new URLSearchParams(window.location.search);
-        var workspace = urlParams.get('workspaceId'); // 统一：只认 workspaceId（多工作区ID，如 ws-xxx）；旧参数 workspace 已废弃
+        // 统一：只认 workspaceId（多工作区ID，如 ws-xxx；特殊值 launch = 启动目录/默认工作区）；旧参数 workspace 已废弃
+        var workspace = urlParams.get('workspaceId');
+        // 是否由用户显式指定了工作区：用于区分「~ 下裸启动」与「明知故犯地选择启动目录」
+        window.__wsExplicitId = workspace || '';
         if (workspace) {
             // 同时劫持 XMLHttpRequest，覆盖 jQuery $.get/$.ajax 等所有请求通道，
             // 避免依赖 $ 就绪时机的 ajaxSetup 方案失效；并统一处理失效工作区 404 引导回 home
@@ -2146,6 +2243,20 @@
             if (window.updateModelOnboarding) {
                 // 借助既有函数展示（模型列表为空时会保持显示）
                 window.updateModelOnboarding();
+            }
+        }
+        // 在用户主目录下裸启动（无 ?workspaceId= 参数）：锁定为「只有工作区面板」，
+        // 不放行到对话界面——必须先选一个工作区（或显式点“启动目录”新窗口打开）。
+        // 带了参数（含 workspaceId=launch）即视为用户已知情选择，正常进入对话。
+        // 注意：必须在 revealApp() 之前置锁，避免主界面先闪一帧再被盖住。
+        if (meta.isHomeWorkspace === true && !window.__wsExplicitId) {
+            window.__wsHomeLocked = true;
+            document.body.classList.add('ws-home-locked');
+            if (typeof window.openWorkspaceHome === 'function') {
+                window.openWorkspaceHome();
+            } else {
+                // 面板初始化脚本尚未执行：置标记，由其自行补开
+                window.__wsHomeAutoOpen = true;
             }
         }
         revealApp();
@@ -2263,7 +2374,7 @@
                                     ta.value = cmd; document.body.appendChild(ta); ta.select();
                                     document.execCommand('copy'); document.body.removeChild(ta);
                                 }
-                                layer.msg(t_('update.copied') || '已复制', { icon: 1, time: 1500 });
+                                layer.msg(t_('update.copied') || '已复制', { icon: 1, time: 2200, offset: '120px' });
                             } catch (e) { /* ignore */ }
                         };
                     });
@@ -2359,7 +2470,8 @@
             '/js/app-settings-providers.js',
             '/js/app-settings-users.js',
             '/js/app-settings-skill.js',
-            '/js/app-settings-skin.js'
+            '/js/app-settings-skin.js',
+            '/js/app-settings-profile.js'
         ];
         var settingsLoading = null;
         var realOpenSettingsTab = null;
@@ -2406,7 +2518,7 @@
 
         function toastSettingsError() {
             if (window.layer && typeof layer.msg === 'function') {
-                layer.msg((window.I18n ? window.I18n.t('toast.settingsLoadFailed') : '\u8bbe\u7f6e\u6a21\u5757\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5'), { icon: 2, time: 2500 });
+                layer.msg((window.I18n ? window.I18n.t('toast.settingsLoadFailed') : '\u8bbe\u7f6e\u6a21\u5757\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5'), { icon: 2, time: 3000, offset: '120px' });
             } else {
                 console.error('[settings] modules failed to load');
             }
@@ -2590,6 +2702,7 @@
         var mountGrid = document.getElementById('wsHomeMountGrid');
         var mountSection = document.getElementById('wsHomeMountSection');
         var goBtn = document.getElementById('wsHomeGoBtn');
+        var pickBtn = document.getElementById('wsHomePickBtn');
 
         // 内存缓存，供搜索过滤复用
         var cache = { launch: null, workspaces: [], mounts: [] };
@@ -2606,6 +2719,20 @@
 
         function matches(kw, text) { return !kw || String(text || '').toLowerCase().indexOf(kw) >= 0; }
 
+        // 兼容点击 SVG/path 等子节点以及缺少 Element.closest() 的浏览器。
+        // stopAt 自身也参与匹配，但不会越过当前事件委托容器。
+        function closestWithin(node, selector, stopAt) {
+            while (node) {
+                if (node.nodeType === 1) {
+                    var matchesSelector = node.matches || node.msMatchesSelector || node.webkitMatchesSelector;
+                    if (matchesSelector && matchesSelector.call(node, selector)) return node;
+                }
+                if (node === stopAt) break;
+                node = node.parentNode;
+            }
+            return null;
+        }
+
         // 判断输入是否疑似绝对路径（用于跳过列表过滤）
         function looksLikePath(s) { return s.charAt(0) === '/' || /^[A-Za-z]:[\\/]/.test(s); }
 
@@ -2619,23 +2746,25 @@
             var ws = cache.workspaces.filter(function (item) { return matches(kw, item.name) || matches(kw, item.path); });
             var html = '';
             ws.forEach(function (item) {
+                var removeLabel = t('sidebar.wsRemove', '移除');
                 html += '<div class="ws-home-card" data-id="' + esc(item.id) + '">' +
                     '<div class="ws-home-card-name">' + esc(item.name || item.path) + '</div>' +
                     '<div class="ws-home-card-path" title="' + esc(item.path) + '">' + esc(item.path) + '</div>' +
-                    '<button class="ws-home-card-remove" data-remove="' + esc(item.id) + '" title="' + t('sidebar.wsRemove', '移除') + '">✕</button></div>';
+                    '<button type="button" class="ws-home-card-remove" data-remove="' + esc(item.id) + '" aria-label="' + esc(removeLabel) + '" title="' + esc(removeLabel) + '">' + SVG_TRASH + '</button></div>';
             });
             recentGrid.innerHTML = html || '<div class="ws-home-empty">' + t('sidebar.wsEmpty', '暂无其他工作区') + '</div>';
 
-            // 2. 启动目录（点击回默认工作区）
+            // 2. 启动目录（新窗口带显式参数打开：以启动目录为工作区是一次主动选择，
+            //    带上 workspaceId=launch 后不再触发主目录引导面板）
             var lp = (cache.launch && cache.launch.path) ? cache.launch.path : '';
             if (lp && (matches(kw, segOf(lp)) || matches(kw, lp))) {
-                launchGrid.innerHTML = '<a class="ws-home-card" href="/">' +
+                launchGrid.innerHTML = '<a class="ws-home-card" href="/?workspaceId=launch" target="_blank" rel="noopener">' +
                     '<div class="ws-home-card-name">' + esc(segOf(lp)) + '</div>' +
                     '<div class="ws-home-card-path" title="' + esc(lp) + '">' + esc(lp) + '</div></a>';
                 launchSection.style.display = '';
             } else {
                 launchGrid.innerHTML = '';
-                launchSection.style.display = lp ? 'none' : 'none';
+                launchSection.style.display = 'none';
             }
 
             // 3. 文件挂载（点击传 alias 走 open 接口）
@@ -2669,28 +2798,65 @@
         }
 
         function openHome() {
+            // 主目录裸启动：锁定为「只有工作区面板」，隐藏关闭入口（ESC 也不生效）
+            if (closeBtn) closeBtn.style.display = window.__wsHomeLocked ? 'none' : '';
             overlay.style.display = 'flex';
             load();
             setTimeout(function () { searchInput.focus(); }, 50);
         }
 
         function closeHome() {
+            // 锁定模式下不允许退回对话界面：必须先选定一个工作区
+            if (window.__wsHomeLocked) return;
             overlay.style.display = 'none';
             if (openBtn && typeof openBtn.focus === 'function') openBtn.focus();
         }
 
         // 点击最近工作区卡片：新 tab 打开；点击移除按钮：从列表移除
         recentGrid.addEventListener('click', function (e) {
-            var rm = e.target.getAttribute && e.target.getAttribute('data-remove');
-            if (rm) {
+            var rmBtn = closestWithin(e.target, '[data-remove]', recentGrid);
+            if (rmBtn) {
+                var rm = rmBtn.getAttribute('data-remove');
+                e.preventDefault();
                 e.stopPropagation();
-                if (!window.confirm(t('sidebar.wsRemoveConfirm', '确定从列表移除该工作区？（不会删除目录）'))) return;
-                fetch('/web/workspace/remove', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'id=' + encodeURIComponent(rm) })
-                    .then(function (r) { return r.json(); })
-                    .then(function (res) { if (res.code === 200) load(); else alert(res.description || 'remove failed'); });
+                var doRemove = function () {
+                    if (rmBtn.disabled) return;
+                    rmBtn.disabled = true;
+                    fetch('/web/workspace/remove', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'id=' + encodeURIComponent(rm) })
+                        .then(function (r) {
+                            return r.json().catch(function () { throw new Error('Invalid server response'); }).then(function (res) {
+                                if (!r.ok || !res || res.code !== 200) {
+                                    throw new Error((res && (res.description || res.message)) || ('HTTP ' + r.status));
+                                }
+                                return res;
+                            });
+                        })
+                        .then(function () {
+                            // 删除当前页面所属工作区后，旧 workspaceId 已失效；直接回首页，
+                            // 不再发起一个必然 404 的列表请求，也避免页面表现为突然断线。
+                            if (rm === window.__wsExplicitId) {
+                                window.location.replace('/');
+                                return;
+                            }
+                            load();
+                        })
+                        .catch(function (err) {
+                            rmBtn.disabled = false;
+                            showToast((err && err.message) || 'remove failed', 'error');
+                        });
+                };
+                if (typeof layer !== 'undefined' && layer.confirm) {
+                    layer.confirm(t('sidebar.wsRemoveConfirm', '确定从列表移除该工作区？（不会删除目录）'), { btn: [t('common.delete', '删除'), t('common.cancel', '取消')], icon: 3, offset: '120px' }, function (index) {
+                        // 必须先启动删除请求，再关闭确认层；即使第三方弹层关闭异常也不能吞掉提交。
+                        doRemove();
+                        layer.close(index);
+                    });
+                } else if (window.confirm(t('sidebar.wsRemoveConfirm', '确定从列表移除该工作区？（不会删除目录）'))) {
+                    doRemove();
+                }
                 return;
             }
-            var item = e.target.closest ? e.target.closest('.ws-home-card') : null;
+            var item = closestWithin(e.target, '.ws-home-card', recentGrid);
             if (item && item.getAttribute('data-id')) {
                 window.open('/?workspaceId=' + encodeURIComponent(item.getAttribute('data-id')), '_blank');
                 closeHome();
@@ -2707,31 +2873,70 @@
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.code === 200 && res.data && res.data.id) { window.open('/?workspaceId=' + encodeURIComponent(res.data.id), '_blank'); closeHome(); }
-                    else alert(res.description || res.message || 'open failed');
+                    else showToast(res.description || res.message || 'open failed', 'error');
                 })
-                .catch(function () { alert('open failed'); });
+                .catch(function () { showToast('open failed', 'error'); });
         });
 
         function openNew() {
             var path = (searchInput.value || '').trim();
             if (!path) return;
             var isAbs = looksLikePath(path);
-            if (!isAbs || path.indexOf('..') >= 0) { alert(t('sidebar.wsPathInvalid', '请输入合法的本地绝对路径（以 / 或盘符开头，且不含 ..）')); return; }
+            if (!isAbs || path.indexOf('..') >= 0) { showToast(t('sidebar.wsPathInvalid', '请输入合法的本地绝对路径（以 / 或盘符开头，且不含 ..）'), 'error'); return; }
             goBtn.disabled = true;
             fetch('/web/workspace/open', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'path=' + encodeURIComponent(path) })
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     goBtn.disabled = false;
                     if (res.code === 200 && res.data && res.data.id) { window.open('/?workspaceId=' + encodeURIComponent(res.data.id), '_blank'); closeHome(); }
-                    else alert(res.description || res.message || 'open failed');
+                    else showToast(res.description || res.message || 'open failed', 'error');
                 })
-                .catch(function () { goBtn.disabled = false; alert('open failed'); });
+                .catch(function () { goBtn.disabled = false; showToast('open failed', 'error'); });
+        }
+
+        // 点系统目录选择按钮：后端弹原生对话框，选中后只回填输入框；统一由“打开”按钮提交
+        function pickFolder() {
+            if (pickBtn.disabled) return;
+            pickBtn.disabled = true;
+            pickBtn.classList.add('spin');
+            // 超时兑底：服务端默认 300s 销毁对话框，前端略放寬20s，保证按钮永不死转
+            var abortCtl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var abortTimer = abortCtl ? setTimeout(function () { abortCtl.abort(); }, 320000) : null;
+            var opts = { method: 'POST' };
+            if (abortCtl) opts.signal = abortCtl.signal;
+            function done() { pickBtn.disabled = false; pickBtn.classList.remove('spin'); if (abortTimer) clearTimeout(abortTimer); }
+            fetch('/web/workspace/pick-directory', opts)
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    done();
+                    if (res.code !== 200) { showToast(res.description || res.message || 'pick failed', 'error'); return; }
+                    if (res.data && res.data.headless) {
+                        // 桌面会话可能在页面加载后消失；静默降级为手工输入，不暴露系统错误。
+                        pickBtn.style.display = 'none';
+                        return;
+                    }
+                    var p = res.data && res.data.path;
+                    if (!p) return; // 用户取消，静默返回
+                    searchInput.value = p;
+                    render();
+                    searchInput.focus();
+                })
+                .catch(function () { done(); showToast(t('sidebar.wsPickTimeout', '目录选择超时或失败，请重试'), 'error'); });
         }
 
         openBtn.addEventListener('click', openHome);
         closeBtn.addEventListener('click', closeHome);
         searchInput.addEventListener('input', render);
         goBtn.addEventListener('click', openNew);
+        pickBtn.addEventListener('click', pickFolder);
+        // 初始化时探测一次能力（GET 无副作用）：仅在明确支持本机 GUI 时显示按钮。
+        // 探测失败保持隐藏，Linux 无桌面服务器不会出现一个注定失败的入口。
+        fetch('/web/workspace/pick-directory').then(function (r) { return r.json(); }).then(function (res) {
+            if (res.code === 200 && res.data && res.data.available) {
+                pickBtn.style.display = '';
+                pickBtn.disabled = false;
+            }
+        }).catch(function () { });
         searchInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') openNew(); });
 
         // ESC 退回：仅当 Home 可见时处理，且不影响更上层弹层
@@ -2741,6 +2946,14 @@
             e.stopPropagation();
             closeHome();
         });
+
+        // 对外暴露：供 /web/chat/meta 回调在「~ 下裸启动」时主动弹面板
+        window.openWorkspaceHome = openHome;
+        if (window.__wsHomeAutoOpen) {
+            // meta 回调先于本脚本执行完成时的补偿路径
+            window.__wsHomeAutoOpen = false;
+            openHome();
+        }
     })();
 </script>
 

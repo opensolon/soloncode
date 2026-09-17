@@ -12,6 +12,9 @@ import org.noear.solon.codecli.config.entity.ProviderDo;
 import org.noear.solon.codecli.config.models.ModelApiUrl;
 import org.noear.solon.codecli.config.models.ModelInfo;
 import org.noear.solon.codecli.config.models.ModelsAdapter;
+import org.noear.solon.codecli.config.models.ModelsFetchException;
+import org.noear.solon.codecli.config.models.ModelsFetchReason;
+import org.noear.solon.codecli.config.models.ModelsHttp;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
@@ -170,6 +173,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getModels().put(config.getNameOrModel(), config);
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         LOG.info("[Settings] Model added: {}", config.getNameOrModel());
         return Result.succeed(config.getNameOrModel());
@@ -189,6 +193,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getModels().remove(name);
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         LOG.info("[Settings] Model removed: {}", name);
         return Result.succeed();
@@ -226,6 +231,7 @@ public class LlmSettingController extends BaseSettingsController {
             engine().setDefaultModel(config.getNameOrModel());
         }
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         LOG.info("[Settings] Model updated: {} -> {}", originalName, config.getNameOrModel());
         return Result.succeed(config.getNameOrModel());
@@ -244,6 +250,8 @@ public class LlmSettingController extends BaseSettingsController {
             if (name.equals(config.getNameOrModel())) {
                 config.setEnabled(enabled);
                 saveSettings();
+                // enabled 属于公用模型配置：其它工作区需重读以避免设置面板显示过期
+                reloadOtherWorkspaces();
                 LOG.info("[Settings] Model {} {}", name, enabled ? "enabled" : "disabled");
                 return Result.succeed();
             }
@@ -334,6 +342,7 @@ public class LlmSettingController extends BaseSettingsController {
         // 解析模型列表（直接存储 ModelInfo）
         settings().getProviders().put(name, provider);
         saveSettings();
+        reloadOtherWorkspaces();
         LOG.info("[Settings] Provider added: {}", name);
         return Result.succeed();
     }
@@ -393,6 +402,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getProviders().put(name, provider);
         saveSettings();
+        reloadOtherWorkspaces();
         LOG.info("[Settings] Provider updated: {}", name);
         return Result.succeed();
     }
@@ -430,6 +440,8 @@ public class LlmSettingController extends BaseSettingsController {
 
         settings().getProviders().remove(name);
         saveSettings();
+        // 供应删除会级联删除模型（并可能清空默认模型），需同步到其它工作区引擎
+        syncModelsToOtherWorkspaces();
         LOG.info("[Settings] Provider removed: {}, cascaded models: {}", name, removedModels);
         return Result.succeed();
     }
@@ -459,6 +471,7 @@ public class LlmSettingController extends BaseSettingsController {
         }
 
         saveSettings();
+        reloadOtherWorkspaces();
         LOG.info("[Settings] Provider {} {}", name, enabled ? "enabled" : "disabled");
         return Result.succeed();
     }
@@ -470,22 +483,27 @@ public class LlmSettingController extends BaseSettingsController {
     @Mapping("/web/settings/llm/providers/fetch")
     public Result providersFetch(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("standard") String standard) {
         if (Assert.isEmpty(apiUrl)) {
-            return Result.failure("apiUrl is required");
+            return Result.failure("apiUrl is required",
+                    fetchErrorData(ModelsFetchReason.INVALID_URL.name(), 0));
         }
 
         try {
+            // 先校验用户填的地址：缺协议、拼错协议或带空白/全角字符时立即反馈，
+            // 否则会一路走到 HTTP 层白白耗掉一次超时，且提示不能指向地址本身
+            ModelsHttp.requireHttpUrl(apiUrl.trim(), "Settings");
+
             // 使用 ModelsAdapterManager 获取对应的提供商
             ModelsAdapter provider = modelsAdapterManager.getAdapter(standard);
             String baseUrl = provider.deriveBaseUrl(apiUrl);
 
-            // 构建请求头
+            // 认证头由各协议适配器按规范负责构建，避免给 Google/Anthropic 等协议发送错误的 Bearer 头
             Map<String, String> headers = new HashMap<>();
-            if (apiKey != null && !apiKey.isEmpty()) {
-                headers.put("Authorization", "Bearer " + apiKey);
-            }
 
             // 调用提供商获取模型列表
             List<ModelInfo> models = provider.fetchModels(settings().getGeneral().getUserAgent(), baseUrl, headers, apiKey);
+            if (models == null) {
+                models = new ArrayList<>();
+            }
 
             // 按 id 排序，保证每次返回顺序一致
             models.sort(Comparator.comparing(ModelInfo::getId, Comparator.nullsLast(String::compareTo)));
@@ -519,10 +537,24 @@ public class LlmSettingController extends BaseSettingsController {
             modelList.sort((a, b) -> String.CASE_INSENSITIVE_ORDER.compare(String.valueOf(a.get("id")), String.valueOf(b.get("id"))));
 
             return Result.succeed(modelList);
+        } catch (ModelsFetchException e) {
+            // 失败原因需要透出：404 表示供应商没有模型列表接口，与“拉取失败”应给出不同处置建议
+            LOG.warn("[Settings] Failed to fetch models: reason={}, status={}", e.getReason(), e.getStatus());
+            return Result.failure("fetch models failed: " + e.getReason().name(), fetchErrorData(e.getReason().name(), e.getStatus()));
         } catch (Exception e) {
-            LOG.warn("[Settings] Failed to fetch models: {}", e.getMessage());
-            return Result.failure("拉取模型列表失败: " + e.getMessage());
+            LOG.warn("[Settings] Failed to fetch models");
+            return Result.failure("fetch models failed: UNKNOWN", fetchErrorData(ModelsFetchReason.UNKNOWN.name(), 0));
         }
+    }
+
+    /**
+     * 拉取失败的结构化信息，前端按 reason 决定提示文案与后续引导
+     */
+    private Map<String, Object> fetchErrorData(String reason, int status) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("reason", reason);
+        data.put("status", status);
+        return data;
     }
 
     /**
@@ -651,6 +683,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         if (syncCount > 0 || deselectCount > 0) {
             saveSettings();
+            syncModelsToOtherWorkspaces();
         }
 
         LOG.info("[Settings] Synced {} models from provider: {} (deselected {} orphans)", syncCount, providerName, deselectCount);
@@ -875,6 +908,7 @@ public class LlmSettingController extends BaseSettingsController {
 
         // 保存配置
         saveSettings();
+        syncModelsToOtherWorkspaces();
 
         return Result.succeed(generatedModels);
     }

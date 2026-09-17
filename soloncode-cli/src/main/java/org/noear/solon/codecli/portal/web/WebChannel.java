@@ -69,8 +69,10 @@ public class WebChannel {
         }
 
         Map<String, String> qrResult = WeChatClient.fetchQRCode();
-        if (qrResult == null) {
-            return Result.failure("获取微信二维码失败，请确认网络可访问 ilinkai.weixin.qq.com");
+        if (qrResult == null || qrResult.get(WeChatClient.KEY_ERROR) != null) {
+            String reason = (qrResult == null) ? "无响应" : qrResult.get(WeChatClient.KEY_ERROR);
+            return Result.failure("获取微信二维码失败：" + reason
+                    + "。请确认服务端网络可访问 ilinkai.weixin.qq.com（若已配置代理，需确认代理对该域名生效）");
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -108,15 +110,19 @@ public class WebChannel {
             return Result.succeed(errData);
         }
 
-        // 扫码确认后自动绑定：提取令牌与用户信息，关联到当前会话
+        // 扫码确认后自动绑定：提取令牌与用户信息，关联到当前会话。
+        // 前端 2s 轮询而本接口对 confirmed 幂等，这里通常会被并发触发多次，
+        // 由 bindSession 自身保证幂等（不可重置游标与 context_token）。
         if ("confirmed".equals(statusResult.get("status"))) {
             String botToken = statusResult.get("bot_token");
             String ilinkBotId = statusResult.get("ilink_bot_id");
             String ilinkUserId = statusResult.get("ilink_user_id");
+            String baseUrl = statusResult.get("baseurl");
 
             WorkspaceContext wsContext = workspaceManager.currentContext();
             if (wsContext != null) {
-                wsContext.getChannelHub().getWeChatLink().bindSession(sessionId, botToken, ilinkBotId, ilinkUserId);
+                wsContext.getChannelHub().getWeChatLink()
+                        .bindSession(sessionId, botToken, ilinkBotId, ilinkUserId, baseUrl);
             }
         }
 
@@ -292,6 +298,9 @@ public class WebChannel {
         }
 
         WorkspaceContext wsContext = workspaceManager.currentContext();
+        if (wsContext == null) {
+            return Result.failure("飞书通道未启用");
+        }
 
         try {
             FeishuQRBindManager.BindStartResult result = wsContext.getChannelHub().getFeishuQRBindManager().startQrBinding(sessionId);
@@ -324,6 +333,12 @@ public class WebChannel {
         }
 
         WorkspaceContext wsContext = workspaceManager.currentContext();
+        if (wsContext == null) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("status", "failed");
+            data.put("message", "飞书通道未启用");
+            return Result.succeed(data);
+        }
 
         try {
             FeishuAppRegistration.PollResult pollResult = wsContext.getChannelHub().getFeishuQRBindManager().pollQrBinding(sessionId);
@@ -379,6 +394,10 @@ public class WebChannel {
         }
 
         WorkspaceContext wsContext = workspaceManager.currentContext();
+        if (wsContext == null) {
+            // 无上下文即无待取消的绑定会话，视为已完成
+            return Result.succeed();
+        }
 
         wsContext.getChannelHub().getFeishuQRBindManager().cancelQrBinding(sessionId);
         return Result.succeed();
@@ -502,6 +521,9 @@ public class WebChannel {
         }
 
         WorkspaceContext wsContext = workspaceManager.currentContext();
+        if (wsContext == null) {
+            return Result.failure("钉钉通道未启用");
+        }
 
         try {
             DingTalkQRBindManager.BindStartResult result = wsContext.getChannelHub().getDingtalkQRBindManager().startQrBinding(sessionId);
@@ -534,6 +556,12 @@ public class WebChannel {
         }
 
         WorkspaceContext wsContext = workspaceManager.currentContext();
+        if (wsContext == null) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("status", "failed");
+            data.put("message", "钉钉通道未启用");
+            return Result.succeed(data);
+        }
 
         try {
             DingTalkAppRegistration.PollResult pollResult = wsContext.getChannelHub().getDingtalkQRBindManager().pollQrBinding(sessionId);
@@ -584,6 +612,10 @@ public class WebChannel {
         }
 
         WorkspaceContext wsContext = workspaceManager.currentContext();
+        if (wsContext == null) {
+            // 无上下文即无待取消的绑定会话，视为已完成
+            return Result.succeed();
+        }
 
         wsContext.getChannelHub().getDingtalkQRBindManager().cancelQrBinding(sessionId);
         return Result.succeed();

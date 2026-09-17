@@ -17,6 +17,7 @@
     'use strict';
 
     function showToast(msg, type) {
+        if (typeof window.showToast === 'function') { window.showToast(msg, type); return; }
         if (typeof layer !== 'undefined' && layer.msg) {
             layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' });
         } else {

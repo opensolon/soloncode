@@ -49,7 +49,14 @@ body {
 .sidebar-nav-item:hover svg { transform: scale(1.1); }
 .sidebar-nav-label { flex: 1; text-align: left; }
 .sidebar-nav-badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; background: transparent; color: var(--text-secondary); font-size: var(--fs-xs); line-height: 18px; text-align: center; }
-.sidebar-title { padding: 16px 16px 8px; font-size: var(--fs-xs); color: var(--text-secondary); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.sidebar-title-row { display: flex; align-items: center; padding: 16px 16px 8px; }
+.sidebar-title-row .sidebar-title { padding: 0; flex: 1; }
+.sidebar-clear-history-btn { width: 24px; height: 24px; padding: 4px; border: none; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s; }
+.sidebar-title-row:hover .sidebar-clear-history-btn, .sidebar-clear-history-btn:focus-visible { opacity: 1; }
+.sidebar-clear-history-btn:not(:disabled):hover { background: var(--bg-hover); color: var(--text-primary); }
+.sidebar-clear-history-btn:disabled { opacity: 0.25; cursor: default; }
+.sidebar-clear-history-btn svg { width: 16px; height: 16px; display: block; }
+
 .sidebar-list { flex: 1; overflow-y: auto; padding: 4px 10px; }
 .sidebar-item { position: relative; padding: 10px 12px; border-radius: 10px; cursor: pointer; color: var(--text-sidebar); font-size: var(--fs-base); display: flex; align-items: center; min-height: 46px; transition: all 0.15s; margin-bottom: 2px; }
 .sidebar-item:hover { background: var(--bg-hover); }
@@ -479,7 +486,7 @@ body {
     gap: 6px;
     padding: 6px 10px;
     border-left: 2px solid var(--accent);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0;
     /* 用 --accent-rgb 而非 --accent-fill：后者是强调色实心填充（contrast 皮肤为不透明 #3a3a3a），
        此处需要与竖线同色系的淡底，且要随皮肤走 */
     background: rgba(var(--accent-rgb, 79, 110, 247), 0.07);
@@ -818,6 +825,12 @@ body {
 .more-menu-dropdown .more-menu-icon { width: 18px; height: 18px; flex: 0 0 18px; color: var(--text-secondary); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .more-menu-dropdown .more-menu-icon text { fill: currentColor; stroke: none; }
 .more-menu-separator { height: 1px; background: var(--border-color); margin: 3px 0; }
+
+/* 消息区选中文本右键菜单（复制 / 在对话中引用）：视觉对齐 more-menu-dropdown */
+.selection-menu { position: fixed; min-width: 180px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; z-index: 10005; overflow: hidden; animation: drop-up 0.15s ease-out; }
+.selection-menu-item { width: 100%; border: 0; background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; font: inherit; font-size: var(--fs-base); padding: 9px 14px; display: flex; align-items: center; gap: 9px; }
+.selection-menu-item:hover { background: var(--bg-hover); }
+.selection-menu .more-menu-icon { width: 18px; height: 18px; flex: 0 0 18px; color: var(--text-secondary); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 .more-menu-hint {
   margin-left: auto;
@@ -1277,6 +1290,33 @@ body {
     background: var(--bg-hover);
     opacity: 1;
 }
+/* 文件树手动刷新（与审查/任务面板刷新按钮同风格，常驻显示） */
+.file-refresh-btn {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.6;
+    transition: opacity 0.15s, background 0.15s;
+}
+.file-refresh-btn:hover {
+    background: var(--bg-hover);
+    opacity: 1;
+}
+.file-refresh-btn.spinning {
+    opacity: 1;
+    cursor: default;
+}
+.file-refresh-btn.spinning svg {
+    animation: blob-spin 0.8s linear infinite;
+}
 /* ===== 搜索结果列表 ===== */
 .file-search-results {
     display: none;
@@ -1554,30 +1594,12 @@ body {
 }
 .workspace-panel-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .workspace-panel-toggle-btn.collapsed { right: 4px !important; }
-/* 折叠态任务排队条数角标（不展开也能感知） */
-.workspace-queue-badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    border-radius: 8px;
-    background: var(--accent-fill, var(--accent));
-    color: #fff;
-    font-size: var(--fs-2xs);
-    font-weight: 600;
-    line-height: 16px;
-    text-align: center;
-    box-sizing: border-box;
-    pointer-events: none;
-    box-shadow: 0 0 0 1px var(--bg-sidebar);
-}
-.workspace-panel-toggle-btn:not(.collapsed) .workspace-queue-badge {
-    display: none !important;
-}
-
 .file-node { user-select: none; }
+/* 文件树右键菜单（挂在 body 下，fixed 定位） */
+.filer-context-menu { position: fixed; z-index: 9999; display: none; min-width: 180px; padding: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); animation: drop-up 0.12s ease-out; }
+.filer-context-menu-item { padding: 7px 12px; border-radius: 6px; font-size: var(--fs-base); color: var(--text-primary); cursor: pointer; white-space: nowrap; transition: background 0.12s; }
+.filer-context-menu-item:hover { background: var(--bg-hover); }
+
 .file-node-row {
     display: flex;
     align-items: center;
@@ -1595,24 +1617,6 @@ body {
     position: relative;
 }
 .file-node-row:hover { background: var(--bg-hover); }
-.file-node-row:hover::after {
-    content: '双击加入对话';
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    max-width: 88px;
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    font-size: var(--fs-xs);
-    line-height: 1.4;
-    pointer-events: none;
-    white-space: nowrap;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-}
 /* 缩进由 app-filer.js 按 data-indent 计算为行内 padding-left（16px + 层级 * 16px），
    不再用固定层级选择器枚举，避免超过枚举层数后退化为平层显示 */
 
@@ -1881,24 +1885,6 @@ body {
     position: relative;
 }
 .git-file-item:hover { background: var(--bg-hover); }
-.git-file-item:hover::after {
-    content: '双击加入对话';
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    max-width: 88px;
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    font-size: var(--fs-xs);
-    line-height: 1.4;
-    pointer-events: none;
-    white-space: nowrap;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-}
 
 .git-status-letter {
     width: 18px;
@@ -2139,6 +2125,52 @@ body {
     flex-shrink: 0;
     background: var(--bg-secondary);
 }
+.git-commit-input-wrap {
+    position: relative;
+    width: 100%;
+}
+.git-commit-history {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 6px);
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.git-commit-history-item {
+    display: block;
+    width: 100%;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    cursor: pointer;
+}
+.git-commit-history-item:hover,
+.git-commit-history-item.active {
+    background: var(--bg-secondary);
+    color: var(--accent);
+}
+.git-commit-history-empty,
+.git-commit-history-loading {
+    padding: 8px 9px;
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+}
+
 .git-commit-input {
     width: 100%;
     min-height: 30px;
@@ -2590,47 +2622,6 @@ body.memory-active .main-header { display: none; }
     to { opacity: 1; transform: none; }
 }
 
-/* ===== Toast Notification ===== */
-.toast-container {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 10000;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    pointer-events: none;
-}
-.toast-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 18px;
-    border-radius: 10px;
-    background: var(--bg-input-box);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-lg);
-    font-size: var(--fs-base);
-    color: var(--text-primary);
-    pointer-events: auto;
-    animation: toast-in 0.3s ease-out;
-    max-width: 360px;
-}
-.toast-item.success { border-left: 3px solid var(--color-success); }
-.toast-item.error { border-left: 3px solid var(--color-danger); }
-.toast-item.info { border-left: 3px solid var(--accent); }
-.toast-item.leaving {
-    animation: toast-out 0.25s ease-in forwards;
-}
-@keyframes toast-in {
-    from { opacity: 0; transform: translateX(20px); }
-    to { opacity: 1; transform: none; }
-}
-@keyframes toast-out {
-    from { opacity: 1; transform: none; }
-    to { opacity: 0; transform: translateX(20px); }
-}
-
 /* ===== Network Status Bar ===== */
 .network-bar {
     position: fixed;
@@ -2902,29 +2893,49 @@ pre:hover .code-copy-btn { opacity: 1; }
     }
 }
 
-/* ========== 任务排队（右栏底部常驻 strip） ==========
-   跨 Tab 可见；空队列时整块隐藏，不占高度 */
+/* ========== 任务排队（聊天输入区上方） ==========
+   会话级状态卡片；空队列时隐藏，折叠态只占一行，展开后列表内部滚动。 */
 .queue-strip {
-    flex-shrink: 0;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-filer-surface);
+    width: 100%;
+    max-width: 780px;
+    max-height: 320px;
+    margin: 0 auto 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-input-box);
+    /* 输入框是主操作面，队列只做轻量状态提示，避免上下两个阴影卡片粘成一块。 */
+    box-shadow: none;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    max-height: 42%;
     min-width: 0;
     overflow: hidden;
+    animation: queue-strip-in 0.16s ease-out;
+}
+@keyframes queue-strip-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
 }
 .queue-strip-header {
-    padding: 10px 12px 8px;
+    padding: 9px 12px;
     cursor: pointer;
     user-select: none;
     flex-shrink: 0;
 }
+.queue-strip-header {
+    transition: background-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    /* 父级只提供极弱的整体反馈，不再与子按钮叠加独立色块。 */
+    .queue-strip-header:hover {
+        background: rgba(var(--accent-rgb, 79, 110, 247), 0.035);
+    }
+}
 .queue-strip-title-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
+    min-height: 24px;
 }
 .queue-strip-title {
     font-size: var(--fs-base);
@@ -2934,146 +2945,229 @@ pre:hover .code-copy-btn { opacity: 1; }
     align-items: center;
     gap: 6px;
     min-width: 0;
+    flex-shrink: 0;
+}
+.queue-strip-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-fill, var(--accent));
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 79, 110, 247), 0.12);
+    flex-shrink: 0;
 }
 .queue-strip-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    box-sizing: border-box;
+    background: rgba(var(--accent-rgb, 79, 110, 247), 0.10);
+    color: var(--accent);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+}
+/* ===== 删除类图标按钮统一规约（与 app-base.js 的 SVG_TRASH / SVG_TRASH_PLAIN 配套） ===== */
+/* .icon-btn-clear：批量清空（Clear）专用。常态低调，hover 强警示红。 */
+.icon-btn-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+.icon-btn-clear:hover {
+    color: var(--color-danger);
+    background: rgba(239, 68, 68, 0.08);
+}
+/* .icon-btn-delete：单个删除（Delete）行内纯图标钮。与 clear 的区别：不亮红底，仅变红字，警示弱一级。 */
+.icon-btn-delete {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 2px;
+    transition: background 0.15s, color 0.15s;
+}
+.icon-btn-delete:hover {
+    color: var(--color-danger);
+}
+
+.queue-strip-preview {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-secondary);
     font-size: var(--fs-sm);
-    font-weight: 400;
-    color: var(--text-tertiary, var(--text-secondary));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .queue-strip-actions {
     display: flex;
     align-items: center;
-    gap: 0;
+    gap: 6px;
     flex-shrink: 0;
+    margin-left: auto;
 }
-/* 清空：贴标题旁的垃圾桶图标，与展开按钮拆开避免误点 */
-.queue-strip-clear {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    margin-left: 2px;
-    border: none;
-    background: transparent;
-    color: var(--text-tertiary, var(--text-secondary));
-    cursor: pointer;
-    border-radius: 4px;
-    flex-shrink: 0;
-    opacity: 0.75;
-}
-.queue-strip-clear svg {
-    width: 13px;
-    height: 13px;
-    display: block;
-}
-.queue-strip-clear:hover {
-    color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.08);
-    opacity: 1;
-}
+.queue-strip-clear,
 .queue-strip-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
 }
+.queue-strip-clear:hover {
+    color: var(--color-danger);
+    background: transparent;
+}
+.queue-strip-toggle:hover {
+    color: var(--text-primary);
+    background: transparent;
+}
+.queue-strip-clear:focus-visible,
+.queue-strip-toggle:focus-visible,
+.queue-item-actions button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.queue-strip-clear svg { width: 14px; height: 14px; display: block; }
 .queue-strip-toggle svg {
     width: 14px;
     height: 14px;
     display: block;
     transition: transform 0.15s ease;
 }
-.queue-strip-toggle.expanded svg {
-    transform: rotate(180deg);
-}
-.queue-strip-toggle:hover { color: var(--text-primary); }
-.queue-strip-preview {
-    margin-top: 4px;
-    font-size: var(--fs-sm);
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+.queue-strip-toggle.expanded svg { transform: rotate(180deg); }
 .queue-strip-hint {
-    margin-top: 2px;
-    font-size: var(--fs-xs);
+    /* 与状态圆点后的“任务排队”标题文字左边缘对齐。 */
+    margin: 5px 0 0 13px;
     color: var(--text-secondary);
-    opacity: 0.75;
+    font-size: var(--fs-xs);
+    line-height: 1.4;
+    opacity: 0.78;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 .queue-strip-list {
-    flex: 1;
     min-height: 0;
+    max-height: 240px;
     overflow-y: auto;
-    padding: 0 10px 10px;
+    /* 把 Header 与首条任务明确分开，避免 hover 背景连成整块。 */
+    padding: 0;
+    border-top: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    gap: 6px;
 }
-.queue-strip.collapsed .queue-strip-list { display: none; }
-.queue-strip.collapsed .queue-strip-hint { display: none; }
+.queue-strip.collapsed .queue-strip-list,
+.queue-strip.collapsed .queue-strip-hint,
+.queue-strip.collapsed .queue-strip-clear { display: none; }
+.queue-strip:not(.collapsed) .queue-strip-preview { display: none; }
 .queue-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 8px;
-    border-radius: 8px;
-    background: var(--bg-hover);
+    padding: 10px 14px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     font-size: var(--fs-sm);
     color: var(--text-primary);
+    transition: background-color 0.12s ease;
 }
 .queue-item-idx {
     color: var(--text-secondary);
     flex-shrink: 0;
     font-size: var(--fs-xs);
+    line-height: 1.5;
 }
 .queue-item-text {
     flex: 1;
     min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.5;
+    word-break: break-word;
 }
 .queue-item-attach {
     flex-shrink: 0;
     font-size: var(--fs-xs);
     color: var(--text-secondary);
+    line-height: 1.5;
 }
 .queue-item-actions {
     display: flex;
-    gap: 2px;
+    align-items: center;
+    gap: 6px;
     flex-shrink: 0;
 }
 .queue-item-actions button {
+    min-height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: var(--fs-xs);
+    line-height: 1.5;
     cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 3px 7px;
+    border-radius: 5px;
 }
-.queue-item-actions button:hover {
-    background: var(--bg-input-box);
-    color: var(--accent);
+@media (hover: hover) and (pointer: fine) {
+    .queue-item:hover {
+        background: var(--bg-hover);
+    }
+    .queue-item-actions button:hover {
+        background: transparent;
+        color: var(--accent);
+    }
+}
+.queue-item-actions button[data-act="cancel"]:hover,
+.queue-item-actions button[data-act="cancel-steer"]:hover { color: var(--color-danger); }
+.queue-item-actions button:disabled { cursor: wait; opacity: 0.45; }
+
+@media (max-width: 768px) {
+    .queue-strip { max-height: min(42vh, 320px); margin-bottom: 6px; border-radius: 10px; }
+    .queue-strip-header { padding: 8px 10px; }
+    .queue-strip-title-row { gap: 7px; }
+    .queue-strip-title { font-size: var(--fs-sm); }
+    .queue-strip-preview { font-size: var(--fs-xs); }
+    .queue-strip-list { max-height: calc(min(42vh, 320px) - 58px); }
+    .queue-item { padding: 10px 12px; }
+    .queue-item-actions button { min-width: 44px; min-height: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .queue-strip { animation: none; }
+    .queue-strip-toggle svg { transition: none; }
 }
 
 /* 运行中插话（steer）：待生效项 */
 .queue-item-steer {
-    /* 同 .steer-note：--accent-fill 是实心填充色，此处需随皮肤的淡底 */
+    /* 用淡色背景区分待生效项，不增加额外线框。 */
+    border: none;
     background: rgba(var(--accent-rgb, 79, 110, 247), 0.07);
 }
 .queue-item-steer .queue-item-text {
@@ -3106,7 +3200,8 @@ pre:hover .code-copy-btn { opacity: 1; }
 .todo-panel {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
+    min-height: 0; /* 允许收缩，避免长列表把底部“任务排队”顶出视口 */
 }
 
 .todo-header {
@@ -3258,6 +3353,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 /* ===== 心智记忆管理面板 ===== */
 .git-viewer-content .memory-panel { white-space: normal; display: flex; flex-direction: column; height: 100%; font-size: var(--fs-md); }
 .memory-btn { height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--fs-base); transition: all 0.15s; }
+.memory-btn-danger { color: var(--color-danger); display: inline-flex; align-items: center; gap: 4px; }
 .memory-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 /* 保存：唯一强调点，实心主色无边框 */
  .memory-btn-primary { background: var(--accent-fill, var(--accent)); color: #fff; font-weight: 500; }

@@ -22,7 +22,7 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 import reactor.core.Disposable;
 
@@ -74,7 +74,7 @@ public class InterruptCommand implements Command {
         Disposable disposable = (Disposable) session.attrs().remove("disposable");
         if (disposable != null) {
             disposable.dispose();
-            ReActTrace trace = session.getContext().getAs(AgentFlags.TRACE_KEY_MAIN);
+            ReActTrace trace = TraceUtil.getCurrentTrace(session);
             AssistantMessage assistantMessage = ChatMessage.ofAssistant("用户已取消任务.");
 
             if (trace != null) {
@@ -82,6 +82,8 @@ public class InterruptCommand implements Command {
             }
 
             session.addMessage(assistantMessage);
+            // 补快照：中断时 agent 收尾被跳过，需将当前 trace 与取消消息一并持久化，避免重载后 trace 丢失
+            session.updateSnapshot();
             ctx.println("用户已取消任务（或中断）");
         } else {
             ctx.println("当前没有正在执行的任务");

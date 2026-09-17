@@ -24,6 +24,7 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.tool.ToolCall;
+import org.noear.solon.codecli.config.AgentFlags;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -39,8 +40,7 @@ import java.util.Map;
  * @author noear
  */
 public class SessionRewindServiceTest {
-    private static final String TRACE_KEY = "__main";
-
+    static final String TRACE_KEY = AgentFlags.TRACE_KEY_MAIN;
     private final SessionRewindService service = new SessionRewindService();
 
     /** 按 assistant 锚点删除：同一轮的用户消息保留，只删该轮回答。 */
@@ -52,7 +52,7 @@ public class SessionRewindServiceTest {
         session.addMessage(Collections.singletonList(user("u2", "r2")));
         session.addMessage(Collections.singletonList(assistant("a2", "r2")));
 
-        SessionRewindService.RewindResult rr = service.rewind(session, TRACE_KEY, "r2", "assistant", 99);
+        SessionRewindService.RewindResult rr = service.rewind(session,  "r2", "assistant", 99);
 
         Assertions.assertFalse(rr.isAnchorMissing());
         Assertions.assertFalse(rr.isDegraded());
@@ -73,7 +73,7 @@ public class SessionRewindServiceTest {
         session.addMessage(Collections.singletonList(user("u2", "r2")));
         session.addMessage(Collections.singletonList(assistant("a2", "r2")));
 
-        SessionRewindService.RewindResult rr = service.rewind(session, TRACE_KEY, "r2", "user", 99);
+        SessionRewindService.RewindResult rr = service.rewind(session, "r2", "user", 99);
 
         Assertions.assertEquals(2, rr.getRemoved());
         Assertions.assertEquals(2, session.getMessages().size());
@@ -97,7 +97,7 @@ public class SessionRewindServiceTest {
         session.addMessage(Collections.singletonList(ChatMessage.ofTool("sunny", "getWeather", "call_1")));
         session.addMessage(Collections.singletonList(assistant("a1", "r1")));
 
-        SessionRewindService.RewindResult rr = service.rewind(session, TRACE_KEY, "r1", "user", 99);
+        SessionRewindService.RewindResult rr = service.rewind(session,  "r1", "user", 99);
 
         Assertions.assertEquals(4, rr.getRemoved());
         Assertions.assertEquals(2, rr.getEffectiveAnchor());
@@ -115,7 +115,7 @@ public class SessionRewindServiceTest {
         session.addMessage(Collections.singletonList(user("u1", "r1")));
         session.addMessage(Collections.singletonList(assistant("a1", "r1")));
 
-        SessionRewindService.RewindResult rr = service.rewind(session, TRACE_KEY, "r-none", "assistant", 2);
+        SessionRewindService.RewindResult rr = service.rewind(session,  "r-none", "assistant", 2);
 
         Assertions.assertTrue(rr.isAnchorMissing());
         Assertions.assertEquals(0, rr.getRemoved());
@@ -131,7 +131,7 @@ public class SessionRewindServiceTest {
         session.addMessage(Collections.singletonList(ChatMessage.ofUser("u2")));
         session.addMessage(Collections.singletonList(ChatMessage.ofAssistant("a2")));
 
-        SessionRewindService.RewindResult rr = service.rewind(session, TRACE_KEY, null, null, 2);
+        SessionRewindService.RewindResult rr = service.rewind(session, null, null, 2);
 
         Assertions.assertTrue(rr.isDegraded());
         Assertions.assertEquals(2, rr.getRemoved());
@@ -146,7 +146,7 @@ public class SessionRewindServiceTest {
         session.addMessage(Collections.singletonList(assistant("a1", "r1")));
         session.getContext().put(TRACE_KEY, traceOf("r1"));
 
-        service.rewind(session, TRACE_KEY, "r1", "user", 99);
+        service.rewind(session, "r1", "user", 99);
 
         Assertions.assertNull(session.getContext().get(TRACE_KEY));
     }
@@ -161,7 +161,7 @@ public class SessionRewindServiceTest {
         session.addMessage(Collections.singletonList(assistant("a2", "r2")));
         session.getContext().put(TRACE_KEY, traceOf("r1"));
 
-        service.rewind(session, TRACE_KEY, "r2", "user", 99);
+        service.rewind(session,  "r2", "user", 99);
 
         Assertions.assertNotNull(session.getContext().get(TRACE_KEY));
     }
@@ -185,13 +185,7 @@ public class SessionRewindServiceTest {
     }
 
     private ChatMessage toolCallAssistant(String runId) {
-        Map<String, Object> funcMap = new LinkedHashMap<>();
-        Map<String, String> funcNameMap = new LinkedHashMap<>();
-        funcNameMap.put("name", "getWeather");
-        funcMap.put("function", funcNameMap);
-
-        AssistantMessage msg = new AssistantMessage("", "", false, null,
-                Collections.singletonList(funcMap),
+        AssistantMessage msg = new AssistantMessage("", "",
                 Collections.singletonList(new ToolCall("0", "call_1", "getWeather", "{}", new LinkedHashMap<>())),
                 null);
         msg.addMetadata(AgentTrace.META_RUN_ID, runId);

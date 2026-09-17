@@ -73,6 +73,7 @@ public class LoopTask {
     private volatile int currentIteration;
     private volatile boolean enabled = true; // 启用/停用
     private volatile boolean wrapUpPending = false; // 即将收尾（最后一次 wrap-up turn）
+    private volatile boolean oneShot; // 一次性任务：调度触发执行一轮后自动注销
 
     // ---- 运行时兜底：无进展检测 ----
     private volatile int stagnationCount;       // 连续无进展轮次
@@ -181,6 +182,7 @@ public class LoopTask {
                 newType
         );
         task.running = false;
+        task.oneShot = this.oneShot;
         // ★ 保留原始 GoalState 运行时状态（consumedTokens、status、startEpochMs 等）
         //    同时更新 condition 和 maxTokens 以反映新 prompt 和预算
         if (this.goalState != null) {
@@ -297,6 +299,8 @@ public class LoopTask {
     public void setWrapUpPending(boolean wrapUpPending) { this.wrapUpPending = wrapUpPending; }
 
     public boolean isWrapUpPending() { return wrapUpPending; }
+
+    public void setOneShot(boolean oneShot) { this.oneShot = oneShot; }
 
     public void setLastResult(String lastResult) { this.lastResult = lastResult; }
 
@@ -482,6 +486,9 @@ public class LoopTask {
         if (maxTokens != null) node.set("maxTokens", maxTokens);
         if (maxDurationMs != null) node.set("maxDurationMs", maxDurationMs);
 
+        // ★ 一次性任务标记（缺省 false，旧 JSON 兼容）
+        if (oneShot) node.set("oneShot", true);
+
         // ★ 运行时兜底字段（持久化以支持重启恢复）
         if (stagnationCount > 0) node.set("stagnationCount", stagnationCount);
         if (consecutiveErrors > 0) node.set("consecutiveErrors", consecutiveErrors);
@@ -519,11 +526,15 @@ public class LoopTask {
         Long maxDurationMsVal = node.getOrNull("maxDurationMs") != null
                 ? (long) node.get("maxDurationMs").getInt() : null;
 
-        // ★ 读取运行时兜底字段
+        // 读取运行时兜底字段
         int stagnationCountVal = node.getOrNull("stagnationCount") != null
                 ? node.get("stagnationCount").getInt() : 0;
         int consecutiveErrorsVal = node.getOrNull("consecutiveErrors") != null
                 ? node.get("consecutiveErrors").getInt() : 0;
+
+        // 读取一次性标记（旧 JSON 缺省 false）
+        boolean oneShotVal = node.getOrNull("oneShot") != null
+                && node.get("oneShot").getBoolean();
 
         // 读取 TaskType（默认 HEARTBEAT）
         TaskType typeVal = node.getOrNull("type") != null
@@ -562,6 +573,7 @@ public class LoopTask {
         // 恢复运行时兜底字段
         task.stagnationCount = stagnationCountVal;
         task.consecutiveErrors = consecutiveErrorsVal;
+        task.oneShot = oneShotVal;
 
         // running 是瞬态锁，反序列化后始终为 false
         // （kill -9 场景兜底：若有 future 的注册逻辑需显式调用 finish()）

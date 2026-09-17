@@ -230,14 +230,14 @@ Agent 遇到高危操作或需要用户决策，阻塞流并请求客户端干�
 ```
 
 #### `system.user_input` (用户输入回显)
-用于在流式通道中回显用户的问题输入（多渠道场景）。`source` 为来源标识（web/wechat/feishu/dingtalk），`sourceLabel` 为其中文显示名，`images` 为可选图片附件。
+用于在流式通道中回显用户的问题输入（多渠道场景）。`source` 为来源标识（渠道侧直接传官方英文名 WeChat/Feishu/DingTalk/Loop，另有 steer 等内部来源），`sourceLabel` 为其展示标签——直通 `source`，仅空值归一为 `Web`；`images` 为可选图片附件。服务端不做本地化，前端原样展示、不走 i18n。
 ```json
 {
   "event": "system.user_input",
   "payload": {
     "text": "帮我优化一下数据库查询",
     "source": "feishu",
-    "sourceLabel": "飞书",
+    "sourceLabel": "Feishu",
     "images": []
   }
 }

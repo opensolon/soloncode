@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
  * <p>用法示例:
  * <pre>
  *   soloncode run "你的提示词" --output-format json --model sonnet --max-turns 10
- *   soloncode run --output-format stream-json --verbose "流式输出"
+     *   soloncode run "流式输出" --output-format stream-json --verbose
  *   cat error.txt | soloncode run --output-format json "分析这个错误"
  *   soloncode run "Review this PR" --allowedTools "Read,Grep,Glob,Bash(git log *)" --disallowedTools "Bash(rm *)"
  *   soloncode run "Extract functions" --output-format json --json-schema '{"type":"object","properties":{"functions":{"type":"array","items":{"type":"string"}}}}'
@@ -47,6 +47,16 @@ public class PrintModeOptions {
     public enum OutputFormat {
         TEXT,
         JSON,
+        STREAM_JSON
+    }
+
+    /**
+     * 输入格式（对齐 Claude Code {@code --input-format}）
+     */
+    public enum InputFormat {
+        /** 默认：stdin 为纯文本提示词，读到 EOF 后执行一次并退出 */
+        TEXT,
+        /** stdin 为 JSONL 消息流，每行一个用户消息 = 一轮对话；进程常驻直到 EOF */
         STREAM_JSON
     }
 
@@ -98,6 +108,12 @@ public class PrintModeOptions {
 
     /** 输出格式 */
     private OutputFormat outputFormat = OutputFormat.TEXT;
+
+    /** 输入格式 */
+    private InputFormat inputFormat = InputFormat.TEXT;
+
+    /** 是否把 stdin 收到的用户消息回显到 stdout（供上游确认已收，需 stream-json 输入+输出） */
+    private boolean replayUserMessages;
 
     /** 选择的模型名称或别名 */
     private String model;
@@ -157,6 +173,21 @@ public class PrintModeOptions {
 
     public OutputFormat getOutputFormat() {
         return outputFormat;
+    }
+
+    public InputFormat getInputFormat() {
+        return inputFormat;
+    }
+
+    public boolean isReplayUserMessages() {
+        return replayUserMessages;
+    }
+
+    /**
+     * 是否为流式输入（常驻）模式
+     */
+    public boolean isStreamJsonInput() {
+        return inputFormat == InputFormat.STREAM_JSON;
     }
 
     public String getModel() {
@@ -273,6 +304,14 @@ public class PrintModeOptions {
             }
         });
 
+        parseValueArg(argx, "input-format", val -> {
+            if ("stream-json".equalsIgnoreCase(val)) {
+                opts.inputFormat = InputFormat.STREAM_JSON;
+            } else {
+                opts.inputFormat = InputFormat.TEXT;
+            }
+        });
+
         parseValueArg(argx, "model", val -> opts.model = val);
         parseValueArg(argx, "max-turns", val -> opts.maxTurns = parseInt(val));
         parseValueArg(argx, "session-id", val -> opts.sessionId = val);
@@ -317,7 +356,30 @@ public class PrintModeOptions {
         if (argx.flags().contains("continue")) {
             opts.continueSession = true;
         }
+        if (argx.flags().contains("replay-user-messages")) {
+            opts.replayUserMessages = true;
+        }
 
+        return opts;
+    }
+
+    /**
+     * 为 {@code soloncode stream} 解析选项。
+     *
+     * <p>常驻会话只有 JSONL 一种输入/输出形态，因此这两项在这里被强制置定：
+     * text 输出无法表达“哪一轮结束了”，上游无法切分多轮结果。</p>
+     *
+     * @param argx Solon 启动参数
+     * @return 解析后的选项
+     */
+    public static PrintModeOptions parseStream(MultiMap<String> argx) {
+        PrintModeOptions opts = parse(argx);
+        opts.inputFormat = InputFormat.STREAM_JSON;
+        opts.outputFormat = OutputFormat.STREAM_JSON;
+        if (opts.prompt != null && !opts.prompt.isEmpty()) {
+            System.err.println("Warning: 'stream' reads every turn from stdin; the positional prompt is ignored.");
+            opts.prompt = null;
+        }
         return opts;
     }
 
@@ -434,10 +496,10 @@ public class PrintModeOptions {
      * 已知的选项名称集合（flags 中不带 - 前缀）
      */
     private static final Set<String> KNOWN_OPTIONS = new HashSet<>(Arrays.asList(
-            "output-format", "model", "max-turns", "session-id", "resume",
+            "output-format", "input-format", "model", "max-turns", "session-id", "resume",
             "allowedTools", "disallowedTools", "permission-mode",
             "verbose", "bare", "continue", "add-dir", "fallback-model",
-            "json-schema", "max-budget-usd"
+            "json-schema", "max-budget-usd", "replay-user-messages"
     ));
 
     /**

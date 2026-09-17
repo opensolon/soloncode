@@ -28,6 +28,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 工作区本地数据目录工具。
@@ -68,26 +70,157 @@ public class WorkspaceDataUtil {
     public static final String FILE_WORKSPACE_MARK = "_workspace";
 
     /**
-     * 计算指定工作区的数据目录标识：md5(工作区目录) + "-" + 可读目录名
+     * 计算指定工作区的数据目录标识：md5(工作区目录) + "-" + 可读目录名。
+     *
+     * <p>命名规则（见 docs/workspace-storage-lifecycle-plan.md 第三章）：</p>
+     * <ul>
+     *     <li>新建目录用 v2 布局：ws-md5-目录名（仅新路径使用）；</li>
+     *     <li>已存在 v1 目录（md5-目录名，含历史别名路径如 /tmp 与 /private/tmp 产生的）则原地采用，不改名；</li>
+     *     <li>两个布局都存在时优先 v1（存量优先），调用方可通过 layoutVersion() 探测 DUAL_LAYOUT。</li>
+     * </ul>
      *
      * @param workspacePath 工作区目录（为空时回退到进程启动目录）
      */
     public static String workspaceKey(String workspacePath) {
         String pathStr = Utils.isEmpty(workspacePath) ? AgentFlags.getUserDir() : workspacePath;
-        Path dir = Paths.get(pathStr).toAbsolutePath().normalize();
+        Path dir = normalizeWorkspacePath(Paths.get(pathStr));
 
+        //存量探测：v1 目录已存在则原地采用，否则新建 v2。
+        //同时探测归一化路径与原始路径两个 key：历史版本按原始路径（不解析符号链接）
+        //计算目录名，/tmp 与 /private/tmp 这类别名路径在归一化后会算出不同 key，
+        //不补查原始路径就会把旧目录进而不见，白白另建 v2 目录造成会话“失踪”。
+        String v1 = v1Key(dir);
+        if (existingLayoutDir(v1) != null) {
+            return v1;
+        }
+        Path raw = Paths.get(pathStr).toAbsolutePath().normalize();
+        if (raw.equals(dir) == false) {
+            String legacyV1 = v1Key(raw);
+            if (existingLayoutDir(legacyV1) != null) {
+                return legacyV1;
+            }
+            //启动迁移器已把别名路径旧目录改名为 ws- 前缀：补探测改名后形态，否则会话"失踪"
+            if (existingLayoutDir("ws-" + legacyV1) != null) {
+                return "ws-" + legacyV1;
+            }
+        }
+        return v2Key(dir);
+    }
+
+    /**
+     * 归一化路径（用于 IO）：在 normalize 基础上尽量解析符号链接（toRealPath），
+     * 避免 /tmp vs /private/tmp、目录软链产生双身份。目录不存在或无法解析时退回 normalize 结果。
+     */
+    public static Path normalizeWorkspacePath(Path path) {
+        Path p = path.toAbsolutePath().normalize();
+        try {
+            return p.toRealPath();
+        } catch (IOException e) {
+            return p;
+        }
+    }
+
+    /**
+     * v2 布局目录名：ws-md5-目录名（仅对不存在 v1 目录的路径使用）
+     */
+    private static String v2Key(Path dir) {
+        return "ws-" + v1Key(dir);
+    }
+
+    /**
+     * v1 布局目录名（即旧版算法）：md5-目录名
+     */
+    private static String v1Key(Path dir) {
         //Windows 文件系统大小写不敏感：统一小写后再哈希，避免 "D:\\Work\\MyApp" 与 "D:\\work\\myapp" 生成两个目录
         String hashSource = JavaUtil.IS_WINDOWS ? dir.toString().toLowerCase() : dir.toString();
-        String pathMd5 = Utils.md5(hashSource);
+        return Utils.md5(hashSource) + "-" + readableDirName(dir);
+    }
 
-        return pathMd5 + "-" + readableDirName(dir);
+    /**
+     * 判定是否旧布局（v1）目录名：md5-名字（无 ws- 前缀）。
+     * 供启动迁移器识别改名候选。
+     */
+    public static boolean isLegacyV1Name(String dirName) {
+        return dirName.matches("^[0-9a-fA-F]{32}-.+$") && dirName.startsWith("ws-") == false;
+    }
+
+    /**
+     * 反解数据目录对应的工作区路径：优先 _workspace 标记，其次 _meta.json 的 path 字段。
+     *
+     * <p>两者皆无（如初始化中断残留）返回 null，调用方需保守处理（不删除）。</p>
+     */
+    public static Path resolveWorkspacePath(Path dataDir) {
+        try {
+            Path mark = dataDir.resolve(FILE_WORKSPACE_MARK);
+            if (Files.exists(mark)) {
+                String content = new String(Files.readAllBytes(mark), StandardCharsets.UTF_8).trim();
+                if (content.isEmpty() == false) {
+                    return Paths.get(content);
+                }
+            }
+            WorkspaceDataMeta meta = WorkspaceDataMeta.load(dataDir);
+            if (meta.getPath() != null && meta.getPath().isEmpty() == false) {
+                return Paths.get(meta.getPath());
+            }
+        } catch (Throwable ignore) {
+            // 反解失败按无法判定处理
+        }
+        return null;
+    }
+
+    /**
+     * 路径是否位于已知临时根之下（如 /tmp、/private/tmp、/var/tmp、TMPDIR）。
+     * 用于识别运行时临时测试产生的工作区，删除收益高、误删风险低。
+     */
+    public static boolean isUnderKnownTempRoot(Path path) {
+        List<String> roots = new ArrayList<>();
+        String tmpdir = System.getProperty("java.io.tmpdir");
+        if (tmpdir != null && tmpdir.isEmpty() == false) {
+            roots.add(tmpdir);
+        }
+        String envTmp = System.getenv("TMPDIR");
+        if (envTmp != null && envTmp.isEmpty() == false) {
+            roots.add(envTmp);
+        }
+        String envTmp2 = System.getenv("TMP");
+        if (envTmp2 != null && envTmp2.isEmpty() == false) {
+            roots.add(envTmp2);
+        }
+        String envTemp = System.getenv("TEMP");
+        if (envTemp != null && envTemp.isEmpty() == false) {
+            roots.add(envTemp);
+        }
+        roots.add("/tmp");
+        roots.add("/private/tmp");
+        roots.add("/var/tmp");
+
+        Path target = path.toAbsolutePath().normalize();
+        for (String root : roots) {
+            Path rp = Paths.get(root).toAbsolutePath().normalize();
+            if (target.startsWith(rp)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 探测指定 key 的 v1 数据目录是否已存在（存在即原地采用）
+     */
+    private static File existingLayoutDir(String v1Key) {
+        File dir = dataDirByKey(v1Key);
+        if (dir.isDirectory()) {
+            return dir;
+        }
+        return null;
     }
 
     /**
      * 生成可读的目录名片段。
      * 根目录（如 "C:\" 或 "/"）时 getFileName() 为 null，退化为清洗后的完整路径（如 "C_"）。
+     * 供目录命名与元数据记录共用。
      */
-    private static String readableDirName(Path dir) {
+    public static String readableDirName(Path dir) {
         String name;
         Path fileName = dir.getFileName();
         if (fileName != null) {
@@ -130,6 +263,18 @@ public class WorkspaceDataUtil {
      */
     public static File dataDir(String workspacePath) {
         return dataDirByKey(workspaceKey(workspacePath));
+    }
+
+    /**
+     * 当前实际布局版本：1=旧无前缀（原地采用），2=新 ws- 前缀。
+     * 由实际目录名判定（I2/I3）；目录不存在时返回将要新建的版本（2）。
+     */
+    public static int layoutVersion(String workspacePath) {
+        String key = workspaceKey(workspacePath);
+        if (key.startsWith("ws-")) {
+            return 2;
+        }
+        return 1;
     }
 
     /**
@@ -302,7 +447,15 @@ public class WorkspaceDataUtil {
         }
     }
 
-    private static void deleteRecursively(Path path) {
+    /**
+     * 递归删除并返回真实成败（供启动迁移器计数与告警；异常上抛由调用方处理）
+     */
+    static boolean deleteRecursively(Path path) {
+        deleteRecursively0(path);
+        return Files.notExists(path);
+    }
+
+    private static void deleteRecursively0(Path path) {
         if (Files.isDirectory(path)) {
             File[] children = path.toFile().listFiles();
             if (children != null) {

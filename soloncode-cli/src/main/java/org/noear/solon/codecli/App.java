@@ -23,6 +23,8 @@ import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.codecli.util.LogDirUtil;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
+import org.noear.solon.codecli.workspace.WorkspaceStartupMigrator;
+import org.noear.solon.codecli.workspace.WorkspaceStorageReport;
 import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;
 import org.slf4j.bridge.SLF4JBridgeHandler;
@@ -39,6 +41,10 @@ import java.net.URL;
 public class App {
 
     public static void main(String[] args) {
+        // 0. 存储目录启动归一化（必须最早：删临时测试目录 + v1 改名 ws-，须在日志 WS_KEY 设置前完成，
+        //    否则日志 appender 会按旧 v1 key 重建出已改名的空目录）
+        WorkspaceStartupMigrator.migrateIfNeeded();
+
         // 1. 移除 JUL 默认的控制台处理器
         SLF4JBridgeHandler.removeHandlersForRootLogger();
         // 2. 添加 SLF4J 处理器
@@ -57,6 +63,9 @@ public class App {
         WorkspaceLogRouter.install();
         //Reactor 调度器 MDC 传播：agent 管道跳线程不丢工作区日志标记（需在任何调度发生前）
         WorkspaceLogRouter.installMdcPropagation();
+
+        //工作区存储目录观测报告（阶段一：只统计 v1/v2/缺元数据/双布局分布，不迁移不删除）
+        WorkspaceStorageReport.reportIfNeeded();
     }
 
     private static void initAgentProperties(SolonApp app) throws Exception {

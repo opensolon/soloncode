@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.portal.web;
 
 import lombok.extern.slf4j.Slf4j;
+import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.chat.ChatConfig;
@@ -8,8 +9,8 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
+import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.portal.web.event.WebEvent;
-import org.noear.solon.codecli.portal.web.pipeline.ChannelBroadcastSink;
 import org.noear.solon.codecli.portal.web.pipeline.SessionMetricsRecorder;
 import org.noear.solon.ai.talents.lsp.LspCheckState;
 import org.noear.solon.codecli.portal.web.pipeline.ToolPresentationFilter;
@@ -20,8 +21,6 @@ import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.util.Assert;
 import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -32,7 +31,6 @@ import java.util.function.Function;
 @Slf4j
 public class WebStreamBuilder {
     private final WebGate webGate;
-    private final ChannelBroadcastSink broadcastSink = new ChannelBroadcastSink();
 
     public WebStreamBuilder(WebGate webGate) {
         this.webGate = webGate;
@@ -43,7 +41,15 @@ public class WebStreamBuilder {
     }
 
     public void replyToBoundChannel(WorkspaceContext wsContext, String sessionId, String text, boolean isFinal) {
-        broadcastSink.replyToBoundChannel(wsContext.getChannelHub(), sessionId, text, isFinal);
+        if (sessionId == null) {
+            return;
+        }
+
+        for (Channel link : wsContext.getChannelHub().getImLinks()) {
+            if (link.isBound(sessionId)) {
+                link.sendReply(sessionId, text, isFinal);
+            }
+        }
     }
 
     /**
@@ -91,8 +97,12 @@ public class WebStreamBuilder {
 
         session.attrs().put("_agent_selected_tmp", agent.name());
 
-        String sessionEffort = ReasoningSupportUtil.getSessionEffort(session);
-        String sessionThinkingMode = ReasoningSupportUtil.getSessionThinkingMode(session);
+        GeneralGroupDo general = wsContext.getSettings() == null ? null : wsContext.getSettings().getGeneral();
+        String globalThinking = general == null ? null : general.getDefaultThinkingMode();
+        String globalEffort = general == null ? null : general.getDefaultReasoningEffort();
+
+        //会话显式（含手动选 auto）> 全局默认（设置→通用）> 模型 defaultOptions > 供应商
+        String sessionThinkingMode = ReasoningSupportUtil.resolveSessionThinkingOrDefault(session, globalThinking);
         ReasoningSupportUtil.ModelCapability cap = null;
         try {
             ChatConfig fullConfig = null;
@@ -126,8 +136,8 @@ public class WebStreamBuilder {
             }
         } catch (Throwable ignored) {
         }
-        final String effectiveEffort = ReasoningSupportUtil.resolveEffectiveEffort(
-                null, sessionEffort, cap, false);
+        final String effectiveEffort = ReasoningSupportUtil.resolveSessionEffortOrDefault(
+                session, globalEffort, cap);
         ReasoningSupportUtil.applyToPrompt(prompt, sessionThinkingMode, effectiveEffort);
 
         WebEventMapper mapper = new WebEventMapper(this, wsContext, session, chatModel);
@@ -137,7 +147,7 @@ public class WebStreamBuilder {
         // 运行中插话（steer）拦截器：请求级挂载，LinkedHashMap 插入序保证排在默认拦截器（含上下文压缩）之后
         SteerInterceptor steerInterceptor = new SteerInterceptor(webGate, wsContext);
 
-        return agent.prompt(prompt)
+        final Flux<AgentEvent> stream = agent.prompt(prompt)
                 .session(session)
                 .options(o -> {
                     o.chatModel(chatModel);
@@ -148,12 +158,13 @@ public class WebStreamBuilder {
                         o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
                     }
                 })
-                .stream()
+                .stream();
+
+        return   stream
                 .flatMap(event -> Flux.fromIterable(mapper.mapEvent(event)))
                 .filter(WebEvent::isNotEmpty)
                 .map(toolFilter::apply)
                 .map(uiRenderFilter::apply)
-                .doOnNext(event -> broadcastSink.broadcast(wsContext.getChannelHub(), event))
                 .doOnNext(metricsRecorder::record)
                 .onErrorResume(e -> {
                     log.error("Stream execution error", e);

@@ -637,6 +637,10 @@
         if (_fullscreen) _fullscreen.style.display = 'none';
         var _memNew = document.getElementById('gitViewerMemNew');
         if (_memNew) _memNew.style.display = 'none';
+        var _memClearHide = document.getElementById('gitViewerMemClear');
+        if (_memClearHide) _memClearHide.style.display = 'none';
+        var _memOrganizeHide = document.getElementById('gitViewerMemOrganize');
+        if (_memOrganizeHide) _memOrganizeHide.style.display = 'none';
         var _addToChatMedia = document.getElementById('gitViewerAddToChat');
         if (_addToChatMedia) _addToChatMedia.style.display = 'none';
 
@@ -723,6 +727,10 @@
         // 隐藏记忆面板专用的「新建」按钮
         var _memNewReset = document.getElementById('gitViewerMemNew');
         if (_memNewReset) _memNewReset.style.display = 'none';
+        var _memClearReset = document.getElementById('gitViewerMemClear');
+        if (_memClearReset) _memClearReset.style.display = 'none';
+        var _memOrganizeReset = document.getElementById('gitViewerMemOrganize');
+        if (_memOrganizeReset) _memOrganizeReset.style.display = 'none';
 
         // 显示「加入对话内容」按钮（文件视图可用）
         var _addToChat = document.getElementById('gitViewerAddToChat');
@@ -1173,10 +1181,14 @@
         var _copyBtn = document.getElementById('gitViewerCopyBtn');
         var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
         var _memNewBtn = document.getElementById('gitViewerMemNew');
+        var _memClearBtn = document.getElementById('gitViewerMemClear');
+        var _memOrganizeBtn = document.getElementById('gitViewerMemOrganize');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
         if (_fullscreenBtn) _fullscreenBtn.style.display = '';
         if (_memNewBtn) _memNewBtn.style.display = 'none';
+        if (_memClearBtn) _memClearBtn.style.display = 'none';
+        if (_memOrganizeBtn) _memOrganizeBtn.style.display = 'none';
         // Diff 视图显示「加入对话内容」按钮（支持行号选择）
         var _addToChatDiff = document.getElementById('gitViewerAddToChat');
         if (_addToChatDiff) _addToChatDiff.style.display = '';
@@ -1305,13 +1317,13 @@
                         loadGitStatus();
                         closeCenterViewer();
                     } else {
-                        alert(I18n.t('toast.operateFailed') + '：' + gitActionError(res));
+                        showToast(I18n.t('toast.operateFailed') + '：' + gitActionError(res), 'error');
                         addBtn.disabled = false;
                         addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + I18n.t('gitdiff.addToGit');
                     }
                 })
                 .catch(function(e) {
-                    alert(I18n.t('toast.operateFailed') + '：' + e.message);
+                    showToast(I18n.t('toast.operateFailed') + '：' + e.message, 'error');
                     addBtn.disabled = false;
                     addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + I18n.t('gitdiff.addToGit');
                 });
@@ -1339,13 +1351,13 @@
                         loadGitStatus();
                         closeCenterViewer();
                     } else {
-                        alert(I18n.t('toast.operateFailed') + '：' + gitActionError(res));
+                        showToast(I18n.t('toast.operateFailed') + '：' + gitActionError(res), 'error');
                         unstageBtn.disabled = false;
                         unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + I18n.t('gitdiff.unstage');
                     }
                 })
                 .catch(function(e) {
-                    alert(I18n.t('toast.operateFailed') + '：' + e.message);
+                    showToast(I18n.t('toast.operateFailed') + '：' + e.message, 'error');
                     unstageBtn.disabled = false;
                     unstageBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + I18n.t('gitdiff.unstage');
                 });
@@ -1387,21 +1399,13 @@
                             loadGitStatus();
                             closeCenterViewer();
                         } else {
-                            if (typeof layer !== 'undefined' && layer.msg) {
-                                layer.msg(I18n.t('gitdiff.discardFailed', { error: gitActionError(res) }), { icon: 2, time: 3000, offset: '120px' });
-                            } else if (typeof showToast === 'function') {
-                                showToast(I18n.t('gitdiff.discardFailed', { error: gitActionError(res) }), 'error');
-                            }
+                            showToast(I18n.t('gitdiff.discardFailed', { error: gitActionError(res) }), 'error');
                             discardBtn.disabled = false;
                             discardBtn.innerHTML = discardIconHtml;
                         }
                     })
                     .catch(function(e) {
-                        if (typeof layer !== 'undefined' && layer.msg) {
-                            layer.msg(I18n.t('gitdiff.discardFailed', { error: e.message }), { icon: 2, time: 3000, offset: '120px' });
-                        } else if (typeof showToast === 'function') {
-                            showToast(I18n.t('gitdiff.discardFailed', { error: e.message }), 'error');
-                        }
+                        showToast(I18n.t('gitdiff.discardFailed', { error: e.message }), 'error');
                         discardBtn.disabled = false;
                         discardBtn.innerHTML = discardIconHtml;
                     });
@@ -1577,7 +1581,96 @@
 
     // ---- AI 生成变更摘要（专用 HTTP 接口）----
     var gitSummaryBtn = document.getElementById('gitSummaryBtn');
+    var gitCommitHistory = document.getElementById('gitCommitHistory');
+    var gitCommitHistoryItems = [];
+    var gitCommitHistoryIndex = -1;
+    var gitCommitHistoryLoaded = false;
+    var gitCommitHistoryLoading = false;
     var isGeneratingSummary = false;
+
+    function hideGitCommitHistory() {
+        if (gitCommitHistory) gitCommitHistory.style.display = 'none';
+        gitCommitHistoryIndex = -1;
+    }
+
+    function resizeGitCommitMsg() {
+        if (!gitCommitMsg) return;
+        gitCommitMsg.style.height = 'auto';
+        gitCommitMsg.style.height = Math.min(gitCommitMsg.scrollHeight, 80) + 'px';
+    }
+
+    function renderGitCommitHistory() {
+        if (!gitCommitHistory) return;
+        if (!gitCommitHistoryItems.length) {
+            gitCommitHistory.innerHTML = '<div class="git-commit-history-empty">暂无提交摘要</div>';
+        } else {
+            gitCommitHistory.innerHTML = gitCommitHistoryItems.map(function(message, index) {
+                return '<button type="button" class="git-commit-history-item' + (index === gitCommitHistoryIndex ? ' active' : '')
+                    + '" role="option" aria-selected="' + (index === gitCommitHistoryIndex) + '" data-history-index="' + index + '">' + escapeHtml(message) + '</button>';
+            }).join('');
+        }
+        gitCommitHistory.style.display = '';
+    }
+
+    function loadGitCommitHistory() {
+        if (gitCommitHistoryLoaded || gitCommitHistoryLoading) {
+            renderGitCommitHistory();
+            return;
+        }
+        gitCommitHistoryLoading = true;
+        if (gitCommitHistory) {
+            gitCommitHistory.innerHTML = '<div class="git-commit-history-loading">加载提交历史...</div>';
+            gitCommitHistory.style.display = '';
+        }
+        fetch(gitUrl('/web/chat/git/history', 'limit=20'))
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                gitCommitHistoryItems = (res && res.data && res.data.commits) || [];
+                gitCommitHistoryLoaded = true;
+                renderGitCommitHistory();
+            })
+            .catch(function() {
+                gitCommitHistoryItems = [];
+                gitCommitHistoryLoaded = true;
+                hideGitCommitHistory();
+            })
+            .finally(function() { gitCommitHistoryLoading = false; });
+    }
+
+    if (gitCommitHistory) {
+        gitCommitHistory.addEventListener('mousedown', function(e) {
+            var item = e.target.closest('.git-commit-history-item');
+            if (!item) return;
+            e.preventDefault();
+            gitCommitHistoryIndex = parseInt(item.getAttribute('data-history-index'), 10);
+            gitCommitMsg.value = gitCommitHistoryItems[gitCommitHistoryIndex] || '';
+            resizeGitCommitMsg();
+            hideGitCommitHistory();
+        });
+    }
+
+    if (gitCommitMsg) {
+        gitCommitMsg.addEventListener('keydown', function(e) {
+            if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !gitCommitMsg.value.trim()) {
+                e.preventDefault();
+                loadGitCommitHistory();
+                if (!gitCommitHistoryItems.length) return;
+                if (e.key === 'ArrowUp') {
+                    gitCommitHistoryIndex = gitCommitHistoryIndex <= 0 ? gitCommitHistoryItems.length - 1 : gitCommitHistoryIndex - 1;
+                } else {
+                    gitCommitHistoryIndex = gitCommitHistoryIndex >= gitCommitHistoryItems.length - 1 ? 0 : gitCommitHistoryIndex + 1;
+                }
+                renderGitCommitHistory();
+            }
+            if (e.key === 'Escape') hideGitCommitHistory();
+        });
+        gitCommitMsg.addEventListener('input', function() {
+            if (this.value.trim()) hideGitCommitHistory();
+        });
+        gitCommitMsg.addEventListener('blur', function() {
+            setTimeout(hideGitCommitHistory, 120);
+        });
+    }
 
     if (gitSummaryBtn) {
         gitSummaryBtn.addEventListener('click', function() {
@@ -1585,8 +1678,7 @@
 
             var files = getSelectedFiles();
             if (files.length === 0) {
-                if (typeof showToast === 'function') showToast(I18n.t('gitdiff.selectAtLeastOneFile'), 'error');
-                else alert(I18n.t('gitdiff.selectAtLeastOneFile'));
+                showToast(I18n.t('gitdiff.selectAtLeastOneFile'), 'error');
                 return;
             }
 
@@ -1616,13 +1708,11 @@
                     }
                 } else {
                     var errMsg = (res && res.description) || I18n.t('toast.unknownError');
-                    if (typeof showToast === 'function') showToast(I18n.t('gitdiff.generateSummaryFailed', { error: errMsg }), 'error');
-                    else alert(I18n.t('gitdiff.generateSummaryFailed', { error: errMsg }));
+                    showToast(I18n.t('gitdiff.generateSummaryFailed', { error: errMsg }), 'error');
                 }
             })
             .catch(function(e) {
-                if (typeof showToast === 'function') showToast(I18n.t('gitdiff.generateSummaryFailed', { error: e.message }), 'error');
-                    else alert(I18n.t('gitdiff.generateSummaryFailed', { error: e.message }));
+                showToast(I18n.t('gitdiff.generateSummaryFailed', { error: e.message }), 'error');
             })
             .finally(function() {
                 isGeneratingSummary = false;
@@ -1677,11 +1767,11 @@
                         loadGitStatus();
                         // 提交成功，不显示提示
                     } else {
-                        alert(I18n.t('gitdiff.commitFailed', { error: ((res && res.data && res.data.message) || I18n.t('toast.unknownError')) }));
+                        showToast(I18n.t('gitdiff.commitFailed', { error: ((res && res.data && res.data.message) || I18n.t('toast.unknownError')) }), 'error');
                     }
                 })
                 .catch(function(e) {
-                    alert(I18n.t('gitdiff.commitFailed', { error: e.message }));
+                    showToast(I18n.t('gitdiff.commitFailed', { error: e.message }), 'error');
                 })
                 .finally(function() {
                     isCommitting = false;
@@ -1721,14 +1811,14 @@
                     if (res && res.code === 200) {
                         loadGitStatus();
                     } else {
-                        alert(I18n.t('gitdiff.initFailed', { error: ((res && res.data && res.data.message) || I18n.t('toast.unknownError')) }));
+                        showToast(I18n.t('gitdiff.initFailed', { error: ((res && res.data && res.data.message) || I18n.t('toast.unknownError')) }), 'error');
                         gitInitBtn.disabled = false;
                         gitInitBtn.innerHTML =
                             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + I18n.t('git.initBtn');
                     }
                 })
                 .catch(function(e) {
-                    alert(I18n.t('gitdiff.initFailed', { error: e.message }));
+                    showToast(I18n.t('gitdiff.initFailed', { error: e.message }), 'error');
                     gitInitBtn.disabled = false;
                     gitInitBtn.innerHTML =
                         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + I18n.t('git.initBtn');
@@ -1827,6 +1917,32 @@
             renderGitWorkspaceBar(gitWritableWorkspaces);
         }
     });
+
+    // ---- Git Viewer 右键菜单（复制 + 加入对话）----
+    if (gitViewerContent) {
+        $(gitViewerContent).on('contextmenu', function(e) {
+            // 忽略工具栏按钮区域
+            if ($(e.target).closest('.git-viewer-header-actions').length > 0) return;
+            var sel = window.getSelection ? window.getSelection() : null;
+            var text = sel ? String(sel.toString()) : '';
+            if (!text || !text.trim()) return; // 未选中文字：保持原生菜单
+            var range = sel.getRangeAt ? sel.getRangeAt(0) : null;
+            if (range && gitViewerContent.contains(range.commonAncestorContainer)) {
+                e.preventDefault();
+                showSelectionMenu(e.clientX, e.clientY, text);
+            }
+        });
+        $(document).on('mousedown', function(e) {
+            if (!selectionMenuEl) return;
+            if (e.target === selectionMenuEl || $(e.target).closest(selectionMenuEl).length > 0) return;
+            closeSelectionMenu();
+        });
+        $(document).on('keydown', function(e) {
+            if (!selectionMenuEl) return;
+            if (e.key === 'Escape') closeSelectionMenu();
+        });
+        $(window).on('resize scroll blur', closeSelectionMenu);
+    }
 
     // 暴露全局（供 app-filer.js / app-message.js 调用）
     window.loadGitStatus = loadGitStatus;

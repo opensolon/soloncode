@@ -108,6 +108,10 @@ public class SkillSettingsController extends BaseSettingsController{
         // 安装成功后刷新技能池
         if (result.getCode() == 200) {
             engine().refreshMount(mountAlias);
+            // 指定了共享挂载池（如用户级技能池）时，其它工作区也需刷新才能看到新技能
+            if (Assert.isEmpty(mountAlias) == false) {
+                refreshMountInOtherWorkspaces(mountAlias);
+            }
         }
 
         return result;
@@ -143,6 +147,8 @@ public class SkillSettingsController extends BaseSettingsController{
             disallowedSkills.add(aliasPath);
         }
         saveSettings();
+        // disallowedSkills 属于公用 permission 分组：同步到其它工作区，避免各工作区技能开关不一致
+        syncSkillsToOtherWorkspaces();
 
         LOG.info("[Settings] Skill toggled: {} -> {}", aliasPath, enabled);
         return Result.succeed(enabled ? "启用成功" : "停用成功");

@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.noear</groupId>
         <artifactId>soloncode-parent</artifactId>
-        <version>2026.8.28</version>
+        <version>2026.9.15</version>
         <relativePath>../soloncode-parent/pom.xml</relativePath>
     </parent>
 
@@ -42,6 +42,13 @@
         <dependency>
             <groupId>org.noear</groupId>
             <artifactId>solon-scheduling-simple</artifactId>
+        </dependency>
+
+        <!-- cron 解析（LoopScheduler 用它预校验表达式；与 solon-scheduling-simple 内部同一版本） -->
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>java-cron</artifactId>
+            <version>${java-cron.version}</version>
         </dependency>
 
         <dependency>

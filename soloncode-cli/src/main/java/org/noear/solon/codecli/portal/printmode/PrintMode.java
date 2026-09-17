@@ -18,8 +18,8 @@ package org.noear.solon.codecli.portal.printmode;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.agent.react.ReActChunk;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.agent.trace.Metrics;
 import org.noear.solon.ai.chat.ChatModel;
@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -83,28 +84,48 @@ import java.util.concurrent.atomic.AtomicReference;
 public class PrintMode {
     private static final Logger LOG = LoggerFactory.getLogger(PrintMode.class);
 
-    /** 退出码：成功 */
+    /**
+     * 退出码：成功
+     */
     public static final int EXIT_SUCCESS = 0;
-    /** 退出码：运行出错 */
+    /**
+     * 退出码：运行出错
+     */
     public static final int EXIT_ERROR = 1;
-    /** 退出码：超过最大轮次 */
+    /**
+     * 退出码：超过最大轮次
+     */
     public static final int EXIT_MAX_TURNS = 2;
-    /** 退出码：提示词为空 */
+    /**
+     * 退出码：提示词为空
+     */
     public static final int EXIT_NO_PROMPT = 3;
-    /** 退出码：超过费用预算 */
+    /**
+     * 退出码：超过费用预算
+     */
     public static final int EXIT_BUDGET_EXCEEDED = 4;
-    /** 退出码：收到 SIGTERM（= 128 + 15，与 Unix 惯例一致） */
+    /**
+     * 退出码：收到 SIGTERM（= 128 + 15，与 Unix 惯例一致）
+     */
     public static final int EXIT_SIGTERM = 143;
 
-    /** 写入类工具集合（plan 模式下会被 DENY） */
+    /**
+     * 写入类工具集合（plan 模式下会被 DENY）
+     */
     private static final String[] WRITE_TOOLS = {"Write", "Edit", "Bash"};
 
-    /** 文件编辑类工具集合（acceptEdits 模式下会被 ALLOW） */
+    /**
+     * 文件编辑类工具集合（acceptEdits 模式下会被 ALLOW）
+     */
     private static final String[] EDIT_TOOLS = {"Write", "Edit", "Read", "Glob", "Grep"};
 
-    /** 默认费用估算：每 1K 输入 token $0.003 */
+    /**
+     * 默认费用估算：每 1K 输入 token $0.003
+     */
     static final double COST_PER_1K_INPUT_TOKENS = 0.003;
-    /** 默认费用估算：每 1K 输出 token $0.015 */
+    /**
+     * 默认费用估算：每 1K 输出 token $0.015
+     */
     static final double COST_PER_1K_OUTPUT_TOKENS = 0.015;
 
     private final HarnessEngine engine;
@@ -112,11 +133,41 @@ public class PrintMode {
     private final PrintModeOptions options;
     private final PrintStream out;
 
+    /**
+     * 当前进行中轮次的订阅句柄。
+     *
+     * <p>单轮模式下只用于承接 dispose；常驻模式（{@code soloncode stream}）下
+     * 由输入泵线程调用 {@link #interruptCurrentTurn()} 取消在跑的轮次。</p>
+     */
+    private final AtomicReference<Disposable> currentTurn = new AtomicReference<>();
+
+    /**
+     * 保护“轮次已开始但订阅句柄尚未就绪”的短暂窗口
+     */
+    private final Object turnStateLock = new Object();
+
+    /**
+     * 当前是否存在可中断的轮次；必须与 currentTurn 在 turnStateLock 下更新
+     */
+    private boolean turnRunning;
+
+    /**
+     * 当前轮次是否被显式中断（每轮开始时重置）
+     */
+    private final AtomicBoolean turnInterrupted = new AtomicBoolean(false);
+
     public PrintMode(HarnessEngine engine, AgentSettings agentSettings, PrintModeOptions options) {
+        this(engine, agentSettings, options, System.out);
+    }
+
+    /**
+     * @param out 事件输出流（stream-json 事件与最终结果都写这里）
+     */
+    public PrintMode(HarnessEngine engine, AgentSettings agentSettings, PrintModeOptions options, PrintStream out) {
         this.engine = engine;
         this.agentSettings = agentSettings;
         this.options = options;
-        this.out = System.out;
+        this.out = out;
     }
 
     /**
@@ -125,6 +176,14 @@ public class PrintMode {
      * @return 退出码（0=成功, 非0=失败）
      */
     public int execute() {
+        // 0. run 是纯单次语义：常驻输入不在这里实现，避免同一子命令有两种生命周期
+        //    （Claude Code 把 --input-format stream-json 塞进 -p 就是这个问题的来源）
+        if (options.isStreamJsonInput()) {
+            System.err.println("Error: 'run' is one-shot only and does not accept --input-format stream-json.");
+            System.err.println("       Use 'soloncode stream' for the persistent JSONL session instead.");
+            return EXIT_ERROR;
+        }
+
         // 1. 确定提示词
         String prompt = resolvePrompt();
         if (Assert.isEmpty(prompt)) {
@@ -146,10 +205,13 @@ public class PrintMode {
         // 5. 执行 Agent 任务
         PrintResult result = runAgent(session, prompt);
 
-        // 6. 计算费用估算
-        result.estimatedCostUsd = estimateCostUsd(result.metrics);
-        result.budgetLimitUsd = options.getMaxBudgetUsd();
-        result.budgetExceeded = result.budgetLimitUsd != null && result.estimatedCostUsd > result.budgetLimitUsd;
+        // 6. 计算费用并形成最终轮次结果。
+        // stream-json 的 result 必须等 reactive 流完全结束后再发，避免“先成功、后异常”。
+        if (options.getOutputFormat() == PrintModeOptions.OutputFormat.STREAM_JSON) {
+            finishTurn(result);
+        } else {
+            applyCostAndBudget(result);
+        }
 
         // 7. 输出结果
         outputResult(session, result);
@@ -157,6 +219,40 @@ public class PrintMode {
         // 8. 返回退出码
         if (result.budgetExceeded) {
             LOG.warn("Budget exceeded: estimated ${} > limit ${}", result.estimatedCostUsd, result.budgetLimitUsd);
+        }
+        return exitCodeOf(result);
+    }
+
+    /**
+     * 计算并写入费用估算与预算判定（幂等）。
+     */
+    void applyCostAndBudget(PrintResult result) {
+        result.estimatedCostUsd = estimateCostUsd(result.metrics);
+        result.budgetLimitUsd = options.getMaxBudgetUsd();
+        result.budgetExceeded = result.budgetLimitUsd != null && result.estimatedCostUsd > result.budgetLimitUsd;
+    }
+
+    /**
+     * 结束一轮：补齐费用/预算，并在流中尚未发出 result 事件时补发。
+     *
+     * <p>常驻模式下每轮都必须以一个 {@code result} 事件收尾——被中断或在
+     * 产出 ReActChunk 之前就异常的轮次不会走 {@link #handleChunk}，
+     * 若不补发，上游会一直等一个永不到来的轮次终止符。</p>
+     */
+    PrintResult finishTurn(PrintResult result) {
+        applyCostAndBudget(result);
+        if (!result.resultEventEmitted) {
+            emitStreamEvent(buildResultEvent(result));
+            result.resultEventEmitted = true;
+        }
+        return result;
+    }
+
+    /**
+     * 由执行结果推导退出码。
+     */
+    static int exitCodeOf(PrintResult result) {
+        if (result.budgetExceeded) {
             return EXIT_BUDGET_EXCEEDED;
         }
         if (result.error != null) {
@@ -212,7 +308,9 @@ public class PrintMode {
         return prompt;
     }
 
-    /** stdin 输入上限：10MB（对齐官方 v2.1.128+ 规范） */
+    /**
+     * stdin 输入上限：10MB（对齐官方 v2.1.128+ 规范）
+     */
     private static final int STDIN_MAX_BYTES = 10 * 1024 * 1024;
 
     /**
@@ -248,7 +346,7 @@ public class PrintMode {
     /**
      * 应用运行时选项到引擎
      */
-    private void applyOptions() {
+    void applyOptions() {
         // ---- bare 模式：跳过 skills/MCP/memory 自动发现 ----
         if (options.isBare()) {
             applyBareMode();
@@ -382,7 +480,7 @@ public class PrintMode {
     /**
      * 确定或创建会话
      */
-    private AgentSession resolveSession() {
+    AgentSession resolveSession() {
         String sessionId;
 
         if (Assert.isNotEmpty(options.getResumeSessionId())) {
@@ -399,13 +497,23 @@ public class PrintMode {
     }
 
     /**
-     * 运行 Agent 任务并收集结果
+     * 运行 Agent 任务并收集结果（一轮）。
+     *
+     * <p>常驻模式（{@code soloncode stream}）逐轮复用同一 {@code session} 调用本方法，
+     * 因此上下文跨轮延续，无需重启进程或 {@code --resume}。</p>
      */
-    private PrintResult runAgent(AgentSession session, String prompt) {
+    PrintResult runAgent(AgentSession session, String prompt) {
         PrintResult result = new PrintResult();
+        result.sessionId = session.getSessionId();
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         AtomicReference<Disposable> disposableRef = new AtomicReference<>();
+
+        synchronized (turnStateLock) {
+            turnInterrupted.set(false);
+            turnRunning = true;
+            currentTurn.set(null);
+        }
 
         String modelSelected = options.getModel();
         if (modelSelected == null) {
@@ -443,14 +551,33 @@ public class PrintMode {
                                 LOG.error("Print mode task failed: {}", e.getMessage(), e);
                             })
                             .doFinally(signal -> {
+                                synchronized (turnStateLock) {
+                                    currentTurn.set(null);
+                                    turnRunning = false;
+                                }
                                 latch.countDown();
                             })
                             .subscribe()
             );
 
+            // 在同一把锁下发布订阅句柄。若中断帧在句柄就绪前到达，
+            // interruptCurrentTurn() 已返回 success 并留下中断标志，这里补做 dispose。
+            synchronized (turnStateLock) {
+                if (turnRunning) {
+                    currentTurn.set(disposableRef.get());
+                    if (turnInterrupted.get()) {
+                        Disposable pending = currentTurn.getAndSet(null);
+                        if (pending != null) {
+                            pending.dispose();
+                        }
+                    }
+                }
+            }
+
             latch.await();
 
             result.error = errorRef.get();
+            result.interrupted = turnInterrupted.get();
 
             // 检查是否超过最大轮次
             if (result.trace != null && result.trace.isAbnormal()) {
@@ -460,54 +587,73 @@ public class PrintMode {
         } catch (Exception e) {
             result.error = e;
             LOG.error("Print mode execution error: {}", e.getMessage(), e);
+        } finally {
+            synchronized (turnStateLock) {
+                currentTurn.set(null);
+                turnRunning = false;
+            }
         }
 
         return result;
     }
 
     /**
+     * 中断当前进行中的轮次。
+     *
+     * <p>由常驻模式的输入泵线程调用（收到 {@code control_request/interrupt}），
+     * 与执行线程并发。dispose 会触发 doFinally(CANCEL)，执行线程的
+     * {@code latch.await()} 随之返回。</p>
+     *
+     * @return true 表示确实有一个在跑的轮次被取消；false 表示当前无进行中轮次
+     */
+    boolean interruptCurrentTurn() {
+        synchronized (turnStateLock) {
+            if (!turnRunning) {
+                return false;
+            }
+
+            turnInterrupted.set(true);
+            Disposable disposable = currentTurn.getAndSet(null);
+            if (disposable != null && !disposable.isDisposed()) {
+                disposable.dispose();
+            }
+            // 句柄尚未发布也算成功：runAgent 会在发布后观察中断标志并补做 dispose。
+            return true;
+        }
+    }
+
+    /**
      * 处理流式事件块
      */
     private void handleChunk(AgentSession session, Object chunk, PrintResult result) {
-        if (chunk instanceof ReasonChunk) {
-            ReasonChunk reason = (ReasonChunk) chunk;
-            if (!reason.isToolCalls() && reason.hasContent()) {
-                if (options.getOutputFormat() == PrintModeOptions.OutputFormat.STREAM_JSON && options.isVerbose()) {
-                    String text = clearThink(reason.getContent());
-                    if (Assert.isNotEmpty(text)) {
-                        emitStreamEvent(buildAssistantTextEvent(text, reason.isThinking()));
-                    }
+        if (chunk instanceof ReasonDeltaEvent) {
+            ReasonDeltaEvent reason = (ReasonDeltaEvent) chunk;
+            if (options.getOutputFormat() == PrintModeOptions.OutputFormat.STREAM_JSON && options.isVerbose()) {
+                String text = clearThink(reason.getText());
+                if (Assert.isNotEmpty(text)) {
+                    emitStreamEvent(buildAssistantTextEvent(text, reason.isThinking()));
                 }
             }
-        } else if (chunk instanceof ThoughtChunk) {
-            ThoughtChunk thought = (ThoughtChunk) chunk;
+        } else if (chunk instanceof ReasonEndEvent) {
+            ReasonEndEvent thought = (ReasonEndEvent) chunk;
             if (options.getOutputFormat() == PrintModeOptions.OutputFormat.STREAM_JSON && options.isVerbose()) {
                 if (thought.isToolCalls()) {
                     emitStreamEvent(buildToolUseEvent(thought));
                 }
             }
-        } else if (chunk instanceof ObservationChunk) {
-            ObservationChunk obs = (ObservationChunk) chunk;
+        } else if (chunk instanceof ToolCallEndEvent) {
+            ToolCallEndEvent obs = (ToolCallEndEvent) chunk;
             if (options.getOutputFormat() == PrintModeOptions.OutputFormat.STREAM_JSON && options.isVerbose()) {
                 emitStreamEvent(buildToolResultEvent(obs));
             }
-        } else if (chunk instanceof ReActChunk) {
-            ReActChunk react = (ReActChunk) chunk;
+        } else if (chunk instanceof RunEndEvent) {
+            RunEndEvent react = (RunEndEvent) chunk;
             result.trace = react.getTrace();
-            result.answer = clearThink(react.getContent());
+            result.answer = clearThink(react.getText());
             result.metrics = react.getMetrics();
             result.sessionId = session.getSessionId();
-
-            if (options.getOutputFormat() == PrintModeOptions.OutputFormat.STREAM_JSON) {
-                // result 事件在流中发出时需要费用数据，提前计算（execute() 步骤6 会再次赋值，幂等）
-                result.estimatedCostUsd = estimateCostUsd(result.metrics);
-                result.budgetLimitUsd = options.getMaxBudgetUsd();
-                result.budgetExceeded = result.budgetLimitUsd != null
-                        && result.estimatedCostUsd > result.budgetLimitUsd;
-                emitStreamEvent(buildResultEvent(result));
-                // 标记 result 事件已发出，outputResult 阶段将不再额外发 error 事件
-                result.resultEventEmitted = true;
-            }
+            // result 是轮次终止符，必须等 reactive 流完整结束、error/max-turns/interrupted
+            // 状态全部确定后，由 finishTurn() 统一发出。
         }
     }
 
@@ -520,11 +666,7 @@ public class PrintMode {
                 outputJson(result);
                 break;
             case STREAM_JSON:
-                // 仅当 result 事件尚未发出时才发 error 事件，
-                // 避免 result 作为终止符之后再出现额外事件（对齐 Claude Code 协议）
-                if (result.error != null && !result.resultEventEmitted) {
-                    emitStreamEvent(buildErrorEvent(result.error));
-                }
+                // finishTurn() 已发出唯一的终止 result；错误信息也包含在该 result 中。
                 break;
             case TEXT:
             default:
@@ -598,7 +740,7 @@ public class PrintMode {
 
     // ========== Stream-JSON 事件构建（对齐 Claude Code JSONL 格式） ==========
 
-    private void emitStreamEvent(ONode event) {
+    synchronized void emitStreamEvent(ONode event) {
         out.println(event.toJson());
         out.flush();
     }
@@ -609,7 +751,7 @@ public class PrintMode {
      * {"type":"system","subtype":"init","session_id":"...","model":"sonnet","tools":["Read","Grep"]}
      * </pre>
      */
-    private ONode buildInitEvent(AgentSession session) {
+    ONode buildInitEvent(AgentSession session) {
         ONode node = new ONode();
         node.set("type", "system");
         node.set("subtype", "init");
@@ -687,7 +829,7 @@ public class PrintMode {
      * {"type":"assistant","message":{"content":[{"type":"tool_use","id":"...","name":"...","input":{...}}]}}
      * </pre>
      */
-    private ONode buildToolUseEvent(ThoughtChunk thought) {
+    private ONode buildToolUseEvent(ReasonEndEvent thought) {
         ONode node = new ONode();
         node.set("type", "assistant");
 
@@ -716,7 +858,7 @@ public class PrintMode {
      * {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"...","content":"...","is_error":false}]}}
      * </pre>
      */
-    private ONode buildToolResultEvent(ObservationChunk obs) {
+    private ONode buildToolResultEvent(ToolCallEndEvent obs) {
         ONode node = new ONode();
         node.set("type", "user");
 
@@ -729,8 +871,8 @@ public class PrintMode {
         contentBlock.set("is_error", obs.getError() != null);
         if (obs.getError() != null) {
             contentBlock.set("content", obs.getError().getMessage());
-        } else if (Assert.isNotEmpty(obs.getContent())) {
-            contentBlock.set("content", obs.getContent());
+        } else if (Assert.isNotEmpty(obs.getText())) {
+            contentBlock.set("content", obs.getText());
         } else {
             contentBlock.set("content", "");
         }
@@ -745,7 +887,7 @@ public class PrintMode {
      * {"type":"result","result":"...","session_id":"...","is_error":false,"total_cost_usd":0.01}
      * </pre>
      */
-    private ONode buildResultEvent(PrintResult result) {
+    ONode buildResultEvent(PrintResult result) {
         ONode node = new ONode();
         node.set("type", "result");
         node.set("result", result.answer != null ? result.answer : "");
@@ -774,6 +916,9 @@ public class PrintMode {
         }
         if (result.maxTurnsExceeded) {
             node.set("max_turns_exceeded", true);
+        }
+        if (result.interrupted) {
+            node.set("interrupted", true);
         }
         return node;
     }
@@ -846,7 +991,7 @@ public class PrintMode {
             String extracted = extractJsonBlock(text);
             if (extracted != null) {
                 try {
-                return ONode.ofJson(extracted);
+                    return ONode.ofJson(extracted);
                 } catch (Exception e2) {
                     return null;
                 }
@@ -922,7 +1067,7 @@ public class PrintMode {
     /**
      * Print 模式执行结果
      */
-    private static class PrintResult {
+    static class PrintResult {
         String answer;
         String sessionId;
         ReActTrace trace;
@@ -932,7 +1077,13 @@ public class PrintMode {
         double estimatedCostUsd;
         Double budgetLimitUsd;
         boolean budgetExceeded;
-        /** result 事件是否已在流中发出；为 true 时 outputResult 不再补发 error 事件 */
+        /**
+         * result 事件是否已在流中发出；为 true 时 outputResult 不再补发 error 事件
+         */
         boolean resultEventEmitted;
+        /**
+         * 本轮是否被 {@code control_request/interrupt} 取消
+         */
+        boolean interrupted;
     }
 }

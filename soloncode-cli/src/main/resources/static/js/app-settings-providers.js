@@ -165,7 +165,7 @@
                 }
             },
             error: function () {
-                layui.layer.msg(I18n.t('provider.loadFailed'), { icon: 2 });
+                layui.layer.msg(I18n.t('provider.loadFailed'), { icon: 2, time: 3000, offset: '120px' });
             }
         });
     }
@@ -301,7 +301,7 @@
             var maxTokens = $overlay.find('#manualModelTokens').val().trim();
 
             if (!modelId) {
-                layui.layer.msg(I18n.t('provider.modelNameRequired'), { icon: 0 });
+                layui.layer.msg(I18n.t('provider.modelNameRequired'), { icon: 0, time: 2200, offset: '120px' });
                 return;
             }
 
@@ -309,7 +309,7 @@
                 return m.id === modelId;
             });
             if (exists) {
-                layui.layer.msg(I18n.t('provider.modelExists', {name: modelId}), { icon: 0 });
+                layui.layer.msg(I18n.t('provider.modelExists', {name: modelId}), { icon: 0, time: 2200, offset: '120px' });
                 return;
             }
 
@@ -357,59 +357,152 @@
         renderModelsList();
     }
 
+    function setFetchModelsLoading(loading) {
+        var $btn = $('#providerFetchModelsBtn');
+        if (loading) {
+            $btn.prop('disabled', true).attr('aria-busy', 'true').html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>');
+        } else {
+            $btn.prop('disabled', false).attr('aria-busy', 'false').html('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>');
+        }
+    }
+
+    // 后端拉取失败原因 -> 提示文案：404 类“不支持列表接口”与“拉取失败”处置方式不同，不能共用一句提示
+    // 地址填错的表现有多种（域名不存在、端口无监听、连得上不响应、协议写反），处置动作不同，需分开提示
+    var FETCH_REASON_TIPS = {
+        INVALID_URL: { key: 'provider.fetchInvalidUrl', icon: 0, time: 5000 },
+        NOT_SUPPORTED: { key: 'provider.fetchNotSupported', icon: 0, time: 5000 },
+        AUTH_FAILED: { key: 'provider.fetchAuthFailed', icon: 2, time: 4000 },
+        RATE_LIMITED: { key: 'provider.fetchRateLimited', icon: 0, time: 4000 },
+        UPSTREAM_ERROR: { key: 'provider.fetchUpstreamError', icon: 2, time: 4000 },
+        BAD_STATUS: { key: 'provider.fetchBadStatus', icon: 2, time: 4500 },
+        CONNECT_TIMEOUT: { key: 'provider.fetchConnectTimeout', icon: 2, time: 5000 },
+        READ_TIMEOUT: { key: 'provider.fetchReadTimeout', icon: 2, time: 4500 },
+        TIMEOUT: { key: 'provider.fetchTimeout', icon: 2, time: 4000 },
+        DNS_FAILED: { key: 'provider.fetchDnsFailed', icon: 2, time: 5000 },
+        CONNECT_REFUSED: { key: 'provider.fetchConnectRefused', icon: 2, time: 5000 },
+        TLS_ERROR: { key: 'provider.fetchTlsError', icon: 2, time: 5000 },
+        NETWORK_ERROR: { key: 'provider.fetchNetworkError', icon: 2, time: 4500 },
+        INVALID_RESPONSE: { key: 'provider.fetchInvalidResponse', icon: 2, time: 4500 },
+        UNKNOWN: { key: 'provider.fetchListFailedKeepExisting', icon: 2, time: 4000 }
+    };
+
+    // 从业务失败响应中取出失败原因（后端不输出面向用户的文案，文案统一由前端 i18n 提供）
+    function getFetchFailureTip(res) {
+        var data = res && res.data;
+        if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch (e) { data = null; }
+        }
+
+        var reason = data && data.reason;
+        var tip = reason && FETCH_REASON_TIPS[reason];
+        if (!tip) {
+            // Result 序列化字段为 description，兼容 msg 以防接口差异
+            var raw = res && (res.description || res.msg);
+            return {
+                text: raw || I18n.t('provider.fetchListFailedKeepExisting'),
+                icon: 2,
+                time: 4000
+            };
+        }
+
+        var status = (data && data.status) || 0;
+        return {
+            text: I18n.t(tip.key, { status: status }),
+            icon: tip.icon,
+            time: tip.time
+        };
+    }
+
+    function getFetchErrorMessage(xhr, textStatus) {
+        if (textStatus === 'timeout' || xhr.status === 408 || xhr.status === 504) return I18n.t('provider.fetchTimeout');
+        if (xhr.status === 401 || xhr.status === 403) return I18n.t('provider.fetchAuthFailed');
+        if (xhr.status === 404) return I18n.t('provider.fetchEndpointNotFound');
+        if (xhr.responseJSON && (xhr.responseJSON.description || xhr.responseJSON.msg)) {
+            return xhr.responseJSON.description || xhr.responseJSON.msg;
+        }
+        return I18n.t('provider.fetchListFailedKeepExisting');
+    }
+
+
+    // 地址明显非法时不用发请求：缺协议、协议拼错、粘贴带空白或全角字符都属于可即时判定的情况
+    function isHttpUrl(value) {
+        if (!/^https?:\/\//i.test(value)) return false;
+        if (/[\s\u3000\uFF1A\uFF0F]/.test(value)) return false;
+        var host = value.replace(/^https?:\/\//i, '').split(/[\/?#]/)[0];
+        return host.length > 0;
+    }
+
     function fetchModels() {
-        var apiUrl = $('#providerApiUrl').val();
+        var apiUrl = String($('#providerApiUrl').val() || '').trim();
         var apiKey = $('#providerApiKey').val();
         var standard = $('#providerStandard').val();
 
         if (!apiUrl) {
-            layui.layer.msg(I18n.t('provider.apiUrlRequired'), { icon: 0 });
+            layui.layer.msg(I18n.t('provider.apiUrlRequired'), { icon: 0, time: 2200, offset: '120px' });
+            return;
+        }
+        if (!isHttpUrl(apiUrl)) {
+            layui.layer.msg(I18n.t('provider.fetchInvalidUrl'), { icon: 0, time: 4000, offset: '120px' });
             return;
         }
 
-        var $btn = $('#providerFetchModelsBtn');
-        $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>');
+        setFetchModelsLoading(true);
 
         $.ajax({
             url: '/web/settings/llm/providers/fetch',
             method: 'POST',
+            timeout: 20000,
             data: {
                 apiUrl: apiUrl,
                 apiKey: apiKey,
                 standard: standard
             },
             success: function (res) {
-                $btn.prop('disabled', false).html('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>');
                 if (res.code === 200) {
                     try {
                         var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-                        var models = data.data || data.models || data || [];
-                        // 保留手动添加的模型，合并拉取的模型
-                        var manualModels = fetchedModels.filter(function (m) {
-                            return m.manual === true;
-                        });
+                        var models = Array.isArray(data) ? data : (data && (data.data || data.models));
+                        if (!Array.isArray(models)) throw new Error('model list is not an array');
+                        var previousModels = fetchedModels.slice();
+                        var previousRemoteCount = previousModels.filter(function (m) { return m.manual !== true; }).length;
+                        var manualModels = previousModels.filter(function (m) { return m.manual === true; });
                         // 旧模型索引：拉取时继承用户已设置的值（上下文长度手填值、勾选状态）
-                        var prevById = {};
+                        var prevById = Object.create(null);
                         fetchedModels.forEach(function (m) { prevById[m.id] = m; });
-                        var fetchedMapped = models.map(function (m) {
-                            var id = m.id || m.name || m;
+                        var seenIds = Object.create(null);
+                        var fetchedMapped = [];
+                        models.forEach(function (m) {
+                            var id = String((m && (m.id || m.name)) || (typeof m === 'string' ? m : '')).trim();
+                            if (!id || seenIds[id]) return;
+                            seenIds[id] = true;
                             var incomingMax = m.maxInputTokens || m.max_input_tokens || m.contextLength || m.context_length || 0;
                             var incomingMaxOut = m.maxTokens || m.max_tokens || 0;
                             var prev = prevById[id];
-                            return {
+                            fetchedMapped.push({
                                 id: id,
-                                displayName: m.displayName || m.display_name || '',
-                                ownedBy: m.ownedBy || m.owned_by || '',
-                                type: m.type || '',
+                                displayName: m && (m.displayName || m.display_name) || '',
+                                ownedBy: m && (m.ownedBy || m.owned_by) || '',
+                                type: m && m.type || '',
                                 // 拉来的值为空则保留用户此前设置的值，避免手填的上下文长度被清空
                                 maxInputTokens: incomingMax || (prev ? prev.maxInputTokens : 0) || 0,
                                 maxTokens: incomingMaxOut || (prev ? prev.maxTokens : 0) || 0,
                                 selected: prev ? prev.selected : undefined,
                                 manual: false
-                            };
+                            });
                         });
-                        // 手动模型去重：如果手动模型 id 已在拉取列表中，保留手动标记
-                        var fetchedIds = {};
+                        // 有效远程模型数：以过滤去重后的结果为准，响应条数不能代表可用模型数
+                        var fetchedRemoteCount = fetchedMapped.length;
+                        // 返回了数据但没有一条可识别（如 id 全为空），按格式不兼容提示
+                        var invalidResponse = fetchedRemoteCount === 0 && models.length > 0;
+                        // 空响应不覆盖已有远程模型，避免临时异常导致模型配置消失。
+                        if (fetchedRemoteCount === 0 && previousRemoteCount > 0) {
+                            fetchedModels = previousModels;
+                            renderModelsList();
+                            layui.layer.msg(I18n.t(invalidResponse ? 'provider.fetchInvalidModels' : 'provider.fetchEmptyKeepExisting'), { icon: 0, time: 4000, offset: '120px' });
+                            return;
+                        }
+
+                        var fetchedIds = Object.create(null);
                         fetchedMapped.forEach(function (m) { fetchedIds[m.id] = m; });
                         manualModels.forEach(function (mm) {
                             if (fetchedIds[mm.id]) {
@@ -432,18 +525,23 @@
                         });
                         fetchedModels = fetchedMapped;
                         renderModelsList();
-                        layui.layer.msg(I18n.t('provider.fetchOk', {n: fetchedModels.length}), { icon: 1 });
+                        if (fetchedRemoteCount === 0) {
+                            layui.layer.msg(I18n.t(invalidResponse ? 'provider.fetchInvalidModels' : 'provider.fetchEmpty'), { icon: 0, time: 3500, offset: '120px' });
+                        } else {
+                            layui.layer.msg(I18n.t('provider.fetchOk', {n: fetchedRemoteCount}), { icon: 1, time: 2200, offset: '120px' });
+                        }
                     } catch (e) {
-                        layui.layer.msg(I18n.t('provider.fetchParseFailed'), { icon: 2 });
+                        layui.layer.msg(I18n.t('provider.fetchParseFailed'), { icon: 2, time: 3000, offset: '120px' });
                     }
                 } else {
-                    layui.layer.msg(res.msg || I18n.t('provider.fetchFailed'), { icon: 2 });
+                    var tip = getFetchFailureTip(res);
+                    layui.layer.msg(tip.text, { icon: tip.icon, time: tip.time, offset: '120px' });
                 }
             },
-            error: function (xhr) {
-                $btn.prop('disabled', false).html('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>');
-                layui.layer.msg(I18n.t('provider.fetchListFailed') + ': ' + (xhr.responseText || I18n.t('toast.networkError')), { icon: 2 });
-            }
+            error: function (xhr, textStatus) {
+                layui.layer.msg(getFetchErrorMessage(xhr, textStatus), { icon: 2, time: 3500, offset: '120px' });
+            },
+            complete: function () { setFetchModelsLoading(false); }
         });
     }
 
@@ -465,7 +563,7 @@
 
             var manualTag = model.manual ? '<span class="provider-model-manual-tag">' + I18n.t('provider.manualTag') + '</span>' : '';
             var removeBtn = model.manual
-                ? '<button class="provider-model-remove-btn" title="' + I18n.t('provider.remove') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+                ? '<button class="provider-model-remove-btn icon-btn-delete" title="' + I18n.t('provider.remove') + '">' + SVG_TRASH + '</button>'
                 : '';
             // 上下文长度：只读显示（info 区的模型属性字段），有值显示如 1m/256k，无值显示占位
             var contextView = (model.maxInputTokens && model.maxInputTokens > 0)
@@ -578,7 +676,7 @@
                 var raw = layero.find('#providerCtxInput').val();
                 var tokens = parseContextLength(raw);
                 if (tokens === null) {
-                    layui.layer.msg(I18n.t('provider.contextInvalid'), { icon: 2 });
+                    layui.layer.msg(I18n.t('provider.contextInvalid'), { icon: 2, time: 3000, offset: '120px' });
                     return;
                 }
                 setModelContextLength(modelId, tokens);
@@ -598,11 +696,11 @@
                 if (res.code === 200) {
                     showForm(res.data);
                 } else {
-                    layui.layer.msg(res.msg || I18n.t('provider.loadDetailFailed'), { icon: 2 });
+                    layui.layer.msg((res.description || res.msg) || I18n.t('provider.loadDetailFailed'), { icon: 2, time: 3000, offset: '120px' });
                 }
             },
             error: function () {
-                layui.layer.msg(I18n.t('provider.loadDetailFailed'), { icon: 2 });
+                layui.layer.msg(I18n.t('provider.loadDetailFailed'), { icon: 2, time: 3000, offset: '120px' });
             }
         });
     }
@@ -635,11 +733,11 @@
         });
 
         if (!name) {
-            layui.layer.msg(I18n.t('provider.nameRequired'), { icon: 0 });
+            layui.layer.msg(I18n.t('provider.nameRequired'), { icon: 0, time: 2200, offset: '120px' });
             return;
         }
         if (!apiUrl) {
-            layui.layer.msg(I18n.t('provider.apiUrlRequired'), { icon: 0 });
+            layui.layer.msg(I18n.t('provider.apiUrlRequired'), { icon: 0, time: 2200, offset: '120px' });
             return;
         }
 
@@ -667,16 +765,16 @@
             data: JSON.stringify(data),
             success: function (res) {
                 if (res.code === 200) {
-                    layui.layer.msg(I18n.t(currentProvider ? 'provider.updated' : 'provider.added'), { icon: 1 });
+                    layui.layer.msg(I18n.t(currentProvider ? 'provider.updated' : 'provider.added'), { icon: 1, time: 2200, offset: '120px' });
                     // 同步模型到 LLM 模型列表
                     syncModelsToLlm(data);
                     showList();
                 } else {
-                    layui.layer.msg(res.msg || I18n.t('toast.saveFailed'), { icon: 2 });
+                    layui.layer.msg((res.description || res.msg) || I18n.t('toast.saveFailed'), { icon: 2, time: 3000, offset: '120px' });
                 }
             },
             error: function () {
-                layui.layer.msg(I18n.t('toast.saveFailed'), { icon: 2 });
+                layui.layer.msg(I18n.t('toast.saveFailed'), { icon: 2, time: 3000, offset: '120px' });
             }
         });
     }
@@ -721,7 +819,7 @@
                 data: { name: currentProvider.name },
                 success: function (res) {
                     if (res.code === 200) {
-                        layui.layer.msg(I18n.t('provider.deleted'), { icon: 1 });
+                        layui.layer.msg(I18n.t('provider.deleted'), { icon: 1, time: 2200, offset: '120px' });
                         showList();
                         // 刷新 LLM 模型列表（供应商删除时关联模型也会删除）
                         if (window._settingsLlm) {
@@ -732,11 +830,11 @@
                             window.reloadModels();
                         }
                     } else {
-                        layui.layer.msg(res.msg || I18n.t('provider.deleteFailed'), { icon: 2 });
+                        layui.layer.msg((res.description || res.msg) || I18n.t('provider.deleteFailed'), { icon: 2, time: 3000, offset: '120px' });
                     }
                 },
                 error: function () {
-                    layui.layer.msg(I18n.t('provider.deleteFailed'), { icon: 2 });
+                    layui.layer.msg(I18n.t('provider.deleteFailed'), { icon: 2, time: 3000, offset: '120px' });
                 }
             });
         });
@@ -749,7 +847,7 @@
             data: { name: name, enabled: enabled },
             success: function (res) {
                 if (res.code === 200) {
-                    layui.layer.msg(I18n.t(enabled ? 'provider.enableOk' : 'provider.disableOk'), { icon: 1 });
+                    layui.layer.msg(I18n.t(enabled ? 'provider.enableOk' : 'provider.disableOk'), { icon: 1, time: 2200, offset: '120px' });
                     // 刷新供应商列表 UI（更新 disabled 样式）
                     loadProvidersList();
                     // 刷新 LLM 模型列表（供应商禁用时关联模型会禁用）
@@ -761,12 +859,12 @@
                         window.reloadModels();
                     }
                 } else {
-                    layui.layer.msg(res.msg || I18n.t('toast.operateFailed'), { icon: 2 });
+                    layui.layer.msg((res.description || res.msg) || I18n.t('toast.operateFailed'), { icon: 2, time: 3000, offset: '120px' });
                     loadProvidersList();
                 }
             },
             error: function () {
-                layui.layer.msg(I18n.t('toast.operateFailed'), { icon: 2 });
+                layui.layer.msg(I18n.t('toast.operateFailed'), { icon: 2, time: 3000, offset: '120px' });
                 loadProvidersList();
             }
         });

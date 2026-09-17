@@ -8,7 +8,7 @@
 
     var esc = window._settingsCore ? window._settingsCore.escapeHtml : function(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
     var postJson = window._settingsCore ? window._settingsCore.postJson : function(url, data, done) { $.ajax({ url: url, method: 'POST', data: JSON.stringify(data), contentType: 'application/json', dataType: 'json' }).done(done); };
-    var showToast = window._settingsCore ? window._settingsCore.showToast : function(msg, type) { if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' }); else alert(msg); };
+    var showToast = window.showToast || (window._settingsCore ? window._settingsCore.showToast : function(msg, type) { if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' }); else alert(msg); });
 
     // ============== 状态 ==============
     var currentMode = 'file';
@@ -88,7 +88,7 @@
                     '</div>' +
                     '<div class="user-list-actions">' +
                         '<button class="settings-action-btn edit user-edit-btn" data-id="' + esc(u.id) + '" title="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
-                        '<button class="settings-action-btn delete user-delete-btn" data-id="' + esc(u.id) + '" data-username="' + esc(u.username) + '" title="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+                        '<button class="settings-action-btn delete user-delete-btn" data-id="' + esc(u.id) + '" data-username="' + esc(u.username) + '" title="删除">' + SVG_TRASH + '</button>' +
                     '</div>' +
                 '</div>';
             });

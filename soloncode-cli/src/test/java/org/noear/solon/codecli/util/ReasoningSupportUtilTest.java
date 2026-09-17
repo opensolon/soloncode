@@ -1,8 +1,10 @@
 package org.noear.solon.codecli.util;
 
 import org.junit.jupiter.api.Test;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActOptions;
 import org.noear.solon.ai.agent.react.ReActOptionsAmend;
+import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 
@@ -262,5 +264,115 @@ public class ReasoningSupportUtilTest {
         ReActOptionsAmend amend = newAmend();
         ReasoningSupportUtil.applyToOptions(amend, null, "none");
         assertNull(amend.options().get("reasoning_effort"), "none 不得写入 reasoning_effort");
+    }
+
+    // ==================== 全局默认（设置→通用）与会话显式值的优先级 ====================
+
+    private static ReasoningSupportUtil.ModelCapability fourTierCap() {
+        ReasoningSupportUtil.ModelCapability cap = new ReasoningSupportUtil.ModelCapability();
+        cap.supportsReasoning = true;
+        cap.reasoningEfforts = Arrays.asList("low", "medium", "high", "max");
+        cap.defaultReasoningEffort = "medium";
+        return cap;
+    }
+
+    @Test
+    public void resolveSessionEffort_unsetTakesGlobalDefault() {
+        //新会话（从未写过键）吃全局默认 —— 这就是“新建对话不用重选”的核心
+        AgentSession session = InMemoryAgentSession.of();
+        assertFalse(ReasoningSupportUtil.hasExplicitEffort(session));
+        assertEquals("high", ReasoningSupportUtil.resolveSessionEffortOrDefault(
+                session, "high", fourTierCap()));
+    }
+
+    @Test
+    public void resolveSessionEffort_explicitAutoBeatsGlobalDefault() {
+        //手动选回 auto 必须能抵消全局默认（旧实现 remove 键会让这里又吃回 high）
+        AgentSession session = InMemoryAgentSession.of();
+        ReasoningSupportUtil.putSessionEffort(session, "", true);
+        assertTrue(ReasoningSupportUtil.hasExplicitEffort(session), "auto 也算已表态");
+        assertNull(ReasoningSupportUtil.getSessionEffort(session), "auto 哨兵对注入侧仍归一为 null");
+        assertNull(ReasoningSupportUtil.resolveSessionEffortOrDefault(session, "high", fourTierCap()));
+    }
+
+    @Test
+    public void resolveSessionEffort_explicitValueWins() {
+        AgentSession session = InMemoryAgentSession.of();
+        ReasoningSupportUtil.putSessionEffort(session, "low", true);
+        assertEquals("low", ReasoningSupportUtil.resolveSessionEffortOrDefault(
+                session, "high", fourTierCap()));
+    }
+
+    @Test
+    public void resolveSessionEffort_globalDefaultClampedToCapability() {
+        //全局设 max 碰上只支持三档的模型：不能把错档位发出去
+        ReasoningSupportUtil.ModelCapability threeTier = new ReasoningSupportUtil.ModelCapability();
+        threeTier.supportsReasoning = true;
+        threeTier.reasoningEfforts = Arrays.asList("low", "medium", "high");
+
+        AgentSession session = InMemoryAgentSession.of();
+        assertEquals("high", ReasoningSupportUtil.resolveSessionEffortOrDefault(
+                session, "max", threeTier));
+    }
+
+    @Test
+    public void resolveSessionEffort_globalDefaultIllegalValueIsAuto() {
+        AgentSession session = InMemoryAgentSession.of();
+        assertNull(ReasoningSupportUtil.resolveSessionEffortOrDefault(session, "ultra", fourTierCap()));
+        assertNull(ReasoningSupportUtil.resolveSessionEffortOrDefault(session, null, fourTierCap()));
+        assertNull(ReasoningSupportUtil.resolveSessionEffortOrDefault(session, "auto", fourTierCap()));
+    }
+
+    @Test
+    public void resolveSessionEffort_legacySnapshotWithExplicitValueUnaffected() {
+        //旧快照：直接写过 low 的会话不得被全局默认改写
+        AgentSession session = InMemoryAgentSession.of();
+        session.getContext().put(ReasoningSupportUtil.CTX_REASONING_EFFORT, "low");
+        assertEquals("low", ReasoningSupportUtil.resolveSessionEffortOrDefault(
+                session, "high", fourTierCap()));
+    }
+
+    @Test
+    public void resolveSessionThinking_unsetTakesGlobalDefault() {
+        AgentSession session = InMemoryAgentSession.of();
+        assertFalse(ReasoningSupportUtil.hasExplicitThinkingMode(session));
+        assertEquals("off", ReasoningSupportUtil.resolveSessionThinkingOrDefault(session, "off"));
+        assertEquals("on", ReasoningSupportUtil.resolveSessionThinkingOrDefault(session, "on"));
+        assertNull(ReasoningSupportUtil.resolveSessionThinkingOrDefault(session, "auto"));
+    }
+
+    @Test
+    public void resolveSessionThinking_explicitAutoBeatsGlobalDefault() {
+        AgentSession session = InMemoryAgentSession.of();
+        ReasoningSupportUtil.putSessionThinkingMode(session, "auto", true);
+        assertTrue(ReasoningSupportUtil.hasExplicitThinkingMode(session));
+        assertNull(ReasoningSupportUtil.resolveSessionThinkingOrDefault(session, "off"));
+    }
+
+    @Test
+    public void resolveSessionThinking_explicitValueWins() {
+        AgentSession session = InMemoryAgentSession.of();
+        ReasoningSupportUtil.putSessionThinkingMode(session, "on", true);
+        assertEquals("on", ReasoningSupportUtil.resolveSessionThinkingOrDefault(session, "off"));
+    }
+
+    @Test
+    public void putSessionEffort_noneMigratesToThinkingOffAndExplicitAuto() {
+        //旧前端的 effort=none：迁移为 thinking=off，effort 置显式 auto
+        //（若仍删键，下一轮会被全局默认重新塑上一个档位）
+        AgentSession session = InMemoryAgentSession.of();
+        ReasoningSupportUtil.putSessionEffort(session, "none", true);
+        assertEquals("off", ReasoningSupportUtil.getSessionThinkingMode(session));
+        assertTrue(ReasoningSupportUtil.hasExplicitEffort(session));
+        assertNull(ReasoningSupportUtil.resolveSessionEffortOrDefault(session, "high", fourTierCap()));
+    }
+
+    @Test
+    public void putSession_notProvidedLeavesSessionUntouched() {
+        AgentSession session = InMemoryAgentSession.of();
+        ReasoningSupportUtil.putSessionEffort(session, "high", false);
+        ReasoningSupportUtil.putSessionThinkingMode(session, "on", false);
+        assertFalse(ReasoningSupportUtil.hasExplicitEffort(session));
+        assertFalse(ReasoningSupportUtil.hasExplicitThinkingMode(session));
     }
 }

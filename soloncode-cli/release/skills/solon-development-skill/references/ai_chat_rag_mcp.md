@@ -2,7 +2,7 @@
 
 > 适用场景：LLM 调用、Tool Calling、RAG 流水线、MCP 协议、生成模型、方言与依赖。
 >
-> 目标版本：4.0.4。
+> 目标版本：4.1.0。4.0.4/4.0.5 的历史变更仍保留在本文对应小节中。
 > - Agent / Talent / Loop → `ai_agent.md`
 > - Harness → `ai_harness.md`
 > - AI UI / ACP / A2A → `ai_protocol_ui.md`
@@ -78,9 +78,20 @@ ChatModel chatModel = ChatModel.of("http://127.0.0.1:11434/api/chat")
 ChatResponse resp = chatModel.prompt("你好").call();
 String content = resp.getMessage().getContent();
 
-// 流式（需 solon-web-rx）
-Flux<ChatResponse> stream = chatModel.prompt("你好").stream();
+// 流式（需 solon-web-rx）：4.1.0 返回 ChatEvent 语义事件
+Flux<ChatEvent> stream = chatModel.prompt("你好").stream();
+
+// 完整终态从 RESPONSE_END 事件获取；不要把每个事件当作 ChatResponse
+stream.filter(e -> e.is(ChatEventType.TEXT_DELTA))
+      .map(ChatEvent::getText)
+      .subscribe(System.out::print);
 ```
+
+### 4.1 ChatEvent 流式事件
+
+4.1.0 的 `ChatEvent` 按 `LIFECYCLE`、`STEP`、`TEXT`、`THINKING`、`TOOL_CALL`、`MEDIA`、`META` 等分组，常见事件包括 `TEXT_START/DELTA/END`、`THINKING_START/DELTA/END`、`TOOL_CALL_START/ARGS_DELTA/END`、`TOOL_RESULT`、`STEP_START/END`、`RESPONSE_START/END`、`ERROR`、`ABORT`。`ChatEventNormalizer` 负责补齐内容块边界，`ChatAccumulator` 负责流式聚合。
+
+正文输出应只消费 `TEXT_DELTA`；工具参数 delta 可能是不完整 JSON，完整工具调用从 `RESPONSE_END` 携带的 `ChatResponse.getToolCalls()` 获取。正常结束读取 `RESPONSE_END.getResponse()`；异常会收到 `ERROR` 并以 `onError` 结束，取消订阅不等同于发送 `ABORT`。
 
 ## Tool Calling
 
@@ -226,6 +237,8 @@ public McpClientProvider mcpClient(
 ```
 
 ## GenerateModel — 生成模型（图/音/视）
+
+> 4.1.0 继续使用 `GenerateModel`；`ImageModel` 已是历史入口。
 
 由 GenerateModel 体系替代原 ImageModel：
 

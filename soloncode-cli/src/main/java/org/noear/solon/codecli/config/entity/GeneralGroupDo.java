@@ -77,6 +77,9 @@ public class GeneralGroupDo implements Serializable {
     //是否启用 Goal 模式（Codex CLI 对齐的长任务目标模式）
     private boolean goalsEnabled = true; // true
 
+    //是否启用 Loop 工具（LoopTalent：AI 查询/停止/暂停/触发定时循环任务，含一次性定时）
+    private boolean loopsEnabled = true; // true
+
     //当前激活的皮肤（default / 预置名 / 本地安装名；空或 default 表示默认）
     private String activeSkin;
 
@@ -86,6 +89,11 @@ public class GeneralGroupDo implements Serializable {
     private String uiFontMono;
     //界面字体-缩放倍率（0.85 ~ 1.5；空或 1 表示默认）
     private Double uiFontScale;
+
+    //新建对话的默认思考模式（on|off；空表示 auto，不干预，跟随模型/供应商默认）
+    private String defaultThinkingMode;
+    //新建对话的默认推理强度（low|medium|high|max；空表示 auto，不干预）
+    private String defaultReasoningEffort;
 
 
     //===================

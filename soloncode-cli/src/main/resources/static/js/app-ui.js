@@ -658,16 +658,101 @@ function processMermaidBlocks(container) {
 }
 
 /* ===== QRCode（仅扫码绑定时加载） ===== */
+/**
+ * 修正 qrcode.min.js 的呈现方式。
+ *
+ * 库画完 canvas 后，会用 toDataURL() 生成一张 <img> 顶替、并把 canvas 设为
+ * display:none。一旦 data: 协议被 CSP、企业网关或浏览器策略拦截，页面上就只
+ * 剩一张破图——而 canvas 里其实已经画好了。这里把 makeImage 置空，始终以
+ * canvas 作为最终呈现，绕开 data: 依赖。
+ */
+function patchQrcodeLib() {
+    if (typeof QRCode === 'undefined' || !QRCode.prototype) return;
+    if (QRCode.prototype.__scKeepCanvas) return;
+    QRCode.prototype.makeImage = function() {};
+    QRCode.prototype.__scKeepCanvas = true;
+}
+
 function ensureQrcode(cb) {
     if (typeof QRCode !== 'undefined') {
+        patchQrcodeLib();
         if (cb) cb(null);
         return;
     }
     loadScriptOnce('/js/qrcode.min.js', function(err) {
-        if (cb) cb(err || null);
+        if (err) {
+            // 懒加载在弱网/代理环境下容易偶发失败，重试一次再判定
+            loadScriptOnce('/js/qrcode.min.js', function(err2) {
+                if (!err2) patchQrcodeLib();
+                if (cb) cb(err2 || null);
+            });
+            return;
+        }
+        patchQrcodeLib();
+        if (cb) cb(null);
     });
 }
 window.ensureQrcode = ensureQrcode;
+
+var QR_DATA_IMAGE_RE = /^data:image\//i;
+var QR_IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i;
+
+/**
+ * 把二维码内容渲染进容器，自动适配内容形态：
+ *
+ * <ul>
+ *   <li>data:image/... 或图片直链：服务端已给出成品图，直接展示，不做二次编码；</li>
+ *   <li>普通 URL / 文本：由 qrcode.min.js 在本地编码成图；</li>
+ *   <li>库加载失败或编码失败：退化成可点击链接，用户仍可手动打开完成绑定。</li>
+ * </ul>
+ *
+ * @param $wrap   jQuery 容器
+ * @param content 二维码内容
+ * @param onFail  失败回调 onFail(reason)，reason 取 'lib'（库加载失败）
+ *                / 'encode'（编码失败）/ 'image'（图片加载失败）
+ * @return 容器存在且内容非空时返回 true
+ */
+function renderQrcodeInto($wrap, content, onFail) {
+    if (!$wrap || !$wrap.length || !content) return false;
+
+    var fallback = function(reason) {
+        if (!$wrap.length) return;
+        var style = 'font-size:12px;padding:10px;word-break:break-all;line-height:1.6';
+        var html = /^https?:\/\//i.test(content)
+            ? '<a href="' + escapeHtmlAttr(content) + '" target="_blank" rel="noopener noreferrer" style="' + style + '">'
+              + escapeHtml(content) + '</a>'
+            : '<span style="' + style + ';color:#666">' + escapeHtml(content) + '</span>';
+        $wrap.html(html);
+        if (onFail) onFail(reason);
+    };
+
+    // 服务端直接给图：二次编码必然失败（图片数据远超二维码容量），直接展示
+    if (QR_DATA_IMAGE_RE.test(content) || QR_IMAGE_URL_RE.test(content)) {
+        var $img = $('<img>').attr('alt', 'QR Code')
+            .css({ width: '180px', height: '180px', display: 'block' })
+            .on('error', function() { fallback('image'); });
+        $wrap.html('').append($img);
+        $img.attr('src', content);
+        return true;
+    }
+
+    $wrap.html('');
+    ensureQrcode(function(err) {
+        if (!$wrap.length) return;
+        if (err || typeof QRCode === 'undefined') {
+            fallback('lib');
+            return;
+        }
+        try {
+            new QRCode($wrap[0], { text: content, width: 180, height: 180 });
+        } catch (e) {
+            console.warn('[qrcode] encode failed:', e && e.message);
+            fallback('encode');
+        }
+    });
+    return true;
+}
+window.renderQrcodeInto = renderQrcodeInto;
 
 function applyHljsTheme(theme) {
     var $lightLink = $('#hljsLightTheme');

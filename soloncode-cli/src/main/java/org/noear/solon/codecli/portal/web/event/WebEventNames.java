@@ -8,9 +8,11 @@ package org.noear.solon.codecli.portal.web.event;
 public interface WebEventNames {
     // message 命名空间
     String MESSAGE_DELTA = "message.delta";
+    String MESSAGE_DONE = "message.done";
 
     // thought 命名空间
     String THOUGHT_DELTA = "thought.delta";
+    String THOUGHT_DONE = "thought.done";
 
     // tool 命名空间
     String TOOL_START = "tool.start";

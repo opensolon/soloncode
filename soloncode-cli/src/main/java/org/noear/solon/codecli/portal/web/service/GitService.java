@@ -666,6 +666,36 @@ public class GitService {
     }
 
     /**
+     * 获取最近的 Git 提交摘要，供提交输入框快速复用。
+     *
+     * @param limit 最大返回条数
+     * @return 包含 commits（按时间倒序）的结果对象
+     * @throws Exception Git 命令执行异常
+     */
+    public Result<Map> history(int limit) throws Exception {
+        if (!isGitRepo()) {
+            return Result.failure(400, "Not a git repository");
+        }
+        int count = Math.max(1, Math.min(limit, 50));
+        ProcessResult result = runGitCommand("git", "log", "-n", String.valueOf(count), "--format=%s%x00%H");
+        if (result.exitCode != 0) {
+            return Result.failure(500, "git log failed: " + result.stderr.trim());
+        }
+
+        List<String> commits = new ArrayList<>();
+        for (String line : result.stdout.split("\\n")) {
+            if (line == null || line.trim().isEmpty()) continue;
+            int separator = line.indexOf('\0');
+            String message = separator >= 0 ? line.substring(0, separator) : line;
+            message = message.trim();
+            if (!message.isEmpty()) commits.add(message);
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("commits", commits);
+        return Result.succeed(data);
+    }
+
+    /**
      * Git 提交：支持精确文件列表或全量 add -A。
      *
      * @param message 提交信息

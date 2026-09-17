@@ -55,8 +55,20 @@ public class SteerInterceptor implements ReActInterceptor {
     public static final String ATTR_ACTIVE_RUN_ID = "web.activeRunId";
     /** 邮箱容量上限（Codex 建议：频繁 steer 加速上下文膨胀，高频场景应改用排队） */
     public static final int MAX_BOX_SIZE = 5;
+
+    /** 插话入队结果。 */
+    enum OfferResult {
+        /** 已成功加入当前任务的插话邮箱。 */
+        OFFERED,
+        /** 邮箱已达到容量上限，未加入。 */
+        BOX_FULL,
+        /** 当前邮箱中已存在相同 steerId，未重复加入。 */
+        DUPLICATE_ID
+    }
     /** 单条插话长度上限 */
     public static final int MAX_TEXT_LENGTH = 4096;
+    /** 前端生成的插话 ID 长度上限 */
+    public static final int MAX_ID_LENGTH = 128;
 
     /** 注入到工作记忆的消息前缀，向模型标识这是运行中的用户补充。
      * 同时是 LastTraceService 回放时识别插话的兜底判据（metadata 可能在快照序列化中丢失） */
@@ -80,11 +92,13 @@ public class SteerInterceptor implements ReActInterceptor {
             return;
         }
 
-        // 记录本次任务的 runId（getRunId 惰性且幂等，与事件流的 runId 同源），
-        // 供 steer 接口比对。首轮 reason 之前提交的 steer 不受影响（此时比对端为 null，按接受处理）
-        session.attrs().put(ATTR_ACTIVE_RUN_ID, trace.getRunId());
-
-        Queue<String> box = steerBox(session);
+        // 记录本次任务的 runId（getRunId 惰性且幂等，与事件流的 runId 同源）。
+        // 与 onAgentEnd 使用同一短临界区，避免旧任务结束时摘走新任务刚建立的邮箱。
+        Queue<SteerMessage> box;
+        synchronized (session.attrs()) {
+            session.attrs().put(ATTR_ACTIVE_RUN_ID, trace.getRunId());
+            box = steerBox(session);
+        }
         if (box == null || box.isEmpty()) {
             return;
         }
@@ -99,13 +113,13 @@ public class SteerInterceptor implements ReActInterceptor {
             return;
         }
 
-        List<String> texts = drain(box);
-        if (texts.isEmpty()) {
+        List<SteerMessage> messages = drain(box);
+        if (messages.isEmpty()) {
             return;
         }
 
-        for (String text : texts) {
-            ChatMessage message = ChatMessage.ofUser(STEER_PREFIX + text);
+        for (SteerMessage steer : messages) {
+            ChatMessage message = ChatMessage.ofUser(STEER_PREFIX + steer.getText());
             message.addMetadata("source", STEER_SOURCE);
             trace.getWorkingMemory().addMessage(message);
         }
@@ -113,8 +127,8 @@ public class SteerInterceptor implements ReActInterceptor {
         // 不追加 systemPrompt 说明：注入消息自带 STEER_PREFIX 已足够表意，避免重复提示
 
         // 必须广播 applied：它是「注入已生效」的唯一信号。前端据此清除待生效态并落气泡；
-        // 若不发，前端 finishStream 的防御定时器会把已执行过的插话当作未消费重新入队，导致重复执行
-        emitSteer(session, WebEvent.ofSteerApplied(trace.getRunId(), texts));
+        // 客户端不会用超时猜测终态，避免把已执行过的插话再次入队。
+        emitSteer(session, WebEvent.ofSteerAppliedItems(trace.getRunId(), messages));
     }
 
     @Override
@@ -124,19 +138,24 @@ public class SteerInterceptor implements ReActInterceptor {
             return;
         }
 
-        // 先摘下邮箱再排空（方案 A：任务结束即失效）。顺序不可颠倒：
-        // 若先 drain 再 remove，落在两步之间的 offer 会随 remove 静默丢失。
-        // 摘下后并发到达的 offer 会写进一个新建的孤儿队列，由 steer 接口的 offer 后复查兜住
-        @SuppressWarnings("unchecked")
-        Queue<String> box = (Queue<String>) session.attrs().remove(ATTR_STEER_BOX);
-        session.attrs().remove(ATTR_ACTIVE_RUN_ID);
+        // 仅结束属于本 trace 的邮箱。旧 trace 的迟到回调不得摘走新任务的 runId 或邮箱。
+        Queue<SteerMessage> box;
+        synchronized (session.attrs()) {
+            if (!trace.getRunId().equals(session.attrs().get(ATTR_ACTIVE_RUN_ID))) {
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            Queue<SteerMessage> currentBox = (Queue<SteerMessage>) session.attrs().remove(ATTR_STEER_BOX);
+            box = currentBox;
+            session.attrs().remove(ATTR_ACTIVE_RUN_ID, trace.getRunId());
+        }
 
         if (box != null && !box.isEmpty()) {
             // 残留兜底：任务已结束（单轮直接回答、守卫持续跳过后 END 等），
             // 未消费的插话绝不能静默丢弃——广播 dropped，前端转为排队消息发送
-            List<String> dropped = drain(box);
+            List<SteerMessage> dropped = drain(box);
             if (!dropped.isEmpty()) {
-                emitSteer(session, WebEvent.ofSteerDropped(trace.getRunId(), dropped));
+                emitSteer(session, WebEvent.ofSteerDroppedItems(trace.getRunId(), dropped));
             }
         }
     }
@@ -145,16 +164,48 @@ public class SteerInterceptor implements ReActInterceptor {
      * 获取（不创建）会话插话邮箱
      */
     @SuppressWarnings("unchecked")
-    public static Queue<String> steerBox(AgentSession session) {
-        return (Queue<String>) session.attrs().get(ATTR_STEER_BOX);
+    public static Queue<SteerMessage> steerBox(AgentSession session) {
+        return (Queue<SteerMessage>) session.attrs().get(ATTR_STEER_BOX);
     }
 
-    private static List<String> drain(Queue<String> box) {
-        List<String> texts = new ArrayList<>();
-        for (String text; (text = box.poll()) != null; ) {
-            texts.add(text);
+    /** 容量校验、ID 去重与入队必须在同一邮箱的短临界区内完成。 */
+    static OfferResult offer(Queue<SteerMessage> box, SteerMessage steer) {
+        synchronized (box) {
+            // 先判重再判容量：满邮箱中的同 ID 重试仍应返回准确的重复结果，
+            // 不能误报 BOX_FULL 后被前端降级为普通任务而造成重复执行。
+            for (SteerMessage existing : box) {
+                if (steer.getId().equals(existing.getId())) {
+                    return OfferResult.DUPLICATE_ID;
+                }
+            }
+            if (box.size() >= MAX_BOX_SIZE) {
+                return OfferResult.BOX_FULL;
+            }
+            return box.offer(steer) ? OfferResult.OFFERED : OfferResult.BOX_FULL;
         }
-        return texts;
+    }
+
+    /**
+     * 仅取消仍留在邮箱中的插话。若消费线程已经 poll 出该项，则返回 false，调用方不得宣称取消成功。
+     */
+    public static boolean cancel(Queue<SteerMessage> box, String steerId) {
+        if (box == null || steerId == null) {
+            return false;
+        }
+        for (SteerMessage item : box) {
+            if (steerId.equals(item.getId())) {
+                return box.remove(item);
+            }
+        }
+        return false;
+    }
+
+    private static List<SteerMessage> drain(Queue<SteerMessage> box) {
+        List<SteerMessage> messages = new ArrayList<>();
+        for (SteerMessage message; (message = box.poll()) != null; ) {
+            messages.add(message);
+        }
+        return messages;
     }
 
     private static boolean hasOpenToolCalls(ReActTrace trace) {

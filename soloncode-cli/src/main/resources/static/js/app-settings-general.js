@@ -7,6 +7,7 @@
     'use strict';
 
     function showToast(msg, type) {
+        if (typeof window.showToast === 'function') { window.showToast(msg, type); return; }
         if (typeof layer !== 'undefined' && layer.msg) {
             layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' });
         } else {
@@ -343,6 +344,7 @@
                 $('#generalBashAsyncEnabled').prop('checked', !!d.bashAsyncEnabled);
                 $('#generalSubagentEnabled').prop('checked', d.subagentEnabled !== false);
                 $('#generalManagerEnabled').prop('checked', d.managerEnabled !== false);
+                $('#generalLoopEnabled').prop('checked', d.loopsEnabled !== false);
                 $('#generalLspEnabled').prop('checked', !!d.lspEnabled);
                 $('#generalCliPrintSimplified').prop('checked', d.cliPrintSimplified !== false);
                 window.cliPrintSimplified = d.cliPrintSimplified !== false;
@@ -350,6 +352,10 @@
                 // Web 访问认证
                 $('#generalWebAuthUser').val(d.webAuthUser || '');
                 $('#generalWebAuthPass').val(d.webAuthPass || '');
+
+                // 新建对话默认（思考模式 / 推理强度）
+                $('#generalDefaultThinkingMode').val(d.defaultThinkingMode || '');
+                $('#generalDefaultReasoningEffort').val(d.defaultReasoningEffort || '');
 
                 // 日志
                 $('#generalLogLevel').val(d.logLevel || '');
@@ -421,6 +427,7 @@
             bashAsyncEnabled: $('#generalBashAsyncEnabled').is(':checked'),
             subagentEnabled: $('#generalSubagentEnabled').is(':checked'),
             managerEnabled: $('#generalManagerEnabled').is(':checked'),
+            loopsEnabled: $('#generalLoopEnabled').is(':checked'),
             lspEnabled: $('#generalLspEnabled').is(':checked'),
             cliPrintSimplified: $('#generalCliPrintSimplified').is(':checked'),
             webAuthUser: $('#generalWebAuthUser').val().trim() || null,
@@ -433,7 +440,9 @@
             noProxy: $('#generalNoProxy').val().trim() || null,
             uiFontFamily: ($('#generalUiFontFamily').val() || '').trim() || null,
             uiFontMono: ($('#generalUiFontMono').val() || '').trim() || null,
-            uiFontScale: currentFontScale()
+            uiFontScale: currentFontScale(),
+            defaultThinkingMode: $('#generalDefaultThinkingMode').val() || null,
+            defaultReasoningEffort: $('#generalDefaultReasoningEffort').val() || null
         };
 
         $generalSaveBtn.prop('disabled', true);
@@ -450,6 +459,10 @@
                     }
                     window.cliPrintSimplified = bodyObj.cliPrintSimplified;
                     setFontBaseline(readFontForm());
+                    // 新建对话默认改了：重拉 _default 槽位，让输入框的思考/推理 pill 无需刷页就跟上
+                    if (typeof loadModels === 'function') {
+                        loadModels(null);
+                    }
                     return resp;
                 })
         );

@@ -1114,4 +1114,88 @@ public class PrintModeOptionsTest {
         PrintModeOptions.ToolRuleSpec spec = new PrintModeOptions.ToolRuleSpec("Bash", "rm *");
         assertTrue(spec.hasPattern());
     }
+
+    // ========== 输入格式 / 常驻模式 ==========
+
+    @Test
+    @DisplayName("默认输入格式为 text，不是常驻模式")
+    public void testInputFormatDefaultsToText() {
+        PrintModeOptions opts = PrintModeOptions.parse(buildArgx("run", "hi"));
+
+        assertEquals(PrintModeOptions.InputFormat.TEXT, opts.getInputFormat());
+        assertFalse(opts.isStreamJsonInput());
+        assertFalse(opts.isReplayUserMessages());
+    }
+
+    @Test
+    @DisplayName("--input-format stream-json 被解析（run 下由 PrintMode 拒绝）")
+    public void testInputFormatStreamJsonParsed() {
+        PrintModeOptions opts = PrintModeOptions.parse(
+                buildArgx("run", "--input-format", "stream-json"));
+
+        assertEquals(PrintModeOptions.InputFormat.STREAM_JSON, opts.getInputFormat());
+        assertTrue(opts.isStreamJsonInput());
+    }
+
+    @Test
+    @DisplayName("--input-format 未知值回落 text")
+    public void testInputFormatUnknownFallsBackToText() {
+        PrintModeOptions opts = PrintModeOptions.parse(
+                buildArgx("run", "--input-format", "yaml"));
+
+        assertEquals(PrintModeOptions.InputFormat.TEXT, opts.getInputFormat());
+    }
+
+    @Test
+    @DisplayName("--replay-user-messages 标志")
+    public void testReplayUserMessagesFlag() {
+        PrintModeOptions opts = PrintModeOptions.parse(
+                buildArgx("stream", "--replay-user-messages"));
+
+        assertTrue(opts.isReplayUserMessages());
+    }
+
+    @Test
+    @DisplayName("parseStream 强制 JSONL 输入与输出")
+    public void testParseStreamForcesJsonl() {
+        PrintModeOptions opts = PrintModeOptions.parseStream(buildArgx("stream"));
+
+        assertEquals(PrintModeOptions.InputFormat.STREAM_JSON, opts.getInputFormat());
+        assertEquals(PrintModeOptions.OutputFormat.STREAM_JSON, opts.getOutputFormat());
+        assertTrue(opts.isStreamJsonInput());
+    }
+
+    @Test
+    @DisplayName("parseStream 忽略 --output-format text（text 无法表达轮次边界）")
+    public void testParseStreamIgnoresTextOutputFormat() {
+        PrintModeOptions opts = PrintModeOptions.parseStream(
+                buildArgx("stream", "--output-format", "text"));
+
+        assertEquals(PrintModeOptions.OutputFormat.STREAM_JSON, opts.getOutputFormat());
+    }
+
+    @Test
+    @DisplayName("parseStream 丢弃位置提示词（每轮都来自 stdin）")
+    public void testParseStreamDropsPositionalPrompt() {
+        PrintModeOptions opts = PrintModeOptions.parseStream(buildArgx("stream", "你好"));
+
+        assertNull(opts.getPrompt());
+        assertTrue(opts.shouldReadStdin());
+    }
+
+    @Test
+    @DisplayName("parseStream 保留其余选项语义（模型/权限/预算/会话）")
+    public void testParseStreamKeepsOtherOptions() {
+        PrintModeOptions opts = PrintModeOptions.parseStream(buildArgx(
+                "stream", "--model", "sonnet", "--permission-mode", "dontAsk",
+                "--max-budget-usd", "5.0", "--session-id", "s-1",
+                "--max-turns", "12", "--verbose"));
+
+        assertEquals("sonnet", opts.getModel());
+        assertEquals(PrintModeOptions.PermissionMode.DONT_ASK, opts.getPermissionMode());
+        assertEquals(5.0, opts.getMaxBudgetUsd(), 0.0001);
+        assertEquals("s-1", opts.getSessionId());
+        assertEquals(12, opts.getMaxTurns());
+        assertTrue(opts.isVerbose());
+    }
 }

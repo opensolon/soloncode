@@ -1,7 +1,71 @@
 
+
+### v2026.9.15
+
+* 优化 soloncode web 浏览本地目录界面 for window
+* 细节优化
+
+### v2026.9.14
+
+* 优化 soloncode web 工作区共享设置同步
+* 优化 soloncode web 浏览本地目录界面 for window
+* 优化 soloncode web `~` 目录启动时弱化文件扫描
+* 细节优化
+
+### v2026.9.12
+
+* 优化 soloncode llm 方言适配
+* 调整 soloncode web 排队任务面板转到输入面板上方
+* 修复 soloncode web 添加文件挂载后，文件树不能展开问题
+* 修复 soloncode web 排队任务不能删除问题
+* 细节优化
+
+### v2026.9.8
+
+* 添加 soloncode web 选中文本右键菜单功能
+* 细节优化
+
+### v2026.9.5
+
+* 添加 soloncode web 设置「配置备份」
+* 添加 soloncode web loop llm 自动管理支持
+* 添加 soloncode web 文件树手动刷新功能
+* 优化 soloncode-sdk-java 模块
+* 优化 soloncode 适配 solon-ai ChatEvent 新机制，增加 "thought.done" 新事件
+* 优化 soloncode 安装脚本带上 md 命令文件
+* 修复 soloncode web IM 通道会收到 delta 数据的问题
+* 修复 soloncode web IM 通道（微信、钉钉、飞书）二维码显示失败
+* 细节优化 
+
+### v2026.8.30
+
+* 添加 soloncode web 输入超大提示（100K）
+* 优化 soloncode web 供应商拉取失败的提示
+* 优化 soloncode llm 方言适配
+* 优化 soloncode-sdk-java 模块
+* 细节优化
+
+### v2026.8.29
+
+* 新增 soloncode-sdk-java 模块
+* 修复 soloncode web 子代理任务显示描述丢失问题
+* 修复 soloncode web 如果是子代理执行，继续执行会失败的问题
+* 细节优化
+
 ### v2026.8.28
 
-* 优化 soloncode web 最后一条历史消息改用 trace 里获取（可以显示过程记录）
+* 新增 soloncode `~` 启动时锁定工作区面板的设计
+* 添加 soloncode help 命令与 `--help`/`-h` 选项（支持 `soloncode help run` 与 `soloncode run --help` 查看无头模式选项）
+* 添加 soloncode-sdk-java 传输层抽象：`Transport` 接口 + `StdioTransport` 实现（原 StreamingTransport），builder 的 `cliPath()` 改为 `stdio()`/`stdio(path)`（SDK 未发布，直接替换不留过渡）；预留 `http()` 通道，配套 `/web/run` 方案见 `soloncode-cli/docs/run-headless-mode-http.md`
+* 添加 soloncode web 文件树右键菜单
+* 优化 soloncode web 提示，统一样式
+* 细节优化
+
+### v2026.8.27
+
+* 修复 soloncode run 与 --version 成功时退出码为 1 的问题（改为 0，对齐无头模式退出码约定）
+* 添加 soloncode web 更新提示（启动时）
+* 优化 soloncode web 最后一条历史消息改用 trace 里获取（显示过程记录）
 * 优化 soloncode llm 协议兼容处理
 * 优化 soloncode llm 缓存率
 * 细节优化

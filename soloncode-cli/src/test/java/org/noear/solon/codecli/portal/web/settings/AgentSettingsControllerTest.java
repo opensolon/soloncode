@@ -9,6 +9,8 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
+import org.noear.solon.codecli.workspace.WorkspaceMeta;
 import org.noear.solon.core.handle.Result;
 
 import java.nio.charset.StandardCharsets;
@@ -30,18 +32,33 @@ class AgentSettingsControllerTest {
     private AgentSettingsController controller;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         oldUserHome = System.getProperty("user.home");
         oldUserDir = System.getProperty("user.dir");
-        System.setProperty("user.home", tempDir.resolve("home").toString());
-        System.setProperty("user.dir", tempDir.resolve("workspace").toString());
 
-        engine = HarnessEngine.of(tempDir.resolve("workspace").toString(), ".soloncode/")
+        Path workspace = tempDir.resolve("workspace");
+        System.setProperty("user.home", tempDir.resolve("home").toString());
+        System.setProperty("user.dir", workspace.toString());
+
+        engine = HarnessEngine.of(workspace.toString(), ".soloncode/")
                 .mountAdd(MountDir.builder().alias(AgentSettingsController.USER_ALIAS).type(MountType.AGENTS).path("~/.soloncode/agents/").primary(true).build())
                 .mountAdd(MountDir.builder().alias(AgentSettingsController.WORKSPACE_ALIAS).type(MountType.AGENTS).path("./.soloncode/agents/").primary(true).build())
                 .build();
 
-        controller = new AgentSettingsController(null);
+        /* 多工作区改造后，控制器不再构造注入引擎，而是经 currentContext() 按当前工作区动态取。
+         * 单测里不能真建 WorkspaceManager（它依赖 Solon 容器，JobManager 静态初始化会失败），
+         * 改为直接给出一个只带 engine 的轻量上下文 —— 智能体课题只用到 engine()。 */
+        WorkspaceMeta meta = new WorkspaceMeta("default", "workspace", workspace.toString(),
+                System.currentTimeMillis(), true);
+        final WorkspaceContext wctx = new WorkspaceContext(meta, engine,
+                null, null, null, null, null, null, new AgentSettings());
+
+        controller = new AgentSettingsController(null) {
+            @Override
+            public WorkspaceContext currentContext() {
+                return wctx;
+            }
+        };
     }
 
     @AfterEach

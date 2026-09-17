@@ -12,6 +12,8 @@ $(chatSendBtn).on('click', function() {
         sess.stopRequested = true;
         // 标记本轮因 Stop 结束：finish 时不再 drain 排队
         sess._stoppedTurn = true;
+        // 尚在提交中的插话也必须进入放弃态；HTTP 迟到后只允许撤销，不能回落重发。
+        markSubmittingSteersDiscarded(sess);
         // Stop = 中断当前 + 清空排队
         if (sess.messageQueue && sess.messageQueue.length) {
             sess.messageQueue = [];
@@ -68,6 +70,20 @@ $(newChatBtn).on('click', function() {
 
 /* ===== Message Queue (运行中 follow-up 排队) ===== */
 var QUEUE_PERSIST_DEBOUNCE_MS = 250;
+// 与 WebController.chat_input 的 LimitedInputStream 上限保持一致（UTF-8 字节）。
+var MAX_CHAT_INPUT_BYTES = 100000;
+
+function isChatInputWithinLimit(text, notifyUser) {
+    var bytes = new Blob([text || ''], { type: 'text/plain;charset=UTF-8' }).size;
+    if (bytes <= MAX_CHAT_INPUT_BYTES) return true;
+    if (notifyUser !== false && typeof showToast === 'function') {
+        showToast(I18n.t('streaming.inputTooLarge', {
+            max: Math.floor(MAX_CHAT_INPUT_BYTES / 1000)
+        }), 'error', 3500);
+    }
+    return false;
+}
+window.isChatInputWithinLimit = isChatInputWithinLimit;
 
 /** 序列化为可落盘结构（V1：文本+模型元数据，不写附件二进制） */
 function serializeQueueForPersist(queue) {
@@ -260,7 +276,7 @@ function buildDisplayText(text, filesToSend) {
     return displayText;
 }
 
-    function truncateQueueText(text, maxLen) {
+function truncateQueueText(text, maxLen) {
     var s = String(text || '').replace(/\s+/g, ' ').trim();
     if (!s) return I18n.t('streaming.attachment');
     maxLen = maxLen || 60;
@@ -268,12 +284,12 @@ function buildDisplayText(text, filesToSend) {
     return s.slice(0, maxLen) + '…';
 }
 
-    function hasDraftInput() {
+function hasDraftInput() {
     return !!(chatInput && chatInput.value.trim()) || (pendingFiles && pendingFiles.length > 0);
-        }
+}
 
-    /* 判定名称是否为已知子代理（commandList 由 app-history.js 加载） */
-    function isKnownSubagent(name) {
+/* 判定名称是否为已知子代理（commandList 由 app-history.js 加载） */
+function isKnownSubagent(name) {
     if (!name) return false;
     if (typeof commandList === 'undefined' || !commandList) return false;
     for (var i = 0; i < commandList.length; i++) {
@@ -282,9 +298,9 @@ function buildDisplayText(text, filesToSend) {
     return false;
 }
 
-    /* 解析本条消息最终生效的子代理（规则与后端 WebGate.onChatInput 一致）：
-       输入开头的有效 "@agent " 优先，其次选择器值，都无效时返回空（主 Agent） */
-    function resolveEffectiveAgent(text, selectedAgent) {
+/* 解析本条消息最终生效的子代理（规则与后端 WebGate.onChatInput 一致）：
+   输入开头的有效 "@agent " 优先，其次选择器值，都无效时返回空（主 Agent） */
+function resolveEffectiveAgent(text, selectedAgent) {
     if (text && text.charAt(0) === '@') {
         var sp = text.indexOf(' ');
         if (sp > 0 && isKnownSubagent(text.substring(1, sp))) return text.substring(1, sp);
@@ -292,7 +308,7 @@ function buildDisplayText(text, filesToSend) {
     return isKnownSubagent(selectedAgent) ? selectedAgent : '';
 }
 
-    function applyQueuedItemToInput(item) {
+function applyQueuedItemToInput(item) {
     if (!item) return;
     if (!inChatMode) switchToChatMode();
     chatInput.value = item.text || '';
@@ -304,10 +320,11 @@ function buildDisplayText(text, filesToSend) {
         clearAttachmentPreview();
     }
     chatInput.focus();
-    }
+}
 
-    function enqueueMessage(sess, text, files) {
+function enqueueMessage(sess, text, files) {
     if (!sess) return false;
+    if (!isChatInputWithinLimit(text, true)) return false;
     // Stop 窗口期：禁止再入队，避免结束后误续发
     if (sess.stopRequested) {
         showToast(I18n.t('streaming.stoppingWaitSend'), 'info', 1500);
@@ -337,16 +354,14 @@ function buildDisplayText(text, filesToSend) {
     if (typeof renderQueueDock === 'function') renderQueueDock();
     if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
     if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
-    // 首次入队且右栏折叠时自动展开，避免「队列进了黑洞」
-    if (sess.messageQueue.length === 1 && typeof window.expandFilerPanel === 'function') {
-        window.expandFilerPanel();
-    }
+    // 队列状态直接常驻在输入区上方，不改变用户正在使用的右侧工作区布局
     return true;
-    }
+}
 
-    function sendMessageCore(sess, text, filesToSend, options) {
+function sendMessageCore(sess, text, filesToSend, options) {
     options = options || {};
     filesToSend = filesToSend || [];
+    if (!isChatInputWithinLimit(text, true)) return false;
     var displayText = options.displayText || buildDisplayText(text, filesToSend);
 
     if (currentChatIndex === -1) {
@@ -361,6 +376,8 @@ function buildDisplayText(text, filesToSend) {
     sess.acceptingStream = true;
     sess._streamClosed = false;
     sess._closedRunId = null;
+    // 新任务首个事件到达前不能沿用上一任务的 runId。
+    sess.currentRunId = null;
     sess.messageStartTime = Date.now();
 
     if (!inChatMode) switchToChatMode();
@@ -395,7 +412,7 @@ function buildDisplayText(text, filesToSend) {
     sendWithFormDataGrouped(sess, text || '', filesToSend, options);
 }
 
-    function sendQueuedItem(sess, item) {
+function sendQueuedItem(sess, item) {
     if (!sess || !item) return;
     sendMessageCore(sess, item.text || '', item.files || [], {
         displayText: item.displayText,
@@ -404,107 +421,278 @@ function buildDisplayText(text, filesToSend) {
         thinkingMode: item.thinkingMode || '',
         selectedAgent: item.selectedAgent
     });
+}
+
+/* ===== 运行中插话（steer） =====
+ * 参考方案：docs/steering-inject-plan.md（对齐 Codex steering）。
+ * 请求发出即进入 submitting，确保 Stop/清空不会漏掉尚未返回的请求；后端接受后转 pending，
+ * 注入真正发生在下一个推理回合（SteerInterceptor.onReasonStart）。 */
+function steerMessage(sess, text) {
+    if (!sess || !text) return;
+    if (!isChatInputWithinLimit(text, true)) return;
+    var steerId = 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    var submittedRunId = sess.currentRunId || null;
+    var item = {
+        id: steerId,
+        text: text,
+        runId: submittedRunId,
+        status: 'submitting',
+        discardRequested: false,
+        createdAt: Date.now()
+    };
+    if (!sess.steerPending) sess.steerPending = [];
+    sess.steerPending.push(item);
+    // 发送动作立即消费当前输入，避免 HTTP 回执前重复按 Enter 提交相同文本；
+    // 后续回执不得再无条件清空输入框，否则会擦掉用户新输入的草稿。
+    clearInput();
+    clearAttachmentPreview();
+    if (typeof renderQueueDock === 'function') renderQueueDock();
+
+    var body = new URLSearchParams();
+    body.append('sessionId', sess.sessionId);
+    body.append('steerId', steerId);
+    body.append('text', text);
+    if (submittedRunId) body.append('runId', submittedRunId);
+
+    fetch('/web/chat/steer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body.toString()
+    }).then(function (r) {
+        return r.json();
+    }).then(function (res) {
+        if (res && res.code === 200) {
+            // applied/dropped 可能经 WebSocket 抢先到达；终态已处理时不可重新挂回待生效列表
+            if (!isSteerResolved(sess, steerId)) {
+                item.id = (res.data && res.data.steerId) || steerId;
+                item.status = 'pending';
+                if (item.discardRequested) cancelSteerMessage(sess, item.id, true);
+                else if (typeof renderQueueDock === 'function') renderQueueDock();
+            }
+            chatInput.focus();
+            return;
         }
+        // 若终态事件先于 HTTP 回执到达，说明插话实际已被接收，禁止再回落造成重复执行
+        if (isSteerResolved(sess, steerId)) {
+            return;
+        }
+        removePendingSteer(sess, steerId, null);
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        // Stop、/clear 或用户在 submitting 阶段取消后，迟到响应只负责收尾，绝不重新发送。
+        if (item.discardRequested) {
+            markSteerResolved(sess, steerId);
+            return;
+        }
+        var msg = (res && res.description) || '';
+        if (msg === 'NOT_RUNNING') {
+            // 会话自然结束：回落为普通发送（保持“不丢消息”优先）
+            showToast(I18n.t('streaming.steerNotRunning'), 'info', 1800);
+            sendMessageCore(sess, text, [], {displayText: text});
+            return;
+        }
+        if (msg === 'TURN_CHANGED' || msg === 'BOX_FULL') {
+            // 任务已切换/邮箱满：转排队，本轮结束后发送
+            var demoted = msg === 'BOX_FULL'
+                ? I18n.t('streaming.steerBoxFull') : I18n.t('streaming.steerTurnChanged');
+            showToast(demoted, 'info', 2000);
+            enqueueMessage(sess, text, []);
+            return;
+        }
+        showToast(I18n.t('streaming.steerFailed'), 'error', 2000);
+    }).catch(function () {
+        if (isSteerResolved(sess, steerId)) return;
+        // 网络错误无法证明服务端未接收：保留可取消的未知项，不自动重发。
+        item.status = 'unknown';
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        showToast(I18n.t('streaming.steerFailed'), 'error', 2000);
+    });
+}
 
-    /* ===== 运行中插话（steer） =====
-     * 参考方案：docs/steering-inject-plan.md（对齐 Codex steering）。
-     * 提交后仅进入“待生效”态（queue dock 徽标），注入真正发生在下一个推理回合
-     * （后端 SteerInterceptor.onReasonStart），收到 system.steer_applied 才落气泡。
-     * 应答分派：200=STEERED；409 NOT_RUNNING=回落普通发送；TURN_CHANGED/BOX_FULL 等=转排队或提示。 */
-    function steerMessage(sess, text) {
-        if (!sess || !text) return;
-        var body = new URLSearchParams();
-        body.append('sessionId', sess.sessionId);
-        body.append('text', text);
-        if (sess.currentRunId) body.append('runId', sess.currentRunId);
+function isSteerResolved(sess, id) {
+    return !!(sess && id && sess._steerResolved && sess._steerResolved[id]);
+}
 
-        fetch('/web/chat/steer', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: body.toString()
-        }).then(function (r) {
-            return r.json();
-        }).then(function (res) {
-            if (res && res.code === 200) {
-                // 成功：清输入、进入“待生效”态（延迟上屏：applied 事件到达才落气泡）
-                clearInput();
-                clearAttachmentPreview();
-                if (!sess.steerPending) sess.steerPending = [];
-                sess.steerPending.push({
-                    id: 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
-                    text: text,
-                    createdAt: Date.now()
-                });
-                if (typeof renderQueueDock === 'function') renderQueueDock();
-                chatInput.focus();
-                return;
+function markSteerResolved(sess, id) {
+    if (!sess || !id) return;
+    if (!sess._steerResolved) sess._steerResolved = {};
+    sess._steerResolved[id] = true;
+}
+
+function removePendingSteer(sess, id, text) {
+    if (!sess || !sess.steerPending) return null;
+    for (var i = 0; i < sess.steerPending.length; i++) {
+        var item = sess.steerPending[i];
+        if ((id && item.id === id) || (!id && item.text === text)) {
+            return sess.steerPending.splice(i, 1)[0];
+        }
+    }
+    return null;
+}
+
+/** 将尚未收到提交回执的插话标记为放弃，防止 Stop 后的迟到响应重新发起任务。 */
+function markSubmittingSteersDiscarded(sess) {
+    if (!sess || !sess.steerPending) return;
+    for (var i = 0; i < sess.steerPending.length; i++) {
+        var item = sess.steerPending[i];
+        if (item.status === 'submitting') {
+            // 仍保持 submitting：只有提交成功回调把它转成 pending 后，才能真正发 cancel 请求。
+            item.discardRequested = true;
+        }
+    }
+    if (typeof renderQueueDock === 'function') renderQueueDock();
+}
+
+/** 撤销仍在后端邮箱中的插话；discard=true 用于 Stop、/clear 等明确放弃整轮的路径。 */
+function cancelSteerMessage(sess, steerId, discard) {
+    if (!sess || !steerId) return Promise.resolve(false);
+    var item = null;
+    for (var i = 0; i < (sess.steerPending || []).length; i++) {
+        if (sess.steerPending[i].id === steerId) {
+            item = sess.steerPending[i];
+            break;
+        }
+    }
+    if (!item) return Promise.resolve(false);
+    // 无论单条取消还是批量放弃，若后端随后确认 dropped，都不能再转成普通排队任务。
+    item.discardRequested = true;
+    // 提交请求尚未确认时不能抢先调用 cancel（可能先于入队到达）；提交成功回调会继续撤销。
+    if (item.status === 'submitting') {
+        // 仅登记“提交成功后取消”，不能先进入 canceling；否则成功回调再次调用本函数时
+        // 会被下面的防重复分支拦住，实际永远不会向后端发送取消请求。
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        return Promise.resolve(true);
+    }
+    if (item.status === 'canceling') return Promise.resolve(false);
+
+    item.status = 'canceling';
+    if (typeof renderQueueDock === 'function') renderQueueDock();
+
+    var body = new URLSearchParams();
+    body.append('sessionId', sess.sessionId);
+    body.append('steerId', steerId);
+    if (item.runId) body.append('runId', item.runId);
+    return fetch('/web/chat/steer/cancel', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body.toString()
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res && res.code === 200) {
+            markSteerResolved(sess, steerId);
+            removePendingSteer(sess, steerId, null);
+            if (typeof renderQueueDock === 'function') renderQueueDock();
+            if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
+            return true;
+        }
+        // NOT_PENDING 可能表示已被采样；保留真实状态，等待 applied/dropped，不能伪装成已删除。
+        item.status = 'unknown';
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        if (!discard && typeof showToast === 'function') {
+            showToast(I18n.t('history.operateFailedRetry'), 'error', 2000);
+        }
+        return false;
+    }).catch(function() {
+        item.status = 'unknown';
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        if (!discard && typeof showToast === 'function') {
+            showToast(I18n.t('toast.networkErrorRetry'), 'error', 2000);
+        }
+        return false;
+    });
+}
+
+function discardPendingSteers(sess) {
+    if (!sess || !sess.steerPending || !sess.steerPending.length) return;
+    var ids = sess.steerPending.map(function(item) { return item.id; });
+    for (var i = 0; i < ids.length; i++) cancelSteerMessage(sess, ids[i], true);
+}
+
+/** 在运行中插话落到时间线前，结束当前流片段的思考块。
+ *
+ * steer_applied 可能紧跟 thought.delta 到达，后面既没有正文也没有工具事件，
+ * 因而常规的 appendContentChunk / appendActionStartChunk 无机会调用
+ * finishThinkingBlock，思考 header 会一直保留 streaming/spinner 状态。
+ * 只收尾当前 segment，不能遍历全局 reasonGroups，否则 multitask 并行时会截断
+ * 其它子代理仍在输出的思考流。
+ */
+function finishThinkingBeforeSteer(sess) {
+    if (!sess) return;
+    var segment = sess.currentStreamSegment;
+    if (segment && segment.reasonEntries) {
+        var reasonIds = Object.keys(segment.reasonEntries);
+        for (var i = 0; i < reasonIds.length; i++) {
+            var reasonId = reasonIds[i];
+            var entry = segment.reasonEntries[reasonId];
+            if (entry && entry.thinkingBlockEl) {
+                finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
             }
-            var msg = (res && res.description) || '';
-            if (msg === 'NOT_RUNNING') {
-                // 会话已空闲：回落为普通发送（保持“不丢消息”优先）
-                showToast(I18n.t('streaming.steerNotRunning'), 'info', 1800);
-                sendMessageCore(sess, text, [], {displayText: text});
-                return;
-            }
-            if (msg === 'TURN_CHANGED' || msg === 'BOX_FULL') {
-                // 任务已切换/邮箱满：转排队，本轮结束后发送
-                var demoted = msg === 'BOX_FULL'
-                    ? I18n.t('streaming.steerBoxFull') : I18n.t('streaming.steerTurnChanged');
-                showToast(demoted, 'info', 2000);
-                enqueueMessage(sess, text, []);
-                return;
-            }
-            showToast(I18n.t('streaming.steerFailed'), 'error', 2000);
-        }).catch(function () {
-            showToast(I18n.t('streaming.steerFailed'), 'error', 2000);
-        });
+        }
+        return;
+    }
+    // 兼容没有 streamSegment 的旧式思考块。
+    if (sess.thinkingBlockEl) finishThinkingBlock(sess);
+}
+
+/** thought.done 专用：结束指定 segment 内某个 reasonId 的思考块（停转转）。
+ *
+ * 后端 THINKING_END 帧（思考流闭合）转发为 thought.done，事件本身携带 reasonId。
+ * 只收尾匹配的那一组，不能遍历 segment.reasonEntries 全量：multitask 并行时多个
+ * task-group 的思考流交错到达，全量收尾会截断其它子任务仍在流式输出的思考块。
+ * 匹配不到（该轮无思考块，如纯文本轮）时静默跳过；segment 缺失时兑底旧式单槽。
+ */
+function finishThinkingForReason(sess, segment, reasonId) {
+    if (!sess) return;
+    if (segment && segment.reasonEntries) {
+        var entry = segment.reasonEntries[reasonId || '__default__'];
+        if (entry && entry.thinkingBlockEl) {
+            finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
+        }
+        return;
+    }
+    // 兼容没有 streamSegment 的旧式思考块。
+    if (sess.thinkingBlockEl) finishThinkingBlock(sess);
+}
+
+/** 后端 steer_applied / steer_dropped 事件处理 */
+function handleSteerEvent(sess, event, p) {
+    if (!sess) return;
+    var items = (p && p.items) || [];
+    var texts = (p && p.texts) || [];
+    if (!items.length) {
+        for (var t = 0; t < texts.length; t++) items.push({id: null, text: texts[t]});
+    }
+    if (!items.length) return;
+
+    var accepted = [];
+    for (var i = 0; i < items.length; i++) {
+        var incoming = items[i] || {};
+        if (!incoming.text || (incoming.id && isSteerResolved(sess, incoming.id))) continue;
+        var pendingItem = removePendingSteer(sess, incoming.id, incoming.text);
+        if (pendingItem && pendingItem.discardRequested) incoming.discardRequested = true;
+        if (incoming.id) markSteerResolved(sess, incoming.id);
+        accepted.push(incoming);
     }
 
-    /** 后端 steer_applied / steer_dropped 事件处理 */
-    function handleSteerEvent(sess, event, p) {
-    if (!sess) return;
-    var texts = (p && p.texts) || [];
-    if (!texts.length) return;
-
     if (event === 'system.steer_applied') {
-        // 注入已生效：从待生效列表移除匹配项，气泡落主时间线（延迟上屏）
-        if (sess.steerPending) {
-            for (var i = 0; i < texts.length; i++) {
-                for (var j = sess.steerPending.length - 1; j >= 0; j--) {
-                    if (sess.steerPending[j].text === texts[i]) {
-                        sess.steerPending.splice(j, 1);
-                        break;
-                    }
-                }
-            }
-        }
+        if (accepted.length) finishThinkingBeforeSteer(sess);
         // 插话渲染进当前 AI 流式气泡内部（流片段的一部分），不再占用独立 .msg-row。
-        // 插入点即当前增长尾部，后续思考块/工具卡落在其下方，位置稳定不抖。
-        for (var k = 0; k < texts.length; k++) {
-            // 流内渲染失败（无 AI 气泡可挂，如流状态已重置）时回落为独立行，
-            // 绝不让已生效的插话不上屏（docs/codex-steer.md 记的 Codex #13595 教训）
-            if (typeof appendSteerNote !== 'function' || !appendSteerNote(sess, texts[k])) {
-                appendUserMessage(sess, texts[k], null, null, null, null, null, true);
+        for (var k = 0; k < accepted.length; k++) {
+            var appliedText = accepted[k].text;
+            if (typeof appendSteerNote !== 'function' || !appendSteerNote(sess, appliedText)) {
+                appendUserMessage(sess, appliedText, null, null, null, null, null, true);
             }
         }
-    } else {
+    } else if (accepted.length) {
         // 任务结束仍未消费：后端兜底广播，前端转为排队消息（绝不“已接受但永不生效”）
-        if (sess.steerPending) {
-            for (var i2 = 0; i2 < texts.length; i2++) {
-                for (var j2 = sess.steerPending.length - 1; j2 >= 0; j2--) {
-                    if (sess.steerPending[j2].text === texts[i2]) {
-                        sess.steerPending.splice(j2, 1);
-                        break;
-                    }
-                }
-            }
-        }
         if (!sess.messageQueue) sess.messageQueue = [];
-        for (var d = 0; d < texts.length; d++) {
+        var droppedQueued = 0;
+        for (var d = 0; d < accepted.length; d++) {
+            // Stop、/clear 已明确放弃的插话，真实 dropped 后直接结束，不再转普通队列。
+            if (accepted[d].discardRequested) continue;
+            var droppedText = accepted[d].text;
             sess.messageQueue.push({
                 id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
-                text: texts[d],
-                displayText: texts[d],
+                text: droppedText,
+                displayText: droppedText,
                 files: [],
                 hasFiles: false,
                 model: null,
@@ -513,62 +701,58 @@ function buildDisplayText(text, filesToSend) {
                 selectedAgent: '',
                 createdAt: Date.now()
             });
+            droppedQueued++;
         }
-        if (typeof showToast === 'function') {
+        if (droppedQueued && typeof showToast === 'function') {
             showToast(I18n.t('streaming.steerDropped'), 'info', 2500);
         }
-        if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
+        if (droppedQueued && typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
     }
 
-    if (sess.sessionId === activeSessionId) {
+    if (accepted.length && sess.sessionId === activeSessionId) {
         if (!inChatMode) switchToChatMode();
         scrollToBottom(true);
     }
-    // 待生效项已全部出清时，取消 finishStream 挂的防御定时器
-    if (sess._steerFallbackTimer && (!sess.steerPending || !sess.steerPending.length)) {
-        clearTimeout(sess._steerFallbackTimer);
-        sess._steerFallbackTimer = null;
-    }
     if (typeof renderQueueDock === 'function') renderQueueDock();
     if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
+}
+window.steerMessage = steerMessage;
+
+function drainMessageQueue(sess) {
+    if (!sess || sess._queueDraining) return;
+    if (sess.isStreaming) return;
+    if (sess.stopRequested || sess._stoppedTurn) return;
+    if (!sess.messageQueue || !sess.messageQueue.length) return;
+
+    // 仅 active 会话自动续发，避免后台会话抢焦点
+    if (sess.sessionId !== activeSessionId) return;
+
+    sess._queueDraining = true;
+    try {
+        var item = sess.messageQueue.shift();
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+        if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
+        if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
+        sendQueuedItem(sess, item);
+    } finally {
+        sess._queueDraining = false;
     }
-    window.steerMessage = steerMessage;
+}
+window.drainMessageQueue = drainMessageQueue;
 
-    function drainMessageQueue(sess) {
-        if (!sess || sess._queueDraining) return;
-        if (sess.isStreaming) return;
-        if (sess.stopRequested || sess._stoppedTurn) return;
-        if (!sess.messageQueue || !sess.messageQueue.length) return;
-
-        // 仅 active 会话自动续发，避免后台会话抢焦点
-        if (sess.sessionId !== activeSessionId) return;
-
-        sess._queueDraining = true;
-        try {
-            var item = sess.messageQueue.shift();
+function removeQueuedMessage(sess, id) {
+    if (!sess || !sess.messageQueue) return null;
+    for (var i = 0; i < sess.messageQueue.length; i++) {
+        if (sess.messageQueue[i].id === id) {
+            var removed = sess.messageQueue.splice(i, 1)[0];
             if (typeof renderQueueDock === 'function') renderQueueDock();
             if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
             if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
-            sendQueuedItem(sess, item);
-        } finally {
-            sess._queueDraining = false;
+            return removed;
         }
     }
-    window.drainMessageQueue = drainMessageQueue;
-
-    function removeQueuedMessage(sess, id) {
-        if (!sess || !sess.messageQueue) return null;
-        for (var i = 0; i < sess.messageQueue.length; i++) {
-            if (sess.messageQueue[i].id === id) {
-                var removed = sess.messageQueue.splice(i, 1)[0];
-                if (typeof renderQueueDock === 'function') renderQueueDock();
-                if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
-                if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
-                return removed;
-            }
-        }
-        return null;
-    }
+    return null;
+}
 
 function editQueuedMessageToInput(sess, id) {
     if (!sess || !id) return;
@@ -578,6 +762,7 @@ function editQueuedMessageToInput(sess, id) {
     }
     var item = removeQueuedMessage(sess, id);
     if (!item) return;
+    sess.queueDockExpanded = false;
     applyQueuedItemToInput(item);
 }
 
@@ -589,93 +774,128 @@ function cancelLastQueuedToInput(sess) {
     if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
     applyQueuedItemToInput(item);
     return true;
-        }
+}
 
-    function clearMessageQueue(sess) {
+function clearMessageQueue(sess, discardSteers) {
     if (!sess) return;
     sess.messageQueue = [];
-    // 队列 dock 同时承载“待生效”插话，一并出清并撤掉防御定时器，避免定时器把已清空的项重新入队
-    sess.steerPending = [];
-    if (sess._steerFallbackTimer) { clearTimeout(sess._steerFallbackTimer); sess._steerFallbackTimer = null; }
+    var ids = (sess.steerPending || []).map(function(item) { return item.id; });
+    for (var i = 0; i < ids.length; i++) cancelSteerMessage(sess, ids[i], !!discardSteers);
     if (typeof renderQueueDock === 'function') renderQueueDock();
     if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();
     if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
+}
+
+function isQueueDockExpanded() {
+    var sess = activeSessionId && sessionMap[activeSessionId];
+    return !!(sess && sess.queueDockExpanded);
+}
+
+function collapseQueueDock() {
+    var sess = activeSessionId && sessionMap[activeSessionId];
+    if (!sess || !sess.queueDockExpanded) return false;
+    sess.queueDockExpanded = false;
+    renderQueueDock();
+    return true;
+}
+
+function toggleQueueDock() {
+    var sess = activeSessionId && sessionMap[activeSessionId];
+    if (!sess) return;
+    var opening = !sess.queueDockExpanded;
+    if (opening && typeof window.closeAllToolbarPanels === 'function') {
+        window.closeAllToolbarPanels();
+    }
+    sess.queueDockExpanded = opening;
+    renderQueueDock();
+}
+
+window.isQueueDockExpanded = isQueueDockExpanded;
+window.collapseQueueDock = collapseQueueDock;
+
+function renderQueueDock() {
+    var dock = document.getElementById('chatQueueDock');
+    if (!dock) return;
+    var sess = activeSessionId && sessionMap[activeSessionId];
+    var q = (sess && sess.messageQueue) || [];
+    var steers = (sess && sess.steerPending) || [];
+    if (!q.length && !steers.length) {
+        if (sess) sess.queueDockExpanded = false;
+        dock.style.display = 'none';
+        return;
+    }
+    var expanded = !!(sess && sess.queueDockExpanded);
+    dock.style.display = 'flex';
+    if (expanded) $(dock).removeClass('collapsed');
+    else $(dock).addClass('collapsed');
+
+    var total = q.length + steers.length;
+    var titleEl = document.getElementById('chatQueueTitle');
+    if (titleEl) titleEl.textContent = String(total);
+
+    var previewEl = document.getElementById('chatQueuePreview');
+    if (previewEl) {
+        var first = steers.length ? steers[0].text : (q[0].displayText || q[0].text);
+        previewEl.textContent = I18n.t('streaming.nextMessage') + truncateQueueText(first, 48);
     }
 
-    var _queueDockExpanded = false;
-
-    function renderQueueDock() {
-        var dock = document.getElementById('chatQueueDock');
-        if (!dock) return;
-        var sess = activeSessionId && sessionMap[activeSessionId];
-        var q = (sess && sess.messageQueue) || [];
-        var steers = (sess && sess.steerPending) || [];
-        // 折叠按钮角标：即使 strip 不可见也能感知排队数（含待生效插话）
-        if (typeof window.updateFilerQueueBadge === 'function') {
-            window.updateFilerQueueBadge(q.length + steers.length);
+    var hintEl = document.getElementById('chatQueueHint');
+    if (hintEl) {
+        if (sess.isStreaming) {
+            hintEl.textContent = I18n.t('workspace.queueAutoSendHint');
+        } else if (q.length) {
+            hintEl.textContent = I18n.t('streaming.queueWaiting', {n: q.length});
+        } else {
+            hintEl.textContent = I18n.t('streaming.steerBadgePending');
         }
-        if (!q.length && !steers.length) {
-            dock.style.display = 'none';
-            return;
-        }
-        // 右栏底部 strip：用 flex 布局，避免 display:block 破坏 workspace-panel 列排布
-        dock.style.display = 'flex';
-        if (_queueDockExpanded) $(dock).removeClass('collapsed');
-        else $(dock).addClass('collapsed');
-
-        var total = q.length + steers.length;
-        var titleEl = document.getElementById('chatQueueTitle');
-        if (titleEl) titleEl.textContent = String(total);
-
-        var previewEl = document.getElementById('chatQueuePreview');
-        if (previewEl) {
-            var first = steers.length ? steers[0].text : (q[0].displayText || q[0].text);
-            previewEl.textContent = I18n.t('streaming.nextMessage') + truncateQueueText(first, 36);
-            previewEl.style.display = _queueDockExpanded ? 'none' : 'block';
-        }
-
-        var toggleEl = document.getElementById('chatQueueToggle');
-        if (toggleEl) {
-            toggleEl.title = _queueDockExpanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand');
-            toggleEl.setAttribute('aria-label', _queueDockExpanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand'));
-            if (_queueDockExpanded) toggleEl.classList.add('expanded');
-            else toggleEl.classList.remove('expanded');
-        }
-
-        var listEl = document.getElementById('chatQueueList');
-        if (!listEl) return;
-        var html = '';
-        // 待生效插话项置顶（比排队更“热”）：仅展示徽标，不可取消（后端邮箱不提供按条撤销）
-        for (var s = 0; s < steers.length; s++) {
-            html += '<div class="queue-item queue-item-steer">' +
-                '<span class="queue-item-steer-badge">' + I18n.t('streaming.steerBadgePending') + '</span>' +
-                '<span class="queue-item-text" title="' + escapeHtml(steers[s].text) + '">' +
-                    escapeHtml(truncateQueueText(steers[s].text, 48)) +
-                '</span></div>';
-        }
-        for (var i = 0; i < q.length; i++) {
-            var item = q[i];
-            var fileCount = (item.files && item.files.length) ? item.files.length : 0;
-            var attachBadge = (fileCount > 0 || item.hasFiles)
-                ? '<span class="queue-item-attach" title="' +
-                    (fileCount > 0 ? I18n.t('streaming.attachCount', {n: fileCount}) : I18n.t('streaming.attachNotPersisted')) +
-                    '">📎' + (fileCount > 0 ? fileCount : '!') + '</span>'
-                : '';
-            html += '<div class="queue-item" data-qid="' + escapeHtml(item.id) + '">' +
-                '<span class="queue-item-idx">' + (i + 1) + '.</span>' +
-                '<span class="queue-item-text" title="' + escapeHtml(item.displayText || item.text || '') + '">' +
-                    escapeHtml(truncateQueueText(item.displayText || item.text, 48)) +
-                '</span>' + attachBadge +
-                '<span class="queue-item-actions">' +
-                    '<button type="button" data-act="edit">' + I18n.t('streaming.edit') + '</button>' +
-                    '<button type="button" data-act="cancel">' + I18n.t('common.cancel') + '</button>' +
-                '</span></div>';
-        }
-        listEl.innerHTML = html;
     }
-    window.renderQueueDock = renderQueueDock;
 
-        function updateStreamingPlaceholder() {
+    var toggleEl = document.getElementById('chatQueueToggle');
+    if (toggleEl) {
+        toggleEl.title = expanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand');
+        toggleEl.setAttribute('aria-label', expanded ? I18n.t('streaming.collapse') : I18n.t('streaming.expand'));
+        toggleEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (expanded) toggleEl.classList.add('expanded');
+        else toggleEl.classList.remove('expanded');
+    }
+
+    var listEl = document.getElementById('chatQueueList');
+    if (!listEl) return;
+    var html = '';
+    // 待生效插话项置顶（比排队更“热”），后端按稳定 ID 精确撤销
+    for (var s = 0; s < steers.length; s++) {
+        var steerCanceling = steers[s].status === 'canceling' || !!steers[s].discardRequested;
+        html += '<div class="queue-item queue-item-steer" role="listitem" data-qid="' + escapeHtml(steers[s].id) + '">' +
+            '<span class="queue-item-steer-badge">' + I18n.t('streaming.steerBadgePending') + '</span>' +
+            '<span class="queue-item-text" title="' + escapeHtml(steers[s].text) + '">' +
+            escapeHtml(truncateQueueText(steers[s].text, 48)) +
+            '</span><span class="queue-item-actions">' +
+            '<button type="button" data-act="cancel-steer"' + (steerCanceling ? ' disabled' : '') + '>' +
+            I18n.t('common.cancel') + '</button></span></div>';
+    }
+    for (var i = 0; i < q.length; i++) {
+        var item = q[i];
+        var fileCount = (item.files && item.files.length) ? item.files.length : 0;
+        var attachBadge = (fileCount > 0 || item.hasFiles)
+            ? '<span class="queue-item-attach" title="' +
+            (fileCount > 0 ? I18n.t('streaming.attachCount', {n: fileCount}) : I18n.t('streaming.attachNotPersisted')) +
+            '">📎' + (fileCount > 0 ? fileCount : '!') + '</span>'
+            : '';
+        html += '<div class="queue-item" role="listitem" data-qid="' + escapeHtml(item.id) + '">' +
+            '<span class="queue-item-idx">' + (i + 1) + '.</span>' +
+            '<span class="queue-item-text" title="' + escapeHtml(item.displayText || item.text || '') + '">' +
+            escapeHtml(truncateQueueText(item.displayText || item.text, 48)) +
+            '</span>' + attachBadge +
+            '<span class="queue-item-actions">' +
+            '<button type="button" data-act="edit">' + I18n.t('streaming.edit') + '</button>' +
+            '<button type="button" data-act="cancel">' + I18n.t('common.delete') + '</button>' +
+            '</span></div>';
+    }
+    listEl.innerHTML = html;
+}
+window.renderQueueDock = renderQueueDock;
+
+function updateStreamingPlaceholder() {
     if (!chatInput) return;
     var sess = activeSessionId && sessionMap[activeSessionId];
     if (!sess) {
@@ -699,54 +919,74 @@ function cancelLastQueuedToInput(sess) {
         return;
     }
     chatInput.placeholder = I18n.t('newchat.inputPlaceholder');
-            }
-            window.updateStreamingPlaceholder = updateStreamingPlaceholder;
+}
+window.updateStreamingPlaceholder = updateStreamingPlaceholder;
 
-        // 任务排队 strip 事件（右栏底部，跨 Tab 常驻）—— DOM 就绪后绑定一次
-        (function bindQueueDockEvents() {
-            function bind() {
-                var dock = document.getElementById('chatQueueDock');
-                if (!dock || dock._queueBound) return;
-                dock._queueBound = true;
+// 任务排队卡片事件（聊天输入区上方）—— DOM 就绪后绑定一次
+(function bindQueueDockEvents() {
+    function bind() {
+        var dock = document.getElementById('chatQueueDock');
+        if (!dock || dock._queueBound) return;
+        dock._queueBound = true;
 
-                $(dock).on('click', '#chatQueueHeader', function(e) {
-                    if ($(e.target).closest('#chatQueueClear, #chatQueueToggle').length) return;
-                    _queueDockExpanded = !_queueDockExpanded;
-                    renderQueueDock();
-                });
-                $(dock).on('click', '#chatQueueToggle', function(e) {
-                    e.stopPropagation();
-                    _queueDockExpanded = !_queueDockExpanded;
-                    renderQueueDock();
-                });
-                $(dock).on('click', '#chatQueueClear', function(e) {
-                    e.stopPropagation();
-                    var sess = activeSessionId && sessionMap[activeSessionId];
-                    if (!sess || !sess.messageQueue || !sess.messageQueue.length) return;
-                    if (sess.messageQueue.length >= 3) {
-                        if (!window.confirm(I18n.t('streaming.clearQueueConfirm', {n: sess.messageQueue.length}))) return;
-                    }
-                    clearMessageQueue(sess);
-                });
-                $(dock).on('click', '.queue-item-actions button', function(e) {
-                    e.stopPropagation();
-                    var act = $(this).attr('data-act');
-                    var qid = $(this).closest('.queue-item').attr('data-qid');
-                    var sess = activeSessionId && sessionMap[activeSessionId];
-                    if (!sess || !qid) return;
-                    if (act === 'edit') editQueuedMessageToInput(sess, qid);
-                    else if (act === 'cancel') removeQueuedMessage(sess, qid);
-                });
+        $(dock).on('click', '#chatQueueHeader', function(e) {
+            if ($(e.target).closest('#chatQueueClear, #chatQueueToggle').length) return;
+            toggleQueueDock();
+        });
+        $(dock).on('click', '#chatQueueToggle', function(e) {
+            e.stopPropagation();
+            toggleQueueDock();
+        });
+        $(dock).on('click', '#chatQueueClear', function(e) {
+            e.stopPropagation();
+            var sess = activeSessionId && sessionMap[activeSessionId];
+            var total = sess ? ((sess.messageQueue || []).length + (sess.steerPending || []).length) : 0;
+            if (!sess || !total) return;
+            var doClear = function () { clearMessageQueue(sess, false); };
+            if (total >= 3) {
+                var confirmMsg = I18n.t('streaming.clearQueueConfirm', {n: total});
+                if (typeof layer !== 'undefined' && layer.confirm) {
+                    layer.confirm(confirmMsg, {
+                        title: I18n.t('common.confirm'),
+                        btn: [I18n.t('common.confirm'), I18n.t('common.cancel')],
+                        icon: 3,
+                        offset: '120px'
+                    }, function (index) {
+                        layer.close(index);
+                        doClear();
+                    });
+                    return;
+                }
+                if (!window.confirm(String(confirmMsg).replace(/<br>/g, '\n'))) return;
             }
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', bind);
-            } else {
-                bind();
-            }
-        })();
+            doClear();
+        });
+        $(dock).on('click', '.queue-item-actions button', function(e) {
+            e.stopPropagation();
+            var act = $(this).attr('data-act');
+            var qid = $(this).closest('.queue-item').attr('data-qid');
+            var sess = activeSessionId && sessionMap[activeSessionId];
+            if (!sess || !qid) return;
+            if (act === 'edit') editQueuedMessageToInput(sess, qid);
+            else if (act === 'cancel') removeQueuedMessage(sess, qid);
+            else if (act === 'cancel-steer') cancelSteerMessage(sess, qid, false);
+        });
 
-            /* ===== Send ===== */
-        function sendMessage() {
+        // mousedown 早于侧栏会话切换的 click，保证折叠的是当前可见会话
+        $(document).on('mousedown.queuedock', function(e) {
+            if (!isQueueDockExpanded()) return;
+            if (!$(e.target).closest('#chatQueueDock').length) collapseQueueDock();
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bind);
+    } else {
+        bind();
+    }
+})();
+
+/* ===== Send ===== */
+function sendMessage() {
     var text = getInputText();
     var streamSess = activeSessionId && sessionMap[activeSessionId];
 
@@ -756,6 +996,12 @@ function cancelLastQueuedToInput(sess) {
         return;
     }
 
+
+    if (!isChatInputWithinLimit(text, true)) {
+        if (inChatMode) chatInput.focus();
+        else newChatInput.focus();
+        return;
+    }
 
     /* 空闲 + 有排队：允许空 Enter 续发队头；有内容则入队尾再 drain */
     if (streamSess && !streamSess.isStreaming
@@ -811,9 +1057,10 @@ function cancelLastQueuedToInput(sess) {
         var clearSess = sessionMap[SESSION_ID];
         if (clearSess) {
             clearSess._pendingClear = true;
-            // /clear 会清会话，同步丢掉排队
-            if (clearSess.messageQueue && clearSess.messageQueue.length) {
-                clearMessageQueue(clearSess);
+            // /clear 会清会话，同步清掉普通排队并撤销待生效插话
+            if ((clearSess.messageQueue && clearSess.messageQueue.length)
+                || (clearSess.steerPending && clearSess.steerPending.length)) {
+                clearMessageQueue(clearSess, true);
             }
             sendCommandSilent('/clear', null);
         }
@@ -872,6 +1119,7 @@ function sendCommandSilent(cmdText, onBeforeSend) {
     sess.acceptingStream = true;
     sess._streamClosed = false;
     sess._closedRunId = null;
+    sess.currentRunId = null;
     isStreaming = true;
     sess.messageStartTime = Date.now();
     setActiveSession(sess.sessionId);
@@ -892,7 +1140,9 @@ function sendWithFormDataGrouped(sess, text, filesToSend, options) {
         ? options.model
         : getSelectedModel();
     var formData = new FormData();
-    formData.append('input', text);
+    // 文本按文件 part 发送：feathttp 的 multipart 普通字段受 readBuffer 大小约束，
+    // 大段文本可能在尚未达到 maxBodySize 时就被判为 400；文件 part 则支持流式解码。
+    formData.append('inputPayload', new Blob([text], { type: 'text/plain;charset=UTF-8' }), 'input.txt');
     formData.append('sessionId', sess.sessionId);
     if (model) formData.append('model', model);
     var effort = (options.reasoningEffort !== undefined && options.reasoningEffort !== null)
@@ -941,6 +1191,19 @@ function sendWithFormDataGrouped(sess, text, filesToSend, options) {
         // HTTP 响应只有 {"status":"ok"}，实际数据通过 WebSocket 推送
     }).fail(function(err) {
         console.error('Send error:', err);
+        var status = err && err.status;
+        var errorText;
+        if (status === 413) {
+            // 后端 LimitedInputStream 超限，给出可行动的提示而非裸状态码
+            errorText = I18n.t('streaming.inputTooLarge', {max: Math.floor(MAX_CHAT_INPUT_BYTES / 1000)});
+        } else if (status) {
+            errorText = I18n.t('im.requestFailed', {status: 'HTTP ' + status});
+        } else {
+            errorText = I18n.t('toast.networkErrorRetry');
+        }
+        // toast 负责即时反馈，系统通知保留在消息流中，避免用户错过短暂提示。
+        if (typeof showToast === 'function') showToast(errorText, 'error', 3500);
+        if (typeof appendSystemNotice === 'function') appendSystemNotice(sess, errorText);
         finishStream(sess);
     });
 }
@@ -960,6 +1223,7 @@ var AgentEventDispatcher = {
             taskId: raw.taskId,
             reasonId: raw.reasonId,
             agentName: raw.agentName,
+            taskDescription: raw.taskDescription,
             timestamp: raw.timestamp || Date.now(),
             payload: raw.payload || {}
         };
@@ -1157,6 +1421,8 @@ function processWebEventNow(sess, webEvt) {
         var taskId = webEvt.taskId;
         var reasonId = webEvt.reasonId;
         var agentName = webEvt.agentName;
+        // 子任务描述来自信封层（每个子代理事件都带），流式首个事件即可确定 task 组标题
+        var taskDescription = webEvt.taskDescription;
 
         // 存储当前 runId
         if (webEvt.runId) {
@@ -1182,7 +1448,8 @@ function processWebEventNow(sess, webEvt) {
         var segment = null;
 
         if (isVisualEvent || isActionEndWithoutPending) {
-            segment = ensureStreamSegment(sess, taskId, p.taskDescription || p.title, agentName);
+            // 注意：不能用 p.title —— tool.start/tool.end 的 title 是工具标题，会污染 task 组标题
+            segment = ensureStreamSegment(sess, taskId, taskDescription, agentName);
         } else if (event === 'tool.end' && taskId && sess.taskSegments[taskId]) {
             segment = sess.taskSegments[taskId];
             sess.currentStreamSegment = segment;
@@ -1197,6 +1464,19 @@ function processWebEventNow(sess, webEvt) {
 
             case 'thought.delta':
                 sourceEl = appendReasonChunk(sess, segment, p.delta || '', reasonId, agentName);
+                break;
+
+            case 'thought.done':
+                /* 思考流闭合：立即结束该 reasonId 的思考块（停转转）。
+                 * 兼容尾部残余 delta（END 帧可能携带最后一段文本，正常为空）。
+                 * 此前只能靠后续 message.delta / tool.start（换 reasonId 或同组追内容）或
+                 * system.done 兕底才停，若思考后同轮再无事件（steer 截断、仅思考轮次），
+                 * spinner 会空转到整轮结束。
+                 * 注：本事件非 isVisualEvent，segment 需从 taskSegments/currentStreamSegment 解析；
+                 * 只定位已有分组，不新建（纯收尾信号，不该产生空段）。 */
+                var doneSeg = segment || (taskId && sess.taskSegments[taskId]) || sess.currentStreamSegment;
+                if (p && p.delta) appendReasonChunk(sess, doneSeg, p.delta, reasonId, agentName);
+                finishThinkingForReason(sess, doneSeg, reasonId);
                 break;
 
             case 'tool.start':
@@ -1221,13 +1501,22 @@ function processWebEventNow(sess, webEvt) {
                 sourceEl = appendHitlCard(sess, p.toolName || p.name, p.command, p.callId, p.args, p.toolTitle || p.title || p.toolName, p.comment);
                 break;
 
+            case 'task.start':
+                // 子代理 ReAct 一启动就建组占位：早于首个 thought.delta，
+                // 补上「子代理构建 + 首次模型调用」这段界面空白；后续事件按 taskId 复用同一组。
+                if (taskId) {
+                    segment = ensureStreamSegment(sess, taskId, taskDescription || p.title, agentName || p.agentName);
+                    sourceEl = segment && segment.groupEl;
+                }
+                break;
+
             case 'task.done':
                 if (typeof applyTaskDoneChunk === 'function') {
                     applyTaskDoneChunk(sess, {
                         taskId: p.taskId || taskId,
                         parentTaskId: p.parentTaskId,
                         status: p.status,
-                        taskDescription: p.title || p.taskDescription
+                        taskDescription: taskDescription || p.title || p.taskDescription
                     });
                 }
                 sourceEl = segment && segment.groupEl;
@@ -1267,7 +1556,7 @@ function processWebEventNow(sess, webEvt) {
 
             case 'system.error':
                 finishThinkingBlock(sess);
-                sourceEl = appendErrorChunk(sess, p.message || '未知错误', taskId, p.title, agentName, p.code);
+                sourceEl = appendErrorChunk(sess, p.message || '未知错误', taskId, taskDescription || p.title, agentName, p.code);
                 break;
 
             case 'ui.render':
@@ -1321,7 +1610,7 @@ function coalesceQueuedEvents(queue) {
     return out;
 }
 
-    function drainWebEventQueue(sess, flushAll) {
+function drainWebEventQueue(sess, flushAll) {
     if (!sess || !sess._chunkQueue || !sess._chunkQueue.length) {
         if (sess) sess._chunkDrainScheduled = false;
         return;
@@ -1339,33 +1628,33 @@ function coalesceQueuedEvents(queue) {
         scheduleWebEventDrain(sess);
     }
 }
-    window.drainWebEventQueue = drainWebEventQueue;
+window.drainWebEventQueue = drainWebEventQueue;
 
-    function scheduleWebEventDrain(sess) {
-        if (!sess || sess._chunkDrainScheduled) return;
-        sess._chunkDrainScheduled = true;
-        requestAnimationFrame(function() {
-            drainWebEventQueue(sess, false);
-        });
+function scheduleWebEventDrain(sess) {
+    if (!sess || sess._chunkDrainScheduled) return;
+    sess._chunkDrainScheduled = true;
+    requestAnimationFrame(function() {
+        drainWebEventQueue(sess, false);
+    });
+}
+
+function onWebEvent(sess, raw) {
+    if (!sess || !raw) return;
+    var webEvt = AgentEventDispatcher.toWebEvent(raw);
+    if (!webEvt) return;
+
+    // 高频流式文本走队列批处理；控制类消息立即处理（先排空队列保序）
+    if (_STREAM_BATCH_EVENTS[webEvt.event]) {
+        if (!sess._chunkQueue) sess._chunkQueue = [];
+        sess._chunkQueue.push(webEvt);
+        scheduleWebEventDrain(sess);
+        return;
     }
-    
-    function onWebEvent(sess, raw) {
-        if (!sess || !raw) return;
-        var webEvt = AgentEventDispatcher.toWebEvent(raw);
-        if (!webEvt) return;
-        
-        // 高频流式文本走队列批处理；控制类消息立即处理（先排空队列保序）
-        if (_STREAM_BATCH_EVENTS[webEvt.event]) {
-            if (!sess._chunkQueue) sess._chunkQueue = [];
-            sess._chunkQueue.push(webEvt);
-            scheduleWebEventDrain(sess);
-            return;
-        }
-        if (sess._chunkQueue && sess._chunkQueue.length) {
-            drainWebEventQueue(sess, true);
-        }
-        processWebEventNow(sess, webEvt);
+    if (sess._chunkQueue && sess._chunkQueue.length) {
+        drainWebEventQueue(sess, true);
     }
+    processWebEventNow(sess, webEvt);
+}
 
 function finishStream(sess) {
     var wasStreaming = sess.isStreaming;
@@ -1385,26 +1674,13 @@ function finishStream(sess) {
     if (sess.silenceTimer) { clearTimeout(sess.silenceTimer); sess.silenceTimer = null; }
 
     // 先排空该会话尚未处理的 chunk 队列，避免丢尾部文本
-        if (typeof drainWebEventQueue === 'function') drainWebEventQueue(sess, true);
+    if (typeof drainWebEventQueue === 'function') drainWebEventQueue(sess, true);
 
     // 记录收尾时所属的 runId：用于区分“本轮的迟到尾包”与“后端新开的一轮流”（见 canReopenClosedStream）。
     // 必须在排空队列之后取：runId 由 processWebEventNow 写入 currentRunId，若队列里还压着本轮的
     // delta（短轮次可能一帧都没来得及 drain），提前取会拿到 null/上一轮的值，导致本轮迟到尾包被
     // 误判成“新一轮”而把已收尾的 UI 重新拉起。
     sess._closedRunId = sess.currentRunId || null;
-
-    // steer 防御兜底：后端 onAgentEnd 的 steer_dropped 与 done 并行推送，若 5s 内仍未收到
-    // applied/dropped（事件丢失、连接断开等），将待生效项就地转排队，杜绝“已接受但永不生效”
-    if (sess.steerPending && sess.steerPending.length && !sess._steerFallbackTimer) {
-        sess._steerFallbackTimer = setTimeout(function() {
-            sess._steerFallbackTimer = null;
-            if (sess.steerPending && sess.steerPending.length) {
-                handleSteerEvent(sess, 'system.steer_dropped', {
-                    texts: sess.steerPending.map(function(it) { return it.text; })
-                });
-            }
-        }, 5000);
-    }
 
     // --- 强刷逻辑：必须在 resetStreamState 之前执行 ---
     // 1. 取消还没跑的动画帧
@@ -1549,9 +1825,8 @@ function finishStream(sess) {
     if (sess._pendingClear) {
         sess._pendingClear = false;
         sess.messageQueue = [];
-        // /clear 语义为清空会话上下文与界面，残留的待生效插话一并作废
-        sess.steerPending = [];
-        if (sess._steerFallbackTimer) { clearTimeout(sess._steerFallbackTimer); sess._steerFallbackTimer = null; }
+        // /clear 语义为清空会话上下文与界面，残留的待生效插话一并撤销并作废
+        discardPendingSteers(sess);
         if (typeof schedulePersistMessageQueue === 'function') schedulePersistMessageQueue(sess);
         if (sess.sessionId === activeSessionId && typeof renderQueueDock === 'function') {
             renderQueueDock();
@@ -1608,15 +1883,8 @@ function finishStream(sess) {
                 renderQueueDock();
             }
         }
-        // 同理丢弃“待生效”插话并撤掉防御定时器：否则 5s 后会被转成排队消息自动续发，
-        // 与用户刚刚点下 Stop 的意图相反
-        if (sess._steerFallbackTimer) { clearTimeout(sess._steerFallbackTimer); sess._steerFallbackTimer = null; }
-        if (sess.steerPending && sess.steerPending.length) {
-            sess.steerPending = [];
-            if (sess.sessionId === activeSessionId && typeof renderQueueDock === 'function') {
-                renderQueueDock();
-            }
-        }
+        // 同理撤销并丢弃“待生效”插话；取消墓碑会过滤迟到的 applied/dropped 事件
+        discardPendingSteers(sess);
         sess._stoppedTurn = false;
     } else if (sess.messageQueue && sess.messageQueue.length) {
         setTimeout(function() {
@@ -1637,7 +1905,10 @@ window.finishStream = finishStream;
 var webGateSocket = null;
 var webGateReconnectAttempts = 0;
 var webGateHeartbeatTimer = null;
+var webGateReconnectTimer = null;
+/* 快速退避（1s→30s 指数）次数；超过后不再放弃，转为固定慢频率长期重试 */
 var WEBGATE_MAX_RECONNECT = 10;
+var WEBGATE_SLOW_RECONNECT_DELAY = 30000;
 var WEBGATE_PENDING_CHUNK_MAX = 300;
 
 /* 历史消息加载期间先缓存流式 chunk，加载完再回放，避免被 DOM 重建冲掉 */
@@ -1653,7 +1924,7 @@ function bufferPendingStreamChunk(sess, chunk) {
     if (ev === 'message.delta' || ev === 'thought.delta') {
         var last = buf.length ? buf[buf.length - 1] : null;
         if (last && last.event === ev && last.payload && chunk.payload &&
-                last.reasonId === chunk.reasonId && last.taskId === chunk.taskId) {
+            last.reasonId === chunk.reasonId && last.taskId === chunk.taskId) {
             var prev = (last.payload.delta != null) ? last.payload.delta : (last.payload.content || '');
             var cur = (chunk.payload.delta != null) ? chunk.payload.delta : (chunk.payload.content || '');
             last.payload.delta = prev + cur;
@@ -2046,6 +2317,11 @@ function handleWebGateChunk(raw) {
         if (!sid) return;
         var sess = sessionMap[sid] || getOrCreateSession(sid);
         if (p.createdAt) sess._lastCreatedAt = p.createdAt;
+        // 已知当前任务后，迟到的旧 run done 只能被忽略，不能结束新任务。
+        // 先校验再写 currentRunId，避免旧事件反向覆盖当前归属。
+        if (webEvt.runId && sess.currentRunId && webEvt.runId !== sess.currentRunId) return;
+        // done 自己也带 runId；短任务可能没有更早事件可用于更新 currentRunId。
+        if (webEvt.runId) sess.currentRunId = webEvt.runId;
         // 历史还在加载：先缓存，加载完再收尾
         if (sess._loadingHistory) {
             bufferPendingStreamChunk(sess, webEvt);
@@ -2081,9 +2357,7 @@ function handleWebGateChunk(raw) {
         sess._closedRunId = null;
         sess.acceptingStream = true;
         sess.stopRequested = false;
-        // 后端 beginStreamTurn 已摘掉残留插话邮箱并紧随其后广播 dropped，
-        // 此处撤掉防御定时器，避免与该 dropped 事件重复入队
-        if (sess._steerFallbackTimer) { clearTimeout(sess._steerFallbackTimer); sess._steerFallbackTimer = null; }
+        sess.currentRunId = null;
         return;
     }
 
@@ -2104,7 +2378,7 @@ function handleWebGateChunk(raw) {
         if (typeof ensureChatInHistory === 'function') {
             ensureChatInHistory(sid, p.text, true);
         }
-        appendUserMessage(userSess, p.text, null, null, p.createdAt, p.sourceLabel);
+        appendUserMessage(userSess, p.text, null, null, p.createdAt, p.sourceLabel || p.source);
         if (userSess.sessionId === activeSessionId) {
             if (!inChatMode) switchToChatMode();
             scrollToBottom(true);
@@ -2130,11 +2404,30 @@ function handleWebGateChunk(raw) {
             return;
         }
     }
-                onWebEvent(sess2, webEvt);
+    onWebEvent(sess2, webEvt);
 }
 
 function connectWebGate() {
-    if (webGateSocket && webGateSocket.readyState === WebSocket.OPEN) return;
+    // CONNECTING 也要挡住，否则可见性/网络恢复触发时会并发建多条连接
+    if (webGateSocket &&
+        (webGateSocket.readyState === WebSocket.OPEN || webGateSocket.readyState === WebSocket.CONNECTING)) {
+        return;
+    }
+    // 残留的旧连接（CLOSING/CLOSED）先解绑，避免它的 onclose 再排一次重连造成风暴
+    if (webGateSocket) {
+        try {
+            webGateSocket.onopen = null;
+            webGateSocket.onmessage = null;
+            webGateSocket.onclose = null;
+            webGateSocket.onerror = null;
+            webGateSocket.close();
+        } catch (e) {}
+        webGateSocket = null;
+    }
+    if (webGateReconnectTimer) {
+        clearTimeout(webGateReconnectTimer);
+        webGateReconnectTimer = null;
+    }
     try {
         var protocol = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
         var wsUrl = protocol + '//' + window.location.host + '/web/gate?_t=1' + window.wsAndSuffix();
@@ -2198,26 +2491,59 @@ function stopWebGateHeartbeat() {
 }
 
 function scheduleWebGateReconnect() {
-    if (webGateReconnectAttempts >= WEBGATE_MAX_RECONNECT) {
-        console.warn('[WebGate] max reconnect attempts reached');
-        return;
-    }
-    var delay = Math.min(1000 * Math.pow(2, webGateReconnectAttempts), 30000);
+    if (webGateReconnectTimer) return; // 已排队，避免多个 onclose 叠加出连接风暴
+
+    var fastPhase = webGateReconnectAttempts < WEBGATE_MAX_RECONNECT;
+    // 快速退避次数用尽后不再放弃：转固定慢频率长期重试。
+    // 否则休眠/切网/后台节流一旦烧完配额，本页 WS 将永久死亡——文件树、审查徽标、
+    // 流式消息全部静默，用户只能刷新浏览器才能恢复。
+    var delay = fastPhase
+        ? Math.min(1000 * Math.pow(2, webGateReconnectAttempts), 30000)
+        : WEBGATE_SLOW_RECONNECT_DELAY;
     webGateReconnectAttempts++;
     console.log('[WebGate] reconnecting in ' + delay + 'ms (attempt ' + webGateReconnectAttempts + ')');
-    showNetworkBar('reconnecting', I18n.t('streaming.wsReconnecting', {attempt: webGateReconnectAttempts, max: WEBGATE_MAX_RECONNECT}));
-    setTimeout(function() {
+    if (fastPhase) {
+        showNetworkBar('reconnecting', I18n.t('streaming.wsReconnecting', {attempt: webGateReconnectAttempts, max: WEBGATE_MAX_RECONNECT}));
+    } else {
+        showNetworkBar('disconnected', I18n.t('streaming.wsDisconnected'));
+    }
+    webGateReconnectTimer = setTimeout(function() {
+        webGateReconnectTimer = null;
         connectWebGate();
     }, delay);
 }
 
-// 页面可见性控制心跳
+/** 连接不可用时立即重连（用户回到页面 / 网络恢复，属于明确的重试信号，不必等退避） */
+function reconnectWebGateNow() {
+    if (webGateSocket &&
+        (webGateSocket.readyState === WebSocket.OPEN || webGateSocket.readyState === WebSocket.CONNECTING)) {
+        return false;
+    }
+    webGateReconnectAttempts = 0;
+    connectWebGate();
+    return true;
+}
+
+// 页面可见性：控制心跳，并在回到前台时补做连接与数据对账
 $(document).on('visibilitychange', function() {
     if (document.hidden) {
         stopWebGateHeartbeat();
-    } else {
-        startWebGateHeartbeat();
+        return;
     }
+    startWebGateHeartbeat();
+    // 后台期间连接可能已被系统掐断（休眠、切网、标签页节流），
+    // 且推送在断开窗口内是丢失的，故：断了就立刻重连（onopen 会刷新文件树），
+    // 没断也对一次账，避免面板停在旧状态。
+    if (!reconnectWebGateNow() && typeof window.reconcileFilerTree === 'function') {
+        // 对账已在 filer 侧节流，并且仅在面板真正可见时拉取（不可见先标脏）：
+        // 否则每次切回标签页都是 1 + 展开目录数 个请求，而用户可能正在聊天页。
+        window.reconcileFilerTree();
+    }
+});
+
+// 网络恢复：立即重连，不等退避计时
+window.addEventListener('online', function() {
+    reconnectWebGateNow();
 });
 
 // 页面加载后自动建立 WebSocket 连接
@@ -2324,23 +2650,12 @@ function showWechatModal() {
                 return;
             }
             var $qrWrap = $('#wechatQrWrap');
-            $qrWrap.html('');
             var qrContent = resp.data.qrcode_img_content || resp.data.qrcode;
-            if (qrContent) {
-                var renderQr = function(err) {
-                    if (err || typeof QRCode === 'undefined') {
-                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px">' + escapeHtml(qrContent) + '</span>');
-                        return;
-                    }
-                    try {
-                        new QRCode($qrWrap[0], { text: qrContent, width: 180, height: 180 });
-                    } catch(e) {
-                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px">' + escapeHtml(qrContent) + '</span>');
-                    }
-                };
-                if (typeof ensureQrcode === 'function') ensureQrcode(renderQr);
-                else renderQr(null);
-            }
+            renderQrcodeInto($qrWrap, qrContent, function(reason) {
+                if (reason === 'lib') {
+                    $('#wechatQrStatus').text(I18n.t('im.qrcodeLibFailed')).addClass('error');
+                }
+            });
             // Start polling
             startWechatPoll(resp.data.qrcode, activeSessionId);
         } catch(e) {
@@ -2351,7 +2666,15 @@ function showWechatModal() {
 
 function startWechatPoll(qrcode, sessionId) {
     if (wechatPollTimer) clearInterval(wechatPollTimer);
+    // 在途请求去重 + 终态闭锁：
+    // get_qrcode_status 服务端会 hold 较长时间，而这里 2s 一跳，确认瞬间往往有多个
+    // 请求同时在途；该接口对 confirmed 又是幂等的，于是后端会被重复触发绑定。
+    // clearInterval 只能阻止后续调度，取消不了已发出的请求，必须在这里自行闭锁。
+    var inFlight = false;
+    var settled = false;
     wechatPollTimer = setInterval(function() {
+        if (inFlight || settled) return;
+        inFlight = true;
         $.get('/web/chat/wechat/qrcode/status?qrcode=' + encodeURIComponent(qrcode) + '&sessionId=' + encodeURIComponent(sessionId), function(resp) {
             try {
                 var data = resp.data || {};
@@ -2364,6 +2687,7 @@ function startWechatPoll(qrcode, sessionId) {
                 } else if (status === 'scaned') {
                     $statusEl.text(I18n.t('im.scannedConfirm')).removeClass('error').addClass('scanned');
                 } else if (status === 'confirmed') {
+                    settled = true;
                     $statusEl.text(I18n.t('im.connectSuccess')).removeClass('error').addClass('scanned');
                     clearInterval(wechatPollTimer);
                     wechatPollTimer = null;
@@ -2378,6 +2702,7 @@ function startWechatPoll(qrcode, sessionId) {
                         }
                     }, 1200);
                 } else if (status === 'expired') {
+                    settled = true;
                     $statusEl.text(I18n.t('im.qrcodeExpired')).removeClass('scanned').addClass('error');
                     clearInterval(wechatPollTimer);
                     wechatPollTimer = null;
@@ -2388,7 +2713,9 @@ function startWechatPoll(qrcode, sessionId) {
                     }
                 }
             } catch(e) {}
-        }, 'json');
+        }, 'json').always(function() {
+            inFlight = false;
+        });
     }, 2000);
 }
 
@@ -2610,23 +2937,14 @@ function showFeishuModal() {
                 return;
             }
             var qrUrl = resp.data.qrUrl;
-            $qrWrap.html('');
             if (qrUrl) {
-                var renderFeishuQr = function(err) {
-                    if (err || typeof QRCode === 'undefined') {
-                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                // 先给出扫码提示，失败回调再覆盖，避免同步失败时提示被反向覆盖
+                $qrStatus.text(I18n.t('im.feishuScanQr')).removeClass('error scanned');
+                renderQrcodeInto($qrWrap, qrUrl, function(reason) {
+                    if (reason === 'lib') {
                         $qrStatus.text(I18n.t('im.qrcodeLibFailed')).addClass('error');
-                        return;
                     }
-                    try {
-                        new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
-                        $qrStatus.text(I18n.t('im.feishuScanQr')).removeClass('error scanned');
-                    } catch(e) {
-                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
-                    }
-                };
-                if (typeof ensureQrcode === 'function') ensureQrcode(renderFeishuQr);
-                else renderFeishuQr(null);
+                });
             }
             // 开始轮询扫码状态
             startFeishuQrPoll();
@@ -2955,23 +3273,14 @@ function showDingTalkModal() {
                 return;
             }
             var qrUrl = resp.data.qrUrl;
-            $qrWrap.html('');
             if (qrUrl) {
-                var renderDingtalkQr = function(err) {
-                    if (err || typeof QRCode === 'undefined') {
-                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
+                // 先给出扫码提示，失败回调再覆盖，避免同步失败时提示被反向覆盖
+                $qrStatus.text(I18n.t('im.dingtalkScanQr')).removeClass('error scanned');
+                renderQrcodeInto($qrWrap, qrUrl, function(reason) {
+                    if (reason === 'lib') {
                         $qrStatus.text(I18n.t('im.qrcodeLibFailed')).addClass('error');
-                        return;
                     }
-                    try {
-                        new QRCode($qrWrap[0], { text: qrUrl, width: 180, height: 180 });
-                        $qrStatus.text(I18n.t('im.dingtalkScanQr')).removeClass('error scanned');
-                    } catch(e) {
-                        $qrWrap.html('<span style="font-size:12px;color:#666;padding:10px;word-break:break-all">' + escapeHtml(qrUrl) + '</span>');
-                    }
-                };
-                if (typeof ensureQrcode === 'function') ensureQrcode(renderDingtalkQr);
-                else renderDingtalkQr(null);
+                });
             }
             // 开始轮询扫码状态
             startDingtalkQrPoll();

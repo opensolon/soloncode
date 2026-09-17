@@ -25,6 +25,14 @@ var dingtalkHeaderBtn = document.getElementById('dingtalkHeaderBtn');
 /* ===== Constants ===== */
 var DOTS_HTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
 
+/* ===== 统一删除图标规约 ===== */
+/* 全站删除类按钮只允许两种语义、两种图标，禁止再各处内联 SVG 副本：
+ * SVG_TRASH      —— 单个删除（Delete）：带两条内竖线的垃圾桶，14px，识别度最高；
+ * SVG_TRASH_PLAIN —— 批量清空（Clear）：无内线的垃圾桶，16px，与单删拉开视觉层级。
+ * 清除输入/过滤（× 字符类）不属于删除数据，不在此列。 */
+var SVG_TRASH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+var SVG_TRASH_PLAIN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
 /* ===== Per-Session State ===== */
 function SessionState(sessionId) {
     this.sessionId = sessionId;
@@ -79,6 +87,11 @@ function SessionState(sessionId) {
     this.streamSegmentSeq = 0;
     // 运行中 follow-up 消息排队（FIFO）；会话目录 queue-tasks.json 可恢复文本项（冷恢复不自动发）
     this.messageQueue = [];
+    // 输入区队列卡片的展开状态只属于当前会话，刷新后默认折叠
+    this.queueDockExpanded = false;
+    // 已被后端接受、等待下一采样边界生效的插话；resolved 表用于处理 HTTP 与 WS 乱序
+    this.steerPending = [];
+    this._steerResolved = {};
     this._queueDraining = false;
     this._queueLoaded = false;   // 是否已从服务端 hydrate
     this._queueLoading = false;
@@ -465,14 +478,31 @@ function clearInput() {
 
 /* ===== Toast Notification ===== */
 var toastContainer = null;
+/**
+ * 全局统一提示入口（标准 = layer.msg：顶部 120px、语义图标、自动消失）。
+ * @param {string} message 提示文案
+ * @param {string} [type] 'error' | 'success' | 'info'，缺省为 info
+ * @param {number} [duration] 展示毫秒数；缺省时 error=3000，其余=2200
+ * layer 未加载时降级为自绘 DOM toast，保证功能不缺失。
+ */
 function showToast(message, type, duration) {
+    type = type || 'info';
+    if (typeof layer !== 'undefined' && layer.msg) {
+        var icon = type === 'error' ? 2 : (type === 'success' ? 1 : 0);
+        layer.msg(String(message == null ? '' : message), {
+            icon: icon,
+            time: duration || (type === 'error' ? 3000 : 2200),
+            offset: '120px'
+        });
+        return;
+    }
     if (!toastContainer) {
         toastContainer = $('<div>')[0];
         $(toastContainer).addClass('toast-container');
         $('body').append(toastContainer);
     }
     var item = $('<div>')[0];
-    $(item).addClass('toast-item ' + (type || 'info'));
+    $(item).addClass('toast-item ' + type);
     var icons = { success: '\u2714', error: '\u2716', info: '\u2139' };
     $(item).html('<span>' + (icons[type] || icons.info) + '</span><span>' + escapeHtml(message) + '</span>');
     $(toastContainer).append(item);
@@ -483,6 +513,9 @@ function showToast(message, type, duration) {
         }, 250);
     }, duration || 3000);
 }
+/* notify 为 showToast 的语义别名；显式挂到 window，供按需引用的模块使用 */
+window.showToast = showToast;
+window.notify = showToast;
 
 /* ===== Network Status Bar ===== */
 var networkBar = null;

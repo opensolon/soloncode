@@ -23,6 +23,7 @@ import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatRole;
 import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
@@ -35,6 +36,7 @@ import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.portal.web.service.FileService;
 import org.noear.solon.codecli.portal.web.service.GitService;
@@ -44,12 +46,16 @@ import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.MessageLineUtil;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.codecli.session.SessionRewindService;
+import org.noear.solon.codecli.util.DirectoryPickerUtil;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.workspace.WorkspaceMeta;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.IoUtil;
+import org.noear.solon.server.io.LimitedInputException;
+import org.noear.solon.server.io.LimitedInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,6 +74,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Web 门户控制器 —— SolonCode Web UI 的核心 HTTP 入口。
@@ -267,15 +274,113 @@ public class WebController {
         }
     }
 
+    /**
+     * 目录选择对话框并发锁：同一时刻只允许一个原生对话框（避免多个请求叠加弹框）
+     */
+    private static final AtomicBoolean PICK_DIR_LOCK = new AtomicBoolean(false);
+
+    /**
+     * 目录选择能力探测（无副作用）：返回当前环境能否弹原生目录框。
+     *
+     * <p>前端初始化时探测一次，据此决定按钮可用态；真正的弹框由 POST /web/workspace/pick-directory 触发。</p>
+     */
+    @Get
+    @Mapping("/web/workspace/pick-directory")
+    public Result<Map<String, Object>> pickDirectoryCapability() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        boolean available = DirectoryPickerUtil.isAvailable() && isLoopbackRequest(Context.current());
+        data.put("available", available);
+        data.put("headless", !available);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 调起宿主机的系统目录选择框，返回用户选中的绝对路径。
+     *
+     * <p>soloncode web 运行在用户桌面，CLI 进程可直接弹原生对话框，从根本上绕开浏览器
+     * “拿不到本地绝对路径”的安全限制；返回的路径由前端回填后走既有 /web/workspace/open 链路。</p>
+     *
+     * <h3>安全约束</h3>
+     * <ul>
+     *   <li><b>仅限本机调用</b>：非 loopback 来源直接拒绝（弹框出现在服务器屏幕而非访问者屏幕，毫无意义且危险）</li>
+     *   <li><b>单对话框并发锁</b>：第二个请求直接拒绝，避免叠加弹框</li>
+     *   <li><b>headless 拒绝</b>：无桌面环境时静默降级，前端隐藏目录选择入口</li>
+     *   <li><b>超时自动关闭</b>：见 {@link DirectoryPickerUtil#DEFAULT_TIMEOUT_MS}</li>
+     * </ul>
+     *
+     * @param ctx Solon 请求上下文（用于来源 IP 校验）
+     * @return 选中结果：{path}；用户取消时 path 为 null（code=200）
+     */
+    @Post
+    @Mapping("/web/workspace/pick-directory")
+    public Result<Map<String, Object>> pickDirectory(Context ctx) {
+        // 1. 仅限本机：非 loopback 来源拒绝（服务未做 host 绑定且开了跨域，弹框不能出现在陌生访问者的请求里）
+        if (isLoopbackRequest(ctx) == false) {
+            return Result.failure("仅限本机调用（loopback）");
+        }
+
+        // 2. 无交互桌面时静默降级，前端隐藏入口并继续支持手工输入
+        if (DirectoryPickerUtil.isAvailable() == false) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", null);
+            data.put("headless", true);
+            data.put("available", false);
+            return Result.succeed(data);
+        }
+
+        // 3. 并发锁：同一时刻只允许一个对话框
+        if (PICK_DIR_LOCK.compareAndSet(false, true) == false) {
+            return Result.failure("目录选择框已打开，请先完成或取消当前选择");
+        }
+
+        try {
+            String path = DirectoryPickerUtil.pick("选择工作区目录");
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", path);
+            data.put("headless", false);
+            data.put("available", true);
+            return Result.succeed(data);
+        } catch (Exception e) {
+            // 显示服务可能在启动后消失（容器、SSH 转发、桌面注销等）。这属于能力降级，
+            // 不向前端抛系统错误；记录日志并让前端隐藏入口、继续支持手工输入路径。
+            LOG.warn("[Workspace] Directory picker unavailable", e);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", null);
+            data.put("headless", true);
+            data.put("available", false);
+            return Result.succeed(data);
+        } finally {
+            PICK_DIR_LOCK.set(false);
+        }
+    }
+
+    /**
+     * 判断请求是否来自本机（loopback）
+     */
+    private boolean isLoopbackRequest(Context ctx) {
+        try {
+            String ip = ctx.realIp();
+            if (ip == null) {
+                return false;
+            }
+            return "127.0.0.1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip) || "localhost".equals(ip);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @Post
     @Mapping("/web/workspace/remove")
     public Result<Void> removeWorkspace(String id) {
-        if (id == null || id.isEmpty()) {
+        if (id == null || id.trim().isEmpty()) {
             return Result.failure("Id is required");
         }
 
-        // "移除"语义必须同时删历史条目，否则重启后条目重新出现（closeWorkspace 由 removeFromHistory 内部负责，避免双重关闭）
-        workspaceManager.removeFromHistory(id);
+        // 只有历史文件确实完成持久化删除后才报告成功，避免前端刷新后条目又出现。
+        if (workspaceManager.removeFromHistory(id.trim()) == false) {
+            return Result.failure("Workspace not found or could not be removed");
+        }
         return Result.succeed();
     }
 
@@ -301,12 +406,6 @@ public class WebController {
         ctx.forward("/web.html");
     }
 
-    /**
-     * 页面元信息接口：供前端启动时一次性获取应用标题、版本号、工作区路径等基础信息。
-     *
-     * @return 包含 appTitle、appVersion、workspace、workname 的结果对象
-     * @throws Exception 读取配置异常
-     */
     /**
      * 前端脚本清单：返回所有已加载扩展登记的前端脚本 URL，前端据此动态注入。
      * 各扩展在自己的 Plugin.start() 中向系统属性 "soloncode.frontend.scripts" 追加自身脚本地址，
@@ -342,6 +441,13 @@ public class WebController {
         }
         data.put("workspace", currentEngine.getWorkspace());
         data.put("workname", getLastSegment(currentEngine.getWorkspace()));
+        // 是否「在用户主目录下启动」的默认工作区：把整个 ~ 当工作区代价过高（沙盒范围、
+        // 文件监听、检索都会铺满主目录），前端据此默认弹出工作区面板引导选项目目录。
+        // 判定放后端（前端拿不到真实的 user.home，也不应自行猜路径）
+        WorkspaceContext currentCtx = currentContext();
+        boolean homeWorkspace = currentCtx != null
+                && WorkspaceManager.isHomeStartupWorkspace(currentCtx.getMeta());
+        data.put("isHomeWorkspace", homeWorkspace);
         // 是否已配置至少一个可用模型，供前端首帧渲染引导面板，避免界面闪现
         boolean modelConfigured = false;
         for (ChatConfig config : currentEngine.getModels()) {
@@ -449,6 +555,52 @@ public class WebController {
             }
         }
 
+        return Result.succeed(data);
+    }
+
+    /**
+     * 清空当前工作区中所有未置顶且未运行的 Web 会话。
+     * 置顶会话和正在运行的会话始终保留，避免误删重要内容或打断任务。
+     */
+    @Post
+    @Mapping("/web/chat/sessions/clear")
+    public Result<Map<String, Object>> clearUnpinnedSessions() throws Exception {
+        Path sessionsPath = currentContext().getSessionsRoot();
+        String userId = getCurrentUserId();
+        List<String> deletedSessionIds = new ArrayList<>();
+        int skippedBusy = 0;
+        File sessionsDir = sessionsPath.toFile();
+        File[] dirs = sessionsDir.listFiles(f -> f.isDirectory() && f.getName().startsWith("web-"));
+        if (dirs != null) {
+            for (File dir : dirs) {
+                String sessionId = dir.getName();
+                SessionMeta meta = SessionMeta.load(dir);
+                String ownerId = meta.getOwnerUserId();
+                if (userId != null && ownerId != null && !ownerId.isEmpty() && !userId.equals(ownerId)) {
+                    continue;
+                }
+                if (meta.isPinned()) {
+                    continue;
+                }
+                if (webGate().isSessionBusy(engine(), sessionId)) {
+                    skippedBusy++;
+                    continue;
+                }
+                if (loopScheduler() != null) {
+                    loopScheduler().stopAll(sessionId);
+                }
+                sessionManager().removeSession(sessionId);
+                try {
+                    deleteDirectory(dir.toPath());
+                    deletedSessionIds.add(sessionId);
+                } catch (IOException e) {
+                    LOG.error("Session clear failed for {}: {}", sessionId, e.getMessage());
+                }
+            }
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("deletedSessionIds", deletedSessionIds);
+        data.put("skippedBusy", skippedBusy);
         return Result.succeed(data);
     }
 
@@ -700,6 +852,13 @@ public class WebController {
         String reasoningEffort = null;
         String thinkingMode = null;
 
+        //全局默认（设置→通用）：新会话、以及未显式表态的老会话都回填到这一层，
+        //让 UI 的 pill 直接画成选中态（否则用户仍会看到 auto，觉得“没记住”）。
+        GeneralGroupDo general = currentContext().getSettings() == null
+                ? null : currentContext().getSettings().getGeneral();
+        String globalThinking = general == null ? null : general.getDefaultThinkingMode();
+        String globalEffort = general == null ? null : general.getDefaultReasoningEffort();
+
         if (Assert.isNotEmpty(list)) {
             if (Assert.isNotEmpty(sessionId)) {
                 AgentSession session = currentEngine.getSession(sessionId);
@@ -711,10 +870,16 @@ public class WebController {
                     selected = currentEngine.getModelOrDef(null).getNameOrModel();
                 }
 
-                reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
-                thinkingMode = ReasoningSupportUtil.getSessionThinkingMode(session);
+                reasoningEffort = ReasoningSupportUtil.hasExplicitEffort(session)
+                        ? ReasoningSupportUtil.getSessionEffort(session)
+                        : ReasoningSupportUtil.normalizeEffort(globalEffort);
+                thinkingMode = ReasoningSupportUtil.hasExplicitThinkingMode(session)
+                        ? ReasoningSupportUtil.getSessionThinkingMode(session)
+                        : ReasoningSupportUtil.normalizeThinkingMode(globalThinking);
             } else {
                 selected = currentEngine.getModelOrDef(null).getNameOrModel();
+                reasoningEffort = ReasoningSupportUtil.normalizeEffort(globalEffort);
+                thinkingMode = ReasoningSupportUtil.normalizeThinkingMode(globalThinking);
             }
 
             // 防御：默认模型可能被禁用（getModelOrDef 不校验 isEnabled），导致 selected
@@ -723,6 +888,9 @@ public class WebController {
             if (!containsModelName(list, selected)) {
                 selected = (String) list.get(0).get("name");
             }
+
+            //按选中模型能力 clamp：全局设 max 碰上只支持三档的模型时，不能把错档位发给 UI
+            reasoningEffort = ReasoningSupportUtil.clampEffort(reasoningEffort, capabilityOf(list, selected));
         }
 
         data.put("selected", selected);
@@ -743,6 +911,33 @@ public class WebController {
         data.put("selectedAgent", selectedAgent);
 
         return Result.succeed(data);
+    }
+
+    /**
+     * 从已组装的模型列表里取回指定模型的推理能力（避免二次 resolveCapability）。
+     */
+    @SuppressWarnings("unchecked")
+    private static ReasoningSupportUtil.ModelCapability capabilityOf(List<Map> list, String name) {
+        ReasoningSupportUtil.ModelCapability cap = new ReasoningSupportUtil.ModelCapability();
+        if (name == null || list == null) {
+            return cap;
+        }
+        for (Map item : list) {
+            if (name.equals(item.get("name"))) {
+                Object supports = item.get("supportsReasoning");
+                cap.supportsReasoning = supports instanceof Boolean && (Boolean) supports;
+                Object efforts = item.get("reasoningEfforts");
+                if (efforts instanceof List) {
+                    cap.reasoningEfforts = (List<String>) efforts;
+                }
+                Object def = item.get("defaultReasoningEffort");
+                if (def != null) {
+                    cap.defaultReasoningEffort = String.valueOf(def);
+                }
+                break;
+            }
+        }
+        return cap;
     }
 
     /**
@@ -836,18 +1031,8 @@ public class WebController {
             return Result.failure(400, "Invalid sessionId");
         }
 
-        AgentSession session = sessionManager().getSessionIfPresent(sessionId);
-        if (session != null) {
-            return Result.succeed(readMessagesFromSession(session));
-        }
-
-        Path sessionsRoot = currentContext().getSessionsRoot();
-        Path sessionsPath = sessionsRoot.resolve(sessionId).normalize();
-        if (!sessionsPath.startsWith(sessionsRoot)) {
-            return Result.failure(400, "Invalid session path");
-        }
-
-        return Result.succeed(readMessagesFromFile(new File(sessionsPath.toFile(), sessionId + ".messages.ndjson")));
+        AgentSession session = sessionManager().getSession(sessionId);
+        return Result.succeed(readMessagesFromSession(session));
     }
 
     /**
@@ -875,38 +1060,6 @@ public class WebController {
 
             data.add(buildMessageItem(msg.getRole().name(), content,
                     String.valueOf(msg.getCreatedAt()), msg.getMetadata()));
-        }
-
-        return data;
-    }
-
-    /**
-     * 从 ndjson 消息文件逐行读取历史消息（会话未打开时的回落路径）。
-     *
-     * @param msgFile 消息文件
-     * @return 消息列表
-     */
-    private List<Map> readMessagesFromFile(File msgFile) throws Exception {
-        List<Map> data = new ArrayList<>();
-
-        if (msgFile.exists()) {
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(new FileInputStream(msgFile), "UTF-8"))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty()) continue;
-                    ONode node = ONode.ofJson(line);
-                    String role = node.get("role").getString();
-                    // 助手消息自 solon-ai 4.1 起不再落 content 字段（拆成 text/thinking），须按兼容顺序读
-                    String content = MessageLineUtil.readContent(node);
-
-                    if (role != null && content != null) {
-                        data.add(buildMessageItem(role, content, node.get("createdAt").getString(),
-                                toMetadataMap(node.get("metadata"))));
-                    }
-                }
-            }
         }
 
         return data;
@@ -1033,60 +1186,35 @@ public class WebController {
         }
 
         try {
-            Path sessionsRoot = currentContext().getSessionsRoot();
-            Path sessionsPath = sessionsRoot.resolve(sessionId).normalize();
-            if (!sessionsPath.startsWith(sessionsRoot)) {
-                return Result.failure(400, "Invalid session path");
-            }
-
-            // 快照不存在说明该会话从未运行过（或为 fork 出来的纯消息副本）：
-            // 不走 getSession，避免为其凭空创建内存会话
-            File snapshotFile = new File(sessionsPath.toFile(), sessionId + ".snapshot.json");
-            if (!snapshotFile.exists()) {
-                return Result.succeed(LAST_TRACE_SERVICE.buildLastTrace(null, null, false, null));
-            }
-
-            String lastUserMsg = readLastUserMessage(new File(sessionsPath.toFile(), sessionId + ".messages.ndjson"));
-
-            AgentSession session = sessionManager().getSession(sessionId, getCurrentUserId());
+            AgentSession session = sessionManager().getSession(sessionId);
+            String lastUserMsg = readLastUserMessage(session);
             boolean running = webGate().isSessionBusy(engine(), sessionId);
 
-            Map<String, Object> data = LAST_TRACE_SERVICE.buildLastTrace(session, AgentFlags.TRACE_KEY_MAIN, running, lastUserMsg);
+            Map<String, Object> data = LAST_TRACE_SERVICE.buildLastTrace(session, running, lastUserMsg);
             return Result.succeed(data);
         } catch (Throwable e) {
             // 回放属于增强能力，失败即静默降级，不能让它影响会话切换
             LOG.debug("[WebController] last-trace failed for session {}: {}", sessionId, e.getMessage());
-            return Result.succeed(LAST_TRACE_SERVICE.buildLastTrace(null, null, false, null));
+            return Result.succeed(LAST_TRACE_SERVICE.buildLastTrace(null, false, null));
         }
     }
 
     /**
-     * 读取 ndjson 中最后一条用户消息的内容，用于 trace 对齐校验。
+     * 读取 ndjson 中最后一条用户消息的内容，用于 trace 对齐校验（内存会话路径）。
      *
      * @return 最后一条 USER 消息内容；无则返回 null
      */
-    private String readLastUserMessage(File msgFile) {
-        if (msgFile == null || !msgFile.exists()) {
-            return null;
-        }
+    private String readLastUserMessage(AgentSession session) {
+        List<ChatMessage> messages = new ArrayList<>(session.getMessages());
 
-        String lastUser = null;
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(msgFile), "UTF-8"))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty()) continue;
-                ONode node = ONode.ofJson(line);
-                if ("USER".equals(node.get("role").getString())) {
-                    lastUser = MessageLineUtil.readContent(node);
-                }
+        for (int i = messages.size() - 1; i > -1; i--) {
+            ChatMessage m1 = messages.get(i);
+            if (m1 instanceof UserMessage) {
+                return m1.getContent();
             }
-        } catch (Exception e) {
-            return null;
         }
 
-        return lastUser;
+        return null;
     }
 
     /**
@@ -1132,6 +1260,7 @@ public class WebController {
      *
      * @param sessionId 会话 ID
      * @param runId     前端所见的当前运行 ID（可选；来自事件信封 runId，防跨任务错投）
+     * @param steerId   前端生成的稳定 ID（可选；旧客户端未传时由后端生成）
      * @param text      插话文本
      * @return 操作结果
      */
@@ -1139,6 +1268,7 @@ public class WebController {
     @Mapping("/web/chat/steer")
     public Result steerSession(@Param("sessionId") String sessionId,
                                @Param(value = "runId", required = false) String runId,
+                               @Param(value = "steerId", required = false) String steerId,
                                @Param("text") String text) {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
@@ -1150,6 +1280,14 @@ public class WebController {
         if (text.length() > SteerInterceptor.MAX_TEXT_LENGTH) {
             return Result.failure(400, "TEXT_TOO_LONG");
         }
+        if (steerId == null || steerId.trim().isEmpty()) {
+            steerId = "s_" + UUID.randomUUID().toString();
+        } else {
+            steerId = steerId.trim();
+            if (steerId.length() > SteerInterceptor.MAX_ID_LENGTH) {
+                return Result.failure(400, "INVALID_STEER_ID");
+            }
+        }
         if (!webGate().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "NOT_RUNNING");
         }
@@ -1159,36 +1297,97 @@ public class WebController {
             return Result.failure(409, "NOT_RUNNING");
         }
 
-        // runId 防护：仅在前端携带 runId 且后端已记录活跃 runId 时比对。
-        // 任务刚启动、首个 reason 事件未到达时后端值为 null，此时接受是安全的
-        // （守卫1会把注入推迟到第二轮，仍属本任务）
-        String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-        if (runId != null && activeRunId != null && !runId.equals(activeRunId)) {
-            return Result.failure(409, "TURN_CHANGED");
-        }
+        // 必须绑定明确的 runId。任务首个事件到达前尚不能确认归属，此时让前端转普通排队，
+        // 避免无 runId 请求落入任务结束/切换窄窗后成为无人消费的孤儿插话。
+        java.util.Queue<SteerMessage> box;
+        SteerMessage steer = new SteerMessage(steerId, text);
+        SteerInterceptor.OfferResult offerResult;
+        synchronized (session.attrs()) {
+            String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
+            if (runId == null || !runId.equals(activeRunId)) {
+                return Result.failure(409, "TURN_CHANGED");
+            }
 
-        @SuppressWarnings("unchecked")
-        java.util.Queue<String> box = (java.util.Queue<String>) session.attrs()
-                .computeIfAbsent(SteerInterceptor.ATTR_STEER_BOX,
-                        k -> new java.util.concurrent.ConcurrentLinkedQueue<String>());
-        if (box.size() >= SteerInterceptor.MAX_BOX_SIZE) {
+            @SuppressWarnings("unchecked")
+            java.util.Queue<SteerMessage> currentBox = (java.util.Queue<SteerMessage>) session.attrs()
+                    .computeIfAbsent(SteerInterceptor.ATTR_STEER_BOX,
+                            k -> new java.util.concurrent.ConcurrentLinkedQueue<SteerMessage>());
+            box = currentBox;
+            offerResult = SteerInterceptor.offer(box, steer);
+        }
+        if (offerResult == SteerInterceptor.OfferResult.BOX_FULL) {
             return Result.failure(409, "BOX_FULL");
         }
-        box.offer(text);
+        if (offerResult == SteerInterceptor.OfferResult.DUPLICATE_ID) {
+            return Result.failure(409, "DUPLICATE_STEER_ID");
+        }
 
-        // offer 后复查（决策点原子性兜底）：本方法与 SteerInterceptor.onAgentEnd 的
-        // attrs().remove(ATTR_STEER_BOX) 存在竞态。若在 remove 之后才 offer，本条会写进
-        // 一个无人排空的孤儿队列——既不会生效也不会有 dropped 事件（悬挂）。
-        // 此处发现任务已结束或邮箱已被摘掉则回滚本条，改报 NOT_RUNNING 让前端回落为普通发送
-        if (!webGate().isSessionBusy(engine(), sessionId)
-                || session.attrs().get(SteerInterceptor.ATTR_STEER_BOX) != box) {
-            box.remove(text);
-            session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX, box);
-            return Result.failure(409, "NOT_RUNNING");
+        // offer 后复查任务与邮箱身份。任务若在校验和入队之间切换，回滚本条，禁止错投下一任务。
+        boolean busyAfterOffer = webGate().isSessionBusy(engine(), sessionId);
+        boolean sameBox;
+        boolean sameRun;
+        synchronized (session.attrs()) {
+            sameBox = session.attrs().get(SteerInterceptor.ATTR_STEER_BOX) == box;
+            sameRun = runId.equals(session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID));
+            if (!busyAfterOffer || !sameBox || !sameRun) {
+                box.remove(steer);
+                // 只清理本次创建后仍为空的邮箱；邮箱里若还有别的插话，必须留给任务收尾统一
+                // applied/dropped，不能因当前请求回滚而把其它用户消息静默摘掉。
+                if (box.isEmpty()) {
+                    session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX, box);
+                }
+            }
+        }
+        if (!busyAfterOffer || !sameBox || !sameRun) {
+            return Result.failure(409, sameRun ? "NOT_RUNNING" : "TURN_CHANGED");
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("status", "STEERED");
+        data.put("steerId", steerId);
+        data.put("queued", box.size());
+        return Result.succeed(data);
+    }
+
+    /**
+     * 撤销一条尚未到达采样边界的运行中插话。
+     *
+     * <p>只有消息仍在会话邮箱中时才返回成功；若消费线程已将其取出，则返回 NOT_PENDING，
+     * 前端保留待生效项，等待 applied/dropped 终态事件，避免把“已经生效”伪装成“删除成功”。</p>
+     */
+    @Post
+    @Mapping("/web/chat/steer/cancel")
+    public Result cancelSteerSession(@Param("sessionId") String sessionId,
+                                     @Param(value = "runId", required = false) String runId,
+                                     @Param("steerId") String steerId) {
+        if (!isValidSessionId(sessionId)) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (steerId == null || steerId.trim().isEmpty()
+                || steerId.length() > SteerInterceptor.MAX_ID_LENGTH) {
+            return Result.failure(400, "INVALID_STEER_ID");
+        }
+
+        AgentSession session = engine().getSession(sessionId);
+        if (session == null) {
+            return Result.failure(409, "NOT_PENDING");
+        }
+        java.util.Queue<SteerMessage> box;
+        synchronized (session.attrs()) {
+            String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
+            if (runId == null || !runId.equals(activeRunId)) {
+                return Result.failure(409, "TURN_CHANGED");
+            }
+
+            box = SteerInterceptor.steerBox(session);
+            if (!SteerInterceptor.cancel(box, steerId.trim())) {
+                return Result.failure(409, "NOT_PENDING");
+            }
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("status", "CANCELED");
+        data.put("steerId", steerId.trim());
         data.put("queued", box.size());
         return Result.succeed(data);
     }
@@ -1230,7 +1429,7 @@ public class WebController {
         try {
             AgentSession session = sessionManager().getSession(sessionId, getCurrentUserId());
             SessionRewindService.RewindResult rr = REWIND_SERVICE.rewind(
-                    session, AgentFlags.TRACE_KEY_MAIN, anchorRunId, anchorRole, count);
+                    session, anchorRunId, anchorRole, count);
 
             if (rr.isAnchorMissing()) {
                 // 宁可不删，也不能删错条数：前端应改为重载历史
@@ -1326,12 +1525,26 @@ public class WebController {
      * @return 操作结果（AI 结果通过 WebSocket 推送）
      */
     @Mapping("/web/chat/input")
-    public Result chat_input(Context ctx, String input, UploadedFile[] attachments, String attachmentTypes[],
+    public Result chat_input(Context ctx, String input, UploadedFile inputPayload,
+                             UploadedFile[] attachments, String attachmentTypes[],
                              String model, String sessionId,
                              @Param(value = "reasoningEffort", required = false) String reasoningEffort,
                              @Param(value = "thinkingMode", required = false) String thinkingMode,
                              @Param(value = "selectedAgent", required = false) String selectedAgent) {
         try {
+            // 新版 Web 将长文本作为文件 part 发送，绕开 multipart 普通字段受 readBuffer
+            // 大小限制的问题；保留 input 参数以兼容旧页面和其他调用方。
+            if (inputPayload != null) {
+                try {
+                    //不能超过 100k
+                    input = IoUtil.transferToString(new LimitedInputStream(inputPayload.getContent(), 100_000));
+                } catch (LimitedInputException e) {
+                    ctx.status(413);
+                    ctx.output(e.getMessage());
+                    return null;
+                }
+            }
+
             if (sessionId == null || sessionId.isEmpty()) {
                 sessionId = ctx.headerOrDefault("X-Session-Id", "web");
             }
@@ -1539,6 +1752,15 @@ public class WebController {
                                       @Param(value = "ref", required = false) String ref) throws Exception {
         String wsId = (mount != null && !mount.isEmpty()) ? mount : null;
         return withGitWorkspace(wsId, () -> gitService().fileContent(path, ref));
+    }
+
+    @Get
+    @Mapping("/web/chat/git/history")
+    public Result<Map> gitHistory(@Param(value = "mount", required = false) String mount,
+                                  @Param(value = "limit", required = false) Integer limit) throws Exception {
+        String wsId = (mount != null && !mount.isEmpty()) ? mount : null;
+        final int count = limit == null ? 20 : Math.max(1, Math.min(limit, 50));
+        return withGitWorkspace(wsId, () -> gitService().history(count));
     }
 
     @Post
@@ -1778,7 +2000,7 @@ public class WebController {
 
         try {
             loopScheduler().schedule(sessionId, task);
-        } catch (IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return Result.failure(400, e.getMessage());
         }
 

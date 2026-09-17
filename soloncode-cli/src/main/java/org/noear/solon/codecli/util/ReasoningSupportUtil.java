@@ -40,9 +40,12 @@ import java.util.Map;
  *   <li><b>思考模式</b>（{@link #CTX_THINKING_MODE}）：on|off，映射 {@code options.thinking(true/false)}，
  *       独立于推理强度，不占用 effort 档位；</li>
  *   <li><b>推理强度</b>（{@link #CTX_REASONING_EFFORT}）：auto / low|medium|high|max，映射
- *       {@code options.reasoning_effort(...)}；auto（无 effort 键）时不注入，交给模型 defaultOptions /
+ *       {@code options.reasoning_effort(...)}；auto 时不注入，交给模型 defaultOptions /
  *       Agent Builder / 供应商。</li>
  * </ul>
+ * 优先级：会话显式（含手动选 auto）&gt; 全局默认（设置→通用，由调用方传入 resolve*OrDefault）
+ * &gt; 模型 defaultOptions &gt; 供应商默认。这要求“从未设置”与“手动选回 auto”可分辨，
+ * 故 auto 以 {@link #VALUE_AUTO} 哨兵落入会话而非删键。
  * 历史兼容：旧前端把「关闭思考」编码为 {@code reasoningEffort=none}，写入时自动迁移为
  * thinkingMode=off 并清除 effort 键；读取时若仍遇到 none，同样按 thinking(false) 处理。</p>
  *
@@ -57,6 +60,16 @@ public final class ReasoningSupportUtil {
 
     /** 会话上下文：推理水平 low|medium|high|max */
     public static final String CTX_REASONING_EFFORT = "_reasoning_effort";
+
+    /**
+     * “显式选了 auto”哨兵值。
+     * <p>因为全局默认（设置→通用）会在会话未设置时兵入，必须区分“从未设置”与
+     * “用户手动选回 auto”：前者吃全局默认，后者必须能抵消全局默认。
+     * 旧做法（auto 直接 remove 键）会让两者不可分辨，表现为“选不回 auto”。</p>
+     * <p>读取侧经 {@link #normalizeEffort}/{@link #normalizeThinkingMode} 归一为 null，
+     * 注入语义与旧版完全一致；旧版本读到本哨兵也归一为 null，向前兼容。</p>
+     */
+    public static final String VALUE_AUTO = "auto";
 
     private static final List<String> ALL_EFFORTS = Collections.unmodifiableList(
             Arrays.asList("low", "medium", "high", "max"));
@@ -196,7 +209,8 @@ public final class ReasoningSupportUtil {
      * 写入 ReAct/Chat 模型 options（经 ReasonTask 透传到 ChatModel）。
      * <p>思考模式与推理强度是两个独立维度：</p>
      * <ul>
-     *   <li>thinkingMode=off → {@code options.thinking(false)}，不写 effort（方言层关闭优先）；</li>
+     *   <li>thinkingMode=off → {@code options.thinking(false)}；effort 仍照写（两个维度完全独立，
+     *       矛盾组合的仲裁交给方言层；见 applyToOptions_thinkingOffAndEffortIndependent）；</li>
      *   <li>thinkingMode=on → {@code options.thinking(true)}，再按 effort 写档位；</li>
      *   <li>thinkingMode 未设置 → 兼容旧路径：effort 为 none（旧会话遗留）时按关闭处理，
      *       否则只写 effort（多数方言会因 effort 隐式开启思考）。</li>
@@ -245,24 +259,61 @@ public final class ReasoningSupportUtil {
     }
 
     /**
-     * 写入会话；thinkingMode 传空串/"auto"/null 时清除（不干预，跟随模型/effort 默认）。
+     * 会话是否已显式表态推理强度（含手动选 auto）。
+     * <p>与 {@link #getSessionEffort} 的区别：auto 在那里归一为 null（“不注入”），
+     * 在这里仍算“已表态”（“不吃全局默认”）。</p>
+     */
+    public static boolean hasExplicitEffort(AgentSession session) {
+        return session != null && session.getContext().get(CTX_REASONING_EFFORT) != null;
+    }
+
+    /**
+     * 会话是否已显式表态思考模式（含手动选 auto）。
+     */
+    public static boolean hasExplicitThinkingMode(AgentSession session) {
+        return session != null && session.getContext().get(CTX_THINKING_MODE) != null;
+    }
+
+    /**
+     * 思考模式生效值：会话显式 &gt; 全局默认（设置→通用）。
+     * <p>globalDefault 由调用方传入（不在本类读 settings，保持无状态可单测）。</p>
+     */
+    public static String resolveSessionThinkingOrDefault(AgentSession session, String globalDefault) {
+        if (hasExplicitThinkingMode(session)) {
+            return getSessionThinkingMode(session);
+        }
+        return normalizeThinkingMode(globalDefault);
+    }
+
+    /**
+     * 推理强度生效值：会话显式 &gt; 全局默认（设置→通用），再按模型能力 clamp。
+     * <p>不吃 capability.defaultReasoningEffort：auto 仍不注入，交给模型 defaultOptions /
+     * Agent Builder / 供应商。</p>
+     */
+    public static String resolveSessionEffortOrDefault(AgentSession session, String globalDefault,
+                                                       ModelCapability capability) {
+        String effort = hasExplicitEffort(session)
+                ? getSessionEffort(session)
+                : normalizeEffort(globalDefault);
+        return clampEffort(effort, capability);
+    }
+
+    /**
+     * 写入会话；thinkingMode 传空串/"auto"/null 时记为“显式 auto”（{@link #VALUE_AUTO} 哨兵），
+     * 既不干预模型/effort 默认，也不再吃全局默认。
      */
     public static void putSessionThinkingMode(AgentSession session, String thinkingMode, boolean provided) {
         if (session == null || !provided) {
             return;
         }
         String mode = normalizeThinkingMode(thinkingMode);
-        if (mode == null) {
-            session.getContext().remove(CTX_THINKING_MODE);
-        } else {
-            session.getContext().put(CTX_THINKING_MODE, mode);
-        }
+        session.getContext().put(CTX_THINKING_MODE, mode == null ? VALUE_AUTO : mode);
     }
 
     /**
-     * 写入会话；effort 传空串/"auto"/null 时清除。
+     * 写入会话；effort 传空串/"auto"/null 时记为“显式 auto”（{@link #VALUE_AUTO} 哨兵）。
      * <p>历史兼容：effort=none（旧前端关闭思考的编码）自动迁移为
-     * thinkingMode=off 并清除 effort 键，保证两个维度职责单一。</p>
+     * thinkingMode=off 并把 effort 置为显式 auto，保证两个维度职责单一。</p>
      */
     public static void putSessionEffort(AgentSession session, String reasoningEffort, boolean effortProvided) {
         if (session == null || !effortProvided) {
@@ -270,15 +321,11 @@ public final class ReasoningSupportUtil {
         }
         String effort = normalizeEffort(reasoningEffort);
         if ("none".equals(effort)) {
-            session.getContext().remove(CTX_REASONING_EFFORT);
+            session.getContext().put(CTX_REASONING_EFFORT, VALUE_AUTO);
             session.getContext().put(CTX_THINKING_MODE, "off");
             return;
         }
-        if (effort == null) {
-            session.getContext().remove(CTX_REASONING_EFFORT);
-        } else {
-            session.getContext().put(CTX_REASONING_EFFORT, effort);
-        }
+        session.getContext().put(CTX_REASONING_EFFORT, effort == null ? VALUE_AUTO : effort);
     }
 
     /**

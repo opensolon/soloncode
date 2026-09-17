@@ -12,20 +12,44 @@ function isInputComposing(event) {
     return composing || !!(event && (event.isComposing || event.keyCode === 229));
 }
 
-var ACTIVE_SESSION_KEY = 'soloncode-active-session';
+/* 多工作区隔离：每个工作区有独立的会话恢复 key */
+function getActiveSessionKey() {
+    var ws = (window.wsId && typeof window.wsId === 'function') ? window.wsId() : '';
+    return 'soloncode-active-session' + (ws && ws !== 'workspace' ? '-' + ws : '');
+}
+
+/* 兼容迁移：旧版本无工作区隔离，升级后自动迁移 */
+function _migrateActiveSessionIfNeeded() {
+    var newKey = getActiveSessionKey();
+    var oldKey = 'soloncode-active-session';
+    if (newKey === oldKey) return; // 默认工作区无需迁移
+    try {
+        var oldVal = localStorage.getItem(oldKey);
+        var newVal = localStorage.getItem(newKey);
+        if (oldVal && !newVal) {
+            localStorage.setItem(newKey, oldVal);
+            localStorage.removeItem(oldKey);
+        }
+    } catch (e) {}
+}
+_migrateActiveSessionIfNeeded();
+
 function rememberActiveSession(sessionId) {
-    try { if (sessionId) localStorage.setItem(ACTIVE_SESSION_KEY, sessionId); } catch (e) {}
+    var key = getActiveSessionKey();
+    try { if (sessionId) localStorage.setItem(key, sessionId); } catch (e) {}
 }
 function forgetActiveSession() {
-    try { localStorage.removeItem(ACTIVE_SESSION_KEY); } catch (e) {}
+    var key = getActiveSessionKey();
+    try { localStorage.removeItem(key); } catch (e) {}
 }
 window.rememberActiveSession = rememberActiveSession;
 window.forgetActiveSession = forgetActiveSession;
 
 /* 历史列表加载完成后，尝试恢复上次的活动会话 */
 function restoreActiveSession() {
+    var key = getActiveSessionKey();
     var saved = null;
-    try { saved = localStorage.getItem(ACTIVE_SESSION_KEY); } catch (e) {}
+    try { saved = localStorage.getItem(key); } catch (e) {}
     if (!saved) return;
     for (var i = 0; i < chatHistory.length; i++) {
         if (chatHistory[i].sessionId === saved) {
@@ -203,11 +227,12 @@ function updateHistoryUI() {
                 + pinSvg
                 + '<span>' + (isPinned ? I18n.t('history.unpin') : I18n.t('history.pinConversation')) + '</span></button>'
                 + '<button type="button" class="sidebar-item-rename" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>' + I18n.t('history.rename') + '</span></button>'
-                + '<button type="button" class="sidebar-item-fork" role="menuitem"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.25 2.25 0 1 1-1.5 0v-2.128h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 0 1.5Z"/></svg><span>' + I18n.t('history.copyConversation') + '</span></button>'
-                + '<button type="button" class="sidebar-item-del" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>' + I18n.t('common.delete') + '</span></button>'
+                + '<button type="button" class="sidebar-item-fork" role="menuitem"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.25 2.25 0 1 1-1.5 0v-2.128h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 0 1.5Z"/></svg><span>' + I18n.t('history.forkConversation') + '</span></button>'
+ + '<button type="button" class="sidebar-item-del" role="menuitem">' + SVG_TRASH + '<span>' + I18n.t('common.delete') + '</span></button>'
                 + '</span></span></div>';
         }
         var $list = $(historyList);
+        $('#clearHistoryBtn').prop('disabled', !chatHistory.some(function(entry) { return !entry.isPinned; }));
         // 仅当 HTML 真正变化时才写入 DOM，避免无效重排
         if ($list.html() !== html) {
             $list.html(html);
@@ -268,7 +293,7 @@ function forkSession(idx) {
     if (!entry) return;
 
     layer.confirm(I18n.t('history.forkConfirmMessage'), {
-        title: I18n.t('history.copyConversation'),
+        title: I18n.t('history.forkConversation'),
         btn: [I18n.t('common.copy'), I18n.t('common.cancel')],
         icon: 3,
         offset: '120px'
@@ -290,24 +315,72 @@ function forkSession(idx) {
                 if (newIdx >= 0) selectSession(newIdx);
 
                 if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(I18n.t('history.forkSuccess'), { icon: 1, time: 2000, offset: '120px' });
+                    layer.msg(I18n.t('history.forkSuccess'), { icon: 1, time: 2200, offset: '120px' });
                 }
             } catch (e) {
-                if (typeof layer !== 'undefined' && layer.msg) {
-                    layer.msg(I18n.t('history.forkFailed'), { icon: 2, time: 3000, offset: '120px' });
-                } else {
-                    alert(I18n.t('history.forkFailed'));
-                }
+                    showToast(I18n.t('history.forkFailed'), 'error');
             }
         }).fail(function() {
-            if (typeof layer !== 'undefined' && layer.msg) {
-                layer.msg(I18n.t('history.forkFailed'), { icon: 2, time: 3000, offset: '120px' });
-            } else {
-                alert(I18n.t('history.forkFailed'));
-            }
+            showToast(I18n.t('history.forkFailed'), 'error');
         });
     });
 }
+
+function cleanupSessionState(sessionId) {
+    var sess = sessionMap[sessionId];
+    if (!sess) return;
+    if (sess.eventSource) sess.eventSource.close();
+    if (sess.silenceTimer) clearTimeout(sess.silenceTimer);
+    if (sess.contentRafId) cancelAnimationFrame(sess.contentRafId);
+    if (sess.reasonRafId) cancelAnimationFrame(sess.reasonRafId);
+    $(sess.container).remove();
+    delete sessionMap[sessionId];
+}
+
+function clearUnpinnedSessions() {
+    var removable = chatHistory.filter(function(entry) { return !entry.isPinned; });
+    if (!removable.length) return;
+
+    layer.confirm(I18n.t('history.clearConfirmMessage', { count: removable.length }), {
+        title: I18n.t('history.clearTitle'),
+        btn: [I18n.t('history.clearConfirm'), I18n.t('common.cancel')],
+        icon: 3,
+        offset: '120px'
+    }, function(index) {
+        layer.close(index);
+        var $button = $('#clearHistoryBtn').prop('disabled', true);
+        $.post('/web/chat/sessions/clear', function(resp) {
+            if (!resp || resp.code !== 200) {
+                $button.prop('disabled', false);
+                showToast(I18n.t('history.clearFailed'), 'error');
+                return;
+            }
+            var deleted = (resp.data && resp.data.deletedSessionIds) || [];
+            var deletedSet = {};
+            for (var i = 0; i < deleted.length; i++) deletedSet[deleted[i]] = true;
+            var oldActive = activeSessionId;
+            for (var d = 0; d < deleted.length; d++) cleanupSessionState(deleted[d]);
+            chatHistory = chatHistory.filter(function(entry) { return !deletedSet[entry.sessionId]; });
+            currentChatIndex = -1;
+            for (var ci = 0; ci < chatHistory.length; ci++) {
+                if (chatHistory[ci].sessionId === oldActive) { currentChatIndex = ci; break; }
+            }
+            if (deletedSet[oldActive]) switchToWelcomeMode();
+            if (deletedSet[SESSION_ID]) forgetActiveSession();
+            updateHistoryUI();
+            showToast(I18n.t('history.clearSuccess', { count: deleted.length }), 'success');
+        }).fail(function() {
+            $button.prop('disabled', false);
+            showToast(I18n.t('history.clearFailed'), 'error');
+        });
+    });
+}
+
+$('#clearHistoryBtn').on('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearUnpinnedSessions();
+});
 
 function deleteSession(idx) {
     var entry = chatHistory[idx];
@@ -317,15 +390,7 @@ function deleteSession(idx) {
         layer.close(index);
         $.post('/web/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId), function() {
         /* Clean up session state after server confirms */
-        var sess = sessionMap[entry.sessionId];
-        if (sess) {
-            if (sess.eventSource) sess.eventSource.close();
-            if (sess.silenceTimer) clearTimeout(sess.silenceTimer);
-            if (sess.contentRafId) cancelAnimationFrame(sess.contentRafId);
-            if (sess.reasonRafId) cancelAnimationFrame(sess.reasonRafId);
-            $(sess.container).remove();
-            delete sessionMap[entry.sessionId];
-        }
+        cleanupSessionState(entry.sessionId);
 
         chatHistory.splice(idx, 1);
 
@@ -338,11 +403,7 @@ function deleteSession(idx) {
 
         updateHistoryUI();
     }).fail(function () {
-        if (typeof layer !== 'undefined' && layer.msg) {
-            layer.msg(I18n.t('history.deleteFailed'), { icon: 2, time: 3000, offset: '120px' });
-        } else {
-            alert(I18n.t('history.deleteFailed'));
-        }
+            showToast(I18n.t('history.deleteFailed'), 'error');
     });
     });
 }
@@ -360,11 +421,7 @@ function togglePin(idx) {
         entry.isPinned = newPinned;
         updateHistoryUI();
     }).fail(function() {
-        if (typeof layer !== 'undefined' && layer.msg) {
-            layer.msg(I18n.t('history.operateFailedRetry'), { icon: 2, time: 3000, offset: '120px' });
-        } else {
-            alert(I18n.t('history.operateFailedRetry'));
-        }
+            showToast(I18n.t('history.operateFailedRetry'), 'error');
     });
 }
 
@@ -594,35 +651,93 @@ var $newChatCmdComplete = $('#newChatCmdComplete');
 var $chatCmdComplete = $('#chatCmdComplete');
 var cmdActiveIndex = -1;
 var cmdVisibleItems = [];
+var cmdTokenContext = null;
 
 function getActiveCmdComplete() {
     return inChatMode ? $chatCmdComplete[0] : $newChatCmdComplete[0];
 }
 
+function isCompletionNameChar(ch) {
+    return !!ch && /[A-Za-z0-9._-]/.test(ch);
+}
+
 /**
- * 关闭所有工具栏弹出面板（互斥核心）
- * 包括：命令补全、输入历史、循环任务、模型下拉
+ * 定位光标所在的补全 token。
+ * / 只允许位于整条输入开头；@agent 与 $skill 可在正文 token 边界重复出现。
+ */
+function findCompletionToken(value, cursorPos) {
+    var val = value || '';
+    var cursor = (typeof cursorPos === 'number') ? cursorPos : val.length;
+    cursor = Math.max(0, Math.min(cursor, val.length));
+    var beforeCursor = val.substring(0, cursor);
+    var trigger = '';
+    var start = -1;
+
+    if (val.charAt(0) === '/' && beforeCursor.charAt(0) === '/' && !/\s/.test(beforeCursor)) {
+        trigger = '/';
+        start = 0;
+    } else {
+        // 空白及常见中英文标点均可作为行内提及边界；邮箱、变量名等不会误触发。
+        var match = beforeCursor.match(/(^|[\s,，。；;:：、(\[{'"“‘])([@$])([A-Za-z0-9._-]*)$/);
+        if (!match) return null;
+        trigger = match[2];
+        start = cursor - match[2].length - match[3].length;
+    }
+
+    var end = cursor;
+    while (end < val.length && isCompletionNameChar(val.charAt(end))) end++;
+    return {
+        trigger: trigger,
+        start: start,
+        end: end,
+        prefix: val.substring(start, cursor)
+    };
+}
+
+function replaceCompletionToken(value, context, name) {
+    if (!context || context.start < 0 || context.end < context.start) return null;
+    var val = value || '';
+    var replacement = context.trigger + name;
+    var before = val.substring(0, context.start);
+    var after = val.substring(context.end);
+    // 末尾补全后留一个空格便于继续输入；已有空白或结束标点时不制造双空格。
+    var separator = (!after || !/^[\s,，。；;:：、!?！？)\]}”’]/.test(after)) ? ' ' : '';
+    return {
+        value: before + replacement + separator + after,
+        cursor: before.length + replacement.length + separator.length
+    };
+}
+
+/**
+ * 关闭所有输入区弹出面板（互斥核心）
+ * 包括：命令补全、输入历史、循环任务、任务排队、模型与子代理下拉
  */
 function closeAllToolbarPanels() {
-    // 命令补全
     hideCmdComplete();
-    // 输入历史
     if (typeof $chatHistoryPanel !== 'undefined' && $chatHistoryPanel) $chatHistoryPanel.removeClass('show');
-    // 循环任务面板
-    $('#chatLoopPanel, #newChatLoopPanel').hide();
-    // 模型下拉
+    if (typeof window.hideLoopPanel === 'function') window.hideLoopPanel();
+    else $('#chatLoopPanel, #newChatLoopPanel').hide();
+    if (typeof window.collapseQueueDock === 'function') window.collapseQueueDock();
     $('#chatModelSelector, #newChatModelSelector').removeClass('open');
-    // 子代理下拉
     $('#chatAgentSelector, #newChatAgentSelector').removeClass('open');
-    // 更多菜单
     $('#chatMoreMenu, #newChatMoreMenu').removeClass('open');
+    $('#chatModelCurrent, #newChatModelCurrent, #chatAgentCurrent, #newChatAgentCurrent, #chatMoreBtn, #newChatMoreBtn')
+        .attr('aria-expanded', 'false');
 }
 window.closeAllToolbarPanels = closeAllToolbarPanels;
 
-function showCmdComplete(inputEl, completeEl, prefix) {
-    if (!commandsLoaded || commandList.length === 0) return;
+function hasOpenToolbarPanel() {
+    return $('.cmd-complete.show, .history-panel.show, #chatLoopPanel:visible, #newChatLoopPanel:visible, .model-selector.open, .agent-selector.open, .more-menu.open').length > 0
+        || (typeof window.isQueueDockExpanded === 'function' && window.isQueueDockExpanded());
+}
+window.hasOpenToolbarPanel = hasOpenToolbarPanel;
+
+function showCmdComplete(inputEl, completeEl, tokenContext) {
+    if (!commandsLoaded || commandList.length === 0 || !tokenContext) return;
     closeAllToolbarPanels();
-    var trigger = prefix.charAt(0);
+    cmdTokenContext = tokenContext;
+    var prefix = tokenContext.prefix;
+    var trigger = tokenContext.trigger;
     var query = prefix.substring(1).toLowerCase();
     var filterType = (trigger === '@') ? 'subagent' : (trigger === '$') ? 'skill' : 'command';
     cmdVisibleItems = [];
@@ -642,7 +757,7 @@ function showCmdComplete(inputEl, completeEl, prefix) {
         if (cmd.name.toLowerCase().indexOf(query) === 0 || query.length === 0) {
             cmdVisibleItems.push(cmd);
             var nameClass = (trigger === '@') ? 'cmd-name subagent' : (trigger === '$') ? 'cmd-name skill' : 'cmd-name';
-            html += '<div class="cmd-complete-item" data-index="' + (cmdVisibleItems.length - 1) + '">'
+            html += '<div class="cmd-complete-item" data-index="' + (cmdVisibleItems.length - 1) + '" data-base-index="' + (cmdVisibleItems.length - 1) + '">'
                 + '<span class="' + nameClass + '">' + escapeHtml(trigger + cmd.name) + '</span>'
                 + '<span class="cmd-desc">' + escapeHtml(cmd.description || '') + '</span>'
                 + '</div>';
@@ -660,6 +775,7 @@ function showCmdComplete(inputEl, completeEl, prefix) {
 
     // Bind search for skills
     if (filterType === 'skill') {
+        var allSkillItems = cmdVisibleItems.slice();
         var $searchInput = $(completeEl).find('.cmd-search-input');
         if ($searchInput.length) {
             $searchInput.on('input', function() {
@@ -671,7 +787,7 @@ function showCmdComplete(inputEl, completeEl, prefix) {
                     var name = $item.find('.cmd-name').text().toLowerCase().replace(/^\$/, '');
                     if (!q || name.indexOf(q) >= 0) {
                         $item.show();
-                        newVisible.push(cmdVisibleItems[parseInt($item.attr('data-index'))]);
+                        newVisible.push(allSkillItems[parseInt($item.attr('data-base-index'))]);
                     } else {
                         $item.hide();
                     }
@@ -709,51 +825,26 @@ function hideCmdComplete() {
     cmdActiveIndex = -1;
     cmdVisibleItems = [];
     cmdTrigger = null;
+    cmdTokenContext = null;
 }
 
 function applyCmdSelection(inputEl, completeEl) {
-    if (cmdActiveIndex >= 0 && cmdActiveIndex < cmdVisibleItems.length) {
+    if (cmdActiveIndex >= 0 && cmdActiveIndex < cmdVisibleItems.length && cmdTokenContext) {
+        // 鼠标/方向键移动光标不会触发 input 事件，选择时必须重新定位 token，避免使用旧上下文。
+        var currentContext = findCompletionToken(inputEl.value, inputEl.selectionStart);
+        if (!currentContext || currentContext.trigger !== cmdTokenContext.trigger
+                || currentContext.start !== cmdTokenContext.start) {
+            hideCmdComplete();
+            return;
+        }
+
         var cmd = cmdVisibleItems[cmdActiveIndex];
-        var trigger = cmdTrigger || '/';
-
-        // 找到当前输入框中的命令前缀位置
-        var val = inputEl.value;
-        var prefixPos = -1;
-
-        // 查找最近的命令前缀（/、@ 或 $）
-        for (var i = val.length - 1; i >= 0; i--) {
-            var ch = val.charAt(i);
-            if (ch === '/' || ch === '@' || ch === '$') {
-                prefixPos = i;
-                break;
-            }
+        var result = replaceCompletionToken(inputEl.value, currentContext, cmd.name);
+        if (result) {
+            inputEl.value = result.value;
+            inputEl.setSelectionRange(result.cursor, result.cursor);
+            autoResize(inputEl);
         }
-
-        if (prefixPos >= 0) {
-            // 替换前缀及其后面的内容
-            var textBefore = val.substring(0, prefixPos);
-            var textAfter = val.substring(prefixPos);
-
-            // 找到前缀后面的空格位置（如果有）
-            var spaceIndex = textAfter.indexOf(' ');
-            var argsStr = '';
-            if (spaceIndex >= 0) {
-                argsStr = textAfter.substring(spaceIndex);
-            }
-
-            // 构建新的值（命令/技能/子代理名称后追加空格）
-            inputEl.value = textBefore + trigger + cmd.name + ' ' + argsStr;
-
-            // 更新光标位置到命令和空格后面
-            var newCursorPos = textBefore.length + trigger.length + cmd.name.length + 1;
-            inputEl.setSelectionRange(newCursorPos, newCursorPos);
-        } else {
-            // 如果没有找到前缀，直接在开头插入
-            inputEl.value = trigger + cmd.name + ' ' + val;
-            inputEl.setSelectionRange(trigger.length + cmd.name.length + 1, trigger.length + cmd.name.length + 1);
-        }
-
-        autoResize(inputEl);
     }
     hideCmdComplete();
 }
@@ -766,7 +857,7 @@ function navigateCmdComplete(e, inputEl, completeEl) {
 
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        var $items = $completeEl.find('.cmd-complete-item');
+        var $items = $completeEl.find('.cmd-complete-item:visible');
         if ($items.length === 0) return true;
 
         // Remove old active
@@ -802,18 +893,10 @@ function navigateCmdComplete(e, inputEl, completeEl) {
 function handleInputForCommands(e) {
     var inputEl = e.target;
     var completeEl = (inputEl === newChatInput) ? $newChatCmdComplete[0] : $chatCmdComplete[0];
-    var val = inputEl.value;
+    var tokenContext = findCompletionToken(inputEl.value, inputEl.selectionStart);
 
-    if (val.indexOf('/') === 0 || val.indexOf('@') === 0 || val.indexOf('$') === 0) {
-        // Only show completion when cursor is at the command/agent/skill name part (no spaces yet)
-        var cursorPos = inputEl.selectionStart;
-        var textBeforeCursor = val.substring(0, cursorPos);
-        var spaceIndex = textBeforeCursor.indexOf(' ');
-        if (spaceIndex === -1) {
-            showCmdComplete(inputEl, completeEl, textBeforeCursor);
-        } else {
-            hideCmdComplete();
-        }
+    if (tokenContext) {
+        showCmdComplete(inputEl, completeEl, tokenContext);
     } else {
         hideCmdComplete();
         if ($chatHistoryPanel.hasClass('show')) {
@@ -832,22 +915,32 @@ $('#chatHistoryBtn').on('click', function(e) {
     }
 });
 
-// Command & Agent button handlers
+// Command, Agent & Skill button handlers
 function triggerCmdComplete(inputEl, completeEl, prefix) {
-    // 保存当前光标位置
-    var cursorPos = inputEl.selectionStart;
-    var textBefore = inputEl.value.substring(0, cursorPos);
-    var textAfter = inputEl.value.substring(cursorPos);
+    var val = inputEl.value || '';
+    var selectionStart = (typeof inputEl.selectionStart === 'number') ? inputEl.selectionStart : val.length;
+    var selectionEnd = (typeof inputEl.selectionEnd === 'number') ? inputEl.selectionEnd : selectionStart;
 
-    // 在光标位置插入前缀（命令/子代理/技能符号后追加空格）
-    inputEl.value = textBefore + prefix + ' ' + textAfter;
-
-    // 更新光标位置到前缀和空格后面
-    var newCursorPos = cursorPos + prefix.length + 1;
-    inputEl.setSelectionRange(newCursorPos, newCursorPos);
+    if (prefix === '/') {
+        // 斜杠命令只在空输入中成立，避免把正文改造成不可执行的“行内命令”。
+        if (val.trim()) {
+            inputEl.focus();
+            return;
+        }
+        inputEl.value = '/';
+        inputEl.setSelectionRange(1, 1);
+    } else {
+        var before = val.substring(0, selectionStart);
+        var after = val.substring(selectionEnd);
+        var boundary = before && !/[\s,，。；;:：、(\[{'"“‘]$/.test(before) ? ' ' : '';
+        inputEl.value = before + boundary + prefix + after;
+        var cursorPos = before.length + boundary.length + prefix.length;
+        inputEl.setSelectionRange(cursorPos, cursorPos);
+    }
 
     inputEl.focus();
-    showCmdComplete(inputEl, completeEl, prefix);
+    var tokenContext = findCompletionToken(inputEl.value, inputEl.selectionStart);
+    showCmdComplete(inputEl, completeEl, tokenContext);
 }
 $('#newChatCmdBtn, #chatCmdBtn').on('click', function() {
     var isWelcome = this.id.indexOf('newChat') === 0;
@@ -897,7 +990,13 @@ $(newChatInput).on('keydown', function(e) {
 $(chatInput).on('keydown', function(e) {
     // 输入法正在组合中（如拼音选词），不触发发送
     if (isInputComposing(e)) return;
-    // ESC：输入为空时取消队尾并回填
+    // Esc 优先关闭当前可见面板，避免误删队尾消息
+    if (e.key === 'Escape' && hasOpenToolbarPanel()) {
+        e.preventDefault();
+        closeAllToolbarPanels();
+        return;
+    }
+    // 没有浮层时，空输入 Esc 才取消队尾并回填
     if (e.key === 'Escape') {
         var escSess = activeSessionId && sessionMap[activeSessionId];
         if (escSess && escSess.messageQueue && escSess.messageQueue.length
