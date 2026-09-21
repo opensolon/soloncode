@@ -299,7 +299,7 @@ public class WebEventMapper {
                 .name(toolName)
                 .title(toolTitle)
                 .result(event.getText())
-                .isError(false)
+                .isError(event.isError())
                 .args(event.getArgs())
                 .build());
     }

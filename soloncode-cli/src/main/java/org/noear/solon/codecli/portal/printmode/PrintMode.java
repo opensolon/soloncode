@@ -868,7 +868,7 @@ public class PrintMode {
         ONode contentBlock = new ONode();
         contentBlock.set("type", "tool_result");
         contentBlock.set("tool_use_id", obs.getCallId());
-        contentBlock.set("is_error", obs.getError() != null);
+        contentBlock.set("is_error", obs.isError());
         if (obs.getError() != null) {
             contentBlock.set("content", obs.getError().getMessage());
         } else if (Assert.isNotEmpty(obs.getText())) {
