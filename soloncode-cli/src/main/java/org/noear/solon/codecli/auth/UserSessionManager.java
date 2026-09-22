@@ -1,6 +1,8 @@
 package org.noear.solon.codecli.auth;
 
+import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
+import org.noear.snack4.Options;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,6 +136,19 @@ public class UserSessionManager {
         return list;
     }
     
+    /**
+     * 统计当前活跃（未过期）会话数
+     */
+    public int getActiveSessionCount() {
+        int count = 0;
+        for (UserSession session : sessionMap.values()) {
+            if (!session.isExpired()) {
+                count++;
+            }
+        }
+        return count;
+    }
+    
     private String generateToken() {
         byte[] bytes = new byte[config != null ? config.getSessionTokenLength() : 32];
         RANDOM.nextBytes(bytes);
@@ -174,8 +189,8 @@ public class UserSessionManager {
         try {
             // 清理过期会话
             sessionMap.values().removeIf(UserSession::isExpired);
-            
-            ONode arr = new ONode().asArray();
+
+            ONode arr = new ONode(Options.of(Feature.Write_PrettyFormat)).asArray();
             for (UserSession session : sessionMap.values()) {
                 ONode item = new ONode().asObject();
                 item.set("token", session.getToken());

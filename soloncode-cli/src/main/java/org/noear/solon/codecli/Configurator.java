@@ -263,6 +263,14 @@ public class Configurator {
         
         addWebBean(new UserLoginController(userStore, userSessionManager, userAuthConfig));
         addWebBean(new UserAuthController(userStore, userSessionManager, userAuthConfig, agentSettings));
+        addWebBean(new AdminController(userStore, userSessionManager, userAuthConfig, agentSettings));
+
+        // 用户认证过滤器（会话校验 + 管理员路径角色鉴权）。
+        // 不能用注解注册（否则非 web/serve 模式也会启动），故在此手动装配，
+        // 依靠容器注入 UserAuthConfig / UserSessionManager。
+        UserAuthFilter userAuthFilter = new UserAuthFilter();
+        Solon.context().beanInject(userAuthFilter);
+        Solon.app().router().filter(userAuthFilter);
 
         BeanWrap webChannel = Solon.context().wrapAndPut(WebChannel.class, new WebChannel(workspaceManager));
         Solon.app().router().add(webChannel);

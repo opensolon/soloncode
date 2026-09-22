@@ -407,6 +407,35 @@ public class WebController {
     }
 
     /**
+     * 管理员面板入口：将 /admin 请求转发到静态页面 admin.html。
+     *
+     * <p>准入控制（role=admin）由 {@code UserAuthFilter} 统一负责，本方法不做鉴权判断。</p>
+     *
+     * @param ctx Solon 请求上下文
+     * @throws Throwable 转发异常
+     */
+    @Get
+    @Mapping("/admin")
+    public void admin(Context ctx) throws Throwable {
+        ctx.forward("/admin.html");
+    }
+
+    /**
+     * 登录页入口：将 /login 请求转发到静态页面 login-page.html。
+     *
+     * <p>登录页不再以 /login.html 直接暴露，统一通过 /login 访问，
+     * 保证入口地址稳定、与静态文件名解耦。</p>
+     *
+     * @param ctx Solon 请求上下文
+     * @throws Throwable 转发异常
+     */
+    @Get
+    @Mapping("/login")
+    public void login(Context ctx) throws Throwable {
+        ctx.forward("/login-page.html");
+    }
+
+    /**
      * 前端脚本清单：返回所有已加载扩展登记的前端脚本 URL，前端据此动态注入。
      * 各扩展在自己的 Plugin.start() 中向系统属性 "soloncode.frontend.scripts" 追加自身脚本地址，
      * 核心对此无感知。

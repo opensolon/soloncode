@@ -1,6 +1,8 @@
 package org.noear.solon.codecli.auth;
 
+import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
+import org.noear.snack4.Options;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -164,9 +166,8 @@ public class FileUserStore implements UserStore {
     
     private synchronized void saveToFile() {
         try {
-            ONode root = new ONode().asObject();
             // We'll store as an array
-            ONode arr = new ONode().asArray();
+            ONode arr = new ONode(Options.of(Feature.Write_PrettyFormat)).asArray();
             for (UserEntity user : userMap.values()) {
                 if ("admin".equals(user.getUsername()) && user.getPasswordHash() == null) {
                     continue; // skip incomplete admin

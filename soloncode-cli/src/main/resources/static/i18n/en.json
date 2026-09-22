@@ -282,6 +282,7 @@
   "gitdiff.unstaging": "Unstaging",
   "gitdiff.videoNotSupported": "Your browser does not support video playback.",
   "gitdiff.workspace": "Workspace",
+  "header.admin": "Admin Console",
   "header.dingtalk": "DingTalk",
   "header.feishu": "Feishu",
   "header.switchToDark": "Switch to Dark",

@@ -40,7 +40,7 @@ public class UserAuthFilter implements Filter {
         "/web/user/login",
         "/web/user/logout",
         "/web/user/me",
-        "/login.html",
+        "/login",
         "/web.html",
         "/web/chat/meta"
     ));
@@ -49,6 +49,44 @@ public class UserAuthFilter implements Filter {
     private static final Set<String> STATIC_PREFIXES = new HashSet<>(Arrays.asList(
         "/css/", "/js/", "/layui/", "/highlight/", "/img/", "/skin/", "/favicon.ico"
     ));
+    
+    /**
+     * 管理员专属路径前缀。命中这些前缀的请求必须由 role=admin 的会话访问，
+     * 否则返回 403（API）或重定向到首页（页面）。
+     * 
+     * <p>这是权限地基：即使前端隐藏了入口，普通用户仍可能直接调用管理 API，
+     * 因此拦截必须在服务端完成。</p>
+     */
+    private static final String[] ADMIN_PATH_PREFIXES = {
+        "/web/settings/user-auth/", // 用户管理 API
+        "/web/admin/",              // 管理员面板专属 API 命名空间
+        "/admin"                    // 管理员面板页面入口
+    };
+    
+    /** 管理员角色标识 */
+    private static final String ROLE_ADMIN = "admin";
+    
+    /** 判断路径是否属于管理员专属路径（包后可测）。 */
+    static boolean isAdminPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        for (String prefix : ADMIN_PATH_PREFIXES) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /** 判断角色是否为管理员（包后可测）。 */
+    static boolean isAdminRole(String role) {
+        return ROLE_ADMIN.equals(role);
+    }
+    
+    private static boolean isAdmin(UserSessionManager.UserSession session) {
+        return session != null && isAdminRole(session.getRole());
+    }
     
     @Override
     public void doFilter(Context ctx, FilterChain chain) throws Throwable {
@@ -85,7 +123,18 @@ public class UserAuthFilter implements Filter {
                 return;
             }
             // 页面请求重定向到登录页
-            ctx.redirect("/login.html");
+            ctx.redirect("/login");
+            return;
+        }
+        
+        // 管理员路径鉴权：命中管理员前缀且非 admin 会话时拒绝
+        if (isAdminPath(path) && !isAdmin(session)) {
+            if (path.startsWith("/web/")) {
+                responseForbidden(ctx);
+            } else {
+                // 页面请求：无权限时回到首页
+                ctx.redirect("/");
+            }
             return;
         }
         
@@ -96,6 +145,12 @@ public class UserAuthFilter implements Filter {
         ctx.attrSet("user_role", session.getRole());
         
         chain.doFilter(ctx);
+    }
+    
+    private void responseForbidden(Context ctx) throws IOException {
+        ctx.status(403);
+        ctx.headerSet("Content-Type", "application/json");
+        ctx.output("{\"code\":403,\"message\":\"需要管理员权限\"}");
     }
     
     private void responseUnauthorized(Context ctx) throws IOException {

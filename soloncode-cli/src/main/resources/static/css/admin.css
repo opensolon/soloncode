@@ -1,0 +1,315 @@
+/**
+ * admin.css — 管理员控制台布局
+ *
+ * 复用 theme.css / settings.css 的视觉语言（CSS 变量、卡片、表单），
+ * 仅补充控制台专属的骨架布局：顶栏 + 左侧导航 + 右侧内容区。
+ */
+
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body.admin-body {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* ===== 顶栏 ===== */
+.admin-topbar {
+    display: flex;
+    align-items: center;
+    height: 54px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary, var(--bg-primary));
+    flex-shrink: 0;
+    gap: 12px;
+}
+
+.admin-topbar-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+}
+
+.admin-topbar-title {
+    font-size: var(--fs-lg, 16px);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.admin-topbar-spacer {
+    flex: 1;
+}
+
+.admin-topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.admin-topbar-user .user-role-tag {
+    font-size: var(--fs-2xs);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+.admin-topbar-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: none;
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    text-decoration: none;
+}
+
+.admin-topbar-back:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ===== 主体：左导航 + 右内容 ===== */
+.admin-main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.admin-nav {
+    width: 220px;
+    border-right: 1px solid var(--border-color);
+    padding: 12px 0;
+    overflow-y: auto;
+    flex-shrink: 0;
+    background: var(--bg-secondary, var(--bg-primary));
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-nav-group-title {
+    padding: 16px 16px 8px;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.admin-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% - 16px);
+    margin: 2px 8px;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-primary);
+    font-size: var(--fs-base);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    text-align: left;
+}
+
+.admin-nav-item:hover {
+    background: var(--bg-hover, rgba(127,127,127,0.08));
+}
+
+.admin-nav-item.active {
+    background: var(--accent-fill, var(--accent));
+    color: #fff;
+}
+
+.admin-nav-item.disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.admin-nav-item .admin-nav-icon {
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+.admin-nav-item .admin-nav-soon {
+    margin-left: auto;
+    font-size: var(--fs-2xs);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0 5px;
+}
+
+.admin-nav-footer {
+    margin-top: auto;
+    padding: 12px 16px;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+}
+
+.admin-content {
+    flex: 1;
+    padding: 24px 28px;
+    overflow-y: auto;
+    min-width: 0;
+}
+
+/* ===== 概览卡片 ===== */
+.admin-overview-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.admin-stat-card {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 18px;
+    background: var(--bg-input-box, var(--bg-primary));
+}
+
+.admin-stat-card-label {
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.admin-stat-card-value {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ===== 引导/无权限状态 ===== */
+.admin-guard-state {
+    max-width: 520px;
+    margin: 80px auto;
+    text-align: center;
+}
+
+.admin-guard-state h2 {
+    font-size: var(--fs-xl, 20px);
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+.admin-guard-state p {
+    color: var(--text-secondary);
+    font-size: var(--fs-base);
+    margin-bottom: 20px;
+}
+
+.admin-content-title {
+    font-size: var(--fs-xl, 20px);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 4px;
+}
+
+.admin-content-desc {
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    margin-bottom: 8px;
+}
+
+/* ===== 实例自举：独立全屏初始化页 ===== */
+/* 认证未启用时进入，此时无用户/角色体系，导航为空。
+   隐藏侧栏与顶栏多余元素，把向导做成居中的独立引导页。 */
+body.admin-setup-mode .admin-nav {
+    display: none;
+}
+
+body.admin-setup-mode .admin-topbar-user,
+body.admin-setup-mode .admin-topbar-back {
+    display: none;
+}
+
+.admin-setup {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: 40px 20px;
+    box-sizing: border-box;
+}
+
+.admin-setup-card {
+    width: 900px;
+    max-width: 95%;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--bg-input-box, var(--bg-secondary, var(--bg-primary)));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+}
+
+.admin-setup-head {
+    padding: 28px 28px 20px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.admin-setup-title {
+    font-size: var(--fs-xl, 20px);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 8px;
+}
+
+.admin-setup-desc {
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.admin-setup-body {
+    padding: 24px 28px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.admin-setup-body .general-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.admin-setup-body .general-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.admin-setup-error {
+    color: var(--danger, #e54545);
+    font-size: var(--fs-sm);
+    margin: -4px 0 0;
+}
+
+.admin-setup-submit {
+    width: 100%;
+    margin-top: 4px;
+    padding: 10px;
+    font-size: var(--fs-base);
+}

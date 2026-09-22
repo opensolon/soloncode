@@ -38,7 +38,7 @@ public class WebAuthFilter implements Filter {
                 || path.equals("/favicon.ico")
                 || path.startsWith("/web/user/")
                 || path.startsWith("/web/run") // 自带 Bearer token 校验（RunTokenService），不走 Basic Auth
-                || path.equals("/login.html")) {
+                || path.equals("/login")) {
             chain.doFilter(ctx);
             return;
         }

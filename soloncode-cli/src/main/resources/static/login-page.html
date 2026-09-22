@@ -74,8 +74,8 @@
                     if (resp.code === 200 && resp.data) {
                         // 保存 token 到 cookie
                         document.cookie = 'user_token=' + resp.data.token + '; path=/; max-age=' + (7 * 24 * 3600);
-                        // 跳转到首页
-                        window.location.href = '/';
+                        // 管理员登录后进入管理后台，普通用户进入工作台
+                        window.location.href = (resp.data.role === 'admin') ? '/admin' : '/';
                     } else {
                         showError(resp.description || '登录失败，请检查用户名和密码');
                     }

@@ -565,6 +565,10 @@ public class AgentSettings implements Serializable {
             }
         });
 
+        // userAuth 是实例级全局配置（认证开关/模式/DB/LDAP/会话），
+        // 只写入 global settings.json；否则自举开启认证后重启会丢失，导致每次进 /admin 又弹初始化向导。
+        oNode.getOrNew("userAuth").fill(userAuth);
+
         return oNode.toJson();
     }
 

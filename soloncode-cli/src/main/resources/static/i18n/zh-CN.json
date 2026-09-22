@@ -282,6 +282,7 @@
   "gitdiff.unstaging": "移出中",
   "gitdiff.videoNotSupported": "您的浏览器不支持视频播放。",
   "gitdiff.workspace": "工作区",
+  "header.admin": "管理控制台",
   "header.dingtalk": "钉钉绑定",
   "header.feishu": "飞书绑定",
   "header.switchToDark": "切换至暗色",

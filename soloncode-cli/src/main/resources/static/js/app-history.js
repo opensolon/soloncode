@@ -1555,6 +1555,7 @@ function renderModelUI() {
             + '</div>';
     }
     $('#chatModelCurrent, #newChatModelCurrent').toggleClass('is-empty', isEmpty);
+    $('#chatModelSelector, #newChatModelSelector').closest('.model-selector-group').toggleClass('is-empty', isEmpty);
     $chatDropdown.find('.model-search-input').toggle(!isEmpty);
     $newChatDropdown.find('.model-search-input').toggle(!isEmpty);
     $chatDropdown.find('.model-dropdown-items').html(html);

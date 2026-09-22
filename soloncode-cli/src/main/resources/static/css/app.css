@@ -3496,7 +3496,8 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .onboarding-home-skip-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ===== 模型选择器空状态 ===== */
-.model-selector-current.is-empty .model-name { color: #e74c3c; }
+.model-selector-current.is-empty .model-name,
+.model-selector-group.is-empty > .toolbar-setting-icon { color: #e74c3c; }
 .model-empty-state { padding: 18px 12px; text-align: center; }
 .model-empty-title { font-size: var(--fs-base); font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
 .model-empty-desc { font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom: 12px; }

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>管理控制台 - SolonCode</title>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link rel="shortcut icon" type="image/x-icon" href="/img/favicon.png"/>
+    <link rel="stylesheet" href="/layui/css/layui.css"/>
+    <link rel="stylesheet" href="/css/theme.css"/>
+    <link rel="stylesheet" href="/css/settings.css"/>
+    <link rel="stylesheet" href="/css/admin.css"/>
+    <script>window._i18nVer = '20260802';</script>
+    <script src="/js/i18n.js"></script>
+    <link rel="stylesheet" id="skinStyle" href="/skin/default/skin.css"/>
+</head>
+<body class="admin-body" data-theme="light">
+    <script>
+        // 与 web.html 一致：主题变量仅定义在 [data-theme] 下，未设则全部变量为空、
+        // 导致边框/背景失效。在渲染前尽早从 localStorage 读取用户主题、避免闪白。
+        (function () {
+            try {
+                var t = localStorage.getItem('chat-theme') || 'light';
+                document.body.setAttribute('data-theme', t);
+            } catch (e) { /* localStorage 不可用时保留默认 light */ }
+        })();
+    </script>
+    <div class="admin-topbar">
+        <img src="/img/favicon.png" alt="SolonCode" class="admin-topbar-logo"/>
+        <span class="admin-topbar-title">SolonCode 管理控制台</span>
+        <div class="admin-topbar-spacer"></div>
+        <span class="admin-topbar-user" id="adminUserInfo"></span>
+        <a class="admin-topbar-back" href="/">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            返回工作台
+        </a>
+    </div>
+    <div class="admin-main">
+        <nav class="admin-nav" id="adminNav"></nav>
+        <div class="admin-content" id="adminContent"></div>
+    </div>
+
+    <script src="/layui/layui.js"></script>
+    <script>window.$ = layui.$;</script>
+    <script>
+        // app-settings-users.js 所需的最小全局依赖（避免引入 app-base.js 对 web.html DOM 的耦合）
+        var SVG_TRASH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+        window.showToast = function (msg, type) {
+            if (typeof layer !== 'undefined' && layer.msg) {
+                layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' });
+            } else {
+                alert(msg);
+            }
+        };
+    </script>
+    <script src="/js/app-settings-users.js"></script>
+    <script src="/js/admin-modules.js"></script>
+    <script src="/js/admin.js"></script>
+</body>
+</html>
