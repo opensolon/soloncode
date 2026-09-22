@@ -85,6 +85,12 @@ body.admin-body {
     color: var(--accent);
 }
 
+/* 退出登录：沿用返回按钮的尺寸，悬停时用警示色区分于普通导航 */
+.admin-topbar-logout:hover {
+    border-color: var(--danger, #e5484d);
+    color: var(--danger, #e5484d);
+}
+
 /* ===== 主体：左导航 + 右内容 ===== */
 .admin-main {
     flex: 1;
@@ -240,7 +246,8 @@ body.admin-setup-mode .admin-nav {
 }
 
 body.admin-setup-mode .admin-topbar-user,
-body.admin-setup-mode .admin-topbar-back {
+body.admin-setup-mode .admin-topbar-back,
+body.admin-setup-mode .admin-topbar-logout {
     display: none;
 }
 

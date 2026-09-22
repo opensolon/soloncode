@@ -61,6 +61,24 @@ public class WorkspaceRemoveWebContractTest {
                 "主目录锁定模式必须放行 Layui 确认框及遮罩，否则删除操作会等待不可见的确认框");
     }
 
+    @Test
+    void workspaceList_showsLoginGuideWhenUnauthenticated() throws IOException {
+        String html = resourceText("/static/web.html");
+
+        assertTrue(html.contains("if (o.status === 401 || res.code === 401)"),
+                "认证已启用但未登录时列表接口返回 401，必须识别并走登录引导分支");
+        assertTrue(html.contains("function showLoginRequired()"),
+                "必须有展示登录引导的处理，而非误导性的空态");
+        assertTrue(html.contains("id=\"wsHomeLogin\""),
+                "工作区面板必须内置登录引导元素");
+        assertTrue(html.contains("window.location.href = '/login'"),
+                "登录引导按钮必须跳转到 /login");
+
+        String css = resourceText("/static/css/ws-home.css");
+        assertTrue(css.contains(".ws-home-login"),
+                "登录引导必须有对应样式");
+    }
+
     private String resourceText(String path) throws IOException {
         InputStream input = WorkspaceRemoveWebContractTest.class.getResourceAsStream(path);
         if (input == null) {

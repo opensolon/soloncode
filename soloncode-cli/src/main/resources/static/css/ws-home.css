@@ -185,4 +185,48 @@ body.ws-home-locked > *:not(#wsHomeOverlay):not(.layui-layer):not(.layui-layer-s
     padding: 24px 0;
 }
 
+/* 已启用认证但未登录时的登录引导（替代误导性的空态） */
+.ws-home-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: 24px 0;
+}
+.ws-home-login-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 420px;
+    text-align: center;
+    padding: 40px 32px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-primary);
+}
+.ws-home-login-title {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.ws-home-login-desc {
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+.ws-home-login-btn {
+    margin-top: 8px;
+    height: 42px;
+    padding: 0 28px;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent-fill, var(--accent));
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--fs-sm);
+}
+.ws-home-login-btn:hover { filter: brightness(1.05); }
+
 

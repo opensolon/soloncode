@@ -15,12 +15,33 @@
     var navEl = document.getElementById('adminNav');
     var contentEl = document.getElementById('adminContent');
     var userInfoEl = document.getElementById('adminUserInfo');
+    var logoutBtn = document.getElementById('adminLogoutBtn');
 
     var modules = [];      // 最终启用并排序后的模块
     var moduleMap = {};
 
     function roleLabel(role) {
         return role === 'admin' ? '管理员' : (role === 'readonly' ? '只读' : '普通用户');
+    }
+
+    // 退出登录：销毁后端会话 + 清本地 cookie，回到登录页。
+    // 与工作台 web.html 的登出逻辑一致，确保 token 两端都失效。
+    function doLogout() {
+        if (!window.confirm('确定要退出登录吗？')) return;
+        fetch('/web/user/logout', { method: 'POST' })
+            .then(function () {
+                document.cookie = 'user_token=; path=/; max-age=0';
+                window.location.href = '/login';
+            })
+            .catch(function () {
+                // 后端不可达也强制清本地态并回登录页，避免卡在后台
+                document.cookie = 'user_token=; path=/; max-age=0';
+                window.location.href = '/login';
+            });
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', doLogout);
     }
 
     function showGuard(title, desc, btnText, btnHref) {

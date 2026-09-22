@@ -109,6 +109,25 @@ public class AdminPanelStructureTest {
                 "admin.html 应加载用户管理交互逻辑（原样复用）");
     }
 
+    // ==================== 管理后台退出登录 ====================
+
+    @Test
+    public void adminPageProvidesLogout() throws IOException {
+        String html = resourceText("/static/admin.html");
+        // 顶栏应有退出登录按钮
+        assertTrue(html.contains("id=\"adminLogoutBtn\""),
+                "admin.html 顶栏应提供退出登录按钮");
+
+        String adminJs = resourceText("/static/js/admin.js");
+        // 退出应销毁后端会话并清本地 cookie，最终回到登录页
+        assertTrue(adminJs.contains("/web/user/logout"),
+                "退出登录应调用后端注销接口");
+        assertTrue(adminJs.contains("user_token=; path=/; max-age=0"),
+                "退出登录应清除本地 user_token cookie");
+        assertTrue(adminJs.contains("adminLogoutBtn"),
+                "退出按钮应在 admin.js 中绑定事件");
+    }
+
     // ==================== 实例自举：解开认证死循环 ====================
 
     @Test
