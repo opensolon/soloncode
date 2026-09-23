@@ -135,7 +135,10 @@
                     // 已有用户后主动关闭认证：此时服务端已按“无需认证”放行，
                     // 管理台也应直接可用，不能因没有登录态再次跳登录或要求初始化。
                     document.body.classList.remove('admin-setup-mode');
-                    if (userInfoEl) userInfoEl.textContent = '认证已关闭';
+                    if (userInfoEl) {
+                        userInfoEl.classList.add('admin-auth-disabled');
+                        userInfoEl.textContent = '认证已关闭';
+                    }
                     if (logoutBtn) logoutBtn.style.display = 'none';
                     loadModules();
                     return;
@@ -152,6 +155,7 @@
                 }
                 // 已是管理员：渲染用户信息 + 加载模块
                 if (userInfoEl) {
+                    userInfoEl.classList.remove('admin-auth-disabled');
                     userInfoEl.innerHTML =
                         (d.displayName || d.username) +
                         ' <span class="user-role-tag user-role-admin">' + roleLabel(d.role) + '</span>';
@@ -198,7 +202,6 @@
             html += '<button class="admin-nav-item" data-key="' + m.key + '">' +
                 (m.icon || '') + '<span>' + m.title + '</span></button>';
         });
-        html += '<div class="admin-nav-footer">SolonCode 管理控制台</div>';
         navEl.innerHTML = html;
 
         navEl.querySelectorAll('.admin-nav-item').forEach(function (btn) {

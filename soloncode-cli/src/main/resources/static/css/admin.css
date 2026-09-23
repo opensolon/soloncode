@@ -19,6 +19,11 @@ body.admin-body {
 }
 
 /* ===== 顶栏 ===== */
+/* 认证关闭是重要的安全状态，使用主题提供的危险色，随 skin 自动适配。 */
+.admin-auth-disabled {
+    color: var(--color-danger, #e5484d) !important;
+    font-weight: 600;
+}
 .admin-topbar {
     display: flex;
     align-items: center;
@@ -87,35 +92,53 @@ body.admin-body {
 
 /* 退出登录：沿用返回按钮的尺寸，悬停时用警示色区分于普通导航 */
 .admin-topbar-logout:hover {
-    border-color: var(--danger, #e5484d);
-    color: var(--danger, #e5484d);
+    border-color: var(--color-danger, #e5484d);
+    color: var(--color-danger, #e5484d);
 }
 
-/* ===== 主体：居中内容 + 透明悬浮导航 ===== */
+/* ===== 主体：固定 900px 居中容器 + 内部导航 ===== */
 .admin-main {
     --admin-content-width: 900px;
     --admin-nav-width: 164px;
     position: relative;
-    flex: 1;
+    /*
+     * admin-body 是纵向 flex 容器。这里必须明确指定交叉轴尺寸，
+     * 不能依赖 flex 的默认 stretch，否则 admin-main 会变成整行宽度，
+     * margin:auto 也就没有可居中的剩余空间。
+     */
+    align-self: center;
+    flex: 1 1 auto;
+    width: var(--admin-content-width);
+    max-width: calc(100% - 48px);
+    min-width: 0;
+    box-sizing: border-box;
+    margin-left: auto;
+    margin-right: auto;
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;
 }
 
 /*
- * 导航不再占据一整块侧栏背景。它与主内容共享同一条视觉轴，
- * 仅保留按钮自己的 hover/active 背景，避免内容收窄后出现厚重的底层。
+ * 导航属于 admin-main 内部的固定列，不再跑到 900px 容器外面。
+ * 不设置侧栏底色，仅保留按钮自己的 hover/active 背景。
  */
+.admin-main {
+    display: flex;
+    flex-direction: row;
+    column-gap: 32px;
+}
+
 .admin-nav {
-    position: absolute;
-    top: 12px;
-    bottom: 12px;
-    left: max(16px, calc(50% - 638px));
+    position: static;
+    flex: 0 0 var(--admin-nav-width);
     width: var(--admin-nav-width);
+    height: 100%;
     padding: 8px 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     background: transparent;
+    box-sizing: border-box;
 }
 
 .admin-nav-group-title {
@@ -128,6 +151,7 @@ body.admin-body {
 }
 
 .admin-nav-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -151,21 +175,23 @@ body.admin-body {
 }
 
 .admin-nav-item.active {
-    position: relative;
     background: var(--bg-hover, rgba(127,127,127,0.12));
     color: var(--text-primary);
     font-weight: 600;
 }
 
+/* 选中标记脱离 flex 排版，切换 tab 时图标与文字的位置保持不变。 */
 .admin-nav-item.active::before {
     content: "";
+    position: absolute;
+    left: 4px;
+    top: 50%;
     width: 3px;
     height: 18px;
-    margin-left: -8px;
-    margin-right: 5px;
     border-radius: 3px;
     background: var(--accent);
-    flex: none;
+    transform: translateY(-50%);
+    pointer-events: none;
 }
 
 .admin-nav-item.disabled {
@@ -193,19 +219,15 @@ body.admin-body {
     padding: 0 5px;
 }
 
-.admin-nav-footer {
-    margin-top: auto;
-    padding: 12px 8px;
-    font-size: var(--fs-xs);
-    color: var(--text-secondary);
-}
-
 .admin-content {
-    width: min(var(--admin-content-width), calc(100vw - 48px));
-    max-width: var(--admin-content-width);
+    /* admin-main 是包含导航和内容的 900px 居中容器。 */
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
     height: 100%;
     box-sizing: border-box;
-    margin: 0 auto;
+    margin: 0;
     padding: 28px 0 48px;
     overflow-y: auto;
     overflow-x: hidden;
@@ -288,11 +310,17 @@ body.admin-body {
     padding-top: 2px;
 }
 
-/* 中等宽度时将透明侧导航收为顶部横向 tab，避免覆盖居中的内容。 */
+/* 中等宽度时将内部侧导航收为顶部横向 tab，避免内容被挤压。 */
 @media (max-width: 1260px) {
     .admin-main {
+        /* 收起 tab 时只改变内部排列，admin-main 仍保持 900px 并居中。 */
+        width: var(--admin-content-width);
+        max-width: calc(100% - 48px);
+        margin-left: auto;
+        margin-right: auto;
         display: flex;
         flex-direction: column;
+        row-gap: 8px;
         overflow: hidden;
     }
 
@@ -309,8 +337,7 @@ body.admin-body {
         overflow-y: hidden;
     }
 
-    .admin-nav-group-title,
-    .admin-nav-footer {
+    .admin-nav-group-title {
         display: none;
     }
 
@@ -320,9 +347,21 @@ body.admin-body {
         white-space: nowrap;
     }
 
+    /* 横向 tab 使用底部标记，同样不占据图标与文字的布局空间。 */
+    .admin-nav-item.active::before {
+        left: 12px;
+        right: 12px;
+        top: auto;
+        bottom: 1px;
+        width: auto;
+        height: 3px;
+        transform: none;
+    }
+
     .admin-content {
         width: min(var(--admin-content-width), calc(100vw - 48px));
         max-width: var(--admin-content-width);
+        margin: 0 auto;
         flex: 1;
         height: auto;
         padding-top: 20px;
@@ -330,6 +369,13 @@ body.admin-body {
 }
 
 @media (max-width: 700px) {
+    .admin-main {
+        width: 100%;
+        max-width: none;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
     .admin-content {
         width: 100%;
         padding: 20px 18px 36px;
@@ -348,42 +394,41 @@ body.admin-body {
     }
 }
 
-/* 用户管理使用设置页式分隔列表，而不是后台卡片列表。 */
+/* 用户列表直接对齐 web.html 的模型列表视觉：独立圆角行、透明边框，
+ * hover 时只显示边框与轻阴影，不让整块底色贴近右侧开关。 */
 .admin-user-list .user-list-item {
-    min-height: 64px;
-    margin: 0;
-    padding: 14px 0;
-    border: 0;
-    border-bottom: 1px solid var(--border-color);
-    border-radius: 0;
+    min-height: 54px;
+    margin: 0 0 8px;
+    padding: 10px 12px;
+    gap: 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    box-sizing: border-box;
     box-shadow: none;
+    transition: all 0.15s;
 }
 
 .admin-user-list .user-list-item:hover {
     border-color: var(--border-color);
-    background: var(--bg-hover, rgba(127,127,127,0.04));
-    box-shadow: none;
+    background: transparent;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
 
 .admin-user-list .user-list-avatar {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     border-radius: 8px;
-    background: var(--bg-hover, rgba(127,127,127,0.1));
+    background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary));
     color: var(--text-secondary);
 }
 
 .admin-user-list .user-list-actions {
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+    padding-left: 0;
 }
 
 .admin-user-list .settings-action-btn {
-    opacity: 0.7;
-}
-
-.admin-user-list .user-list-item:hover .settings-action-btn,
-.admin-user-list .settings-action-btn:focus {
     opacity: 1;
 }
 
@@ -649,7 +694,7 @@ body.admin-setup-mode .admin-topbar-logout {
 }
 
 .admin-setup-error {
-    color: var(--danger, #e54545);
+    color: var(--color-danger, #e54545);
     font-size: var(--fs-sm);
     margin: -4px 0 0;
 }

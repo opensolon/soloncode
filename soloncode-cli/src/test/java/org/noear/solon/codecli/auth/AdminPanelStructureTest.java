@@ -199,26 +199,51 @@ public class AdminPanelStructureTest {
                         && adminCss.contains("background: transparent"),
                 "认证模式的动态配置区也应去除内层边框和底色");
         assertTrue(adminCss.contains("--admin-content-width: 900px")
-                        && adminCss.contains("width: min(var(--admin-content-width), calc(100vw - 48px))")
-                        && adminCss.contains("margin: 0 auto"),
-                "admin 主内容应采用约 900px 的窗口级居中布局");
+                        && adminCss.contains("align-self: center")
+                        && adminCss.contains("width: var(--admin-content-width)")
+                        && adminCss.contains("max-width: calc(100% - 48px)")
+                        && adminCss.contains("box-sizing: border-box")
+                        && adminCss.contains("margin-left: auto")
+                        && adminCss.contains("margin-right: auto")
+                        && adminCss.contains(".admin-content")
+                        && adminCss.contains("width: 100%"),
+                "admin-main 应采用固定 900px 的整体居中布局，内容区应继承其宽度");
         assertTrue(adminCss.contains(".admin-nav")
                         && adminCss.contains("background: transparent")
-                        && adminCss.contains("position: absolute"),
-                "宽屏 admin tab 侧不应再有整块底层，应采用透明悬浮导航");
+                        && adminCss.contains("position: static")
+                        && adminCss.contains("flex: 0 0 var(--admin-nav-width)"),
+                "宽屏导航应作为 900px admin-main 的内部列布局，不能移到主容器之外");
         assertTrue(adminCss.contains("@media (max-width: 1260px)")
                         && adminCss.contains("flex-direction: row")
                         && adminCss.contains("overflow-x: auto"),
                 "中小屏应将侧边 tab 收为横向滚动导航，避免覆盖居中内容");
         assertTrue(adminCss.contains(".admin-nav-item.active::before")
+                        && adminCss.contains("position: absolute")
+                        && adminCss.contains("pointer-events: none")
                         && adminCss.contains("background: var(--bg-hover")
-                        && adminCss.contains(".admin-user-list .user-list-item")
-                        && adminCss.contains("border-bottom: 1px solid var(--border-color)"),
-                "admin 应采用设置页式浅色导航选中态和分隔列表，而非厚重卡片");
+                        && adminCss.contains("column-gap: 32px"),
+                "admin tab 的选中标记应脱离 flex 排版，切换时不得挤动图标和文字");
+        assertTrue(adminCss.contains(".admin-user-list .user-list-item")
+                        && adminCss.contains("margin: 0 0 8px")
+                        && adminCss.contains("padding: 10px 12px")
+                        && adminCss.contains("box-sizing: border-box")
+                        && adminCss.contains("border: 1px solid transparent")
+                        && adminCss.contains("box-shadow: 0 1px 4px rgba(0,0,0,0.04)"),
+                "admin 用户列表应对齐 web.html 模型列表的圆角行、内边距和 hover 反馈");
         assertTrue(adminCss.contains(".admin-content .settings-section")
                         && adminCss.contains("box-shadow: none")
                         && adminCss.contains(".admin-content .settings-section-title"),
                 "admin 内容区应统一采用设置页标题层级并移除外层视觉卡片");
+        assertTrue(adminCss.contains(".admin-auth-disabled")
+                        && adminCss.contains("var(--color-danger"),
+                "认证关闭状态应使用可被 skin 覆盖的危险色");
+
+        String adminJs = resourceText("/static/js/admin.js");
+        assertTrue(adminJs.contains("admin-auth-disabled")
+                        && adminJs.contains("认证已关闭"),
+                "认证关闭时顶栏应显示醒目的红色状态");
+        assertFalse(adminJs.contains("admin-nav-footer"),
+                "导航底部不应再渲染重复的管理控制台文案");
 
         String usersJs = resourceText("/static/js/app-settings-users.js");
         assertTrue(usersJs.contains("#userListView") && usersJs.contains("#userFormView"),
