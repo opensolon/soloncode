@@ -62,6 +62,19 @@ public class Configurator {
 
     private LoopScheduler loopScheduler;
 
+    @Inject
+    AdminAuditController adminAuditController;
+
+    @Bean
+    public AdminAuditStore adminAuditStore() {
+        return new AdminAuditStore();
+    }
+
+    @Bean
+    public AdminAuditController adminAuditController(AdminAuditStore store) {
+        return new AdminAuditController(store);
+    }
+
     @Bean
     public WorkspaceManager workspaceManager(AgentSettings settings) {
         return new WorkspaceManager(settings);
@@ -264,8 +277,10 @@ public class Configurator {
         addWebBean(new RunController(workspaceManager));
         
         addWebBean(new UserLoginController(userStore, userSessionManager, userAuthConfig));
-        addWebBean(new UserAuthController(userStore, userSessionManager, userAuthConfig, agentSettings));
-        addWebBean(new AdminController(userStore, userSessionManager, userAuthConfig, agentSettings));
+         addWebBean(new UserAuthController(userStore, userSessionManager, userAuthConfig));
+         addWebBean(new AdminController(userStore, userSessionManager, userAuthConfig));
+        addWebBean(adminAuditController);
+        addWebBean(new AdminSessionManagementController(userSessionManager));
 
         // 用户认证过滤器（会话校验 + 管理员路径角色鉴权）。
         // 不能用注解注册（否则非 web/serve 模式也会启动），故在此手动装配，

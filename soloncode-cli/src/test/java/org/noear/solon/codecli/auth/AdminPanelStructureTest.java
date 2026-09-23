@@ -6,6 +6,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 
 import java.util.Collections;
@@ -29,13 +31,17 @@ public class AdminPanelStructureTest {
     @Test
     public void adminPathPrefixesAreGated() {
         // 用户管理 API 必须纳入管理员前缀
-        assertTrue(UserAuthFilter.isAdminPath("/web/settings/user-auth/users"));
-        assertTrue(UserAuthFilter.isAdminPath("/web/settings/user-auth/users/create"));
-        assertTrue(UserAuthFilter.isAdminPath("/web/settings/user-auth/users/delete"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/auth/config"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/users"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/users/create"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/users/delete"));
+        assertFalse(UserAuthFilter.isAdminPath("/web/settings/user-auth/users"));
         // 面板新命名空间与页面入口
         assertTrue(UserAuthFilter.isAdminPath("/web/admin/overview"));
         assertTrue(UserAuthFilter.isAdminPath("/web/admin/modules"));
-        assertTrue(UserAuthFilter.isAdminPath("/admin"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin"));
+        assertFalse(UserAuthFilter.isAdminPath("/admin"),
+                "旧 /admin 页面路由已移除，不能继续作为管理台入口断言");
     }
 
     @Test
@@ -43,6 +49,7 @@ public class AdminPanelStructureTest {
         assertFalse(UserAuthFilter.isAdminPath("/web/chat/meta"));
         assertFalse(UserAuthFilter.isAdminPath("/web/user/me"));
         assertFalse(UserAuthFilter.isAdminPath("/web/settings/general"));
+        assertFalse(UserAuthFilter.isAdminPath("/web/adminish/users"));
         assertFalse(UserAuthFilter.isAdminPath("/"));
         assertFalse(UserAuthFilter.isAdminPath(null));
     }
@@ -98,11 +105,11 @@ public class AdminPanelStructureTest {
     @Test
     public void adminEntryIsRoleGatedInMainUi() throws IOException {
         String web = resourceText("/static/web.html");
-        // 管理控制台入口存在，且指向 /admin
+        // 管理控制台入口存在，且指向新的 /web/admin 路由
         assertTrue(web.contains("id=\"adminHeaderBtn\""),
                 "主界面应有管理控制台入口按钮");
-        assertTrue(web.contains("href=\"/admin\""),
-                "管理控制台入口应指向 /admin");
+        assertTrue(web.contains("href=\"/web/admin\""),
+                "管理控制台入口应指向 /web/admin");
         // 仅 role=admin 显示
         assertTrue(web.contains("data.role === 'admin') ? 'flex' : 'none'"),
                 "管理控制台入口必须按 role=admin 显隐");
@@ -143,7 +150,7 @@ public class AdminPanelStructureTest {
                 "用户管理面板不应再内嵌认证模式切换");
         // 后端模块清单含 auth，否则前端取交集会过滤掉新 tab（实例方法，不依赖容器启动）
         // modules() 不依赖任何注入字段，传 null 构造即可直接验证清单
-        assertTrue(new AdminController(null, null, null, null).modules().getData().contains("auth"),
+        assertTrue(new AdminController(null, null, null).modules().getData().contains("auth"),
                 "后端 /web/admin/modules 应返回 auth，否则前端取交集会过滤掉新 tab");
 
         // 认证开关关闭时的二次确认
@@ -154,6 +161,15 @@ public class AdminPanelStructureTest {
                 "关闭认证需基于初始值判断是否弹二次确认");
         assertTrue(usersJs.contains("doSaveConfig"),
                 "二次确认后应走独立的 doSaveConfig 落地");
+    }
+
+    @Test
+    public void adminGateIsIndependentFromWorkbenchAuthSwitch() {
+        // 管理台路径不是普通工作台公开路径；认证开关关闭也不能使管理台匿名放行。
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/overview"));
+        assertFalse(UserAuthFilter.isPublicPath("/web/admin"));
+        assertFalse(UserAuthFilter.isPublicPath("/web/admin/overview"));
     }
 
     @Test
@@ -171,7 +187,7 @@ public class AdminPanelStructureTest {
         assertTrue(modules.contains("userAuthLdapGroupAttr"));
         assertTrue(modules.contains("userAuthLdapTestBtn"));
         assertTrue(modules.contains("userAuthLdapTestResult"));
-        assertTrue(usersJs.contains("/web/settings/user-auth/ldap/test"));
+        assertTrue(usersJs.contains("/web/admin/auth/ldap/test"));
         assertTrue(usersJs.contains("ldapTestUsername"));
         assertTrue(usersJs.contains("reloginRequired"));
         assertFalse(modules.contains("value=\"readonly\""));
@@ -260,9 +276,9 @@ public class AdminPanelStructureTest {
                 "认证关闭状态应使用可被 skin 覆盖的危险色");
 
         String adminJs = resourceText("/static/js/admin.js");
-        assertTrue(adminJs.contains("admin-auth-disabled")
-                        && adminJs.contains("认证已关闭"),
-                "认证关闭时顶栏应显示醒目的红色状态");
+        assertTrue(adminJs.contains("d.bootstrapRequired === true")
+                        && adminJs.contains("window.location.href = loginUrl"),
+                "管理台应区分首次初始化与关闭工作台认证状态");
         assertFalse(adminJs.contains("admin-nav-footer"),
                 "导航底部不应再渲染重复的管理控制台文案");
 
@@ -274,7 +290,7 @@ public class AdminPanelStructureTest {
         assertTrue(usersJs.contains("#userFormPasswordRequired") && usersJs.contains("留空则不修改密码"),
                 "编辑用户时密码应明确为可选，避免表单产生错误的必填感");
         assertTrue(usersJs.contains("user-enabled-toggle")
-                        && usersJs.contains("/web/settings/user-auth/users/toggle"),
+                        && usersJs.contains("/web/admin/users/toggle"),
                 "用户列表应像模型列表一样提供独立的启用开关");
         assertFalse(usersJs.contains("$('#userFormEnabled')"),
                 "编辑交互不应再读取或写入表单内的启用开关");
@@ -284,8 +300,8 @@ public class AdminPanelStructureTest {
     public void adminPageGuardsAndModuleRegistry() throws IOException {
         String adminJs = resourceText("/static/js/admin.js");
         // 前端准入：未启用引导、未登录跳登录、非 admin 403 提示
-        assertTrue(adminJs.contains("/login'"),
-                "未登录应跳转登录页（/login 路由）");
+        assertTrue(adminJs.contains("loginUrl") && adminJs.contains("'/login?scope=admin"),
+                "未登录应跳转管理台登录页（/login 路由）");
         assertTrue(adminJs.contains("d.role !== 'admin'"),
                 "非管理员应被前端拦截");
         assertTrue(adminJs.contains("/web/admin/modules"),
@@ -308,41 +324,93 @@ public class AdminPanelStructureTest {
                 "admin.html 顶栏应提供退出登录按钮");
 
         String adminJs = resourceText("/static/js/admin.js");
-        // 退出应销毁后端会话并清本地 cookie，最终回到登录页
-        assertTrue(adminJs.contains("/web/user/logout"),
-                "退出登录应调用后端注销接口");
-        assertTrue(adminJs.contains("user_token=; path=/; max-age=0"),
-                "退出登录应清除本地 user_token cookie");
+        // 退出由后端销毁会话并清除 HttpOnly Cookie，前端不得写 token Cookie。
+        assertTrue(adminJs.contains("/web/admin/session/logout"),
+                "管理台退出登录应调用管理员注销接口");
+        assertFalse(adminJs.contains("document.cookie"),
+                "管理台前端不得读写 HttpOnly user_token Cookie");
+        assertTrue(adminJs.contains("credentials: 'same-origin'"),
+                "管理台注销请求必须携带同源 Cookie");
         assertTrue(adminJs.contains("adminLogoutBtn"),
                 "退出按钮应在 admin.js 中绑定事件");
+    }
+
+    @Test
+    public void adminSecurityContractUsesCookieCsrfAndBearerCompatibility() throws IOException {
+        String login = resourceText("/static/login-page.html");
+        String adminJs = resourceText("/static/js/admin.js");
+        String controller = readProjectFile("src/main/java/org/noear/solon/codecli/auth/UserLoginController.java");
+        String filter = readProjectFile("src/main/java/org/noear/solon/codecli/auth/UserAuthFilter.java");
+        assertTrue(login.contains("if (!adminScope && resp.data.token)"),
+                "普通用户仍兼容 token，管理台登录不得由前端写 token Cookie");
+        assertFalse(adminJs.contains("document.cookie"), "管理台不得写入 token Cookie");
+        assertTrue(controller.contains("HttpOnly; SameSite=Lax") && controller.contains("Max-Age=0; Path=/"),
+                "登录和注销必须由服务端设置/清除安全 Cookie");
+        assertTrue(filter.contains("isSameOrigin(ctx)") && filter.contains("Origin") && filter.contains("Referer"),
+                "Cookie 管理 POST 必须校验 Origin 或严格同源 Referer");
+        assertTrue(filter.contains("Bearer ") && filter.contains("X-User-Token"),
+                "Bearer 和显式 X-User-Token API 请求必须保持兼容");
     }
 
     // ==================== 实例自举：解开认证死循环 ====================
 
     @Test
-    public void adminPageOnlyRendersBootstrapForFreshInstance() throws IOException {
-        String adminJs = resourceText("/static/js/admin.js");
-        // 认证未启用时不再指向「设置 → 用户管理」死胡同，而是区分首次自举和主动关闭。
-        assertFalse(adminJs.contains("请先在「设置 → 用户管理」中开启"),
-                "不应再把用户指回正在废弃的设置入口");
-        UserAuthConfig freshConfig = new UserAuthConfig();
-        Map<String, Object> fresh = new UserLoginController(userStoreWithUsers(false), null, freshConfig)
-                .me(null).getData();
-        Map<String, Object> configured = new UserLoginController(userStoreWithUsers(true), null, new UserAuthConfig())
-                .me(null).getData();
-        UserAuthConfig ldapConfig = new UserAuthConfig();
-        ldapConfig.setMode("ldap");
-        Map<String, Object> ldap = new UserLoginController(userStoreWithUsers(false), null, ldapConfig)
-                .me(null).getData();
-        assertTrue((Boolean) fresh.get("bootstrapRequired"), "全新文件实例应要求自举");
-        assertFalse((Boolean) configured.get("bootstrapRequired"), "主动关闭认证的既有实例不应再次自举");
-        assertFalse((Boolean) ldap.get("bootstrapRequired"), "LDAP 不支持创建本地用户，关闭认证后不应进入自举");
-        assertTrue(adminJs.contains("if (d.bootstrapRequired)") && adminJs.contains("renderBootstrap()"),
-                "只有尚无用户的全新实例才应渲染自举向导");
-        assertTrue(adminJs.contains("认证已关闭") && adminJs.contains("loadModules();"),
-                "已有用户后关闭认证，应允许匿名加载管理模块而不是再次要求登录");
-        assertTrue(adminJs.contains("/web/admin/bootstrap"),
-                "自举向导应提交至 /web/admin/bootstrap");
+    public void adminPageOnlyRendersBootstrapForFreshInstance() throws Exception {
+        String oldHome = System.getProperty("user.home");
+        Path tempHome = Files.createTempDirectory("admin-structure-");
+        try {
+            System.setProperty("user.home", tempHome.toString());
+            String adminJs = resourceText("/static/js/admin.js");
+            assertFalse(adminJs.contains("请先在「设置 → 用户管理」中开启"),
+                    "不应再把用户指回正在废弃的设置入口");
+            AuthConfigRepository.ensureBootstrapToken();
+            UserAuthConfig freshConfig = new UserAuthConfig();
+            Map<String, Object> fresh = new UserLoginController(userStoreWithUsers(false), null, freshConfig)
+                    .me(null).getData();
+            Map<String, Object> configured = new UserLoginController(userStoreWithUsers(true), null, new UserAuthConfig())
+                    .me(null).getData();
+            UserAuthConfig ldapConfig = new UserAuthConfig();
+            ldapConfig.setMode("ldap");
+            Map<String, Object> ldap = new UserLoginController(userStoreWithUsers(false), null, ldapConfig)
+                    .me(null).getData();
+            assertTrue((Boolean) fresh.get("bootstrapRequired"), "全新文件实例应要求自举");
+            assertFalse((Boolean) configured.get("bootstrapRequired"), "主动关闭认证的既有实例不应再次自举");
+            assertFalse((Boolean) ldap.get("bootstrapRequired"), "LDAP 不支持创建本地用户，关闭认证后不应进入自举");
+            assertTrue(adminJs.contains("d.bootstrapRequired === true") && adminJs.contains("renderBootstrap()"),
+                    "只有尚无用户的全新实例才应渲染自举向导");
+            assertTrue(adminJs.contains("if (!d.authenticated)")
+                            && adminJs.contains("window.location.href = loginUrl"),
+                    "已有用户后关闭认证，管理台仍必须要求管理员登录");
+            assertTrue(adminJs.contains("/web/admin/bootstrap"),
+                    "自举向导应提交至 /web/admin/bootstrap");
+        } finally {
+            if (oldHome == null) System.clearProperty("user.home");
+            else System.setProperty("user.home", oldHome);
+            deleteTree(tempHome);
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (root == null || !Files.exists(root)) return;
+        Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+            try { Files.deleteIfExists(path); } catch (IOException ignored) { }
+        });
+    }
+
+    private static String readProjectFile(String path) throws IOException {
+        java.nio.file.Path direct = java.nio.file.Paths.get(path);
+        if (Files.exists(direct)) {
+            return new String(Files.readAllBytes(direct), StandardCharsets.UTF_8);
+        }
+        java.nio.file.Path authModule = java.nio.file.Paths.get("soloncode-auth").resolve(path);
+        if (Files.exists(authModule)) {
+            return new String(Files.readAllBytes(authModule), StandardCharsets.UTF_8);
+        }
+        java.nio.file.Path siblingModule = java.nio.file.Paths.get("..", "soloncode-auth").resolve(path);
+        if (Files.exists(siblingModule)) {
+            return new String(Files.readAllBytes(siblingModule), StandardCharsets.UTF_8);
+        }
+        throw new IOException("Missing project file: " + path);
     }
 
     private static String resourceText(String path) throws IOException {

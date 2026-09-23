@@ -16,7 +16,7 @@
             <div class="login-header">
                 <img src="/img/favicon.png" alt="SolonCode" class="login-logo"/>
                 <h1 class="login-title">SolonCode</h1>
-                <p class="login-subtitle" data-i18n="login.subtitle">请登录以继续使用</p>
+                <p class="login-subtitle" id="loginSubtitle" data-i18n="login.subtitle">请登录以继续使用</p>
             </div>
             <div class="login-form">
                 <div class="login-field">
@@ -34,6 +34,20 @@
     </div>
     <script>
         (function() {
+            var query = new URLSearchParams(window.location.search);
+            var adminScope = query.get('scope') === 'admin';
+            var returnUrl = query.get('returnUrl');
+            function safeReturnUrl(value) {
+                if (!value || value.charAt(0) !== '/' || value.indexOf('//') === 0 || value.indexOf('\\') >= 0) return null;
+                try {
+                    var parsed = new URL(value, window.location.origin);
+                    if (parsed.origin !== window.location.origin) return null;
+                    return parsed.pathname + parsed.search + parsed.hash;
+                } catch (e) { return null; }
+            }
+            var safeTarget = safeReturnUrl(returnUrl) || (adminScope ? '/web/admin' : '/');
+            var loginEndpoint = adminScope ? '/web/admin/session/login' : '/web/user/login';
+            if (adminScope) document.getElementById('loginSubtitle').textContent = '管理员登录后才能进入管理控制台';
             var loginBtn = document.getElementById('loginBtn');
             var usernameInput = document.getElementById('loginUsername');
             var passwordInput = document.getElementById('loginPassword');
@@ -59,7 +73,7 @@
                 loginBtn.disabled = true;
                 loginBtn.textContent = '登录中...';
                 
-                fetch('/web/user/login', {
+                fetch(loginEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password)
@@ -69,10 +83,11 @@
                     loginBtn.disabled = false;
                     loginBtn.textContent = '登 录';
                     if (resp.code === 200 && resp.data) {
-                        // 保存 token 到 cookie
-                        document.cookie = 'user_token=' + resp.data.token + '; path=/; max-age=' + (7 * 24 * 3600);
-                        // 管理员登录后进入管理后台，普通用户进入工作台
-                        window.location.href = (resp.data.role === 'admin') ? '/admin' : '/';
+                        // 管理员凭据由服务端以 HttpOnly Cookie 签发；普通用户继续兼容旧 token 响应。
+                        if (!adminScope && resp.data.token) {
+                            document.cookie = 'user_token=' + encodeURIComponent(resp.data.token) + '; path=/; max-age=' + (7 * 24 * 3600);
+                        }
+                        window.location.replace(adminScope ? safeTarget : ((resp.data.role === 'admin') ? '/web/admin' : '/'));
                     } else {
                         showError(resp.description || '登录失败，请检查用户名和密码');
                     }

@@ -2,7 +2,7 @@ package org.noear.solon.codecli.auth;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.annotation.*;
-import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
@@ -14,14 +14,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 管理员面板控制器 - 承载 /admin 面板自身所需的新接口。
- *
- * <p>用户管理相关 API 仍由 {@link UserAuthController} 提供（路由不变，向后兼容）；
- * 本控制器只提供面板骨架所需的概览与模块清单接口。</p>
- *
- * <p>多数 {@code /web/admin/} 路径由 {@link UserAuthFilter} 统一做 role=admin 鉴权，
- * 本控制器不再重复判断。<b>例外</b>：{@code /web/admin/bootstrap} 是实例自举接口，
- * 仅在认证未启用（尚无 admin 角色）时可用，由外层门禁保护，本体做幂等保护。</p>
+ * 管理台接口。所有管理 API 由 {@link UserAuthFilter} 独立于工作台认证开关鉴权；
+ * 唯独全新空 file 实例可匿名自举。
  *
  * @author noear 2026 created
  */
@@ -32,14 +26,12 @@ public class AdminController {
     private final UserStore userStore;
     private final UserSessionManager sessionManager;
     private final UserAuthConfig userAuthConfig;
-    private final AgentSettings settings;
 
     public AdminController(UserStore userStore, UserSessionManager sessionManager,
-                          UserAuthConfig userAuthConfig, AgentSettings settings) {
+                           UserAuthConfig userAuthConfig) {
         this.userStore = userStore;
         this.sessionManager = sessionManager;
         this.userAuthConfig = userAuthConfig;
-        this.settings = settings;
     }
 
     /**
@@ -83,39 +75,32 @@ public class AdminController {
         List<String> keys = new java.util.ArrayList<>();
         keys.add("overview");
         keys.add("auth");
+        keys.add("sessions");
+        keys.add("audit");
         if (userStore == null || userStore.supportsLocalUserManagement()) {
             keys.add("users");
         }
         return Result.succeed(keys);
     }
 
-    /**
-     * 实例自举：在用户认证体系尚未建立时，一次性完成「开启认证 + 创建首个管理员」。
-     *
-     * <p>这解决了「进 /admin 要先开认证，而开认证的入口又搬进了 /admin」的自举悖论：
-     * 认证未启用时系统里还没有 admin 角色，因此本接口的准入<b>不依赖</b> role=admin，
-     * 而是依赖「认证当前处于未开启态」这一状态门槛。</p>
-     *
-     * <p>幂等保护：一旦认证已启用，本接口一律拒绝，防止绕过 role 校验重复自举、重置管理员。
-     * 认证开启后，用户/配置的后续变更走既有的 /web/settings/user-auth/** 接口（受 role=admin 保护）。</p>
-     */
+    /** 全新空 file 实例一次性创建首个管理员并开启工作台认证。 */
     @Post
     @Mapping("/web/admin/bootstrap")
-    public synchronized Result<Void> bootstrap(@Body String json) {
-        if (userAuthConfig.isEnabled()) {
-            return Result.failure("用户认证已启用，无需重复初始化");
-        }
+    public synchronized Result<Void> bootstrap(Context ctx, @Body String json) {
+        if (!isLocalRequest(ctx)) return Result.failure("初始化仅允许本机请求");
+        if (userAuthConfig.isEnabled()) return Result.failure("用户认证已启用，无需重复初始化");
         if (!"file".equals(UserStoreFactory.normalizeMode(userAuthConfig.getMode()))
-                || !userStore.supportsLocalUserManagement()) {
-            return Result.failure("LDAP 模式不支持创建本地管理员");
-        }
-        if (!userStore.listUsers().isEmpty()) {
-            return Result.failure("实例已存在用户，不能重复初始化");
-        }
-
-        UserEntity admin = null;
+                || !userStore.supportsLocalUserManagement()) return Result.failure("LDAP 模式不支持创建本地管理员");
         try {
-            ONode root = ONode.ofJson(json);
+            AuthConfigRepository.BootstrapState state = AuthConfigRepository.loadState();
+            if (state.isInitialized() || state.getBootstrapTokenHash() == null) return Result.failure("实例未处于可初始化状态");
+            List<UserEntity> users = userStore.listUsers();
+            if (users == null || !users.isEmpty()) return Result.failure("实例已存在用户，不能重复初始化");
+            ONode root = ONode.ofJson(json == null ? "{}" : json);
+            String token = ctx.header("X-Bootstrap-Token");
+            if (token == null || token.trim().isEmpty()) token = root.hasKey("token") ? root.get("token").getString() : null;
+            if (!AuthConfigRepository.verifyBootstrapToken(token)) return Result.failure("初始化令牌无效");
+
             String username = root.get("username").getString();
             String password = root.get("password").getString();
             String displayName = root.get("displayName").getString();
@@ -124,7 +109,7 @@ public class AdminController {
             if (Assert.isEmpty(username)) return Result.failure("管理员用户名不能为空");
             if (Assert.isEmpty(password)) return Result.failure("管理员密码不能为空");
 
-            admin = new UserEntity(UUID.randomUUID().toString(), username,
+            UserEntity admin = new UserEntity(UUID.randomUUID().toString(), username,
                     Assert.isEmpty(displayName) ? username : displayName);
             admin.setPasswordHash(FileUserStore.hashPassword(password));
             admin.setEmail(email);
@@ -132,21 +117,42 @@ public class AdminController {
             admin.setEnabled(true);
             userStore.createUser(admin);
 
-            // 最后再开启认证：确保管理员账户先落库，避免开启后无人可登录。
+            // 先保存配置，再提交不可逆的 initialized 状态；任一步失败都恢复为空实例。
+            UserAuthConfig oldConfig = UserAuthController.copyConfig(userAuthConfig);
             userAuthConfig.setEnabled(true);
             try {
-                settings.saveToFileStrict();
+                AuthConfigRepository.save(userAuthConfig);
+                AuthConfigRepository.markInitialized();
             } catch (Exception e) {
-                userAuthConfig.setEnabled(false);
-                userStore.deleteUser(admin.getId());
+                UserAuthController.applyConfig(userAuthConfig, oldConfig);
+                try {
+                    AuthConfigRepository.save(oldConfig);
+                } catch (Exception restoreConfig) {
+                    e.addSuppressed(restoreConfig);
+                }
+                try { userStore.deleteUser(admin.getId()); } catch (Exception rollback) {
+                    e.addSuppressed(rollback);
+                }
                 throw e;
             }
 
             LOG.info("[Admin] Bootstrap completed: auth enabled, admin '{}' ready", username);
+            Map<String, Object> audit = new LinkedHashMap<>();
+            audit.put("username", username);
+            audit.put("mode", userAuthConfig.getMode());
+            AdminAuditStore.record("admin.bootstrap.completed", audit);
             return Result.succeed();
         } catch (Exception e) {
             LOG.warn("[Admin] Bootstrap failed: {}", e.getMessage());
+            AdminAuditStore.record("admin.bootstrap.failed");
             return Result.failure("初始化失败: " + e.getMessage());
         }
+    }
+
+    private static boolean isLocalRequest(Context ctx) {
+        if (ctx == null) return false;
+        String ip = ctx.remoteIp();
+        return "127.0.0.1".equals(ip) || "::1".equals(ip)
+                || "0:0:0:0:0:0:0:1".equals(ip) || "localhost".equalsIgnoreCase(ip);
     }
 }

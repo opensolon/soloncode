@@ -5,7 +5,6 @@ import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Post;
-import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
@@ -27,22 +26,20 @@ public class UserAuthController {
     private final UserStore userStore;
     private final UserSessionManager sessionManager;
     private final UserAuthConfig userAuthConfig;
-    private final AgentSettings settings;
     private final Object configLock = new Object();
     private final Object userLock = new Object();
 
     public UserAuthController(UserStore userStore, UserSessionManager sessionManager,
-                              UserAuthConfig userAuthConfig, AgentSettings settings) {
+                              UserAuthConfig userAuthConfig) {
         this.userStore = userStore;
         this.sessionManager = sessionManager;
         this.userAuthConfig = userAuthConfig;
-        this.settings = settings;
     }
 
     // ========== 认证配置 ==========
 
     @Get
-    @Mapping("/web/settings/user-auth/config")
+    @Mapping("/web/admin/auth/config")
     public Result<Map<String, Object>> getConfig() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("enabled", userAuthConfig.isEnabled());
@@ -69,7 +66,7 @@ public class UserAuthController {
     }
 
     @Post
-    @Mapping("/web/settings/user-auth/ldap/test")
+    @Mapping("/web/admin/auth/ldap/test")
     public Result<Map<String, Object>> testLdap(@Body String json) {
         try {
             ONode root = ONode.ofJson(json);
@@ -85,26 +82,27 @@ public class UserAuthController {
             String password = root.get("ldapTestPassword").getString();
             if (!Assert.isEmpty(username) || !Assert.isEmpty(password)) {
                 if (Assert.isEmpty(username) || Assert.isEmpty(password)) {
-                    return Result.failure("测试用户名和密码必须同时填写");
+                    return auditFailure("auth.ldap.test.failure", "incomplete_credentials", "测试用户名和密码必须同时填写");
                 }
                 UserEntity user = store.authenticate(username, password);
                 if (user == null) {
-                    return Result.failure("LDAP 连接成功，但测试用户认证失败");
+                    return auditFailure("auth.ldap.test.failure", "authentication_failed", "LDAP 连接成功，但测试用户认证失败");
                 }
                 data.put("username", user.getUsername());
                 data.put("displayName", user.getDisplayName());
                 data.put("email", user.getEmail());
                 data.put("role", user.getRole());
             }
+            AdminAuditStore.record("auth.ldap.test.success");
             return Result.succeed(data);
         } catch (Exception e) {
             LOG.warn("[UserAuth] LDAP test failed: {}", e.getMessage());
-            return Result.failure("LDAP 测试失败: " + safeMessage(e));
+            return auditFailure("auth.ldap.test.failure", "connection_or_config_error", "LDAP 测试失败: " + safeMessage(e));
         }
     }
 
     @Post
-    @Mapping("/web/settings/user-auth/config/save")
+    @Mapping("/web/admin/auth/config/save")
     public Result<Map<String, Object>> saveConfig(@Body String json) {
         synchronized (configLock) {
             UserAuthConfig oldConfig = copyConfig(userAuthConfig);
@@ -115,21 +113,26 @@ public class UserAuthController {
 
                 UserStore nextStore = UserStoreFactory.create(candidate);
                 boolean ldapProofRequired = requiresLdapAdminProof(oldConfig, candidate);
-                if (candidate.isEnabled() && "ldap".equals(candidate.getMode())) {
+                if ("file".equals(UserStoreFactory.normalizeMode(candidate.getMode()))
+                        && !hasActiveAdmin(nextStore)) {
+                    return auditFailure("auth.config.save.failure", "no_active_admin", "切换 file 模式前必须保证至少有一个已启用的管理员");
+                }
+                if ("ldap".equals(UserStoreFactory.normalizeMode(candidate.getMode()))) {
                     LdapUserStore ldapStore = (LdapUserStore) nextStore;
+                    // 无论认证开关当前是否开启，LDAP 身份源变更都必须先完成连通性证明。
                     ldapStore.testConnection();
                     if (ldapProofRequired) {
                         String username = root.get("ldapTestUsername").getString();
                         String password = root.get("ldapTestPassword").getString();
                         if (Assert.isEmpty(username) || Assert.isEmpty(password)) {
-                            return Result.failure("启用 LDAP 前，请填写测试用户和密码以验证管理员权限");
+                            return auditFailure("auth.config.save.failure", "missing_admin_proof", "启用 LDAP 前，请填写测试用户和密码以验证管理员权限");
                         }
                         UserEntity testUser = ldapStore.authenticate(username, password);
                         if (testUser == null) {
-                            return Result.failure("LDAP 测试用户认证失败");
+                            return auditFailure("auth.config.save.failure", "admin_proof_failed", "LDAP 测试用户认证失败");
                         }
                         if (!"admin".equals(testUser.getRole())) {
-                            return Result.failure("测试用户未命中管理员组，无法启用 LDAP");
+                            return auditFailure("auth.config.save.failure", "not_admin", "测试用户未命中管理员组，无法启用 LDAP");
                         }
                     }
                 }
@@ -137,27 +140,33 @@ public class UserAuthController {
                 boolean identityChanged = identityConfigChanged(oldConfig, candidate);
                 applyConfig(userAuthConfig, candidate);
                 try {
-                    settings.saveToFileStrict();
+                    AuthConfigRepository.save(userAuthConfig);
+                    if (userStore instanceof ReloadableUserStore) {
+                        ((ReloadableUserStore) userStore).replace(nextStore);
+                    }
                 } catch (Exception e) {
+                    // 任何证明、持久化或切换失败都保持旧配置/旧身份源，旧会话不作撤销。
                     applyConfig(userAuthConfig, oldConfig);
                     throw e;
                 }
 
-                if (userStore instanceof ReloadableUserStore) {
-                    ((ReloadableUserStore) userStore).replace(nextStore);
-                }
-                if (identityChanged || oldConfig.isEnabled() != candidate.isEnabled()) {
+                if (identityChanged) {
                     sessionManager.revokeAllSessions();
                 }
 
                 Map<String, Object> data = new LinkedHashMap<>();
                 data.put("storeType", userStore.getType());
-                data.put("reloginRequired", oldConfig.isEnabled() && candidate.isEnabled() && identityChanged);
+                data.put("reloginRequired", identityChanged);
                 LOG.info("[UserAuth] Auth config applied: enabled={}, mode={}", candidate.isEnabled(), candidate.getMode());
+                Map<String, Object> audit = new LinkedHashMap<>();
+                audit.put("enabled", candidate.isEnabled());
+                audit.put("mode", UserStoreFactory.normalizeMode(candidate.getMode()));
+                audit.put("sessionsRevoked", identityChanged || oldConfig.isEnabled() != candidate.isEnabled());
+                AdminAuditStore.record("auth.config.save.success", audit);
                 return Result.succeed(data);
             } catch (Exception e) {
                 LOG.warn("[UserAuth] Failed to save config: {}", e.getMessage());
-                return Result.failure("保存失败: " + safeMessage(e));
+                return auditFailure("auth.config.save.failure", "save_error", "保存失败: " + safeMessage(e));
             }
         }
     }
@@ -165,7 +174,7 @@ public class UserAuthController {
     // ========== 用户管理 ==========
 
     @Get
-    @Mapping("/web/settings/user-auth/users")
+    @Mapping("/web/admin/users")
     public Result<List<Map<String, Object>>> listUsers() {
         List<Map<String, Object>> result = new ArrayList<>();
         for (UserEntity user : userStore.listUsers()) {
@@ -183,11 +192,11 @@ public class UserAuthController {
     }
 
     @Post
-    @Mapping("/web/settings/user-auth/users/create")
+    @Mapping("/web/admin/users/create")
     public Result<Void> createUser(@Body String json) {
         synchronized (userLock) {
             Result<Void> unsupported = ensureLocalManagement();
-            if (unsupported != null) return unsupported;
+            if (unsupported != null) return auditFailure("auth.user.create.failure", "unsupported", unsupported.getDescription());
             try {
                 ONode root = ONode.ofJson(json);
                 String username = trim(root.get("username").getString());
@@ -196,10 +205,10 @@ public class UserAuthController {
                 String email = trim(root.get("email").getString());
                 String role = normalizeRole(root.get("role").getString());
 
-                if (Assert.isEmpty(username)) return Result.failure("用户名不能为空");
-                if (Assert.isEmpty(password)) return Result.failure("密码不能为空");
-                if (role == null) return Result.failure("角色只能是管理员或普通用户");
-                if (userStore.findByUsername(username) != null) return Result.failure("用户名已存在");
+                if (Assert.isEmpty(username)) return auditFailure("auth.user.create.failure", "invalid_username", "用户名不能为空");
+                if (Assert.isEmpty(password)) return auditFailure("auth.user.create.failure", "missing_password", "密码不能为空");
+                if (role == null) return auditFailure("auth.user.create.failure", "invalid_role", "角色只能是管理员或普通用户");
+                if (userStore.findByUsername(username) != null) return auditFailure("auth.user.create.failure", "duplicate_username", "用户名已存在");
 
                 UserEntity user = new UserEntity(UUID.randomUUID().toString(), username,
                         Assert.isEmpty(displayName) ? username : displayName);
@@ -209,34 +218,35 @@ public class UserAuthController {
                 user.setEnabled(true);
                 userStore.createUser(user);
                 LOG.info("[UserAuth] Created user: {}", username);
+                auditUserSuccess("auth.user.create.success", user);
                 return Result.succeed();
             } catch (Exception e) {
                 LOG.warn("[UserAuth] Failed to create user: {}", e.getMessage());
-                return Result.failure("创建失败: " + safeMessage(e));
+                return auditFailure("auth.user.create.failure", "create_error", "创建失败: " + safeMessage(e));
             }
         }
     }
 
     @Post
-    @Mapping("/web/settings/user-auth/users/update")
+    @Mapping("/web/admin/users/update")
     public Result<Void> updateUser(@Body String json) {
         synchronized (userLock) {
             Result<Void> unsupported = ensureLocalManagement();
-            if (unsupported != null) return unsupported;
+            if (unsupported != null) return auditFailure("auth.user.update.failure", "unsupported", unsupported.getDescription());
             try {
                 ONode root = ONode.ofJson(json);
                 String id = root.get("id").getString();
-                if (Assert.isEmpty(id)) return Result.failure("用户 ID 不能为空");
+                if (Assert.isEmpty(id)) return auditFailure("auth.user.update.failure", "missing_id", "用户 ID 不能为空");
 
                 UserEntity existing = userStore.findById(id);
-                if (existing == null) return Result.failure("用户不存在");
+                if (existing == null) return auditFailure("auth.user.update.failure", "not_found", "用户不存在");
                 UserEntity updated = copyUser(existing);
 
                 String role = root.hasKey("role") ? normalizeRole(root.get("role").getString()) : existing.getRole();
-                if (role == null) return Result.failure("角色只能是管理员或普通用户");
+                if (role == null) return auditFailure("auth.user.update.failure", "invalid_role", "角色只能是管理员或普通用户");
                 if (wouldRemoveLastAdmin(existing, role, root.hasKey("enabled")
                         ? root.get("enabled").getBoolean() : existing.isEnabled())) {
-                    return Result.failure("必须至少保留一个已启用的管理员");
+                    return auditFailure("auth.user.update.failure", "last_admin", "必须至少保留一个已启用的管理员");
                 }
 
                 if (root.hasKey("displayName")) updated.setDisplayName(trim(root.get("displayName").getString()));
@@ -253,69 +263,95 @@ public class UserAuthController {
 
                 userStore.updateUser(updated);
                 if (securityChanged) sessionManager.revokeUserSessions(id);
+                auditUserSuccess("auth.user.update.success", updated);
                 return Result.succeed();
             } catch (Exception e) {
                 LOG.warn("[UserAuth] Failed to update user: {}", e.getMessage());
-                return Result.failure("更新失败: " + safeMessage(e));
+                return auditFailure("auth.user.update.failure", "update_error", "更新失败: " + safeMessage(e));
             }
         }
     }
 
     @Post
-    @Mapping("/web/settings/user-auth/users/toggle")
+    @Mapping("/web/admin/users/toggle")
     public Result<Void> toggleUser(@Body String json) {
         synchronized (userLock) {
             Result<Void> unsupported = ensureLocalManagement();
-            if (unsupported != null) return unsupported;
+            if (unsupported != null) return auditFailure("auth.user.toggle.failure", "unsupported", unsupported.getDescription());
             try {
                 ONode root = ONode.ofJson(json);
                 String id = root.get("id").getString();
-                if (Assert.isEmpty(id)) return Result.failure("用户 ID 不能为空");
-                if (!root.hasKey("enabled")) return Result.failure("enabled 不能为空");
+                if (Assert.isEmpty(id)) return auditFailure("auth.user.toggle.failure", "missing_id", "用户 ID 不能为空");
+                if (!root.hasKey("enabled")) return auditFailure("auth.user.toggle.failure", "missing_enabled", "enabled 不能为空");
 
                 UserEntity existing = userStore.findById(id);
-                if (existing == null) return Result.failure("用户不存在");
+                if (existing == null) return auditFailure("auth.user.toggle.failure", "not_found", "用户不存在");
                 boolean enabled = root.get("enabled").getBoolean();
                 if (wouldRemoveLastAdmin(existing, existing.getRole(), enabled)) {
-                    return Result.failure("不能停用最后一个管理员");
+                    return auditFailure("auth.user.toggle.failure", "last_admin", "不能停用最后一个管理员");
                 }
 
                 UserEntity updated = copyUser(existing);
                 updated.setEnabled(enabled);
                 userStore.updateUser(updated);
                 if (!enabled) sessionManager.revokeUserSessions(id);
+                auditUserSuccess("auth.user.toggle.success", updated);
                 return Result.succeed();
             } catch (Exception e) {
                 LOG.warn("[UserAuth] Failed to toggle user: {}", e.getMessage());
-                return Result.failure("操作失败: " + safeMessage(e));
+                return auditFailure("auth.user.toggle.failure", "toggle_error", "操作失败: " + safeMessage(e));
             }
         }
     }
 
     @Post
-    @Mapping("/web/settings/user-auth/users/delete")
+    @Mapping("/web/admin/users/delete")
     public Result<Void> deleteUser(@Body String json) {
         synchronized (userLock) {
             Result<Void> unsupported = ensureLocalManagement();
-            if (unsupported != null) return unsupported;
+            if (unsupported != null) return auditFailure("auth.user.delete.failure", "unsupported", unsupported.getDescription());
             try {
                 String id = ONode.ofJson(json).get("id").getString();
-                if (Assert.isEmpty(id)) return Result.failure("用户 ID 不能为空");
+                if (Assert.isEmpty(id)) return auditFailure("auth.user.delete.failure", "missing_id", "用户 ID 不能为空");
 
                 UserEntity user = userStore.findById(id);
-                if (user == null) return Result.failure("用户不存在");
+                if (user == null) return auditFailure("auth.user.delete.failure", "not_found", "用户不存在");
                 if (isActiveAdmin(user) && activeAdminCount() <= 1) {
-                    return Result.failure("不能删除最后一个管理员");
+                    return auditFailure("auth.user.delete.failure", "last_admin", "不能删除最后一个管理员");
                 }
 
                 userStore.deleteUser(id);
                 sessionManager.revokeUserSessions(id);
+                auditUserSuccess("auth.user.delete.success", user);
                 return Result.succeed();
             } catch (Exception e) {
                 LOG.warn("[UserAuth] Failed to delete user: {}", e.getMessage());
-                return Result.failure("删除失败: " + safeMessage(e));
+                return auditFailure("auth.user.delete.failure", "delete_error", "删除失败: " + safeMessage(e));
             }
         }
+    }
+
+    // 审计字段只从已验证的业务状态构造，绝不透传请求、异常或用户实体。
+    private static void auditUserSuccess(String event, UserEntity user) {
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("userId", user.getId());
+        audit.put("role", user.getRole());
+        audit.put("enabled", user.isEnabled());
+        AdminAuditStore.record(event, audit);
+    }
+
+    private static <T> Result<T> auditFailure(String event, String reason, String message) {
+        AdminAuditStore.record(event, java.util.Collections.singletonMap("reason", reason));
+        return Result.failure(message);
+    }
+
+    private boolean hasActiveAdmin(UserStore store) {
+        List<UserEntity> users = store.listUsers();
+        if (users == null) return false;
+        for (UserEntity user : users) {
+            if (isActiveAdmin(user)) return true;
+        }
+        return false;
     }
 
     private Result<Void> ensureLocalManagement() {
@@ -378,12 +414,14 @@ public class UserAuthController {
     }
 
     private boolean requiresLdapAdminProof(UserAuthConfig oldConfig, UserAuthConfig candidate) {
-        if (!candidate.isEnabled() || !"ldap".equals(candidate.getMode())) return false;
-        return !oldConfig.isEnabled() || !"ldap".equals(oldConfig.getMode())
-                || !Objects.equals(oldConfig.getLdapAdminGroupDn(), candidate.getLdapAdminGroupDn())
-                || !Objects.equals(oldConfig.getLdapGroupAttribute(), candidate.getLdapGroupAttribute())
-                || !Objects.equals(oldConfig.getLdapUserFilter(), candidate.getLdapUserFilter())
-                || !Objects.equals(oldConfig.getLdapBaseDn(), candidate.getLdapBaseDn());
+        if (!"ldap".equals(UserStoreFactory.normalizeMode(candidate.getMode()))) return false;
+        // 进入 LDAP 或修改任一影响身份/角色映射的配置，必须用真实 LDAP 用户重新证明管理员权限。
+        return !"ldap".equals(UserStoreFactory.normalizeMode(oldConfig.getMode()))
+                || identityConfigChanged(oldConfig, candidate)
+                || !Objects.equals(oldConfig.getLdapDisplayNameAttribute(), candidate.getLdapDisplayNameAttribute())
+                || !Objects.equals(oldConfig.getLdapEmailAttribute(), candidate.getLdapEmailAttribute())
+                || oldConfig.getLdapConnectTimeoutMillis() != candidate.getLdapConnectTimeoutMillis()
+                || oldConfig.getLdapReadTimeoutMillis() != candidate.getLdapReadTimeoutMillis();
     }
 
     private boolean identityConfigChanged(UserAuthConfig oldConfig, UserAuthConfig candidate) {

@@ -7,7 +7,7 @@
  *     允许匿名进入管理台，避免刷新后再次落入登录/初始化流程。
  *     真正的拦截由后端 UserAuthFilter 的 403 负责，此处仅优化体验。
  *  2. 从 ADMIN_MODULES（admin-modules.js）与后端 /web/admin/modules 取交集，生成导航。
- *  3. hash 路由（/admin#users）驱动模块 render。
+ *  3. hash 路由（/web/admin#users）驱动模块 render。
  */
 (function () {
     'use strict';
@@ -19,25 +19,29 @@
 
     var modules = [];      // 最终启用并排序后的模块
     var moduleMap = {};
+    var loginUrl = '/login?scope=admin&returnUrl=%2Fweb%2Fadmin';
+    // 审计日志与会话撤销仍保留在模块注册表中，待后续开放前端入口；
+    // 这里仅控制当前导航显隐，不影响后端写入、查询和撤销实现。
+    var hiddenModuleKeys = { audit: true, sessions: true };
+
+    function jsonResponse(r) {
+        if (r.status === 401) { window.location.replace(loginUrl); throw new Error('401'); }
+        if (r.status === 403) { showGuard('无访问权限', '当前账户没有管理权限。', '返回工作台', '/'); throw new Error('403'); }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }
+    window.adminJsonResponse = jsonResponse;
 
     function roleLabel(role) {
         return role === 'admin' ? '管理员' : '普通用户';
     }
 
-    // 退出登录：销毁后端会话 + 清本地 cookie，回到登录页。
-    // 与工作台 web.html 的登出逻辑一致，确保 token 两端都失效。
+    // 退出登录：由管理端点销毁管理员会话，并通过 Set-Cookie 清除 HttpOnly Cookie。
     function doLogout() {
         if (!window.confirm('确定要退出登录吗？')) return;
-        fetch('/web/user/logout', { method: 'POST' })
-            .then(function () {
-                document.cookie = 'user_token=; path=/; max-age=0';
-                window.location.href = '/login';
-            })
-            .catch(function () {
-                // 后端不可达也强制清本地态并回登录页，避免卡在后台
-                document.cookie = 'user_token=; path=/; max-age=0';
-                window.location.href = '/login';
-            });
+        fetch('/web/admin/session/logout', { method: 'POST', credentials: 'same-origin' })
+            .then(function () { window.location.href = loginUrl; })
+            .catch(function () { window.location.href = loginUrl; });
     }
 
     if (logoutBtn) {
@@ -45,10 +49,25 @@
     }
 
     function showGuard(title, desc, btnText, btnHref) {
-        var btn = btnHref ? '<a class="admin-topbar-back" href="' + btnHref + '">' + btnText + '</a>' : '';
-        contentEl.innerHTML =
-            '<div class="admin-guard-state"><h2>' + title + '</h2><p>' + desc + '</p>' + btn + '</div>';
+        navEl.replaceChildren();
+        var state = document.createElement('div');
+        state.className = 'admin-guard-state';
+        var heading = document.createElement('h2');
+        heading.textContent = title;
+        var message = document.createElement('p');
+        message.textContent = desc;
+        state.appendChild(heading);
+        state.appendChild(message);
+        if (btnHref) {
+            var link = document.createElement('a');
+            link.className = 'admin-topbar-back';
+            link.href = btnHref;
+            link.textContent = btnText;
+            state.appendChild(link);
+        }
+        contentEl.replaceChildren(state);
     }
+    window.showAdminGuard = showGuard;
 
     // ============== 实例自举向导 ==============
     // 认证未启用时，系统里还没有用户/角色体系。“是否启用认证”本质是实例级
@@ -67,7 +86,8 @@
             '    <div class="admin-setup-body">' +
             '      <div class="general-field"><label class="general-field-label">管理员用户名 <span class="required">*</span></label><input type="text" class="general-input" id="bsUsername" value="admin" placeholder="admin"/></div>' +
             '      <div class="general-field"><label class="general-field-label">显示名称</label><input type="text" class="general-input" id="bsDisplayName" placeholder="管理员"/></div>' +
-            '      <div class="general-field"><label class="general-field-label">邮箱</label><input type="text" class="general-input" id="bsEmail" placeholder="admin@localhost"/></div>' +
+            '      <div class="general-field"><label class="general-field-label">邮箱</label><input type="email" class="general-input" id="bsEmail" placeholder="admin@localhost"/></div>' +
+            '      <div class="general-field"><label class="general-field-label">本机初始化令牌 <span class="required">*</span></label><input type="password" class="general-input" id="bsToken" autocomplete="off" placeholder="请查看本机启动日志"/><small>初始化令牌仅在首次启动的本机日志显示一次。</small></div>' +
             '      <div class="general-field"><label class="general-field-label">密码 <span class="required">*</span></label><input type="password" class="general-input" id="bsPassword" autocomplete="new-password"/></div>' +
             '      <div class="general-field"><label class="general-field-label">确认密码 <span class="required">*</span></label><input type="password" class="general-input" id="bsPassword2" autocomplete="new-password"/></div>' +
             '      <div class="admin-setup-error" id="bsError" style="display:none"></div>' +
@@ -91,7 +111,9 @@
         var email = (document.getElementById('bsEmail').value || '').trim();
         var password = document.getElementById('bsPassword').value || '';
         var password2 = document.getElementById('bsPassword2').value || '';
+        var bootstrapToken = (document.getElementById('bsToken').value || '').trim();
 
+        if (!bootstrapToken) { fail('请填写本机启动日志中的初始化令牌'); return; }
         if (!username) { fail('管理员用户名不能为空'); return; }
         if (!password) { fail('密码不能为空'); return; }
         if (password !== password2) { fail('两次输入的密码不一致'); return; }
@@ -102,13 +124,13 @@
         fetch('/web/admin/bootstrap', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username, displayName: displayName, email: email, password: password })
+            body: JSON.stringify({ username: username, displayName: displayName, email: email, password: password, token: bootstrapToken })
         })
-            .then(function (r) { return r.json(); })
+            .then(jsonResponse)
             .then(function (resp) {
                 if (resp && resp.code === 200) {
                     // 开启成功：此后访问需登录，跳登录页
-                    window.location.href = '/login';
+                    window.location.href = loginUrl;
                 } else {
                     if (btn) { btn.disabled = false; btn.textContent = '启用并创建管理员'; }
                     fail((resp && (resp.description || resp.message)) || '初始化失败');
@@ -123,28 +145,16 @@
     // ============== 准入检查 ==============
     function bootstrap() {
         fetch('/web/user/me')
-            .then(function (r) { return r.json(); })
+            .then(jsonResponse)
             .then(function (resp) {
-                var d = (resp && resp.code === 200 && resp.data) ? resp.data : {};
-                if (!d.authEnabled) {
-                    if (d.bootstrapRequired) {
-                        // 全新实例尚无用户：通过自举向导创建首个管理员并开启认证。
-                        renderBootstrap();
-                        return;
-                    }
-                    // 已有用户后主动关闭认证：此时服务端已按“无需认证”放行，
-                    // 管理台也应直接可用，不能因没有登录态再次跳登录或要求初始化。
-                    document.body.classList.remove('admin-setup-mode');
-                    if (userInfoEl) {
-                        userInfoEl.classList.add('admin-auth-disabled');
-                        userInfoEl.textContent = '认证已关闭';
-                    }
-                    if (logoutBtn) logoutBtn.style.display = 'none';
-                    loadModules();
+                if (!resp || resp.code !== 200 || !resp.data) throw new Error('Invalid user response');
+                var d = resp.data;
+                if (d.bootstrapRequired === true && d.authEnabled === false) {
+                    renderBootstrap();
                     return;
                 }
                 if (!d.authenticated) {
-                    window.location.href = '/login';
+                    window.location.href = loginUrl;
                     return;
                 }
                 if (d.role !== 'admin') {
@@ -166,7 +176,7 @@
                 loadModules();
             })
             .catch(function () {
-                showGuard('加载失败', '无法获取用户信息，请稍后重试。', '返回工作台', '/');
+                showGuard('加载失败', '无法获取用户信息，请稍后重试。', '重试', '/web/admin');
             });
     }
 
@@ -174,20 +184,20 @@
     function loadModules() {
         var all = window.ADMIN_MODULES || [];
         fetch('/web/admin/modules')
-            .then(function (r) { return r.json(); })
+            .then(jsonResponse)
             .then(function (resp) {
-                var enabled = (resp && resp.code === 200 && Array.isArray(resp.data)) ? resp.data : null;
-                buildModules(all, enabled);
+                if (!resp || resp.code !== 200 || !Array.isArray(resp.data)) throw new Error('Invalid modules response');
+                buildModules(all, resp.data);
             })
             .catch(function () {
-                // 能力接口失败时只开放只读的基础模块，不能误暴露本地用户 CRUD。
-                buildModules(all, ['overview', 'auth']);
+                buildModules(all, []);
+                if (location.pathname === '/web/admin') showGuard('模块加载失败', '无法确认可用管理模块，已关闭管理操作。', '重试', '/web/admin');
             });
     }
 
     function buildModules(all, enabledKeys) {
         modules = all.filter(function (m) {
-            return !enabledKeys || enabledKeys.indexOf(m.key) >= 0;
+            return !hiddenModuleKeys[m.key] && enabledKeys.indexOf(m.key) >= 0;
         }).sort(function (a, b) {
             return (a.order || 0) - (b.order || 0);
         });
@@ -228,8 +238,7 @@
         try {
             m.render(contentEl);
         } catch (e) {
-            contentEl.innerHTML = '<div class="admin-guard-state"><h2>模块加载出错</h2><p>' +
-                (e && e.message ? e.message : '未知错误') + '</p></div>';
+            showGuard('模块加载出错', '无法显示此管理模块，请刷新后重试。', '重试', '/web/admin');
         }
     }
 

@@ -12,6 +12,8 @@ import javax.naming.directory.SearchControls;
 import javax.naming.directory.SearchResult;
 import javax.naming.ldap.InitialLdapContext;
 import javax.naming.ldap.LdapContext;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Hashtable;
@@ -168,6 +170,7 @@ public class LdapUserStore implements UserStore {
         if (isEmpty(config.getLdapUrl())) {
             throw new IllegalArgumentException("LDAP URL 未配置");
         }
+        validateLdapUrl(config.getLdapUrl(), config.isLdapSsl());
         if (isEmpty(config.getLdapBaseDn())) {
             throw new IllegalArgumentException("LDAP 搜索基 DN 未配置");
         }
@@ -180,6 +183,41 @@ public class LdapUserStore implements UserStore {
         if (config.getLdapConnectTimeoutMillis() <= 0 || config.getLdapReadTimeoutMillis() <= 0) {
             throw new IllegalArgumentException("LDAP 超时时间必须大于 0");
         }
+    }
+
+    /**
+     * simple bind 只有在 TLS（ldaps）或本机明文开发环境（ldap）下允许。
+     * ldapSsl 与 URL 协议必须严格一致，不能依赖开关改变实际传输安全性。
+     */
+    static void validateLdapUrl(String url, boolean ldapSsl) {
+        final URI uri;
+        try {
+            uri = new URI(url.trim());
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("LDAP URL 格式无效", e);
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        String host = uri.getHost();
+        if (host == null || host.trim().isEmpty() || uri.getUserInfo() != null) {
+            throw new IllegalArgumentException("LDAP URL 必须包含有效主机且不得包含用户信息");
+        }
+        boolean ldaps = "ldaps".equals(scheme);
+        boolean ldap = "ldap".equals(scheme);
+        if (!ldap && !ldaps) {
+            throw new IllegalArgumentException("LDAP URL 仅支持 ldap:// 或 ldaps://");
+        }
+        if (ldapSsl != ldaps) {
+            throw new IllegalArgumentException("ldapSsl 配置必须与 LDAP URL 协议一致");
+        }
+        if (ldap && !isLocalHost(host)) {
+            throw new IllegalArgumentException("非本机 LDAP simple bind 必须使用 ldaps:// TLS");
+        }
+    }
+
+    private static boolean isLocalHost(String host) {
+        String normalized = host.toLowerCase(Locale.ROOT);
+        return "localhost".equals(normalized) || "127.0.0.1".equals(normalized)
+                || "::1".equals(normalized) || "0:0:0:0:0:0:0:1".equals(normalized);
     }
 
     static String escapeFilterValue(String value) {
@@ -206,6 +244,8 @@ public class LdapUserStore implements UserStore {
     }
 
     private Hashtable<String, Object> createEnv(String principal, String credentials) {
+        // 配置对象可能在初始化后被外部修改，创建连接时再次校验传输协议，避免绕过。
+        validateLdapUrl(config.getLdapUrl(), config.isLdapSsl());
         Hashtable<String, Object> env = new Hashtable<>();
         env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory");
         env.put(Context.PROVIDER_URL, config.getLdapUrl());

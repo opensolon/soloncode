@@ -4,7 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.core.handle.Result;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,6 +15,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -54,6 +59,48 @@ class UserAuthEnhancementTest {
     }
 
     @Test
+    void filePasswordsUseSaltedPbkdf2AndLegacySha256IsUpgraded(@TempDir Path tempDir) throws Exception {
+        String first = FileUserStore.hashPassword("secret");
+        String second = FileUserStore.hashPassword("secret");
+        assertTrue(first.startsWith("pbkdf2-sha256$120000$"));
+        assertNotEquals(first, second, "相同密码必须使用不同随机盐");
+        assertTrue(FileUserStore.verifyPassword("secret", first));
+        assertFalse(FileUserStore.verifyPassword("wrong", first));
+
+        FileUserStore store = new FileUserStore(tempDir);
+        store.init(new UserAuthConfig());
+        UserEntity user = user("u1", "legacy", "user", true);
+        user.setPasswordHash(legacySha256("secret"));
+        store.createUser(user);
+        assertNotNull(store.authenticate("legacy", "secret"));
+        assertTrue(user.getPasswordHash().startsWith("pbkdf2-sha256$120000$"));
+        assertTrue(new String(Files.readAllBytes(tempDir.resolve(".soloncode/auth/users.json")),
+                StandardCharsets.UTF_8).contains("pbkdf2-sha256$120000$"));
+    }
+
+    @Test
+    void ldapSimpleBindTransportRulesCannotBeBypassed() {
+        LdapUserStore.validateLdapUrl("ldap://localhost:389", false);
+        LdapUserStore.validateLdapUrl("ldaps://ldap.example.com:636", true);
+        assertThrows(IllegalArgumentException.class,
+                () -> LdapUserStore.validateLdapUrl("ldap://ldap.example.com:389", false));
+        assertThrows(IllegalArgumentException.class,
+                () -> LdapUserStore.validateLdapUrl("ldap://ldap.example.com:389", true));
+        assertThrows(IllegalArgumentException.class,
+                () -> LdapUserStore.validateLdapUrl("ldaps://ldap.example.com:636", false));
+        assertThrows(IllegalArgumentException.class,
+                () -> LdapUserStore.validateLdapUrl("ldaps://localhost:636", false));
+    }
+
+    private static String legacySha256(String password) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(password.getBytes(StandardCharsets.UTF_8));
+        StringBuilder result = new StringBuilder();
+        for (byte value : digest) result.append(String.format("%02x", value));
+        return result.toString();
+    }
+
+    @Test
     void reloadableStoreSwitchesCapabilitiesImmediately() throws Exception {
         MutableStore file = new MutableStore(true, "file");
         ReloadableUserStore reloadable = new ReloadableUserStore(file);
@@ -69,7 +116,7 @@ class UserAuthEnhancementTest {
     void ldapStoreRejectsLocalCrudAtControllerBoundary() {
         MutableStore ldap = new MutableStore(false, "ldap");
         UserAuthController controller = new UserAuthController(ldap, new UserSessionManager(),
-                validLdapConfig(), null);
+                validLdapConfig());
         Result<Void> result = controller.createUser("{\"username\":\"test\",\"password\":\"secret\",\"role\":\"user\"}");
         assertFalse(result.getCode() == 200);
         assertTrue(result.getDescription().contains("LDAP"));
@@ -81,7 +128,7 @@ class UserAuthEnhancementTest {
         UserEntity admin = user("a1", "root", "admin", true);
         store.users.put(admin.getId(), admin);
         UserAuthController controller = new UserAuthController(store, new UserSessionManager(),
-                new UserAuthConfig(), null);
+                new UserAuthConfig());
 
         Result<Void> disable = controller.toggleUser("{\"id\":\"a1\",\"enabled\":false}");
         assertFalse(disable.getCode() == 200);
@@ -103,12 +150,49 @@ class UserAuthEnhancementTest {
         MutableStore store = new MutableStore(true, "file");
         store.users.put(admin.getId(), admin);
         store.users.put("a2", user("a2", "other", "admin", true));
-        UserAuthController controller = new UserAuthController(store, sessions, config, null);
+        UserAuthController controller = new UserAuthController(store, sessions, config);
 
         assertEquals(1, sessions.getUserSessions("a1").size());
         Result<Void> result = controller.updateUser("{\"id\":\"a1\",\"role\":\"user\"}");
         assertEquals(200, result.getCode());
         assertTrue(sessions.getUserSessions("a1").isEmpty());
+    }
+
+    @Test
+    void managementAuditRecordsOutcomesWithoutCredentials(@TempDir Path tempDir) {
+        AdminAuditStore audit = new AdminAuditStore(tempDir.resolve("audit"));
+        MutableStore store = new MutableStore(true, "file");
+        store.users.put("a1", user("a1", "root", "admin", true));
+        UserAuthController controller = new UserAuthController(store, new UserSessionManager(),
+                new UserAuthConfig());
+
+        assertEquals(200, controller.createUser("{\"username\":\"alice\",\"password\":\"create-secret\"}").getCode());
+        assertFalse(controller.createUser("{\"username\":\"alice\",\"password\":\"duplicate-secret\"}").getCode() == 200);
+        UserEntity alice = store.findByUsername("alice");
+        String id = alice.getId();
+        assertEquals(200, controller.updateUser("{\"id\":\"" + id + "\",\"password\":\"update-secret\",\"role\":\"admin\"}").getCode());
+        assertFalse(controller.updateUser("{\"id\":\"missing\"}").getCode() == 200);
+        assertEquals(200, controller.toggleUser("{\"id\":\"" + id + "\",\"enabled\":false}").getCode());
+        assertFalse(controller.toggleUser("{\"id\":\"a1\",\"enabled\":false}").getCode() == 200);
+        assertEquals(200, controller.deleteUser("{\"id\":\"" + id + "\"}").getCode());
+        assertFalse(controller.deleteUser("{\"id\":\"missing\"}").getCode() == 200);
+        assertFalse(controller.saveConfig("{\"mode\":\"invalid\",\"ldapTestPassword\":\"proof-secret\"}").getCode() == 200);
+        assertFalse(controller.testLdap("{\"ldapTestPassword\":\"ldap-secret\"}").getCode() == 200);
+
+        String[] events = {"auth.user.create.success", "auth.user.create.failure",
+                "auth.user.update.success", "auth.user.update.failure", "auth.user.toggle.success",
+                "auth.user.toggle.failure", "auth.user.delete.success", "auth.user.delete.failure",
+                "auth.config.save.failure", "auth.ldap.test.failure"};
+        for (String event : events) {
+            Map<String, Object> page = audit.query(1, 20, event, null, null);
+            assertEquals(1, page.get("total"), event);
+            Map<String, Object> item = (Map<String, Object>) ((List<?>) page.get("items")).get(0);
+            for (String key : item.keySet()) {
+                assertTrue(java.util.Arrays.asList("timestamp", "event", "userId", "role", "enabled", "reason").contains(key), key);
+            }
+        }
+        assertEquals("duplicate_username", ((Map<?, ?>) ((List<?>) audit.query(1, 20,
+                "auth.user.create.failure", null, null).get("items")).get(0)).get("reason"));
     }
 
     private static void setSessionStorage(UserSessionManager manager, UserAuthConfig config, Path path) {

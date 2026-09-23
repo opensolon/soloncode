@@ -5,7 +5,8 @@
  * （key/title/icon/order/render），导航与路由会自动生成，无需改动骨架。
  *
  * 每个模块自包含：一个 render(container) 函数 + 对应的一组后端 API。
- * 后端 /web/admin/modules 返回本实例启用的模块 key，前端据此过滤显隐。
+ * 后端 /web/admin/modules 返回本实例启用的模块 key，前端据此过滤显隐；
+ * 审计与会话模块即使暂时不出现在导航中，也保留实现供后续重新开放。
  */
 (function () {
     'use strict';
@@ -13,7 +14,9 @@
     var ICON = {
         overview: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
         auth: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
-        users: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+        users: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+        audit: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h9l4 4v14H3V3h5z"/><path d="M17 3v5h4M7 12h10M7 16h10"/></svg>',
+        sessions: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h4"/></svg>'
     };
 
     // ============== 概览模块 ==============
@@ -29,16 +32,24 @@
             '</div>';
 
         fetch('/web/admin/overview')
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (r.status === 401) { window.location.replace('/login?scope=admin&returnUrl=%2Fweb%2Fadmin'); throw new Error('401'); }
+                if (r.status === 403) { throw new Error('403'); }
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function (resp) {
-                if (resp.code !== 200 || !resp.data) return;
+                if (resp.code !== 200 || !resp.data) throw new Error('Invalid overview response');
                 var d = resp.data;
                 setText('ovUserCount', d.userCount);
                 setText('ovSessionCount', d.activeSessionCount);
                 setText('ovAuthMode', d.authEnabled ? (d.authMode || 'file') : '未启用');
                 setText('ovStoreType', d.storeType || 'file');
             })
-            .catch(function () {});
+            .catch(function () {
+                var cards = document.getElementById('adminOverviewCards');
+                if (cards) cards.insertAdjacentHTML('afterend', '<div class="admin-inline-error">概览加载失败，请刷新重试。</div>');
+            });
     }
 
     function setText(id, val) {
@@ -159,11 +170,193 @@
         }
     }
 
+    // ============== 审计与会话模块 ==============
+    // 只有 /web/admin/modules 显式启用对应 key 时才渲染并请求接口。
+    function adminElement(tag, className, text) {
+        var el = document.createElement(tag);
+        if (className) el.className = className;
+        if (text != null) el.textContent = String(text);
+        return el;
+    }
+
+    function adminButton(text, onClick) {
+        var btn = adminElement('button', 'btn-secondary', text);
+        btn.type = 'button';
+        btn.addEventListener('click', onClick);
+        return btn;
+    }
+
+    function adminPanel(container, title, description) {
+        var root = adminElement('div', 'admin-data-panel');
+        root.appendChild(adminElement('h1', 'admin-content-title', title));
+        root.appendChild(adminElement('div', 'admin-content-desc', description));
+        container.replaceChildren(root);
+        return root;
+    }
+
+    function adminStatus(root, message, error) {
+        var status = root.querySelector('.admin-data-status');
+        status.textContent = message || '';
+        status.classList.toggle('admin-inline-error', !!error);
+    }
+
+    function adminPage(root, data, load) {
+        var pager = root.querySelector('.admin-data-pager');
+        pager.replaceChildren();
+        var page = Number(data.page);
+        var size = Number(data.pageSize);
+        var total = Number(data.total);
+        if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(size) || size < 1 ||
+                !Number.isSafeInteger(total) || total < 0) throw new Error('Invalid pagination');
+        var pages = Math.max(1, Math.ceil(total / size));
+        var prev = adminButton('上一页', function () { load(page - 1); });
+        prev.disabled = page <= 1;
+        var next = adminButton('下一页', function () { load(page + 1); });
+        next.disabled = page >= pages;
+        pager.appendChild(prev);
+        pager.appendChild(adminElement('span', 'admin-data-page-label', '第 ' + page + ' / ' + pages + ' 页 · 共 ' + total + ' 条'));
+        pager.appendChild(next);
+    }
+
+    function adminRows(root, items, columns, actions) {
+        var list = root.querySelector('.admin-data-list');
+        list.replaceChildren();
+        if (!items.length) {
+            list.appendChild(adminElement('div', 'admin-data-empty', '暂无记录'));
+            return;
+        }
+        items.forEach(function (item) {
+            var row = adminElement('div', 'admin-data-row');
+            columns.forEach(function (column) {
+                var cell = adminElement('div', 'admin-data-cell');
+                cell.appendChild(adminElement('span', 'admin-data-label', column[0]));
+                var value = item[column[1]];
+                cell.appendChild(adminElement('span', 'admin-data-value', value == null || value === '' ? '—' : value));
+                row.appendChild(cell);
+            });
+            if (actions) actions(row, item);
+            list.appendChild(row);
+        });
+    }
+
+    function adminRequest(url, options) {
+        return fetch(url, options).then(function (response) {
+            if (window.adminJsonResponse) return window.adminJsonResponse(response);
+            if (response.status === 401) {
+                window.location.replace('/login?scope=admin&returnUrl=%2Fweb%2Fadmin');
+                throw new Error('401');
+            }
+            if (response.status === 403) throw new Error('403');
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        }).then(function (response) {
+            if (!response || response.code !== 200) throw new Error('Request failed');
+            return response.data;
+        });
+    }
+
+    function renderAudit(container) {
+        var root = adminPanel(container, '审计日志', '查询管理操作记录');
+        var form = adminElement('form', 'admin-data-filter');
+        var eventInput = adminElement('input');
+        eventInput.type = 'search';
+        eventInput.placeholder = '事件名称（精确匹配）';
+        eventInput.setAttribute('aria-label', '事件名称');
+        form.appendChild(eventInput);
+        var search = adminElement('button', 'btn-secondary', '查询');
+        search.type = 'submit';
+        form.appendChild(search);
+        root.appendChild(form);
+        root.appendChild(adminElement('div', 'admin-data-status'));
+        root.appendChild(adminElement('div', 'admin-data-list'));
+        root.appendChild(adminElement('div', 'admin-data-pager'));
+        var event = '';
+        var sequence = 0;
+        function load(page) {
+            var current = ++sequence;
+            adminStatus(root, '正在加载…');
+            adminRequest('/web/admin/audit?page=' + page + '&pageSize=20' + (event ? '&event=' + encodeURIComponent(event) : ''))
+                .then(function (data) {
+                    if (!root.isConnected || current !== sequence) return;
+                    if (!data || !Array.isArray(data.items)) throw new Error('Invalid audit response');
+                    adminPage(root, data, load);
+                    adminRows(root, data.items, [['时间', 'timestamp'], ['事件', 'event'], ['用户名', 'username'], ['用户 ID', 'userId']]);
+                    adminStatus(root, '');
+                }).catch(function (error) {
+                    if (!root.isConnected || current !== sequence || error.message === '401' || error.message === '403') return;
+                    root.querySelector('.admin-data-list').replaceChildren();
+                    root.querySelector('.admin-data-pager').replaceChildren();
+                    adminStatus(root, '审计日志加载失败，请重试。', true);
+                });
+        }
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            event = eventInput.value.trim();
+            load(1);
+        });
+        load(1);
+    }
+
+    function renderSessions(container) {
+        var root = adminPanel(container, '会话管理', '查询活跃会话并撤销指定会话或用户的全部会话');
+        root.appendChild(adminElement('div', 'admin-data-status'));
+        root.appendChild(adminButton('刷新', function () { load(page); }));
+        root.appendChild(adminElement('div', 'admin-data-list'));
+        root.appendChild(adminElement('div', 'admin-data-pager'));
+        var page = 1;
+        var sequence = 0;
+        var busy = false;
+        function load(targetPage) {
+            var current = ++sequence;
+            adminStatus(root, '正在加载…');
+            adminRequest('/web/admin/sessions?page=' + targetPage + '&pageSize=20')
+                .then(function (data) {
+                    if (!root.isConnected || current !== sequence) return;
+                    if (!data || !Array.isArray(data.items)) throw new Error('Invalid sessions response');
+                    adminPage(root, data, load);
+                    page = targetPage;
+                    adminRows(root, data.items, [['用户名', 'username'], ['创建时间', 'createdAt'], ['过期时间', 'expiresAt']], function (row, item) {
+                        var actions = adminElement('div', 'admin-data-actions');
+                        if (typeof item.id === 'string' && item.id) {
+                            actions.appendChild(adminButton('撤销会话', function () {
+                                revoke('/web/admin/sessions/revoke', { id: item.id }, '确定撤销该会话？');
+                            }));
+                        }
+                        if (typeof item.userId === 'string' && item.userId) {
+                            actions.appendChild(adminButton('撤销该用户全部会话', function () {
+                                revoke('/web/admin/sessions/revoke-user', { userId: item.userId }, '确定撤销该用户的全部会话？');
+                            }));
+                        }
+                        row.appendChild(actions);
+                    });
+                    adminStatus(root, '');
+                }).catch(function (error) {
+                    if (!root.isConnected || current !== sequence || error.message === '401' || error.message === '403') return;
+                    root.querySelector('.admin-data-list').replaceChildren();
+                    root.querySelector('.admin-data-pager').replaceChildren();
+                    adminStatus(root, '会话加载失败，请重试。', true);
+                });
+        }
+        function revoke(url, body, prompt) {
+            if (busy || !window.confirm(prompt)) return;
+            busy = true;
+            adminStatus(root, '正在撤销…');
+            adminRequest(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                .then(function () { if (root.isConnected) load(page); })
+                .catch(function (error) {
+                    if (root.isConnected && error.message !== '401' && error.message !== '403') {
+                        adminStatus(root, '撤销失败，请重试。', true);
+                    }
+                }).then(function () { busy = false; });
+        }
+        load(1);
+    }
+
     window.ADMIN_MODULES = [
         { key: 'overview', title: '概览', icon: ICON.overview, order: 0, render: renderOverview },
         { key: 'auth', title: '认证配置', icon: ICON.auth, order: 10, render: renderAuth },
-        { key: 'users', title: '用户管理', icon: ICON.users, order: 20, render: renderUsers }
-        // 未来新增：直接 push 一项即可，导航与路由自动生成
-        // { key: 'audit', title: '审计日志', icon: ICON.audit, order: 30, render: renderAudit }
+        { key: 'users', title: '用户管理', icon: ICON.users, order: 20, render: renderUsers },
+        { key: 'audit', title: '审计日志', icon: ICON.audit, order: 30, render: renderAudit },
+        { key: 'sessions', title: '会话管理', icon: ICON.sessions, order: 40, render: renderSessions }
     ];
 })();

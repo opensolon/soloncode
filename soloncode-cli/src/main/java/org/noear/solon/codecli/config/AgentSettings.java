@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.noear.solon.Solon;
 import org.noear.solon.codecli.auth.UserAuthConfig;
+import org.noear.solon.codecli.auth.AuthConfigRepository;
 import org.noear.solon.codecli.config.entity.*;
 import org.noear.solon.core.Props;
 import org.noear.solon.core.util.Assert;
@@ -135,7 +136,14 @@ public class AgentSettings implements Serializable {
             return loadFromFileStrict();
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to load settings from file: {}", e.getMessage());
-            return new AgentSettings();
+            AgentSettings fallback = new AgentSettings();
+            // 仅普通 settings 允许宽松回退；认证仓库损坏必须中断启动。
+            try {
+                copyUserAuth(fallback.userAuth, AuthConfigRepository.load());
+            } catch (Exception authError) {
+                throw new IllegalStateException("认证配置加载失败", authError);
+            }
+            return fallback;
         }
     }
 
@@ -169,6 +177,7 @@ public class AgentSettings implements Serializable {
             bindSettingsFile(localFile, agentSettings);
         }
 
+        copyUserAuth(agentSettings.userAuth, AuthConfigRepository.load());
         return agentSettings;
     }
 
@@ -204,10 +213,18 @@ public class AgentSettings implements Serializable {
             }
 
             agentSettings.mergeFrom();
+            copyUserAuth(agentSettings.userAuth, AuthConfigRepository.load());
             return agentSettings;
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to load settings for workspace {}: {}", workspaceDir, e.getMessage());
-            return new AgentSettings();
+            AgentSettings fallback = new AgentSettings();
+            fallback.workspaceDir = workspaceDir;
+            try {
+                copyUserAuth(fallback.userAuth, AuthConfigRepository.load());
+            } catch (Exception authError) {
+                throw new IllegalStateException("认证配置加载失败", authError);
+            }
+            return fallback;
         }
     }
 
@@ -224,6 +241,8 @@ public class AgentSettings implements Serializable {
             oNode.set("models", map);
         }
 
+        // 旧字段只由全局认证仓库一次迁移；工作区文件不得覆盖认证源。
+        oNode.remove("userAuth");
         oNode.bindTo(agentSettings);
     }
 
@@ -458,10 +477,13 @@ public class AgentSettings implements Serializable {
     }
 
     /**
-     * 严格保存配置。写入失败时向调用方抛出异常，避免认证接口报告假成功。
+     * 兼容认证接口的严格保存钩子：仅提交全局认证配置。
+     * 普通设置仍由 {@link #saveToFile()} 保存；写入失败必须向认证调用方抛出。
      */
     public synchronized void saveToFileStrict() throws Exception {
-        saveToFileStrict0();
+        // 兼容认证控制器调用：仅提交认证仓库，避免随后普通 settings 写入失败
+        // 导致调用方回滚内存认证状态而磁盘认证状态已成功提交。
+        AuthConfigRepository.save(userAuth);
     }
 
     private void saveToFileStrict0() throws Exception {
@@ -582,10 +604,6 @@ public class AgentSettings implements Serializable {
                 map.getOrNew(entry.getKey()).fill(entry.getValue());
             }
         });
-
-        // userAuth 是实例级全局配置（认证开关/模式/LDAP/会话），
-        // 只写入 global settings.json；否则自举开启认证后重启会丢失，导致每次进 /admin 又弹初始化向导。
-        oNode.getOrNew("userAuth").fill(userAuth);
 
         return oNode.toJson();
     }

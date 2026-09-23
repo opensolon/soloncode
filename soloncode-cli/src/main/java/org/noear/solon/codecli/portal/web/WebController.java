@@ -407,7 +407,7 @@ public class WebController {
     }
 
     /**
-     * 管理员面板入口：将 /admin 请求转发到静态页面 admin.html。
+     * 管理员面板入口：将 /web/admin 请求转发到静态页面 admin.html。
      *
      * <p>准入控制（role=admin）由 {@code UserAuthFilter} 统一负责，本方法不做鉴权判断。</p>
      *
@@ -415,7 +415,7 @@ public class WebController {
      * @throws Throwable 转发异常
      */
     @Get
-    @Mapping("/admin")
+    @Mapping("/web/admin")
     public void admin(Context ctx) throws Throwable {
         ctx.forward("/admin.html");
     }

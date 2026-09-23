@@ -22,7 +22,7 @@ solon.app:
 
 solon.logging.appender:
   console:
-    enable: false
+    enable: true
   file:
     enable: false
     level: INFO

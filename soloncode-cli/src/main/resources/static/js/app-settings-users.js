@@ -8,6 +8,18 @@
     var escAttr = window._settingsCore ? window._settingsCore.escapeAttr : esc;
     var showToast = window.showToast || (window._settingsCore ? window._settingsCore.showToast : function(msg, type) { if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' }); else alert(msg); });
 
+    function handleAuthFailure(xhr) {
+        if (!xhr || (xhr.status !== 401 && xhr.status !== 403)) return false;
+        if (xhr.status === 401) {
+            window.location.replace('/login?scope=admin&returnUrl=%2Fweb%2Fadmin');
+        } else if (window.showAdminGuard) {
+            window.showAdminGuard('无访问权限', '当前账户没有管理权限。');
+        } else {
+            showToast('当前账户没有管理权限', 'error');
+        }
+        return true;
+    }
+
     function postJson(url, data, done) {
         var request = $.ajax({
             url: url,
@@ -17,6 +29,7 @@
             dataType: 'json'
         });
         if (typeof done === 'function') request.done(done);
+        request.fail(handleAuthFailure);
         return request;
     }
 
@@ -26,6 +39,7 @@
     var editingUserId = null;
     var authEnabledInitial = false;
     var userListRequestId = 0;
+    var authConfigLoaded = false;
 
     function setInlineState(selector, message, state) {
         var el = $(selector);
@@ -37,11 +51,14 @@
 
     function loadAuthConfig() {
         setInlineState('#userAuthLdapTestResult', '', null);
+        authConfigLoaded = false;
         $('#userAuthSaveConfigBtn').prop('disabled', true);
-        $.ajax({ url: '/web/settings/user-auth/config', dataType: 'json' })
+        $('#userAuthConfigRetryBtn').remove();
+        $.ajax({ url: '/web/admin/auth/config', dataType: 'json' })
             .done(function (resp) {
                 if (resp.code !== 200) {
                     showToast(resp.description || '认证配置加载失败', 'error');
+                    $('#userAuthSaveConfigBtn').after('<button type="button" class="btn-secondary" id="userAuthConfigRetryBtn">重试加载</button>');
                     return;
                 }
                 var data = resp.data || {};
@@ -66,12 +83,15 @@
                 $('#userAuthLdapConnectTimeout').val(ldap.ldapConnectTimeoutMillis || 5000);
                 $('#userAuthLdapReadTimeout').val(ldap.ldapReadTimeoutMillis || 5000);
                 $('#userAuthStoreType').text(currentStoreType);
+                authConfigLoaded = true;
             })
-            .fail(function () {
+            .fail(function (xhr) {
+                if (handleAuthFailure(xhr)) return;
                 showToast('认证配置加载失败，请检查网络后重试', 'error');
+                $('#userAuthSaveConfigBtn').after('<button type="button" class="btn-secondary" id="userAuthConfigRetryBtn">重试加载</button>');
             })
-            .always(function () {
-                $('#userAuthSaveConfigBtn').prop('disabled', false);
+            .done(function () {
+                $('#userAuthSaveConfigBtn').prop('disabled', !authConfigLoaded);
             });
     }
 
@@ -88,7 +108,7 @@
     function loadUsers() {
         var requestId = ++userListRequestId;
         $('#userList').html('<div class="user-empty-state">正在加载用户...</div>');
-        $.ajax({ url: '/web/settings/user-auth/users', dataType: 'json' })
+        $.ajax({ url: '/web/admin/users', dataType: 'json' })
             .done(function (resp) {
                 if (requestId !== userListRequestId) return;
                 if (resp.code !== 200) {
@@ -138,7 +158,19 @@
         $('#userList').html(html);
     }
 
+    function positiveInt(selector, label, min, max, fallback) {
+        var raw = String($(selector).val() || '').trim();
+        if (!raw) return fallback;
+        if (!/^\d+$/.test(raw)) { showToast(label + '必须是整数', 'error'); return null; }
+        var value = Number(raw);
+        if (!Number.isSafeInteger(value) || value < min || value > max) { showToast(label + '范围应为 ' + min + ' 至 ' + max, 'error'); return null; }
+        return value;
+    }
+
     function ldapPayload() {
+        var connectTimeout = positiveInt('#userAuthLdapConnectTimeout', '连接超时', 100, 60000, 5000);
+        var readTimeout = positiveInt('#userAuthLdapReadTimeout', '读取超时', 100, 60000, 5000);
+        if (connectTimeout === null || readTimeout === null) return null;
         return {
             ldapUrl: ($('#userAuthLdapUrl').val() || '').trim(),
             ldapAdminDn: ($('#userAuthLdapAdminDn').val() || '').trim(),
@@ -150,8 +182,8 @@
             ldapEmailAttribute: ($('#userAuthLdapEmailAttr').val() || '').trim(),
             ldapGroupAttribute: ($('#userAuthLdapGroupAttr').val() || '').trim(),
             ldapAdminGroupDn: ($('#userAuthLdapAdminGroupDn').val() || '').trim(),
-            ldapConnectTimeoutMillis: parseInt($('#userAuthLdapConnectTimeout').val(), 10) || 5000,
-            ldapReadTimeoutMillis: parseInt($('#userAuthLdapReadTimeout').val(), 10) || 5000
+            ldapConnectTimeoutMillis: connectTimeout,
+            ldapReadTimeoutMillis: readTimeout
         };
     }
 
@@ -160,8 +192,10 @@
         if (btn.prop('disabled')) return;
         btn.prop('disabled', true).text('正在测试...');
         setInlineState('#userAuthLdapTestResult', '正在连接 LDAP...', 'loading');
-        postJson('/web/settings/user-auth/ldap/test', {
-            ldap: ldapPayload(),
+        var ldap = ldapPayload();
+        if (!ldap) { btn.prop('disabled', false).text('测试连接与角色'); return; }
+        postJson('/web/admin/auth/ldap/test', {
+            ldap: ldap,
             ldapTestUsername: ($('#userAuthLdapTestUsername').val() || '').trim(),
             ldapTestPassword: $('#userAuthLdapTestPassword').val() || ''
         }).done(function (resp) {
@@ -200,17 +234,20 @@
 
     function doSaveConfig() {
         var btn = $('#userAuthSaveConfigBtn');
-        if (btn.prop('disabled')) return;
+        if (btn.prop('disabled') || !authConfigLoaded) { showToast('认证配置尚未加载完成，暂不可保存', 'error'); return; }
+        var sessionTimeout = positiveInt('#userAuthSessionTimeout', '会话最长有效期', 1, 10080, 60);
+        var ldap = ldapPayload();
+        if (sessionTimeout === null || !ldap) return;
         var data = {
             enabled: $('#userAuthEnabled').prop('checked'),
             mode: currentMode,
-            sessionTimeoutMinutes: parseInt($('#userAuthSessionTimeout').val(), 10) || 60,
-            ldap: ldapPayload(),
+            sessionTimeoutMinutes: sessionTimeout,
+            ldap: ldap,
             ldapTestUsername: ($('#userAuthLdapTestUsername').val() || '').trim(),
             ldapTestPassword: $('#userAuthLdapTestPassword').val() || ''
         };
         btn.prop('disabled', true).text('保存中...');
-        postJson('/web/settings/user-auth/config/save', data).done(function (resp) {
+        postJson('/web/admin/auth/config/save', data).done(function (resp) {
             if (resp.code === 200) {
                 var oldStoreType = currentStoreType;
                 authEnabledInitial = !!data.enabled;
@@ -275,9 +312,9 @@
             email: ($('#userFormEmail').val() || '').trim(),
             role: $('#userFormRole').val()
         };
-        var url = '/web/settings/user-auth/users/create';
+        var url = '/web/admin/users/create';
         if (id) {
-            url = '/web/settings/user-auth/users/update';
+            url = '/web/admin/users/update';
             data.id = id;
         }
         if (password) data.password = password;
@@ -299,7 +336,7 @@
 
     function toggleUser(id, enabled, input) {
         if (input) input.disabled = true;
-        postJson('/web/settings/user-auth/users/toggle', { id: id, enabled: enabled }).done(function (resp) {
+        postJson('/web/admin/users/toggle', { id: id, enabled: enabled }).done(function (resp) {
             if (resp.code === 200) {
                 loadUsers();
             } else {
@@ -329,7 +366,7 @@
     function doDeleteUser(id) {
         var btn = $('#userFormDeleteBtn');
         btn.prop('disabled', true);
-        postJson('/web/settings/user-auth/users/delete', { id: id }).done(function (resp) {
+        postJson('/web/admin/users/delete', { id: id }).done(function (resp) {
             if (resp.code === 200) {
                 showToast('用户已删除');
                 hideUserForm();
@@ -349,6 +386,7 @@
     $(document).on('click', '#userAuthSaveConfigBtn', saveConfig);
     $(document).on('click', '#userAddBtn', function() { showUserForm(null); });
     $(document).on('click', '#userListRetryBtn', loadUsers);
+    $(document).on('click', '#userAuthConfigRetryBtn', loadAuthConfig);
     $(document).on('click', '.user-edit-btn', function(e) {
         e.stopPropagation();
         var id = $(this).attr('data-id');

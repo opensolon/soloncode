@@ -51,6 +51,12 @@ body.admin-body {
     flex: 1;
 }
 
+.admin-topbar-status {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
 .admin-topbar-user {
     display: flex;
     align-items: center;
@@ -648,6 +654,15 @@ body.admin-body {
     min-height: 34px;
 }
 
+.admin-inline-error {
+    margin-top: 16px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--color-danger, #e5484d) 35%, transparent);
+    border-radius: 8px;
+    color: var(--color-danger, #e5484d);
+    font-size: var(--fs-sm);
+}
+
 .admin-ldap-test-result {
     min-width: 0;
     color: var(--text-secondary);
@@ -685,6 +700,86 @@ body.admin-body {
 .admin-user-list .user-list-item.disabled .user-list-avatar,
 .admin-user-list .user-list-item.disabled .user-list-info {
     opacity: 0.5;
+}
+
+/* ===== 审计与会话列表 ===== */
+.admin-data-filter,
+.admin-data-pager,
+.admin-data-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.admin-data-filter input {
+    min-width: 0;
+    flex: 1 1 200px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.admin-data-status:not(:empty) {
+    margin: 12px 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+}
+
+.admin-data-status.admin-inline-error {
+    color: var(--color-danger, #e5484d);
+}
+
+.admin-data-list {
+    margin-top: 16px;
+}
+
+.admin-data-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 18px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.admin-data-cell {
+    flex: 1 1 120px;
+    min-width: 0;
+}
+
+.admin-data-label,
+.admin-data-value {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.admin-data-label,
+.admin-data-empty,
+.admin-data-page-label {
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+}
+
+.admin-data-value {
+    margin-top: 4px;
+    font-size: var(--fs-sm);
+}
+
+.admin-data-actions {
+    width: 100%;
+}
+
+.admin-data-pager {
+    justify-content: flex-end;
+    margin-top: 18px;
+}
+
+.admin-data-empty {
+    padding: 18px 0;
 }
 
 /* ===== 实例自举：独立全屏初始化页 ===== */
