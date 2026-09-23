@@ -19,7 +19,9 @@
 
     var modules = [];      // 最终启用并排序后的模块
     var moduleMap = {};
+    // 进入管理台时保留来源页；退出后则回到工作台，不把管理台地址带回登录流程。
     var loginUrl = '/login?scope=admin&returnUrl=%2Fweb%2Fadmin';
+    var workbenchLoginUrl = '/login?scope=admin';
     // 审计日志与会话撤销仍保留在模块注册表中，待后续开放前端入口；
     // 这里仅控制当前导航显隐，不影响后端写入、查询和撤销实现。
     var hiddenModuleKeys = { audit: true, sessions: true };
@@ -40,8 +42,8 @@
     function doLogout() {
         if (!window.confirm('确定要退出登录吗？')) return;
         fetch('/web/admin/session/logout', { method: 'POST', credentials: 'same-origin' })
-            .then(function () { window.location.href = loginUrl; })
-            .catch(function () { window.location.href = loginUrl; });
+            .then(function () { window.location.replace(workbenchLoginUrl); })
+            .catch(function () { window.location.replace(workbenchLoginUrl); });
     }
 
     if (logoutBtn) {
@@ -60,7 +62,7 @@
         state.appendChild(message);
         if (btnHref) {
             var link = document.createElement('a');
-            link.className = 'admin-topbar-back';
+            link.className = 'admin-topbar-action admin-topbar-workbench';
             link.href = btnHref;
             link.textContent = btnText;
             state.appendChild(link);

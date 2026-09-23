@@ -2782,11 +2782,7 @@
                 .then(function(resp) {
                     if (resp.code === 200 && resp.data) {
                         var data = resp.data;
-                        // 管理员专用后台：已登录的管理员不停留工作台，直接送回 /admin
-                        if (data.authEnabled && data.authenticated && data.role === 'admin') {
-                            window.location.replace('/web/admin');
-                            return;
-                        }
+                        // 管理员也可以正常使用工作台；管理台仅通过显式入口进入。
                         // 管理员入口：仅 role=admin 时显示
                         if (adminBtn) {
                             adminBtn.style.display = (data.authEnabled && data.authenticated && data.role === 'admin') ? 'flex' : 'none';

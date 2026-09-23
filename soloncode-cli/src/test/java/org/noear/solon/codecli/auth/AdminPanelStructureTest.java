@@ -113,6 +113,9 @@ public class AdminPanelStructureTest {
         // 仅 role=admin 显示
         assertTrue(web.contains("data.role === 'admin') ? 'flex' : 'none'"),
                 "管理控制台入口必须按 role=admin 显隐");
+        // 工作台是所有已登录用户的默认落点，不能因管理员身份再次强制跳到管理台。
+        assertFalse(web.contains("window.location.replace('/web/admin')"),
+                "工作台不应根据管理员身份自动跳转到 /web/admin");
     }
 
     @Test
