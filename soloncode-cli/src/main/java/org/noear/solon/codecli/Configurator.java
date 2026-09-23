@@ -275,8 +275,8 @@ public class Configurator {
 
         addWebBean(new MemoryController(agentRuntime));
         
-        // /web/run：soloncode run 的 HTTP/SSE 远程执行入口（Bearer token 鉴权，子进程隔离执行）
-        addWebBean(new RunController(workspaceManager));
+        // /web/run：兼容实例级 Bearer token，也支持用户管理的 Basic Auth。
+        addWebBean(new RunController(workspaceManager, userStore, userAuthConfig));
         
         addWebBean(new UserLoginController(userStore, userSessionManager, userAuthConfig));
          addWebBean(new UserAuthController(userStore, userSessionManager, userAuthConfig));

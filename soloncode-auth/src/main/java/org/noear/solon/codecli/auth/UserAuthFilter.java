@@ -79,6 +79,11 @@ public class UserAuthFilter implements Filter {
     @Override
     public void doFilter(Context ctx, FilterChain chain) throws Throwable {
         String path = ctx.path();
+        // /web/run 同时兼容实例级 Bearer token 与用户管理 Basic Auth，认证由 RunController 完成。
+        if (isRunPath(path)) {
+            chain.doFilter(ctx);
+            return;
+        }
         if (isAdminPath(path)) {
             // 豁免必须同时精确匹配路径与方法；前缀相似的接口一律仍需管理员。
             if ("POST".equalsIgnoreCase(ctx.method()) && "/web/admin/session/login".equals(path)) {
@@ -118,12 +123,36 @@ public class UserAuthFilter implements Filter {
         }
 
         if (!userAuthConfig.isEnabled() || isPublicPath(path)) {
+            if (userAuthConfig.isEnabled() && "/web/user/me".equals(path)
+                    && BasicAuthAuthenticator.isBasic(ctx)) {
+                BasicAuthAuthenticator.AuthResult basic = BasicAuthAuthenticator.authenticate(ctx, userStore);
+                if (!basic.isSuccess()) {
+                    responseUnauthorized(ctx);
+                    return;
+                }
+                attachUser(ctx, basic.getUser());
+            }
             chain.doFilter(ctx);
             return;
         }
 
         UserSessionManager.UserSession session = sessionManager.getSession(UserLoginController.extractToken(ctx));
         if (session == null) {
+            BasicAuthAuthenticator.AuthResult basic = BasicAuthAuthenticator.authenticate(ctx, userStore);
+            if (basic.isPresent()) {
+                if (!basic.isSuccess()) {
+                    responseUnauthorized(ctx);
+                    return;
+                }
+                attachUser(ctx, basic.getUser());
+                if ("POST".equalsIgnoreCase(ctx.method()) && basicNeedsCsrfCheck(ctx)
+                        && !isSameOrigin(ctx)) {
+                    responseCsrf(ctx);
+                    return;
+                }
+                chain.doFilter(ctx);
+                return;
+            }
             if (path != null && path.startsWith("/web/")) responseUnauthorized(ctx);
             else ctx.redirect("/login");
             return;
@@ -142,6 +171,24 @@ public class UserAuthFilter implements Filter {
         ctx.attrSet("user_id", session.getUserId());
         ctx.attrSet("user_name", session.getUsername());
         ctx.attrSet("user_role", session.getRole());
+        ctx.attrSet("auth_scheme", "session");
+    }
+
+    private static void attachUser(Context ctx, UserEntity user) {
+        ctx.attrSet("user_id", user.getId());
+        ctx.attrSet("user_name", user.getUsername());
+        ctx.attrSet("user_role", user.getRole() == null ? "user" : user.getRole());
+        ctx.attrSet("auth_scheme", "basic");
+    }
+
+    static boolean isRunPath(String path) {
+        return "/web/run".equals(path) || "/web/run/interrupt".equals(path);
+    }
+
+    private static boolean basicNeedsCsrfCheck(Context ctx) {
+        return BasicAuthAuthenticator.isBasic(ctx)
+                && ((ctx.header("Origin") != null && !ctx.header("Origin").trim().isEmpty())
+                || (ctx.header("Referer") != null && !ctx.header("Referer").trim().isEmpty()));
     }
 
     private void responseForbidden(Context ctx) throws IOException {

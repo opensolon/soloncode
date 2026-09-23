@@ -3,6 +3,10 @@ package org.noear.solon.codecli.portal.web.run;
 import org.noear.snack4.ONode;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Post;
+import org.noear.solon.codecli.auth.BasicAuthAuthenticator;
+import org.noear.solon.codecli.auth.UserAuthConfig;
+import org.noear.solon.codecli.auth.UserEntity;
+import org.noear.solon.codecli.auth.UserStore;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -29,7 +33,7 @@ import java.util.concurrent.Executors;
  *
  * <h3>安全（上线硬门槛）</h3>
  * <ul>
- *   <li>Bearer token 必须：无 token 一律 401，不提供关闭选项（{@link RunTokenService}）</li>
+ *   <li>Bearer token 或用户管理 Basic Auth 必须：无有效认证一律 401（{@link RunTokenService}）</li>
  *   <li>permission-mode 收口：bypassPermissions 拒绝（403）</li>
  *   <li>workspace 白名单：只能取服务端已注册工作区，不接受任意路径</li>
  *   <li>审计日志：时间/IP/workspace/prompt 长度（不落内容）/session_id/退出码</li>
@@ -60,9 +64,16 @@ public class RunController {
     private final RunRequestService requestService;
     private final RunTokenService tokenService;
     private final ProcessStarter processStarter;
+    private final UserStore userStore;
+    private final UserAuthConfig userAuthConfig;
 
     public RunController(WorkspaceManager workspaceManager) {
-        this(workspaceManager, new RunRequestService(workspaceManager),
+        this(workspaceManager, null, null, new RunRequestService(workspaceManager),
+                RunTokenService.getInstance(), RunController::startSubprocess);
+    }
+
+    public RunController(WorkspaceManager workspaceManager, UserStore userStore, UserAuthConfig userAuthConfig) {
+        this(workspaceManager, userStore, userAuthConfig, new RunRequestService(workspaceManager),
                 RunTokenService.getInstance(), RunController::startSubprocess);
     }
 
@@ -70,7 +81,18 @@ public class RunController {
                   RunRequestService requestService,
                   RunTokenService tokenService,
                   ProcessStarter processStarter) {
+        this(workspaceManager, null, null, requestService, tokenService, processStarter);
+    }
+
+    private RunController(WorkspaceManager workspaceManager,
+                          UserStore userStore,
+                          UserAuthConfig userAuthConfig,
+                          RunRequestService requestService,
+                          RunTokenService tokenService,
+                          ProcessStarter processStarter) {
         this.workspaceManager = workspaceManager;
+        this.userStore = userStore;
+        this.userAuthConfig = userAuthConfig;
         this.requestService = requestService;
         this.tokenService = tokenService;
         this.processStarter = processStarter;
@@ -85,11 +107,13 @@ public class RunController {
     @Post
     @Mapping("/web/run")
     public Object run(Context ctx) throws Exception {
-        // ---- 1. Bearer token 校验（强制，先于一切解析）----
+        // ---- 1. Bearer token 或用户管理 Basic Auth 校验 ----
         if (!verifyToken(ctx)) {
             ctx.status(401);
-            ctx.headerSet("WWW-Authenticate", "Bearer realm=\"soloncode-run\"");
-            return Result.failure(401, "Missing or invalid bearer token");
+            if (!BasicAuthAuthenticator.isBasic(ctx)) {
+                ctx.headerSet("WWW-Authenticate", "Bearer realm=\"soloncode-run\"");
+            }
+            return Result.failure(401, "Missing or invalid authentication");
         }
 
         // ---- 2. 请求体解析与规范化 ----
@@ -154,7 +178,7 @@ public class RunController {
     public Result interrupt(Context ctx, @org.noear.solon.annotation.Param("session_id") String sessionId) {
         if (!verifyToken(ctx)) {
             ctx.status(401);
-            return Result.failure(401, "Missing or invalid bearer token");
+            return Result.failure(401, "Missing or invalid authentication");
         }
         if (sessionId == null || sessionId.trim().isEmpty()) {
             try {
@@ -448,10 +472,18 @@ public class RunController {
 
     private boolean verifyToken(Context ctx) {
         String auth = ctx.header("Authorization");
-        if (auth == null || !auth.startsWith("Bearer ")) {
-            return false;
+        if (auth != null && auth.trim().regionMatches(true, 0, "Bearer ", 0, 7)) {
+            return tokenService.verify(auth.trim().substring("Bearer ".length()).trim());
         }
-        return tokenService.verify(auth.substring("Bearer ".length()).trim());
+        if (userAuthConfig == null || !userAuthConfig.isEnabled() || userStore == null) return false;
+        BasicAuthAuthenticator.AuthResult basic = BasicAuthAuthenticator.authenticate(ctx, userStore);
+        if (!basic.isPresent() || !basic.isSuccess()) return false;
+        UserEntity user = basic.getUser();
+        ctx.attrSet("user_id", user.getId());
+        ctx.attrSet("user_name", user.getUsername());
+        ctx.attrSet("user_role", user.getRole() == null ? "user" : user.getRole());
+        ctx.attrSet("auth_scheme", "basic");
+        return true;
     }
 
     private static boolean isStreamJsonOutput(RunRequestService.NormalizedRequest req) {

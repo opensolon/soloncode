@@ -181,6 +181,17 @@ public class UserLoginController {
     @Get
     @Mapping("/web/user/me")
     public Result<Map<String, Object>> me(Context ctx) {
+        // WebView 注入 Basic 头时无持久会话，使用过滤器已校验的本次请求身份。
+        if (config.isEnabled() && "basic".equals(ctx.attr("auth_scheme"))) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("authEnabled", true);
+            data.put("authenticated", true);
+            data.put("bootstrapRequired", false);
+            data.put("userId", ctx.attr("user_id"));
+            data.put("username", ctx.attr("user_name"));
+            data.put("role", ctx.attr("user_role"));
+            return Result.succeed(data);
+        }
         String token = extractToken(ctx);
         UserSessionManager.UserSession session = token == null ? null : sessionManager.getSession(token);
         boolean bootstrapRequired = bootstrapRequired();
