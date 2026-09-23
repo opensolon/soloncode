@@ -15,11 +15,6 @@
 <body>
     <div class="login-container">
         <div class="login-card">
-            <div class="login-header">
-                <img src="/img/favicon.png" alt="SolonCode" class="login-logo"/>
-                <h1 class="login-title">SolonCode</h1>
-                <p class="login-subtitle" id="loginSubtitle" data-i18n="login.subtitle">请登录以继续使用</p>
-            </div>
             <div class="login-form">
                 <div class="login-field">
                     <label class="login-label" for="loginUsername" data-i18n="login.username">用户名</label>
@@ -49,7 +44,6 @@
             }
             var safeTarget = safeReturnUrl(returnUrl) || (adminScope ? '/web/admin' : '/');
             var loginEndpoint = adminScope ? '/web/admin/session/login' : '/web/user/login';
-            if (adminScope) document.getElementById('loginSubtitle').textContent = '管理员登录后才能进入管理控制台';
             var loginBtn = document.getElementById('loginBtn');
             var usernameInput = document.getElementById('loginUsername');
             var passwordInput = document.getElementById('loginPassword');

@@ -789,9 +789,7 @@ body.admin-setup-mode .admin-nav {
     display: none;
 }
 
-body.admin-setup-mode .admin-topbar-user,
-body.admin-setup-mode .admin-topbar-back,
-body.admin-setup-mode .admin-topbar-logout {
+body.admin-setup-mode .admin-topbar {
     display: none;
 }
 

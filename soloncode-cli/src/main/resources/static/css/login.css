@@ -23,30 +23,6 @@ body {
     padding: 40px 32px;
 }
 
-.login-header {
-    text-align: center;
-    margin-bottom: 32px;
-}
-
-.login-logo {
-    width: 64px;
-    height: 64px;
-    margin-bottom: 12px;
-}
-
-.login-title {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-primary, #1a1a2e);
-    margin: 0 0 4px;
-}
-
-.login-subtitle {
-    font-size: 14px;
-    color: var(--text-secondary, #666);
-    margin: 0;
-}
-
 .login-form {
     display: flex;
     flex-direction: column;

@@ -73,21 +73,19 @@
     // 认证未启用时，系统里还没有用户/角色体系。“是否启用认证”本质是实例级
     // 自举决策，而非普通用户设置，故入口归到 admin，一步完成启用 + 创建首个管理员。
     function renderBootstrap() {
-        // 独立的全屏居中初始化页：隐藏导航骨架与顶栏多余元素，
-        // 避免空侧栏/无对比卡片造成的“没法看”的观感。
+        // 独立的全屏居中初始化页：隐藏导航骨架与顶栏，
+        // 让用户直接完成管理员初始化。
         document.body.classList.add('admin-setup-mode');
         contentEl.innerHTML =
             '<div class="admin-setup">' +
             '  <div class="admin-setup-card">' +
             '    <div class="admin-setup-head">' +
             '      <h1 class="admin-setup-title">初始化用户体系</h1>' +
-            '      <p class="admin-setup-desc">当前还未启用用户认证。创建首个管理员账户，即可开启认证并进入控制台。</p>' +
             '    </div>' +
             '    <div class="admin-setup-body">' +
             '      <div class="general-field"><label class="general-field-label">管理员用户名 <span class="required">*</span></label><input type="text" class="general-input" id="bsUsername" value="admin" placeholder="admin"/></div>' +
             '      <div class="general-field"><label class="general-field-label">显示名称</label><input type="text" class="general-input" id="bsDisplayName" placeholder="管理员"/></div>' +
             '      <div class="general-field"><label class="general-field-label">邮箱</label><input type="email" class="general-input" id="bsEmail" placeholder="admin@localhost"/></div>' +
-            '      <div class="general-field"><label class="general-field-label">本机初始化令牌 <span class="required">*</span></label><input type="password" class="general-input" id="bsToken" autocomplete="off" placeholder="请查看本机启动日志"/><small>初始化令牌仅在首次启动的本机日志显示一次。</small></div>' +
             '      <div class="general-field"><label class="general-field-label">密码 <span class="required">*</span></label><input type="password" class="general-input" id="bsPassword" autocomplete="new-password"/></div>' +
             '      <div class="general-field"><label class="general-field-label">确认密码 <span class="required">*</span></label><input type="password" class="general-input" id="bsPassword2" autocomplete="new-password"/></div>' +
             '      <div class="admin-setup-error" id="bsError" style="display:none"></div>' +
@@ -111,9 +109,6 @@
         var email = (document.getElementById('bsEmail').value || '').trim();
         var password = document.getElementById('bsPassword').value || '';
         var password2 = document.getElementById('bsPassword2').value || '';
-        var bootstrapToken = (document.getElementById('bsToken').value || '').trim();
-
-        if (!bootstrapToken) { fail('请填写本机启动日志中的初始化令牌'); return; }
         if (!username) { fail('管理员用户名不能为空'); return; }
         if (!password) { fail('密码不能为空'); return; }
         if (password !== password2) { fail('两次输入的密码不一致'); return; }
@@ -124,7 +119,7 @@
         fetch('/web/admin/bootstrap', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username, displayName: displayName, email: email, password: password, token: bootstrapToken })
+            body: JSON.stringify({ username: username, displayName: displayName, email: email, password: password })
         })
             .then(jsonResponse)
             .then(function (resp) {

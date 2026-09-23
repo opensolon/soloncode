@@ -92,14 +92,10 @@ public class AdminController {
                 || !userStore.supportsLocalUserManagement()) return Result.failure("LDAP 模式不支持创建本地管理员");
         try {
             AuthConfigRepository.BootstrapState state = AuthConfigRepository.loadState();
-            if (state.isInitialized() || state.getBootstrapTokenHash() == null) return Result.failure("实例未处于可初始化状态");
+            if (state.isInitialized()) return Result.failure("实例未处于可初始化状态");
             List<UserEntity> users = userStore.listUsers();
             if (users == null || !users.isEmpty()) return Result.failure("实例已存在用户，不能重复初始化");
             ONode root = ONode.ofJson(json == null ? "{}" : json);
-            String token = ctx.header("X-Bootstrap-Token");
-            if (token == null || token.trim().isEmpty()) token = root.hasKey("token") ? root.get("token").getString() : null;
-            if (!AuthConfigRepository.verifyBootstrapToken(token)) return Result.failure("初始化令牌无效");
-
             String username = root.get("username").getString();
             String password = root.get("password").getString();
             String displayName = root.get("displayName").getString();
