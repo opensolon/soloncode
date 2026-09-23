@@ -128,6 +128,11 @@ public class UserAuthFilter implements Filter {
             else ctx.redirect("/login");
             return;
         }
+        if ("POST".equalsIgnoreCase(ctx.method()) && isCookieAuthentication(ctx)
+                && !isSameOrigin(ctx)) {
+            responseCsrf(ctx);
+            return;
+        }
         attachSession(ctx, session);
         chain.doFilter(ctx);
     }

@@ -206,7 +206,8 @@ public class UserAuthController {
                 String role = normalizeRole(root.get("role").getString());
 
                 if (Assert.isEmpty(username)) return auditFailure("auth.user.create.failure", "invalid_username", "用户名不能为空");
-                if (Assert.isEmpty(password)) return auditFailure("auth.user.create.failure", "missing_password", "密码不能为空");
+                String passwordError = PasswordPolicy.validate(password);
+                if (passwordError != null) return auditFailure("auth.user.create.failure", "invalid_password", passwordError);
                 if (role == null) return auditFailure("auth.user.create.failure", "invalid_role", "角色只能是管理员或普通用户");
                 if (userStore.findByUsername(username) != null) return auditFailure("auth.user.create.failure", "duplicate_username", "用户名已存在");
 
@@ -257,6 +258,8 @@ public class UserAuthController {
                 boolean securityChanged = !Objects.equals(existing.getRole(), updated.getRole())
                         || existing.isEnabled() != updated.isEnabled();
                 if (!Assert.isEmpty(password)) {
+                    String passwordError = PasswordPolicy.validate(password);
+                    if (passwordError != null) return auditFailure("auth.user.update.failure", "invalid_password", passwordError);
                     updated.setPasswordHash(FileUserStore.hashPassword(password));
                     securityChanged = true;
                 }

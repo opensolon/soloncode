@@ -59,6 +59,21 @@ class UserAuthEnhancementTest {
     }
 
     @Test
+    void passwordPolicyAllowsFourTo128CharactersOnly() {
+        assertEquals(null, PasswordPolicy.validate("1234"));
+        assertEquals(null, PasswordPolicy.validate(repeat('x', 128)));
+        assertTrue(PasswordPolicy.validate("123") != null);
+        assertTrue(PasswordPolicy.validate(repeat('x', 129)) != null);
+        assertTrue(PasswordPolicy.validate("ab\ncd") != null);
+    }
+
+    private static String repeat(char value, int count) {
+        StringBuilder result = new StringBuilder(count);
+        for (int i = 0; i < count; i++) result.append(value);
+        return result.toString();
+    }
+
+    @Test
     void filePasswordsUseSaltedPbkdf2AndLegacySha256IsUpgraded(@TempDir Path tempDir) throws Exception {
         String first = FileUserStore.hashPassword("secret");
         String second = FileUserStore.hashPassword("secret");

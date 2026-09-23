@@ -30,13 +30,20 @@ public class UserLoginController {
         this.sessionManager = sessionManager;
         this.config = config;
     }
-    
+
     private static final String TOKEN_COOKIE = "user_token";
     private static final AdminLoginLimiter ADMIN_LOGIN_LIMITER = new AdminLoginLimiter();
+    private static final AdminLoginLimiter USER_LOGIN_LIMITER = new AdminLoginLimiter();
 
-    /** 工作台登录：认证关闭时不创建普通用户会话。普通用户协议保持不变。 */
+    /** 工作台登录：认证关闭时不创建普通用户会话。 */
     @Post
     @Mapping("/web/user/login")
+    public Result<Map<String, Object>> login(Context ctx, String username, String password) {
+        if (!config.isEnabled()) return Result.failure("用户认证未启用");
+        return authenticate(username, password, false, ctx);
+    }
+
+    // 保留无 Context 的调用入口，供非 HTTP 单测和旧内部调用使用。
     public Result<Map<String, Object>> login(String username, String password) {
         if (!config.isEnabled()) return Result.failure("用户认证未启用");
         return authenticate(username, password, false, null);
@@ -59,21 +66,26 @@ public class UserLoginController {
     }
 
     private Result<Map<String, Object>> authenticate(String username, String password, boolean adminOnly, Context ctx) {
+        String ip = ctx == null ? "unknown" : ctx.remoteIp();
+        AdminLoginLimiter limiter = adminOnly ? ADMIN_LOGIN_LIMITER : USER_LOGIN_LIMITER;
+        if (!limiter.allow(username, ip)) return Result.failure("登录尝试过于频繁，请稍后重试");
         if (username == null || username.isEmpty()) {
-            if (adminOnly) recordAdminFailure(username, ctx);
+            recordFailure(adminOnly, username, ctx);
             return Result.failure("用户名不能为空");
         }
-        if (password == null || password.isEmpty()) {
-            if (adminOnly) recordAdminFailure(username, ctx);
-            return Result.failure("密码不能为空");
+        String passwordError = PasswordPolicy.validate(password);
+        if (passwordError != null) {
+            recordFailure(adminOnly, username, ctx);
+            return Result.failure(passwordError);
         }
 
         UserEntity user = userStore.authenticate(username, password);
         if (user == null || !user.isEnabled() || (adminOnly && !"admin".equals(user.getRole()))) {
-            if (adminOnly) recordAdminFailure(username, ctx);
+            recordFailure(adminOnly, username, ctx);
             return Result.failure("用户名或密码错误");
         }
 
+        limiter.success(username, ip);
         UserSessionManager.UserSession session = sessionManager.createSession(user);
         if (adminOnly) {
             ADMIN_LOGIN_LIMITER.success(username, ctx == null ? "unknown" : ctx.remoteIp());
@@ -94,12 +106,18 @@ public class UserLoginController {
         return Result.succeed(data);
     }
 
-    private static void recordAdminFailure(String username, Context ctx) {
+    private static void recordFailure(boolean adminOnly, String username, Context ctx) {
         String ip = ctx == null ? "unknown" : ctx.remoteIp();
-        ADMIN_LOGIN_LIMITER.failure(username, ip);
-        Map<String, Object> audit = new LinkedHashMap<>();
-        audit.put("username", username == null ? "" : username);
-        AdminAuditStore.record("admin.login.failure", audit);
+        (adminOnly ? ADMIN_LOGIN_LIMITER : USER_LOGIN_LIMITER).failure(username, ip);
+        if (adminOnly) {
+            Map<String, Object> audit = new LinkedHashMap<>();
+            audit.put("username", username == null ? "" : username);
+            AdminAuditStore.record("admin.login.failure", audit);
+        }
+    }
+
+    private static void recordAdminFailure(String username, Context ctx) {
+        recordFailure(true, username, ctx);
     }
 
     private static void setSessionCookie(Context ctx, String token) {

@@ -171,6 +171,15 @@ public class WebController {
         return null;
     }
 
+    /** 认证开启时，会话必须明确归属于当前用户；无 owner 的旧会话不再默认向普通用户暴露。 */
+    private boolean ownsSession(Path sessionPath) {
+        String userId = getCurrentUserId();
+        if (userId == null) return true;
+        if (sessionPath == null || !Files.isDirectory(sessionPath)) return false;
+        String ownerId = SessionMeta.load(sessionPath.toFile()).getOwnerUserId();
+        return ownerId != null && !ownerId.isEmpty() && userId.equals(ownerId);
+    }
+
     private FileService fileService() {
         return currentContext().getFileService();
     }
@@ -535,8 +544,8 @@ public class WebController {
                     // 用户认证启用时，过滤非当前用户的会话
                     if (userId != null) {
                         String ownerId = meta.getOwnerUserId();
-                        // 仅显示当前用户拥有的会话（无 owner 的会话视为旧版未隔离会话，也显示）
-                        if (ownerId != null && !ownerId.isEmpty() && !ownerId.equals(userId)) {
+                        // 认证开启后只显示明确归属于当前用户的会话；旧会话由管理员迁移，不能默认共享。
+                        if (ownerId == null || ownerId.isEmpty() || !ownerId.equals(userId)) {
                             continue;
                         }
                     }
@@ -605,7 +614,7 @@ public class WebController {
                 String sessionId = dir.getName();
                 SessionMeta meta = SessionMeta.load(dir);
                 String ownerId = meta.getOwnerUserId();
-                if (userId != null && ownerId != null && !ownerId.isEmpty() && !userId.equals(ownerId)) {
+                if (userId != null && (ownerId == null || ownerId.isEmpty() || !userId.equals(ownerId))) {
                     continue;
                 }
                 if (meta.isPinned()) {
@@ -672,13 +681,15 @@ public class WebController {
 
         //会话根目录按目标工作区计算（支持跨工作区删除），防穿越由 sessionPath 落在对应 sessionsRoot 内保证
         Path sessionsRoot = WorkspaceDataUtil.sessionsPath(workspaceRoot.toString());
-        // 用户认证启用时，会话路径包含用户 ID 前缀
-        String userId = getCurrentUserId();
-        Path sessionPath = (userId != null ? sessionsRoot.resolve(userId) : sessionsRoot).resolve(sessionId).normalize();
+        // 会话统一存储在 sessions/<sessionId>，用户归属由 _meta.json.ownerUserId 校验。
+        Path sessionPath = sessionsRoot.resolve(sessionId).normalize();
         if (!sessionPath.startsWith(sessionsRoot)) {
             return Result.failure(400, "Invalid session path");
         }
         boolean sessionPathExists = Files.exists(sessionPath, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        if (sessionPathExists && !ownsSession(sessionPath)) {
+            return Result.failure(404, "Session not found");
+        }
         if (sessionPathExists && !Files.isDirectory(sessionPath) && !Files.isSymbolicLink(sessionPath)) {
             return Result.failure(409, "Session path is not a directory");
         }
@@ -731,7 +742,7 @@ public class WebController {
         Path sourcePath = sessionsRoot.resolve(sessionId).normalize();
         File sourceDir = sourcePath.toFile();
 
-        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
+        if (!sourceDir.exists() || !sourceDir.isDirectory() || !ownsSession(sourcePath)) {
             return Result.failure(404, "Source session not found");
         }
         // 防止路径穿越：确保解析后的目录仍在 sessions 根目录之内
@@ -797,7 +808,7 @@ public class WebController {
         String userId = getCurrentUserId();
         Path sessionPath = currentContext().getSessionPath(sessionId);
 
-        if (!sessionPath.toFile().exists() || !sessionPath.toFile().isDirectory()) {
+        if (!sessionPath.toFile().exists() || !sessionPath.toFile().isDirectory() || !ownsSession(sessionPath)) {
             return Result.failure(404, "Session not found");
         }
 
@@ -831,7 +842,7 @@ public class WebController {
         }
 
         File sessionDir = sessionPath.toFile();
-        if (!sessionDir.exists() || !sessionDir.isDirectory()) {
+        if (!sessionDir.exists() || !sessionDir.isDirectory() || !ownsSession(sessionPath)) {
             return Result.failure(404, "Session not found");
         }
 
@@ -1059,6 +1070,8 @@ public class WebController {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
+        Path sessionPath = currentContext().getSessionPath(sessionId);
+        if (!ownsSession(sessionPath)) return Result.failure(404, "Session not found");
 
         AgentSession session = sessionManager().getSession(sessionId);
         return Result.succeed(readMessagesFromSession(session));
@@ -1451,6 +1464,8 @@ public class WebController {
         if (count == null || count <= 0) {
             count = 2; // 默认回退2条（用户+助手）
         }
+        Path sessionPath = currentContext().getSessionPath(sessionId);
+        if (!ownsSession(sessionPath)) return Result.failure(404, "Session not found");
         if (webGate().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "Session is running");
         }
@@ -1598,6 +1613,12 @@ public class WebController {
 
             // HITL 审批时，将前端回传的 callUuid 写入 session context，供 WebGate 精确定位决策
             if (Assert.isNotEmpty(hitlAction) && Assert.isNotEmpty(hitlCallId)) {
+                Path existingSession = currentContext().getSessionPath(sessionId);
+                if (Files.exists(existingSession) && !ownsSession(existingSession)) {
+                    ctx.status(404);
+                    ctx.output("Session not found");
+                    return null;
+                }
                 String userId = getCurrentUserId();
                 sessionManager().getSession(sessionId, userId).getContext().put(WebGate.CTX_HITL_CALL_ID, hitlCallId);
             }

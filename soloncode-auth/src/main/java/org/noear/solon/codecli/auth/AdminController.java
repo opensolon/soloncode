@@ -107,7 +107,8 @@ public class AdminController {
             String email = root.get("email").getString();
 
             if (Assert.isEmpty(username)) return Result.failure("管理员用户名不能为空");
-            if (Assert.isEmpty(password)) return Result.failure("管理员密码不能为空");
+            String passwordError = PasswordPolicy.validate(password);
+            if (passwordError != null) return Result.failure(passwordError);
 
             UserEntity admin = new UserEntity(UUID.randomUUID().toString(), username,
                     Assert.isEmpty(displayName) ? username : displayName);
