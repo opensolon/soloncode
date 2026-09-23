@@ -62,21 +62,19 @@ public class WorkspaceRemoveWebContractTest {
     }
 
     @Test
-    void workspaceList_showsLoginGuideWhenUnauthenticated() throws IOException {
+    void workspaceList_redirectsToLoginWhenSessionExpired() throws IOException {
         String html = resourceText("/static/web.html");
 
         assertTrue(html.contains("if (o.status === 401 || res.code === 401)"),
-                "认证已启用但未登录时列表接口返回 401，必须识别并走登录引导分支");
-        assertTrue(html.contains("function showLoginRequired()"),
-                "必须有展示登录引导的处理，而非误导性的空态");
-        assertTrue(html.contains("id=\"wsHomeLogin\""),
-                "工作区面板必须内置登录引导元素");
+                "会话中途过期时列表接口返回 401，必须识别并处理");
         assertTrue(html.contains("window.location.href = '/login'"),
-                "登录引导按钮必须跳转到 /login");
+                "未登录/会话过期时必须直接跳转到 /login，而非停留在工作区面板展示引导卡片");
 
-        String css = resourceText("/static/css/ws-home.css");
-        assertTrue(css.contains(".ws-home-login"),
-                "登录引导必须有对应样式");
+        // 登录引导卡片已改为服务端直接重定向，前端不再保留死代码
+        assertTrue(!html.contains("function showLoginRequired()"),
+                "未登录改由服务端重定向，前端不应再保留 showLoginRequired 引导逻辑");
+        assertTrue(!html.contains("id=\"wsHomeLogin\""),
+                "未登录改由服务端重定向，工作区面板不应再内置登录引导元素");
     }
 
     private String resourceText(String path) throws IOException {

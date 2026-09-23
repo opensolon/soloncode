@@ -11,8 +11,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * 用户管理设置控制器 - 管理用户认证配置和用户 CRUD
- * 在设置面板的"用户管理"标签页中使用
+ * 用户管理控制器 - 管理用户认证配置和用户 CRUD
+ * 由管理员控制台的“认证配置”和“用户管理”模块使用
  * 
  * @author noear 2026/8/23 created
  */
@@ -202,8 +202,6 @@ public class UserAuthController {
             String displayName = root.get("displayName").getString();
             String email = root.get("email").getString();
             String role = root.get("role").getString();
-            boolean enabled = root.get("enabled").getBoolean();
-            
             if (Assert.isEmpty(id)) return Result.failure("用户 ID 不能为空");
             
             UserEntity user = userStore.findById(id);
@@ -212,7 +210,7 @@ public class UserAuthController {
             if (displayName != null) user.setDisplayName(displayName);
             if (email != null) user.setEmail(email);
             if (role != null) user.setRole(role);
-            user.setEnabled(enabled);
+            if (root.hasKey("enabled")) user.setEnabled(root.get("enabled").getBoolean());
             if (password != null && !password.isEmpty()) {
                 user.setPasswordHash(FileUserStore.hashPassword(password));
             }
@@ -222,6 +220,30 @@ public class UserAuthController {
         } catch (Exception e) {
             LOG.warn("[UserAuth] Failed to update user: {}", e.getMessage());
             return Result.failure("更新失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 切换用户启用状态
+     */
+    @Post
+    @Mapping("/web/settings/user-auth/users/toggle")
+    public Result<Void> toggleUser(@Body String json) {
+        try {
+            ONode root = ONode.ofJson(json);
+            String id = root.get("id").getString();
+            if (Assert.isEmpty(id)) return Result.failure("用户 ID 不能为空");
+            if (!root.hasKey("enabled")) return Result.failure("enabled 不能为空");
+
+            UserEntity user = userStore.findById(id);
+            if (user == null) return Result.failure("用户不存在");
+
+            user.setEnabled(root.get("enabled").getBoolean());
+            userStore.updateUser(user);
+            return Result.succeed();
+        } catch (Exception e) {
+            LOG.warn("[UserAuth] Failed to toggle user: {}", e.getMessage());
+            return Result.failure("操作失败: " + e.getMessage());
         }
     }
     

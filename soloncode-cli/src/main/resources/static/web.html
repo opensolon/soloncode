@@ -577,13 +577,6 @@
                 <h3 class="ws-home-section-title" data-i18n="sidebar.fileMounts">文件挂载</h3>
                 <div class="ws-home-grid" id="wsHomeMountGrid"></div>
             </section>
-            <div class="ws-home-login" id="wsHomeLogin" style="display:none">
-                <div class="ws-home-login-card">
-                    <div class="ws-home-login-title" data-i18n="sidebar.wsLoginTitle">需要登录后查看工作区</div>
-                    <div class="ws-home-login-desc" data-i18n="sidebar.wsLoginDesc">当前已启用用户认证，登录后即可加载并选择工作区</div>
-                    <button type="button" class="ws-home-login-btn" id="wsHomeLoginBtn" data-i18n="sidebar.wsLoginBtn">前往登录</button>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -2521,9 +2514,6 @@
         var pickBtn = document.getElementById('wsHomePickBtn');
         var mountSectionEl = document.getElementById('wsHomeMountSection');
         var omni = overlay ? overlay.querySelector('.ws-home-omni') : null;
-        var loginBox = document.getElementById('wsHomeLogin');
-        var loginBtn = document.getElementById('wsHomeLoginBtn');
-        if (loginBtn) loginBtn.addEventListener('click', function () { window.location.href = '/login'; });
 
         // 内存缓存，供搜索过滤复用
         var cache = { launch: null, workspaces: [], mounts: [] };
@@ -2605,31 +2595,16 @@
             }
         }
 
-        // 已启用认证但未登录：面板仍可见，但列表接口返回 401，此时展示登录引导而非误导性的空态（也不泄露本机路径）
-        function showLoginRequired() {
-            if (recentSection) recentSection.style.display = 'none';
-            if (launchSection) launchSection.style.display = 'none';
-            if (mountSectionEl) mountSectionEl.style.display = 'none';
-            if (omni) omni.style.display = 'none';
-            if (loginBox) loginBox.style.display = 'flex';
-        }
-        function hideLoginRequired() {
-            if (recentSection) recentSection.style.display = '';
-            if (omni) omni.style.display = '';
-            if (loginBox) loginBox.style.display = 'none';
-        }
-
         function load() {
             fetch('/web/workspace/list').then(function (r) {
                 return r.json().then(function (res) { return { status: r.status, res: res }; });
             }).then(function (o) {
                 var res = o.res || {};
-                // 401：认证已开启但当前未登录
+                // 401：认证已开启但会话已过期，直接跳登录页（首次未登录已由服务端在首页拦截重定向）
                 if (o.status === 401 || res.code === 401) {
-                    showLoginRequired();
+                    window.location.href = '/login';
                     return;
                 }
-                hideLoginRequired();
                 if (res.code !== 200 || !res.data) {
                     recentGrid.innerHTML = '<div class="ws-home-empty">' + t('sidebar.wsEmpty', '暂无其他工作区') + '</div>';
                     return;

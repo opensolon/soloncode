@@ -77,7 +77,7 @@ public class AdminController {
     /**
      * 管理模块清单：返回本实例已启用的管理模块 key，供前端过滤导航。
      *
-     * <p>当前仅内置 overview + users；未来新增管理功能时在此追加即可。</p>
+     * <p>当前内置 overview + auth + users；未来新增管理功能时在此追加即可。</p>
      */
     @Get
     @Mapping("/web/admin/modules")
@@ -85,6 +85,7 @@ public class AdminController {
         // 面板骨架内置模块。前端 ADMIN_MODULES 会与此清单取交集，实现按实例能力显隐。
         List<String> keys = new java.util.ArrayList<>();
         keys.add("overview");
+        keys.add("auth");
         keys.add("users");
         return Result.succeed(keys);
     }

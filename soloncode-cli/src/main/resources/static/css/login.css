@@ -113,10 +113,3 @@ body {
     opacity: 0.5;
     cursor: not-allowed;
 }
-
-.login-footer {
-    text-align: center;
-    margin-top: 24px;
-    font-size: 12px;
-    color: var(--text-secondary, #999);
-}

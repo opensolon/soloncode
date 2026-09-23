@@ -179,6 +179,86 @@ body.admin-body {
     min-width: 0;
 }
 
+/* ===== 认证与用户管理：对齐 web.html 设置的扁平内容结构 ===== */
+.admin-flat-form {
+    max-width: 760px;
+    padding-top: 4px;
+}
+
+.admin-setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.admin-setting-label {
+    display: block;
+    color: var(--text-primary);
+    font-size: var(--fs-base);
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.admin-auth-enabled-row {
+    margin-bottom: 18px;
+    padding-top: 6px;
+}
+
+.admin-auth-form > .form-group,
+.admin-user-form > .form-group {
+    margin-bottom: 16px;
+}
+
+.admin-auth-config.user-auth-config-section {
+    margin: 0 0 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.admin-auth-config .form-group:last-child,
+.admin-auth-config .form-row-2col:last-child .form-group {
+    margin-bottom: 0;
+}
+
+.admin-short-field {
+    max-width: 220px;
+}
+
+.admin-user-section {
+    max-width: 900px;
+}
+
+.admin-user-list {
+    margin-top: 2px;
+}
+
+.admin-flat-form .form-actions {
+    padding-top: 2px;
+}
+
+@media (max-width: 700px) {
+    .admin-content {
+        padding: 20px 18px;
+    }
+
+    .admin-flat-form .form-row-2col {
+        display: block;
+    }
+
+    .admin-setting-row {
+        gap: 14px;
+    }
+
+    .user-auth-mode-btn {
+        padding: 9px 8px;
+    }
+}
+
 /* ===== 概览卡片 ===== */
 .admin-overview-cards {
     display: grid;
@@ -261,7 +341,7 @@ body.admin-setup-mode .admin-topbar-logout {
 }
 
 .admin-setup-card {
-    width: 900px;
+    width: 400px;
     max-width: 95%;
     border: 1px solid var(--border-color);
     border-radius: 14px;

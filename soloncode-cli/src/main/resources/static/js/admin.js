@@ -3,8 +3,8 @@
  *
  * 职责：
  *  1. 前端准入检查（体验层）：未登录跳登录页；非 admin 显示 403 提示。
- *     认证未启用时显示「自举向导」：一步完成开启认证 + 创建首个管理员，
- *     解开「进 admin 要先开认证、而开认证入口又在 admin」的死循环。
+ *     认证未启用且尚无用户时显示「自举向导」；已有用户后主动关闭认证时，
+ *     允许匿名进入管理台，避免刷新后再次落入登录/初始化流程。
  *     真正的拦截由后端 UserAuthFilter 的 403 负责，此处仅优化体验。
  *  2. 从 ADMIN_MODULES（admin-modules.js）与后端 /web/admin/modules 取交集，生成导航。
  *  3. hash 路由（/admin#users）驱动模块 render。
@@ -127,8 +127,17 @@
             .then(function (resp) {
                 var d = (resp && resp.code === 200 && resp.data) ? resp.data : {};
                 if (!d.authEnabled) {
-                    // 认证未启用：不再指向别处，直接在此渲染自举向导
-                    renderBootstrap();
+                    if (d.bootstrapRequired) {
+                        // 全新实例尚无用户：通过自举向导创建首个管理员并开启认证。
+                        renderBootstrap();
+                        return;
+                    }
+                    // 已有用户后主动关闭认证：此时服务端已按“无需认证”放行，
+                    // 管理台也应直接可用，不能因没有登录态再次跳登录或要求初始化。
+                    document.body.classList.remove('admin-setup-mode');
+                    if (userInfoEl) userInfoEl.textContent = '认证已关闭';
+                    if (logoutBtn) logoutBtn.style.display = 'none';
+                    loadModules();
                     return;
                 }
                 if (!d.authenticated) {

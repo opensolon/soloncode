@@ -22,8 +22,13 @@ public class UserAuthConfig implements Serializable {
     /** 认证模式: file, database, ldap */
     private String mode = "file";
     
-    /** 是否启用用户认证 */
-    private boolean enabled = false;
+    /**
+     * 是否启用用户认证。
+     *
+     * <p>该开关由配置保存请求线程写入、由认证过滤器请求线程读取，必须保证热更新
+     * 对后续请求立即可见；否则关闭认证后刷新页面仍可能读到旧值并跳转登录页。</p>
+     */
+    private volatile boolean enabled = false;
     
     // ====== 数据库配置（database 模式） ======
     /** 数据库 JDBC URL（为空时使用内嵌 H2） */

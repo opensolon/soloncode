@@ -85,6 +85,12 @@ public class UserLoginController {
         if (!config.isEnabled()) {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("authEnabled", false);
+            // 区分“首次启动尚无用户”和“已有用户后主动关闭认证”：前者需要自举，
+            // 后者应允许匿名进入管理台重新配置，不能刷新后又被送回登录/初始化流程。
+            // LDAP 不支持本地创建用户，关闭时也不能落入创建管理员的自举流程。
+            boolean bootstrapRequired = "ldap".equals(config.getMode()) == false
+                    && userStore.listUsers().isEmpty();
+            data.put("bootstrapRequired", bootstrapRequired);
             return Result.succeed(data);
         }
         

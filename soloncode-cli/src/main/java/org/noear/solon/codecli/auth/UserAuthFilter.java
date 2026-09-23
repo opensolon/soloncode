@@ -35,13 +35,19 @@ public class UserAuthFilter implements Filter {
     @Inject
     private UserSessionManager sessionManager;
     
-    /** 无需认证的路径 */
+    /**
+     * 无需认证的路径。
+     *
+     * <p>注意：首页 {@code /} 与 {@code /web.html} 不在此列——认证启用后，
+     * 未登录访问首页必须由服务端直接重定向到 {@code /login}，而不是先放行
+     * 主界面再由前端引导跳转。登录页自身（/login）及其静态依赖（见
+     * {@link #STATIC_PREFIXES}）保持公开，保证登录页能正常渲染。</p>
+     */
     private static final Set<String> PUBLIC_PATHS = new HashSet<>(Arrays.asList(
         "/web/user/login",
         "/web/user/logout",
         "/web/user/me",
         "/login",
-        "/web.html",
         "/web/chat/meta"
     ));
     
@@ -65,6 +71,27 @@ public class UserAuthFilter implements Filter {
     
     /** 管理员角色标识 */
     private static final String ROLE_ADMIN = "admin";
+
+    /**
+     * 判断路径是否为无需认证的公开路径（含公开接口与静态资源前缀，包后可测）。
+     *
+     * <p>首页 {@code /} 与 {@code /web.html} 不属于公开路径：认证启用且未登录时，
+     * 它们会走到 token 校验并被服务端重定向到 {@code /login}。</p>
+     */
+    static boolean isPublicPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        if (PUBLIC_PATHS.contains(path)) {
+            return true;
+        }
+        for (String prefix : STATIC_PREFIXES) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
     
     /** 判断路径是否属于管理员专属路径（包后可测）。 */
     static boolean isAdminPath(String path) {
@@ -98,18 +125,10 @@ public class UserAuthFilter implements Filter {
         
         String path = ctx.path();
         
-        // 放行公开路径
-        if (PUBLIC_PATHS.contains(path) || path.equals("/")) {
+        // 放行公开路径与静态资源（首页 / 和 /web.html 不在其中，未登录时将被重定向到 /login）
+        if (isPublicPath(path)) {
             chain.doFilter(ctx);
             return;
-        }
-        
-        // 放行静态资源
-        for (String prefix : STATIC_PREFIXES) {
-            if (path.startsWith(prefix)) {
-                chain.doFilter(ctx);
-                return;
-            }
         }
         
         // 检查用户 token（WebSocket 路径也经过验证，token 从 Cookie/Header/查询参数提取）
