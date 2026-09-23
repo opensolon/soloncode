@@ -343,6 +343,11 @@ public class AdminPanelStructureTest {
         String filter = readProjectFile("src/main/java/org/noear/solon/codecli/auth/UserAuthFilter.java");
         assertTrue(login.contains("if (!adminScope && resp.data.token)"),
                 "普通用户仍兼容 token，管理台登录不得由前端写 token Cookie");
+        assertTrue(login.contains("safeReturnUrl(returnUrl) || '/'")
+                        && login.contains("window.location.replace(safeTarget);")
+                        && !login.contains("resp.data.role === 'admin'")
+                        && !login.contains("safeReturnUrl(returnUrl) || (adminScope ? '/web/admin' : '/')"),
+                "登录未指定 returnUrl 时应默认进入工作台，管理员账号也不能固定跳回 /web/admin");
         assertFalse(adminJs.contains("document.cookie"), "管理台不得写入 token Cookie");
         assertTrue(controller.contains("HttpOnly; SameSite=Lax") && controller.contains("Max-Age=0; Path=/"),
                 "登录和注销必须由服务端设置/清除安全 Cookie");

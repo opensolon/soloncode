@@ -42,7 +42,8 @@
                     return parsed.pathname + parsed.search + parsed.hash;
                 } catch (e) { return null; }
             }
-            var safeTarget = safeReturnUrl(returnUrl) || (adminScope ? '/web/admin' : '/');
+            // 只有调用方明确传入合法 returnUrl 时才回到指定页面；直接访问管理登录页默认进入工作台。
+            var safeTarget = safeReturnUrl(returnUrl) || '/';
             var loginEndpoint = adminScope ? '/web/admin/session/login' : '/web/user/login';
             var loginBtn = document.getElementById('loginBtn');
             var usernameInput = document.getElementById('loginUsername');
@@ -83,7 +84,8 @@
                         if (!adminScope && resp.data.token) {
                             document.cookie = 'user_token=' + encodeURIComponent(resp.data.token) + '; path=/; max-age=' + (7 * 24 * 3600);
                         }
-                        window.location.replace(adminScope ? safeTarget : ((resp.data.role === 'admin') ? '/web/admin' : '/'));
+                        // 无论登录账号是否为管理员，未显式指定目标时都进入工作台；管理台登录入口仍可通过 returnUrl 返回管理页面。
+                        window.location.replace(safeTarget);
                     } else {
                         showError(resp.description || '登录失败，请检查用户名和密码');
                     }
