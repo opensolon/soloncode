@@ -897,7 +897,7 @@
                                 </div>
                             </div>
 
-                            <!-- ============ 配置卡片: 安全访问 ============ -->
+                            <!-- ============ 配置卡片: 安全访问（已升级） ============ -->
                             <div class="general-card">
                                 <div class="general-card-header">
                                     <div class="general-card-text">
@@ -905,20 +905,11 @@
                                     </div>
                                 </div>
                                 <div class="general-card-body">
-                                    <div class="general-field-row">
-                                        <div class="general-field" style="flex:1">
-                                            <label class="general-field-label" data-i18n="general.security.username">用户名</label>
-                                             <input type="text" class="general-input" id="generalWebAuthUser"
-                                                    placeholder="留空=不启用" data-i18n-placeholder="general.security.usernamePlaceholder"/>
-                                        </div>
-                                        <div class="general-field" style="flex:1">
-                                            <label class="general-field-label" data-i18n="general.security.password">密码</label>
-                                             <input type="password" class="general-input" id="generalWebAuthPass"
-                                                    placeholder="留空=不启用" data-i18n-placeholder="general.security.passwordPlaceholder" autocomplete="new-password"/>
-                                        </div>
-                                    </div>
                                     <div class="general-toggle-desc settings-gap-top-sm">
-                                        <span data-i18n="general.security.desc">启用后，访问页面会弹出浏览器登录框，输入账号密码才能进入</span>
+                                        <span>安全访问已升级为“用户管理”。用户、角色、登录会话和 LDAP 等认证能力请统一在管理控制台配置。</span>
+                                    </div>
+                                    <div class="settings-gap-top-sm">
+                                        <button type="button" class="settings-mini-btn" onclick="window.location.href='/web/admin'">打开用户管理</button>
                                     </div>
                                 </div>
                             </div>

@@ -236,6 +236,8 @@ public class Configurator {
         FileWatchService fileWatchService = defaultCtx.getFileWatchService();
         
         // 用户认证系统（先初始化，确保 WebController 等组件可以访问）
+        // 将旧版“通用设置 -> 安全访问”一次性升级为用户管理中的本地管理员。
+        migrateLegacyWebAuth(agentSettings);
         UserAuthConfig userAuthConfig = agentSettings.getUserAuth();
         UserSessionManager userSessionManager = new UserSessionManager();
         userSessionManager.init(userAuthConfig);
@@ -300,6 +302,26 @@ public class Configurator {
         if (cliShell != null) {
             String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
             cliShell.printWelcome("Web interface: " + url);
+        }
+    }
+
+    private void migrateLegacyWebAuth(AgentSettings settings) {
+        String legacyUser = settings.getGeneral().getWebAuthUser();
+        String legacyPass = settings.getGeneral().getWebAuthPass();
+        try {
+            LegacyWebAuthMigrationService.Result result =
+                    LegacyWebAuthMigrationService.migrateIfNeeded(legacyUser, legacyPass);
+            if (result == LegacyWebAuthMigrationService.Result.MIGRATED
+                    || result == LegacyWebAuthMigrationService.Result.ALREADY_MANAGED) {
+                // 旧字段只读兼容，不再继续写入；认证仓库已成为唯一权威。
+                settings.getGeneral().setWebAuthUser(null);
+                settings.getGeneral().setWebAuthPass(null);
+                settings.saveToFile();
+                LOG.info("[Auth] Legacy web security access migrated to user management: {}", result);
+            }
+        } catch (Exception e) {
+            // 旧凭据不符合策略或迁移失败时失败关闭，不注册旧 Basic Auth，避免保留第二套认证。
+            throw new IllegalStateException("旧版安全访问迁移失败: " + e.getMessage(), e);
         }
     }
 

@@ -433,14 +433,6 @@ public class WebSettingsController extends BaseSettingsController {
         if (tmp.isObject()) {
             tmp.bindTo(settings().getGeneral());
 
-            // 处理 webAuthUser/webAuthPass 清空：bindTo 遇到 null 值会跳过，需要手动处理
-            if (tmp.get("webAuthUser").isNull()) {
-                settings().getGeneral().setWebAuthUser(null);
-            }
-            if (tmp.get("webAuthPass").isNull()) {
-                settings().getGeneral().setWebAuthPass(null);
-            }
-
             // 处理 proxyHost/proxyPort/noProxy 清空：bindTo 遇到 null 值会跳过，需要手动处理
             if (tmp.get("proxyHost").isNull()) {
                 settings().getGeneral().setProxyHost(null);

@@ -349,10 +349,6 @@
                 $('#generalCliPrintSimplified').prop('checked', d.cliPrintSimplified !== false);
                 window.cliPrintSimplified = d.cliPrintSimplified !== false;
 
-                // Web 访问认证
-                $('#generalWebAuthUser').val(d.webAuthUser || '');
-                $('#generalWebAuthPass').val(d.webAuthPass || '');
-
                 // 新建对话默认（思考模式 / 推理强度）
                 $('#generalDefaultThinkingMode').val(d.defaultThinkingMode || '');
                 $('#generalDefaultReasoningEffort').val(d.defaultReasoningEffort || '');
@@ -430,8 +426,6 @@
             loopsEnabled: $('#generalLoopEnabled').is(':checked'),
             lspEnabled: $('#generalLspEnabled').is(':checked'),
             cliPrintSimplified: $('#generalCliPrintSimplified').is(':checked'),
-            webAuthUser: $('#generalWebAuthUser').val().trim() || null,
-            webAuthPass: $('#generalWebAuthPass').val().trim() || null,
             logLevel: $('#generalLogLevel').val().trim() || null,
             logFileMaxSize: $('#generalLogFileMaxSize').val().trim() || null,
             logMaxHistory: parseNumStr($('#generalLogMaxHistory').val().trim()),
