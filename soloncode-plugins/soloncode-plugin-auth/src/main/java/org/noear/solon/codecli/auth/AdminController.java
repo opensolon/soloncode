@@ -67,16 +67,15 @@ public class AdminController {
     }
 
     /**
-     * 管理模块清单：LDAP 用户由目录服务管理，因此不显示本地用户 CRUD 模块。
+     * 管理模块清单：导航仅保留「认证配置 → 用户管理」。
+     * LDAP 用户由目录服务管理，因此不显示本地用户 CRUD 模块。
+     * 概览、审计、会话模块已从导航中移除；其后端接口仍保留，供后续重新开放。
      */
     @Get
     @Mapping("/web/admin/modules")
     public Result<List<String>> modules() {
         List<String> keys = new java.util.ArrayList<>();
-        keys.add("overview");
         keys.add("auth");
-        keys.add("sessions");
-        keys.add("audit");
         if (userStore == null || userStore.supportsLocalUserManagement()) {
             keys.add("users");
         }

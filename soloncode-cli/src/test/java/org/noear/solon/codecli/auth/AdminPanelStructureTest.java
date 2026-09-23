@@ -402,13 +402,19 @@ public class AdminPanelStructureTest {
         if (Files.exists(direct)) {
             return new String(Files.readAllBytes(direct), StandardCharsets.UTF_8);
         }
-        java.nio.file.Path authModule = java.nio.file.Paths.get("soloncode-auth").resolve(path);
-        if (Files.exists(authModule)) {
-            return new String(Files.readAllBytes(authModule), StandardCharsets.UTF_8);
-        }
-        java.nio.file.Path siblingModule = java.nio.file.Paths.get("..", "soloncode-auth").resolve(path);
-        if (Files.exists(siblingModule)) {
-            return new String(Files.readAllBytes(siblingModule), StandardCharsets.UTF_8);
+        // 认证源码已从 soloncode-auth 迁移到 soloncode-plugins/soloncode-plugin-auth，
+        // 兼容按模块或按反应堆根目录运行两种执行位置。
+        String[] candidates = {
+                "soloncode-auth/" + path,
+                "../soloncode-auth/" + path,
+                "soloncode-plugins/soloncode-plugin-auth/" + path,
+                "../soloncode-plugins/soloncode-plugin-auth/" + path
+        };
+        for (String candidate : candidates) {
+            java.nio.file.Path p = java.nio.file.Paths.get(candidate);
+            if (Files.exists(p)) {
+                return new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
+            }
         }
         throw new IOException("Missing project file: " + path);
     }

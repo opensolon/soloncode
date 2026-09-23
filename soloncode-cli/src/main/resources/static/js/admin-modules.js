@@ -12,50 +12,11 @@
     'use strict';
 
     var ICON = {
-        overview: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
         auth: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
         users: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         audit: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h9l4 4v14H3V3h5z"/><path d="M17 3v5h4M7 12h10M7 16h10"/></svg>',
         sessions: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h4"/></svg>'
     };
-
-    // ============== 概览模块 ==============
-    function renderOverview(container) {
-        container.innerHTML =
-            '<h1 class="admin-content-title">概览</h1>' +
-            '<div class="admin-content-desc">实例运行概况</div>' +
-            '<div class="admin-overview-cards" id="adminOverviewCards">' +
-                '<div class="admin-stat-card"><div class="admin-stat-card-label">用户总数</div><div class="admin-stat-card-value" id="ovUserCount">—</div></div>' +
-                '<div class="admin-stat-card"><div class="admin-stat-card-label">活跃会话</div><div class="admin-stat-card-value" id="ovSessionCount">—</div></div>' +
-                '<div class="admin-stat-card"><div class="admin-stat-card-label">认证模式</div><div class="admin-stat-card-value" id="ovAuthMode">—</div></div>' +
-                '<div class="admin-stat-card"><div class="admin-stat-card-label">存储类型</div><div class="admin-stat-card-value" id="ovStoreType">—</div></div>' +
-            '</div>';
-
-        fetch('/web/admin/overview')
-            .then(function (r) {
-                if (r.status === 401) { window.location.replace('/login?scope=admin&returnUrl=%2Fweb%2Fadmin'); throw new Error('401'); }
-                if (r.status === 403) { throw new Error('403'); }
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function (resp) {
-                if (resp.code !== 200 || !resp.data) throw new Error('Invalid overview response');
-                var d = resp.data;
-                setText('ovUserCount', d.userCount);
-                setText('ovSessionCount', d.activeSessionCount);
-                setText('ovAuthMode', d.authEnabled ? (d.authMode || 'file') : '未启用');
-                setText('ovStoreType', d.storeType || 'file');
-            })
-            .catch(function () {
-                var cards = document.getElementById('adminOverviewCards');
-                if (cards) cards.insertAdjacentHTML('afterend', '<div class="admin-inline-error">概览加载失败，请刷新重试。</div>');
-            });
-    }
-
-    function setText(id, val) {
-        var el = document.getElementById(id);
-        if (el) el.textContent = (val == null ? '—' : val);
-    }
 
     // ============== 认证配置模块 ==============
     // 独立 tab（对齐 web.html 设置的「一个功能一个区」组织方式）。
@@ -352,8 +313,9 @@
         load(1);
     }
 
+    // 导航仅保留「认证配置 → 用户管理」两项（顺序由 order 决定）。
+    // 审计与会话模块保留渲染实现，供后续重新开放，但不参与当前导航（后端 modules 不再返回其 key）。
     window.ADMIN_MODULES = [
-        { key: 'overview', title: '概览', icon: ICON.overview, order: 0, render: renderOverview },
         { key: 'auth', title: '认证配置', icon: ICON.auth, order: 10, render: renderAuth },
         { key: 'users', title: '用户管理', icon: ICON.users, order: 20, render: renderUsers },
         { key: 'audit', title: '审计日志', icon: ICON.audit, order: 30, render: renderAudit },
