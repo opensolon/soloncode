@@ -11,7 +11,7 @@
         <relativePath>../soloncode-parent/pom.xml</relativePath>
     </parent>
 
-    <artifactId>soloncode-auth</artifactId>
+    <artifactId>soloncode-plugin-auth</artifactId>
     <name>${project.artifactId}</name>
     <packaging>jar</packaging>
 

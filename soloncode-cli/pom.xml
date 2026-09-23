@@ -19,7 +19,7 @@
     <dependencies>
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>soloncode-auth</artifactId>
+            <artifactId>soloncode-plugin-auth</artifactId>
             <version>${project.version}</version>
         </dependency>
 
