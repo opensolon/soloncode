@@ -198,6 +198,27 @@ public class AdminPanelStructureTest {
                         && adminCss.contains("border: 0")
                         && adminCss.contains("background: transparent"),
                 "认证模式的动态配置区也应去除内层边框和底色");
+        assertTrue(adminCss.contains("--admin-content-width: 900px")
+                        && adminCss.contains("width: min(var(--admin-content-width), calc(100vw - 48px))")
+                        && adminCss.contains("margin: 0 auto"),
+                "admin 主内容应采用约 900px 的窗口级居中布局");
+        assertTrue(adminCss.contains(".admin-nav")
+                        && adminCss.contains("background: transparent")
+                        && adminCss.contains("position: absolute"),
+                "宽屏 admin tab 侧不应再有整块底层，应采用透明悬浮导航");
+        assertTrue(adminCss.contains("@media (max-width: 1260px)")
+                        && adminCss.contains("flex-direction: row")
+                        && adminCss.contains("overflow-x: auto"),
+                "中小屏应将侧边 tab 收为横向滚动导航，避免覆盖居中内容");
+        assertTrue(adminCss.contains(".admin-nav-item.active::before")
+                        && adminCss.contains("background: var(--bg-hover")
+                        && adminCss.contains(".admin-user-list .user-list-item")
+                        && adminCss.contains("border-bottom: 1px solid var(--border-color)"),
+                "admin 应采用设置页式浅色导航选中态和分隔列表，而非厚重卡片");
+        assertTrue(adminCss.contains(".admin-content .settings-section")
+                        && adminCss.contains("box-shadow: none")
+                        && adminCss.contains(".admin-content .settings-section-title"),
+                "admin 内容区应统一采用设置页标题层级并移除外层视觉卡片");
 
         String usersJs = resourceText("/static/js/app-settings-users.js");
         assertTrue(usersJs.contains("#userListView") && usersJs.contains("#userFormView"),

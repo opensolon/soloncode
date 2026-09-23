@@ -52,9 +52,9 @@ body.admin-body {
     gap: 6px;
     font-size: var(--fs-sm);
     color: var(--text-secondary);
-    padding: 6px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: 6px;
 }
 
 .admin-topbar-user .user-role-tag {
@@ -68,9 +68,9 @@ body.admin-body {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
     background: none;
     color: var(--text-secondary);
     font-size: var(--fs-sm);
@@ -91,26 +91,35 @@ body.admin-body {
     color: var(--danger, #e5484d);
 }
 
-/* ===== 主体：左导航 + 右内容 ===== */
+/* ===== 主体：居中内容 + 透明悬浮导航 ===== */
 .admin-main {
+    --admin-content-width: 900px;
+    --admin-nav-width: 164px;
+    position: relative;
     flex: 1;
-    display: flex;
     min-height: 0;
+    overflow: hidden;
 }
 
+/*
+ * 导航不再占据一整块侧栏背景。它与主内容共享同一条视觉轴，
+ * 仅保留按钮自己的 hover/active 背景，避免内容收窄后出现厚重的底层。
+ */
 .admin-nav {
-    width: 220px;
-    border-right: 1px solid var(--border-color);
-    padding: 12px 0;
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: max(16px, calc(50% - 638px));
+    width: var(--admin-nav-width);
+    padding: 8px 0;
     overflow-y: auto;
-    flex-shrink: 0;
-    background: var(--bg-secondary, var(--bg-primary));
     display: flex;
     flex-direction: column;
+    background: transparent;
 }
 
 .admin-nav-group-title {
-    padding: 16px 16px 8px;
+    padding: 16px 8px 8px;
     font-size: var(--fs-xs);
     color: var(--text-secondary);
     font-weight: 600;
@@ -122,8 +131,9 @@ body.admin-body {
     display: flex;
     align-items: center;
     gap: 10px;
-    width: calc(100% - 16px);
-    margin: 2px 8px;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 2px 0;
     padding: 9px 12px;
     border: none;
     border-radius: 8px;
@@ -141,8 +151,21 @@ body.admin-body {
 }
 
 .admin-nav-item.active {
-    background: var(--accent-fill, var(--accent));
-    color: #fff;
+    position: relative;
+    background: var(--bg-hover, rgba(127,127,127,0.12));
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.admin-nav-item.active::before {
+    content: "";
+    width: 3px;
+    height: 18px;
+    margin-left: -8px;
+    margin-right: 5px;
+    border-radius: 3px;
+    background: var(--accent);
+    flex: none;
 }
 
 .admin-nav-item.disabled {
@@ -154,6 +177,11 @@ body.admin-body {
     width: 16px;
     height: 16px;
     flex: none;
+    opacity: 0.78;
+}
+
+.admin-nav-item.active .admin-nav-icon {
+    opacity: 1;
 }
 
 .admin-nav-item .admin-nav-soon {
@@ -167,16 +195,20 @@ body.admin-body {
 
 .admin-nav-footer {
     margin-top: auto;
-    padding: 12px 16px;
+    padding: 12px 8px;
     font-size: var(--fs-xs);
     color: var(--text-secondary);
 }
 
 .admin-content {
-    flex: 1;
-    padding: 24px 28px;
+    width: min(var(--admin-content-width), calc(100vw - 48px));
+    max-width: var(--admin-content-width);
+    height: 100%;
+    box-sizing: border-box;
+    margin: 0 auto;
+    padding: 28px 0 48px;
     overflow-y: auto;
-    min-width: 0;
+    overflow-x: hidden;
 }
 
 /* ===== 认证与用户管理：对齐 web.html 设置的扁平内容结构 ===== */
@@ -190,8 +222,10 @@ body.admin-body {
     align-items: center;
     justify-content: space-between;
     gap: 20px;
+    min-height: 58px;
     padding: 14px 0;
     border-bottom: 1px solid var(--border-color);
+    box-sizing: border-box;
 }
 
 .admin-setting-label {
@@ -200,6 +234,19 @@ body.admin-body {
     font-size: var(--fs-base);
     font-weight: 500;
     line-height: 1.4;
+}
+
+.admin-setting-row .general-toggle-info {
+    min-width: 0;
+}
+
+.admin-setting-row .general-toggle-desc,
+.admin-setting-row .general-toggle-info > .general-toggle-desc {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
 }
 
 .admin-auth-enabled-row {
@@ -241,9 +288,51 @@ body.admin-body {
     padding-top: 2px;
 }
 
+/* 中等宽度时将透明侧导航收为顶部横向 tab，避免覆盖居中的内容。 */
+@media (max-width: 1260px) {
+    .admin-main {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .admin-nav {
+        position: static;
+        width: auto;
+        height: auto;
+        flex: none;
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+        padding: 10px max(18px, calc((100vw - 900px) / 2));
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .admin-nav-group-title,
+    .admin-nav-footer {
+        display: none;
+    }
+
+    .admin-nav-item {
+        width: auto;
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    .admin-content {
+        width: min(var(--admin-content-width), calc(100vw - 48px));
+        max-width: var(--admin-content-width);
+        flex: 1;
+        height: auto;
+        padding-top: 20px;
+    }
+}
+
 @media (max-width: 700px) {
     .admin-content {
-        padding: 20px 18px;
+        width: 100%;
+        padding: 20px 18px 36px;
     }
 
     .admin-flat-form .form-row-2col {
@@ -257,6 +346,55 @@ body.admin-body {
     .user-auth-mode-btn {
         padding: 9px 8px;
     }
+}
+
+/* 用户管理使用设置页式分隔列表，而不是后台卡片列表。 */
+.admin-user-list .user-list-item {
+    min-height: 64px;
+    margin: 0;
+    padding: 14px 0;
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.admin-user-list .user-list-item:hover {
+    border-color: var(--border-color);
+    background: var(--bg-hover, rgba(127,127,127,0.04));
+    box-shadow: none;
+}
+
+.admin-user-list .user-list-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: var(--bg-hover, rgba(127,127,127,0.1));
+    color: var(--text-secondary);
+}
+
+.admin-user-list .user-list-actions {
+    align-items: center;
+    gap: 8px;
+}
+
+.admin-user-list .settings-action-btn {
+    opacity: 0.7;
+}
+
+.admin-user-list .user-list-item:hover .settings-action-btn,
+.admin-user-list .settings-action-btn:focus {
+    opacity: 1;
+}
+
+.admin-user-list .user-list-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-user-form {
+    max-width: 760px;
 }
 
 /* ===== 概览卡片 ===== */
@@ -306,16 +444,138 @@ body.admin-body {
 }
 
 .admin-content-title {
-    font-size: var(--fs-xl, 20px);
-    font-weight: 600;
+    font-size: 24px;
+    line-height: 1.3;
+    font-weight: 700;
     color: var(--text-primary);
+    letter-spacing: -0.02em;
     margin: 0 0 4px;
 }
 
 .admin-content-desc {
     color: var(--text-secondary);
     font-size: var(--fs-sm);
-    margin-bottom: 8px;
+    line-height: 1.6;
+    margin-bottom: 28px;
+}
+
+/* 动态模块沿用 settings.css 的结构类，但由 admin 页统一控制标题节奏。 */
+.admin-content .settings-section {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+.admin-content .settings-section-header {
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.admin-content .settings-section-title {
+    display: block;
+    font-size: 24px;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+}
+
+.admin-content .settings-section-desc {
+    max-width: 680px;
+    line-height: 1.6;
+    margin-top: 6px;
+}
+
+.admin-content .settings-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.admin-content .settings-add-btn {
+    margin-top: 2px;
+    border-style: solid;
+    padding: 7px 12px;
+}
+
+.admin-content .settings-view-form .settings-section-header {
+    margin-bottom: 28px;
+}
+
+.admin-content .settings-view-form .settings-section-title {
+    font-size: 22px;
+}
+
+.admin-content .settings-back-btn {
+    margin-left: -6px;
+}
+
+/* 认证模式选择器使用轻量分段控件，避免再形成一张内嵌卡片。 */
+.admin-content .user-auth-mode-toggle {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-hover, rgba(127,127,127,0.06));
+}
+
+.admin-content .user-auth-mode-btn {
+    flex: 1;
+    min-height: 36px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.admin-content .user-auth-mode-btn.active {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* 概览使用分隔式统计项，和设置页保持同一套轻量视觉。 */
+.admin-overview-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 28px;
+    margin-top: 8px;
+}
+
+.admin-stat-card {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 64px;
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    padding: 16px 0;
+    background: transparent;
+}
+
+.admin-stat-card-label {
+    margin-bottom: 0;
+    color: var(--text-secondary);
+}
+
+.admin-stat-card-value {
+    font-size: 22px;
+}
+
+@media (max-width: 700px) {
+    .admin-overview-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-user-list .user-list-item {
+        align-items: flex-start;
+    }
+
+    .admin-user-list .user-list-actions {
+        padding-top: 2px;
+    }
 }
 
 /* ===== 实例自举：独立全屏初始化页 ===== */
