@@ -75,18 +75,17 @@ public class AdminController {
     }
 
     /**
-     * 管理模块清单：返回本实例已启用的管理模块 key，供前端过滤导航。
-     *
-     * <p>当前内置 overview + auth + users；未来新增管理功能时在此追加即可。</p>
+     * 管理模块清单：LDAP 用户由目录服务管理，因此不显示本地用户 CRUD 模块。
      */
     @Get
     @Mapping("/web/admin/modules")
     public Result<List<String>> modules() {
-        // 面板骨架内置模块。前端 ADMIN_MODULES 会与此清单取交集，实现按实例能力显隐。
         List<String> keys = new java.util.ArrayList<>();
         keys.add("overview");
         keys.add("auth");
-        keys.add("users");
+        if (userStore == null || userStore.supportsLocalUserManagement()) {
+            keys.add("users");
+        }
         return Result.succeed(keys);
     }
 
@@ -102,12 +101,19 @@ public class AdminController {
      */
     @Post
     @Mapping("/web/admin/bootstrap")
-    public Result<Void> bootstrap(@Body String json) {
-        // 幂等保护：认证已启用则拒绝（此时应走受保护的用户管理接口）
+    public synchronized Result<Void> bootstrap(@Body String json) {
         if (userAuthConfig.isEnabled()) {
             return Result.failure("用户认证已启用，无需重复初始化");
         }
+        if (!"file".equals(UserStoreFactory.normalizeMode(userAuthConfig.getMode()))
+                || !userStore.supportsLocalUserManagement()) {
+            return Result.failure("LDAP 模式不支持创建本地管理员");
+        }
+        if (!userStore.listUsers().isEmpty()) {
+            return Result.failure("实例已存在用户，不能重复初始化");
+        }
 
+        UserEntity admin = null;
         try {
             ONode root = ONode.ofJson(json);
             String username = root.get("username").getString();
@@ -118,30 +124,23 @@ public class AdminController {
             if (Assert.isEmpty(username)) return Result.failure("管理员用户名不能为空");
             if (Assert.isEmpty(password)) return Result.failure("管理员密码不能为空");
 
-            // 创建或提升首个管理员：
-            // FileUserStore 初始化时可能已生成默认 admin（admin/admin123），
-            // 若同名则覆盖其密码与信息，避免残留弱口令账户。
-            UserEntity existing = userStore.findByUsername(username);
-            if (existing != null) {
-                existing.setPasswordHash(FileUserStore.hashPassword(password));
-                if (!Assert.isEmpty(displayName)) existing.setDisplayName(displayName);
-                if (!Assert.isEmpty(email)) existing.setEmail(email);
-                existing.setRole("admin");
-                existing.setEnabled(true);
-                userStore.updateUser(existing);
-            } else {
-                UserEntity admin = new UserEntity(UUID.randomUUID().toString(), username,
+            admin = new UserEntity(UUID.randomUUID().toString(), username,
                     Assert.isEmpty(displayName) ? username : displayName);
-                admin.setPasswordHash(FileUserStore.hashPassword(password));
-                admin.setEmail(email);
-                admin.setRole("admin");
-                admin.setEnabled(true);
-                userStore.createUser(admin);
-            }
+            admin.setPasswordHash(FileUserStore.hashPassword(password));
+            admin.setEmail(email);
+            admin.setRole("admin");
+            admin.setEnabled(true);
+            userStore.createUser(admin);
 
-            // 最后再开启认证：确保管理员账户先落库，避免开启后无人可登录
+            // 最后再开启认证：确保管理员账户先落库，避免开启后无人可登录。
             userAuthConfig.setEnabled(true);
-            settings.saveToFile();
+            try {
+                settings.saveToFileStrict();
+            } catch (Exception e) {
+                userAuthConfig.setEnabled(false);
+                userStore.deleteUser(admin.getId());
+                throw e;
+            }
 
             LOG.info("[Admin] Bootstrap completed: auth enabled, admin '{}' ready", username);
             return Result.succeed();

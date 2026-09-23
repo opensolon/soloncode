@@ -623,6 +623,70 @@ body.admin-body {
     }
 }
 
+/* ===== LDAP 配置与异步状态 ===== */
+.admin-ldap-notice {
+    margin: 4px 0 18px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    background: var(--bg-hover, rgba(127,127,127,0.06));
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+}
+
+.admin-ldap-test {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-color);
+}
+
+.admin-ldap-test-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 34px;
+}
+
+.admin-ldap-test-result {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+}
+
+.admin-ldap-test-result.is-success {
+    color: var(--color-success, #2f9e44);
+}
+
+.admin-ldap-test-result.is-error,
+.user-list-error {
+    color: var(--color-danger, #e5484d);
+}
+
+.admin-ldap-test-result.is-loading {
+    color: var(--text-secondary);
+}
+
+.user-list-error .btn-secondary {
+    margin-left: 10px;
+}
+
+.admin-content button:disabled,
+.admin-content input:disabled + .toggle-slider {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.admin-user-list .user-list-item.disabled {
+    opacity: 1;
+}
+
+.admin-user-list .user-list-item.disabled .user-list-avatar,
+.admin-user-list .user-list-item.disabled .user-list-info {
+    opacity: 0.5;
+}
+
 /* ===== 实例自举：独立全屏初始化页 ===== */
 /* 认证未启用时进入，此时无用户/角色体系，导航为空。
    隐藏侧栏与顶栏多余元素，把向导做成居中的独立引导页。 */

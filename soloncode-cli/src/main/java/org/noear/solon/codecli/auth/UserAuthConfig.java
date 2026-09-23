@@ -6,22 +6,23 @@ import lombok.Setter;
 import java.io.Serializable;
 
 /**
- * 用户认证配置 - 用于用户管理和会话隔离
- * 独立于已有的管理员密码验证（WebAuthFilter）
- * 
- * 支持两种模式：
- * - database: 通过配置的数据库连接管理用户（支持 H2 内嵌或外部 JDBC）
- * - ldap: 通过 LDAP 服务器进行用户认证
- * - file: 基于文件存储的简单用户管理（默认）
- * 
+ * 用户认证配置 - 用于用户管理和会话隔离。
+ * 独立于已有的管理员密码验证（WebAuthFilter）。
+ *
+ * <p>支持两种模式：</p>
+ * <ul>
+ *     <li>file：基于本地文件管理用户（默认）</li>
+ *     <li>ldap：通过 LDAP 目录认证用户，用户资料和角色由目录服务管理</li>
+ * </ul>
+ *
  * @author noear 2026/8/23 created
  */
 @Getter
 @Setter
 public class UserAuthConfig implements Serializable {
-    /** 认证模式: file, database, ldap */
+    /** 认证模式: file, ldap */
     private String mode = "file";
-    
+
     /**
      * 是否启用用户认证。
      *
@@ -29,33 +30,35 @@ public class UserAuthConfig implements Serializable {
      * 对后续请求立即可见；否则关闭认证后刷新页面仍可能读到旧值并跳转登录页。</p>
      */
     private volatile boolean enabled = false;
-    
-    // ====== 数据库配置（database 模式） ======
-    /** 数据库 JDBC URL（为空时使用内嵌 H2） */
-    private String dbUrl;
-    /** 数据库用户名 */
-    private String dbUser;
-    /** 数据库密码 */
-    private String dbPassword;
-    /** 数据库驱动类名 */
-    private String dbDriverClass;
-    
+
     // ====== LDAP 配置（ldap 模式） ======
     /** LDAP 服务器 URL，如 ldap://localhost:389 */
     private String ldapUrl;
-    /** LDAP 管理员 DN */
+    /** LDAP 管理员 DN；为空时使用匿名搜索 */
     private String ldapAdminDn;
     /** LDAP 管理员密码 */
     private String ldapAdminPassword;
     /** LDAP 用户搜索基 DN，如 ou=users,dc=example,dc=com */
     private String ldapBaseDn;
-    /** LDAP 用户搜索过滤器，如 (uid={0}) */
+    /** LDAP 用户搜索过滤器，必须包含 {0} 用户名占位符 */
     private String ldapUserFilter = "(uid={0})";
     /** LDAP 是否使用 SSL */
     private boolean ldapSsl = false;
-    
+    /** 显示名称属性 */
+    private String ldapDisplayNameAttribute = "displayName";
+    /** 邮箱属性 */
+    private String ldapEmailAttribute = "mail";
+    /** 用户组属性 */
+    private String ldapGroupAttribute = "memberOf";
+    /** 映射为管理员角色的组 DN */
+    private String ldapAdminGroupDn;
+    /** LDAP 连接超时（毫秒） */
+    private int ldapConnectTimeoutMillis = 5000;
+    /** LDAP 读取超时（毫秒） */
+    private int ldapReadTimeoutMillis = 5000;
+
     // ====== 会话配置 ======
-    /** 会话超时时间（分钟） */
+    /** 会话最长有效时间（分钟） */
     private int sessionTimeoutMinutes = 60;
     /** 会话 token 长度（字节） */
     private int sessionTokenLength = 32;

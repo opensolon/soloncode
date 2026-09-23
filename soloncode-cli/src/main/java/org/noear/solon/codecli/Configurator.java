@@ -227,14 +227,16 @@ public class Configurator {
         UserSessionManager userSessionManager = new UserSessionManager();
         userSessionManager.init(userAuthConfig);
         
-        UserStore userStore;
+        // 历史 database 模式实际一直使用文件存储，升级后按 file 自动迁移。
+        userAuthConfig.setMode(UserStoreFactory.normalizeMode(userAuthConfig.getMode()));
+        UserStore initialUserStore;
         try {
-            userStore = createUserStore(userAuthConfig, userSessionManager);
+            initialUserStore = UserStoreFactory.create(userAuthConfig);
         } catch (Exception e) {
-            LOG.warn("[Configurator] Failed to create user store, using file store: {}", e.getMessage());
-            userStore = new FileUserStore();
-            try { userStore.init(userAuthConfig); } catch (Exception ignored) {}
+            // LDAP 配置错误时不能静默回退本地账户，否则身份源会发生安全降级。
+            throw new IllegalStateException("用户认证存储初始化失败（" + userAuthConfig.getMode() + "）: " + e.getMessage(), e);
         }
+        UserStore userStore = new ReloadableUserStore(initialUserStore);
         
         // 注册 userStore 和 userSessionManager 到容器
         Solon.context().wrapAndPut(UserStore.class, userStore);
@@ -286,29 +288,6 @@ public class Configurator {
         }
     }
 
-        private UserStore createUserStore(UserAuthConfig config, UserSessionManager sessionManager) throws Exception {
-        String mode = config.getMode();
-        if (mode == null) mode = "file";
-        
-        UserStore store;
-        switch (mode) {
-            case "ldap":
-                store = new LdapUserStore();
-                break;
-            case "database":
-                // 数据库模式目前使用文件存储作为兜底
-                // 实际使用时可通过 UI 配置 JDBC 连接
-                store = new FileUserStore();
-                break;
-            case "file":
-            default:
-                store = new FileUserStore();
-                break;
-        }
-        store.init(config);
-        return store;
-    }
-    
     private void addWebBean(Object bean) {
         BeanWrap beanWrap = Solon.context().wrapAndPut(bean.getClass(), bean);
         Solon.app().router().add(beanWrap);

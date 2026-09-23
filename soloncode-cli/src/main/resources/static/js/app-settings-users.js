@@ -1,76 +1,110 @@
 /**
- * app-settings-users.js — 用户管理设置面板
- * 
- * 提供用户认证配置（模式选择、数据库/LDAP 配置）和用户 CRUD 管理
+ * app-settings-users.js — 管理控制台的认证配置与本地用户管理。
  */
 (function () {
     'use strict';
 
-    var esc = window._settingsCore ? window._settingsCore.escapeHtml : function(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    var esc = window._settingsCore ? window._settingsCore.escapeHtml : function(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
     var escAttr = window._settingsCore ? window._settingsCore.escapeAttr : esc;
-    var postJson = window._settingsCore ? window._settingsCore.postJson : function(url, data, done) { $.ajax({ url: url, method: 'POST', data: JSON.stringify(data), contentType: 'application/json', dataType: 'json' }).done(done); };
     var showToast = window.showToast || (window._settingsCore ? window._settingsCore.showToast : function(msg, type) { if (typeof layer !== 'undefined' && layer.msg) layer.msg(msg, { icon: type === 'error' ? 2 : 1, time: 2500, offset: '120px' }); else alert(msg); });
 
-    // ============== 状态 ==============
+    function postJson(url, data, done) {
+        var request = $.ajax({
+            url: url,
+            method: 'POST',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            dataType: 'json'
+        });
+        if (typeof done === 'function') request.done(done);
+        return request;
+    }
+
     var currentMode = 'file';
+    var currentStoreType = 'file';
     var users = [];
     var editingUserId = null;
-
-    // ============== 加载 ==============
-    // 认证配置与用户列表已拆为两个独立 tab，各自按需加载。
-    // 记录后端返回的 enabled 初始值，用于关闭认证时的二次确认与回退。
     var authEnabledInitial = false;
+    var userListRequestId = 0;
+
+    function setInlineState(selector, message, state) {
+        var el = $(selector);
+        if (!el.length) return;
+        el.removeClass('is-success is-error is-loading');
+        if (state) el.addClass('is-' + state);
+        el.text(message || '');
+    }
 
     function loadAuthConfig() {
+        setInlineState('#userAuthLdapTestResult', '', null);
+        $('#userAuthSaveConfigBtn').prop('disabled', true);
         $.ajax({ url: '/web/settings/user-auth/config', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code !== 200) return;
+                if (resp.code !== 200) {
+                    showToast(resp.description || '认证配置加载失败', 'error');
+                    return;
+                }
                 var data = resp.data || {};
-                currentMode = data.mode || 'file';
-
-                // 填充表单
+                currentMode = data.mode === 'ldap' ? 'ldap' : 'file';
+                currentStoreType = data.storeType || currentMode;
                 authEnabledInitial = !!data.enabled;
                 $('#userAuthEnabled').prop('checked', data.enabled);
                 setMode(currentMode);
                 $('#userAuthSessionTimeout').val(data.sessionTimeoutMinutes || 60);
 
-                // 数据库配置
-                var db = data.database || {};
-                $('#userAuthDbUrl').val(db.dbUrl || '');
-                $('#userAuthDbUser').val(db.dbUser || '');
-                $('#userAuthDbDriver').val(db.dbDriverClass || '');
-
-                // LDAP 配置
                 var ldap = data.ldap || {};
                 $('#userAuthLdapUrl').val(ldap.ldapUrl || '');
                 $('#userAuthLdapAdminDn').val(ldap.ldapAdminDn || '');
+                $('#userAuthLdapPassword').val('');
                 $('#userAuthLdapBaseDn').val(ldap.ldapBaseDn || '');
                 $('#userAuthLdapFilter').val(ldap.ldapUserFilter || '(uid={0})');
-                $('#userAuthLdapSsl').prop('checked', ldap.ldapSsl);
-
-                // 存储类型提示
-                $('#userAuthStoreType').text(data.storeType || 'file');
+                $('#userAuthLdapSsl').prop('checked', !!ldap.ldapSsl);
+                $('#userAuthLdapDisplayAttr').val(ldap.ldapDisplayNameAttribute || 'displayName');
+                $('#userAuthLdapEmailAttr').val(ldap.ldapEmailAttribute || 'mail');
+                $('#userAuthLdapGroupAttr').val(ldap.ldapGroupAttribute || 'memberOf');
+                $('#userAuthLdapAdminGroupDn').val(ldap.ldapAdminGroupDn || '');
+                $('#userAuthLdapConnectTimeout').val(ldap.ldapConnectTimeoutMillis || 5000);
+                $('#userAuthLdapReadTimeout').val(ldap.ldapReadTimeoutMillis || 5000);
+                $('#userAuthStoreType').text(currentStoreType);
+            })
+            .fail(function () {
+                showToast('认证配置加载失败，请检查网络后重试', 'error');
+            })
+            .always(function () {
+                $('#userAuthSaveConfigBtn').prop('disabled', false);
             });
     }
 
     function setMode(mode) {
-        currentMode = mode;
-        $('.user-auth-mode-btn').removeClass('active');
-        $('.user-auth-mode-btn[data-mode="' + mode + '"]').addClass('active');
-        
+        currentMode = mode === 'ldap' ? 'ldap' : 'file';
+        $('.user-auth-mode-btn').removeClass('active').attr('aria-pressed', 'false');
+        $('.user-auth-mode-btn[data-mode="' + currentMode + '"]').addClass('active').attr('aria-pressed', 'true');
         $('.user-auth-config-section').hide();
-        $('#userAuthConfigDb').toggle(mode === 'database');
-        $('#userAuthConfigLdap').toggle(mode === 'ldap');
-        $('#userAuthConfigFile').toggle(mode === 'file');
+        $('#userAuthConfigLdap').toggle(currentMode === 'ldap');
+        $('#userAuthConfigFile').toggle(currentMode === 'file');
+        setInlineState('#userAuthLdapTestResult', '', null);
     }
 
     function loadUsers() {
+        var requestId = ++userListRequestId;
+        $('#userList').html('<div class="user-empty-state">正在加载用户...</div>');
         $.ajax({ url: '/web/settings/user-auth/users', dataType: 'json' })
             .done(function (resp) {
-                if (resp.code !== 200) return;
+                if (requestId !== userListRequestId) return;
+                if (resp.code !== 200) {
+                    renderUserListError(resp.description || '用户列表加载失败');
+                    return;
+                }
                 users = resp.data || [];
                 renderUsers();
+            })
+            .fail(function () {
+                if (requestId === userListRequestId) renderUserListError('用户列表加载失败，请稍后重试');
             });
+    }
+
+    function renderUserListError(message) {
+        $('#userList').html('<div class="user-empty-state user-list-error">' + esc(message) + '<button type="button" class="btn-secondary" id="userListRetryBtn">重试</button></div>');
     }
 
     function renderUsers() {
@@ -79,12 +113,11 @@
             html = '<div class="user-empty-state">暂无用户，请添加</div>';
         } else {
             users.forEach(function (u) {
-                var roleLabel = u.role === 'admin' ? '管理员' : (u.role === 'readonly' ? '只读' : '普通用户');
+                var roleLabel = u.role === 'admin' ? '管理员' : '普通用户';
                 var enabled = u.enabled !== false;
-                // 与模型管理一致：列表行提供独立的编辑按钮和启用开关。
-                html += '<div class="user-list-item' + (enabled ? '' : ' disabled') + '" data-id="' + escAttr(u.id) + '">' +
-                    '<div class="user-list-avatar">' + esc((u.displayName || u.username).charAt(0).toUpperCase()) + '</div>' +
-                    '<div class="user-list-info">' +
+                html += '<div class="settings-list-item user-list-item' + (enabled ? '' : ' disabled') + '" data-id="' + escAttr(u.id) + '">' +
+                    '<div class="settings-list-icon user-list-avatar">' + esc((u.displayName || u.username).charAt(0).toUpperCase()) + '</div>' +
+                    '<div class="settings-list-info user-list-info">' +
                         '<div class="user-list-name">' + esc(u.displayName || u.username) +
                         ' <span class="user-list-username">@' + esc(u.username) + '</span></div>' +
                         '<div class="user-list-meta">' +
@@ -92,7 +125,7 @@
                             (u.email ? '<span class="user-list-email">' + esc(u.email) + '</span>' : '') +
                         '</div>' +
                     '</div>' +
-                    '<div class="user-list-actions">' +
+                    '<div class="settings-list-actions user-list-actions">' +
                         '<button class="settings-action-btn edit user-edit-btn" type="button" title="编辑" data-id="' + escAttr(u.id) + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
                         '<label class="toggle-switch" title="' + (enabled ? '停用用户' : '启用用户') + '">' +
                             '<input type="checkbox" class="user-enabled-toggle" data-id="' + escAttr(u.id) + '" ' + (enabled ? 'checked' : '') + '/>' +
@@ -105,21 +138,56 @@
         $('#userList').html(html);
     }
 
-    // ============== 保存配置 ==============
-    // 关闭认证是实例级重决策（关掉 = 整个登录体系失效，下次进入回到自举向导），
-    // 独立成 tab 后入口更显眼，因此在真正落地前加二次确认。
+    function ldapPayload() {
+        return {
+            ldapUrl: ($('#userAuthLdapUrl').val() || '').trim(),
+            ldapAdminDn: ($('#userAuthLdapAdminDn').val() || '').trim(),
+            ldapAdminPassword: $('#userAuthLdapPassword').val() || '',
+            ldapBaseDn: ($('#userAuthLdapBaseDn').val() || '').trim(),
+            ldapUserFilter: ($('#userAuthLdapFilter').val() || '').trim(),
+            ldapSsl: $('#userAuthLdapSsl').prop('checked'),
+            ldapDisplayNameAttribute: ($('#userAuthLdapDisplayAttr').val() || '').trim(),
+            ldapEmailAttribute: ($('#userAuthLdapEmailAttr').val() || '').trim(),
+            ldapGroupAttribute: ($('#userAuthLdapGroupAttr').val() || '').trim(),
+            ldapAdminGroupDn: ($('#userAuthLdapAdminGroupDn').val() || '').trim(),
+            ldapConnectTimeoutMillis: parseInt($('#userAuthLdapConnectTimeout').val(), 10) || 5000,
+            ldapReadTimeoutMillis: parseInt($('#userAuthLdapReadTimeout').val(), 10) || 5000
+        };
+    }
+
+    function testLdap() {
+        var btn = $('#userAuthLdapTestBtn');
+        if (btn.prop('disabled')) return;
+        btn.prop('disabled', true).text('正在测试...');
+        setInlineState('#userAuthLdapTestResult', '正在连接 LDAP...', 'loading');
+        postJson('/web/settings/user-auth/ldap/test', {
+            ldap: ldapPayload(),
+            ldapTestUsername: ($('#userAuthLdapTestUsername').val() || '').trim(),
+            ldapTestPassword: $('#userAuthLdapTestPassword').val() || ''
+        }).done(function (resp) {
+            if (resp.code === 200) {
+                var data = resp.data || {};
+                var detail = data.username ? ('用户 ' + data.username + '，角色：' + (data.role === 'admin' ? '管理员' : '普通用户')) : 'LDAP 连接成功';
+                setInlineState('#userAuthLdapTestResult', detail, 'success');
+            } else {
+                setInlineState('#userAuthLdapTestResult', resp.description || 'LDAP 测试失败', 'error');
+            }
+        }).fail(function () {
+            setInlineState('#userAuthLdapTestResult', 'LDAP 测试请求失败', 'error');
+        }).always(function () {
+            btn.prop('disabled', false).text('测试连接与角色');
+        });
+    }
+
     function saveConfig() {
         var willDisable = authEnabledInitial && !$('#userAuthEnabled').prop('checked');
         if (willDisable) {
-            var msg = '关闭用户认证后，所有人无需登录即可使用系统，登录体系将整体失效。确定要关闭吗？';
+            var msg = '关闭用户认证后，所有人无需登录即可使用系统。确定要关闭吗？';
             if (typeof layer !== 'undefined' && layer.confirm) {
                 layer.confirm(msg, { title: '确认关闭认证', btn: ['关闭认证', '取消'], icon: 3, offset: '120px' }, function (index) {
                     layer.close(index);
                     doSaveConfig();
-                }, function () {
-                    // 取消：恢复开关勾选，避免误关
-                    $('#userAuthEnabled').prop('checked', true);
-                });
+                }, function () { $('#userAuthEnabled').prop('checked', true); });
             } else if (window.confirm(msg)) {
                 doSaveConfig();
             } else {
@@ -131,50 +199,53 @@
     }
 
     function doSaveConfig() {
+        var btn = $('#userAuthSaveConfigBtn');
+        if (btn.prop('disabled')) return;
         var data = {
             enabled: $('#userAuthEnabled').prop('checked'),
             mode: currentMode,
-            sessionTimeoutMinutes: parseInt($('#userAuthSessionTimeout').val()) || 60,
-            database: {
-                dbUrl: $('#userAuthDbUrl').val(),
-                dbUser: $('#userAuthDbUser').val(),
-                dbPassword: $('#userAuthDbPassword').val(),
-                dbDriverClass: $('#userAuthDbDriver').val()
-            },
-            ldap: {
-                ldapUrl: $('#userAuthLdapUrl').val(),
-                ldapAdminDn: $('#userAuthLdapAdminDn').val(),
-                ldapAdminPassword: $('#userAuthLdapPassword').val(),
-                ldapBaseDn: $('#userAuthLdapBaseDn').val(),
-                ldapUserFilter: $('#userAuthLdapFilter').val(),
-                ldapSsl: $('#userAuthLdapSsl').prop('checked')
-            }
+            sessionTimeoutMinutes: parseInt($('#userAuthSessionTimeout').val(), 10) || 60,
+            ldap: ldapPayload(),
+            ldapTestUsername: ($('#userAuthLdapTestUsername').val() || '').trim(),
+            ldapTestPassword: $('#userAuthLdapTestPassword').val() || ''
         };
-        
-        postJson('/web/settings/user-auth/config/save', data, function (resp) {
+        btn.prop('disabled', true).text('保存中...');
+        postJson('/web/settings/user-auth/config/save', data).done(function (resp) {
             if (resp.code === 200) {
-                // 保存成功后同步初始值，使后续二次确认判断基于最新状态
+                var oldStoreType = currentStoreType;
                 authEnabledInitial = !!data.enabled;
-                showToast('配置已保存');
+                currentStoreType = (resp.data && resp.data.storeType) || currentMode;
+                $('#userAuthLdapPassword, #userAuthLdapTestPassword').val('');
+                showToast('配置已保存并生效');
+                if (resp.data && resp.data.reloginRequired) {
+                    document.cookie = 'user_token=; path=/; max-age=0';
+                    window.location.href = '/login';
+                    return;
+                }
+                if (oldStoreType !== currentStoreType) {
+                    window.location.reload();
+                    return;
+                }
+                loadAuthConfig();
             } else {
                 showToast(resp.description || '保存失败', 'error');
             }
+        }).fail(function () {
+            showToast('保存失败，请检查网络后重试', 'error');
+        }).always(function () {
+            btn.prop('disabled', false).text('保存配置');
         });
     }
 
-    // ============== 用户表单（两层视图切换，对齐模型设置） ==============
-    // 列表视图 #userListView 与表单视图 #userFormView 互斥，带 slide 动画。
-    // #userFormActions 仅在编辑态显示（含删除）；添加态隐藏。
     function showUserForm(user) {
         editingUserId = user ? user.id : null;
         $('#userFormId').val(user ? user.id : '');
-        $('#userFormUsername').val(user ? user.username : '').prop('readonly', !!user);
+        $('#userFormUsername').val(user ? user.username : '').prop('readonly', !!user).toggleClass('readonly-gray', !!user);
         $('#userFormDisplayName').val(user ? user.displayName : '');
         $('#userFormEmail').val(user ? user.email : '');
-        $('#userFormPassword').val('').prop('required', !user)
-            .attr('placeholder', user ? '留空则不修改密码' : '请输入密码');
+        $('#userFormPassword').val('').prop('required', !user).attr('placeholder', user ? '留空则不修改密码' : '请输入密码');
         $('#userFormPasswordRequired').toggle(!user);
-        $('#userFormRole').val(user ? user.role : 'user');
+        $('#userFormRole').val(user && user.role === 'admin' ? 'admin' : 'user');
         $('#userFormTitle').text(user ? '编辑用户' : '添加用户');
         $('#userFormActions').toggle(!!user);
         $('#userListView').hide();
@@ -190,146 +261,117 @@
     }
 
     function saveUser() {
+        var btn = $('#userFormSaveBtn');
+        if (btn.prop('disabled')) return;
         var id = $('#userFormId').val();
-        var username = $('#userFormUsername').val().trim();
-        var displayName = $('#userFormDisplayName').val().trim();
-        var email = $('#userFormEmail').val().trim();
+        var username = ($('#userFormUsername').val() || '').trim();
         var password = $('#userFormPassword').val();
-        var role = $('#userFormRole').val();
-        
         if (!username) { showToast('用户名不能为空', 'error'); return; }
         if (!id && !password) { showToast('密码不能为空', 'error'); return; }
-        
+
+        var data = {
+            username: username,
+            displayName: ($('#userFormDisplayName').val() || '').trim(),
+            email: ($('#userFormEmail').val() || '').trim(),
+            role: $('#userFormRole').val()
+        };
+        var url = '/web/settings/user-auth/users/create';
         if (id) {
-            // 更新资料；启用状态由列表开关独立管理。
-            var data = { id: id, displayName: displayName, email: email, role: role };
-            if (password) data.password = password;
-            postJson('/web/settings/user-auth/users/update', data, function (resp) {
-                if (resp.code === 200) {
-                    showToast('用户已更新');
-                    hideUserForm();
-                } else {
-                    showToast(resp.description || '更新失败', 'error');
-                }
-            });
-        } else {
-            // 创建
-            postJson('/web/settings/user-auth/users/create', {
-                username: username,
-                password: password,
-                displayName: displayName,
-                email: email,
-                role: role
-            }, function (resp) {
-                if (resp.code === 200) {
-                    showToast('用户已创建');
-                    hideUserForm();
-                } else {
-                    showToast(resp.description || '创建失败', 'error');
-                }
-            });
+            url = '/web/settings/user-auth/users/update';
+            data.id = id;
         }
+        if (password) data.password = password;
+
+        btn.prop('disabled', true).text(id ? '保存中...' : '创建中...');
+        postJson(url, data).done(function (resp) {
+            if (resp.code === 200) {
+                showToast(id ? '用户已更新' : '用户已创建');
+                hideUserForm();
+            } else {
+                showToast(resp.description || (id ? '更新失败' : '创建失败'), 'error');
+            }
+        }).fail(function () {
+            showToast('请求失败，请稍后重试', 'error');
+        }).always(function () {
+            btn.prop('disabled', false).text('保存');
+        });
     }
 
     function toggleUser(id, enabled, input) {
-        postJson('/web/settings/user-auth/users/toggle', { id: id, enabled: enabled }, function (resp) {
+        if (input) input.disabled = true;
+        postJson('/web/settings/user-auth/users/toggle', { id: id, enabled: enabled }).done(function (resp) {
             if (resp.code === 200) {
                 loadUsers();
             } else {
                 if (input) input.checked = !enabled;
                 showToast(resp.description || '操作失败', 'error');
             }
+        }).fail(function () {
+            if (input) input.checked = !enabled;
+            showToast('操作失败，请稍后重试', 'error');
+        }).always(function () {
+            if (input) input.disabled = false;
         });
     }
 
     function deleteUser(id, username) {
-        if (username === 'admin') {
-            showToast('不能删除管理员账户', 'error');
-            return;
-        }
+        var confirmDelete = function () { doDeleteUser(id); };
         if (typeof layer !== 'undefined' && layer.confirm) {
-            layer.confirm('确定要删除用户 "' + username + '" 吗？', {
-                title: '确认删除',
-                btn: ['删除', '取消'],
-                icon: 3,
-                offset: '120px'
-            }, function(index) {
+            layer.confirm('确定要删除用户 "' + username + '" 吗？', { title: '确认删除', btn: ['删除', '取消'], icon: 3, offset: '120px' }, function(index) {
                 layer.close(index);
-                doDeleteUser(id);
+                confirmDelete();
             });
-        } else {
-            if (window.confirm('确定要删除用户 "' + username + '" 吗？')) {
-                doDeleteUser(id);
-            }
+        } else if (window.confirm('确定要删除用户 "' + username + '" 吗？')) {
+            confirmDelete();
         }
     }
 
     function doDeleteUser(id) {
-        postJson('/web/settings/user-auth/users/delete', { id: id }, function (resp) {
+        var btn = $('#userFormDeleteBtn');
+        btn.prop('disabled', true);
+        postJson('/web/settings/user-auth/users/delete', { id: id }).done(function (resp) {
             if (resp.code === 200) {
                 showToast('用户已删除');
-                // 删除发生在表单视图，完成后回列表（hideUserForm 内部会重新 loadUsers）
                 hideUserForm();
             } else {
                 showToast(resp.description || '删除失败', 'error');
             }
+        }).fail(function () {
+            showToast('删除失败，请稍后重试', 'error');
+        }).always(function () {
+            btn.prop('disabled', false);
         });
     }
 
-    // ============== 事件绑定 ==============
-    // 首次加载（兼容：若仍有旧的合并 tab 事件，两块都加载）
-    $(document).on('settings:tab:users', function() {
-        loadAuthConfig();
-        loadUsers();
-    });
-
-    // 模式选择
-    $(document).on('click', '.user-auth-mode-btn', function() {
-        setMode($(this).attr('data-mode'));
-    });
-
-    // 保存配置
+    $(document).on('settings:tab:users', function() { loadAuthConfig(); loadUsers(); });
+    $(document).on('click', '.user-auth-mode-btn', function() { setMode($(this).attr('data-mode')); });
+    $(document).on('click', '#userAuthLdapTestBtn', testLdap);
     $(document).on('click', '#userAuthSaveConfigBtn', saveConfig);
-
-    // 添加用户
-    $(document).on('click', '#userAddBtn', function() {
-        showUserForm(null);
-    });
-
-    // 编辑用户
+    $(document).on('click', '#userAddBtn', function() { showUserForm(null); });
+    $(document).on('click', '#userListRetryBtn', loadUsers);
     $(document).on('click', '.user-edit-btn', function(e) {
         e.stopPropagation();
         var id = $(this).attr('data-id');
-        var user = null;
         for (var i = 0; i < users.length; i++) {
-            if (users[i].id === id) { user = users[i]; break; }
+            if (users[i].id === id) { showUserForm(users[i]); break; }
         }
-        if (user) showUserForm(user);
     });
-
-    // 启用状态直接在列表切换（对齐模型管理）。
     $(document).on('change', '.user-enabled-toggle', function(e) {
         e.stopPropagation();
         toggleUser($(this).attr('data-id'), this.checked, this);
     });
-
-    // 删除用户（表单视图内，仅编辑态可见）
     $(document).on('click', '#userFormDeleteBtn', function() {
-        if (!editingUserId) return;
-        deleteUser(editingUserId, ($('#userFormUsername').val() || '').trim());
+        if (editingUserId) deleteUser(editingUserId, ($('#userFormUsername').val() || '').trim());
+    });
+    $(document).on('click', '#userFormCancelBtn', hideUserForm);
+    $(document).on('click', '#userFormSaveBtn', saveUser);
+    $(document).on('input change', '#userAuthConfigLdap input', function() {
+        setInlineState('#userAuthLdapTestResult', '配置已变化，请重新测试', 'loading');
     });
 
-    // 返回/取消：回列表视图
-    $(document).on('click', '#userFormCancelBtn', hideUserForm);
-
-    // 保存用户
-    $(document).on('click', '#userFormSaveBtn', saveUser);
-
     window._settingsUsers = {
-        // 两个独立入口：认证配置 tab 与用户管理 tab 各自按需加载
         loadAuthConfig: loadAuthConfig,
         loadUsers: loadUsers,
-        // 向后兼容：旧调用方仍可一次性加载两块
         load: function() { loadAuthConfig(); loadUsers(); },
         showList: function() { hideUserForm(); },
         reset: function() { hideUserForm(); }

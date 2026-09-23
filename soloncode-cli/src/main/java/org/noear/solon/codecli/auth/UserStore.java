@@ -55,4 +55,12 @@ public interface UserStore {
      * 获取存储类型
      */
     String getType();
+
+    /**
+     * 是否支持在 SolonCode 内直接管理用户。
+     * LDAP 用户由目录服务统一管理，因此返回 false。
+     */
+    default boolean supportsLocalUserManagement() {
+        return true;
+    }
 }

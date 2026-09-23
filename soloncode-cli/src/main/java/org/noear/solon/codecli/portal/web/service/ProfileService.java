@@ -91,7 +91,7 @@ public class ProfileService {
      * settings 片段中需要脱敏的字段名（导出 includeSecrets=false 时置为占位符）
      */
     private static final Set<String> SECRET_KEYS = new HashSet<>(Arrays.asList(
-            "apiKey", "api_key", "webAuthPass", "webAuthUser", "dbPassword", "ldapAdminPassword"
+            "apiKey", "api_key", "webAuthPass", "webAuthUser", "ldapAdminPassword"
     ));
 
     private static final long MAX_UNCOMPRESSED_BYTES = 256L * 1024 * 1024; // 256MB（zip 炸弹防护）

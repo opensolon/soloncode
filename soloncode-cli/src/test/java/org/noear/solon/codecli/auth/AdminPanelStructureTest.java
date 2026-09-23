@@ -157,6 +157,27 @@ public class AdminPanelStructureTest {
     }
 
     @Test
+    public void databaseModeIsRemovedAndLdapHasOperationalControls() throws IOException {
+        String modules = resourceText("/static/js/admin-modules.js");
+        String usersJs = resourceText("/static/js/app-settings-users.js");
+
+        assertFalse(modules.contains("data-mode=\"database\""));
+        assertFalse(modules.contains("userAuthConfigDb"));
+        assertFalse(modules.contains("userAuthDbUrl"));
+        assertFalse(usersJs.contains("database:"));
+        assertFalse(usersJs.contains("userAuthDb"));
+
+        assertTrue(modules.contains("userAuthLdapAdminGroupDn"));
+        assertTrue(modules.contains("userAuthLdapGroupAttr"));
+        assertTrue(modules.contains("userAuthLdapTestBtn"));
+        assertTrue(modules.contains("userAuthLdapTestResult"));
+        assertTrue(usersJs.contains("/web/settings/user-auth/ldap/test"));
+        assertTrue(usersJs.contains("ldapTestUsername"));
+        assertTrue(usersJs.contains("reloginRequired"));
+        assertFalse(modules.contains("value=\"readonly\""));
+    }
+
+    @Test
     public void userManagementUsesTwoLayerListAndForm() throws IOException {
         // 对齐 web.html 模型设置：列表视图与表单视图两层切换，而非同一层内嵌。
         String modules = resourceText("/static/js/admin-modules.js");

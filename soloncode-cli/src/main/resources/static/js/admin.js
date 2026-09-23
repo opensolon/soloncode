@@ -21,7 +21,7 @@
     var moduleMap = {};
 
     function roleLabel(role) {
-        return role === 'admin' ? '管理员' : (role === 'readonly' ? '只读' : '普通用户');
+        return role === 'admin' ? '管理员' : '普通用户';
     }
 
     // 退出登录：销毁后端会话 + 清本地 cookie，回到登录页。
@@ -156,9 +156,12 @@
                 // 已是管理员：渲染用户信息 + 加载模块
                 if (userInfoEl) {
                     userInfoEl.classList.remove('admin-auth-disabled');
-                    userInfoEl.innerHTML =
-                        (d.displayName || d.username) +
-                        ' <span class="user-role-tag user-role-admin">' + roleLabel(d.role) + '</span>';
+                    userInfoEl.textContent = '';
+                    userInfoEl.appendChild(document.createTextNode((d.displayName || d.username) + ' '));
+                    var roleEl = document.createElement('span');
+                    roleEl.className = 'user-role-tag user-role-admin';
+                    roleEl.textContent = roleLabel(d.role);
+                    userInfoEl.appendChild(roleEl);
                 }
                 loadModules();
             })
@@ -177,8 +180,8 @@
                 buildModules(all, enabled);
             })
             .catch(function () {
-                // 接口失败时降级：使用前端注册表全集
-                buildModules(all, null);
+                // 能力接口失败时只开放只读的基础模块，不能误暴露本地用户 CRUD。
+                buildModules(all, ['overview', 'auth']);
             });
     }
 

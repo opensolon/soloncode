@@ -41,16 +41,8 @@ public class FileUserStore implements UserStore {
             loadFromFile();
         }
         
-        // 如果没有用户，创建一个默认管理员
-        if (userMap.isEmpty()) {
-            UserEntity admin = new UserEntity(UUID.randomUUID().toString(), "admin", "管理员");
-            admin.setPasswordHash(hashPassword("admin123"));
-            admin.setRole("admin");
-            admin.setEmail("admin@localhost");
-            userMap.put(admin.getId(), admin);
-            saveToFile();
-            LOG.info("[UserStore] Created default admin user (admin/admin123)");
-        }
+        // 全新实例保持空存储，由 /web/admin/bootstrap 引导用户自行创建首个管理员。
+        // 禁止生成固定默认口令。
     }
     
     @Override
@@ -91,19 +83,27 @@ public class FileUserStore implements UserStore {
     }
     
     @Override
-    public UserEntity createUser(UserEntity user) throws Exception {
+    public synchronized UserEntity createUser(UserEntity user) throws Exception {
+        if (findByUsername(user.getUsername()) != null) {
+            throw new IllegalArgumentException("用户名已存在");
+        }
         if (user.getId() == null) {
             user.setId(UUID.randomUUID().toString());
         }
         user.setCreatedAt(System.currentTimeMillis());
         user.setUpdatedAt(System.currentTimeMillis());
         userMap.put(user.getId(), user);
-        saveToFile();
+        try {
+            saveToFile();
+        } catch (Exception e) {
+            userMap.remove(user.getId());
+            throw e;
+        }
         return user;
     }
     
     @Override
-    public UserEntity updateUser(UserEntity user) throws Exception {
+    public synchronized UserEntity updateUser(UserEntity user) throws Exception {
         UserEntity existing = userMap.get(user.getId());
         if (existing == null) {
             throw new IllegalArgumentException("用户不存在: " + user.getId());
@@ -111,14 +111,24 @@ public class FileUserStore implements UserStore {
         user.setCreatedAt(existing.getCreatedAt());
         user.setUpdatedAt(System.currentTimeMillis());
         userMap.put(user.getId(), user);
-        saveToFile();
+        try {
+            saveToFile();
+        } catch (Exception e) {
+            userMap.put(existing.getId(), existing);
+            throw e;
+        }
         return user;
     }
     
     @Override
-    public void deleteUser(String id) throws Exception {
-        userMap.remove(id);
-        saveToFile();
+    public synchronized void deleteUser(String id) throws Exception {
+        UserEntity removed = userMap.remove(id);
+        try {
+            saveToFile();
+        } catch (Exception e) {
+            if (removed != null) userMap.put(id, removed);
+            throw e;
+        }
     }
     
     @Override
@@ -164,34 +174,26 @@ public class FileUserStore implements UserStore {
         }
     }
     
-    private synchronized void saveToFile() {
-        try {
-            // We'll store as an array
-            ONode arr = new ONode(Options.of(Feature.Write_PrettyFormat)).asArray();
-            for (UserEntity user : userMap.values()) {
-                if ("admin".equals(user.getUsername()) && user.getPasswordHash() == null) {
-                    continue; // skip incomplete admin
-                }
-                ONode item = new ONode().asObject();
-                item.set("id", user.getId());
-                item.set("username", user.getUsername());
-                item.set("displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername());
-                item.set("passwordHash", user.getPasswordHash());
-                item.set("email", user.getEmail());
-                item.set("role", user.getRole() != null ? user.getRole() : "user");
-                item.set("enabled", user.isEnabled());
-                item.set("createdAt", user.getCreatedAt());
-                item.set("updatedAt", user.getUpdatedAt());
-                arr.add(item);
-            }
-            
-            Files.createDirectories(usersFilePath.getParent());
-            Path tmp = usersFilePath.resolveSibling(usersFilePath.getFileName() + ".tmp");
-            String json = arr.toJson();
-            Files.write(tmp, json.getBytes("UTF-8"));
-            Files.move(tmp, usersFilePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (Exception e) {
-            LOG.warn("[UserStore] Failed to save users file: {}", e.getMessage());
+    private synchronized void saveToFile() throws Exception {
+        ONode arr = new ONode(Options.of(Feature.Write_PrettyFormat)).asArray();
+        for (UserEntity user : userMap.values()) {
+            ONode item = new ONode().asObject();
+            item.set("id", user.getId());
+            item.set("username", user.getUsername());
+            item.set("displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername());
+            item.set("passwordHash", user.getPasswordHash());
+            item.set("email", user.getEmail());
+            item.set("role", user.getRole() != null ? user.getRole() : "user");
+            item.set("enabled", user.isEnabled());
+            item.set("createdAt", user.getCreatedAt());
+            item.set("updatedAt", user.getUpdatedAt());
+            arr.add(item);
         }
+
+        Files.createDirectories(usersFilePath.getParent());
+        Path tmp = usersFilePath.resolveSibling(usersFilePath.getFileName() + ".tmp");
+        String json = arr.toJson();
+        Files.write(tmp, json.getBytes("UTF-8"));
+        Files.move(tmp, usersFilePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 }

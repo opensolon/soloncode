@@ -124,6 +124,31 @@ public class UserSessionManager {
     }
     
     /**
+     * 撤销指定用户的全部会话。
+     */
+    public int revokeUserSessions(String userId) {
+        if (userId == null) return 0;
+        int removed = 0;
+        for (Map.Entry<String, UserSession> entry : sessionMap.entrySet()) {
+            if (userId.equals(entry.getValue().getUserId()) && sessionMap.remove(entry.getKey(), entry.getValue())) {
+                removed++;
+            }
+        }
+        if (removed > 0) saveToFile();
+        return removed;
+    }
+
+    /**
+     * 撤销全部会话，认证源或关键认证配置变化时使用。
+     */
+    public int revokeAllSessions() {
+        int count = sessionMap.size();
+        sessionMap.clear();
+        saveToFile();
+        return count;
+    }
+
+    /**
      * 获取用户的所有活跃会话
      */
     public List<UserSession> getUserSessions(String userId) {

@@ -416,19 +416,26 @@ public class AgentSettings implements Serializable {
             source = new UserAuthConfig();
         }
         target.setEnabled(source.isEnabled());
-        target.setMode(source.getMode());
-        target.setDbUrl(source.getDbUrl());
-        target.setDbUser(source.getDbUser());
-        target.setDbPassword(source.getDbPassword());
-        target.setDbDriverClass(source.getDbDriverClass());
+        target.setMode(normalizeUserAuthMode(source.getMode()));
         target.setLdapUrl(source.getLdapUrl());
         target.setLdapAdminDn(source.getLdapAdminDn());
         target.setLdapAdminPassword(source.getLdapAdminPassword());
         target.setLdapBaseDn(source.getLdapBaseDn());
         target.setLdapUserFilter(source.getLdapUserFilter());
         target.setLdapSsl(source.isLdapSsl());
+        target.setLdapDisplayNameAttribute(source.getLdapDisplayNameAttribute());
+        target.setLdapEmailAttribute(source.getLdapEmailAttribute());
+        target.setLdapGroupAttribute(source.getLdapGroupAttribute());
+        target.setLdapAdminGroupDn(source.getLdapAdminGroupDn());
+        target.setLdapConnectTimeoutMillis(source.getLdapConnectTimeoutMillis());
+        target.setLdapReadTimeoutMillis(source.getLdapReadTimeoutMillis());
         target.setSessionTimeoutMinutes(source.getSessionTimeoutMinutes());
         target.setSessionTokenLength(source.getSessionTokenLength());
+    }
+
+    private static String normalizeUserAuthMode(String mode) {
+        // 历史 database 模式实际一直使用文件存储，升级后按 file 兼容迁移。
+        return "ldap".equals(mode) ? "ldap" : "file";
     }
     
     private static <K, V> void replaceMap(Map<K, V> target, Map<K, V> source) {
@@ -439,39 +446,50 @@ public class AgentSettings implements Serializable {
     }
 
     /**
-     * 保存配置到文件
+     * 保存配置到文件。通用调用保持原有容错语义；需要事务一致性的安全配置应使用
+     * {@link #saveToFileStrict()}。
      */
     public synchronized void saveToFile() {
         try {
-            // 多工作区隔离：local 目录取本实例所属工作区（workspaceDir），而非启动目录；
-            // 确保非默认工作区的 scope=workspace 配置能写回其所属目录（与 loadForWorkspace 对称）。
-            String localDir = (workspaceDir != null && workspaceDir.length() > 0) ? workspaceDir : AgentFlags.getUserDir();
-
-            Path globalFileOld = Paths.get(AgentFlags.getUserHome(), ".soloncode", "config.yml").toAbsolutePath();
-            Path localFileOld = Paths.get(localDir, ".soloncode", "config.yml").toAbsolutePath();
-
-            Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
-            Path localFile = Paths.get(localDir, ".soloncode", "settings.json").toAbsolutePath();
-            boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
-
-            // 原子写入：先写临时文件再原子移动，防止写入过程中崩溃导致文件损坏
-            Files.createDirectories(globalFile.getParent());
-            Path globalTmp = globalFile.resolveSibling(globalFile.getFileName() + ".tmp");
-            Files.write(globalTmp, getGlobalJson(isLocalAsGlobal).getBytes("UTF-8"));
-            Files.move(globalTmp, globalFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            Files.deleteIfExists(globalFileOld); //有新配置后，去掉旧配置
-
-
-            if (isLocalAsGlobal == false) {
-                //如果本地文件，不同于全局文件
-                Files.createDirectories(localFile.getParent());
-                Path localTmp = localFile.resolveSibling(localFile.getFileName() + ".tmp");
-                Files.write(localTmp, getLocalJson().getBytes("UTF-8"));
-                Files.move(localTmp, localFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                Files.deleteIfExists(localFileOld); //有新配置后，去掉旧配置
-            }
+            saveToFileStrict0();
         } catch (Exception e) {
             LOG.warn("[Settings] Failed to save settings to file: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 严格保存配置。写入失败时向调用方抛出异常，避免认证接口报告假成功。
+     */
+    public synchronized void saveToFileStrict() throws Exception {
+        saveToFileStrict0();
+    }
+
+    private void saveToFileStrict0() throws Exception {
+        // 多工作区隔离：local 目录取本实例所属工作区（workspaceDir），而非启动目录；
+        // 确保非默认工作区的 scope=workspace 配置能写回其所属目录（与 loadForWorkspace 对称）。
+        String localDir = (workspaceDir != null && workspaceDir.length() > 0) ? workspaceDir : AgentFlags.getUserDir();
+
+        Path globalFileOld = Paths.get(AgentFlags.getUserHome(), ".soloncode", "config.yml").toAbsolutePath();
+        Path localFileOld = Paths.get(localDir, ".soloncode", "config.yml").toAbsolutePath();
+
+        Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
+        Path localFile = Paths.get(localDir, ".soloncode", "settings.json").toAbsolutePath();
+        boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
+
+        // 原子写入：先写临时文件再原子移动，防止写入过程中崩溃导致文件损坏
+        Files.createDirectories(globalFile.getParent());
+        Path globalTmp = globalFile.resolveSibling(globalFile.getFileName() + ".tmp");
+        Files.write(globalTmp, getGlobalJson(isLocalAsGlobal).getBytes("UTF-8"));
+        Files.move(globalTmp, globalFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        Files.deleteIfExists(globalFileOld); //有新配置后，去掉旧配置
+
+        if (isLocalAsGlobal == false) {
+            //如果本地文件，不同于全局文件
+            Files.createDirectories(localFile.getParent());
+            Path localTmp = localFile.resolveSibling(localFile.getFileName() + ".tmp");
+            Files.write(localTmp, getLocalJson().getBytes("UTF-8"));
+            Files.move(localTmp, localFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            Files.deleteIfExists(localFileOld); //有新配置后，去掉旧配置
         }
     }
 
@@ -565,7 +583,7 @@ public class AgentSettings implements Serializable {
             }
         });
 
-        // userAuth 是实例级全局配置（认证开关/模式/DB/LDAP/会话），
+        // userAuth 是实例级全局配置（认证开关/模式/LDAP/会话），
         // 只写入 global settings.json；否则自举开启认证后重启会丢失，导致每次进 /admin 又弹初始化向导。
         oNode.getOrNew("userAuth").fill(userAuth);
 

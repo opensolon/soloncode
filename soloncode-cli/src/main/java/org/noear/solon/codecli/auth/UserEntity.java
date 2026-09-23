@@ -13,9 +13,9 @@ public class UserEntity implements Serializable {
     private String id;
     private String username;
     private String displayName;
-    private String passwordHash; // 仅 file/database 模式使用
+    private String passwordHash; // 仅 file 模式使用
     private String email;
-    private String role; // admin, user, readonly
+    private String role; // admin, user
     private boolean enabled = true;
     private long createdAt;
     private long updatedAt;

@@ -68,26 +68,28 @@
         '        <label data-i18n="users.auth.mode">认证模式</label>' +
         '        <div class="user-auth-mode-toggle">' +
         '          <button class="user-auth-mode-btn active" data-mode="file" type="button"><svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> <span data-i18n="users.auth.modeFile">文件存储</span></button>' +
-        '          <button class="user-auth-mode-btn" data-mode="database" type="button"><svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> <span data-i18n="users.auth.modeDb">数据库</span></button>' +
         '          <button class="user-auth-mode-btn" data-mode="ldap" type="button"><svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1.5"/></svg> <span data-i18n="users.auth.modeLdap">LDAP</span></button>' +
         '        </div>' +
         '      </div>' +
         '      <div class="user-auth-config-section admin-auth-config" id="userAuthConfigFile">' +
         '        <div class="general-toggle-desc"><span data-i18n="users.auth.fileDesc">用户信息存储在本地文件中，适合单机使用</span><span data-i18n="users.auth.storeType">。当前存储：</span><span class="user-auth-store-type" id="userAuthStoreType">file</span></div>' +
         '      </div>' +
-        '      <div class="user-auth-config-section admin-auth-config" id="userAuthConfigDb" style="display:none">' +
-        '        <div class="form-group"><label data-i18n="users.auth.dbUrl">JDBC URL</label><input type="text" id="userAuthDbUrl" placeholder="jdbc:h2:file:~/.soloncode/users"/></div>' +
-        '        <div class="form-row-2col"><div class="form-group"><label data-i18n="users.auth.dbUser">数据库用户名</label><input type="text" id="userAuthDbUser" placeholder="sa"/></div><div class="form-group"><label data-i18n="users.auth.dbPassword">数据库密码</label><input type="password" id="userAuthDbPassword" autocomplete="new-password"/></div></div>' +
-        '        <div class="form-group"><label data-i18n="users.auth.dbDriver">JDBC 驱动类</label><input type="text" id="userAuthDbDriver" placeholder="org.h2.Driver"/></div>' +
-        '      </div>' +
         '      <div class="user-auth-config-section admin-auth-config" id="userAuthConfigLdap" style="display:none">' +
-        '        <div class="form-group"><label data-i18n="users.auth.ldapUrl">LDAP 服务器 URL <span class="required">*</span></label><input type="text" id="userAuthLdapUrl" placeholder="ldap://localhost:389"/></div>' +
-        '        <div class="form-row-2col"><div class="form-group"><label data-i18n="users.auth.ldapAdminDn">管理员 DN</label><input type="text" id="userAuthLdapAdminDn" placeholder="cn=admin,dc=example,dc=com"/></div><div class="form-group"><label data-i18n="users.auth.ldapPassword">管理员密码</label><input type="password" id="userAuthLdapPassword" autocomplete="new-password"/></div></div>' +
-        '        <div class="form-row-2col"><div class="form-group"><label data-i18n="users.auth.ldapBaseDn">搜索基 DN</label><input type="text" id="userAuthLdapBaseDn" placeholder="ou=users,dc=example,dc=com"/></div><div class="form-group"><label data-i18n="users.auth.ldapFilter">用户过滤器</label><input type="text" id="userAuthLdapFilter" placeholder="(uid={0})"/></div></div>' +
-        '        <div class="admin-setting-row"><div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.ldapSslDesc">使用 SSL 连接 LDAP 服务器</span></div><label class="toggle-switch"><input type="checkbox" id="userAuthLdapSsl"/><span class="toggle-slider"></span></label></div>' +
+        '        <div class="admin-ldap-notice">LDAP 用户、密码和组关系由目录服务统一管理。启用前必须用管理员组成员完成测试。</div>' +
+        '        <div class="form-group"><label>LDAP 服务器 URL <span class="required">*</span></label><input type="text" id="userAuthLdapUrl" placeholder="ldap://localhost:389"/></div>' +
+        '        <div class="form-row-2col"><div class="form-group"><label>目录管理 DN</label><input type="text" id="userAuthLdapAdminDn" placeholder="cn=admin,dc=example,dc=com"/></div><div class="form-group"><label>目录管理密码</label><input type="password" id="userAuthLdapPassword" autocomplete="new-password" placeholder="留空则保留原密码"/></div></div>' +
+        '        <div class="form-row-2col"><div class="form-group"><label>搜索基 DN <span class="required">*</span></label><input type="text" id="userAuthLdapBaseDn" placeholder="ou=users,dc=example,dc=com"/></div><div class="form-group"><label>用户过滤器 <span class="required">*</span></label><input type="text" id="userAuthLdapFilter" placeholder="(uid={0})"/></div></div>' +
+        '        <div class="form-row-2col"><div class="form-group"><label>显示名称属性</label><input type="text" id="userAuthLdapDisplayAttr" placeholder="displayName"/></div><div class="form-group"><label>邮箱属性</label><input type="text" id="userAuthLdapEmailAttr" placeholder="mail"/></div></div>' +
+        '        <div class="form-row-2col"><div class="form-group"><label>用户组属性</label><input type="text" id="userAuthLdapGroupAttr" placeholder="memberOf"/></div><div class="form-group"><label>管理员组 DN <span class="required">*</span></label><input type="text" id="userAuthLdapAdminGroupDn" placeholder="cn=soloncode-admins,ou=groups,dc=example,dc=com"/></div></div>' +
+        '        <div class="form-row-2col"><div class="form-group"><label>连接超时（毫秒）</label><input type="text" inputmode="numeric" id="userAuthLdapConnectTimeout" placeholder="5000"/></div><div class="form-group"><label>读取超时（毫秒）</label><input type="text" inputmode="numeric" id="userAuthLdapReadTimeout" placeholder="5000"/></div></div>' +
+        '        <div class="admin-setting-row"><div class="general-toggle-info"><span class="admin-setting-label">使用 SSL 连接 LDAP 服务器</span></div><label class="toggle-switch"><input type="checkbox" id="userAuthLdapSsl"/><span class="toggle-slider"></span></label></div>' +
+        '        <div class="admin-ldap-test">' +
+        '          <div class="form-row-2col"><div class="form-group"><label>测试用户名</label><input type="text" id="userAuthLdapTestUsername" autocomplete="username" placeholder="LDAP 管理员组成员"/></div><div class="form-group"><label>测试用户密码</label><input type="password" id="userAuthLdapTestPassword" autocomplete="current-password"/></div></div>' +
+        '          <div class="admin-ldap-test-actions"><button type="button" class="btn-secondary" id="userAuthLdapTestBtn">测试连接与角色</button><span class="admin-ldap-test-result" id="userAuthLdapTestResult"></span></div>' +
+        '        </div>' +
         '      </div>' +
-        '      <div class="form-group admin-short-field"><label data-i18n="users.auth.sessionTimeout">会话超时（分钟）</label><input type="text" inputmode="numeric" id="userAuthSessionTimeout" placeholder="60"/></div>' +
-        '      <div class="form-actions form-actions-end"><button class="btn-primary" id="userAuthSaveConfigBtn" data-i18n="users.auth.saveBtn">保存配置</button></div>' +
+        '      <div class="form-group admin-short-field"><label>会话最长有效期（分钟）</label><input type="text" inputmode="numeric" id="userAuthSessionTimeout" placeholder="60"/></div>' +
+        '      <div class="form-actions form-actions-end"><button type="button" class="btn-primary" id="userAuthSaveConfigBtn" data-i18n="users.auth.saveBtn">保存配置</button></div>' +
         '    </div>' +
         '  </div>' +
         '</div>';
@@ -137,7 +139,7 @@
         '        <div class="form-group"><label data-i18n="users.form.username">用户名 <span class="required">*</span></label><input type="text" id="userFormUsername" placeholder="username"/></div>' +
         '        <div class="form-group"><label data-i18n="users.form.displayName">显示名称</label><input type="text" id="userFormDisplayName" placeholder="显示名称"/></div>' +
         '        <div class="form-group"><label data-i18n="users.form.email">邮箱</label><input type="email" id="userFormEmail" placeholder="user@example.com"/></div>' +
-        '        <div class="form-group"><label data-i18n="users.form.role">角色</label><select class="form-select-custom" id="userFormRole"><option value="user" data-i18n="users.role.user">普通用户</option><option value="admin" data-i18n="users.role.admin">管理员</option><option value="readonly" data-i18n="users.role.readonly">只读用户</option></select></div>' +
+        '        <div class="form-group"><label data-i18n="users.form.role">角色</label><select class="form-select-custom" id="userFormRole"><option value="user" data-i18n="users.role.user">普通用户</option><option value="admin" data-i18n="users.role.admin">管理员</option></select></div>' +
         '        <div class="form-group"><label data-i18n="users.form.password">密码 <span class="required" id="userFormPasswordRequired">*</span></label><input type="password" id="userFormPassword" autocomplete="new-password"/></div>' +
         '        <div class="form-actions form-actions-end"><button class="btn-primary" id="userFormSaveBtn" data-i18n="users.form.saveBtn">保存</button></div>' +
         '      </div>' +
