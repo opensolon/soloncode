@@ -114,7 +114,8 @@ public class AdminPanelStructureTest {
         assertTrue(web.contains("authenticated && data.role === 'admin') ? 'flex' : 'none'"),
                 "管理控制台入口必须按已登录管理员身份显隐");
         assertTrue(web.contains("class=\"sidebar-footer-actions\"")
-                        && web.contains("class=\"user-header-menu sidebar-user-menu\"")
+                        && web.contains("class=\"sidebar-user-menu\"")
+                        && web.contains("id=\"userHeaderDisplayName\"")
                         && web.contains("userMenu.style.display = authenticated ? 'block' : 'none'"),
                 "用户按钮应移到设置按钮同一行，并且仅在已登录时显示");
         // 工作台是所有已登录用户的默认落点，不能因管理员身份再次强制跳到管理台。
@@ -340,8 +341,14 @@ public class AdminPanelStructureTest {
         // 用户菜单中应提供返回工作台和退出登录，不再将二者作为并列顶栏按钮。
         assertTrue(html.contains("id=\"adminUserMenu\"")
                         && html.contains("id=\"adminUserMenuBtn\"")
+                        && html.contains("id=\"adminUserAvatar\"")
+                        && html.contains("id=\"adminUserDisplayName\"")
+                        && html.contains("id=\"adminUserUsername\"")
+                        && html.contains("class=\"sidebar-user-profile\"")
                         && html.contains("id=\"adminLogoutBtn\""),
-                "admin.html 顶栏应提供用户菜单和退出登录入口");
+                "admin.html 应复用工作台 sidebar-user-menu 的用户资料面板和退出登录入口");
+        assertFalse(html.contains("id=\"adminUserInfo\""),
+                "admin.html 不应继续使用旧的顶栏用户名标签");
 
         String adminJs = resourceText("/static/js/admin.js");
         // 退出由统一后端接口销毁会话并清除 HttpOnly Cookie，前端不得写 token Cookie。
@@ -352,8 +359,11 @@ public class AdminPanelStructureTest {
                 "管理台前端不得读写 HttpOnly user_token Cookie");
         assertTrue(adminJs.contains("credentials: 'same-origin'"),
                 "管理台注销请求必须携带同源 Cookie");
-        assertTrue(adminJs.contains("adminLogoutBtn"),
-                "退出按钮应在 admin.js 中绑定事件");
+        assertTrue(adminJs.contains("adminLogoutBtn")
+                        && adminJs.contains("adminUserDisplayName")
+                        && adminJs.contains("adminUserUsername")
+                        && adminJs.contains("adminUserAvatar"),
+                "退出按钮和用户资料应在 admin.js 中绑定");
     }
 
     @Test

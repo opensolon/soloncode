@@ -65,37 +65,31 @@ body.admin-body {
 
 .admin-user-menu {
     position: relative;
+    flex-shrink: 0;
 }
 
-.admin-topbar-user {
+/* 管理台用户入口与工作台 sidebar-user-menu 保持同一套纯图标风格。 */
+.admin-user-menu-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    min-height: 30px;
-    padding: 0 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 999px;
-    background: var(--bg-hover, rgba(127,127,127,0.06));
-    color: var(--text-primary);
-    font: inherit;
-    font-size: var(--fs-sm);
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
     cursor: pointer;
-    white-space: nowrap;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .admin-user-menu-btn:hover,
 .admin-user-menu-btn:focus-visible {
-    border-color: var(--accent);
+    border-color: var(--border-color);
     background: var(--bg-hover);
-}
-
-.admin-user-menu-chevron {
-    color: var(--text-secondary);
-    transition: transform 0.15s;
-}
-
-.admin-user-menu.open .admin-user-menu-chevron {
-    transform: rotate(180deg);
+    color: var(--text-primary);
+    outline: none;
 }
 
 .admin-user-menu-dropdown {
@@ -104,10 +98,10 @@ body.admin-body {
     right: 0;
     z-index: 30;
     display: none;
-    min-width: 160px;
-    padding: 4px;
+    min-width: 220px;
+    padding: 6px;
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: 12px;
     background: var(--bg-input-box, var(--bg-secondary, var(--bg-primary)));
     box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.14));
 }
@@ -119,7 +113,6 @@ body.admin-body {
 .admin-user-menu-item {
     display: flex;
     align-items: center;
-    gap: 8px;
     width: 100%;
     box-sizing: border-box;
     padding: 8px 10px;
@@ -137,19 +130,11 @@ body.admin-body {
 .admin-user-menu-item:hover,
 .admin-user-menu-item:focus-visible {
     background: var(--bg-hover);
+    outline: none;
 }
 
 .admin-user-menu-item.danger {
     color: var(--color-danger, #e5484d);
-}
-
-.admin-topbar-user .user-role-tag {
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: var(--bg-primary);
-    color: var(--text-secondary);
-    font-size: var(--fs-2xs);
-    font-weight: 500;
 }
 
 .admin-topbar-action {
@@ -658,19 +643,17 @@ body.admin-body {
     margin-left: -6px;
 }
 
-/* 认证模式和用户角色复用工作台的作用域选择器，保持交互与视觉统一。 */
+/* 认证模式和用户角色复用工作台的作用域选择器，保持交互与视觉统一；选择器铺满所在表单行。 */
 .admin-content .admin-auth-mode-toggle,
 .admin-content .admin-user-role-toggle {
-    max-width: 360px;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
 }
 
 .admin-content .admin-auth-mode-toggle .settings-scope-btn,
 .admin-content .admin-user-role-toggle .settings-scope-btn {
     min-height: 34px;
-}
-
-.admin-content .admin-user-role-toggle {
-    max-width: 280px;
 }
 
 .admin-content .admin-auth-mode-group {

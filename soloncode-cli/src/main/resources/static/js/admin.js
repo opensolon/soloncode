@@ -14,7 +14,9 @@
 
     var navEl = document.getElementById('adminNav');
     var contentEl = document.getElementById('adminContent');
-    var userInfoEl = document.getElementById('adminUserInfo');
+    var userAvatarEl = document.getElementById('adminUserAvatar');
+    var userDisplayNameEl = document.getElementById('adminUserDisplayName');
+    var userUsernameEl = document.getElementById('adminUserUsername');
     var logoutBtn = document.getElementById('adminLogoutBtn');
     var userMenu = document.getElementById('adminUserMenu');
     var userMenuBtn = document.getElementById('adminUserMenuBtn');
@@ -182,15 +184,12 @@
                     return;
                 }
                 // 已是管理员：渲染用户信息 + 加载模块
-                if (userInfoEl) {
-                    userInfoEl.classList.remove('admin-auth-disabled');
-                    userInfoEl.textContent = '';
-                    userInfoEl.appendChild(document.createTextNode((d.displayName || d.username) + ' '));
-                    var roleEl = document.createElement('span');
-                    roleEl.className = 'user-role-tag user-role-admin';
-                    roleEl.textContent = roleLabel(d.role);
-                    userInfoEl.appendChild(roleEl);
-                }
+                var displayName = d.displayName || d.username || '';
+                var username = d.username || '';
+                if (userDisplayNameEl) userDisplayNameEl.textContent = displayName;
+                if (userUsernameEl) userUsernameEl.textContent = username ? '@' + username : '';
+                if (userAvatarEl) userAvatarEl.textContent = displayName ? displayName.charAt(0).toUpperCase() : 'U';
+                if (userMenuBtn) userMenuBtn.title = displayName || '用户';
                 loadModules();
             })
             .catch(function () {
