@@ -476,7 +476,6 @@ body.admin-body {
         gap: 14px;
     }
 
-    .admin-auth-mode-toggle,
     .admin-user-role-toggle {
         max-width: none;
     }
@@ -643,8 +642,19 @@ body.admin-body {
     margin-left: -6px;
 }
 
-/* 认证模式和用户角色复用工作台的作用域选择器，保持交互与视觉统一；选择器铺满所在表单行。 */
-.admin-content .admin-auth-mode-toggle,
+/* 认证模式沿用“用户对话隔离”的设置行结构；模式选择保留分段控件以表达二选一。 */
+.admin-content .admin-auth-mode-row {
+    margin-bottom: 18px;
+}
+
+.admin-content .admin-auth-mode-toggle {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: none;
+    box-sizing: border-box;
+}
+
+/* 用户角色是独立表单字段，因此继续铺满整行。 */
 .admin-content .admin-user-role-toggle {
     width: 100%;
     max-width: none;
@@ -654,10 +664,6 @@ body.admin-body {
 .admin-content .admin-auth-mode-toggle .settings-scope-btn,
 .admin-content .admin-user-role-toggle .settings-scope-btn {
     min-height: 34px;
-}
-
-.admin-content .admin-auth-mode-group {
-    margin-top: 0;
 }
 
 /* 概览使用分隔式统计项，和设置页保持同一套轻量视觉。 */

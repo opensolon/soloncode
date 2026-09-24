@@ -40,9 +40,9 @@
         '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.conversationIsolation">用户对话隔离</span><span class="general-toggle-desc" data-i18n="users.auth.conversationIsolationDesc">启用后，不同登录用户只能查看和使用自己的对话</span></div>' +
         '        <label class="toggle-switch"><input type="checkbox" id="userAuthConversationIsolation"/><span class="toggle-slider"></span></label>' +
         '      </div>' +
-        '      <div class="form-group admin-auth-mode-group">' +
-        '        <label data-i18n="users.auth.mode">认证模式</label>' +
-        '        <div class="settings-scope-toggle admin-auth-mode-toggle" data-target="userAuthMode">' +
+        '      <div class="admin-setting-row admin-auth-mode-row">' +
+        '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.mode">认证模式</span></div>' +
+        '        <div class="settings-scope-toggle admin-auth-mode-toggle" data-target="userAuthMode" role="group" aria-label="认证模式">' +
         '          <button class="settings-scope-btn active" data-scope="file" type="button" data-i18n="users.auth.modeFile">文件存储</button>' +
         '          <button class="settings-scope-btn" data-scope="ldap" type="button" data-i18n="users.auth.modeLdap">LDAP</button>' +
         '        </div>' +
