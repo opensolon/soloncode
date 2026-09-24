@@ -98,8 +98,8 @@
 
     function setMode(mode) {
         currentMode = mode === 'ldap' ? 'ldap' : 'file';
-        $('.user-auth-mode-btn').removeClass('active').attr('aria-pressed', 'false');
-        $('.user-auth-mode-btn[data-mode="' + currentMode + '"]').addClass('active').attr('aria-pressed', 'true');
+        $('.admin-auth-mode-toggle .settings-scope-btn').removeClass('active').attr('aria-pressed', 'false');
+        $('.admin-auth-mode-toggle .settings-scope-btn[data-scope="' + currentMode + '"]').addClass('active').attr('aria-pressed', 'true');
         $('.user-auth-config-section').hide();
         $('#userAuthConfigLdap').toggle(currentMode === 'ldap');
         $('#userAuthConfigFile').toggle(currentMode === 'file');
@@ -276,6 +276,13 @@
         });
     }
 
+    function setRole(role) {
+        role = role === 'admin' ? 'admin' : 'user';
+        $('#userFormRole').val(role);
+        $('.admin-user-role-toggle .settings-scope-btn').removeClass('active').attr('aria-pressed', 'false');
+        $('.admin-user-role-toggle .settings-scope-btn[data-scope="' + role + '"]').addClass('active').attr('aria-pressed', 'true');
+    }
+
     function showUserForm(user) {
         editingUserId = user ? user.id : null;
         $('#userFormId').val(user ? user.id : '');
@@ -284,7 +291,7 @@
         $('#userFormEmail').val(user ? user.email : '');
         $('#userFormPassword').val('').prop('required', !user).attr('placeholder', user ? '留空则不修改密码' : '请输入密码');
         $('#userFormPasswordRequired').toggle(!user);
-        $('#userFormRole').val(user && user.role === 'admin' ? 'admin' : 'user');
+        setRole(user && user.role === 'admin' ? 'admin' : 'user');
         $('#userFormTitle').text(user ? '编辑用户' : '添加用户');
         $('#userFormActions').toggle(!!user);
         $('#userListView').hide();
@@ -383,7 +390,8 @@
     }
 
     $(document).on('settings:tab:users', function() { loadAuthConfig(); loadUsers(); });
-    $(document).on('click', '.user-auth-mode-btn', function() { setMode($(this).attr('data-mode')); });
+    $(document).on('click', '.admin-auth-mode-toggle .settings-scope-btn', function() { setMode($(this).attr('data-scope')); });
+    $(document).on('click', '.admin-user-role-toggle .settings-scope-btn', function() { setRole($(this).attr('data-scope')); });
     $(document).on('click', '#userAuthLdapTestBtn', testLdap);
     $(document).on('click', '#userAuthSaveConfigBtn', saveConfig);
     $(document).on('click', '#userAddBtn', function() { showUserForm(null); });

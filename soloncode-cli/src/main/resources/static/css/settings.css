@@ -1377,6 +1377,15 @@ select[disabled] {
     font-size: var(--fs-base);
 }
 
+/* User header menu */
+.user-header-menu { position: relative; }
+.user-header-dropdown { position: absolute; top: calc(100% + 8px); right: 0; z-index: 120; display: none; min-width: 150px; padding: 4px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-input-box, var(--bg-secondary, var(--bg-primary))); box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.14)); }
+.user-header-menu.open .user-header-dropdown { display: block; }
+.sidebar-user-menu .user-header-dropdown { top: auto; bottom: calc(100% + 8px); }
+.user-header-menu-item { display: block; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--fs-sm); text-align: left; text-decoration: none; cursor: pointer; }
+.user-header-menu-item:hover, .user-header-menu-item:focus-visible { background: var(--bg-hover); }
+.user-header-menu-item.danger { color: var(--color-danger, #e5484d); }
+
 /* User header button */
 .user-header-btn {
     background: none;

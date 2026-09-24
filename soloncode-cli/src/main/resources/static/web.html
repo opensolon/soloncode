@@ -66,13 +66,25 @@
     </div>
     <div class="sidebar-list" id="historyList"></div>
     <div class="sidebar-footer">
-        <button class="settings-btn" id="settingsBtn" title="设置" data-i18n-title="sidebar.settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-            <span style="margin-left:6px;font-size:var(--fs-sm);" data-i18n="sidebar.settings">设置</span>
-        </button>
+        <div class="sidebar-footer-actions">
+            <button class="settings-btn" id="settingsBtn" title="设置" data-i18n-title="sidebar.settings">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                <span style="margin-left:6px;font-size:var(--fs-sm);" data-i18n="sidebar.settings">设置</span>
+            </button>
+            <div class="user-header-menu sidebar-user-menu" id="userHeaderMenu">
+                <button class="user-header-btn" id="userHeaderBtn" title="用户" data-i18n-title="header.user" style="display:none" aria-haspopup="menu" aria-expanded="false">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span class="user-header-label" id="userHeaderLabel"></span>
+                </button>
+                <div class="user-header-dropdown" id="userHeaderDropdown" role="menu">
+                    <a class="user-header-menu-item" id="adminHeaderBtn" href="/web/admin" title="管理控制台" data-i18n-title="header.admin" style="display:none" role="menuitem">管理控制台</a>
+                    <button class="user-header-menu-item danger" id="userLogoutBtn" type="button" role="menuitem">退出登录</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="收起侧边栏" data-i18n-title="sidebar.collapse"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -99,13 +111,6 @@
         <button class="wechat-btn-header" id="wechatHeaderBtn" title="微信绑定" data-i18n-title="header.wechat">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-7.062-6.122zM14.033 13.3c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z"/></svg>
             <span class="wechat-label" id="wechatHeaderLabel"></span>
-        </button>
-        <a class="user-header-btn" id="adminHeaderBtn" href="/web/admin" title="管理控制台" data-i18n-title="header.admin" style="display:none">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        </a>
-        <button class="user-header-btn" id="userHeaderBtn" title="用户" data-i18n-title="header.user" style="display:none">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span class="user-header-label" id="userHeaderLabel"></span>
         </button>
         <button class="theme-toggle" id="themeBtn" title="切换主题" data-i18n-title="header.toggleTheme">
             <i class="layui-icon" id="themeIcon">&#xe748;</i>
@@ -2772,9 +2777,12 @@
     <!-- 用户认证状态检查 -->
     <script>
     (function() {
+        var userMenu = document.getElementById('userHeaderMenu');
         var userBtn = document.getElementById('userHeaderBtn');
         var userLabel = document.getElementById('userHeaderLabel');
         var adminBtn = document.getElementById('adminHeaderBtn');
+        var logoutBtn = document.getElementById('userLogoutBtn');
+        var authenticated = false;
         
         function checkUserAuth() {
             fetch('/web/user/me')
@@ -2783,40 +2791,48 @@
                     if (resp.code === 200 && resp.data) {
                         var data = resp.data;
                         // 管理员也可以正常使用工作台；管理台仅通过显式入口进入。
-                        // 管理员入口：仅 role=admin 时显示
-                        if (adminBtn) {
-                            adminBtn.style.display = (data.authEnabled && data.authenticated && data.role === 'admin') ? 'flex' : 'none';
+                        // 用户菜单只对已登录用户显示，避免未登录状态出现无效的用户按钮。
+                        authenticated = data.authEnabled && data.authenticated;
+                        if (userMenu) {
+                            userMenu.style.display = authenticated ? 'block' : 'none';
                         }
-                        if (data.authEnabled) {
-                            if (data.authenticated) {
-                                userBtn.style.display = 'flex';
-                                userLabel.textContent = data.displayName || data.username;
-                                userBtn.title = data.displayName + ' (' + data.role + ') - 点击登出';
-                            } else {
-                                // 未登录，显示登录按钮
-                                userBtn.style.display = 'flex';
-                                userLabel.textContent = '未登录';
-                                userBtn.title = '点击登录';
-                                userBtn.onclick = function() { window.location.href = '/login'; };
-                            }
+                        if (userBtn) {
+                            userBtn.style.display = authenticated ? 'flex' : 'none';
+                        }
+                        if (adminBtn) {
+                            adminBtn.style.display = (authenticated && data.role === 'admin') ? 'flex' : 'none';
+                        }
+                        if (authenticated) {
+                            userLabel.textContent = data.displayName || data.username || '';
+                            userBtn.title = window.I18n ? window.I18n.t('header.user') : '用户';
                         }
                     }
                 })
                 .catch(function() {});
         }
         
-        // 用户按钮点击：已登录则登出，未登录则跳转登录页
+        // 用户按钮统一承载管理入口和退出登录；未登录时整个菜单保持隐藏。
         userBtn.addEventListener('click', function() {
-            if (userLabel.textContent && userLabel.textContent !== '未登录' && userLabel.textContent !== '') {
-                // 已登录，点击登出
-                if (window.confirm('确定要注销登录吗？')) {
-                    fetch('/web/logout', { method: 'POST', credentials: 'same-origin' })
-                        .then(function() {
-                            window.location.reload();
-                        });
-                }
-            } else {
-                window.location.href = '/login';
+            if (!authenticated) return;
+            var open = userMenu.classList.toggle('open');
+            userBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        logoutBtn.addEventListener('click', function() {
+            if (!window.confirm('确定要注销登录吗？')) return;
+            fetch('/web/logout', { method: 'POST', credentials: 'same-origin' })
+                .then(function() { window.location.reload(); });
+        });
+        document.addEventListener('click', function(event) {
+            if (!userMenu.contains(event.target)) {
+                userMenu.classList.remove('open');
+                userBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+        userMenu.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                userMenu.classList.remove('open');
+                userBtn.setAttribute('aria-expanded', 'false');
+                userBtn.focus();
             }
         });
         

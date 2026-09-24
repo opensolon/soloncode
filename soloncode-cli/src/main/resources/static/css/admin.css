@@ -63,6 +63,10 @@ body.admin-body {
     gap: 8px;
 }
 
+.admin-user-menu {
+    position: relative;
+}
+
 .admin-topbar-user {
     display: inline-flex;
     align-items: center;
@@ -73,8 +77,70 @@ body.admin-body {
     border-radius: 999px;
     background: var(--bg-hover, rgba(127,127,127,0.06));
     color: var(--text-primary);
+    font: inherit;
     font-size: var(--fs-sm);
+    cursor: pointer;
     white-space: nowrap;
+}
+
+.admin-user-menu-btn:hover,
+.admin-user-menu-btn:focus-visible {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.admin-user-menu-chevron {
+    color: var(--text-secondary);
+    transition: transform 0.15s;
+}
+
+.admin-user-menu.open .admin-user-menu-chevron {
+    transform: rotate(180deg);
+}
+
+.admin-user-menu-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 30;
+    display: none;
+    min-width: 160px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-input-box, var(--bg-secondary, var(--bg-primary)));
+    box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.14));
+}
+
+.admin-user-menu.open .admin-user-menu-dropdown {
+    display: block;
+}
+
+.admin-user-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--fs-sm);
+    text-decoration: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+.admin-user-menu-item:hover,
+.admin-user-menu-item:focus-visible {
+    background: var(--bg-hover);
+}
+
+.admin-user-menu-item.danger {
+    color: var(--color-danger, #e5484d);
 }
 
 .admin-topbar-user .user-role-tag {
@@ -308,6 +374,10 @@ body.admin-body {
     padding-top: 6px;
 }
 
+.admin-auth-isolation-row {
+    margin-bottom: 18px;
+}
+
 .admin-auth-form > .form-group,
 .admin-user-form > .form-group {
     margin-bottom: 16px;
@@ -421,8 +491,9 @@ body.admin-body {
         gap: 14px;
     }
 
-    .user-auth-mode-btn {
-        padding: 9px 8px;
+    .admin-auth-mode-toggle,
+    .admin-user-role-toggle {
+        max-width: none;
     }
 }
 
@@ -587,29 +658,23 @@ body.admin-body {
     margin-left: -6px;
 }
 
-/* 认证模式选择器使用轻量分段控件，避免再形成一张内嵌卡片。 */
-.admin-content .user-auth-mode-toggle {
-    display: flex;
-    gap: 4px;
-    padding: 4px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--bg-hover, rgba(127,127,127,0.06));
+/* 认证模式和用户角色复用工作台的作用域选择器，保持交互与视觉统一。 */
+.admin-content .admin-auth-mode-toggle,
+.admin-content .admin-user-role-toggle {
+    max-width: 360px;
 }
 
-.admin-content .user-auth-mode-btn {
-    flex: 1;
-    min-height: 36px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-secondary);
+.admin-content .admin-auth-mode-toggle .settings-scope-btn,
+.admin-content .admin-user-role-toggle .settings-scope-btn {
+    min-height: 34px;
 }
 
-.admin-content .user-auth-mode-btn.active {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+.admin-content .admin-user-role-toggle {
+    max-width: 280px;
+}
+
+.admin-content .admin-auth-mode-group {
+    margin-top: 0;
 }
 
 /* 概览使用分隔式统计项，和设置页保持同一套轻量视觉。 */

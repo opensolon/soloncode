@@ -36,15 +36,15 @@
         '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.enabled">启用用户认证</span><span class="general-toggle-desc" data-i18n="users.auth.enabledDesc">启用用户认证后，用户需要登录才能使用系统</span></div>' +
         '        <label class="toggle-switch"><input type="checkbox" id="userAuthEnabled"/><span class="toggle-slider"></span></label>' +
         '      </div>' +
-        '      <div class="admin-setting-row">' +
+        '      <div class="admin-setting-row admin-auth-isolation-row">' +
         '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.conversationIsolation">用户对话隔离</span><span class="general-toggle-desc" data-i18n="users.auth.conversationIsolationDesc">启用后，不同登录用户只能查看和使用自己的对话</span></div>' +
         '        <label class="toggle-switch"><input type="checkbox" id="userAuthConversationIsolation"/><span class="toggle-slider"></span></label>' +
         '      </div>' +
-        '      <div class="form-group">' +
+        '      <div class="form-group admin-auth-mode-group">' +
         '        <label data-i18n="users.auth.mode">认证模式</label>' +
-        '        <div class="user-auth-mode-toggle">' +
-        '          <button class="user-auth-mode-btn active" data-mode="file" type="button"><svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> <span data-i18n="users.auth.modeFile">文件存储</span></button>' +
-        '          <button class="user-auth-mode-btn" data-mode="ldap" type="button"><svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1.5"/></svg> <span data-i18n="users.auth.modeLdap">LDAP</span></button>' +
+        '        <div class="settings-scope-toggle admin-auth-mode-toggle" data-target="userAuthMode">' +
+        '          <button class="settings-scope-btn active" data-scope="file" type="button" data-i18n="users.auth.modeFile">文件存储</button>' +
+        '          <button class="settings-scope-btn" data-scope="ldap" type="button" data-i18n="users.auth.modeLdap">LDAP</button>' +
         '        </div>' +
         '      </div>' +
         '      <div class="user-auth-config-section admin-auth-config" id="userAuthConfigFile">' +
@@ -115,7 +115,7 @@
         '        <div class="form-group"><label data-i18n="users.form.username">用户名 <span class="required">*</span></label><input type="text" id="userFormUsername" placeholder="username"/></div>' +
         '        <div class="form-group"><label data-i18n="users.form.displayName">显示名称</label><input type="text" id="userFormDisplayName" placeholder="显示名称"/></div>' +
         '        <div class="form-group"><label data-i18n="users.form.email">邮箱</label><input type="email" id="userFormEmail" placeholder="user@example.com"/></div>' +
-        '        <div class="form-group"><label data-i18n="users.form.role">角色</label><select class="form-select-custom" id="userFormRole"><option value="user" data-i18n="users.role.user">普通用户</option><option value="admin" data-i18n="users.role.admin">管理员</option></select></div>' +
+        '        <div class="form-group"><label data-i18n="users.form.role">角色</label><input type="hidden" id="userFormRole" value="user"/><div class="settings-scope-toggle admin-user-role-toggle" data-target="userFormRole"><button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="users.role.user">普通用户</button><button class="settings-scope-btn" data-scope="admin" type="button" data-i18n="users.role.admin">管理员</button></div></div>'
         '        <div class="form-group"><label data-i18n="users.form.password">密码 <span class="required" id="userFormPasswordRequired">*</span></label><input type="password" id="userFormPassword" autocomplete="new-password"/></div>' +
         '        <div class="form-actions form-actions-end"><button class="btn-primary" id="userFormSaveBtn" data-i18n="users.form.saveBtn">保存</button></div>' +
         '      </div>' +

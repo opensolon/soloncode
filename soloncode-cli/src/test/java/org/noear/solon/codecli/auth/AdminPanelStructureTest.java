@@ -111,8 +111,12 @@ public class AdminPanelStructureTest {
         assertTrue(web.contains("href=\"/web/admin\""),
                 "管理控制台入口应指向 /web/admin");
         // 仅 role=admin 显示
-        assertTrue(web.contains("data.role === 'admin') ? 'flex' : 'none'"),
-                "管理控制台入口必须按 role=admin 显隐");
+        assertTrue(web.contains("authenticated && data.role === 'admin') ? 'flex' : 'none'"),
+                "管理控制台入口必须按已登录管理员身份显隐");
+        assertTrue(web.contains("class=\"sidebar-footer-actions\"")
+                        && web.contains("class=\"user-header-menu sidebar-user-menu\"")
+                        && web.contains("userMenu.style.display = authenticated ? 'block' : 'none'"),
+                "用户按钮应移到设置按钮同一行，并且仅在已登录时显示");
         // 工作台是所有已登录用户的默认落点，不能因管理员身份再次强制跳到管理台。
         assertFalse(web.contains("window.location.replace('/web/admin')"),
                 "工作台不应根据管理员身份自动跳转到 /web/admin");
@@ -169,6 +173,12 @@ public class AdminPanelStructureTest {
         assertTrue(usersJs.contains("data.conversationIsolationEnabled === true")
                         && usersJs.contains("conversationIsolationEnabled: $('#userAuthConversationIsolation').prop('checked')"),
                 "对话隔离开关必须随认证配置加载和保存");
+        assertTrue(modules.contains("settings-scope-toggle admin-auth-mode-toggle")
+                        && modules.contains("settings-scope-toggle admin-user-role-toggle")
+                        && modules.contains("id=\"userFormRole\""),
+                "认证模式和用户角色应使用统一的分段选择器");
+        assertFalse(modules.contains("<select class=\"form-select-custom\" id=\"userFormRole\""),
+                "用户角色不应继续使用下拉框");
     }
 
     @Test
@@ -327,9 +337,11 @@ public class AdminPanelStructureTest {
     @Test
     public void adminPageProvidesLogout() throws IOException {
         String html = resourceText("/static/admin.html");
-        // 顶栏应有退出登录按钮
-        assertTrue(html.contains("id=\"adminLogoutBtn\""),
-                "admin.html 顶栏应提供退出登录按钮");
+        // 用户菜单中应提供返回工作台和退出登录，不再将二者作为并列顶栏按钮。
+        assertTrue(html.contains("id=\"adminUserMenu\"")
+                        && html.contains("id=\"adminUserMenuBtn\"")
+                        && html.contains("id=\"adminLogoutBtn\""),
+                "admin.html 顶栏应提供用户菜单和退出登录入口");
 
         String adminJs = resourceText("/static/js/admin.js");
         // 退出由统一后端接口销毁会话并清除 HttpOnly Cookie，前端不得写 token Cookie。

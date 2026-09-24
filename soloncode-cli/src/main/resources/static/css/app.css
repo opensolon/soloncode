@@ -176,7 +176,12 @@ body {
     outline: none;
     min-width: 0;
 }
-.sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; }
+.sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; }
+.sidebar-footer-actions { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sidebar-footer-actions .settings-btn { flex: 1; justify-content: flex-start; }
+.sidebar-user-menu { display: none; flex-shrink: 0; }
+.sidebar-user-menu .user-header-btn { padding: 6px 8px; }
+.sidebar-user-menu .user-header-label { display: none; }
 
 /* Sidebar resize handle */
 .sidebar-resize-handle {

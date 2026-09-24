@@ -16,6 +16,8 @@
     var contentEl = document.getElementById('adminContent');
     var userInfoEl = document.getElementById('adminUserInfo');
     var logoutBtn = document.getElementById('adminLogoutBtn');
+    var userMenu = document.getElementById('adminUserMenu');
+    var userMenuBtn = document.getElementById('adminUserMenuBtn');
 
     var modules = [];      // 最终启用并排序后的模块
     var moduleMap = {};
@@ -48,6 +50,25 @@
 
     if (logoutBtn) {
         logoutBtn.addEventListener('click', doLogout);
+    }
+    if (userMenuBtn && userMenu) {
+        userMenuBtn.addEventListener('click', function () {
+            var open = userMenu.classList.toggle('open');
+            userMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (event) {
+            if (!userMenu.contains(event.target)) {
+                userMenu.classList.remove('open');
+                userMenuBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+        userMenu.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                userMenu.classList.remove('open');
+                userMenuBtn.setAttribute('aria-expanded', 'false');
+                userMenuBtn.focus();
+            }
+        });
     }
 
     function showGuard(title, desc, btnText, btnHref) {
