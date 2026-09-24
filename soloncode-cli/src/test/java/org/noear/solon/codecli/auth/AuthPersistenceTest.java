@@ -43,6 +43,24 @@ class AuthPersistenceTest {
         });
     }
 
+    @Test void conversationIsolationDefaultsToSharedAndPersistsWhenEnabled() throws Exception {
+        withHome(() -> {
+            UserAuthConfig defaults = new UserAuthConfig();
+            assertFalse(defaults.isConversationIsolationEnabled());
+
+            defaults.setMode("file");
+            defaults.setConversationIsolationEnabled(true);
+            AuthConfigRepository.save(defaults);
+            assertTrue(AuthConfigRepository.load().isConversationIsolationEnabled());
+
+            Path config = AuthConfigRepository.path();
+            Files.write(config, "{\"enabled\":true,\"mode\":\"file\",\"sessionTimeoutMinutes\":60,\"sessionTokenLength\":32}"
+                    .getBytes(StandardCharsets.UTF_8));
+            assertFalse(AuthConfigRepository.load().isConversationIsolationEnabled(),
+                    "旧配置缺少隔离字段时必须保持共享对话");
+        });
+    }
+
     @Test void damagedNewConfigFailsClosed() throws Exception {
         withHome(() -> {
             Path file = AuthConfigRepository.path();

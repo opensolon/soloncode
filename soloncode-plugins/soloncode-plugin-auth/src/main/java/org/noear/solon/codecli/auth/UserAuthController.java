@@ -43,6 +43,7 @@ public class UserAuthController {
     public Result<Map<String, Object>> getConfig() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("enabled", userAuthConfig.isEnabled());
+        data.put("conversationIsolationEnabled", userAuthConfig.isConversationIsolationEnabled());
         data.put("mode", UserStoreFactory.normalizeMode(userAuthConfig.getMode()));
         data.put("sessionTimeoutMinutes", userAuthConfig.getSessionTimeoutMinutes());
         data.put("storeType", userStore.getType());
@@ -381,6 +382,9 @@ public class UserAuthController {
     private UserAuthConfig buildCandidate(ONode root, boolean preservePassword) {
         UserAuthConfig candidate = copyConfig(userAuthConfig);
         if (root.hasKey("enabled")) candidate.setEnabled(root.get("enabled").getBoolean());
+        if (root.hasKey("conversationIsolationEnabled")) {
+            candidate.setConversationIsolationEnabled(root.get("conversationIsolationEnabled").getBoolean());
+        }
         if (root.hasKey("mode")) candidate.setMode(root.get("mode").getString());
         if (root.hasKey("sessionTimeoutMinutes")) {
             candidate.setSessionTimeoutMinutes(root.get("sessionTimeoutMinutes").getInt());
@@ -448,6 +452,7 @@ public class UserAuthController {
 
     static void applyConfig(UserAuthConfig target, UserAuthConfig source) {
         target.setEnabled(source.isEnabled());
+        target.setConversationIsolationEnabled(source.isConversationIsolationEnabled());
         target.setMode(UserStoreFactory.normalizeMode(source.getMode()));
         target.setLdapUrl(source.getLdapUrl());
         target.setLdapAdminDn(source.getLdapAdminDn());

@@ -31,6 +31,12 @@ public class UserAuthConfig implements Serializable {
      */
     private volatile boolean enabled = false;
 
+    /**
+     * 是否启用用户对话隔离。仅控制对话数据和会话流的用户归属，不影响登录认证。
+     * 默认关闭，兼容旧配置并保持认证开启时的共享对话行为。
+     */
+    private volatile boolean conversationIsolationEnabled = false;
+
     // ====== LDAP 配置（ldap 模式） ======
     /** LDAP 服务器 URL，如 ldap://localhost:389 */
     private String ldapUrl;

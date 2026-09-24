@@ -144,6 +144,11 @@ public class WebController {
      * 优先从上下文属性获取，若未设置则尝试从 token 中提取。
      */
     private String getCurrentUserId() {
+        // 认证与对话隔离是两个独立开关；关闭隔离时保持所有已登录用户共享对话。
+        org.noear.solon.codecli.auth.UserAuthConfig authConfig = currentContext().getSettings().getUserAuth();
+        if (authConfig == null || !authConfig.isEnabled() || !authConfig.isConversationIsolationEnabled()) {
+            return null;
+        }
         Context ctx = Context.current();
         if (ctx != null) {
             // 优先从 UserAuthFilter 设置的上下文属性获取
@@ -524,7 +529,7 @@ public class WebController {
     @Get
     @Mapping("/web/chat/sessions")
     public Result<List<Map>> sessions() throws Exception {
-        // 获取当前用户ID（用户认证启用时用于过滤会话，否则返回 null）
+        // 获取当前用户 ID（仅在认证和对话隔离同时开启时用于过滤会话，否则返回 null）
         String userId = getCurrentUserId();
         Path sessionsPath = currentContext().getSessionsRoot();
         File sessionsDir = sessionsPath.toFile();
@@ -541,7 +546,7 @@ public class WebController {
                     String sid = dir.getName();
                     SessionMeta meta = SessionMeta.load(dir);
 
-                    // 用户认证启用时，过滤非当前用户的会话
+                    // 对话隔离开启时，过滤非当前用户的会话
                     if (userId != null) {
                         String ownerId = meta.getOwnerUserId();
                         // 认证开启后只显示明确归属于当前用户的会话；旧会话由管理员迁移，不能默认共享。

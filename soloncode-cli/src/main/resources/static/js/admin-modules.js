@@ -21,7 +21,7 @@
     // ============== 认证配置模块 ==============
     // 独立 tab（对齐 web.html 设置的「一个功能一个区」组织方式）。
     // 认证配置属于实例级配置（几乎一次性），与日常的用户 CRUD 分离。
-    // 交互逻辑复用 app-settings-users.js（window._settingsUsers.loadAuthConfig）。
+    // 交互逻辑复用 admin-auth-users.js（window._settingsUsers.loadAuthConfig）。
     var AUTH_PANEL_HTML =
         '<div class="settings-tab-content active" id="settingsTabAuth">' +
         '  <div class="settings-section">' +
@@ -33,8 +33,12 @@
         '    </div>' +
         '    <div class="admin-flat-form admin-auth-form">' +
         '      <div class="admin-setting-row admin-auth-enabled-row">' +
-        '        <div class="general-toggle-info"><span class="admin-setting-label">启用用户认证</span><span class="general-toggle-desc" data-i18n="users.auth.enabledDesc">启用用户认证后，用户需要登录才能使用系统</span></div>' +
+        '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.enabled">启用用户认证</span><span class="general-toggle-desc" data-i18n="users.auth.enabledDesc">启用用户认证后，用户需要登录才能使用系统</span></div>' +
         '        <label class="toggle-switch"><input type="checkbox" id="userAuthEnabled"/><span class="toggle-slider"></span></label>' +
+        '      </div>' +
+        '      <div class="admin-setting-row">' +
+        '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.conversationIsolation">用户对话隔离</span><span class="general-toggle-desc" data-i18n="users.auth.conversationIsolationDesc">启用后，不同登录用户只能查看和使用自己的对话</span></div>' +
+        '        <label class="toggle-switch"><input type="checkbox" id="userAuthConversationIsolation"/><span class="toggle-slider"></span></label>' +
         '      </div>' +
         '      <div class="form-group">' +
         '        <label data-i18n="users.auth.mode">认证模式</label>' +
@@ -80,7 +84,7 @@
     // 两层视图（对齐 web.html 模型设置）：列表视图（用户列表）与表单视图。
     // 认证配置已拆分到独立的 auth 模块。
     // 通过 settings-view-list / settings-view-form 切换，带返回按钮与 slide 动画。
-    // 交互逻辑复用 app-settings-users.js（window._settingsUsers），接口 URL 不变。
+    // 交互逻辑复用 admin-auth-users.js（window._settingsUsers），接口 URL 不变。
     var USERS_PANEL_HTML =
         '<div class="settings-tab-content active" id="settingsTabUsers">' +
         '  <!-- 列表视图：标题操作区 + 扁平列表，与模型设置一致 -->' +
@@ -125,7 +129,7 @@
         if (window.I18n && typeof window.I18n.apply === 'function') {
             try { window.I18n.apply(container); } catch (e) {}
         }
-        // 交互逻辑复用 app-settings-users.js（仅拉用户列表）
+        // 交互逻辑复用 admin-auth-users.js（仅拉用户列表）
         if (window._settingsUsers && typeof window._settingsUsers.loadUsers === 'function') {
             window._settingsUsers.loadUsers();
         }

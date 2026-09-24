@@ -98,8 +98,8 @@ public class AdminPanelStructureTest {
         assertFalse(web.contains("data-tab=\"users\""),
                 "设置侧栏不应再有用户管理 tab 入口");
         // 设置模块懒加载列表不再引入 users 脚本
-        assertFalse(web.contains("/js/app-settings-users.js"),
-                "设置面板不应再加载 app-settings-users.js");
+        assertFalse(web.contains("/js/admin-auth-users.js"),
+                "设置面板不应再加载 admin-auth-users.js");
     }
 
     @Test
@@ -126,10 +126,12 @@ public class AdminPanelStructureTest {
                 "admin 的 users 模块应保留用户管理面板结构");
         // 认证开关已拆到独立的 auth 模块，但仍在 admin-modules.js 内
         assertTrue(modules.contains("userAuthEnabled"));
+        assertTrue(modules.contains("userAuthConversationIsolation"),
+                "认证配置应提供独立的用户对话隔离开关");
         assertTrue(modules.contains("userAddBtn"));
         // 复用既有交互逻辑，不改接口
         assertTrue(modules.contains("window._settingsUsers"),
-                "模块应复用 app-settings-users.js 的交互逻辑");
+                "模块应复用 admin-auth-users.js 的交互逻辑");
     }
 
     @Test
@@ -157,13 +159,16 @@ public class AdminPanelStructureTest {
                 "后端 /web/admin/modules 应返回 auth，否则前端取交集会过滤掉新 tab");
 
         // 认证开关关闭时的二次确认
-        String usersJs = resourceText("/static/js/app-settings-users.js");
+        String usersJs = resourceText("/static/js/admin-auth-users.js");
         assertTrue(usersJs.contains("loadAuthConfig") && usersJs.contains("loadUsers"),
                 "交互逻辑应拆为 loadAuthConfig 与 loadUsers 两个独立入口");
         assertTrue(usersJs.contains("authEnabledInitial"),
                 "关闭认证需基于初始值判断是否弹二次确认");
         assertTrue(usersJs.contains("doSaveConfig"),
                 "二次确认后应走独立的 doSaveConfig 落地");
+        assertTrue(usersJs.contains("data.conversationIsolationEnabled === true")
+                        && usersJs.contains("conversationIsolationEnabled: $('#userAuthConversationIsolation').prop('checked')"),
+                "对话隔离开关必须随认证配置加载和保存");
     }
 
     @Test
@@ -178,7 +183,7 @@ public class AdminPanelStructureTest {
     @Test
     public void databaseModeIsRemovedAndLdapHasOperationalControls() throws IOException {
         String modules = resourceText("/static/js/admin-modules.js");
-        String usersJs = resourceText("/static/js/app-settings-users.js");
+        String usersJs = resourceText("/static/js/admin-auth-users.js");
 
         assertFalse(modules.contains("data-mode=\"database\""));
         assertFalse(modules.contains("userAuthConfigDb"));
@@ -285,7 +290,7 @@ public class AdminPanelStructureTest {
         assertFalse(adminJs.contains("admin-nav-footer"),
                 "导航底部不应再渲染重复的管理控制台文案");
 
-        String usersJs = resourceText("/static/js/app-settings-users.js");
+        String usersJs = resourceText("/static/js/admin-auth-users.js");
         assertTrue(usersJs.contains("#userListView") && usersJs.contains("#userFormView"),
                 "交互逻辑应在列表视图与表单视图间切换");
         assertTrue(usersJs.contains("slide-back"),
@@ -313,7 +318,7 @@ public class AdminPanelStructureTest {
         String html = resourceText("/static/admin.html");
         assertTrue(html.contains("/js/admin-modules.js") && html.contains("/js/admin.js"),
                 "admin.html 应加载模块注册表与骨架脚本");
-        assertTrue(html.contains("/js/app-settings-users.js"),
+        assertTrue(html.contains("/js/admin-auth-users.js"),
                 "admin.html 应加载用户管理交互逻辑（原样复用）");
     }
 

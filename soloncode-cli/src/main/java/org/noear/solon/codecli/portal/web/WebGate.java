@@ -112,7 +112,12 @@ public class WebGate extends SimpleWebSocketListener {
      * 从当前请求上下文中解析用户 ID。
      * 优先从 UserAuthFilter 设置的上下文属性获取，否则从 token 中提取。
      */
-    private static String resolveUserIdFromContext() {
+    private static String resolveUserIdFromContext(WorkspaceContext wsContext) {
+        org.noear.solon.codecli.auth.UserAuthConfig authConfig = wsContext == null || wsContext.getSettings() == null
+                ? null : wsContext.getSettings().getUserAuth();
+        if (authConfig == null || !authConfig.isEnabled() || !authConfig.isConversationIsolationEnabled()) {
+            return null;
+        }
         org.noear.solon.core.handle.Context ctx = org.noear.solon.core.handle.Context.current();
         if (ctx != null) {
             String userId = ctx.attr("user_id");
@@ -278,7 +283,7 @@ public class WebGate extends SimpleWebSocketListener {
 
         // 推送严格按 socket 所属工作区分组：直接遍历本实例（= 所属工作区上下文）的连接池，
         // 不再依赖 Context.current() 猜测（异步流线程下为 null 会回退到默认工作区而串流）。
-        // 用户认证启用时，只推送给拥有该会话的用户连接，实现会话隔离
+        // 对话隔离开启时，只推送给拥有该会话的用户连接；关闭时所有已登录用户共享流。
         // 从会话元数据中获取会话所有者
         String sessionOwnerId = null;
         try {
@@ -293,8 +298,12 @@ public class WebGate extends SimpleWebSocketListener {
         for (WebSocket socket : wsContext.getConnections()) {
             if (socket != null) {
                 try {
-                    // 如果用户认证启用，检查该 socket 是否属于会话所有者
-                    if (!socketUserMap.isEmpty()) {
+                    // 仅在认证和对话隔离同时开启时检查 socket 是否属于会话所有者
+                    org.noear.solon.codecli.auth.UserAuthConfig authConfig = wsContext.getSettings() == null
+                            ? null : wsContext.getSettings().getUserAuth();
+                    boolean isolate = authConfig != null && authConfig.isEnabled()
+                            && authConfig.isConversationIsolationEnabled();
+                    if (isolate && !socketUserMap.isEmpty()) {
                         String socketUserId = socketUserMap.get(socket.id());
                         if (socketUserId == null) {
                             // 未认证的连接，跳过
@@ -512,8 +521,8 @@ public class WebGate extends SimpleWebSocketListener {
         try {
             // 本 WebGate 实例已绑定所属工作区的引擎（与 connections 同一上下文），
             // 无需再从 Context.current()/sessionId 猜测引擎，避免异步线程下回退默认引擎。
-            // 用户认证启用时，记录 userId 便于后续会话路径隔离
-            String userId = resolveUserIdFromContext();
+            // 仅在对话隔离开启时记录 userId，关闭隔离时使用共享会话
+            String userId = resolveUserIdFromContext(wsContext);
             session = wsContext.getSessionManager().getSession(sessionId, userId);
 
             // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）

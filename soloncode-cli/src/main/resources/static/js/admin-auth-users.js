@@ -1,5 +1,5 @@
 /**
- * app-settings-users.js — 管理控制台的认证配置与本地用户管理。
+ * admin-auth-users.js — 管理控制台的认证配置与本地用户管理。
  */
 (function () {
     'use strict';
@@ -66,6 +66,7 @@
                 currentStoreType = data.storeType || currentMode;
                 authEnabledInitial = !!data.enabled;
                 $('#userAuthEnabled').prop('checked', data.enabled);
+                $('#userAuthConversationIsolation').prop('checked', data.conversationIsolationEnabled === true);
                 setMode(currentMode);
                 $('#userAuthSessionTimeout').val(data.sessionTimeoutMinutes || 60);
 
@@ -240,6 +241,7 @@
         if (sessionTimeout === null || !ldap) return;
         var data = {
             enabled: $('#userAuthEnabled').prop('checked'),
+            conversationIsolationEnabled: $('#userAuthConversationIsolation').prop('checked'),
             mode: currentMode,
             sessionTimeoutMinutes: sessionTimeout,
             ldap: ldap,

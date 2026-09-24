@@ -435,6 +435,7 @@ public class AgentSettings implements Serializable {
             source = new UserAuthConfig();
         }
         target.setEnabled(source.isEnabled());
+        target.setConversationIsolationEnabled(source.isConversationIsolationEnabled());
         target.setMode(normalizeUserAuthMode(source.getMode()));
         target.setLdapUrl(source.getLdapUrl());
         target.setLdapAdminDn(source.getLdapAdminDn());
