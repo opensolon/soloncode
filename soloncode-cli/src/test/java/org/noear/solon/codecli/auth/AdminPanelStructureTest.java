@@ -303,7 +303,7 @@ public class AdminPanelStructureTest {
     public void adminPageGuardsAndModuleRegistry() throws IOException {
         String adminJs = resourceText("/static/js/admin.js");
         // 前端准入：未启用引导、未登录跳登录、非 admin 403 提示
-        assertTrue(adminJs.contains("loginUrl") && adminJs.contains("'/login?scope=admin"),
+        assertTrue(adminJs.contains("loginUrl") && adminJs.contains("'/login?returnUrl=%2Fweb%2Fadmin"),
                 "未登录应跳转管理台登录页（/login 路由）");
         assertTrue(adminJs.contains("d.role !== 'admin'"),
                 "非管理员应被前端拦截");
@@ -327,9 +327,10 @@ public class AdminPanelStructureTest {
                 "admin.html 顶栏应提供退出登录按钮");
 
         String adminJs = resourceText("/static/js/admin.js");
-        // 退出由后端销毁会话并清除 HttpOnly Cookie，前端不得写 token Cookie。
-        assertTrue(adminJs.contains("/web/admin/session/logout"),
-                "管理台退出登录应调用管理员注销接口");
+        // 退出由统一后端接口销毁会话并清除 HttpOnly Cookie，前端不得写 token Cookie。
+        assertTrue(adminJs.contains("/web/logout")
+                        && !adminJs.contains("/web/admin/session/logout"),
+                "管理台退出登录应调用统一注销接口，不再维护管理员专用注销接口");
         assertFalse(adminJs.contains("document.cookie"),
                 "管理台前端不得读写 HttpOnly user_token Cookie");
         assertTrue(adminJs.contains("credentials: 'same-origin'"),
@@ -344,16 +345,29 @@ public class AdminPanelStructureTest {
         String adminJs = resourceText("/static/js/admin.js");
         String controller = readProjectFile("src/main/java/org/noear/solon/codecli/auth/UserLoginController.java");
         String filter = readProjectFile("src/main/java/org/noear/solon/codecli/auth/UserAuthFilter.java");
-        assertTrue(login.contains("if (!adminScope && resp.data.token)"),
-                "普通用户仍兼容 token，管理台登录不得由前端写 token Cookie");
+        assertTrue(login.contains("var loginEndpoint = '/web/login'")
+                        && !login.contains("/web/user/login")
+                        && !login.contains("/web/admin/session/login"),
+                "工作台和管理台应共用统一登录接口");
         assertTrue(login.contains("safeReturnUrl(returnUrl) || '/'")
                         && login.contains("window.location.replace(safeTarget);")
                         && !login.contains("resp.data.role === 'admin'")
                         && !login.contains("safeReturnUrl(returnUrl) || (adminScope ? '/web/admin' : '/')"),
                 "登录未指定 returnUrl 时应默认进入工作台，管理员账号也不能固定跳回 /web/admin");
         assertFalse(adminJs.contains("document.cookie"), "管理台不得写入 token Cookie");
+        assertTrue(controller.contains("@Mapping(\"/web/login\")")
+                        && controller.contains("@Mapping(\"/web/logout\")")
+                        && !controller.contains("/web/user/login")
+                        && !controller.contains("/web/admin/session/login")
+                        && !controller.contains("/web/user/logout")
+                        && !controller.contains("/web/admin/session/logout"),
+                "后端应只暴露一套登录和退出接口");
         assertTrue(controller.contains("HttpOnly; SameSite=Lax") && controller.contains("Max-Age=0; Path=/"),
                 "登录和注销必须由服务端设置/清除安全 Cookie");
+        assertTrue(filter.contains("/web/login") && filter.contains("/web/logout")
+                        && !filter.contains("/web/user/login")
+                        && !filter.contains("/web/admin/session/login"),
+                "认证过滤器应放行统一登录/退出接口");
         assertTrue(filter.contains("isSameOrigin(ctx)") && filter.contains("Origin") && filter.contains("Referer"),
                 "Cookie 管理 POST 必须校验 Origin 或严格同源 Referer");
         assertTrue(filter.contains("Bearer ") && filter.contains("X-User-Token"),

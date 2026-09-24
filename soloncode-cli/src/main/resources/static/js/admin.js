@@ -19,9 +19,9 @@
 
     var modules = [];      // 最终启用并排序后的模块
     var moduleMap = {};
-    // 进入管理台时保留来源页；退出后则回到工作台，不把管理台地址带回登录流程。
-    var loginUrl = '/login?scope=admin&returnUrl=%2Fweb%2Fadmin';
-    var workbenchLoginUrl = '/login?scope=admin';
+    // 进入管理台时保留来源页；退出后回到工作台，不把管理台地址带回登录流程。
+    var loginUrl = '/login?returnUrl=%2Fweb%2Fadmin';
+    var workbenchLoginUrl = '/login';
     // 审计日志与会话撤销仍保留在模块注册表中，待后续开放前端入口；
     // 这里仅控制当前导航显隐，不影响后端写入、查询和撤销实现。
     var hiddenModuleKeys = { audit: true, sessions: true };
@@ -38,10 +38,10 @@
         return role === 'admin' ? '管理员' : '普通用户';
     }
 
-    // 退出登录：由管理端点销毁管理员会话，并通过 Set-Cookie 清除 HttpOnly Cookie。
+    // 退出登录：统一接口销毁当前会话，并通过 Set-Cookie 清除 HttpOnly Cookie。
     function doLogout() {
         if (!window.confirm('确定要退出登录吗？')) return;
-        fetch('/web/admin/session/logout', { method: 'POST', credentials: 'same-origin' })
+        fetch('/web/logout', { method: 'POST', credentials: 'same-origin' })
             .then(function () { window.location.replace(workbenchLoginUrl); })
             .catch(function () { window.location.replace(workbenchLoginUrl); });
     }

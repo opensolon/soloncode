@@ -32,7 +32,6 @@
     <script>
         (function() {
             var query = new URLSearchParams(window.location.search);
-            var adminScope = query.get('scope') === 'admin';
             var returnUrl = query.get('returnUrl');
             function safeReturnUrl(value) {
                 if (!value || value.charAt(0) !== '/' || value.indexOf('//') === 0 || value.indexOf('\\') >= 0) return null;
@@ -44,7 +43,7 @@
             }
             // 只有调用方明确传入合法 returnUrl 时才回到指定页面；直接访问管理登录页默认进入工作台。
             var safeTarget = safeReturnUrl(returnUrl) || '/';
-            var loginEndpoint = adminScope ? '/web/admin/session/login' : '/web/user/login';
+            var loginEndpoint = '/web/login';
             var loginBtn = document.getElementById('loginBtn');
             var usernameInput = document.getElementById('loginUsername');
             var passwordInput = document.getElementById('loginPassword');
@@ -80,11 +79,8 @@
                     loginBtn.disabled = false;
                     loginBtn.textContent = '登 录';
                     if (resp.code === 200 && resp.data) {
-                        // 管理员凭据由服务端以 HttpOnly Cookie 签发；普通用户继续兼容旧 token 响应。
-                        if (!adminScope && resp.data.token) {
-                            document.cookie = 'user_token=' + encodeURIComponent(resp.data.token) + '; path=/; max-age=' + (7 * 24 * 3600);
-                        }
-                        // 无论登录账号是否为管理员，未显式指定目标时都进入工作台；管理台登录入口仍可通过 returnUrl 返回管理页面。
+                        // 统一登录接口由服务端签发 HttpOnly Cookie；token 仅供非浏览器客户端兼容使用。
+                        // 无论登录账号是否为管理员，未显式指定目标时都进入工作台。
                         window.location.replace(safeTarget);
                     } else {
                         showError(resp.description || '登录失败，请检查用户名和密码');

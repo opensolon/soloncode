@@ -204,7 +204,7 @@
         return fetch(url, options).then(function (response) {
             if (window.adminJsonResponse) return window.adminJsonResponse(response);
             if (response.status === 401) {
-                window.location.replace('/login?scope=admin&returnUrl=%2Fweb%2Fadmin');
+                window.location.replace('/login?returnUrl=%2Fweb%2Fadmin');
                 throw new Error('401');
             }
             if (response.status === 403) throw new Error('403');

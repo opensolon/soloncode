@@ -2810,9 +2810,8 @@
             if (userLabel.textContent && userLabel.textContent !== '未登录' && userLabel.textContent !== '') {
                 // 已登录，点击登出
                 if (window.confirm('确定要注销登录吗？')) {
-                    fetch('/web/user/logout', { method: 'POST' })
+                    fetch('/web/logout', { method: 'POST', credentials: 'same-origin' })
                         .then(function() {
-                            document.cookie = 'user_token=; path=/; max-age=0';
                             window.location.reload();
                         });
                 }

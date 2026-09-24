@@ -32,64 +32,45 @@ public class UserLoginController {
     }
 
     private static final String TOKEN_COOKIE = "user_token";
-    private static final AdminLoginLimiter ADMIN_LOGIN_LIMITER = new AdminLoginLimiter();
-    private static final AdminLoginLimiter USER_LOGIN_LIMITER = new AdminLoginLimiter();
+    private static final AdminLoginLimiter LOGIN_LIMITER = new AdminLoginLimiter();
 
-    /** 工作台登录：认证关闭时不创建普通用户会话。 */
+    /** 统一登录入口：工作台和管理台共享同一套用户会话。 */
     @Post
-    @Mapping("/web/user/login")
+    @Mapping("/web/login")
     public Result<Map<String, Object>> login(Context ctx, String username, String password) {
         if (!config.isEnabled()) return Result.failure("用户认证未启用");
-        return authenticate(username, password, false, ctx);
+        return authenticate(username, password, ctx);
     }
 
-    // 保留无 Context 的调用入口，供非 HTTP 单测和旧内部调用使用。
+    // 保留无 Context 的调用入口，供非 HTTP 单测和内部调用使用。
     public Result<Map<String, Object>> login(String username, String password) {
         if (!config.isEnabled()) return Result.failure("用户认证未启用");
-        return authenticate(username, password, false, null);
+        return authenticate(username, password, null);
     }
 
-    /** 管理台专用登录：服务端签发 HttpOnly 会话 Cookie，不把 token 放入 JSON。 */
-    @Post
-    @Mapping("/web/admin/session/login")
-    public Result<Map<String, Object>> adminLogin(Context ctx, String username, String password) {
+    private Result<Map<String, Object>> authenticate(String username, String password, Context ctx) {
         String ip = ctx == null ? "unknown" : ctx.remoteIp();
-        if (!ADMIN_LOGIN_LIMITER.allow(username, ip)) {
-            return Result.failure("登录尝试过于频繁，请稍后重试");
-        }
-        return authenticate(username, password, true, ctx);
-    }
-
-    // 保留无 Context 的调用入口，供非 HTTP 单测和旧内部调用使用；HTTP 路由只绑定上面的重载。
-    public Result<Map<String, Object>> adminLogin(String username, String password) {
-        return authenticate(username, password, true, null);
-    }
-
-    private Result<Map<String, Object>> authenticate(String username, String password, boolean adminOnly, Context ctx) {
-        String ip = ctx == null ? "unknown" : ctx.remoteIp();
-        AdminLoginLimiter limiter = adminOnly ? ADMIN_LOGIN_LIMITER : USER_LOGIN_LIMITER;
-        if (!limiter.allow(username, ip)) return Result.failure("登录尝试过于频繁，请稍后重试");
+        if (!LOGIN_LIMITER.allow(username, ip)) return Result.failure("登录尝试过于频繁，请稍后重试");
         if (username == null || username.isEmpty()) {
-            recordFailure(adminOnly, username, ctx);
+            recordFailure(username, ctx);
             return Result.failure("用户名不能为空");
         }
         String passwordError = PasswordPolicy.validate(password);
         if (passwordError != null) {
-            recordFailure(adminOnly, username, ctx);
+            recordFailure(username, ctx);
             return Result.failure(passwordError);
         }
 
         UserEntity user = userStore.authenticate(username, password);
-        if (user == null || !user.isEnabled() || (adminOnly && !"admin".equals(user.getRole()))) {
-            recordFailure(adminOnly, username, ctx);
+        if (user == null || !user.isEnabled()) {
+            recordFailure(username, ctx);
             return Result.failure("用户名或密码错误");
         }
 
-        limiter.success(username, ip);
+        LOGIN_LIMITER.success(username, ip);
         UserSessionManager.UserSession session = sessionManager.createSession(user);
-        if (adminOnly) {
-            ADMIN_LOGIN_LIMITER.success(username, ctx == null ? "unknown" : ctx.remoteIp());
-            if (ctx != null) setSessionCookie(ctx, session.getToken());
+        if (ctx != null) setSessionCookie(ctx, session.getToken());
+        if ("admin".equals(user.getRole())) {
             Map<String, Object> audit = new LinkedHashMap<>();
             audit.put("userId", user.getId());
             audit.put("username", user.getUsername());
@@ -97,7 +78,8 @@ public class UserLoginController {
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
-        if (!adminOnly) data.put("token", session.getToken());
+        // 浏览器使用 HttpOnly Cookie，返回 token 以兼容 Bearer/X-User-Token 客户端。
+        data.put("token", session.getToken());
         data.put("userId", session.getUserId());
         data.put("username", session.getUsername());
         data.put("displayName", session.getDisplayName());
@@ -106,18 +88,12 @@ public class UserLoginController {
         return Result.succeed(data);
     }
 
-    private static void recordFailure(boolean adminOnly, String username, Context ctx) {
+    private static void recordFailure(String username, Context ctx) {
         String ip = ctx == null ? "unknown" : ctx.remoteIp();
-        (adminOnly ? ADMIN_LOGIN_LIMITER : USER_LOGIN_LIMITER).failure(username, ip);
-        if (adminOnly) {
-            Map<String, Object> audit = new LinkedHashMap<>();
-            audit.put("username", username == null ? "" : username);
-            AdminAuditStore.record("admin.login.failure", audit);
-        }
-    }
-
-    private static void recordAdminFailure(String username, Context ctx) {
-        recordFailure(true, username, ctx);
+        LOGIN_LIMITER.failure(username, ip);
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("username", username == null ? "" : username);
+        AdminAuditStore.record("login.failure", audit);
     }
 
     private static void setSessionCookie(Context ctx, String token) {
@@ -151,22 +127,11 @@ public class UserLoginController {
         private static final class Attempt { final long startedAt; final int failures; Attempt(long startedAt, int failures) { this.startedAt = startedAt; this.failures = failures; } }
     }
     
-    /** 工作台登出。 */
+    /** 统一登出入口：销毁当前用户会话并清除浏览器 Cookie。 */
     @Post
-    @Mapping("/web/user/logout")
+    @Mapping("/web/logout")
     public Result<Void> logout(Context ctx) {
-        return logoutInternal(ctx, false);
-    }
-
-    /** 管理台登出。管理台不接受查询参数中的令牌，避免令牌进入历史记录和日志。 */
-    @Post
-    @Mapping("/web/admin/session/logout")
-    public Result<Void> adminLogout(Context ctx) {
-        return logoutInternal(ctx, true);
-    }
-
-    private Result<Void> logoutInternal(Context ctx, boolean admin) {
-        String token = extractToken(ctx, !admin);
+        String token = extractToken(ctx);
         if (token != null) sessionManager.destroySession(token);
         if (ctx != null) {
             ctx.headerSet("Set-Cookie", TOKEN_COOKIE + "=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"

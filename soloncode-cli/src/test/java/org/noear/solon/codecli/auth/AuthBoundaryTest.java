@@ -16,22 +16,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuthBoundaryTest {
 
     @Test
-    void adminLoginRejectsMissingAdminAndOrdinaryUser() {
+    void unifiedLoginAcceptsUsersAndLeavesAdminAuthorizationToTheAdminPage() {
         UserAuthConfig config = new UserAuthConfig();
-        config.setEnabled(false);
+        config.setEnabled(true);
         MutableStore store = new MutableStore();
         UserEntity ordinary = user("u1", "user", "user");
         store.users.put(ordinary.getId(), ordinary);
 
-        UserLoginController controller = new UserLoginController(store, new UserSessionManager(), config);
+        UserSessionManager sessions = new UserSessionManager();
+        sessions.init(config);
+        UserLoginController controller = new UserLoginController(store, sessions, config);
 
-        Result<Map<String, Object>> missing = controller.adminLogin("missing", "password");
-        Result<Map<String, Object>> ordinaryResult = controller.adminLogin("user", "password");
+        Result<Map<String, Object>> missing = controller.login("missing", "password");
+        Result<Map<String, Object>> ordinaryResult = controller.login("user", "password");
 
-        assertFalse(missing.getCode() == 200, "不存在管理员时管理台登录必须失败");
-        assertFalse(ordinaryResult.getCode() == 200, "普通用户不得通过管理台登录");
-        assertEquals(0, store.createdSessions,
-                "管理台登录失败时不得创建任何会话");
+        assertFalse(missing.getCode() == 200, "不存在用户时统一登录必须失败");
+        assertEquals(200, ordinaryResult.getCode(), "普通用户应能通过统一登录入口建立会话");
+        assertTrue(ordinaryResult.getData().get("token") != null,
+                "统一登录成功后应返回会话凭证，管理台权限由页面门禁校验");
     }
 
     @Test
@@ -48,14 +50,14 @@ class AuthBoundaryTest {
     }
 
     @Test
-    void adminLoginSourceUsesHttpOnlySameSiteCookieAndOmitsJsonToken() throws Exception {
-        java.nio.file.Path sourcePath = java.nio.file.Paths.get("..", "soloncode-auth", "src", "main", "java",
+    void unifiedLoginSourceUsesHttpOnlySameSiteCookieAndKeepsClientTokenCompatibility() throws Exception {
+        java.nio.file.Path sourcePath = java.nio.file.Paths.get("..", "soloncode-plugins", "soloncode-plugin-auth", "src", "main", "java",
                 "org", "noear", "solon", "codecli", "auth", "UserLoginController.java");
         String source = new String(java.nio.file.Files.readAllBytes(sourcePath),
                 java.nio.charset.StandardCharsets.UTF_8);
         assertTrue(source.contains("HttpOnly; SameSite=Lax"));
         assertTrue(source.contains("if (ctx.isSecure()) value.append(\"; Secure\")"));
-        assertTrue(source.contains("if (!adminOnly) data.put(\"token\", session.getToken())"));
+        assertTrue(source.contains("data.put(\"token\", session.getToken())"));
     }
 
     @Test

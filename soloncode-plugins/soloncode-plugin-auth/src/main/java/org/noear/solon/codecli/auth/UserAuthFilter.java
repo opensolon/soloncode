@@ -27,7 +27,7 @@ public class UserAuthFilter implements Filter {
     private UserStore userStore;
 
     private static final Set<String> PUBLIC_PATHS = new HashSet<>(Arrays.asList(
-            "/web/user/login", "/web/user/logout", "/web/user/me", "/login", "/web/chat/meta"));
+            "/web/login", "/web/logout", "/web/user/me", "/login", "/web/chat/meta"));
 
     private static final Set<String> STATIC_PREFIXES = new HashSet<>(Arrays.asList(
             "/css/", "/js/", "/layui/", "/highlight/", "/img/", "/skin/", "/favicon.ico"));
@@ -85,8 +85,8 @@ public class UserAuthFilter implements Filter {
             return;
         }
         if (isAdminPath(path)) {
-            // 豁免必须同时精确匹配路径与方法；前缀相似的接口一律仍需管理员。
-            if ("POST".equalsIgnoreCase(ctx.method()) && "/web/admin/session/login".equals(path)) {
+            // 登录入口统一为 /web/login；管理台登录页也只通过目标地址表达跳转意图。
+            if ("POST".equalsIgnoreCase(ctx.method()) && "/web/login".equals(path)) {
                 chain.doFilter(ctx);
                 return;
             }

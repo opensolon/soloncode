@@ -11,7 +11,7 @@
     function handleAuthFailure(xhr) {
         if (!xhr || (xhr.status !== 401 && xhr.status !== 403)) return false;
         if (xhr.status === 401) {
-            window.location.replace('/login?scope=admin&returnUrl=%2Fweb%2Fadmin');
+            window.location.replace('/login?returnUrl=%2Fweb%2Fadmin');
         } else if (window.showAdminGuard) {
             window.showAdminGuard('无访问权限', '当前账户没有管理权限。');
         } else {
