@@ -68,7 +68,9 @@
                 $('#userAuthEnabled').prop('checked', data.enabled);
                 $('#userAuthConversationIsolation').prop('checked', data.conversationIsolationEnabled === true);
                 setMode(currentMode);
-                $('#userAuthSessionTimeout').val(data.sessionTimeoutMinutes || 60);
+                var forever = Number(data.sessionTimeoutMinutes) === 0;
+                $('#userAuthSessionTimeout').val(forever ? '' : (data.sessionTimeoutMinutes || 60)).prop('disabled', forever);
+                $('#userAuthSessionTimeoutForever').prop('checked', forever);
 
                 var ldap = data.ldap || {};
                 $('#userAuthLdapUrl').val(ldap.ldapUrl || '');
@@ -236,7 +238,8 @@
     function doSaveConfig() {
         var btn = $('#userAuthSaveConfigBtn');
         if (btn.prop('disabled') || !authConfigLoaded) { showToast('认证配置尚未加载完成，暂不可保存', 'error'); return; }
-        var sessionTimeout = positiveInt('#userAuthSessionTimeout', '会话最长有效期', 1, 10080, 60);
+        var forever = $('#userAuthSessionTimeoutForever').prop('checked');
+        var sessionTimeout = forever ? 0 : positiveInt('#userAuthSessionTimeout', '会话空闲超时', 5, 10080, 60);
         var ldap = ldapPayload();
         if (sessionTimeout === null || !ldap) return;
         var data = {
@@ -393,6 +396,11 @@
     $(document).on('click', '.admin-auth-mode-toggle .settings-scope-btn', function() { setMode($(this).attr('data-scope')); });
     $(document).on('click', '.admin-user-role-toggle .settings-scope-btn', function() { setRole($(this).attr('data-scope')); });
     $(document).on('click', '#userAuthLdapTestBtn', testLdap);
+    $(document).on('change', '#userAuthSessionTimeoutForever', function() {
+        $('#userAuthSessionTimeout').prop('disabled', this.checked);
+        if (this.checked) $('#userAuthSessionTimeout').val('');
+        else if (!$('#userAuthSessionTimeout').val()) $('#userAuthSessionTimeout').val('60');
+    });
     $(document).on('click', '#userAuthSaveConfigBtn', saveConfig);
     $(document).on('click', '#userAddBtn', function() { showUserForm(null); });
     $(document).on('click', '#userListRetryBtn', loadUsers);

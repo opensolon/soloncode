@@ -96,9 +96,10 @@ public class UserLoginController {
         AdminAuditStore.record("login.failure", audit);
     }
 
-    private static void setSessionCookie(Context ctx, String token) {
+    private void setSessionCookie(Context ctx, String token) {
         StringBuilder value = new StringBuilder(TOKEN_COOKIE).append('=').append(token)
                 .append("; Path=/; HttpOnly; SameSite=Lax");
+        if (config.getSessionTimeoutMinutes() == 0) value.append("; Max-Age=2147483647");
         if (ctx.isSecure()) value.append("; Secure");
         ctx.headerSet("Set-Cookie", value.toString());
     }

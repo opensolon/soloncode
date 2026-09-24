@@ -390,7 +390,7 @@ public final class AuthConfigRepository {
             node.bindTo(config);
             if (config.getMode() == null || !("file".equals(config.getMode()) || "database".equals(config.getMode()) || "ldap".equals(config.getMode()))) throw new IllegalStateException("认证模式无效: " + file);
             config.setMode(UserStoreFactory.normalizeMode(config.getMode()));
-            if (config.getSessionTimeoutMinutes() <= 0 || config.getSessionTokenLength() <= 0) throw new IllegalStateException("会话配置无效: " + file);
+            if (config.getSessionTimeoutMinutes() < 0 || config.getSessionTokenLength() <= 0) throw new IllegalStateException("会话配置无效: " + file);
             return config;
         } catch (Exception e) {
             throw new IllegalStateException("认证配置无效: " + file, e);

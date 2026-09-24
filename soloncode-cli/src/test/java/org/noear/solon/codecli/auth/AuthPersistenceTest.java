@@ -43,6 +43,15 @@ class AuthPersistenceTest {
         });
     }
 
+    @Test void zeroSessionTimeoutPersistsAsNeverExpires() throws Exception {
+        withHome(() -> {
+            UserAuthConfig config = new UserAuthConfig();
+            config.setSessionTimeoutMinutes(0);
+            AuthConfigRepository.save(config);
+            assertEquals(0, AuthConfigRepository.load().getSessionTimeoutMinutes());
+        });
+    }
+
     @Test void conversationIsolationDefaultsToSharedAndPersistsWhenEnabled() throws Exception {
         withHome(() -> {
             UserAuthConfig defaults = new UserAuthConfig();

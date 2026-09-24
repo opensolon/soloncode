@@ -381,8 +381,93 @@ body.admin-body {
     margin-bottom: 0;
 }
 
-.admin-short-field {
-    max-width: 220px;
+.admin-auth-timeout-row {
+    margin-bottom: 18px;
+    align-items: center;
+}
+
+.admin-auth-timeout-control {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    flex: 0 0 auto;
+}
+
+.admin-auth-timeout-input-wrap {
+    display: inline-flex;
+    align-items: center;
+    width: 112px;
+    height: 36px;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-input-box, var(--bg-primary));
+    color: var(--text-secondary);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.admin-auth-timeout-input-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.admin-auth-timeout-input-wrap input[type="text"] {
+    width: 62px;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0 0 0 11px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--fs-sm);
+    text-align: right;
+}
+
+.admin-auth-timeout-input-wrap input[type="text"]::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.admin-auth-timeout-input-wrap input[type="text"]:disabled {
+    color: var(--text-secondary);
+}
+
+.admin-auth-timeout-unit {
+    padding: 0 10px 0 5px;
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+}
+
+.admin-auth-forever {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.admin-auth-forever:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.admin-auth-forever input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent);
 }
 
 .admin-user-section {
@@ -474,6 +559,15 @@ body.admin-body {
 
     .admin-setting-row {
         gap: 14px;
+    }
+
+    .admin-auth-timeout-control {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .admin-auth-timeout-input-wrap {
+        width: 104px;
     }
 
     .admin-user-role-toggle {

@@ -16,8 +16,12 @@ class AdminSessionManagementTest {
     @TempDir Path temp;
 
     private UserSessionManager sessions() {
+        return sessions(new UserAuthConfig());
+    }
+
+    private UserSessionManager sessions(UserAuthConfig config) {
         UserSessionManager manager = new UserSessionManager(temp);
-        manager.init(new UserAuthConfig());
+        manager.init(config);
         return manager;
     }
 
@@ -55,6 +59,37 @@ class AdminSessionManagementTest {
         assertTrue(UserAuthFilter.isAdminPath("/web/admin/sessions"));
         assertTrue(UserAuthFilter.isAdminPath("/web/admin/sessions/revoke-user"));
         assertFalse(UserAuthFilter.isPublicPath("/web/admin/sessions"));
+    }
+
+    @Test
+    void activeRequestsSlideIdleTimeout() {
+        UserAuthConfig config = new UserAuthConfig();
+        config.setSessionTimeoutMinutes(5);
+        UserSessionManager manager = sessions(config);
+        UserSessionManager.UserSession session = manager.createSession(user("u1"));
+        long now = System.currentTimeMillis();
+        session.setLastAccessedAt(now - 4 * 60 * 1000L);
+        session.setExpiresAt(now - 1);
+
+        assertNotNull(manager.getSession(session.getToken()), "只要未空闲超过配置时长，请求就应续期");
+        assertTrue(session.getExpiresAt() > now, "有效请求后应重新计算空闲截止时间");
+
+        session.setLastAccessedAt(System.currentTimeMillis() - 6 * 60 * 1000L);
+        assertNull(manager.getSession(session.getToken()), "空闲超过配置时长后会话应失效");
+    }
+
+    @Test
+    void zeroTimeoutNeverExpiresUntilRevoked() {
+        UserAuthConfig config = new UserAuthConfig();
+        config.setSessionTimeoutMinutes(0);
+        UserSessionManager manager = sessions(config);
+        UserSessionManager.UserSession session = manager.createSession(user("u1"));
+        session.setLastAccessedAt(System.currentTimeMillis() - 365L * 24 * 60 * 60 * 1000L);
+
+        assertNotNull(manager.getSession(session.getToken()));
+        assertEquals(Long.MAX_VALUE, session.getExpiresAt());
+        manager.destroySession(session.getToken());
+        assertNull(manager.getSession(session.getToken()));
     }
 
     @Test

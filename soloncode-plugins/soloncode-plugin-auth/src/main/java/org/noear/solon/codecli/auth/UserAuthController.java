@@ -414,8 +414,9 @@ public class UserAuthController {
         if (!"file".equals(mode) && !"ldap".equals(mode)) {
             throw new IllegalArgumentException("认证模式只能是 file 或 ldap");
         }
-        if (candidate.getSessionTimeoutMinutes() < 5 || candidate.getSessionTimeoutMinutes() > 10080) {
-            throw new IllegalArgumentException("会话有效期必须在 5 到 10080 分钟之间");
+        if (candidate.getSessionTimeoutMinutes() != 0
+                && (candidate.getSessionTimeoutMinutes() < 5 || candidate.getSessionTimeoutMinutes() > 10080)) {
+            throw new IllegalArgumentException("会话空闲超时必须为 0（一直不过期）或 5 到 10080 分钟");
         }
         if ("ldap".equals(mode)) LdapUserStore.validateConfig(candidate);
     }

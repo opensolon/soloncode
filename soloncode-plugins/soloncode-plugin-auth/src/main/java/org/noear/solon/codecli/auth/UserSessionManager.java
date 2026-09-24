@@ -118,7 +118,7 @@ public class UserSessionManager {
         session.setRole(user.getRole() != null ? user.getRole() : "user");
         session.setCreatedAt(System.currentTimeMillis());
         session.setLastAccessedAt(session.getCreatedAt());
-        session.setExpiresAt(session.getCreatedAt() + (config.getSessionTimeoutMinutes() * 60 * 1000L));
+        session.setExpiresAt(expiryAt(session.getCreatedAt()));
         sessionMap.put(session.getToken(), session);
         return session;
     }
@@ -127,12 +127,26 @@ public class UserSessionManager {
         if (token == null) return null;
         UserSession session = sessionMap.get(token);
         if (session == null) return null;
-        if (session.isExpired()) {
+        long now = System.currentTimeMillis();
+        if (isExpired(session, now)) {
             sessionMap.remove(token, session);
             return null;
         }
-        session.setLastAccessedAt(System.currentTimeMillis());
+        session.setLastAccessedAt(now);
+        session.setExpiresAt(expiryAt(now));
         return session;
+    }
+
+    private boolean isExpired(UserSession session, long now) {
+        if (session == null || session.getExpiresAt() == 0) return true;
+        int timeoutMinutes = config == null ? 60 : config.getSessionTimeoutMinutes();
+        return timeoutMinutes > 0 && now - session.getLastAccessedAt() > timeoutMinutes * 60 * 1000L;
+    }
+
+    private long expiryAt(long from) {
+        int timeoutMinutes = config == null ? 60 : config.getSessionTimeoutMinutes();
+        if (timeoutMinutes <= 0) return Long.MAX_VALUE;
+        return from + timeoutMinutes * 60 * 1000L;
     }
 
     /** 完整 SHA-256 摘要作为管理用 ID，不能凭此 ID 登录。 */
@@ -155,7 +169,7 @@ public class UserSessionManager {
         List<SessionSummary> result = new ArrayList<>();
         for (Map.Entry<String, UserSession> entry : sessionMap.entrySet()) {
             UserSession session = entry.getValue();
-            if (session.isExpired()) {
+            if (isExpired(session, System.currentTimeMillis())) {
                 sessionMap.remove(entry.getKey(), session);
             } else {
                 result.add(new SessionSummary(sessionId(entry.getKey()), session));
@@ -170,7 +184,7 @@ public class UserSessionManager {
         for (Map.Entry<String, UserSession> entry : sessionMap.entrySet()) {
             if (id.equals(sessionId(entry.getKey()))) {
                 UserSession session = entry.getValue();
-                if (session.isExpired()) {
+                if (isExpired(session, System.currentTimeMillis())) {
                     sessionMap.remove(entry.getKey(), session);
                     return false;
                 }
@@ -203,14 +217,14 @@ public class UserSessionManager {
         List<UserSession> list = new ArrayList<>();
         if (userId == null) return list;
         for (UserSession session : sessionMap.values()) {
-            if (userId.equals(session.getUserId()) && !session.isExpired()) list.add(session);
+            if (userId.equals(session.getUserId()) && !isExpired(session, System.currentTimeMillis())) list.add(session);
         }
         return list;
     }
 
     public int getActiveSessionCount() {
         int count = 0;
-        for (UserSession session : sessionMap.values()) if (!session.isExpired()) count++;
+        for (UserSession session : sessionMap.values()) if (!isExpired(session, System.currentTimeMillis())) count++;
         return count;
     }
 }

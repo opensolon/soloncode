@@ -40,6 +40,10 @@
         '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.conversationIsolation">用户对话隔离</span><span class="general-toggle-desc" data-i18n="users.auth.conversationIsolationDesc">启用后，不同登录用户只能查看和使用自己的对话</span></div>' +
         '        <label class="toggle-switch"><input type="checkbox" id="userAuthConversationIsolation"/><span class="toggle-slider"></span></label>' +
         '      </div>' +
+        '      <div class="admin-setting-row admin-auth-timeout-row">' +
+        '        <div class="general-toggle-info"><span class="admin-setting-label">会话空闲超时（分钟）</span><span class="general-toggle-desc">连续操作会自动续期；设置为 0 表示一直不过期</span></div>' +
+        '        <div class="admin-auth-timeout-control"><div class="admin-auth-timeout-input-wrap"><input type="text" inputmode="numeric" id="userAuthSessionTimeout" placeholder="60" aria-label="会话空闲超时（分钟）"/><span class="admin-auth-timeout-unit">分钟</span></div><label class="admin-auth-forever"><input type="checkbox" id="userAuthSessionTimeoutForever"/> 一直不过期</label></div>' +
+        '      </div>' +
         '      <div class="admin-setting-row admin-auth-mode-row">' +
         '        <div class="general-toggle-info"><span class="admin-setting-label" data-i18n="users.auth.mode">认证模式</span></div>' +
         '        <div class="settings-scope-toggle admin-auth-mode-toggle" data-target="userAuthMode" role="group" aria-label="认证模式">' +
@@ -64,7 +68,6 @@
         '          <div class="admin-ldap-test-actions"><button type="button" class="btn-secondary" id="userAuthLdapTestBtn">测试连接与角色</button><span class="admin-ldap-test-result" id="userAuthLdapTestResult"></span></div>' +
         '        </div>' +
         '      </div>' +
-        '      <div class="form-group admin-short-field"><label>会话最长有效期（分钟）</label><input type="text" inputmode="numeric" id="userAuthSessionTimeout" placeholder="60"/></div>' +
         '      <div class="form-actions form-actions-end"><button type="button" class="btn-primary" id="userAuthSaveConfigBtn" data-i18n="users.auth.saveBtn">保存配置</button></div>' +
         '    </div>' +
         '  </div>' +

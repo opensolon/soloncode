@@ -64,7 +64,7 @@ public class UserAuthConfig implements Serializable {
     private int ldapReadTimeoutMillis = 5000;
 
     // ====== 会话配置 ======
-    /** 会话最长有效时间（分钟） */
+    /** 会话空闲超时时间（分钟）；0 表示一直不过期（仅受进程重启/主动撤销影响） */
     private int sessionTimeoutMinutes = 60;
     /** 会话 token 长度（字节） */
     private int sessionTokenLength = 32;
