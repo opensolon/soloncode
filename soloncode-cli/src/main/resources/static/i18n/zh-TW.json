@@ -391,6 +391,8 @@
   "im.wechatBindHint": "綁定後即可在微信上與 SolonCode 對話",
   "im.wechatBoundUnbind": "微信已綁定（點擊解綁）",
   "im.wechatConnectedNotice": "微信已連線成功，現在可以在微信上給機器人發條訊息試試了。",
+  "im.feishuConnectedNotice": "飛書已連線成功，現在可以在飛書上給機器人發條訊息試試了。",
+  "im.dingtalkConnectedNotice": "釘釘已連線成功，現在可以在釘釘上給機器人發條訊息試試了。",
   "im.wechatScanBind": "微信掃碼綁定",
   "im.wechatScanSubtitle": "用微信掃描QR Code，授權後自動完成綁定",
   "im.wechatUnbindConfirm": "確定要中斷微信連線嗎？",

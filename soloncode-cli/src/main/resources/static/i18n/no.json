@@ -391,6 +391,8 @@
   "im.wechatBindHint": "Etter kobling kan du chatte med SolonCode på WeChat",
   "im.wechatBoundUnbind": "WeChat er koblet til (klikk for å koble fra)",
   "im.wechatConnectedNotice": "WeChat er tilkoblet. Prøv å sende en melding til boten i WeChat.",
+  "im.feishuConnectedNotice": "Feishu er tilkoblet. Prøv å sende en melding til boten i Feishu.",
+  "im.dingtalkConnectedNotice": "DingTalk er tilkoblet. Prøv å sende en melding til boten i DingTalk.",
   "im.wechatScanBind": "WeChat QR-innlogging",
   "im.wechatScanSubtitle": "Skann QR-koden med WeChat for å koble til automatisk",
   "im.wechatUnbindConfirm": "Vil du koble fra WeChat?",

@@ -391,6 +391,8 @@
   "im.wechatBindHint": "Після прив'язки ви зможете спілкуватися з SolonCode у WeChat",
   "im.wechatBoundUnbind": "WeChat прив'язано (натисніть, щоб відв'язати)",
   "im.wechatConnectedNotice": "WeChat успішно підключено. Тепер можете надіслати боту повідомлення у WeChat.",
+  "im.feishuConnectedNotice": "Feishu успішно підключено. Тепер можете надіслати боту повідомлення у Feishu.",
+  "im.dingtalkConnectedNotice": "DingTalk успішно підключено. Тепер можете надіслати боту повідомлення у DingTalk.",
   "im.wechatScanBind": "Вхід через QR-код WeChat",
   "im.wechatScanSubtitle": "Відскануйте QR-код застосунком WeChat — після авторизації прив'язку буде виконано автоматично",
   "im.wechatUnbindConfirm": "Відключити з'єднання з WeChat?",

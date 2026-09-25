@@ -391,6 +391,8 @@
   "im.wechatBindHint": "Po powiązaniu możesz rozmawiać z SolonCode na WeChat",
   "im.wechatBoundUnbind": "WeChat powiązany (kliknij, aby rozwiązać)",
   "im.wechatConnectedNotice": "WeChat połączony pomyślnie. Możesz teraz wysłać wiadomość do bota na WeChat.",
+  "im.feishuConnectedNotice": "Feishu połączony pomyślnie. Możesz teraz wysłać wiadomość do bota na Feishu.",
+  "im.dingtalkConnectedNotice": "DingTalk połączony pomyślnie. Możesz teraz wysłać wiadomość do bota na DingTalk.",
   "im.wechatScanBind": "Logowanie QR przez WeChat",
   "im.wechatScanSubtitle": "Zeskanuj kod QR aplikacją WeChat, aby automatycznie dokończyć powiązanie",
   "im.wechatUnbindConfirm": "Na pewno chcesz rozłączyć WeChat?",

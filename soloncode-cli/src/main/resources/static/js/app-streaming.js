@@ -2909,6 +2909,7 @@ function showFeishuModal() {
                             closeFeishuModal();
                             updateFeishuUI();
                             switchToChatMode();
+                            notifyFeishuConnected();
                         }, 1000);
                     }
                 } catch(e) {}
@@ -2979,6 +2980,7 @@ function showFeishuModal() {
                             closeFeishuModal();
                             updateFeishuUI();
                             switchToChatMode();
+                            notifyFeishuConnected();
                         }, 1200);
                     } else if (status === 'failed') {
                         $qrStatus.text(data.message || I18n.t('im.bindFailed')).addClass('error');
@@ -3014,6 +3016,15 @@ function closeFeishuModal() {
     if (feishuModalOverlay) {
         feishuModalOverlay.remove();
         feishuModalOverlay = null;
+    }
+}
+
+// 飞书连接成功后，在会话中追加一次系统提示（与微信一致，只提示一次）
+function notifyFeishuConnected() {
+    var initSess = getOrCreateSession(SESSION_ID);
+    if (!initSess._feishuInited) {
+        initSess._feishuInited = true;
+        appendSystemNotice(initSess, I18n.t('im.feishuConnectedNotice'));
     }
 }
 
@@ -3234,6 +3245,7 @@ function showDingTalkModal() {
                             closeDingTalkModal();
                             updateDingTalkUI();
                             switchToChatMode();
+                            notifyDingtalkConnected();
                         }, 1000);
                     }
                 } catch(e) {}
@@ -3330,6 +3342,7 @@ function showDingTalkModal() {
                                             updateDingTalkUI();
                                             switchToChatMode();
                                             startDingtalkStatusPoll();
+                                            notifyDingtalkConnected();
                                         }, 800);
                                     }
                                 } catch(e) {}
@@ -3373,6 +3386,15 @@ function closeDingTalkModal() {
     if (dingtalkModalOverlay) {
         dingtalkModalOverlay.remove();
         dingtalkModalOverlay = null;
+    }
+}
+
+// 钉钉连接成功后，在会话中追加一次系统提示（与微信一致，只提示一次）
+function notifyDingtalkConnected() {
+    var initSess = getOrCreateSession(SESSION_ID);
+    if (!initSess._dingtalkInited) {
+        initSess._dingtalkInited = true;
+        appendSystemNotice(initSess, I18n.t('im.dingtalkConnectedNotice'));
     }
 }
 

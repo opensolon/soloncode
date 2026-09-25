@@ -391,6 +391,8 @@
   "im.wechatBindHint": "Μετά τη σύνδεση μπορείτε να συνομιλήσετε με το SolonCode μέσω WeChat",
   "im.wechatBoundUnbind": "WeChat συνδεδεμένο (κλικ για αποσύνδεση)",
   "im.wechatConnectedNotice": "Το WeChat συνδέθηκε επιτυχώς. Δοκιμάστε να στείλετε ένα μήνυμα στο bot στο WeChat.",
+  "im.feishuConnectedNotice": "Το Feishu συνδέθηκε επιτυχώς. Δοκιμάστε να στείλετε ένα μήνυμα στο bot στο Feishu.",
+  "im.dingtalkConnectedNotice": "Το DingTalk συνδέθηκε επιτυχώς. Δοκιμάστε να στείλετε ένα μήνυμα στο bot στο DingTalk.",
   "im.wechatScanBind": "Σύνδεση WeChat με σάρωση",
   "im.wechatScanSubtitle": "Σαρώστε τον κωδικό QR με το WeChat· μετά την εξουσιοδότηση η σύνδεση ολοκληρώνεται αυτόματα",
   "im.wechatUnbindConfirm": "Είστε βέβαιοι ότι θέλετε να αποσυνδεθείτε από το WeChat;",

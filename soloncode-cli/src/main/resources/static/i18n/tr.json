@@ -391,6 +391,8 @@
   "im.wechatBindHint": "Bağlandıktan sonra WeChat üzerinden SolonCode ile sohbet edebilirsiniz",
   "im.wechatBoundUnbind": "WeChat bağlandı (bağlantıyı kesmek için tıklayın)",
   "im.wechatConnectedNotice": "WeChat başarıyla bağlandı. Şimdi WeChat üzerinden bota bir mesaj göndermeyi deneyebilirsiniz.",
+  "im.feishuConnectedNotice": "Feishu başarıyla bağlandı. Şimdi Feishu üzerinden bota bir mesaj göndermeyi deneyebilirsiniz.",
+  "im.dingtalkConnectedNotice": "DingTalk başarıyla bağlandı. Şimdi DingTalk üzerinden bota bir mesaj göndermeyi deneyebilirsiniz.",
   "im.wechatScanBind": "WeChat QR Girişi",
   "im.wechatScanSubtitle": "WeChat ile QR kodu tarayın, otomatik bağlanmak için yetkilendirin",
   "im.wechatUnbindConfirm": "WeChat bağlantısını kesmek istediğinizden emin misiniz?",

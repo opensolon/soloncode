@@ -391,6 +391,8 @@
   "im.wechatBindHint": "বাইন্ড করার পরে WeChat-এ SolonCode-এর সাথে চ্যাট করা যাবে",
   "im.wechatBoundUnbind": "WeChat বাইন্ড হয়েছে (আনবাইন্ড করতে ক্লিক করুন)",
   "im.wechatConnectedNotice": "WeChat সফলভাবে সংযুক্ত হয়েছে, এখন WeChat-এ বটকে একটি বার্তা পাঠিয়ে দেখতে পারেন।",
+  "im.feishuConnectedNotice": "Feishu সফলভাবে সংযুক্ত হয়েছে, এখন Feishu-এ বটকে একটি বার্তা পাঠিয়ে দেখতে পারেন।",
+  "im.dingtalkConnectedNotice": "DingTalk সফলভাবে সংযুক্ত হয়েছে, এখন DingTalk-এ বটকে একটি বার্তা পাঠিয়ে দেখতে পারেন।",
   "im.wechatScanBind": "WeChat QR লগইন",
   "im.wechatScanSubtitle": "WeChat দিয়ে QR কোড স্ক্যান করুন, অনুমোদনের পরে স্বয়ংক্রিয়ভাবে বাইন্ড হবে",
   "im.wechatUnbindConfirm": "নিশ্চিতভাবে WeChat সংযোগ বিচ্ছিন্ন করবেন?",

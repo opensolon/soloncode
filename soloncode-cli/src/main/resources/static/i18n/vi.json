@@ -391,6 +391,8 @@
   "im.wechatBindHint": "Sau khi liên kết, bạn có thể trò chuyện với SolonCode trên WeChat",
   "im.wechatBoundUnbind": "Đã liên kết WeChat (nhấp để hủy liên kết)",
   "im.wechatConnectedNotice": "Đã kết nối WeChat thành công, giờ bạn có thể gửi tin nhắn cho bot trên WeChat để thử.",
+  "im.feishuConnectedNotice": "Đã kết nối Feishu thành công, giờ bạn có thể gửi tin nhắn cho bot trên Feishu để thử.",
+  "im.dingtalkConnectedNotice": "Đã kết nối DingTalk thành công, giờ bạn có thể gửi tin nhắn cho bot trên DingTalk để thử.",
   "im.wechatScanBind": "Liên kết bằng mã QR WeChat",
   "im.wechatScanSubtitle": "Quét mã QR bằng WeChat, liên kết sẽ tự động hoàn tất sau khi cấp quyền",
   "im.wechatUnbindConfirm": "Bạn có chắc muốn ngắt kết nối WeChat không?",

@@ -391,6 +391,8 @@
   "im.wechatBindHint": "بعد الربط يمكنك الدردشة مع SolonCode عبر WeChat",
   "im.wechatBoundUnbind": "تم ربط WeChat (انقر لفك الارتباط)",
   "im.wechatConnectedNotice": "تم اتصال WeChat بنجاح، يمكنك الآن إرسال رسالة إلى الروبوت على WeChat لتجربته.",
+  "im.feishuConnectedNotice": "تم اتصال Feishu بنجاح، يمكنك الآن إرسال رسالة إلى الروبوت على Feishu لتجربته.",
+  "im.dingtalkConnectedNotice": "تم اتصال DingTalk بنجاح، يمكنك الآن إرسال رسالة إلى الروبوت على DingTalk لتجربته.",
   "im.wechatScanBind": "ربط WeChat بالمسح",
   "im.wechatScanSubtitle": "امسح رمز الاستجابة السريعة باستخدام WeChat لإكمال الربط تلقائيًا بعد التفويض",
   "im.wechatUnbindConfirm": "هل تريد قطع اتصال WeChat؟",

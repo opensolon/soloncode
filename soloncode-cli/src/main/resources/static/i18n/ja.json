@@ -396,6 +396,8 @@
   "im.wechatBindHint": "連携後、WeChat で SolonCode と会話できます",
   "im.wechatBoundUnbind": "WeChat 連携済み（クリックで解除）",
   "im.wechatConnectedNotice": "WeChat への接続に成功しました。WeChat でボットにメッセージを送信してみてください。",
+  "im.feishuConnectedNotice": "Feishu への接続に成功しました。Feishu でボットにメッセージを送信してみてください。",
+  "im.dingtalkConnectedNotice": "DingTalk への接続に成功しました。DingTalk でボットにメッセージを送信してみてください。",
   "im.wechatScanBind": "WeChat QRコード連携",
   "im.wechatScanSubtitle": "WeChat で QRコードをスキャンすると、認証後に自動で連携が完了します",
   "im.wechatUnbindConfirm": "WeChat の接続を切断しますか？",

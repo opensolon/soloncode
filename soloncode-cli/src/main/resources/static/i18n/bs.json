@@ -391,6 +391,8 @@
   "im.wechatBindHint": "Nakon povezivanja možete razgovarati sa SolonCode putem WeChata",
   "im.wechatBoundUnbind": "WeChat povezan (kliknite za prekid veze)",
   "im.wechatConnectedNotice": "WeChat je uspješno povezan. Sada možete poslati poruku robotu u WeChatu i isprobati.",
+  "im.feishuConnectedNotice": "Feishu je uspješno povezan. Sada možete poslati poruku robotu u Feishuu i isprobati.",
+  "im.dingtalkConnectedNotice": "DingTalk je uspješno povezan. Sada možete poslati poruku robotu u DingTalku i isprobati.",
   "im.wechatScanBind": "WeChat prijava skeniranjem QR koda",
   "im.wechatScanSubtitle": "Skenirajte QR kod pomoću WeChata; nakon autorizacije povezivanje se dovršava automatski",
   "im.wechatUnbindConfirm": "Želite li prekinuti vezu s WeChatom?",

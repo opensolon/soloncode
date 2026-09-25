@@ -396,6 +396,8 @@
   "im.wechatBindHint": "Once bound, you can chat with SolonCode on WeChat",
   "im.wechatBoundUnbind": "WeChat bound (click to unbind)",
   "im.wechatConnectedNotice": "WeChat connected successfully. Try sending a message to the bot on WeChat.",
+  "im.feishuConnectedNotice": "Feishu connected successfully. Try sending a message to the bot on Feishu.",
+  "im.dingtalkConnectedNotice": "DingTalk connected successfully. Try sending a message to the bot on DingTalk.",
   "im.wechatScanBind": "WeChat QR Login",
   "im.wechatScanSubtitle": "Scan the QR code with WeChat to bind automatically",
   "im.wechatUnbindConfirm": "Are you sure you want to disconnect WeChat?",

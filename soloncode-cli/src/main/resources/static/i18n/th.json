@@ -391,6 +391,8 @@
   "im.wechatBindHint": "หลังจากผูกแล้วสามารถสนทนากับ SolonCode บน WeChat ได้",
   "im.wechatBoundUnbind": "ผูก WeChat แล้ว (คลิกเพื่อเลิกผูก)",
   "im.wechatConnectedNotice": "เชื่อมต่อ WeChat สำเร็จแล้ว ตอนนี้สามารถลองส่งข้อความถึงบอทใน WeChat ได้",
+  "im.feishuConnectedNotice": "เชื่อมต่อ Feishu สำเร็จแล้ว ตอนนี้สามารถลองส่งข้อความถึงบอทใน Feishu ได้",
+  "im.dingtalkConnectedNotice": "เชื่อมต่อ DingTalk สำเร็จแล้ว ตอนนี้สามารถลองส่งข้อความถึงบอทใน DingTalk ได้",
   "im.wechatScanBind": "สแกนคิวอาร์โค้ดด้วย WeChat เพื่อผูก",
   "im.wechatScanSubtitle": "สแกนคิวอาร์โค้ดด้วย WeChat หลังอนุญาตแล้วจะผูกอัตโนมัติ",
   "im.wechatUnbindConfirm": "ต้องการตัดการเชื่อมต่อ WeChat หรือไม่?",

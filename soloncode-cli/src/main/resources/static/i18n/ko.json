@@ -391,6 +391,8 @@
   "im.wechatBindHint": "연동 후 WeChat에서 SolonCode와 대화할 수 있습니다",
   "im.wechatBoundUnbind": "WeChat 연동됨(클릭하여 해제)",
   "im.wechatConnectedNotice": "WeChat 연결에 성공했습니다. 이제 WeChat에서 봇에게 메시지를 보내 보세요.",
+  "im.feishuConnectedNotice": "Feishu 연결에 성공했습니다. 이제 Feishu에서 봇에게 메시지를 보내 보세요.",
+  "im.dingtalkConnectedNotice": "DingTalk 연결에 성공했습니다. 이제 DingTalk에서 봇에게 메시지를 보내 보세요.",
   "im.wechatScanBind": "WeChat 스캔 연동",
   "im.wechatScanSubtitle": "WeChat으로 QR 코드를 스캔하면 인증 후 자동으로 연동됩니다",
   "im.wechatUnbindConfirm": "WeChat 연결을 해제하시겠습니까?",
