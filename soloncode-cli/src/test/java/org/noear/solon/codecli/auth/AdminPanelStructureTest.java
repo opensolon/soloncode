@@ -74,6 +74,21 @@ public class AdminPanelStructureTest {
     }
 
     @Test
+    public void remoteAdminCanLoadSharedLoginAndStaticDependencies() {
+        assertTrue(UserAuthFilter.isSharedEntryPath("/css/admin.css"));
+        assertTrue(UserAuthFilter.isSharedEntryPath("/js/admin.js"));
+        assertTrue(UserAuthFilter.isSharedEntryPath("/js/admin-auth-users.js"));
+        assertTrue(UserAuthFilter.isSharedEntryPath("/layui/layui.js"));
+        assertTrue(UserAuthFilter.isSharedEntryPath("/login"));
+        assertTrue(UserAuthFilter.isSharedEntryPath("/web/login"));
+        assertTrue(UserAuthFilter.isSharedEntryPath("/web/user/me"));
+        assertFalse(UserAuthFilter.isSharedEntryPath("/web/admin"));
+        assertFalse(UserAuthFilter.isSharedEntryPath("/web/admin/modules"));
+        assertFalse(UserAuthFilter.isSharedEntryPath("/web/run"));
+        assertFalse(UserAuthFilter.isSharedEntryPath("/web/workspace/list"));
+    }
+
+    @Test
     public void onlyAdminRolePassesRoleCheck() {
         assertTrue(UserAuthFilter.isAdminRole("admin"));
         assertFalse(UserAuthFilter.isAdminRole("user"));

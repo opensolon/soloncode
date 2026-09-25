@@ -229,7 +229,7 @@
     function renderNav() {
         var html = '<div class="admin-nav-group-title">管理</div>';
         modules.forEach(function (m) {
-            html += '<button class="admin-nav-item" data-key="' + m.key + '">' +
+            html += '<button type="button" class="admin-nav-item" data-key="' + m.key + '" aria-current="false">' +
                 (m.icon || '') + '<span>' + m.title + '</span></button>';
         });
         navEl.innerHTML = html;
@@ -250,7 +250,9 @@
         var m = moduleMap[key] || modules[0];
         if (!m) return;
         navEl.querySelectorAll('.admin-nav-item').forEach(function (btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-key') === m.key);
+            var active = btn.getAttribute('data-key') === m.key;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-current', active ? 'page' : 'false');
         });
         try {
             m.render(contentEl);

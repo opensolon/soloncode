@@ -67,6 +67,7 @@
                 authEnabledInitial = !!data.enabled;
                 $('#userAuthEnabled').prop('checked', data.enabled);
                 $('#userAuthConversationIsolation').prop('checked', data.conversationIsolationEnabled === true);
+                updateAuthDependentControls();
                 setMode(currentMode);
                 var forever = Number(data.sessionTimeoutMinutes) === 0;
                 $('#userAuthSessionTimeout').val(forever ? '' : (data.sessionTimeoutMinutes || 60)).prop('disabled', forever);
@@ -96,6 +97,14 @@
             .done(function () {
                 $('#userAuthSaveConfigBtn').prop('disabled', !authConfigLoaded);
             });
+    }
+
+    function updateAuthDependentControls() {
+        var enabled = $('#userAuthEnabled').prop('checked');
+        $('#userAuthConversationIsolation')
+            .prop('disabled', !enabled)
+            .closest('.toggle-switch')
+            .toggleClass('disabled', !enabled);
     }
 
     function setMode(mode) {
@@ -219,16 +228,17 @@
     function saveConfig() {
         var willDisable = authEnabledInitial && !$('#userAuthEnabled').prop('checked');
         if (willDisable) {
-            var msg = '关闭用户认证后，所有人无需登录即可使用系统。确定要关闭吗？';
+            var msg = '关闭用户认证后，工作台将不再要求登录；实际可访问范围仍受“访问控制”中的工作台策略限制。确定要关闭吗？';
             if (typeof layer !== 'undefined' && layer.confirm) {
                 layer.confirm(msg, { title: '确认关闭认证', btn: ['关闭认证', '取消'], icon: 3, offset: '120px' }, function (index) {
                     layer.close(index);
                     doSaveConfig();
-                }, function () { $('#userAuthEnabled').prop('checked', true); });
+                }, function () { $('#userAuthEnabled').prop('checked', true); updateAuthDependentControls(); });
             } else if (window.confirm(msg)) {
                 doSaveConfig();
             } else {
                 $('#userAuthEnabled').prop('checked', true);
+                updateAuthDependentControls();
             }
             return;
         }
@@ -393,6 +403,7 @@
     }
 
     $(document).on('settings:tab:users', function() { loadAuthConfig(); loadUsers(); });
+    $(document).on('change', '#userAuthEnabled', updateAuthDependentControls);
     $(document).on('click', '.admin-auth-mode-toggle .settings-scope-btn', function() { setMode($(this).attr('data-scope')); });
     $(document).on('click', '.admin-user-role-toggle .settings-scope-btn', function() { setRole($(this).attr('data-scope')); });
     $(document).on('click', '#userAuthLdapTestBtn', testLdap);

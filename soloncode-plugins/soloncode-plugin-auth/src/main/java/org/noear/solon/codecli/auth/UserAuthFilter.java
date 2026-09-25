@@ -35,10 +35,20 @@ public class UserAuthFilter implements Filter {
     static boolean isPublicPath(String path) {
         if (path == null) return false;
         if (PUBLIC_PATHS.contains(path)) return true;
+        return isStaticPath(path);
+    }
+
+    static boolean isStaticPath(String path) {
+        if (path == null) return false;
         for (String prefix : STATIC_PREFIXES) {
             if (path.startsWith(prefix)) return true;
         }
         return false;
+    }
+
+    static boolean isSharedEntryPath(String path) {
+        return isStaticPath(path) || "/login".equals(path) || "/web/login".equals(path)
+                || "/web/logout".equals(path) || "/web/user/me".equals(path);
     }
 
     static boolean isAdminPath(String path) {
@@ -85,8 +95,8 @@ public class UserAuthFilter implements Filter {
                 responseAccessDenied(ctx);
                 return;
             }
-        } else {
-            // 工作台来源策略与认证开关独立；any 模式是否需要登录由下方认证分支决定。
+        } else if (!isSharedEntryPath(path)) {
+            // 管理台也依赖静态资源、统一登录和 /web/user/me；不能用工作台策略阻断这些共享入口。
             if (!AccessPolicy.isAllowed(userAuthConfig.getWorkspaceAccessMode(),
                     userAuthConfig.getWorkspaceIpAllowlist(), ctx.remoteIp(), false)) {
                 responseAccessDenied(ctx);
