@@ -179,6 +179,8 @@ body {
 .sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; }
 .sidebar-footer-actions { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sidebar-user-menu { display: none; flex-shrink: 0; }
+.security-header-btn { width: 34px; height: 34px; padding: 6px 8px; box-sizing: border-box; display: none; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; }
+.security-header-btn:hover, .security-header-btn:focus-visible { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent); }
 .sidebar-user-menu .user-header-btn { width: 34px; height: 34px; padding: 6px 8px; justify-content: center; }
 .sidebar-user-menu .user-header-label { display: none; }
 

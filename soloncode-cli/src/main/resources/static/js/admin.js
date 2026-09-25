@@ -105,7 +105,7 @@
             '<div class="admin-setup">' +
             '  <div class="admin-setup-card">' +
             '    <div class="admin-setup-head">' +
-            '      <h1 class="admin-setup-title">初始化用户体系</h1>' +
+            '      <h1 class="admin-setup-title">初始化管理员账号</h1>' +
             '    </div>' +
             '    <div class="admin-setup-body">' +
             '      <div class="general-field"><label class="general-field-label">管理员用户名 <span class="required">*</span></label><input type="text" class="general-input" id="bsUsername" value="admin" placeholder="admin"/></div>' +

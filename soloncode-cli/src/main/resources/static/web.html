@@ -74,6 +74,9 @@
                 </svg>
                 <span style="margin-left:6px;font-size:var(--fs-sm);" data-i18n="sidebar.settings">设置</span>
             </button>
+            <a class="security-header-btn" id="securityHeaderBtn" href="/web/admin" title="安全与用户" aria-label="安全与用户" style="display:flex">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            </a>
             <div class="sidebar-user-menu" id="userHeaderMenu">
                 <button class="user-header-btn" id="userHeaderBtn" title="用户" data-i18n-title="header.user" style="display:none" aria-haspopup="menu" aria-expanded="false">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -902,23 +905,6 @@
                                         <div class="general-subblock-title" data-i18n="general.ui.chooseSkin">选择皮肤</div>
                                         <input type="file" id="skinZipInput" accept=".zip,application/zip" style="display:none"/>
                                         <div class="skin-card-list" id="skinCardList"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- ============ 配置卡片: 安全访问（已升级） ============ -->
-                            <div class="general-card">
-                                <div class="general-card-header">
-                                    <div class="general-card-text">
-                                        <div class="general-card-title" data-i18n="general.security.title">安全访问</div>
-                                    </div>
-                                </div>
-                                <div class="general-card-body">
-                                    <div class="general-toggle-desc settings-gap-top-sm">
-                                        <span>安全访问已升级为“用户管理”。用户、角色、登录会话和 LDAP 等认证能力请统一在管理控制台配置。</span>
-                                    </div>
-                                    <div class="settings-gap-top-sm">
-                                        <button type="button" class="settings-mini-btn" onclick="window.location.href='/web/admin'">打开用户管理</button>
                                     </div>
                                 </div>
                             </div>
@@ -2751,6 +2737,7 @@
     (function() {
         var userMenu = document.getElementById('userHeaderMenu');
         var userBtn = document.getElementById('userHeaderBtn');
+        var securityBtn = document.getElementById('securityHeaderBtn');
         var userAvatar = document.getElementById('userHeaderAvatar');
         var userDisplayName = document.getElementById('userHeaderDisplayName');
         var userUsername = document.getElementById('userHeaderUsername');
@@ -2765,13 +2752,16 @@
                     if (resp.code === 200 && resp.data) {
                         var data = resp.data;
                         // 管理员也可以正常使用工作台；管理台仅通过显式入口进入。
-                        // 用户菜单只对已登录用户显示，避免未登录状态出现无效的用户按钮。
+                        // 已登录时显示用户菜单，未登录时保留安全入口，便于登录或初始化管理员。
                         authenticated = data.authEnabled && data.authenticated;
                         if (userMenu) {
                             userMenu.style.display = authenticated ? 'block' : 'none';
                         }
                         if (userBtn) {
                             userBtn.style.display = authenticated ? 'flex' : 'none';
+                        }
+                        if (securityBtn) {
+                            securityBtn.style.display = authenticated ? 'none' : 'flex';
                         }
                         if (adminBtn) {
                             adminBtn.style.display = (authenticated && data.role === 'admin') ? 'flex' : 'none';
@@ -2789,7 +2779,7 @@
                 .catch(function() {});
         }
         
-        // 用户按钮统一承载管理入口和退出登录；未登录时整个菜单保持隐藏。
+        // 用户按钮统一承载管理入口和退出登录；未登录时显示独立的安全入口。
         userBtn.addEventListener('click', function() {
             if (!authenticated) return;
             var open = userMenu.classList.toggle('open');
