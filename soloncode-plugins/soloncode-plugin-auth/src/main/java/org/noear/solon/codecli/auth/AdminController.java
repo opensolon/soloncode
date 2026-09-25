@@ -67,7 +67,7 @@ public class AdminController {
     }
 
     /**
-     * 管理模块清单：导航仅保留「认证配置 → 用户管理」。
+     * 管理模块清单：导航按「访问控制 → 认证配置 → 用户管理 → 配置备份」排列。
      * LDAP 用户由目录服务管理，因此不显示本地用户 CRUD 模块。
      * 概览、审计、会话模块已从导航中移除；其后端接口仍保留，供后续重新开放。
      */
@@ -77,6 +77,7 @@ public class AdminController {
         List<String> keys = new java.util.ArrayList<>();
         keys.add("access-control");
         keys.add("auth");
+        keys.add("backup");
         if (userStore == null || userStore.supportsLocalUserManagement()) {
             keys.add("users");
         }

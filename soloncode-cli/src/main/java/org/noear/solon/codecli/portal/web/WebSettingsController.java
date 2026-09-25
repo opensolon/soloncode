@@ -225,6 +225,15 @@ public class WebSettingsController extends BaseSettingsController {
         }
     }
 
+    /**
+     * 管理台配置备份导入后的热重载入口。保留通用 settings reload，避免改变工作台设置页契约。
+     */
+    @Post
+    @Mapping("/web/admin/backup/reload")
+    public Result adminBackupReload() {
+        return settingsReload(true);
+    }
+
     private Map<String, Object> buildReloadSourceInfo() {
         Path globalFile = Paths.get(AgentFlags.getUserHome(), ".soloncode", "settings.json").toAbsolutePath();
         // 多工作区隔离：local 取当前工作区目录，而非启动目录

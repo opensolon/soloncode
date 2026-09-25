@@ -39,6 +39,12 @@ public class AdminPanelStructureTest {
         // 面板新命名空间与页面入口
         assertTrue(UserAuthFilter.isAdminPath("/web/admin/overview"));
         assertTrue(UserAuthFilter.isAdminPath("/web/admin/modules"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/backup/manifest"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/backup/import/commit"));
+        assertTrue(UserAuthFilter.isAdminPath("/web/admin/backup/reload"));
+        assertFalse(UserAuthFilter.isAdminPath("/web/settings/profile/manifest"),
+                "配置备份接口迁移到管理台命名空间后，旧 settings 路径不得继续作为管理接口");
+        assertTrue(UserAuthFilter.isAdminPath("/web/settings/reload"));
         assertTrue(UserAuthFilter.isAdminPath("/web/admin"));
         assertFalse(UserAuthFilter.isAdminPath("/admin"),
                 "旧 /admin 页面路由已移除，不能继续作为管理台入口断言");
@@ -115,6 +121,8 @@ public class AdminPanelStructureTest {
         // 设置模块懒加载列表不再引入 users 脚本
         assertFalse(web.contains("/js/admin-auth-users.js"),
                 "设置面板不应再加载 admin-auth-users.js");
+        assertFalse(web.contains("backup"),
+                "配置备份已迁移到管理控制台，web.html 不应保留入口或面板");
     }
 
     @Test
@@ -219,6 +227,8 @@ public class AdminPanelStructureTest {
                 "工作台应提供不限制选项");
         assertTrue(new AdminController(null, null, null).modules().getData().contains("access-control"),
                 "后端模块清单必须返回 access-control");
+        assertTrue(new AdminController(null, null, null).modules().getData().contains("backup"),
+                "后端模块清单必须返回 backup");
     }
 
     @Test
@@ -385,6 +395,17 @@ public class AdminPanelStructureTest {
         String html = resourceText("/static/admin.html");
         assertTrue(html.contains("/js/admin-modules.js") && html.contains("/js/admin.js"),
                 "admin.html 应加载模块注册表与骨架脚本");
+        assertTrue(html.contains("/js/app-settings-profile.js"),
+                "admin.html 应加载配置备份交互逻辑");
+        String backupJs = resourceText("/static/js/app-settings-profile.js");
+        assertTrue(backupJs.contains("/web/admin/backup/manifest")
+                        && backupJs.contains("/web/admin/backup/export")
+                        && backupJs.contains("/web/admin/backup/import/parse")
+                        && backupJs.contains("/web/admin/backup/import/commit")
+                        && backupJs.contains("/web/admin/backup/reload"),
+                "管理台配置备份应只调用 /web/admin/backup 下的接口");
+        assertFalse(backupJs.contains("/web/settings/profile/"),
+                "前端不应继续调用旧的 settings/profile 备份接口");
         assertTrue(html.contains("/js/admin-auth-users.js"),
                 "admin.html 应加载用户管理交互逻辑（原样复用）");
     }

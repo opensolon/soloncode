@@ -16,7 +16,8 @@
         users: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         audit: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h9l4 4v14H3V3h5z"/><path d="M17 3v5h4M7 12h10M7 16h10"/></svg>',
         sessions: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h4"/></svg>',
-        accessControl: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M8 12h8M12 8v8"/></svg>'
+        accessControl: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M8 12h8M12 8v8"/></svg>',
+        backup: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12a9 3 0 0 1-18 0"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/></svg>'
     };
 
     // ============== 访问控制模块 ==============
@@ -216,6 +217,28 @@
         }
     }
 
+    // ============== 配置备份模块 ==============
+    var BACKUP_PANEL_HTML =
+        '<div class="settings-tab-content active" id="settingsTabBackup">' +
+        '  <div class="settings-section">' +
+        '    <div class="settings-section-header">' +
+        '      <div><span class="settings-section-title" data-i18n="backup.title">配置备份</span><div class="settings-section-desc" data-i18n="backup.desc">导出配置与资产为 zip 备份，或从备份包导入还原</div></div>' +
+        '      <div class="mcp-header-actions"><button type="button" class="settings-add-btn" id="backupExportBtn" data-i18n="backup.exportBtn">导出备份 (zip)</button><button type="button" class="settings-add-btn" id="backupImportBtn" data-i18n="backup.importBtn">导入备份…</button></div>' +
+        '    </div>' +
+        '    <label class="backup-item backup-item-secrets" for="backupIncludeSecrets"><span class="backup-item-checkbox"><input type="checkbox" id="backupIncludeSecrets"/><span class="backup-item-checkmark"></span></span><span class="backup-item-info"><span class="backup-item-name" data-i18n="backup.includeSecrets">包含密钥（apiKey 等敏感字段明文写入包内）</span><span class="backup-item-path" data-i18n="backup.includeSecretsPath">留空或不勾选时，导出包内密钥以 __MASKED__ 占位，导入时不会覆盖本机现有密钥</span></span></label>' +
+        '    <div id="backupItemList" class="backup-item-list"></div>' +
+        '    <input type="file" id="backupImportFileInput" accept=".zip" style="display:none;"/>' +
+        '  </div>' +
+        '</div>';
+
+    function renderBackup(container) {
+        container.innerHTML = BACKUP_PANEL_HTML;
+        if (window.I18n && typeof window.I18n.apply === 'function') {
+            try { window.I18n.apply(container); } catch (e) {}
+        }
+        if (window.backupLoadManifest) window.backupLoadManifest();
+    }
+
     // ============== 审计与会话模块 ==============
     // 只有 /web/admin/modules 显式启用对应 key 时才渲染并请求接口。
     function adminElement(tag, className, text) {
@@ -398,12 +421,13 @@
         load(1);
     }
 
-    // 导航顺序：访问控制 → 认证配置 → 用户管理。
+    // 导航顺序：访问控制 → 认证配置 → 用户管理 → 配置备份。
     // 审计与会话模块保留渲染实现，供后续重新开放，但不参与当前导航。
     window.ADMIN_MODULES = [
         { key: 'access-control', title: '访问控制', icon: ICON.accessControl, order: 5, render: renderAccessControl },
         { key: 'auth', title: '认证配置', icon: ICON.auth, order: 10, render: renderAuth },
         { key: 'users', title: '用户管理', icon: ICON.users, order: 20, render: renderUsers },
+        { key: 'backup', title: '配置备份', icon: ICON.backup, order: 100, render: renderBackup },
         { key: 'audit', title: '审计日志', icon: ICON.audit, order: 30, render: renderAudit },
         { key: 'sessions', title: '会话管理', icon: ICON.sessions, order: 40, render: renderSessions }
     ];

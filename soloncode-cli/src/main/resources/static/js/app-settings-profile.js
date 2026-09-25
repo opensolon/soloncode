@@ -113,9 +113,13 @@
         $('#backupItemList').html(html);
     }
 
+    function workspaceSuffix() {
+        return typeof window.wsAndSuffix === 'function' ? window.wsAndSuffix() : '';
+    }
+
     function loadManifest() {
         $.ajax({
-            url: '/web/settings/profile/manifest?_t=' + Date.now() + window.wsAndSuffix(),
+            url: '/web/admin/backup/manifest?_t=' + Date.now() + workspaceSuffix(),
             method: 'GET',
             dataType: 'json'
         }).done(function (resp) {
@@ -139,19 +143,23 @@
         }
         saveCheckedKeys(keys);
         var includeSecrets = $('#backupIncludeSecrets').is(':checked');
-        if (includeSecrets && !confirmBox(I18n.t('backup.confirmSecrets'))) {
-            return;
+        function startDownload() {
+            var ts = new Date().toISOString().replace(/[-:T]/g, '').substring(0, 14);
+            var a = document.createElement('a');
+            a.href = '/web/admin/backup/export?keys=' + encodeURIComponent(keys.join(','))
+                + '&includeSecrets=' + includeSecrets + workspaceSuffix();
+            a.download = 'soloncode-backup-' + ts + '.zip';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast(I18n.t('backup.exportStart'));
         }
-        var ts = new Date().toISOString().replace(/[-:T]/g, '').substring(0, 14);
-        var a = document.createElement('a');
-        a.href = '/web/settings/profile/export?keys=' + encodeURIComponent(keys.join(','))
-            + '&includeSecrets=' + includeSecrets + window.wsAndSuffix();
-        a.download = 'soloncode-backup-' + ts + '.zip';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        showToast(I18n.t('backup.exportStart'));
+        if (includeSecrets) {
+            confirmBox(I18n.t('backup.confirmSecrets'), startDownload);
+        } else {
+            startDownload();
+        }
     }
 
     // ---------- 导入（三步式：选文件 → 预览 → 提交） ----------
@@ -182,7 +190,7 @@
         var fd = new FormData();
         fd.append('file', file);
         $.ajax({
-            url: '/web/settings/profile/import/parse?_t=' + Date.now() + window.wsAndSuffix(),
+            url: '/web/admin/backup/import/parse?_t=' + Date.now() + workspaceSuffix(),
             method: 'POST',
             data: fd,
             processData: false,
@@ -234,7 +242,7 @@
         var fd = new FormData();
         fd.append('file', _pendingFile);
         $.ajax({
-            url: '/web/settings/profile/import/commit?keys=' + encodeURIComponent(keys.join(',')) + window.wsAndSuffix(),
+            url: '/web/admin/backup/import/commit?keys=' + encodeURIComponent(keys.join(',')) + workspaceSuffix(),
             method: 'POST',
             data: fd,
             processData: false,
@@ -247,9 +255,17 @@
                     detail += '\n' + resp.data.warnings.join('\n');
                 }
                 showToast(detail || I18n.t('backup.importDone'), 'success');
-                // settings 已变更：触发与「从磁盘重载」相同的热生效流程
+                // settings 已变更：管理台没有加载完整设置面板，直接调用热重载接口。
                 if (typeof window.settingsReloadFromDisk === 'function') {
                     window.settingsReloadFromDisk();
+                } else {
+                    $.ajax({ url: '/web/admin/backup/reload', method: 'POST', dataType: 'json', timeout: 60000 })
+                        .done(function (reloadResp) {
+                            if (!reloadResp || reloadResp.code !== 200) {
+                                showToast(I18n.t('settings.reloadFailed'), 'error');
+                            }
+                        })
+                        .fail(function () { showToast(I18n.t('settings.reloadFailed'), 'error'); });
                 }
                 loadManifest();
             } else {

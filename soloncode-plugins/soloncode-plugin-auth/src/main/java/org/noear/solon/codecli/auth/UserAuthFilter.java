@@ -52,7 +52,8 @@ public class UserAuthFilter implements Filter {
     }
 
     static boolean isAdminPath(String path) {
-        return path != null && (isAdminPage(path) || path.startsWith("/web/admin/"));
+        return path != null && (isAdminPage(path) || path.startsWith("/web/admin/")
+                || "/web/settings/reload".equals(path));
     }
 
     private static boolean isAdminPage(String path) {

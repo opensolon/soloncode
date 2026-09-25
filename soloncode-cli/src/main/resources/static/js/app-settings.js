@@ -190,9 +190,6 @@
         } else if (targetTab === 'providers') {
             $('#settingsTabProviders').addClass('active');
             if (window.settingsProviders) window.settingsProviders.loadList();
-        } else if (targetTab === 'backup') {
-            $('#settingsTabBackup').addClass('active');
-            // 清单由 app-settings-profile.js 的懒加载处理器填充
         }
     });
 
@@ -213,7 +210,6 @@
         else if (targetTab === 'openapi') { if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load(); }
         else if (targetTab === 'lsp') { if (mod('_settingsLsp')) mod('_settingsLsp').load(); }
         else if (targetTab === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
-        else if (targetTab === 'backup') { if (window.backupLoadManifest) window.backupLoadManifest(); }
     }
 
     /**

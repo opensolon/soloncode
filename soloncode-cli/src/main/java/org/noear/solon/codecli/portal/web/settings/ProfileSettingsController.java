@@ -20,7 +20,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 设置：配置备份（导出/导入 zip）
+ * 管理台：配置备份（导出/导入 zip）。
+ *
+ * <p>虽然控制器仍复用 settings 包下的通用 ProfileService，接口统一挂在
+ * {@code /web/admin/backup} 命名空间下，确保管理台功能与工作台设置接口边界一致。</p>
  *
  * @author noear 2026/9/5
  */
@@ -39,7 +42,7 @@ public class ProfileSettingsController extends BaseSettingsController {
      * 备份清单：可勾选条目及其来源路径/统计
      */
     @Get
-    @Mapping("/web/settings/profile/manifest")
+    @Mapping("/web/admin/backup/manifest")
     public Result manifest() throws Exception {
         return Result.succeed(ProfileService.getInstance().buildManifest(settings()));
     }
@@ -48,7 +51,7 @@ public class ProfileSettingsController extends BaseSettingsController {
      * 导出配置备份 zip（浏览器直接下载）
      */
     @Get
-    @Mapping("/web/settings/profile/export")
+    @Mapping("/web/admin/backup/export")
     public void export(Context ctx, String keys, @Param(value = "includeSecrets", defaultValue = "false") boolean includeSecrets) throws Exception {
         Set<String> keySet = parseKeys(keys);
         if (keySet.isEmpty()) {
@@ -76,7 +79,7 @@ public class ProfileSettingsController extends BaseSettingsController {
      * 解析备份 zip，返回预览清单（不落盘）
      */
     @Post
-    @Mapping("/web/settings/profile/import/parse")
+    @Mapping("/web/admin/backup/import/parse")
     public Result importParse(Context ctx) throws Exception {
         UploadedFile file = ctx.file("file");
         if (file == null) {
@@ -94,10 +97,10 @@ public class ProfileSettingsController extends BaseSettingsController {
     }
 
     /**
-     * 提交导入：合并 settings 分组 + 覆盖/新增资产文件，随后前端可调 /web/settings/reload 热生效
+     * 提交导入：合并 settings 分组 + 覆盖/新增资产文件，随后前端可调用通用 settings reload 接口热生效。
      */
     @Post
-    @Mapping("/web/settings/profile/import/commit")
+    @Mapping("/web/admin/backup/import/commit")
     public Result importCommit(Context ctx, String keys) throws Exception {
         UploadedFile file = ctx.file("file");
         if (file == null) {
