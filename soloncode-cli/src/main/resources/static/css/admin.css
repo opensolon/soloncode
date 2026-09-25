@@ -772,9 +772,9 @@ body.admin-body {
     margin-bottom: 0;
 }
 
-/* 认证配置原有的设置行也使用通用卡片的悬停边框和标题颜色。 */
+/* 认证配置的每个顶层设置块与 web.html 通用设置保持一致。 */
 .admin-content .admin-auth-form > .admin-setting-row,
-.admin-content .admin-auth-form > .admin-auth-config {
+.admin-content .admin-auth-form > .admin-auth-mode-section {
     border: 1px solid transparent;
     border-radius: 12px;
     background: var(--bg-primary);
@@ -782,7 +782,7 @@ body.admin-body {
 }
 
 .admin-content .admin-auth-form > .admin-setting-row:hover,
-.admin-content .admin-auth-form > .admin-auth-config:hover {
+.admin-content .admin-auth-form > .admin-auth-mode-section:hover {
     border-color: var(--border-color);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
@@ -792,32 +792,50 @@ body.admin-body {
     border-bottom: 1px solid transparent;
 }
 
-.admin-content .admin-auth-form > .admin-auth-config {
-    padding: 16px 18px 18px;
+/* 认证模式是一个完整设置块，文件存储和 LDAP 是它的展开内容，不再各自形成卡片。 */
+.admin-content .admin-auth-mode-section {
+    overflow: hidden;
 }
 
-.admin-content .admin-auth-form > .admin-auth-config .general-card-title {
-    margin-bottom: 10px;
-    color: var(--text-primary);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    line-height: 1.3;
+.admin-content .admin-auth-mode-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 14px 18px;
 }
 
-.admin-content .admin-auth-form > .admin-auth-config .admin-ldap-notice {
-    margin-top: 0;
+.admin-content .admin-auth-mode-body {
+    padding: 0 18px 18px;
+    border-top: 1px solid var(--border-color);
 }
 
-/* 认证模式沿用“用户对话隔离”的设置行结构；模式选择保留分段控件以表达二选一。 */
-.admin-content .admin-auth-mode-row {
-    margin-bottom: 18px;
+.admin-content .admin-auth-mode-body .admin-setting-row {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 认证模式的内容属于同一块，不额外显示独立卡片边框。 */
+.admin-content .admin-auth-mode-body .user-auth-config-section {
+    margin: 0;
+    padding: 16px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
 }
 
 .admin-content .admin-auth-mode-toggle {
     flex: 0 0 auto;
-    width: auto;
-    max-width: none;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
     box-sizing: border-box;
+}
+
+.admin-content .admin-auth-mode-toggle .settings-scope-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 /* 用户角色是独立表单字段，因此继续铺满整行。 */
@@ -830,6 +848,18 @@ body.admin-body {
 .admin-content .admin-auth-mode-toggle .settings-scope-btn,
 .admin-content .admin-user-role-toggle .settings-scope-btn {
     min-height: 34px;
+}
+
+@media (max-width: 700px) {
+    .admin-content .admin-auth-mode-header {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .admin-content .admin-auth-mode-toggle {
+        align-self: flex-start;
+    }
 }
 
 /* 概览使用分隔式统计项，和设置页保持同一套轻量视觉。 */
@@ -876,17 +906,6 @@ body.admin-body {
 }
 
 /* ===== LDAP 配置与异步状态 ===== */
-.admin-ldap-notice {
-    margin: 4px 0 18px;
-    padding: 10px 12px;
-    border-left: 3px solid var(--accent);
-    border-radius: 6px;
-    background: var(--bg-hover, rgba(127,127,127,0.06));
-    color: var(--text-secondary);
-    font-size: var(--fs-sm);
-    line-height: 1.6;
-}
-
 .admin-ldap-test {
     margin-top: 18px;
     padding-top: 18px;

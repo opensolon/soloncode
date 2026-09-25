@@ -267,13 +267,21 @@ public class AdminPanelStructureTest {
         assertTrue(modules.contains("id=\"userFormDeleteBtn\""),
                 "删除按钮应移入表单视图");
 
-        // 认证配置与 web.html「通用」保持一致，使用统一的内容卡片和标题样式；
+        // 认证配置与 web.html「通用」保持一致，认证模式是一个设置块，文件存储和 LDAP 作为其展开内容；
         // 用户列表与用户表单仍保持独立的扁平内容容器。
         int authStart = modules.indexOf("var AUTH_PANEL_HTML");
         int authEnd = modules.indexOf("function renderAuth", authStart);
         String authPanel = modules.substring(authStart, authEnd);
-        assertTrue(authPanel.contains("general-card-title") && authPanel.contains("admin-auth-config"),
-                "认证配置应使用通用卡片标题和内容容器");
+        assertTrue(authPanel.contains("admin-auth-mode-section") && authPanel.contains("admin-auth-mode-header")
+                        && authPanel.contains("admin-auth-mode-body"),
+                "认证模式应包含统一的设置块、标题和展开内容容器");
+        assertTrue(authPanel.contains("id=\"userAuthConfigFile\"")
+                        && authPanel.contains("id=\"userAuthConfigLdap\""),
+                "文件存储和 LDAP 应作为认证模式的展开内容");
+        assertFalse(authPanel.contains("admin-auth-config"),
+                "文件存储和 LDAP 不应再使用独立的认证配置卡片");
+        assertFalse(authPanel.contains("admin-auth-mode-detail-title") || authPanel.contains("admin-ldap-notice"),
+                "认证模式选择器已表示当前展开内容，不应重复显示标题或 LDAP 提示块");
 
         int usersStart = modules.indexOf("var USERS_PANEL_HTML");
         int usersEnd = modules.indexOf("function renderUsers", usersStart);
@@ -295,6 +303,13 @@ public class AdminPanelStructureTest {
                         && adminCss.contains("border-color: var(--border-color)")
                         && adminCss.contains("color: var(--text-primary)"),
                 "认证配置和访问控制应使用统一的悬停边框与深色标题样式");
+        assertTrue(adminCss.contains(".admin-content .admin-auth-mode-toggle .settings-scope-btn {")
+                        && adminCss.contains("flex: 0 0 auto;")
+                        && adminCss.contains("white-space: nowrap;")
+                        && adminCss.contains("width: max-content;"),
+                "认证模式选择器应按选项文字自适应宽度，且按钮文字不换行");
+        assertFalse(adminCss.contains(".admin-auth-mode-detail-title") || adminCss.contains(".admin-ldap-notice"),
+                "不应保留已移除的认证模式标题和 LDAP 提示块样式");
         assertTrue(adminCss.contains("--admin-content-width: 900px")
                         && adminCss.contains("align-self: center")
                         && adminCss.contains("width: var(--admin-content-width)")
