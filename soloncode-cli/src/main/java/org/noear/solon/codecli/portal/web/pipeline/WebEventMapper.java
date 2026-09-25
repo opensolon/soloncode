@@ -389,6 +389,16 @@ public class WebEventMapper {
             finalAnswer = event.getText();
         }
 
+        String agentSelectedTmp = (String) session.attrs().get("_agent_selected_tmp");
+        String eventAgentName = event.getTrace() == null ? null : event.getTrace().getAgentName();
+
+        if (eventAgentName != null) {
+            if ("main".equals(eventAgentName) || eventAgentName.equals(agentSelectedTmp)) {
+                // 次代理结果属于过程消息；源代理结果留给 RunEndEvent 统一广播。
+                streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), finalAnswer, true);
+            }
+        }
+
         return WebEvent.ofTrace(model, totalTokens, elapsedSeconds, finalAnswer);
     }
 }

@@ -180,9 +180,18 @@ public class FeishuLink implements Channel, Runnable {
         }
 
         StreamConnection conn = getOrCreateConnection(appId, appSecret);
-        conn.pendingSessionId = sessionId;
-        LOG.info("[Feishu] startStream: appId={}, pendingSession={}",
-                appId.substring(0, Math.min(8, appId.length())) + "...", sessionId);
+        // 扫码轮询成功时已经完成绑定；此时不能重新标记为 pending。
+        // 否则首条消息到达后会再次 bindSession，同一会话可能先被解绑，导致连接被关闭。
+        FeishuBinding binding = bindings.get(sessionId);
+        if (binding != null && appId.equals(binding.appId)) {
+            conn.pendingSessionId = null;
+            LOG.info("[Feishu] startStream: appId={}, session already bound={}",
+                    appId.substring(0, Math.min(8, appId.length())) + "...", sessionId);
+        } else {
+            conn.pendingSessionId = sessionId;
+            LOG.info("[Feishu] startStream: appId={}, pendingSession={}",
+                    appId.substring(0, Math.min(8, appId.length())) + "...", sessionId);
+        }
 
         return true;
     }
@@ -219,7 +228,22 @@ public class FeishuLink implements Channel, Runnable {
     /**
      * 绑定飞书用户到指定会话
      */
-    public void bindSession(String sessionId, String openId, String appId, String appSecret) {
+    public synchronized void bindSession(String sessionId, String openId, String appId, String appSecret) {
+        FeishuBinding current = bindings.get(sessionId);
+        if (current != null && Objects.equals(current.openId, openId)
+                && Objects.equals(current.appId, appId)) {
+            // 扫码轮询与首条消息可能同时完成绑定；同一绑定必须幂等，
+            // 尤其不能先 unbind 自己，否则 unbindSession 会关闭唯一的 Stream 连接。
+            current.appSecret = appSecret;
+            StreamConnection conn = connections.get(appId);
+            if (conn != null && sessionId.equals(conn.pendingSessionId)) {
+                conn.pendingSessionId = null;
+            }
+            credentialStore.save(bindings);
+            LOG.debug("[Feishu] Session {} is already bound to Feishu user {}", sessionId, openId);
+            return;
+        }
+
         FeishuBinding binding = new FeishuBinding();
         binding.openId = openId;
         binding.lastMessageId = "";
@@ -229,7 +253,7 @@ public class FeishuLink implements Channel, Runnable {
         // 一个 openId 只能绑定一个 session（与微信行为一致）
         Set<String> unbindSessionIds = new HashSet<>();
         bindings.forEach((k, v) -> {
-            if (v.openId.equals(openId)) {
+            if (Objects.equals(v.openId, openId) && !sessionId.equals(k)) {
                 unbindSessionIds.add(k);
             }
         });
@@ -253,7 +277,7 @@ public class FeishuLink implements Channel, Runnable {
     /**
      * 解绑飞书
      */
-    public void unbindSession(String sessionId) {
+    public synchronized void unbindSession(String sessionId) {
         FeishuBinding binding = bindings.remove(sessionId);
         if (binding == null) return;
 
