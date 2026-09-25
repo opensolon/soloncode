@@ -75,6 +75,7 @@ public class AdminController {
     @Mapping("/web/admin/modules")
     public Result<List<String>> modules() {
         List<String> keys = new java.util.ArrayList<>();
+        keys.add("access-control");
         keys.add("auth");
         if (userStore == null || userStore.supportsLocalUserManagement()) {
             keys.add("users");

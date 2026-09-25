@@ -281,6 +281,7 @@ public class Configurator {
         addWebBean(new UserLoginController(userStore, userSessionManager, userAuthConfig));
          addWebBean(new UserAuthController(userStore, userSessionManager, userAuthConfig));
          addWebBean(new AdminController(userStore, userSessionManager, userAuthConfig));
+        addWebBean(new AccessControlController(userAuthConfig));
         addWebBean(adminAuditController);
         addWebBean(new AdminSessionManagementController(userSessionManager));
 

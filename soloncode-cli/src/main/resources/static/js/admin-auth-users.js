@@ -275,7 +275,7 @@
         }).fail(function () {
             showToast('保存失败，请检查网络后重试', 'error');
         }).always(function () {
-            btn.prop('disabled', false).text('保存配置');
+            btn.prop('disabled', false).text('保存');
         });
     }
 

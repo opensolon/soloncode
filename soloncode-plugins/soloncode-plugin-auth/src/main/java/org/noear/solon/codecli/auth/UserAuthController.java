@@ -469,6 +469,12 @@ public class UserAuthController {
         target.setLdapReadTimeoutMillis(source.getLdapReadTimeoutMillis());
         target.setSessionTimeoutMinutes(source.getSessionTimeoutMinutes());
         target.setSessionTokenLength(source.getSessionTokenLength());
+        target.setAdminAccessMode(source.getAdminAccessMode());
+        target.setAdminIpAllowlist(source.getAdminIpAllowlist() == null
+                ? new ArrayList<String>() : new ArrayList<>(source.getAdminIpAllowlist()));
+        target.setWorkspaceAccessMode(source.getWorkspaceAccessMode());
+        target.setWorkspaceIpAllowlist(source.getWorkspaceIpAllowlist() == null
+                ? new ArrayList<String>() : new ArrayList<>(source.getWorkspaceIpAllowlist()));
     }
 
     private static UserEntity copyUser(UserEntity source) {

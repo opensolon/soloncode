@@ -4,6 +4,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 用户认证配置 - 用于用户管理和会话隔离。
@@ -68,4 +70,14 @@ public class UserAuthConfig implements Serializable {
     private int sessionTimeoutMinutes = 60;
     /** 会话 token 长度（字节） */
     private int sessionTokenLength = 32;
+
+    // ====== 访问范围 ======
+    /** 管理控制台访问范围：local, allowlist。默认仅限本机。 */
+    private volatile String adminAccessMode = AccessPolicy.LOCAL;
+    /** 管理控制台 IP 白名单。 */
+    private List<String> adminIpAllowlist = new ArrayList<>();
+    /** 工作台访问范围：local, allowlist, any。默认不限制来源，是否登录由认证配置决定。 */
+    private volatile String workspaceAccessMode = AccessPolicy.ANY;
+    /** 工作台 IP 白名单。 */
+    private List<String> workspaceIpAllowlist = new ArrayList<>();
 }

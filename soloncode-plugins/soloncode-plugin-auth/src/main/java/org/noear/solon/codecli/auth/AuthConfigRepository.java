@@ -391,6 +391,16 @@ public final class AuthConfigRepository {
             if (config.getMode() == null || !("file".equals(config.getMode()) || "database".equals(config.getMode()) || "ldap".equals(config.getMode()))) throw new IllegalStateException("认证模式无效: " + file);
             config.setMode(UserStoreFactory.normalizeMode(config.getMode()));
             if (config.getSessionTimeoutMinutes() < 0 || config.getSessionTokenLength() <= 0) throw new IllegalStateException("会话配置无效: " + file);
+            config.setAdminAccessMode(AccessPolicy.normalizeMode(config.getAdminAccessMode(), true));
+            config.setWorkspaceAccessMode(AccessPolicy.normalizeMode(config.getWorkspaceAccessMode(), false));
+            config.setAdminIpAllowlist(AccessPolicy.normalizeAllowlist(config.getAdminIpAllowlist()));
+            config.setWorkspaceIpAllowlist(AccessPolicy.normalizeAllowlist(config.getWorkspaceIpAllowlist()));
+            if (AccessPolicy.ALLOWLIST.equals(config.getAdminAccessMode()) && config.getAdminIpAllowlist().isEmpty()) {
+                throw new IllegalStateException("管理控制台 IP 白名单不能为空: " + file);
+            }
+            if (AccessPolicy.ALLOWLIST.equals(config.getWorkspaceAccessMode()) && config.getWorkspaceIpAllowlist().isEmpty()) {
+                throw new IllegalStateException("工作台 IP 白名单不能为空: " + file);
+            }
             return config;
         } catch (Exception e) {
             throw new IllegalStateException("认证配置无效: " + file, e);

@@ -79,6 +79,20 @@ public class UserAuthFilter implements Filter {
     @Override
     public void doFilter(Context ctx, FilterChain chain) throws Throwable {
         String path = ctx.path();
+        if (isAdminPath(path)) {
+            if (!AccessPolicy.isAllowed(userAuthConfig.getAdminAccessMode(),
+                    userAuthConfig.getAdminIpAllowlist(), ctx.remoteIp(), true)) {
+                responseAccessDenied(ctx);
+                return;
+            }
+        } else {
+            // 工作台来源策略与认证开关独立；any 模式是否需要登录由下方认证分支决定。
+            if (!AccessPolicy.isAllowed(userAuthConfig.getWorkspaceAccessMode(),
+                    userAuthConfig.getWorkspaceIpAllowlist(), ctx.remoteIp(), false)) {
+                responseAccessDenied(ctx);
+                return;
+            }
+        }
         // /web/run 同时兼容实例级 Bearer token 与用户管理 Basic Auth，认证由 RunController 完成。
         if (isRunPath(path)) {
             chain.doFilter(ctx);
@@ -189,6 +203,12 @@ public class UserAuthFilter implements Filter {
         return BasicAuthAuthenticator.isBasic(ctx)
                 && ((ctx.header("Origin") != null && !ctx.header("Origin").trim().isEmpty())
                 || (ctx.header("Referer") != null && !ctx.header("Referer").trim().isEmpty()));
+    }
+
+    private void responseAccessDenied(Context ctx) throws IOException {
+        ctx.status(403);
+        ctx.headerSet("Content-Type", "application/json");
+        ctx.output("{\"code\":403,\"message\":\"当前来源地址不允许访问\"}");
     }
 
     private void responseForbidden(Context ctx) throws IOException {

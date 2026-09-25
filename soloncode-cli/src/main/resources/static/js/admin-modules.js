@@ -15,8 +15,77 @@
         auth: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
         users: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         audit: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h9l4 4v14H3V3h5z"/><path d="M17 3v5h4M7 12h10M7 16h10"/></svg>',
-        sessions: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h4"/></svg>'
+        sessions: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h4"/></svg>',
+        accessControl: '<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M8 12h8M12 8v8"/></svg>'
     };
+
+    // ============== 访问控制模块 ==============
+    var ACCESS_CONTROL_PANEL_HTML =
+        '<div class="settings-tab-content active" id="settingsTabAccessControl">' +
+        '  <div class="settings-section">' +
+        '    <div class="settings-section-header"><div><span class="settings-section-title" data-i18n="admin.accessControl.title">访问控制</span><div class="settings-section-desc" data-i18n="admin.accessControl.desc">分别控制管理控制台和工作台的来源地址访问范围。</div></div></div>' +
+        '    <div class="admin-flat-form admin-access-control-form">' +
+        '      <div class="form-group"><label data-i18n="admin.accessControl.adminLabel">管理控制台访问范围</label><select id="adminAccessMode" class="form-select-custom"><option value="local" data-i18n="admin.accessControl.local">仅限本机</option><option value="allowlist" data-i18n="admin.accessControl.allowlist">IP 白名单</option></select><div class="general-toggle-desc" data-i18n="admin.accessControl.adminDesc">控制用户管理、认证配置和其他管理功能。</div></div>' +
+        '      <div class="form-group" id="adminAccessAllowlistGroup" style="display:none"><label data-i18n="admin.accessControl.ipLabel">允许的 IP 地址</label><textarea id="adminAccessAllowlist" rows="4" placeholder="192.168.1.10&#10;192.168.1.20"></textarea><div class="general-toggle-desc" data-i18n="admin.accessControl.ipDesc">每行填写一个 IPv4 或 IPv6 地址，暂不支持网段。</div></div>' +
+        '      <div class="form-group"><label data-i18n="admin.accessControl.workspaceLabel">工作台访问范围</label><select id="workspaceAccessMode" class="form-select-custom"><option value="local" data-i18n="admin.accessControl.local">仅限本机</option><option value="allowlist" data-i18n="admin.accessControl.allowlist">IP 白名单</option><option value="any" data-i18n="admin.accessControl.any">不限制</option></select><div class="general-toggle-desc" data-i18n="admin.accessControl.workspaceDesc">工作台、业务接口、WebSocket 和执行能力遵循此策略。</div></div>' +
+        '      <div class="form-group" id="workspaceAccessAllowlistGroup" style="display:none"><label data-i18n="admin.accessControl.ipLabel">允许的 IP 地址</label><textarea id="workspaceAccessAllowlist" rows="4" placeholder="192.168.1.10&#10;192.168.1.20"></textarea></div>' +
+        '      <div class="form-actions form-actions-end"><button type="button" class="btn-primary" id="accessControlSaveBtn" data-i18n="admin.accessControl.saveBtn">保存</button><span class="admin-ldap-test-result" id="accessControlStatus"></span></div>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+
+    function renderAccessControl(container) {
+        container.innerHTML = ACCESS_CONTROL_PANEL_HTML;
+        if (window.I18n && typeof window.I18n.apply === 'function') {
+            try { window.I18n.apply(container); } catch (e) {}
+        }
+        var adminMode = container.querySelector('#adminAccessMode');
+        var workspaceMode = container.querySelector('#workspaceAccessMode');
+        var adminList = container.querySelector('#adminAccessAllowlist');
+        var workspaceList = container.querySelector('#workspaceAccessAllowlist');
+        var adminGroup = container.querySelector('#adminAccessAllowlistGroup');
+        var workspaceGroup = container.querySelector('#workspaceAccessAllowlistGroup');
+        var status = container.querySelector('#accessControlStatus');
+        function updateVisibility() {
+            adminGroup.style.display = adminMode.value === 'allowlist' ? '' : 'none';
+            workspaceGroup.style.display = workspaceMode.value === 'allowlist' ? '' : 'none';
+        }
+        function lines(values) { return Array.isArray(values) ? values.join('\n') : ''; }
+        function load() {
+            status.textContent = '加载中...';
+            adminRequest('/web/admin/access-control').then(function (data) {
+                if (!container.isConnected) return;
+                adminMode.value = data.admin.mode;
+                workspaceMode.value = data.workspace.mode;
+                adminList.value = lines(data.admin.allowlist);
+                workspaceList.value = lines(data.workspace.allowlist);
+                updateVisibility();
+                status.textContent = '';
+            }).catch(function (error) {
+                if (error.message !== '401' && error.message !== '403') status.textContent = '访问控制加载失败，请重试。';
+            });
+        }
+        function list(text) { return text.split(/\r?\n/).map(function (v) { return v.trim(); }).filter(Boolean); }
+        function save() {
+            var btn = container.querySelector('#accessControlSaveBtn');
+            if (btn.disabled) return;
+            btn.disabled = true;
+            status.textContent = '保存中...';
+            adminRequest('/web/admin/access-control/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                admin: { mode: adminMode.value, allowlist: list(adminList.value) },
+                workspace: { mode: workspaceMode.value, allowlist: list(workspaceList.value) }
+            }) }).then(function () {
+                status.textContent = '访问控制策略已保存';
+            }).catch(function (error) {
+                if (error.message !== '401' && error.message !== '403') status.textContent = '访问控制保存失败，请重试。';
+            }).then(function () { btn.disabled = false; });
+        }
+        adminMode.addEventListener('change', updateVisibility);
+        workspaceMode.addEventListener('change', updateVisibility);
+        container.querySelector('#accessControlSaveBtn').addEventListener('click', save);
+        updateVisibility();
+        load();
+    }
 
     // ============== 认证配置模块 ==============
     // 独立 tab（对齐 web.html 设置的「一个功能一个区」组织方式）。
@@ -68,7 +137,7 @@
         '          <div class="admin-ldap-test-actions"><button type="button" class="btn-secondary" id="userAuthLdapTestBtn">测试连接与角色</button><span class="admin-ldap-test-result" id="userAuthLdapTestResult"></span></div>' +
         '        </div>' +
         '      </div>' +
-        '      <div class="form-actions form-actions-end"><button type="button" class="btn-primary" id="userAuthSaveConfigBtn" data-i18n="users.auth.saveBtn">保存配置</button></div>' +
+        '      <div class="form-actions form-actions-end"><button type="button" class="btn-primary" id="userAuthSaveConfigBtn" data-i18n="users.auth.saveBtn">保存</button></div>'
         '    </div>' +
         '  </div>' +
         '</div>';
@@ -320,9 +389,10 @@
         load(1);
     }
 
-    // 导航仅保留「认证配置 → 用户管理」两项（顺序由 order 决定）。
-    // 审计与会话模块保留渲染实现，供后续重新开放，但不参与当前导航（后端 modules 不再返回其 key）。
+    // 导航顺序：访问控制 → 认证配置 → 用户管理。
+    // 审计与会话模块保留渲染实现，供后续重新开放，但不参与当前导航。
     window.ADMIN_MODULES = [
+        { key: 'access-control', title: '访问控制', icon: ICON.accessControl, order: 5, render: renderAccessControl },
         { key: 'auth', title: '认证配置', icon: ICON.auth, order: 10, render: renderAuth },
         { key: 'users', title: '用户管理', icon: ICON.users, order: 20, render: renderUsers },
         { key: 'audit', title: '审计日志', icon: ICON.audit, order: 30, render: renderAudit },

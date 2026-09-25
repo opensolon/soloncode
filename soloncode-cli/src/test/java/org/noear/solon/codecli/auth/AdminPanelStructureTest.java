@@ -183,6 +183,30 @@ public class AdminPanelStructureTest {
     }
 
     @Test
+    public void accessControlTabPrecedesAuthAndHasIndependentPolicies() throws IOException {
+        String modules = resourceText("/static/js/admin-modules.js");
+        assertTrue(modules.contains("key: 'access-control'")
+                        && modules.contains("function renderAccessControl")
+                        && modules.contains("id=\"settingsTabAccessControl\""),
+                "管理台应提供独立的访问控制 Tab");
+        assertTrue(modules.indexOf("key: 'access-control'") < modules.indexOf("key: 'auth'"),
+                "访问控制 Tab 应排在认证配置之前");
+        assertTrue(modules.contains("id=\"adminAccessMode\"")
+                        && modules.contains("id=\"workspaceAccessMode\""),
+                "访问控制应分别提供管理台和工作台访问范围");
+        int adminModeStart = modules.indexOf("id=\"adminAccessMode\"");
+        int adminModeEnd = modules.indexOf("</select>", adminModeStart);
+        assertTrue(adminModeStart >= 0 && adminModeEnd > adminModeStart,
+                "管理控制台访问范围选择器必须存在");
+        assertFalse(modules.substring(adminModeStart, adminModeEnd).contains("value=\"any\""),
+                "管理控制台不应提供不限制选项");
+        assertTrue(modules.contains("<option value=\"any\" data-i18n=\"admin.accessControl.any\">不限制</option>"),
+                "工作台应提供不限制选项");
+        assertTrue(new AdminController(null, null, null).modules().getData().contains("access-control"),
+                "后端模块清单必须返回 access-control");
+    }
+
+    @Test
     public void adminGateIsIndependentFromWorkbenchAuthSwitch() {
         // 管理台路径不是普通工作台公开路径；认证开关关闭也不能使管理台匿名放行。
         assertTrue(UserAuthFilter.isAdminPath("/web/admin"));
