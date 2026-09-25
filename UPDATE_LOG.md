@@ -1,7 +1,8 @@
 
-### v2026.9.23
+### v2026.9.25
 
-* 添加 soloncode web 多用户管理
+* 添加 soloncode web 管理控制台
+* 添加 soloncode web 多用户管理（之前有，开放出来）
 * 细节优化
 
 
