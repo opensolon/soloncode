@@ -24,13 +24,19 @@
         '<div class="settings-tab-content active" id="settingsTabAccessControl">' +
         '  <div class="settings-section">' +
         '    <div class="settings-section-header"><div><span class="settings-section-title" data-i18n="admin.accessControl.title">访问控制</span><div class="settings-section-desc" data-i18n="admin.accessControl.desc">分别控制管理控制台和工作台的来源地址访问范围。</div></div></div>' +
-        '    <div class="admin-flat-form admin-access-control-form">' +
-        '      <div class="form-group"><label data-i18n="admin.accessControl.adminLabel">管理控制台访问范围</label><select id="adminAccessMode" class="form-select-custom"><option value="local" data-i18n="admin.accessControl.local">仅限本机</option><option value="allowlist" data-i18n="admin.accessControl.allowlist">IP 白名单</option></select><div class="general-toggle-desc" data-i18n="admin.accessControl.adminDesc">控制用户管理、认证配置和其他管理功能。</div></div>' +
-        '      <div class="form-group" id="adminAccessAllowlistGroup" style="display:none"><label data-i18n="admin.accessControl.ipLabel">允许的 IP 地址</label><textarea id="adminAccessAllowlist" rows="4" placeholder="192.168.1.10&#10;192.168.1.20"></textarea><div class="general-toggle-desc" data-i18n="admin.accessControl.ipDesc">每行填写一个 IPv4 或 IPv6 地址，暂不支持网段。</div></div>' +
-        '      <div class="form-group"><label data-i18n="admin.accessControl.workspaceLabel">工作台访问范围</label><select id="workspaceAccessMode" class="form-select-custom"><option value="local" data-i18n="admin.accessControl.local">仅限本机</option><option value="allowlist" data-i18n="admin.accessControl.allowlist">IP 白名单</option><option value="any" data-i18n="admin.accessControl.any">不限制</option></select><div class="general-toggle-desc" data-i18n="admin.accessControl.workspaceDesc">工作台、业务接口、WebSocket 和执行能力遵循此策略。</div></div>' +
-        '      <div class="form-group" id="workspaceAccessAllowlistGroup" style="display:none"><label data-i18n="admin.accessControl.ipLabel">允许的 IP 地址</label><textarea id="workspaceAccessAllowlist" rows="4" placeholder="192.168.1.10&#10;192.168.1.20"></textarea></div>' +
-        '      <div class="form-actions form-actions-end"><button type="button" class="btn-primary" id="accessControlSaveBtn" data-i18n="admin.accessControl.saveBtn">保存</button><span class="admin-ldap-test-result" id="accessControlStatus"></span></div>' +
+        '    <div class="general-card-group admin-settings-card-group admin-access-control-form">' +
+        '      <div class="general-card admin-settings-card">' +
+        '        <div class="general-card-header"><div class="general-card-text"><div class="general-card-title" data-i18n="admin.accessControl.adminLabel">管理控制台访问范围</div></div></div>' +
+        '        <div class="general-card-body"><div class="form-group"><select id="adminAccessMode" class="form-select-custom" aria-label="管理控制台访问范围"><option value="local" data-i18n="admin.accessControl.local">仅限本机</option><option value="allowlist" data-i18n="admin.accessControl.allowlist">IP 白名单</option></select><div class="general-toggle-desc" data-i18n="admin.accessControl.adminDesc">控制用户管理、认证配置和其他管理功能。</div></div>' +
+        '          <div class="form-group" id="adminAccessAllowlistGroup" style="display:none"><label data-i18n="admin.accessControl.ipLabel">允许的 IP 地址</label><textarea id="adminAccessAllowlist" rows="4" placeholder="192.168.1.10&#10;192.168.1.20"></textarea><div class="general-toggle-desc" data-i18n="admin.accessControl.ipDesc">每行填写一个 IPv4 或 IPv6 地址，暂不支持网段。</div></div></div>' +
+        '      </div>' +
+        '      <div class="general-card admin-settings-card">' +
+        '        <div class="general-card-header"><div class="general-card-text"><div class="general-card-title" data-i18n="admin.accessControl.workspaceLabel">工作台访问范围</div></div></div>' +
+        '        <div class="general-card-body"><div class="form-group"><select id="workspaceAccessMode" class="form-select-custom" aria-label="工作台访问范围"><option value="local" data-i18n="admin.accessControl.local">仅限本机</option><option value="allowlist" data-i18n="admin.accessControl.allowlist">IP 白名单</option><option value="any" data-i18n="admin.accessControl.any">不限制</option></select><div class="general-toggle-desc" data-i18n="admin.accessControl.workspaceDesc">工作台、业务接口、WebSocket 和执行能力遵循此策略。</div></div>' +
+        '          <div class="form-group" id="workspaceAccessAllowlistGroup" style="display:none"><label data-i18n="admin.accessControl.ipLabel">允许的 IP 地址</label><textarea id="workspaceAccessAllowlist" rows="4" placeholder="192.168.1.10&#10;192.168.1.20"></textarea></div></div>' +
+        '      </div>' +
         '    </div>' +
+        '    <div class="form-actions form-actions-end admin-settings-actions"><button type="button" class="btn-primary" id="accessControlSaveBtn" data-i18n="admin.accessControl.saveBtn">保存</button><span class="admin-ldap-test-result" id="accessControlStatus"></span></div>' +
         '  </div>' +
         '</div>';
 
@@ -121,10 +127,10 @@
         '        </div>' +
         '      </div>' +
         '      <div class="user-auth-config-section admin-auth-config" id="userAuthConfigFile">' +
-        '        <div class="general-toggle-desc"><span data-i18n="users.auth.fileDesc">用户信息存储在本地文件中，适合单机使用</span><span data-i18n="users.auth.storeType">。当前存储：</span><span class="user-auth-store-type" id="userAuthStoreType">file</span></div>' +
+        '        <div class="general-card-title" data-i18n="users.auth.modeFile">文件存储</div><div class="general-toggle-desc"><span data-i18n="users.auth.fileDesc">用户信息存储在本地文件中，适合单机使用</span><span data-i18n="users.auth.storeType">。当前存储：</span><span class="user-auth-store-type" id="userAuthStoreType">file</span></div>' +
         '      </div>' +
         '      <div class="user-auth-config-section admin-auth-config" id="userAuthConfigLdap" style="display:none">' +
-        '        <div class="admin-ldap-notice">LDAP 用户、密码和组关系由目录服务统一管理。启用前必须用管理员组成员完成测试。</div>' +
+        '        <div class="general-card-title" data-i18n="users.auth.modeLdap">LDAP</div><div class="admin-ldap-notice">LDAP 用户、密码和组关系由目录服务统一管理。启用前必须用管理员组成员完成测试。</div>' +
         '        <div class="form-group"><label for="userAuthLdapUrl"><span data-i18n="users.auth.ldapUrl">LDAP 服务器 URL</span> <span class="required">*</span></label><input type="text" id="userAuthLdapUrl" placeholder="ldap://localhost:389"/></div>' +
         '        <div class="form-row-2col"><div class="form-group"><label for="userAuthLdapAdminDn" data-i18n="users.auth.ldapAdminDn">管理员 DN</label><input type="text" id="userAuthLdapAdminDn" placeholder="cn=admin,dc=example,dc=com"/></div><div class="form-group"><label for="userAuthLdapPassword" data-i18n="users.auth.ldapPassword">管理员密码</label><input type="password" id="userAuthLdapPassword" autocomplete="new-password" placeholder="留空则保留原密码"/></div></div>' +
         '        <div class="form-row-2col"><div class="form-group"><label for="userAuthLdapBaseDn"><span data-i18n="users.auth.ldapBaseDn">搜索基 DN</span> <span class="required">*</span></label><input type="text" id="userAuthLdapBaseDn" placeholder="ou=users,dc=example,dc=com"/></div><div class="form-group"><label for="userAuthLdapFilter"><span data-i18n="users.auth.ldapFilter">用户过滤器</span> <span class="required">*</span></label><input type="text" id="userAuthLdapFilter" placeholder="(uid={0})"/></div></div>' +

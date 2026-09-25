@@ -736,6 +736,78 @@ body.admin-body {
     margin-left: -6px;
 }
 
+/* 管理台设置区与 web.html「通用」保持同一套卡片节奏：内容块默认无重边框，移入时显示边框。 */
+.admin-content .admin-settings-card-group {
+    max-width: 760px;
+}
+
+.admin-content .admin-settings-card {
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: var(--bg-primary);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.admin-content .admin-settings-card:hover {
+    border-color: var(--border-color);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.admin-content .admin-settings-card .general-card-header {
+    padding: 16px 18px 0;
+}
+
+.admin-content .admin-settings-card .general-card-body {
+    padding: 14px 18px 18px;
+}
+
+.admin-content .admin-settings-card .general-card-title {
+    color: var(--text-primary);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.admin-content .admin-settings-card-group .form-group:last-child {
+    margin-bottom: 0;
+}
+
+/* 认证配置原有的设置行也使用通用卡片的悬停边框和标题颜色。 */
+.admin-content .admin-auth-form > .admin-setting-row,
+.admin-content .admin-auth-form > .admin-auth-config {
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: var(--bg-primary);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.admin-content .admin-auth-form > .admin-setting-row:hover,
+.admin-content .admin-auth-form > .admin-auth-config:hover {
+    border-color: var(--border-color);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.admin-content .admin-auth-form > .admin-setting-row {
+    padding: 14px 18px;
+    border-bottom: 1px solid transparent;
+}
+
+.admin-content .admin-auth-form > .admin-auth-config {
+    padding: 16px 18px 18px;
+}
+
+.admin-content .admin-auth-form > .admin-auth-config .general-card-title {
+    margin-bottom: 10px;
+    color: var(--text-primary);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.admin-content .admin-auth-form > .admin-auth-config .admin-ldap-notice {
+    margin-top: 0;
+}
+
 /* 认证模式沿用“用户对话隔离”的设置行结构；模式选择保留分段控件以表达二选一。 */
 .admin-content .admin-auth-mode-row {
     margin-bottom: 18px;

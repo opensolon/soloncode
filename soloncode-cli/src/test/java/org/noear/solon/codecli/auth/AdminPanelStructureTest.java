@@ -267,12 +267,13 @@ public class AdminPanelStructureTest {
         assertTrue(modules.contains("id=\"userFormDeleteBtn\""),
                 "删除按钮应移入表单视图");
 
-        // 认证、用户列表、用户表单均直接置于内容区，不再套 general-card 外框。
+        // 认证配置与 web.html「通用」保持一致，使用统一的内容卡片和标题样式；
+        // 用户列表与用户表单仍保持独立的扁平内容容器。
         int authStart = modules.indexOf("var AUTH_PANEL_HTML");
         int authEnd = modules.indexOf("function renderAuth", authStart);
         String authPanel = modules.substring(authStart, authEnd);
-        assertFalse(authPanel.contains("general-card"),
-                "认证配置不应再套 general-card 外框");
+        assertTrue(authPanel.contains("general-card-title") && authPanel.contains("admin-auth-config"),
+                "认证配置应使用通用卡片标题和内容容器");
 
         int usersStart = modules.indexOf("var USERS_PANEL_HTML");
         int usersEnd = modules.indexOf("function renderUsers", usersStart);
@@ -289,10 +290,11 @@ public class AdminPanelStructureTest {
                 "启用状态应移至用户列表，不应继续放在编辑表单");
 
         String adminCss = resourceText("/static/css/admin.css");
-        assertTrue(adminCss.contains(".admin-auth-config.user-auth-config-section")
-                        && adminCss.contains("border: 0")
-                        && adminCss.contains("background: transparent"),
-                "认证模式的动态配置区也应去除内层边框和底色");
+        assertTrue(adminCss.contains(".admin-settings-card")
+                        && adminCss.contains(".admin-auth-form > .admin-setting-row")
+                        && adminCss.contains("border-color: var(--border-color)")
+                        && adminCss.contains("color: var(--text-primary)"),
+                "认证配置和访问控制应使用统一的悬停边框与深色标题样式");
         assertTrue(adminCss.contains("--admin-content-width: 900px")
                         && adminCss.contains("align-self: center")
                         && adminCss.contains("width: var(--admin-content-width)")
