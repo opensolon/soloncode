@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +78,61 @@ function validateInstallerJarName(fileName) {
   return fileName;
 }
 
+export function parseJavaMajor(version) {
+  const match = String(version).match(/(?:^|[^0-9])(1\.)?(\d+)(?:[._+-]|$)/);
+  if (!match) {
+    throw new Error(`cannot determine Java major version from: ${version}`);
+  }
+  return match[1] ? Number(match[2]) : Number(match[2]);
+}
+
+function detectJavaMajor() {
+  const javaHome = process.env.JAVA_HOME;
+  if (javaHome) {
+    const releaseFile = path.join(javaHome, 'release');
+    if (existsSync(releaseFile)) {
+      const release = readFileSync(releaseFile, 'utf8');
+      const match = release.match(/^JAVA_VERSION="([^"]+)"/m);
+      if (match) {
+        return parseJavaMajor(match[1]);
+      }
+    }
+  }
+
+  const result = spawnSync('java', ['-version'], { encoding: 'utf8' });
+  if (result.error) {
+    throw new Error(`failed to start java: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`java -version exited with code ${result.status}`);
+  }
+  return parseJavaMajor(`${result.stderr ?? ''}\n${result.stdout ?? ''}`);
+}
+
+export function mavenCompilerProperties(javaMajor) {
+  if (!Number.isInteger(javaMajor) || javaMajor < 1) {
+    throw new Error(`invalid Java major version: ${javaMajor}`);
+  }
+  return javaMajor >= 23 ? ['-Dmaven.compiler.proc=full'] : [];
+}
+
+function escapeXmlAttribute(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function versionedJarComponentGuid(fileName) {
+  const namespace = Buffer.from('d5854b0d27f14fd988ca6e50f6b9685b', 'hex');
+  const bytes = createHash('sha1').update(namespace).update(fileName, 'utf8').digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex').toUpperCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function renderNsisHook(fileName) {
   const destinationName = validateInstallerJarName(fileName);
   return `!macro NSIS_HOOK_POSTINSTALL
@@ -97,6 +153,48 @@ export function renderNsisHook(fileName) {
   IfErrors 0 +2
     Abort "Failed to install ${destinationName}"
 !macroend
+`;
+}
+
+export function renderWixFragment(fileName, sourceJarPath) {
+  const destinationName = validateInstallerJarName(fileName);
+  const componentGuid = versionedJarComponentGuid(destinationName);
+  if (typeof sourceJarPath !== 'string' || sourceJarPath.length === 0) {
+    throw new Error('MSI source CLI JAR path must not be empty');
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="TARGETDIR">
+      <Directory Id="SOLONCODE_CLI_DIR"
+                 Name="bin" />
+    </DirectoryRef>
+
+    <DirectoryRef Id="SOLONCODE_CLI_DIR">
+      <Component Id="SolonCodeVersionedCliJar" Guid="${componentGuid}" Permanent="yes">
+        <File Id="SolonCodeVersionedCliJarFile" Source="${escapeXmlAttribute(sourceJarPath)}" Name="${destinationName}" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\\sorghum\\soloncode-desktop\\CliJars"
+                       Name="${destinationName}"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <CustomAction Id="SetSolonCodeCliDirectory"
+                  Property="SOLONCODE_CLI_DIR"
+                  Value="[%USERPROFILE]\\.soloncode\\bin"
+                  Execute="firstSequence" />
+    <InstallExecuteSequence>
+      <Custom Action="SetSolonCodeCliDirectory" Before="CostFinalize">1</Custom>
+    </InstallExecuteSequence>
+    <InstallUISequence>
+      <Custom Action="SetSolonCodeCliDirectory" Before="CostFinalize">1</Custom>
+    </InstallUISequence>
+  </Fragment>
+</Wix>
 `;
 }
 
@@ -196,6 +294,13 @@ export function writeInstallerHook(targetPlatform, hookRoot, fileName) {
   return hook.path;
 }
 
+export function writeWixFragment(hookRoot, fileName, sourceJarPath) {
+  const fragmentPath = path.join(hookRoot, 'windows', 'install-cli.wxs');
+  mkdirSync(path.dirname(fragmentPath), { recursive: true });
+  writeFileSync(fragmentPath, renderWixFragment(fileName, sourceJarPath), 'utf8');
+  return fragmentPath;
+}
+
 export function main(args = process.argv.slice(2), runtimePlatform = process.platform) {
   if (args.includes('--help')) {
     process.stdout.write(usage);
@@ -241,13 +346,30 @@ export function main(args = process.argv.slice(2), runtimePlatform = process.pla
     linux: path.join('linux', 'postinst'),
   };
   const installerHook = path.join(hookRoot, hookRelativePaths[targetPlatform]);
+  const wixFragment = path.join(hookRoot, 'windows', 'install-cli.wxs');
   const maven = runtimePlatform === 'win32' ? 'mvn.cmd' : 'mvn';
   const npx = runtimePlatform === 'win32' ? 'npx.cmd' : 'npx';
+  let javaMajor;
+  try {
+    javaMajor = detectJavaMajor();
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+  const compilerProperties = mavenCompilerProperties(javaMajor);
 
   process.stdout.write(`[package] target: ${targetPlatform}\n`);
   process.stdout.write(`[package] install jar: ~/.soloncode/bin/${installedJarName}\n`);
   process.stdout.write(`[package] installer hook: ${installerHook}\n`);
-  run(maven, ['-pl', 'soloncode-cli', '-am', '-Dmaven.test.skip=true', 'clean', 'package'], repositoryDir, dryRun);
+  if (targetPlatform === 'windows') {
+    process.stdout.write(`[package] MSI fragment: ${wixFragment}\n`);
+  }
+  process.stdout.write(`[package] Java: ${javaMajor}${compilerProperties.length > 0 ? ' (explicit annotation processing)' : ''}\n`);
+  run(maven, [
+    '-pl', 'soloncode-cli', '-am',
+    '-Dmaven.test.skip=true',
+    ...compilerProperties,
+    'clean', 'package',
+  ], repositoryDir, dryRun);
 
   process.stdout.write(`[package] bundle jar: ${sourceJar} -> ${bundledJar}\n`);
   if (!dryRun) {
@@ -257,6 +379,9 @@ export function main(args = process.argv.slice(2), runtimePlatform = process.pla
     mkdirSync(resourceDir, { recursive: true });
     copyFileSync(sourceJar, bundledJar);
     writeInstallerHook(targetPlatform, hookRoot, installedJarName);
+    if (targetPlatform === 'windows') {
+      writeWixFragment(hookRoot, installedJarName, bundledJar);
+    }
   }
 
   const platformConfigs = {
