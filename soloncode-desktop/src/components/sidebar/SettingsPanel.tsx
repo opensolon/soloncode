@@ -21,6 +21,7 @@ import { updateService, type UpdateInfo } from '../../services/updateService';
 import { requestDesktopModels } from '../../services/modelDiscoveryService';
 import { redactLogContent } from '../../utils/logViewer';
 import { ChannelQrBind } from './ChannelQrBind';
+import { AuditLogPanel } from './AuditLogPanel';
 import './SettingsPanel.css';
 import './ChannelPanel.css';
 
@@ -1533,7 +1534,7 @@ function PromptsSettings({ skillPrompt, agentPrompt, gitPrompt, onPromptChange }
 
 /* ==================== 日志查看 ==================== */
 function LogsSettings({ workspacePath }: { workspacePath?: string | null }) {
-  const [activeLog, setActiveLog] = useState<'desktop' | 'cli'>('desktop');
+  const [activeLog, setActiveLog] = useState<'desktop' | 'cli' | 'audit'>('desktop');
   const [logs, setLogs] = useState<Record<'desktop' | 'cli', string>>({ desktop: '', cli: '' });
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
@@ -1580,11 +1581,16 @@ function LogsSettings({ workspacePath }: { workspacePath?: string | null }) {
       <div className="log-viewer-toolbar">
         <button className={`settings-btn ${activeLog === 'desktop' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('desktop')}>桌面端日志</button>
         <button className={`settings-btn ${activeLog === 'cli' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('cli')}>CLI 日志</button>
+        <button className={`settings-btn ${activeLog === 'audit' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('audit')}>审计日志</button>
         <span className="log-viewer-hint">仅加载最近日志，敏感信息会自动脱敏</span>
       </div>
-      <pre className="log-viewer-content">
-        {content}
-      </pre>
+      {activeLog === 'audit' ? (
+        <AuditLogPanel />
+      ) : (
+        <pre className="log-viewer-content">
+          {content}
+        </pre>
+      )}
     </div>
   );
 }

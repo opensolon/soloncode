@@ -7,7 +7,7 @@ export type IconName =
   | 'file-java' | 'file-rs' | 'file-py' | 'file-img' | 'file-lock' | 'file-yml'
   // 功能图标
   | 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'settings'
-  | 'chat' | 'terminal' | 'code' | 'skills' | 'agents' | 'automation' | 'memory' | 'goal' | 'channels' | 'info' | 'model'
+  | 'chat' | 'terminal' | 'code' | 'skills' | 'agents' | 'automation' | 'memory' | 'goal' | 'channels' | 'info' | 'model' | 'audit'
   // 操作图标
   | 'add' | 'remove' | 'edit' | 'delete' | 'refresh' | 'save'
   | 'push' | 'pull' | 'commit' | 'stage' | 'unstage'
@@ -63,6 +63,7 @@ const iconPaths: Record<IconName, string> = {
   'code': 'M16 18l6-6-6-6M8 6l-6 6 6 6',
   'info': 'M12 16v-4M12 8h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20',
   'model': 'M12 2l9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 17l9 5 9-5',
+  'audit': 'M9 2h6a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM10 6h4M10 10h4M10 14h2M3 6l3 3-3 3M3 18h3',
 
   // 操作图标
   'add': 'M12 5v14M5 12h14',

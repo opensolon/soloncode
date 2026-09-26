@@ -20,6 +20,7 @@ target/
 *.flattened-pom.xml
 *.md
 !soloncode-cli/docs/*.md
+!soloncode-desktop/docs/*.md
 
 ### NetBeans ###
 nbproject/private/
@@ -47,3 +48,6 @@ soloncode-desktop/src-tauri/release/
 soloncode-desktop/src-tauri/build/
 soloncode-desktop/src-tauri/resources/
 nul
+nul
+soloncode-desktop-web/node_modules
+soloncode-desktop-web/dist

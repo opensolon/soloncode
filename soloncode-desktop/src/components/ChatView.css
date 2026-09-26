@@ -414,7 +414,7 @@
 
 .chat-review-file-row {
   width: 100%;
-  min-height: 34px;
+  min-height: 25px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

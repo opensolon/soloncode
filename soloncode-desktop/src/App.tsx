@@ -20,6 +20,7 @@ import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
 import { ConfirmDialog } from './components/common/ConfirmDialog';
 import { MemoryPanel } from './components/sidebar/MemoryPanel';
+import { AuditLogPanel } from './components/sidebar/AuditLogPanel';
 import { AgentDetail } from './components/sidebar/AgentDetail';
 import type { Settings } from './components/sidebar/SettingsPanel';
 import type { ChatReviewFile } from './components/ChatHeader';
@@ -1596,6 +1597,8 @@ function App() {
           }}
           onCreateWithAI={() => handleStartPromptCreation('agent')}
         />;
+      case 'audit':
+        return <AuditLogPanel />;
       default:
         return null;
     }

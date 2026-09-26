@@ -57,7 +57,18 @@ public class MountSettingsController extends BaseSettingsController {
     public Result mountsList(Context ctx) {
         List<Map<String, Object>> list = new ArrayList<>();
 
+        // 同一目录可能同时保留旧版自定义别名和新版系统别名。
+        // 安装目标只保留一个，并优先使用能明确表达 user/workspace 作用域的系统挂载。
+        Map<String, MountDir> uniqueMounts = new LinkedHashMap<>();
         for (MountDir entry : engine().getMounts()) {
+            String storageKey = mountStorageKey(entry);
+            MountDir current = uniqueMounts.get(storageKey);
+            if (current == null || (!current.isPrimary() && entry.isPrimary())) {
+                uniqueMounts.put(storageKey, entry);
+            }
+        }
+
+        for (MountDir entry : uniqueMounts.values()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("alias", entry.getAlias());
             item.put("type", entry.getType());
@@ -71,7 +82,9 @@ public class MountSettingsController extends BaseSettingsController {
 
             MountDo mountDo = settings().getMountPools().get(entry.getAlias());
             if (mountDo == null) {
-                item.put("scope", AgentFlags.SCOPE_USER);
+                item.put("scope", entry.getAlias().startsWith("@workspace-")
+                        ? AgentFlags.SCOPE_LOCAL
+                        : AgentFlags.SCOPE_USER);
             } else {
                 item.put("scope", mountDo.getScope());
             }
@@ -82,6 +95,19 @@ public class MountSettingsController extends BaseSettingsController {
         sortByName(list, "alias");
 
         return Result.succeed(list);
+    }
+
+    private String mountStorageKey(MountDir mount) {
+        Path realPath = mount.getRealPath();
+        if (realPath == null) {
+            return mount.getType() + "|alias:" + mount.getAlias();
+        }
+
+        String normalizedPath = realPath.toAbsolutePath().normalize().toString();
+        if (File.separatorChar == '\\') {
+            normalizedPath = normalizedPath.toLowerCase(Locale.ROOT);
+        }
+        return mount.getType() + "|path:" + normalizedPath;
     }
 
     /**
