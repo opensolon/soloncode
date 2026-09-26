@@ -2,6 +2,8 @@
 
 AI 驱动的桌面编程助手，基于 Tauri 2.0 + React 18 构建。前端通过 HTTP/WebSocket 连接后端 CLI 服务，实现 AI 对话、代码编辑、Git 管理等功能。
 
+版本更新：[SolonCode Desktop 26.7.30：会话、执行与连接体验更新](docs/soloncode-desktop-26.7.30.md)
+
 ## 架构
 
 ```

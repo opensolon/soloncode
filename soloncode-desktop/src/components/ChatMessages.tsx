@@ -454,7 +454,7 @@ const HitlApproval = memo(function HitlApproval({ item, onHitlAction }: { item: 
   );
 });
 
-const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme, onHitlAction, onFileSelect, autoExpanded, activeThinking }: { item: ContentItem; theme?: Theme; onHitlAction?: (action: HitlAction, item: ContentItem, output?: string) => void; onFileSelect?: (path: string) => void; autoExpanded?: boolean; activeThinking?: boolean }) {
+const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme, onHitlAction, onFileSelect, activeThinking }: { item: ContentItem; theme?: Theme; onHitlAction?: (action: HitlAction, item: ContentItem, output?: string) => void; onFileSelect?: (path: string) => void; activeThinking?: boolean }) {
   if (item.type === 'FILE') {
     const sizeLabel = item.size == null
       ? ''
@@ -493,7 +493,7 @@ const ContentItemRenderer = memo(function ContentItemRenderer({ item, theme, onH
 
   if (item.type === 'ACTION') {
     return (
-      <ActionBlock text={item.text || ''} toolName={item.toolName} args={item.args} theme={theme} onFileClick={onFileSelect} autoExpanded={autoExpanded} />
+      <ActionBlock text={item.text || ''} toolName={item.toolName} args={item.args} theme={theme} onFileClick={onFileSelect} />
     );
   }
 
@@ -580,13 +580,6 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onRerun,
   }, [message.contents]);
 
   const grouped = useMemo(() => groupConsecutiveActions(message.contents), [message.contents]);
-  const activeActionIndex = useMemo(() => {
-    if (!isStreaming) return -1;
-    const lastIndex = grouped.length - 1;
-    const last = grouped[lastIndex];
-    if (!last) return -1;
-    return last.kind === 'group' || last.item.type === 'ACTION' ? lastIndex : -1;
-  }, [grouped, isStreaming]);
 
   return (
     <div className={`message ${message.role.toLowerCase()}${isStreaming ? ' streaming' : ''}`}>
@@ -594,7 +587,7 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onRerun,
         <div className="message-text">
           {grouped.map((g, index) =>
             g.kind === 'group' ? (
-              <ActionGroupBlock key={index} toolName={g.toolName} items={g.items} title={g.title} theme={theme} onFileClick={onFileSelect} autoExpanded={index === activeActionIndex && !g.title} />
+              <ActionGroupBlock key={index} toolName={g.toolName} items={g.items} title={g.title} theme={theme} onFileClick={onFileSelect} />
             ) : (
               <ContentItemRenderer
                 key={index}
@@ -602,7 +595,6 @@ const MessageRow = memo(function MessageRow({ message, theme, onDelete, onRerun,
                 theme={theme}
                 onHitlAction={onHitlAction}
                 onFileSelect={onFileSelect}
-                autoExpanded={index === activeActionIndex}
                 activeThinking={Boolean(isStreaming && index === grouped.length - 1 && g.item.type === 'THINK')}
               />
             )
@@ -665,15 +657,14 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
       }
     }));
 
-    // 运行期间始终保留底部状态，避免工具调用结果出现后看不到仍在执行。
+    // 运行期间仅在用户停留底部时跟随，避免滚动条被强制拉到最低。
     const showThinkingRow = isLoading;
     const handleListHeightChanged = useCallback(() => {
       const followState = resolveChatAutoFollow({
-        running: isLoading,
         atBottom: autoFollowRef.current,
       });
       autoFollowRef.current = followState.enabled;
-      if (isLoading) {
+      if (isLoading && autoFollowRef.current) {
         // 流式响应会原地增高最后一项，totalCount 不变时 followOutput 不会自行触发。
         virtuosoRef.current?.autoscrollToBottom();
       }
@@ -709,11 +700,10 @@ export const ChatMessages = forwardRef<ChatMessagesRef, ChatMessagesProps>(
           totalCount={visibleMessages.length + (showThinkingRow ? 1 : 0)}
           itemContent={itemContent}
           followOutput={(isAtBottom) => resolveChatAutoFollow({
-            running: isLoading,
             atBottom: autoFollowRef.current && isAtBottom,
           }).behavior}
           atBottomStateChange={(atBottom) => {
-            autoFollowRef.current = resolveChatAutoFollow({ running: isLoading, atBottom }).enabled;
+            autoFollowRef.current = resolveChatAutoFollow({ atBottom }).enabled;
           }}
           totalListHeightChanged={handleListHeightChanged}
           initialTopMostItemIndex={Math.max(0, visibleMessages.length + (showThinkingRow ? 1 : 0) - 1)}

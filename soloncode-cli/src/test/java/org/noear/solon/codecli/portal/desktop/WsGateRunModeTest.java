@@ -16,10 +16,11 @@ class WsGateRunModeTest {
     }
 
     @Test
-    void autoModeOnlyProtectsCommands() {
+    void autoModeBypassesAllApprovals() {
         assertFalse(WsGate.requiresDesktopApproval("auto", "write"));
         assertFalse(WsGate.requiresDesktopApproval("auto", "edit"));
-        assertTrue(WsGate.requiresDesktopApproval("auto", "bash"));
+        assertFalse(WsGate.requiresDesktopApproval("auto", "bash"));
+        assertFalse(WsGate.requiresDesktopApproval("auto", "read"));
     }
 
     @Test

@@ -8,8 +8,12 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
+import org.noear.solon.codecli.workspace.WorkspaceManager;
+import org.noear.solon.codecli.workspace.WorkspaceMeta;
 import org.noear.solon.core.handle.Result;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -27,18 +31,36 @@ class MountSettingsControllerTest {
     private MountSettingsController controller;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         oldUserHome = System.getProperty("user.home");
         oldUserDir = System.getProperty("user.dir");
         System.setProperty("user.home", tempDir.resolve("home").toString());
         System.setProperty("user.dir", tempDir.resolve("workspace").toString());
+
+        // 预建挂载目录：realPath 解析依赖目录存在，否则去重键退化为别名
+        Files.createDirectories(tempDir.resolve("home/.soloncode/skills"));
+        Files.createDirectories(tempDir.resolve("workspace/.soloncode/skills"));
 
         HarnessEngine engine = HarnessEngine.of(tempDir.resolve("workspace").toString(), ".soloncode/")
                 .mountAdd(MountDir.builder().alias("@global-skills").type(MountType.SKILLS).path("~/.soloncode/skills/").build())
                 .mountAdd(MountDir.builder().alias("@user-skills").type(MountType.SKILLS).path("~/.soloncode/skills/").primary(true).build())
                 .mountAdd(MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path("./.soloncode/skills/").primary(true).build())
                 .build();
-        controller = new MountSettingsController(engine, new AgentSettings(), null, null);
+
+        // 直接构建工作区上下文并覆写 getOrCreate，绕开需要 Solon 运行时的完整启动链
+        WorkspaceContext workspaceContext = new WorkspaceContext(
+                new WorkspaceMeta("default", "workspace",
+                        tempDir.resolve("workspace").toString(), System.currentTimeMillis(), true),
+                engine, null, null, null, null, null, null, new AgentSettings());
+
+        WorkspaceManager workspaceManager = new WorkspaceManager(new AgentSettings()) {
+            @Override
+            public WorkspaceContext getOrCreate(String workspaceIdOrPath) {
+                return workspaceContext;
+            }
+        };
+
+        controller = new MountSettingsController(workspaceManager);
     }
 
     @AfterEach

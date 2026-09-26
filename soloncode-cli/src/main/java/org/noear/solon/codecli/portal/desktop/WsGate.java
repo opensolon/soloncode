@@ -653,7 +653,7 @@ public class WsGate extends SimpleWebSocketListener {
                     currentInput = "[规划模式 - 仅分析不执行任何操作] " + currentInput;
                 }
             } else if ("auto".equals(mode)) {
-                // 自动编辑模式：文件编辑自动放行，shell 命令仍需审批
+                // 自动编辑模式：文件编辑与命令执行均自动放行，无需审批
                 session.attrs().remove("_plan_mode");
             } else {
                 session.attrs().remove("_plan_mode");
@@ -1371,12 +1371,12 @@ public class WsGate extends SimpleWebSocketListener {
 
     static boolean requiresDesktopApproval(String mode, String toolName) {
         String normalizedMode = normalizeDesktopRunMode(mode);
-        // 完全访问模式：编辑和命令执行均无需审批
-        if ("full".equals(normalizedMode)) {
+        if ("auto".equals(normalizedMode) || "full".equals(normalizedMode)) {
+            // 自动编辑/完全访问模式：文件修改与命令执行均无需审批
             return false;
         }
         if ("bash".equals(toolName)) {
-            return "default".equals(normalizedMode) || "auto".equals(normalizedMode);
+            return "default".equals(normalizedMode);
         }
         return "default".equals(normalizedMode)
                 && ("write".equals(toolName) || "edit".equals(toolName));

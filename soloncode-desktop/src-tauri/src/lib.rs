@@ -1726,14 +1726,40 @@ fn fetch_current_backend_version(backend_port: Option<u16>) -> Option<String> {
 }
 
 fn fetch_latest_desktop_release(client: &reqwest::blocking::Client) -> Result<Option<DesktopReleaseInfo>, String> {
-    let mut releases: Vec<RemoteRelease> = client
-        .get("https://gitee.com/api/v5/repos/opensolon/soloncode/releases?page=1&per_page=100")
-        .send()
-        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
-        .error_for_status()
-        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
-        .json()
-        .map_err(|e| format!("解析桌面发行版列表失败: {}", e))?;
+    // Gitee 接口按创建时间分页返回，仅拉取第一页会漏掉较新的发行版（如 v2026.8.11-desktop 曾落在第二页），
+    // 因此按从新到旧逐页拉取，直到不足一页或达到安全上限
+    const PER_PAGE: usize = 100;
+    const MAX_PAGES: usize = 10;
+
+    let mut releases: Vec<RemoteRelease> = Vec::new();
+    for page in 1..=MAX_PAGES {
+        let url = format!(
+            "https://gitee.com/api/v5/repos/opensolon/soloncode/releases?page={}&per_page={}&direction=desc",
+            page, PER_PAGE
+        );
+
+        let fetched: Vec<RemoteRelease> = match client
+            .get(&url)
+            .send()
+            .map_err(|e| format!("读取桌面发行版列表失败: {}", e))
+            .and_then(|resp| {
+                resp.error_for_status()
+                    .map_err(|e| format!("读取桌面发行版列表失败: {}", e))
+            })
+            .and_then(|resp| resp.json().map_err(|e| format!("解析桌面发行版列表失败: {}", e)))
+        {
+            Ok(list) => list,
+            // 首页失败视为接口不可用直接报错；后续分页失败时降级使用已拉取数据（首页已含最新发行版）
+            Err(_) if page > 1 => break,
+            Err(err) => return Err(err),
+        };
+
+        let reached_last_page = fetched.len() < PER_PAGE;
+        releases.extend(fetched);
+        if reached_last_page {
+            break;
+        }
+    }
 
     releases.sort_by(|left, right| compare_version_text(&right.tag_name, &left.tag_name));
 

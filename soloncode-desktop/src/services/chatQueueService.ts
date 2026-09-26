@@ -68,7 +68,7 @@ function fromWire(item: QueueWireItem): QueuedChatMessage | null {
       contexts: [],
       attachments: [],
       reasoningEffort: effort === 'low' || effort === 'high' || effort === 'max' ? effort : 'medium',
-      mode: item.mode === 'auto' || item.mode === 'plan' || item.mode === 'goal' ? item.mode : 'default',
+      mode: item.mode === 'auto' || item.mode === 'full' || item.mode === 'plan' || item.mode === 'goal' ? item.mode : 'default',
       goalMaxTokens: Number(item.goalMaxTokens) > 0 ? Math.floor(Number(item.goalMaxTokens)) : undefined,
       goalMaxDurationMinutes: Number(item.goalMaxDurationMinutes) > 0 ? Math.floor(Number(item.goalMaxDurationMinutes)) : undefined,
       goalMaxIterations: Number(item.goalMaxIterations) > 0 ? Math.floor(Number(item.goalMaxIterations)) : undefined,
