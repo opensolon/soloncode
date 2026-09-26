@@ -48,7 +48,7 @@ test('dry run plans the versioned CLI install destination', () => {
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /~\/.soloncode\/bin\/soloncode-cli_26\.8\.11\.jar/);
+  assert.match(result.stdout, /~\/.soloncode\/bin\/soloncode-cli_26\.9\.26\.jar/);
 });
 
 test('renders strict native installer hooks for the versioned CLI jar', () => {
@@ -126,7 +126,7 @@ test('dry run prepares the native hook and adds a macOS PKG installer', () => {
     encoding: 'utf8',
   });
   assert.equal(mac.status, 0, mac.stderr);
-  assert.match(mac.stdout, /pkgbuild .*soloncode-desktop_26\.8\.11_.*\.pkg/);
+  assert.match(mac.stdout, /pkgbuild .*soloncode-desktop_26\.9\.26_.*\.pkg/);
 });
 
 test('rejects packaging for a platform different from the host', () => {

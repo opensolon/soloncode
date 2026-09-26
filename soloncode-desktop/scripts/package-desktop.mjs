@@ -259,7 +259,13 @@ export function main(args = process.argv.slice(2), runtimePlatform = process.pla
     writeInstallerHook(targetPlatform, hookRoot, installedJarName);
   }
 
-  run(npx, ['tauri', 'build', '--config', 'src-tauri/tauri.package.conf.json'], desktopDir, dryRun);
+  const platformConfigs = {
+    windows: 'src-tauri/tauri.windows.conf.json',
+    mac: 'src-tauri/tauri.macos.conf.json',
+    linux: 'src-tauri/tauri.linux.conf.json',
+  };
+  const tauriBuildArgs = ['tauri', 'build', '--config', 'src-tauri/tauri.package.conf.json', '--config', platformConfigs[targetPlatform]];
+  run(npx, tauriBuildArgs, desktopDir, dryRun);
 
   if (targetPlatform === 'mac') {
     const macApp = path.join(desktopDir, 'src-tauri', 'target', 'release', 'bundle', 'macos', 'soloncode-desktop.app');
