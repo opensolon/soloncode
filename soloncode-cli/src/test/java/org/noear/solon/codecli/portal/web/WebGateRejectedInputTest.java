@@ -49,14 +49,13 @@ class WebGateRejectedInputTest {
     }
 
     @Test
-    void admittingInputAloneIsNotAnActiveStream() throws Exception {
+    void admittingInputAloneIsNotAnActiveStream() {
         AgentSession session = InMemoryAgentSession.of();
-        Method method = WebGate.class.getDeclaredMethod("hasActiveStream", AgentSession.class);
-        method.setAccessible(true);
-        session.attrs().put("session.input.admitting", Boolean.TRUE);
-        assertFalse((Boolean) method.invoke(null, session));
+        session.attrs().put(WebGate.ATTR_INPUT_ADMITTING, Boolean.TRUE);
+        assertTrue(WebGate.isInputAdmitting(session));
+        assertFalse(WebGate.hasActiveStream(session));
         session.attrs().put("disposable", Disposables.composite());
-        assertTrue((Boolean) method.invoke(null, session));
+        assertTrue(WebGate.hasActiveStream(session));
     }
 
     @Test

@@ -21,8 +21,8 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.portal.web.SessionQueue;
 import org.noear.solon.codecli.portal.web.SteerInterceptor;
+import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.core.util.Assert;
-import reactor.core.Disposable;
 
 /**
  * /steer 命令 - 向正在执行的任务插入实时补充（插话）。
@@ -105,9 +105,8 @@ public class SteerCommand implements Command {
                 // 与 SessionQueue 的入队共用 attrs 锁，缩小忙态检查到入队之间的窗口。
                 if (session != null) {
                     synchronized (session.attrs()) {
-                        Object slot = session.attrs().get("disposable");
-                        boolean busy = Boolean.TRUE.equals(session.attrs().get("session.input.admitting"))
-                                || (slot instanceof Disposable.Composite && !((Disposable.Composite) slot).isDisposed());
+                        boolean busy = WebGate.isInputAdmitting(session)
+                                || WebGate.hasActiveStream(session);
                         if (busy) {
                             int n = SessionQueue.enqueue(session, text, source, sourceUserId, replyTarget, messageId);
                             ctx.println(n > 0

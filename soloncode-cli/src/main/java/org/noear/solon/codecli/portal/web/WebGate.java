@@ -86,6 +86,9 @@ public class WebGate extends SimpleWebSocketListener {
     /** 会话属性：本轮 agent 流是否已向客户端发送过 done（防 interrupt + doFinally 双发） */
     private static final String ATTR_STREAM_DONE_SENT = "streamDoneSent";
 
+    /** 会话属性：输入已被接纳但 Agent 流尚未完成注册，用于防止并发启动竞态。 */
+    public static final String ATTR_INPUT_ADMITTING = "session.input.admitting";
+
     private final WorkspaceManager workspaceManager;
 
     /** 流式响应构建器，负责组装 ReAct Agent 的流式输出并通过本网关推送 */
@@ -462,9 +465,20 @@ public class WebGate extends SimpleWebSocketListener {
      * 流未建立（或已失败）时的 done 出口。已有流的 done 只能由那条流收尾；
      * 拒绝另一条输入时绝不能抢发。仅有输入受理占位而没有流时，仍需结束本次输入。
      */
-    private static boolean hasActiveStream(AgentSession session) {
+    public static boolean hasActiveStream(AgentSession session) {
+        if (session == null) return false;
         Object slot = session.attrs().get("disposable");
         return slot instanceof Disposable.Composite && !((Disposable.Composite) slot).isDisposed();
+    }
+
+    /**
+     * 判断输入是否已占用本会话的启动闩。
+     *
+     * <p>该状态只表示输入正在从受理阶段进入任务/命令处理阶段，不代表已有 Agent 流。
+     * 因此任务回调和流状态判断不得把它当作 active stream。</p>
+     */
+    public static boolean isInputAdmitting(AgentSession session) {
+        return session != null && Boolean.TRUE.equals(session.attrs().get(ATTR_INPUT_ADMITTING));
     }
 
     private void emitDoneGuarded(WorkspaceContext wsContext, AgentSession session) {
@@ -677,8 +691,11 @@ public class WebGate extends SimpleWebSocketListener {
                 }
                 // 忙态命令是旁路操作，不能改写正在运行任务的回复目标。
                 boolean sideCommand = busyCommand && isSessionBusy(session);
-                if (!dispatch && !busyCommand) {
-                    session.attrs().put("session.input.admitting", Boolean.TRUE);
+                // 只有已经在真实任务上运行的旁路命令才不占启动闩。
+                // runnableWhenBusy 命令在空闲会话中也可能启动任务（如 /steer），
+                // 此时必须先占位，否则它与普通输入之间仍存在并发开流窗口。
+                if (!dispatch && !sideCommand) {
+                    session.attrs().put(ATTR_INPUT_ADMITTING, Boolean.TRUE);
                     admitted = true;
                 }
                 if (!sideCommand) {
@@ -849,7 +866,7 @@ public class WebGate extends SimpleWebSocketListener {
         } finally {
             if (session != null) {
                 if (admitted) {
-                    synchronized (session.attrs()) { session.attrs().remove("session.input.admitting"); }
+                    synchronized (session.attrs()) { session.attrs().remove(ATTR_INPUT_ADMITTING); }
                     drainSessionQueue(wsContext, session);
                 }
                 if (session.isEmpty() && Assert.isNotEmpty(input)) {
@@ -1283,12 +1300,7 @@ public class WebGate extends SimpleWebSocketListener {
      * @return true 表示会话有正在执行的 AI 任务
      */
     private boolean isSessionBusy(AgentSession session) {
-        if (Boolean.TRUE.equals(session.attrs().get("session.input.admitting"))) return true;
-        Object slot = session.attrs().get("disposable");
-        if (slot instanceof Disposable.Composite) {
-            return !((Disposable.Composite) slot).isDisposed();
-        }
-        return false;
+        return isInputAdmitting(session) || hasActiveStream(session);
     }
 
     /**
