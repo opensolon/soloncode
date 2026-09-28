@@ -1323,17 +1323,13 @@ public class WebController {
         if (text == null || text.trim().isEmpty()) {
             return Result.failure(400, "EMPTY_TEXT");
         }
-        text = text.trim();
-        if (text.length() > SteerInterceptor.MAX_TEXT_LENGTH) {
+        if (text.trim().length() > SteerInterceptor.MAX_TEXT_LENGTH) {
             return Result.failure(400, "TEXT_TOO_LONG");
         }
-        if (steerId == null || steerId.trim().isEmpty()) {
-            steerId = "s_" + UUID.randomUUID().toString();
-        } else {
-            steerId = steerId.trim();
-            if (steerId.length() > SteerInterceptor.MAX_ID_LENGTH) {
-                return Result.failure(400, "INVALID_STEER_ID");
-            }
+
+        if (steerId != null && !steerId.trim().isEmpty()
+                && steerId.trim().length() > SteerInterceptor.MAX_ID_LENGTH) {
+            return Result.failure(400, "INVALID_STEER_ID");
         }
         if (!webGate().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "NOT_RUNNING");
@@ -1344,56 +1340,34 @@ public class WebController {
             return Result.failure(409, "NOT_RUNNING");
         }
 
-        // 必须绑定明确的 runId。任务首个事件到达前尚不能确认归属，此时让前端转普通排队，
+        // Web 端必须绑定明确的 runId。任务首个事件到达前尚不能确认归属，此时让前端转普通排队，
         // 避免无 runId 请求落入任务结束/切换窄窗后成为无人消费的孤儿插话。
-        java.util.Queue<SteerMessage> box;
-        SteerMessage steer = new SteerMessage(steerId, text);
-        SteerInterceptor.OfferResult offerResult;
-        synchronized (session.attrs()) {
-            String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-            if (runId == null || !runId.equals(activeRunId)) {
-                return Result.failure(409, "TURN_CHANGED");
+        if (runId == null || runId.trim().isEmpty()) {
+            return Result.failure(409, "TURN_CHANGED");
+        }
+
+        // 核心入队逻辑与 IM 端共用（activeRunId 绑定校验 + offer + offer 后按 busy 复查回滚）。
+        // source 传 null：Web 插话被 dropped 时由前端转排队，无需后端兑底。
+        SteerInterceptor.SteerResult result = SteerInterceptor.steer(
+                session, runId, steerId, text, null,
+                () -> webGate().isSessionBusy(engine(), sessionId));
+
+        switch (result.getStatusCode()) {
+            case "STEERED": {
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("status", "STEERED");
+                data.put("steerId", result.getSteerId());
+                data.put("queued", result.getQueued());
+                return Result.succeed(data);
             }
-
-            @SuppressWarnings("unchecked")
-            java.util.Queue<SteerMessage> currentBox = (java.util.Queue<SteerMessage>) session.attrs()
-                    .computeIfAbsent(SteerInterceptor.ATTR_STEER_BOX,
-                            k -> new java.util.concurrent.ConcurrentLinkedQueue<SteerMessage>());
-            box = currentBox;
-            offerResult = SteerInterceptor.offer(box, steer);
+            case "EMPTY_TEXT":
+            case "TEXT_TOO_LONG":
+            case "INVALID_STEER_ID":
+                return Result.failure(400, result.getStatusCode());
+            default:
+                // NOT_RUNNING / TURN_CHANGED / BOX_FULL / DUPLICATE_STEER_ID
+                return Result.failure(409, result.getStatusCode());
         }
-        if (offerResult == SteerInterceptor.OfferResult.BOX_FULL) {
-            return Result.failure(409, "BOX_FULL");
-        }
-        if (offerResult == SteerInterceptor.OfferResult.DUPLICATE_ID) {
-            return Result.failure(409, "DUPLICATE_STEER_ID");
-        }
-
-        // offer 后复查任务与邮箱身份。任务若在校验和入队之间切换，回滚本条，禁止错投下一任务。
-        boolean busyAfterOffer = webGate().isSessionBusy(engine(), sessionId);
-        boolean sameBox;
-        boolean sameRun;
-        synchronized (session.attrs()) {
-            sameBox = session.attrs().get(SteerInterceptor.ATTR_STEER_BOX) == box;
-            sameRun = runId.equals(session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID));
-            if (!busyAfterOffer || !sameBox || !sameRun) {
-                box.remove(steer);
-                // 只清理本次创建后仍为空的邮箱；邮箱里若还有别的插话，必须留给任务收尾统一
-                // applied/dropped，不能因当前请求回滚而把其它用户消息静默摘掉。
-                if (box.isEmpty()) {
-                    session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX, box);
-                }
-            }
-        }
-        if (!busyAfterOffer || !sameBox || !sameRun) {
-            return Result.failure(409, sameRun ? "NOT_RUNNING" : "TURN_CHANGED");
-        }
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("status", "STEERED");
-        data.put("steerId", steerId);
-        data.put("queued", box.size());
-        return Result.succeed(data);
     }
 
     /**
@@ -2464,15 +2438,7 @@ public class WebController {
         }
     }
 
-    /**
-     * 获取指定会话的消息排队（任务排队）。
-     * <p>从会话目录下 {@code queue-tasks.json} 读取（兼容旧名 {@code queue.json}）。
-     * 仅作为前端队列的落盘缓存，不由服务端调度发送。
-     * V1 仅持久化文本与模型元数据，不保存浏览器附件二进制。</p>
-     *
-     * @param sessionId 会话 ID
-     * @return 包含 exists、items、updatedAt 的结果对象
-     */
+    /** 获取 session 的统一队列视图；旧文件仅作一次性迁移读取。 */
     @Get
     @Mapping("/web/chat/queue")
     public Result<Map> getQueue(@Param("sessionId") String sessionId) {
@@ -2481,55 +2447,26 @@ public class WebController {
         }
 
         Path queuePath = resolveSessionQueuePath(sessionId);
-        if (queuePath == null) {
+        if (queuePath == null || queuePath.getParent() == null) {
             return Result.failure(400, "Invalid session path");
+        }
+        if (!ownsSession(queuePath.getParent())) {
+            return Result.failure(404, "Session not found");
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
-        Path legacyPath = queuePath.getParent() != null
-                ? queuePath.getParent().resolve("queue.json") : null;
-        Path readPath = Files.exists(queuePath) ? queuePath
-                : (legacyPath != null && Files.exists(legacyPath) ? legacyPath : null);
-
-        if (readPath == null) {
-            data.put("exists", false);
-            data.put("items", new ArrayList<>());
-            data.put("updatedAt", 0L);
-            return Result.succeed(data);
-        }
-
         try {
-            String raw = new String(Files.readAllBytes(readPath), "UTF-8");
-            ONode root = ONode.ofJson(raw);
+            Path sessionDir = queuePath.getParent();
+            List<SessionQueueItem> unified = SessionQueueStore.load(sessionDir);
             List<Map> items = new ArrayList<>();
-            long updatedAt = 0L;
-
-            if (root != null && root.isObject()) {
-                ONode updatedNode = root.get("updatedAt");
-                if (updatedNode != null && !updatedNode.isNull()) {
-                    try {
-                        updatedAt = updatedNode.getLong();
-                    } catch (Exception ignored) {
-                    }
-                }
-                ONode itemsNode = root.get("items");
-                if (itemsNode != null && itemsNode.isArray()) {
-                    int limit = 10;
-                    int count = 0;
-                    for (ONode itemNode : itemsNode.getArray()) {
-                        if (count >= limit) break;
-                        Map<String, Object> item = sanitizeQueueItem(itemNode);
-                        if (item != null) {
-                            items.add(item);
-                            count++;
-                        }
-                    }
-                }
+            for (SessionQueueItem item : unified) {
+                Map<String, Object> row = new LinkedHashMap<>(item.toMap());
+                row.put("displayText", item.getText());
+                items.add(row);
             }
-
-            data.put("exists", true);
+            data.put("exists", !items.isEmpty());
             data.put("items", items);
-            data.put("updatedAt", updatedAt);
+            data.put("updatedAt", items.isEmpty() ? 0L : System.currentTimeMillis());
             return Result.succeed(data);
         } catch (Exception e) {
             LOG.error("Failed to read queue-tasks for session {}: {}", sessionId, e.getMessage());
@@ -2537,117 +2474,85 @@ public class WebController {
         }
     }
 
-    /**
-     * 整表覆盖保存会话消息排队到 {@code queue-tasks.json}。
-     * <p>请求体：{@code {"sessionId":"web-xxx","items":[{id,text,displayText,model,reasoningEffort,createdAt}]}}。
-     * items 为空数组时删除 queue-tasks.json（及旧名 queue.json）。</p>
-     *
-     * @param body JSON 请求体
-     * @return 操作结果
-     */
+    /** 旧整表接口不再写入；客户端应使用任务级操作，避免旧快照复活任务。 */
     @Post
     @Mapping("/web/chat/queue")
     public Result<Map> saveQueue(@Body String body) {
-        if (body == null || body.trim().isEmpty()) {
-            return Result.failure(400, "Body is required");
-        }
+        return Result.failure(410, "Use queue item operations");
+    }
 
+    /** 任务级新增：不再要求客户端提交整表快照。 */
+    @Post
+    @Mapping("/web/chat/queue/item")
+    public Result<Map> enqueueQueueItem(@Body String body) {
         try {
             ONode root = ONode.ofJson(body);
-            if (root == null || !root.isObject()) {
-                return Result.failure(400, "Invalid JSON body");
-            }
-
-            String sessionId = root.get("sessionId").getString();
-            if (!isValidSessionId(sessionId)) {
-                return Result.failure(400, "Invalid sessionId");
-            }
-
+            String sessionId = root == null || root.get("sessionId") == null ? null : root.get("sessionId").getString();
+            String text = root == null || root.get("text") == null ? null : root.get("text").getString();
+            if (!isValidSessionId(sessionId) || text == null || text.trim().isEmpty()) return Result.failure(400, "sessionId and text are required");
             Path queuePath = resolveSessionQueuePath(sessionId);
-            if (queuePath == null) {
-                return Result.failure(400, "Invalid session path");
-            }
-            Path legacyPath = queuePath.getParent() != null
-                    ? queuePath.getParent().resolve("queue.json") : null;
+            if (queuePath == null || queuePath.getParent() == null || !ownsSession(queuePath.getParent())) return Result.failure(404, "Session not found");
+            AgentSession session = sessionManager().getSession(sessionId);
+            if (session == null) return Result.failure(404, "Session not found");
+            SessionQueue.bindStorage(session, queuePath.getParent());
+            String id = root.get("id") == null ? null : safeQueueString(root.get("id"), 80);
+            String model = root.get("model") == null ? null : safeQueueString(root.get("model"), 200);
+            String reasoningEffort = root.get("reasoningEffort") == null ? null : safeQueueString(root.get("reasoningEffort"), 50);
+            String thinkingMode = root.get("thinkingMode") == null ? null : safeQueueString(root.get("thinkingMode"), 50);
+            String selectedAgent = root.get("selectedAgent") == null ? null : safeQueueString(root.get("selectedAgent"), 128);
+            boolean hasFiles = root.get("hasFiles") != null && root.get("hasFiles").getBoolean();
+            if (hasFiles) return Result.failure(400, "Attachments cannot be queued");
+            int position = SessionQueue.enqueue(session, text, "WEB", null, null, null, id,
+                    model, reasoningEffort, thinkingMode, selectedAgent, false);
+            if (position < 0) return Result.failure(409, "Queue is full or storage failed");
+            webGate().drainSessionQueue(currentContext(), session);
+            return Result.succeed(queueResult(queuePath.getParent()));
+        } catch (Exception e) { return Result.failure(400, "Invalid queue item"); }
+    }
 
-            List<Map<String, Object>> items = new ArrayList<>();
-            ONode itemsNode = root.get("items");
-            if (itemsNode != null && itemsNode.isArray()) {
-                int limit = 10;
-                int count = 0;
-                for (ONode itemNode : itemsNode.getArray()) {
-                    if (count >= limit) break;
-                    Map<String, Object> item = sanitizeQueueItem(itemNode);
-                    if (item != null) {
-                        items.add(item);
-                        count++;
-                    }
-                }
-            }
+    /** 任务级取消：按 id 删除，绝不依赖客户端旧快照。 */
+    @Post
+    @Mapping("/web/chat/queue/item/cancel")
+    public Result<Map> cancelQueueItem(@Body String body) {
+        try {
+            ONode root = ONode.ofJson(body);
+            String sessionId = root == null ? null : root.get("sessionId").getString();
+            String itemId = root == null ? null : root.get("itemId").getString();
+            Path queuePath = resolveSessionQueuePath(sessionId);
+            AgentSession session = sessionManager().getSession(sessionId);
+            if (!isValidSessionId(sessionId) || session == null || queuePath == null || queuePath.getParent() == null || !ownsSession(queuePath.getParent())) return Result.failure(404, "Session not found");
+            SessionQueue.bindStorage(session, queuePath.getParent());
+            if (!SessionQueue.cancelItem(session, itemId)) return Result.failure(404, "Queue item not found");
+            return Result.succeed(queueResult(queuePath.getParent()));
+        } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
+    }
 
-            long updatedAt = System.currentTimeMillis();
-            ONode clientUpdated = root.get("updatedAt");
-            if (clientUpdated != null && !clientUpdated.isNull()) {
-                try {
-                    long ts = clientUpdated.getLong();
-                    if (ts > 0) updatedAt = ts;
-                } catch (Exception ignored) {
-                }
-            }
+    /** 任务级执行：将指定任务提升到队首，由后端唯一 drainer 消费。 */
+    @Post
+    @Mapping("/web/chat/queue/item/run")
+    public Result<Map> runQueueItem(@Body String body) {
+        try {
+            ONode root = ONode.ofJson(body);
+            String sessionId = root == null ? null : root.get("sessionId").getString();
+            String itemId = root == null ? null : root.get("itemId").getString();
+            Path queuePath = resolveSessionQueuePath(sessionId);
+            AgentSession session = sessionManager().getSession(sessionId);
+            if (!isValidSessionId(sessionId) || session == null || queuePath == null || queuePath.getParent() == null || !ownsSession(queuePath.getParent())) return Result.failure(404, "Session not found");
+            SessionQueue.bindStorage(session, queuePath.getParent());
+            if (!SessionQueue.promote(session, itemId)) return Result.failure(404, "Queue item not found");
+            webGate().drainSessionQueue(currentContext(), session);
+            return Result.succeed(queueResult(queuePath.getParent()));
+        } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
+    }
 
-            // 空队列：删除新/旧文件，避免会话目录堆积空文件
-            if (items.isEmpty()) {
-                if (Files.exists(queuePath)) {
-                    Files.delete(queuePath);
-                }
-                if (legacyPath != null && Files.exists(legacyPath)) {
-                    Files.delete(legacyPath);
-                }
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("exists", false);
-                data.put("items", new ArrayList<>());
-                data.put("updatedAt", 0L);
-                return Result.succeed(data);
-            }
-
-            // 会话目录可能尚未创建（首次发消息前）；若不存在则创建
-            Path sessionDir = queuePath.getParent();
-            if (sessionDir != null && !Files.exists(sessionDir)) {
-                Files.createDirectories(sessionDir);
-            }
-
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("version", 1);
-            payload.put("updatedAt", updatedAt);
-            payload.put("items", items);
-
-            String json = ONode.ofBean(payload, Feature.Write_PrettyFormat).toJson();
-            Path tempPath = queuePath.resolveSibling(queuePath.getFileName() + ".tmp");
-            Files.write(tempPath, json.getBytes("UTF-8"));
-            try {
-                Files.move(tempPath, queuePath,
-                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-                Files.move(tempPath, queuePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
-            // 迁移后清理旧文件名，避免双份
-            if (legacyPath != null && Files.exists(legacyPath)) {
-                try {
-                    Files.delete(legacyPath);
-                } catch (Exception ignored) {
-                }
-            }
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("exists", true);
-            data.put("items", items);
-            data.put("updatedAt", updatedAt);
-            return Result.succeed(data);
-        } catch (Exception e) {
-            LOG.error("Failed to save queue-tasks: {}", e.getMessage());
-            return Result.failure(500, "Queue save failed");
-        }
+    private Map<String, Object> queueResult(Path sessionDir) throws IOException {
+        Map<String, Object> data = new LinkedHashMap<>();
+        List<Map> rows = new ArrayList<>();
+        for (SessionQueueItem item : SessionQueueStore.load(sessionDir)) rows.add(new LinkedHashMap<>(item.toMap()));
+        data.put("exists", !rows.isEmpty());
+        data.put("items", rows);
+        data.put("updatedAt", rows.isEmpty() ? 0L : System.currentTimeMillis());
+        return data;
     }
 
     /**
@@ -2671,7 +2576,7 @@ public class WebController {
             return null;
         }
 
-        String text = safeQueueString(itemNode.get("text"), 20000);
+        String text = safeQueueString(itemNode.get("text"), SessionQueue.MAX_TEXT_LENGTH);
         String displayText = safeQueueString(itemNode.get("displayText"), 500);
         if ((text == null || text.isEmpty()) && (displayText == null || displayText.isEmpty())) {
             // V1 不持久化附件；无文本的纯附件项不落盘
@@ -2708,6 +2613,8 @@ public class WebController {
 
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", id);
+        // source 是服务端入口元数据；Web 保存接口不得伪造 IM/其它来源。
+        item.put("source", "WEB");
         item.put("text", text != null ? text : "");
         item.put("displayText", displayText);
         if (model != null && !model.isEmpty()) {

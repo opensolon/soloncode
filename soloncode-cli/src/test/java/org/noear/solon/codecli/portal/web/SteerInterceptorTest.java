@@ -252,6 +252,58 @@ public class SteerInterceptorTest {
     }
 
     @Test
+    @DisplayName("入邮箱后复查变为空闲：已被推理消费的插话仍返回 STEERED，不可降级排队")
+    public void consumedBeforeBusyRecheck_staysSteered() {
+        trace.nextTurn();
+        interceptor.onReasonStart(trace, new StringBuilder()); // 建立当前 runId
+        trace.nextTurn();
+
+        SteerInterceptor.SteerResult result = SteerInterceptor.steer(session, null, "once", "补充要求",
+                "Feishu", () -> {
+                    interceptor.onReasonStart(trace, new StringBuilder()); // 模拟复查前推理线程取走消息
+                    return false;
+                });
+
+        assertEquals(SteerInterceptor.SteerStatus.STEERED, result.getStatus());
+        assertEquals(1, trace.getWorkingMemory().getMessages().size());
+        assertTrue(trace.getWorkingMemory().getMessages().get(0).getContent().contains("补充要求"));
+        assertNull(SteerInterceptor.steerBox(session), "消费后空邮箱可被清理");
+    }
+
+    @Test
+    @DisplayName("消费后任务结束：runId 已消失也不能返回 TURN_CHANGED 导致重复排队")
+    public void consumedAndEndedBeforeRecheck_staysSteered() {
+        trace.nextTurn();
+        interceptor.onReasonStart(trace, new StringBuilder());
+        trace.nextTurn();
+
+        SteerInterceptor.SteerResult result = SteerInterceptor.steer(session, null, "once", "补充要求",
+                "Feishu", () -> {
+                    interceptor.onReasonStart(trace, new StringBuilder());
+                    interceptor.onAgentEnd(trace);
+                    return false;
+                });
+
+        assertEquals(SteerInterceptor.SteerStatus.STEERED, result.getStatus());
+        assertEquals(1, trace.getWorkingMemory().getMessages().size());
+        assertNull(session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID));
+    }
+
+    @Test
+    @DisplayName("入邮箱后复查变为空闲：未被消费的插话可回滚并降级")
+    public void unconsumedBeforeBusyRecheck_rollsBack() {
+        trace.nextTurn();
+        interceptor.onReasonStart(trace, new StringBuilder());
+
+        SteerInterceptor.SteerResult result = SteerInterceptor.steer(session, null, "pending", "补充要求",
+                "Feishu", () -> false);
+
+        assertEquals(SteerInterceptor.SteerStatus.NOT_RUNNING, result.getStatus());
+        assertTrue(trace.getWorkingMemory().isEmpty());
+        assertNull(SteerInterceptor.steerBox(session));
+    }
+
+    @Test
     @DisplayName("旧任务结束：不能清除新任务已写入的 runId 和邮箱")
     public void oldAgentEnd_doesNotClearNewRunState() {
         String newRunId = trace.getRunId() + "-new";

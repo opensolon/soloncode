@@ -234,6 +234,8 @@ public class Configurator {
         // 广播走 Context 内部 WebGate.broadcastRaw（与入口单例共享同一默认连接池）。
         // 此处不再新建/重复监听同一目录，避免默认工作区文件变更向前端重复推送。
         FileWatchService fileWatchService = defaultCtx.getFileWatchService();
+        // 工作区与 WebGate 均就绪后，恢复进程重启前遗留的后端 follow-up 队列。
+        webGate.recoverSessionQueues(defaultCtx);
         
         // 用户认证系统（先初始化，确保 WebController 等组件可以访问）
         // 将旧版“通用设置 -> 安全访问”一次性升级为用户管理中的本地管理员。

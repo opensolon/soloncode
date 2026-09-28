@@ -79,6 +79,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public class WebGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WebGate.class);
     /** HITL 审批时前端回传的 callUuid（通过 session context 透传） */
+    private static final String ATTR_QUEUE_DISPATCH = "session.queue.dispatch";
+
     public static final String CTX_HITL_CALL_ID = "hitl.callId";
 
     /** 会话属性：本轮 agent 流是否已向客户端发送过 done（防 interrupt + doFinally 双发） */
@@ -346,6 +348,71 @@ public class WebGate extends SimpleWebSocketListener {
         return true;
     }
 
+    /** 工作区上下文完成初始化后恢复 session 队列，包括旧版 Web 队列。 */
+    public void recoverSessionQueues(WorkspaceContext wsContext) {
+        if (wsContext == null || wsContext.getSessionManager() == null) return;
+        Path root = wsContext.getSessionsRoot();
+        if (root == null || !Files.isDirectory(root)) return;
+        try (java.nio.file.DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
+            for (Path dir : dirs) {
+                if (!Files.isDirectory(dir)
+                        || !(Files.exists(dir.resolve(SessionQueueStore.FILE_NAME))
+                        || Files.exists(dir.resolve("queue.json")))) continue;
+                String sessionId = dir.getFileName().toString();
+                AgentSession session = wsContext.getSessionManager().getSession(sessionId);
+                SessionQueue.bindStorage(session, dir);
+                drainSessionQueue(wsContext, session);
+            }
+        } catch (IOException e) {
+            LOG.warn("[WebGate] recover session queues failed for workspace {}: {}", wsContext.getMeta().getId(), e.toString());
+        }
+    }
+
+    public void drainSessionQueue(WorkspaceContext wsContext, AgentSession session) {
+        if (session != null && wsContext != null) {
+            SessionQueue.bindStorage(session, wsContext.getSessionPath(session.getSessionId()));
+        }
+        if (session == null || isSessionBusy(session)) return;
+        final long generation = SessionQueue.generation(session);
+        final String sessionId = session.getSessionId();
+        final String wsLogKey = wsLogKey(wsContext);
+        Runnable action = () -> {
+            Object logScope = (wsLogKey != null) ? WorkspaceLogRouter.beginScopeByKey(wsLogKey) : null;
+            try {
+                boolean started = SessionQueueDrainer.drainOne(session, next -> {
+                    synchronized (session.attrs()) {
+                        if (isSessionBusy(session) || !SessionQueue.isGenerationActive(session, generation)) {
+                            throw new IllegalStateException("session became busy or queue generation changed");
+                        }
+                        emitToClient(wsContext, sessionId, WebEvent.ofUserInput(next.getId(), next.getText(), next.getSource()));
+                        session.attrs().put("session.queue.executing", next);
+                        session.attrs().put(ATTR_QUEUE_DISPATCH, Thread.currentThread());
+                        try {
+                            onChatInput(wsContext, sessionId, null, next.getText(), next.getModel(), null, null, null,
+                                    next.getSource(), next.getReasoningEffort(), next.getThinkingMode(), next.getSelectedAgent(),
+                                    next.getSourceUserId(), next.getReplyTarget(), next.getMessageId());
+                            if (!isSessionBusy(session)) finishQueuedTurn(session, true);
+                        } finally {
+                            session.attrs().remove(ATTR_QUEUE_DISPATCH);
+                        }
+                    }
+                }, false);
+                // 同步完成的命令可能在 claim 释放前已触发 drain；释放后再续发下一项。
+                boolean failedToStart = Boolean.TRUE.equals(session.attrs().remove("session.queue.startFailed"));
+                if (started && !failedToStart && !isSessionBusy(session) && SessionQueue.pendingSize(session) > 0) {
+                    drainSessionQueue(wsContext, session);
+                }
+            } catch (Throwable e) {
+                LOG.warn("[WebGate] drain session queue failed for session {}: {}", sessionId, e.toString());
+            } finally {
+                if (logScope != null) WorkspaceLogRouter.endScope(logScope);
+            }
+        };
+        if (wsLogKey == null) action.run();
+        else try { Schedulers.boundedElastic().schedule(action); }
+        catch (Throwable e) { LOG.warn("[WebGate] schedule session queue drain failed: {}", e.toString()); }
+    }
+
     /**
      * 新开流前重置 done 标记，避免上一轮 streamDoneSent 挡住本轮 done。
      */
@@ -386,30 +453,34 @@ public class WebGate extends SimpleWebSocketListener {
             emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
 
             if (staleBox != null && staleBox.isEmpty() == false) {
-                java.util.List<SteerMessage> stale = new java.util.ArrayList<>();
-                for (SteerMessage message; (message = staleBox.poll()) != null; ) {
-                    stale.add(message);
-                }
-                emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(null, stale));
+                handleDroppedSteers(wsContext, session, staleBox, null);
             }
         }
     }
 
     /**
-     * 流未建立（或已失败）时的 done 出口。
-     *
-     * <p>done 门只在 {@link #beginStreamTurn} 里复位，因此开流之前的异常出口（参数解析、
-     * 模型/agent 解析、附件落盘、命令分发）直接 {@link #emitDoneOnce} 会被上一轮遗留的
-     * doneSent=true 静默吞掉 —— 前端已在发送时置 isStreaming=true，收不到 done 就永久
-     * 停在「正在思考」。故无活跃流时先复位门；有活跃流则不抢发，交给那条流的
-     * {@code doFinally} 收尾。</p>
+     * 流未建立（或已失败）时的 done 出口。已有流的 done 只能由那条流收尾；
+     * 拒绝另一条输入时绝不能抢发。仅有输入受理占位而没有流时，仍需结束本次输入。
      */
     private void emitDoneGuarded(WorkspaceContext wsContext, AgentSession session) {
-        if (isSessionBusy(session) == false) {
-            resetStreamDoneSent(session);
+        Object slot = session.attrs().get("disposable");
+        if (slot instanceof Disposable.Composite && !((Disposable.Composite) slot).isDisposed()) {
+            return;
         }
-
+        resetStreamDoneSent(session);
         emitDoneOnce(wsContext, session);
+    }
+
+    /** 仅确认本次队列领取；启动失败则恢复到队首，不按消息来源分支。 */
+    private void finishQueuedTurn(AgentSession session, boolean started) {
+        synchronized (session.attrs()) {
+            Object value = session.attrs().remove("session.queue.executing");
+            if (!(value instanceof SessionQueueItem)) return;
+            SessionQueueItem item = (SessionQueueItem) value;
+            boolean saved = started ? SessionQueue.acknowledge(session, item.getId())
+                    : SessionQueue.requeueFront(session, item, SessionQueue.generation(session));
+            if (!saved) LOG.warn("[WebGate] could not persist queued task completion for session {}", session.getSessionId());
+        }
     }
 
     /**
@@ -422,6 +493,11 @@ public class WebGate extends SimpleWebSocketListener {
      */
     private void failStreamTurn(WorkspaceContext wsContext, AgentSession session, Disposable.Composite composite, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
+        boolean queued = session.attrs().get("session.queue.executing") instanceof SessionQueueItem;
+        if (queued && Thread.currentThread().equals(session.attrs().get(ATTR_QUEUE_DISPATCH))) {
+            session.attrs().put("session.queue.startFailed", Boolean.TRUE);
+        }
+        finishQueuedTurn(session, false);
 
         emitToClient(wsContext, session.getSessionId(), WebEvent.ofError(e));
 
@@ -431,6 +507,30 @@ public class WebGate extends SimpleWebSocketListener {
         }
 
         emitDoneGuarded(wsContext, session);
+        // 启动失败的任务已回队首；不要立即重试同一失败任务形成无限循环。
+        if (!queued) drainSessionQueue(wsContext, session);
+    }
+
+    /** IM 没有前端处理 steer_dropped，未消费插话直接转入后端排队；Web 仍交给前端。 */
+    void handleDroppedSteers(WorkspaceContext wsContext, AgentSession session, Queue<SteerMessage> box, String runId) {
+        if (session != null && wsContext != null) {
+            SessionQueue.bindStorage(session, wsContext.getSessionPath(session.getSessionId()));
+        }
+        List<SteerMessage> dropped = new ArrayList<>();
+        for (SteerMessage message; (message = box.poll()) != null; ) {
+            String source = message.getSource();
+            if (source == null || source.trim().isEmpty()) source = "WEB";
+            // 无论来源都先落入 session 队列；事件只用于视图同步，不再是可靠持久化链路。
+            int position = SessionQueue.enqueue(session, message.getText(), source,
+                    message.getSourceUserId(), message.getReplyTarget(), message.getMessageId());
+            if (position < 0) {
+                LOG.warn("[WebGate] dropped steer could not be queued for session {}", session.getSessionId());
+            }
+            dropped.add(message);
+        }
+        if (!dropped.isEmpty()) {
+            emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(runId, dropped));
+        }
     }
 
     /**
@@ -483,7 +583,7 @@ public class WebGate extends SimpleWebSocketListener {
                             UploadedFile[] attachments, String[] attachmentTypes,
                             String hitlAction, String source) {
         onChatInput(wsContext, sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
-                hitlAction, source, null, null, null);
+                hitlAction, source, null, null, null, null, null, null);
     }
 
     /**
@@ -517,13 +617,65 @@ public class WebGate extends SimpleWebSocketListener {
                             UploadedFile[] attachments, String[] attachmentTypes,
                             String hitlAction, String source,
                             String reasoningEffort, String thinkingMode, String selectedAgent) {
+        onChatInput(wsContext, sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
+                hitlAction, source, reasoningEffort, thinkingMode, selectedAgent, null, null, null);
+    }
+
+    /** 带有不可变来源/回复路由快照的统一输入入口。 */
+    public void onChatInput(WorkspaceContext wsContext,
+                            String sessionId, String sessionCwd,
+                            String input, String selectedModel,
+                            UploadedFile[] attachments, String[] attachmentTypes,
+                            String hitlAction, String source,
+                            String reasoningEffort, String thinkingMode, String selectedAgent,
+                            String sourceUserId, String replyTarget, String messageId) {
         AgentSession session = null;
+        boolean admitted = false;
         try {
             // 本 WebGate 实例已绑定所属工作区的引擎（与 connections 同一上下文），
             // 无需再从 Context.current()/sessionId 猜测引擎，避免异步线程下回退默认引擎。
             // 仅在对话隔离开启时记录 userId，关闭隔离时使用共享会话
             String userId = resolveUserIdFromContext(wsContext);
             session = wsContext.getSessionManager().getSession(sessionId, userId);
+            // 同一把 session 锁内检查忙态并占位，避免两个窗口同时看见空闲并各开一条流。
+            SessionQueue.bindStorage(session, wsContext.getSessionPath(sessionId));
+            synchronized (session.attrs()) {
+                boolean dispatch = Thread.currentThread().equals(session.attrs().get(ATTR_QUEUE_DISPATCH));
+                boolean busyCommand = false;
+                if (input != null && input.startsWith("/")) {
+                    List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
+                    if (!parts.isEmpty()) {
+                        Command command = wsContext.getEngine().getCommandRegistry().find(parts.get(0).toLowerCase());
+                        busyCommand = command != null && !command.cliOnly() && command.runnableWhenBusy();
+                    }
+                }
+                if ((isSessionBusy(session) || SessionQueue.pendingSize(session) > 0)
+                        && !dispatch && !busyCommand) {
+                    if (attachments != null && attachments.length > 0) {
+                        throw new IllegalStateException("Attachments cannot be queued while session is busy");
+                    }
+                    int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId,
+                            null, selectedModel, reasoningEffort, thinkingMode, selectedAgent, false);
+                    if (position < 0) throw new IllegalStateException("session queue is full or unavailable");
+                    emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
+                    drainSessionQueue(wsContext, session);
+                    return;
+                }
+                // 忙态命令是旁路操作，不能改写正在运行任务的回复目标。
+                boolean sideCommand = busyCommand && isSessionBusy(session);
+                if (!dispatch && !busyCommand) {
+                    session.attrs().put("session.input.admitting", Boolean.TRUE);
+                    admitted = true;
+                }
+                if (!sideCommand) {
+                    if (dispatch && session.attrs().get("session.queue.executing") instanceof SessionQueueItem) {
+                        SessionQueueItem queued = (SessionQueueItem) session.attrs().get("session.queue.executing");
+                        setReplyRoute(session, queued.getSource(), queued.getSourceUserId(), queued.getReplyTarget(), queued.getMessageId());
+                    } else {
+                        setReplyRoute(session, source, sourceUserId, replyTarget, messageId);
+                    }
+                }
+            }
 
             // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）
             if (Assert.isNotEmpty(selectedModel)) {
@@ -636,7 +788,8 @@ public class WebGate extends SimpleWebSocketListener {
 
                 // 命令分发
                 if (currentInput.startsWith("/") && imageBlocks.isEmpty()) {
-                    if (isCommand(wsContext, session, sessionCwd, currentInput, selectedModel, agentName)) {
+                    if (isCommand(wsContext, session, sessionCwd, currentInput, selectedModel, agentName, source,
+                            sourceUserId, replyTarget, messageId)) {
                         return;
                     }
                 }
@@ -668,6 +821,10 @@ public class WebGate extends SimpleWebSocketListener {
             }
         } catch (Exception e) {
             LOG.error("Task fail: {}", e.getMessage(), e);
+            if (session != null && Thread.currentThread().equals(session.attrs().get(ATTR_QUEUE_DISPATCH))) {
+                session.attrs().remove("session.queue.executing");
+                throw new IllegalStateException("Queued task could not start", e);
+            }
             emitToClient(wsContext, sessionId, WebEvent.ofError(e));
             // 流可能尚未建立：有 session 走去重出口，否则直接发 done
             if (session != null) {
@@ -677,6 +834,10 @@ public class WebGate extends SimpleWebSocketListener {
             }
         } finally {
             if (session != null) {
+                if (admitted) {
+                    synchronized (session.attrs()) { session.attrs().remove("session.input.admitting"); }
+                    drainSessionQueue(wsContext, session);
+                }
                 if (session.isEmpty() && Assert.isNotEmpty(input)) {
                     //如果是空，可能发的是 command（还没有对话记录）
                     try {
@@ -809,10 +970,15 @@ public class WebGate extends SimpleWebSocketListener {
                     emitToClient(wsContext,sessionId, WebEvent.ofError(e));
                 })
                 .doFinally(s -> {
+                    finishQueuedTurn(session, true);
                     releaseStreamSlot(session, composite, selfRef.get());  // 只摘自己那条流
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     emitDoneOnce(wsContext,session);
+
+                    // 任务结束后续发排队消息（IM 排队的后端调度点）：
+                    // 中断路径已先清空队列，此处 drain 无残留；正常结束则取队头续发。
+                    drainSessionQueue(wsContext, session);
 
                     //MDC 不在此处清理：Reactor 调度钩子会在任务结束时自动还原线程现场，
                     //提前 remove 反而会让同一任务后续日志丢掉工作区归属
@@ -916,6 +1082,7 @@ public class WebGate extends SimpleWebSocketListener {
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     emitDoneOnce(wsContext,session);
+                    drainSessionQueue(wsContext, session);
                     countDownLatch.countDown();
 
                     //MDC 不在此处清理：Reactor 调度钩子会在任务结束时自动还原线程现场，
@@ -967,13 +1134,17 @@ public class WebGate extends SimpleWebSocketListener {
      * @return true 表示输入已被识别为命令并执行，false 表示非命令输入
      * @throws Exception 命令执行过程中可能抛出的异常
      */
-    private boolean isCommand(WorkspaceContext wsContext, AgentSession session, String sessionCwd, String input, String selectedModel, String agentName) throws Exception {
+    private boolean isCommand(WorkspaceContext wsContext, AgentSession session, String sessionCwd, String input, String selectedModel, String agentName, String source,
+                               String sourceUserId, String replyTarget, String messageId) throws Exception {
         if (!input.startsWith("/")) {
             return false;
         }
 
         // 解析命令名和参数
         List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
+        if (parts.isEmpty()) {
+            return false;
+        }
         String cmdName = parts.get(0).toLowerCase();
         List<String> args = parts.size() > 1
                 ? parts.subList(1, parts.size())
@@ -984,9 +1155,14 @@ public class WebGate extends SimpleWebSocketListener {
         if (command == null) {
             return false;
         }
+        if (command.cliOnly()) {
+            LOG.warn("[WebGate] CLI-only command /{} rejected from Web source {}", cmdName, source);
+            return true;
+        }
 
         // 构建 context（注入 agentTaskRunner 回调）；命令执行的工作区语境由本 WebGate 实例已绑定的 engine 确定。
-        WebCommandContext ctx = new WebCommandContext(session, wsContext.getEngine(), input, cmdName, args,
+        WebCommandContext ctx = new WebCommandContext(session, source, sourceUserId, replyTarget, messageId,
+                wsContext.getEngine(), input, cmdName, args,
                 (prompt, model) -> {
                     try {
                         //防重入：会话已有流在跑（含上一轮 doFinally 尚未归还槽位的瞬时窗口）时，
@@ -1051,14 +1227,18 @@ public class WebGate extends SimpleWebSocketListener {
 
                 emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand(text));
 
-                // 命令执行后通知所有绑定的 IM 通道（微信/飞书/钉钉等）
-                streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), text, true);
+                // 忙态命令使用自身的回复目标，不消费运行任务的路由。
+                if (ownTurn) streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), text, true);
+                else streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), text, true,
+                        source, sourceUserId, replyTarget, messageId);
             }
 
             // done 走统一出口（emitDoneOnce），使「所有 done 都经过去重门」这条不变量不被绕过；
             // done 门已由上面的 beginStreamTurn 复位，否则会被上一轮的 doneSent 挡掉。
             if (ownTurn) {
                 emitDoneOnce(wsContext, session);
+                // 空闲态命令收尾后尝试 drain：覆盖空闲时执行 /queue 入队后需立即发起的场景。
+                drainSessionQueue(wsContext, session);
             }
         }
 
@@ -1075,6 +1255,7 @@ public class WebGate extends SimpleWebSocketListener {
      * @return true 表示会话有正在执行的 AI 任务
      */
     private boolean isSessionBusy(AgentSession session) {
+        if (Boolean.TRUE.equals(session.attrs().get("session.input.admitting"))) return true;
         Object slot = session.attrs().get("disposable");
         if (slot instanceof Disposable.Composite) {
             return !((Disposable.Composite) slot).isDisposed();
@@ -1112,7 +1293,12 @@ public class WebGate extends SimpleWebSocketListener {
      * @return true 表示输入已接受并进入处理流程；false 表示会话繁忙已跳过
      */
     public boolean safeChatInput(WorkspaceContext wsContext,String sessionId, String input, String source) {
-        return safeChatInput(wsContext, sessionId, input, source, null);
+        return safeChatInput(wsContext, sessionId, input, source, null, null, null, null);
+    }
+
+    public boolean safeChatInput(WorkspaceContext wsContext, String sessionId, String input, String source,
+                                 String sourceUserId, String replyTarget, String messageId) {
+        return safeChatInput(wsContext, sessionId, input, source, null, sourceUserId, replyTarget, messageId);
     }
 
     /**
@@ -1123,21 +1309,41 @@ public class WebGate extends SimpleWebSocketListener {
      */
     public boolean safeChatInput(WorkspaceContext wsContext, String sessionId, String input, String source,
                                  Runnable acceptedHook) {
+        return safeChatInput(wsContext, sessionId, input, source, acceptedHook, null, null, null);
+    }
+
+    private boolean safeChatInput(WorkspaceContext wsContext, String sessionId, String input, String source,
+                                  Runnable acceptedHook, String sourceUserId, String replyTarget, String messageId) {
         try {
             AgentSession session = wsContext.getEngine().getSession(sessionId);
             if (isSessionBusy(session)) {
-                // 检查是否为暂停/中断命令：允许在任务执行中穿过忙碌检查
+                // 忙碌穿透：是否允许在任务执行中受理，由命令自描述（runnableWhenBusy）决定，
+                // 不再硬编码 interrupt/exit 白名单。
                 if (input != null && input.startsWith("/")) {
                     List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
+                    if (parts.isEmpty()) {
+                        LOG.warn("[WebGate] {} event skipped for session {}: empty command", source, sessionId);
+                        return false;
+                    }
                     String cmdName = parts.get(0).toLowerCase();
-                    if ("interrupt".equals(cmdName) || "exit".equals(cmdName)) {
+                    Command command = wsContext.getEngine().getCommandRegistry().find(cmdName);
+                    if (command != null && !command.cliOnly() && command.runnableWhenBusy()) {
                         emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
-                        onChatInput(wsContext, sessionId, null, input, null, null, null, null, source);
+                        onChatInput(wsContext, sessionId, null, input, null, null, null, null, source,
+                                null, null, null, sourceUserId, replyTarget, messageId);
                         return true;
                     }
                 }
 
-                LOG.warn("[WebGate] {} event skipped for session {}: task in progress", source, sessionId);
+                // 普通输入也是 session 任务：繁忙时进入统一持久化队列，而不是只让调用方重试。
+                SessionQueue.bindStorage(session, wsContext.getSessionPath(sessionId));
+                int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId);
+                if (position >= 0) {
+                    emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
+                    drainSessionQueue(wsContext, session);
+                    return true;
+                }
+                LOG.warn("[WebGate] {} event could not be queued for busy session {}", source, sessionId);
                 return false;
             }
 
@@ -1150,13 +1356,35 @@ public class WebGate extends SimpleWebSocketListener {
             return false;
         }
 
+        // 回复目标仅在 onChatInput 真正受理本轮时设置；提前写入会覆盖运行任务。
         // 先推送用户消息到前端，确保对话记录中显示用户侧消息
         emitToClient(wsContext,sessionId, WebEvent.ofUserInput(input, source));
 
-        onChatInput(wsContext, sessionId, null, input, null, null, null, null, source);
+        onChatInput(wsContext, sessionId, null, input, null, null, null, null, source,
+                                null, null, null, sourceUserId, replyTarget, messageId);
         return true;
     }
 
+
+    private void setReplyRoute(AgentSession session, String source, String sourceUserId, String replyTarget, String messageId) {
+        if (session == null) return;
+        boolean imSource = false;
+        // WEB/Loop 等输入不应向任何绑定的 IM 广播。
+        if (source != null) {
+            imSource = "wechat".equalsIgnoreCase(source) || "feishu".equalsIgnoreCase(source)
+                    || "dingtalk".equalsIgnoreCase(source);
+        }
+        if (!imSource) {
+            session.attrs().remove("session.replyRoute");
+            return;
+        }
+        java.util.Map<String, String> route = new java.util.HashMap<>();
+        route.put("source", source);
+        route.put("sourceUserId", sourceUserId);
+        route.put("replyTarget", replyTarget);
+        route.put("messageId", messageId);
+        session.attrs().put("session.replyRoute", route);
+    }
 
     /**
      * Loop 专用：安全聊天输入入口，无限等待捕获本轮响应文本。
@@ -1310,6 +1538,9 @@ public class WebGate extends SimpleWebSocketListener {
         try {
             AgentSession session = wsContext.getSessionManager().getSession(sessionId);
             Object slot = session.attrs().remove("disposable");
+
+            // 主动中断：清空后端排队，避免中断后残留的排队消息在 doFinally 中被自动续发。
+            SessionQueue.cancelPending(session);
 
             // 无活跃流：不发取消语义；若尚未发 done 则兜底，便于前端收尾
             if (!(slot instanceof Disposable.Composite)) {

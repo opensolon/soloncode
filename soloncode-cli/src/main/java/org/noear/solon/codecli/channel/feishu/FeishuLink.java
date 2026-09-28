@@ -101,12 +101,14 @@ public class FeishuLink implements Channel, Runnable {
 
     @Override
     public void sendReply(String sessionId, String reply, boolean isFinal) {
-        FeishuBinding binding = bindings.get(sessionId);
-        if (binding == null) {
-            return;
-        }
+        sendReply(sessionId, reply, isFinal, null, null, null);
+    }
 
-        if (Assert.isEmpty(reply)) {
+    @Override
+    public void sendReply(String sessionId, String reply, boolean isFinal,
+                          String sourceUserId, String replyTarget, String messageId) {
+        FeishuBinding binding = replyBinding(bindings.get(sessionId), sourceUserId, replyTarget);
+        if (binding == null || Assert.isEmpty(reply)) {
             return;
         }
 
@@ -122,6 +124,17 @@ public class FeishuLink implements Channel, Runnable {
                 LOG.error("[Feishu] Reply error: {}", e.getMessage(), e);
             }
         });
+    }
+
+    // 发送前固定收件人和凭据，避免异步任务读取后来变更的绑定。
+    static FeishuBinding replyBinding(FeishuBinding binding, String sourceUserId, String replyTarget) {
+        if (binding == null) return null;
+        FeishuBinding snapshot = new FeishuBinding();
+        snapshot.openId = !Assert.isEmpty(replyTarget) ? replyTarget
+                : !Assert.isEmpty(sourceUserId) ? sourceUserId : binding.openId;
+        snapshot.appId = binding.appId;
+        snapshot.appSecret = binding.appSecret;
+        return snapshot;
     }
 
     // ==================== 生命周期 ====================
@@ -537,11 +550,12 @@ public class FeishuLink implements Channel, Runnable {
 
         final String finalSessionId = sessionId;
         final String finalText = text;
+        final String finalOpenId = openId;
         final FeishuBinding finalBinding = binding;
         final String finalMsgId = msgId;
         RunUtil.async(() -> {
             try {
-                boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, finalSessionId, finalText, "Feishu");
+                boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, finalSessionId, finalText, "Feishu", finalOpenId, null, finalMsgId);
                 if (accepted) {
                     // 消息被接受进入处理流程后才记录 lastMessageId，
                     // 避免 WS 断连重试时因 lastMessageId 已设置而跳过未处理的消息

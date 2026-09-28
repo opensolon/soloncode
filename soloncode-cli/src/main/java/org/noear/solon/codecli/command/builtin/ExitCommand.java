@@ -48,6 +48,11 @@ public class ExitCommand implements Command {
     }
 
     @Override
+    public boolean runnableWhenBusy() {
+        return true;
+    }
+
+    @Override
     public void execute(CommandContext ctx) {
         ctx.println(ctx.color(DIM + "Exiting..." + RESET));
 

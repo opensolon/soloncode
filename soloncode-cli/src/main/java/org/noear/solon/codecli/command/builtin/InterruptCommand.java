@@ -22,6 +22,7 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.codecli.portal.web.SessionQueue;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 import reactor.core.Disposable;
@@ -56,6 +57,11 @@ public class InterruptCommand implements Command {
     }
 
     @Override
+    public boolean runnableWhenBusy() {
+        return true;
+    }
+
+    @Override
     public void execute(CommandContext ctx) throws Exception {
         String sessionId = ctx.argAt(0);
         AgentSession session;
@@ -72,6 +78,8 @@ public class InterruptCommand implements Command {
         }
 
         Disposable disposable = (Disposable) session.attrs().remove("disposable");
+        // 无论当前流句柄是否已被释放，都必须取消排队及已被 drain 暂存的消息。
+        SessionQueue.cancelPending(session);
         if (disposable != null) {
             disposable.dispose();
             ReActTrace trace = TraceUtil.getCurrentTrace(session);

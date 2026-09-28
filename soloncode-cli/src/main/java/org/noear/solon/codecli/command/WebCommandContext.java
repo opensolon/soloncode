@@ -29,6 +29,10 @@ import java.util.List;
  */
 public class WebCommandContext implements CommandContext {
     private final AgentSession session;
+    private final String source;
+    private final String sourceUserId;
+    private final String replyTarget;
+    private final String messageId;
     private final HarnessEngine agentRuntime;
     private final String rawInput;
     private final String commandName;
@@ -50,7 +54,25 @@ public class WebCommandContext implements CommandContext {
                              HarnessEngine agentRuntime,
                              String rawInput, String commandName, List<String> args,
                              AgentTaskRunner agentTaskRunner) {
+        this(session, null, null, null, null, agentRuntime, rawInput, commandName, args, agentTaskRunner);
+    }
+
+    public WebCommandContext(AgentSession session, String source,
+                             HarnessEngine agentRuntime,
+                             String rawInput, String commandName, List<String> args,
+                             AgentTaskRunner agentTaskRunner) {
+        this(session, source, null, null, null, agentRuntime, rawInput, commandName, args, agentTaskRunner);
+    }
+
+    public WebCommandContext(AgentSession session, String source, String sourceUserId,
+                             String replyTarget, String messageId, HarnessEngine agentRuntime,
+                             String rawInput, String commandName, List<String> args,
+                             AgentTaskRunner agentTaskRunner) {
         this.session = session;
+        this.source = source;
+        this.sourceUserId = sourceUserId;
+        this.replyTarget = replyTarget;
+        this.messageId = messageId;
         this.agentRuntime = agentRuntime;
         this.rawInput = rawInput;
         this.commandName = commandName;
@@ -67,6 +89,14 @@ public class WebCommandContext implements CommandContext {
     public HarnessEngine getEngine() {
         return agentRuntime;
     }
+
+    public String getSource() {
+        return source;
+    }
+
+    public String getSourceUserId() { return sourceUserId; }
+    public String getReplyTarget() { return replyTarget; }
+    public String getMessageId() { return messageId; }
 
     @Override
     public String getRawInput() {

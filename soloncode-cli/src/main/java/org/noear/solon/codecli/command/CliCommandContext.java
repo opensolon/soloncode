@@ -71,6 +71,10 @@ public class CliCommandContext implements CommandContext {
         return agentRuntime;
     }
 
+    public String getSource() {
+        return "CLI";
+    }
+
     @Override
     public String getRawInput() {
         return rawInput;

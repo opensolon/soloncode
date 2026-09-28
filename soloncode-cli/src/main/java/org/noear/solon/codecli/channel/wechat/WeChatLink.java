@@ -559,7 +559,7 @@ public class WeChatLink implements Channel, Runnable {
             binding.typingTicket = ticket;
         }
 
-        boolean accepted = dispatchToAgent(sessionId, text);
+        boolean accepted = dispatchToAgent(sessionId, text, fromUserId, contextToken);
         if (accepted) {
             // safeChatInput 只负责投递、不等 AI 生成完成，
             // 所以「正在输入」要一直保持到最终回复发出（见 sendReplyDo 的 isFinal 分支）
@@ -576,6 +576,12 @@ public class WeChatLink implements Channel, Runnable {
      */
     protected boolean dispatchToAgent(String sessionId, String text) {
         return wsContext.getWebGate().safeChatInput(wsContext, sessionId, text, "WeChat");
+    }
+
+    protected boolean dispatchToAgent(String sessionId, String text, String sourceUserId, String replyTarget) {
+        // 保留测试/嵌入式实现对旧 dispatchToAgent(session,text) 的覆写兼容。
+        if (wsContext == null) return dispatchToAgent(sessionId, text);
+        return wsContext.getWebGate().safeChatInput(wsContext, sessionId, text, "WeChat", sourceUserId, replyTarget, null);
     }
 
     /**
@@ -642,6 +648,12 @@ public class WeChatLink implements Channel, Runnable {
 
     @Override
     public void sendReply(String sessionId, String reply, boolean isFinal) {
+        sendReply(sessionId, reply, isFinal, null, null, null);
+    }
+
+    @Override
+    public void sendReply(String sessionId, String reply, boolean isFinal,
+                          String sourceUserId, String replyTarget, String messageId) {
         WeChatBinding binding = bindings.get(sessionId);
         if (binding == null) {
             return;
@@ -651,7 +663,7 @@ public class WeChatLink implements Channel, Runnable {
             return;
         }
 
-        ReplyTarget target = binding.replyTarget;
+        ReplyTarget target = replyTarget == null ? binding.replyTarget : new ReplyTarget(sourceUserId, replyTarget);
         if (target == null) {
             // iLink 协议不支持主动推送：没有入站消息带回的 context_token 就无法投递。
             // 静默 return 会让"微信端收不到答复"完全失去可观测性，这里必须留痕。

@@ -11,10 +11,28 @@ import java.io.Serializable;
 public class SteerMessage implements Serializable {
     private final String id;
     private final String text;
+    /** 来源通道标识；只用于展示和回复路由。 */
+    private final String source;
+    private final String sourceUserId;
+    private final String replyTarget;
+    private final String messageId;
 
     public SteerMessage(String id, String text) {
+        this(id, text, null, null, null, null);
+    }
+
+    public SteerMessage(String id, String text, String source) {
+        this(id, text, source, null, null, null);
+    }
+
+    public SteerMessage(String id, String text, String source,
+                        String sourceUserId, String replyTarget, String messageId) {
         this.id = id;
         this.text = text;
+        this.source = source;
+        this.sourceUserId = sourceUserId;
+        this.replyTarget = replyTarget;
+        this.messageId = messageId;
     }
 
     public String getId() {
@@ -23,5 +41,21 @@ public class SteerMessage implements Serializable {
 
     public String getText() {
         return text;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public String getSourceUserId() {
+        return sourceUserId;
+    }
+
+    public String getReplyTarget() {
+        return replyTarget;
+    }
+
+    public String getMessageId() {
+        return messageId;
     }
 }

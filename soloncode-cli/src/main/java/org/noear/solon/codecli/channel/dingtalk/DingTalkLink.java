@@ -103,7 +103,13 @@ public class DingTalkLink implements Channel, Runnable {
 
     @Override
     public void sendReply(String sessionId, String reply, boolean isFinal) {
-        DingTalkBinding binding = bindings.get(sessionId);
+        sendReply(sessionId, reply, isFinal, null, null, null);
+    }
+
+    @Override
+    public void sendReply(String sessionId, String reply, boolean isFinal,
+                          String sourceUserId, String replyTarget, String messageId) {
+        DingTalkBinding binding = replyBinding(bindings.get(sessionId), sourceUserId, replyTarget);
 
         if (binding == null) {
             // QR 流：尚未完成绑定（无 userId），记录日志
@@ -126,6 +132,18 @@ public class DingTalkLink implements Channel, Runnable {
         // （WebSocket Stream 回复仅用于同步 ACK，不适用于异步 AI 响应场景。
         //   ACK 阶段已用 data="{}" 回复了 CALLBACK，再用同一 messageId 发消息会被钉钉服务器丢弃。）
         sendReplyViaApi(binding, reply);
+    }
+
+    // 固定本次收件人及机器人凭据，不能从后来变化的绑定或 CALLBACK 通道取目标。
+    static DingTalkBinding replyBinding(DingTalkBinding binding, String sourceUserId, String replyTarget) {
+        if (binding == null) return null;
+        DingTalkBinding snapshot = new DingTalkBinding();
+        snapshot.userId = !Assert.isEmpty(replyTarget) ? replyTarget
+                : !Assert.isEmpty(sourceUserId) ? sourceUserId : binding.userId;
+        snapshot.robotCode = binding.robotCode;
+        snapshot.appKey = binding.appKey;
+        snapshot.appSecret = binding.appSecret;
+        return snapshot;
     }
 
     // ==================== 生命周期 ====================
@@ -482,12 +500,13 @@ public class DingTalkLink implements Channel, Runnable {
 
         final String finalSessionId = sessionId;
         final String finalText = text;
+        final String finalUserId = userId;
         final DingTalkBinding finalBinding = binding;
         final String finalMsgId = msgId;
 
         RunUtil.async(() -> {
             try {
-                boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, finalSessionId, finalText, "DingTalk");
+                boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, finalSessionId, finalText, "DingTalk", finalUserId, null, finalMsgId);
                 if (accepted) {
                     // 消息被接受后才记录 lastMessageId，避免重连重推时被去重丢弃
                     if (finalMsgId != null) {

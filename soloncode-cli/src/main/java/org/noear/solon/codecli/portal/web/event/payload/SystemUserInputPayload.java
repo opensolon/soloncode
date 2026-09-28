@@ -13,6 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SystemUserInputPayload implements Serializable {
+    private String id;
     private String text;
     private String source;
     private String sourceLabel;

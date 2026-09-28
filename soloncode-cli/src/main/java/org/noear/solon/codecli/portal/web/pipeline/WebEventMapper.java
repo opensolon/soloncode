@@ -305,7 +305,7 @@ public class WebEventMapper {
     }
 
     /**
-     * 专门向 im 推行执行过程（其它地方不用发了）
+     * 专门向 im 推行执行过程
      */
     private WebEvent<?> onReasonEndEvent(AgentSession session, ReasonEndEvent event, String taskAgentName, boolean isMultitask) {
         //如果流已取消，则不输出
@@ -315,8 +315,6 @@ public class WebEventMapper {
 
         if (Assert.isNotEmpty(resultContent)) {
             // 过程消息仍可同步到 IM；主代理最终答复统一由 RunEndEvent 分发。
-            // ReasonEndEvent 与 RunEndEvent 都携带最终正文，若两处都发送，异常收尾时
-            // 同一答案会在微信出现两次，而 Web 只能等 RunEndEvent 的 system.trace 才收尾。
             if (event.isToolCalls()) {
                 streamBuilder.replyToBoundChannel(wsContext, sessionId, resultContent, false);
             } else {
@@ -392,11 +390,11 @@ public class WebEventMapper {
         String agentSelectedTmp = (String) session.attrs().get("_agent_selected_tmp");
         String eventAgentName = event.getTrace() == null ? null : event.getTrace().getAgentName();
 
-        if (eventAgentName != null) {
-            if ("main".equals(eventAgentName) || eventAgentName.equals(agentSelectedTmp)) {
-                // 次代理结果属于过程消息；源代理结果留给 RunEndEvent 统一广播。
-                streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), finalAnswer, true);
-            }
+        // 如果是主代理侧补发最后答案
+        if (eventAgentName == null
+                || "main".equals(eventAgentName)
+                || eventAgentName.equals(agentSelectedTmp)) {
+            streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), finalAnswer, true);
         }
 
         return WebEvent.ofTrace(model, totalTokens, elapsedSeconds, finalAnswer);

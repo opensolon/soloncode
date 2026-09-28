@@ -48,6 +48,9 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.util.TraceUtil;
+import org.noear.solon.codecli.portal.web.SessionQueue;
+import org.noear.solon.codecli.portal.web.SessionQueueDrainer;
+import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
 import org.noear.solon.lang.Preview;
@@ -80,6 +83,7 @@ public class CliShell implements Runnable {
     private final HarnessEngine engine;
     private final AgentSettings agentProps;
     private final LoopScheduler loopScheduler;
+    private boolean cliQueueDraining;
 
     // ANSI 颜色常量
     private final static String
@@ -141,7 +145,9 @@ public class CliShell implements Runnable {
         }
 
         AgentSession session = engine.getSession(sessionId);
+        SessionQueue.bindStorage(session, WorkspaceDataUtil.sessionsPath(engine.getWorkspace()).resolve(sessionId));
         printWelcome(session);
+        drainCliQueue(session);
         return session;
     }
 
@@ -158,6 +164,7 @@ public class CliShell implements Runnable {
         try {
             if (!isCommand(session, input)) {
                 performAgentTask(session, input, null);
+                drainCliQueue(session);
             }
         } catch (Throwable e) {
             terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
@@ -229,6 +236,7 @@ public class CliShell implements Runnable {
 
                 if (!isCommand(session, input)) {
                     performAgentTask(session, input, null);
+                    drainCliQueue(session);
                 }
             } catch (Throwable e) {
                 LOG.warn(e.getMessage(), e);
@@ -282,6 +290,8 @@ public class CliShell implements Runnable {
 
         // 执行命令
         command.execute(ctx);
+        // CLI 与 Web/IM 共用 SessionQueue；命令完成后由 CLI 自身消费空闲队列。
+        drainCliQueue(session);
 
         // clear 命令后重新打印 welcome
         if ("clear".equals(cmdName)) {
@@ -289,6 +299,18 @@ public class CliShell implements Runnable {
         }
 
         return true;
+    }
+
+    private void drainCliQueue(AgentSession session) {
+        if (session == null || cliQueueDraining) return;
+        cliQueueDraining = true;
+        try {
+            while (SessionQueueDrainer.drainOne(session, item -> performAgentTask(session, item.getText(), item.getModel()))) {
+                // 统一由 SessionQueueDrainer 负责 claim/poll/ack/requeue。
+            }
+        } finally {
+            cliQueueDraining = false;
+        }
     }
 
     private String getTimeNow() {

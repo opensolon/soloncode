@@ -41,13 +41,25 @@ public class WebStreamBuilder {
     }
 
     public void replyToBoundChannel(WorkspaceContext wsContext, String sessionId, String text, boolean isFinal) {
-        if (sessionId == null) {
-            return;
+        if (sessionId == null) return;
+        AgentSession session = wsContext.getEngine().getSession(sessionId);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, String> route = session == null ? null
+                : (java.util.Map<String, String>) session.attrs().get("session.replyRoute");
+        if (route != null) {
+            replyToBoundChannel(wsContext, sessionId, text, isFinal, route.get("source"),
+                    route.get("sourceUserId"), route.get("replyTarget"), route.get("messageId"));
+            if (isFinal) session.attrs().remove("session.replyRoute", route);
         }
+    }
 
+    /** 命令在已有任务运行时使用自己的回复目标，不覆盖运行任务的路由。 */
+    public void replyToBoundChannel(WorkspaceContext wsContext, String sessionId, String text, boolean isFinal,
+                                    String source, String sourceUserId, String replyTarget, String messageId) {
+        if (sessionId == null || source == null) return;
         for (Channel link : wsContext.getChannelHub().getImLinks()) {
-            if (link.isBound(sessionId)) {
-                link.sendReply(sessionId, text, isFinal);
+            if (link.isBound(sessionId) && source.equalsIgnoreCase(link.getChannelName())) {
+                link.sendReply(sessionId, text, isFinal, sourceUserId, replyTarget, messageId);
             }
         }
     }

@@ -681,6 +681,8 @@ public class WorkspaceManager {
                     .build());
         }
 
+        engine.addMount(MountDir.builder().alias("@agent-skills").type(MountType.SKILLS).path("~/.agents/skills/").primary(true).build());
+
         engine.addMount(MountDir.builder().alias("@user-skills").type(MountType.SKILLS).path("~/" + engine.getHarnessSkills()).primary(true).build());
         engine.addMount(MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path("./" + engine.getHarnessSkills()).primary(true).build());
 
@@ -697,6 +699,8 @@ public class WorkspaceManager {
         engine.getCommandRegistry().register(new ClearCommand());
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
+        engine.getCommandRegistry().register(new SteerCommand());
+        engine.getCommandRegistry().register(new QueueCommand());
         engine.getCommandRegistry().register(new RerunCommand());
         engine.getCommandRegistry().register(new RewindCommand());
         engine.getCommandRegistry().register(new ModelCommand());
@@ -790,6 +794,10 @@ public class WorkspaceManager {
 
         // 上下文完整建成：retention 由 EPHEMERAL 提升为 PERSISTENT（失败不回滚，见方案 7.4）
         promoteWorkspaceMeta(workspacePath);
+        WebGate gate = getWebGate();
+        if (gate != null) {
+            gate.recoverSessionQueues(context);
+        }
 
         return context;
     }

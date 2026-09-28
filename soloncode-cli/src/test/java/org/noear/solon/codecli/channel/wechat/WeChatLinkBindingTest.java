@@ -152,6 +152,18 @@ class WeChatLinkBindingTest {
     }
 
     @Test
+    void queuedReplyUsesOriginalTargetAfterNewInboundMessage() {
+        link.bindSession("s1", "tk", "bot", "user");
+        link.getBinding("s1").replyTarget = new WeChatLink.ReplyTarget("user-b", "ctx-b");
+
+        link.sendReply("s1", "给第一条消息", true, "user-a", "ctx-a", null);
+
+        assertEquals(1, transport.sent.size());
+        assertEquals("user-a", transport.sent.get(0).toUserId);
+        assertEquals("ctx-a", transport.sent.get(0).contextToken);
+    }
+
+    @Test
     void replyWithoutInboundContextToken_shouldNotSend() {
         link.bindSession("s1", "tk", "bot", "user");
 

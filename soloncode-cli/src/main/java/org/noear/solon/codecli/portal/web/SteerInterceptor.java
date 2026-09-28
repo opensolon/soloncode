@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.portal.web;
 
 import lombok.extern.slf4j.Slf4j;
+import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActInterceptor;
 import org.noear.solon.ai.agent.react.ReActTrace;
@@ -16,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.BooleanSupplier;
 
 /**
  * 运行中插话拦截器（Steering）
@@ -155,7 +158,12 @@ public class SteerInterceptor implements ReActInterceptor {
             // 未消费的插话绝不能静默丢弃——广播 dropped，前端转为排队消息发送
             List<SteerMessage> dropped = drain(box);
             if (!dropped.isEmpty()) {
-                emitSteer(session, WebEvent.ofSteerDroppedItems(trace.getRunId(), dropped));
+                if (webGate != null) {
+                    ConcurrentLinkedQueue<SteerMessage> droppedBox = new ConcurrentLinkedQueue<>(dropped);
+                    webGate.handleDroppedSteers(wsContext, session, droppedBox, trace.getRunId());
+                } else {
+                    emitSteer(session, WebEvent.ofSteerDroppedItems(trace.getRunId(), dropped));
+                }
             }
         }
     }
@@ -182,6 +190,142 @@ public class SteerInterceptor implements ReActInterceptor {
                 return OfferResult.BOX_FULL;
             }
             return box.offer(steer) ? OfferResult.OFFERED : OfferResult.BOX_FULL;
+        }
+    }
+
+    /**
+     * 插话入队的统一实现，供 Web（/web/chat/steer）与 IM（SteerCommand / 零前缀默认）复用。
+     *
+     * <p>封装「activeRunId 绑定校验 + computeIfAbsent 邮箱 + offer + offer 后复查回滚」的完整临界逻辑，
+     * 杜绝各调用方二次实现导致的竞态偏差。</p>
+     *
+     * @param session     目标会话
+     * @param runId       调用方所见的当前运行 ID。非空时必须与 activeRunId 相等（Web 场景防跨任务错投）；
+     *                    为 null 时表示「绑定当前活跃任务」（IM 场景，直接信任后端权威 activeRunId）。
+     * @param steerId     插话 ID，可为空（由后端生成）
+     * @param text        插话文本
+     * @param source      来源通道标识（IM 传 Feishu/DingTalk/WeChat；Web 传 null）
+     * @param busyRecheck offer 后复查会话是否仍繁忙的回调，可为 null（为 null 时仅依据 activeRunId 判定，
+     *                    适用于拿不到繁忙判定器的 IM 命令场景）
+     * @return 入队结果（status 与 /web/chat/steer 的应答码同名）
+     */
+    public static SteerResult steer(AgentSession session, String runId, String steerId, String text,
+                                    String source, BooleanSupplier busyRecheck) {
+        return steer(session, runId, steerId, text, source, null, null, null, busyRecheck);
+    }
+
+    public static SteerResult steer(AgentSession session, String runId, String steerId, String text,
+                                    String source, String sourceUserId, String replyTarget, String messageId,
+                                    BooleanSupplier busyRecheck) {
+        if (session == null) {
+            return new SteerResult(SteerStatus.NOT_RUNNING, null, 0);
+        }
+        if (text == null || text.trim().isEmpty()) {
+            return new SteerResult(SteerStatus.EMPTY_TEXT, null, 0);
+        }
+
+        text = text.trim();
+        if (text.length() > MAX_TEXT_LENGTH) {
+            return new SteerResult(SteerStatus.TEXT_TOO_LONG, null, 0);
+        }
+
+        if (steerId == null || steerId.trim().isEmpty()) {
+            steerId = "s_" + Utils.uuid();
+        } else {
+            steerId = steerId.trim();
+            if (steerId.length() > MAX_ID_LENGTH) {
+                return new SteerResult(SteerStatus.INVALID_STEER_ID, null, 0);
+            }
+        }
+
+        Queue<SteerMessage> box;
+        SteerMessage steer = new SteerMessage(steerId, text, source, sourceUserId, replyTarget, messageId);
+        OfferResult offerResult;
+        String boundRunId;
+        synchronized (session.attrs()) {
+            String activeRunId = (String) session.attrs().get(ATTR_ACTIVE_RUN_ID);
+            if (activeRunId == null) {
+                // 任务尚未进入推理边界（activeRunId 未建立）或已结束：Web 端有明确 runId 时按 TURN_CHANGED
+                // 让前端转排队；IM 端（runId==null）按 NOT_RUNNING 让上层降级为排队/普通发送。
+                return new SteerResult(runId != null ? SteerStatus.TURN_CHANGED : SteerStatus.NOT_RUNNING, steerId, 0);
+            }
+            if (runId != null && !runId.equals(activeRunId)) {
+                return new SteerResult(SteerStatus.TURN_CHANGED, steerId, 0);
+            }
+            boundRunId = activeRunId;
+
+            @SuppressWarnings("unchecked")
+            Queue<SteerMessage> currentBox = (Queue<SteerMessage>) session.attrs()
+                    .computeIfAbsent(ATTR_STEER_BOX, k -> new ConcurrentLinkedQueue<SteerMessage>());
+            box = currentBox;
+            offerResult = offer(box, steer);
+        }
+        if (offerResult == OfferResult.BOX_FULL) {
+            return new SteerResult(SteerStatus.BOX_FULL, steerId, box.size());
+        }
+        if (offerResult == OfferResult.DUPLICATE_ID) {
+            return new SteerResult(SteerStatus.DUPLICATE_STEER_ID, steerId, box.size());
+        }
+
+        // offer 后复查任务与邮箱身份。只有本条仍在邮箱中且成功回滚，才能让调用方降级排队；
+        // 若已被推理线程取走，再返回 NOT_RUNNING/TURN_CHANGED 会把同一文本排队执行第二次。
+        boolean busyAfterOffer = (busyRecheck == null) || busyRecheck.getAsBoolean();
+        boolean sameBox;
+        boolean sameRun;
+        boolean rolledBack = false;
+        synchronized (session.attrs()) {
+            sameBox = session.attrs().get(ATTR_STEER_BOX) == box;
+            sameRun = boundRunId.equals(session.attrs().get(ATTR_ACTIVE_RUN_ID));
+            if (!busyAfterOffer || !sameBox || !sameRun) {
+                rolledBack = box.remove(steer);
+                // 只清理本次创建后仍为空的邮箱；邮箱里若还有别的插话，必须留给任务收尾统一
+                // applied/dropped，不能因当前请求回滚而把其它用户消息静默摘掉。
+                if (box.isEmpty()) {
+                    session.attrs().remove(ATTR_STEER_BOX, box);
+                }
+            }
+        }
+        if (rolledBack) {
+            return new SteerResult(sameRun ? SteerStatus.NOT_RUNNING : SteerStatus.TURN_CHANGED, steerId, 0);
+        }
+
+        return new SteerResult(SteerStatus.STEERED, steerId, box.size());
+    }
+
+    /**
+     * 插话入队结果。status 取值与 /web/chat/steer 应答码同名：
+     * STEERED / NOT_RUNNING / TURN_CHANGED / BOX_FULL / DUPLICATE_STEER_ID /
+     * EMPTY_TEXT / TEXT_TOO_LONG / INVALID_STEER_ID。
+     */
+    public enum SteerStatus {
+        STEERED("STEERED"), NOT_RUNNING("NOT_RUNNING"), TURN_CHANGED("TURN_CHANGED"),
+        BOX_FULL("BOX_FULL"), DUPLICATE_STEER_ID("DUPLICATE_STEER_ID"),
+        EMPTY_TEXT("EMPTY_TEXT"), TEXT_TOO_LONG("TEXT_TOO_LONG"), INVALID_STEER_ID("INVALID_STEER_ID");
+
+        private final String code;
+        SteerStatus(String code) { this.code = code; }
+        public String code() { return code; }
+    }
+
+    public static final class SteerResult {
+        private final SteerStatus status;
+        private final String steerId;
+        private final int queued;
+
+        public SteerResult(SteerStatus status, String steerId, int queued) {
+            this.status = status;
+            this.steerId = steerId;
+            this.queued = queued;
+        }
+
+        public SteerStatus getStatus() { return status; }
+        public String getStatusCode() { return status.code(); }
+        public String getSteerId() { return steerId; }
+        public int getQueued() { return queued; }
+        public boolean isSteered() { return status == SteerStatus.STEERED; }
+        public boolean isBoxFull() { return status == SteerStatus.BOX_FULL; }
+        public boolean isNotRunning() {
+            return status == SteerStatus.NOT_RUNNING || status == SteerStatus.TURN_CHANGED;
         }
     }
 

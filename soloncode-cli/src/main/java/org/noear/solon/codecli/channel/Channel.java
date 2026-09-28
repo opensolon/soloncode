@@ -38,4 +38,8 @@ public interface Channel {
      * 向指定会话绑定的 IM 用户发送回复
      */
     void sendReply(String sessionId, String text, boolean isFinal);
+
+    /** 使用入站消息的回复目标快照；实现方负责在目标缺失时兼容会话绑定。 */
+    void sendReply(String sessionId, String text, boolean isFinal,
+                   String sourceUserId, String replyTarget, String messageId);
 }
