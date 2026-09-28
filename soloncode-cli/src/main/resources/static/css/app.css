@@ -2665,10 +2665,10 @@ body.memory-active .main-header { display: none; }
     top: 8px;
     right: 8px;
     padding: 4px 8px;
-    border: 1px solid rgba(255,255,255,0.15);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
-    background: rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.6);
+    background: var(--bg-body);
+    color: var(--text-secondary);
     font-size: var(--fs-xs);
     cursor: pointer;
     opacity: 0;
@@ -2676,7 +2676,7 @@ body.memory-active .main-header { display: none; }
     font-family: var(--font-sans);
 }
 .md-content pre:hover .code-copy-btn { opacity: 1; }
-.code-copy-btn:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.85); }
+.md-content pre .code-copy-btn:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
 .code-copy-btn.copied { color: var(--color-success); opacity: 1; }
 
 /* ===== Highlight.js Override ===== */
