@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.AgentSettings;

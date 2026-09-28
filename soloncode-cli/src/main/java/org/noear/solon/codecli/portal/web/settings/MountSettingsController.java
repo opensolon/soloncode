@@ -1,11 +1,10 @@
 package org.noear.solon.codecli.portal.web.settings;
 
-import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.AgentMd;
-import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.catalog.AgentDescriptor;
+import org.noear.solon.ai.talents.mount.catalog.SkillDescriptor;
+import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.cli.SkillDescriptor;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
@@ -275,10 +274,10 @@ public class MountSettingsController extends BaseSettingsController {
     }
 
     private Result loadAgentsContent(String alias) {
-        Collection<AgentMd> agentList = engine().getAgentsByMount(alias);
+        Collection<AgentDescriptor> agentList = engine().getAgentsByMount(alias);
         List<Map<String, String>> agents = new ArrayList<>();
 
-        for (AgentMd agent : agentList) {
+        for (AgentDescriptor agent : agentList) {
             Map<String, String> agentItem = new LinkedHashMap<>();
             agentItem.put("name", agent.getName());
             agentItem.put("filePath", agent.getFilePath() != null ? agent.getFilePath().toString() : "");

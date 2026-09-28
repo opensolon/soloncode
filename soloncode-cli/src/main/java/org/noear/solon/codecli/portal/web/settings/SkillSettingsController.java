@@ -1,14 +1,12 @@
 package org.noear.solon.codecli.portal.web.settings;
 
-import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
-import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.market.Market;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;

@@ -23,7 +23,7 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.talents.cli.SkillDescriptor;
+import org.noear.solon.ai.talents.mount.catalog.SkillDescriptor;
 
 import java.util.HashSet;
 import java.util.List;
