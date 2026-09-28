@@ -37,22 +37,25 @@ public class SessionManager implements AgentSessionProvider {
                 new FileAgentSession(key, resolveSessionPath(key).toString()));
     }
 
-    /**
-     * 带用户隔离的获取会话。当 userId 非空时，将会话所有者写入元数据。
-     */
+    /** 带用户隔离的会话获取：已有 owner 不匹配时拒绝，认领失败不继续执行。 */
     public @NonNull AgentSession getSession(String sessionId, @Nullable String userId) {
         AgentSession session = getSession(sessionId);
-        // 记录用户归属到会话元数据
         if (userId != null && !userId.isEmpty()) {
-            try {
+            synchronized (session.attrs()) {
                 Path sessionDir = resolveSessionPath(sessionId);
                 SessionMeta meta = SessionMeta.load(sessionDir);
-                if (meta.getOwnerUserId() == null) {
-                    meta.setOwnerUserId(userId);
-                    meta.save(sessionDir);
+                String owner = meta.getOwnerUserId();
+                if (owner != null && !owner.isEmpty() && !userId.equals(owner)) {
+                    throw new IllegalStateException("Session not found");
                 }
-            } catch (Exception e) {
-                // 忽略写入失败
+                if (owner == null || owner.isEmpty()) {
+                    meta.setOwnerUserId(userId);
+                    try {
+                        meta.save(sessionDir);
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException("Cannot save session owner", e);
+                    }
+                }
             }
         }
         return session;

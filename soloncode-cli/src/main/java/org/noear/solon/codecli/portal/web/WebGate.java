@@ -462,11 +462,13 @@ public class WebGate extends SimpleWebSocketListener {
      * 流未建立（或已失败）时的 done 出口。已有流的 done 只能由那条流收尾；
      * 拒绝另一条输入时绝不能抢发。仅有输入受理占位而没有流时，仍需结束本次输入。
      */
-    private void emitDoneGuarded(WorkspaceContext wsContext, AgentSession session) {
+    private static boolean hasActiveStream(AgentSession session) {
         Object slot = session.attrs().get("disposable");
-        if (slot instanceof Disposable.Composite && !((Disposable.Composite) slot).isDisposed()) {
-            return;
-        }
+        return slot instanceof Disposable.Composite && !((Disposable.Composite) slot).isDisposed();
+    }
+
+    private void emitDoneGuarded(WorkspaceContext wsContext, AgentSession session) {
+        if (hasActiveStream(session)) return;
         resetStreamDoneSent(session);
         emitDoneOnce(wsContext, session);
     }
@@ -511,22 +513,34 @@ public class WebGate extends SimpleWebSocketListener {
         if (!queued) drainSessionQueue(wsContext, session);
     }
 
-    /** IM 没有前端处理 steer_dropped，未消费插话直接转入后端排队；Web 仍交给前端。 */
+    /** 未消费插话先落入 session 队列；只有保存成功才通知视图已转为排队。 */
     void handleDroppedSteers(WorkspaceContext wsContext, AgentSession session, Queue<SteerMessage> box, String runId) {
         if (session != null && wsContext != null) {
             SessionQueue.bindStorage(session, wsContext.getSessionPath(session.getSessionId()));
         }
         List<SteerMessage> dropped = new ArrayList<>();
+        List<SteerMessage> failed = new ArrayList<>();
         for (SteerMessage message; (message = box.poll()) != null; ) {
             String source = message.getSource();
             if (source == null || source.trim().isEmpty()) source = "WEB";
-            // 无论来源都先落入 session 队列；事件只用于视图同步，不再是可靠持久化链路。
             int position = SessionQueue.enqueue(session, message.getText(), source,
                     message.getSourceUserId(), message.getReplyTarget(), message.getMessageId());
-            if (position < 0) {
-                LOG.warn("[WebGate] dropped steer could not be queued for session {}", session.getSessionId());
+            if (position < 0) failed.add(message);
+            else dropped.add(message);
+        }
+        if (!failed.isEmpty()) {
+            // 保存失败时仍留在易失邮箱，下一次开流可重试；同时明确告知用户尚未排队。
+            synchronized (session.attrs()) {
+                @SuppressWarnings("unchecked")
+                Queue<SteerMessage> pending = (Queue<SteerMessage>) session.attrs().get(SteerInterceptor.ATTR_STEER_BOX);
+                if (pending == null) {
+                    pending = new java.util.concurrent.ConcurrentLinkedQueue<>();
+                    session.attrs().put(SteerInterceptor.ATTR_STEER_BOX, pending);
+                }
+                pending.addAll(failed);
             }
-            dropped.add(message);
+            LOG.warn("[WebGate] {} unconsumed steers could not be queued for session {}", failed.size(), session.getSessionId());
+            emitToClient(wsContext, session.getSessionId(), WebEvent.ofError("插话尚未排队，已暂存；请清理队列后继续"));
         }
         if (!dropped.isEmpty()) {
             emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(runId, dropped));
@@ -1194,7 +1208,8 @@ public class WebGate extends SimpleWebSocketListener {
             // 自愈判据用不上，缺了 reset 时远端触发（IM/API）的命令回执在 Web 端会静默消失。
             // 反之若会话繁忙（流式期间来一条 /status），本轮归那条流：既不解封也不抢发 done，
             // 否则会让前端提前收尾并丢掉该流后续输出（runId 未变，自愈同样兜不住）。
-            boolean ownTurn = (isSessionBusy(session) == false);
+            // 输入受理占位不是 agent 流；命令独占时仍须发 reset/done。
+            boolean ownTurn = !hasActiveStream(session);
             if (ownTurn) {
                 beginStreamTurn(wsContext, session);
             }
@@ -1534,13 +1549,16 @@ public class WebGate extends SimpleWebSocketListener {
      *
      * @param sessionId 待中断的会话标识
      */
-    public void interruptSession(WorkspaceContext wsContext, String sessionId) {
+    public boolean interruptSession(WorkspaceContext wsContext, String sessionId) {
         try {
             AgentSession session = wsContext.getSessionManager().getSession(sessionId);
+            SessionQueue.bindStorage(session, wsContext.getSessionPath(sessionId));
+            // 清队列保存失败时不终止当前流：否则 doFinally 会续发原队列，Stop 不能报告成功。
+            if (!SessionQueue.cancelPending(session)) {
+                LOG.warn("[WebGate] Stop rejected: could not persist queue cancellation for session {}", sessionId);
+                return false;
+            }
             Object slot = session.attrs().remove("disposable");
-
-            // 主动中断：清空后端排队，避免中断后残留的排队消息在 doFinally 中被自动续发。
-            SessionQueue.cancelPending(session);
 
             // 无活跃流：不发取消语义；若尚未发 done 则兜底，便于前端收尾
             if (!(slot instanceof Disposable.Composite)) {
@@ -1550,14 +1568,14 @@ public class WebGate extends SimpleWebSocketListener {
                 } else {
                     LOG.info("[WebGate] Session {} interrupt ignored (no active stream)", sessionId);
                 }
-                return;
+                return true;
             }
 
             Disposable.Composite composite = (Disposable.Composite) slot;
             if (composite.isDisposed()) {
                 boolean sent = emitDoneOnce(wsContext, session);
                 LOG.info("[WebGate] Session {} interrupt ignored (already disposed), fallback done={}", sessionId, sent);
-                return;
+                return true;
             }
 
             // 1) 取消语义：error + 可选 final/trace（落库消息带上 runId，便于按 runId 锚点删除）
@@ -1586,8 +1604,10 @@ public class WebGate extends SimpleWebSocketListener {
             emitDoneOnce(wsContext, session);
             composite.dispose();
             LOG.info("[WebGate] Session {} interrupted", sessionId);
+            return true;
         } catch (Exception e) {
             LOG.error("[WebGate] Interrupt failed for session {}: {}", sessionId, e.getMessage());
+            return false;
         }
     }
 }

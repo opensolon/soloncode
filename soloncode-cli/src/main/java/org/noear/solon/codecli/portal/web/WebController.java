@@ -31,6 +31,7 @@ import org.noear.solon.ai.talents.mount.MountDir;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
+import org.noear.solon.codecli.auth.UserAuthConfig;
 import org.noear.solon.codecli.portal.web.event.WebEvent;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
@@ -183,6 +184,16 @@ public class WebController {
         if (sessionPath == null || !Files.isDirectory(sessionPath)) return false;
         String ownerId = SessionMeta.load(sessionPath.toFile()).getOwnerUserId();
         return ownerId != null && !ownerId.isEmpty() && userId.equals(ownerId);
+    }
+
+    /** 输入入口：隔离开启时必须识别用户，已有会话必须属于该用户。 */
+    private boolean canWriteSession(String sessionId) {
+        UserAuthConfig auth = currentContext().getSettings().getUserAuth();
+        if (auth == null || !auth.isEnabled() || !auth.isConversationIsolationEnabled()) return true;
+        String userId = getCurrentUserId();
+        if (userId == null || userId.isEmpty()) return false;
+        Path path = currentContext().getSessionPath(sessionId);
+        return !Files.exists(path) || ownsSession(path);
     }
 
     private FileService fileService() {
@@ -1278,8 +1289,11 @@ public class WebController {
             return Result.failure();
         }
 
+        if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
         // 按当前请求工作区上下文取 WebGate，避免非默认工作区会话中断时推送串到默认工作区
-        webGate().interruptSession(currentContext(), sessionId);
+        if (!webGate().interruptSession(currentContext(), sessionId)) {
+            return Result.failure(500, "Failed to cancel session queue; task was not interrupted");
+        }
 
         // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
         LoopScheduler loopScheduler = loopScheduler();
@@ -1320,6 +1334,7 @@ public class WebController {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
+        if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
         if (text == null || text.trim().isEmpty()) {
             return Result.failure(400, "EMPTY_TEXT");
         }
@@ -1384,6 +1399,7 @@ public class WebController {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
+        if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
         if (steerId == null || steerId.trim().isEmpty()
                 || steerId.length() > SteerInterceptor.MAX_ID_LENGTH) {
             return Result.failure(400, "INVALID_STEER_ID");
@@ -1587,17 +1603,16 @@ public class WebController {
                 }
             }
 
+            if (!canWriteSession(sessionId)) {
+                ctx.status(404);
+                ctx.output("Session not found");
+                return null;
+            }
             String hitlAction = ctx.param("hitlAction");
             String hitlCallId = ctx.param("hitlCallId");
 
             // HITL 审批时，将前端回传的 callUuid 写入 session context，供 WebGate 精确定位决策
             if (Assert.isNotEmpty(hitlAction) && Assert.isNotEmpty(hitlCallId)) {
-                Path existingSession = currentContext().getSessionPath(sessionId);
-                if (Files.exists(existingSession) && !ownsSession(existingSession)) {
-                    ctx.status(404);
-                    ctx.output("Session not found");
-                    return null;
-                }
                 String userId = getCurrentUserId();
                 sessionManager().getSession(sessionId, userId).getContext().put(WebGate.CTX_HITL_CALL_ID, hitlCallId);
             }
@@ -1654,6 +1669,12 @@ public class WebController {
             if (Assert.isEmpty(blockId) || Assert.isEmpty(actionId)) {
                 ctx.status(400);
                 ctx.output("blockId and actionId are required");
+                return null;
+            }
+
+            if (!canWriteSession(sessionId)) {
+                ctx.status(404);
+                ctx.output("Session not found");
                 return null;
             }
 

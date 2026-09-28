@@ -20,7 +20,7 @@ public class SteerCancelWebContractTest {
         assertTrue(javascript.contains("fetch('/web/chat/steer/cancel'"));
         assertTrue(javascript.contains("data-act=\"cancel-steer\""));
         assertTrue(javascript.contains("else if (act === 'cancel-steer') cancelSteerMessage(sess, qid, false)"));
-        assertTrue(javascript.contains("(sess.messageQueue || []).length + (sess.steerPending || []).length"),
+        assertTrue(javascript.contains("getPendingQueueItems(sess).length + (sess.steerPending || []).length"),
                 "清空按钮必须同时统计普通排队和待生效插话");
         assertFalse(javascript.contains("if (!sess || !sess.messageQueue || !sess.messageQueue.length) return;"),
                 "只有待生效插话时也必须允许点击清空");
