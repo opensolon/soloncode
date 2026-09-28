@@ -1000,8 +1000,14 @@ public class WebGate extends SimpleWebSocketListener {
                 .subscribe();
 
         selfRef.set(disposable);
-        // add 到 composite：若 composite 已被 dispose()（interrupt 先到达），会立即 dispose 该 disposable
+        // add 到 composite：若 composite 已被 dispose()（interrupt 先到达），会立即 dispose 该 disposable。
+        // 流可能在 subscribe() 返回前就已结束，此时 doFinally 看到的 self 仍为 null；
+        // 因而补一次 disposed 检查，避免已结束的 disposable 残留在共享 composite 中，
+        // 让后续 continue/rerun 永久误判为“当前有任务正在执行”。
         composite.add(disposable);
+        if (disposable.isDisposed()) {
+            releaseStreamSlot(session, composite, disposable);
+        }
 
     }
 
@@ -1102,9 +1108,14 @@ public class WebGate extends SimpleWebSocketListener {
                     //MDC 不在此处清理：Reactor 调度钩子会在任务结束时自动还原线程现场，
                     //提前 remove 反而会让同一任务后续日志丢掉工作区归属
                 }).subscribe();
-                //subscribe 后立即挂上：同步等待线程可能已读到 null，若不在任务内补挂则 Stop/interrupt 无法取消本轮
+                //subscribe 后立即挂上：同步等待线程可能已读到 null，若不在任务内补挂则 Stop/interrupt 无法取消本轮。
+                //订阅可能在 subscribe() 返回前完成，doFinally 此时还拿不到 self；
+                //补做 disposed 清理，避免已结束句柄留在共享 composite 中造成永久忙碌。
                 selfRef.set(d);
                 composite.add(d);
+                if (d.isDisposed()) {
+                    releaseStreamSlot(session, composite, d);
+                }
             } catch (Throwable e) {
                 //调度线程内的异常不会回到调用方；未订阅成功则 doFinally 不会跑，
                 //此处必须补发终态包并释放闩锁，否则同步等待方（Loop）永久阻塞

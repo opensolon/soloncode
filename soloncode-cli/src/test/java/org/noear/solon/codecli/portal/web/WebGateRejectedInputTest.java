@@ -60,6 +60,27 @@ class WebGateRejectedInputTest {
     }
 
     @Test
+    void disposedStreamHandleIsRemovedFromSharedSlot() throws Exception {
+        AgentSession session = InMemoryAgentSession.of();
+        reactor.core.Disposable.Composite composite = Disposables.composite();
+        reactor.core.Disposable child = Disposables.disposable();
+        composite.add(child);
+        session.attrs().put("disposable", composite);
+
+        child.dispose();
+        Method method = WebGate.class.getDeclaredMethod(
+                "releaseStreamSlot", AgentSession.class, reactor.core.Disposable.Composite.class,
+                reactor.core.Disposable.class);
+        method.setAccessible(true);
+        method.invoke(null, session, composite, child);
+
+        assertNull(session.attrs().get("disposable"));
+        Method busyMethod = WebGate.class.getDeclaredMethod("isSessionBusy", AgentSession.class);
+        busyMethod.setAccessible(true);
+        assertFalse((Boolean) busyMethod.invoke(new WebGate(null), session));
+    }
+
+    @Test
     void failedSteerQueueSaveKeepsMailboxAndDoesNotClaimDropped(@TempDir Path dir) {
         List<String> events = new ArrayList<>();
         WebGate gate = recordingGate(events);
