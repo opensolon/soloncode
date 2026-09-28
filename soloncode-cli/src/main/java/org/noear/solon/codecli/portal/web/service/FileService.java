@@ -16,7 +16,8 @@
 package org.noear.solon.codecli.portal.web.service;
 
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.portal.FilerIgnoreRules;
 import org.noear.solon.codecli.portal.web.WebController;
@@ -108,14 +109,14 @@ public class FileService {
         if (workspaceId == null || workspaceId.isEmpty() || "workspace".equals(workspaceId)) {
             return Paths.get(workspace).toAbsolutePath().normalize();
         }
-        MountDir mount = engine.getMount(workspaceId);
+        Mount mount = engine.getMount(workspaceId);
         if (mount == null) {
             throw new IllegalArgumentException("Mount not found: " + workspaceId);
         }
-        if (mount.getType() != MountType.FILES) {
-            throw new IllegalArgumentException("Mount is not FILES type: " + workspaceId + " (" + mount.getType() + ")");
+        if (mount.getType() != MountType.FILES || !(mount.getSource() instanceof FileMountSource)) {
+            throw new IllegalArgumentException("Mount is not a local FILES mount: " + workspaceId + " (" + mount.getType() + ")");
         }
-        return mount.getRealPath().toAbsolutePath().normalize();
+        return ((FileMountSource) mount.getSource()).getRootPath().toAbsolutePath().normalize();
     }
 
     /**
@@ -137,8 +138,8 @@ public class FileService {
         list.add(defaultWs);
 
         // 2. FILES 类型的挂载点
-        for (MountDir entry : engine.getMounts()) {
-            if (entry.getType() != MountType.FILES) continue;
+        for (Mount entry : engine.getMounts()) {
+            if (entry.getType() != MountType.FILES || !(entry.getSource() instanceof FileMountSource)) continue;
             if (!entry.isEnabled()) continue;
 
             Map<String, Object> item = new LinkedHashMap<>();
@@ -147,7 +148,7 @@ public class FileService {
             item.put("type", "mount");
             item.put("writeable", entry.isWriteable());
             item.put("readonly", !entry.isWriteable());
-            item.put("realPath", entry.getRealPath() != null ? entry.getRealPath().toString() : "");
+            item.put("realPath", ((FileMountSource) entry.getSource()).getRootPath().toString());
             list.add(item);
         }
 

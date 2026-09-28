@@ -27,9 +27,10 @@ import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.mount.SkillDir;
+import org.noear.solon.ai.talents.cli.SkillDescriptor;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.auth.UserAuthConfig;
 import org.noear.solon.codecli.portal.web.event.WebEvent;
@@ -242,12 +243,13 @@ public class WebController {
         // 3. 文件挂载（仅启用的 FILES 类型，每项：别名 + realPath）
         List<Map<String, Object>> mounts = new ArrayList<>();
         try {
-            for (MountDir entry : engine().getMounts()) {
-                if (entry.getType() != MountType.FILES) continue;
+            for (Mount entry : engine().getMounts()) {
+                if (entry.getType() != MountType.FILES || !(entry.getSource() instanceof FileMountSource)) continue;
                 if (!entry.isEnabled()) continue;
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("alias", entry.getAlias());
-                item.put("path", entry.getRealPath() != null ? entry.getRealPath().toString() : "");
+                Path root = ((FileMountSource) entry.getSource()).getRootPath();
+                item.put("path", root != null ? root.toString() : "");
                 mounts.add(item);
             }
         } catch (Exception e) {
@@ -270,11 +272,11 @@ public class WebController {
             try {
                 int slash = path.indexOf('/');
                 String alias = slash < 0 ? path : path.substring(0, slash);
-                org.noear.solon.ai.talents.mount.MountDir mount = engine().getMount(alias);
-                if (mount == null || mount.getRealPath() == null) {
-                    return Result.failure("挂载不存在: " + alias);
+                Mount mount = engine().getMount(alias);
+                if (mount == null || mount.getType() != MountType.FILES || !(mount.getSource() instanceof FileMountSource)) {
+                    return Result.failure("挂载不存在或不是本地文件挂载: " + alias);
                 }
-                Path realBase = mount.getRealPath();
+                Path realBase = ((FileMountSource) mount.getSource()).getRootPath();
                 Path real = slash < 0 ? realBase : realBase.resolve(path.substring(slash + 1));
                 real = real.toAbsolutePath().normalize();
                 // 防越权：解析后路径必须仍在挂载目录下
@@ -1518,7 +1520,7 @@ public class WebController {
         }
 
         Set<String> added = new HashSet<>();
-        for (SkillDir skill : currentEngine.getSkills()) {
+        for (SkillDescriptor skill : currentEngine.getSkills()) {
             if (added.contains(skill.getName())) {
                 continue;
             } else {
@@ -1540,7 +1542,9 @@ public class WebController {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", skill.getName());
             item.put("description", desc);
-            item.put("mountAlias", skill.getMountAlias());
+            String skillId = skill.getId();
+            int slash = skillId.indexOf('/');
+            item.put("mountAlias", slash > 0 ? skillId.substring(0, slash) : "");
             item.put("type", "skill");
             data.add(item);
         }

@@ -1,7 +1,9 @@
 package org.noear.solon.codecli.portal.web.settings;
 
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
+import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
@@ -93,12 +95,15 @@ public class SkillSettingsController extends BaseSettingsController{
         // 确定安装目标目录：若指定了挂载别名，则安装到对应池目录；否则默认 workspace/skills
         Path skillsDir;
         if (!Assert.isEmpty(mountAlias)) {
-            MountDir poolDir = engine().getMount(mountAlias);
+            Mount poolDir = engine().getMount(mountAlias);
             if (poolDir == null) {
                 return Result.failure("挂载池不存在: " + mountAlias);
             }
+            if (poolDir.getType() != MountType.SKILLS || !(poolDir.getSource() instanceof FileMountSource)) {
+                return Result.failure("挂载池不是本地技能挂载: " + mountAlias);
+            }
 
-            skillsDir = poolDir.getRealPath();
+            skillsDir = ((FileMountSource) poolDir.getSource()).getRootPath();
         } else {
             skillsDir = Paths.get(engine().getWorkspace(), "skills");
         }
@@ -107,7 +112,7 @@ public class SkillSettingsController extends BaseSettingsController{
 
         // 安装成功后刷新技能池
         if (result.getCode() == 200) {
-            engine().refreshMount(mountAlias);
+            engine().getSkillCatalog().refreshByMount(mountAlias);
             // 指定了共享挂载池（如用户级技能池）时，其它工作区也需刷新才能看到新技能
             if (Assert.isEmpty(mountAlias) == false) {
                 refreshMountInOtherWorkspaces(mountAlias);

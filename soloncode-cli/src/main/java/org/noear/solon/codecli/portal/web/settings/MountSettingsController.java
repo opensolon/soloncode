@@ -2,9 +2,10 @@ package org.noear.solon.codecli.portal.web.settings;
 
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.talents.mount.AgentMd;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.mount.SkillDir;
+import org.noear.solon.ai.talents.cli.SkillDescriptor;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
@@ -57,15 +58,16 @@ public class MountSettingsController extends BaseSettingsController {
     public Result mountsList(Context ctx) {
         List<Map<String, Object>> list = new ArrayList<>();
 
-        for (MountDir entry : engine().getMounts()) {
+        for (Mount entry : engine().getMounts()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("alias", entry.getAlias());
             item.put("type", entry.getType());
-            item.put("path", entry.getPath());
+            Path entryRoot = fileMountRoot(entry);
+            item.put("path", entryRoot != null ? entryRoot.toString() : "");
             item.put("enabled", entry.isEnabled());
             item.put("system", entry.isPrimary());
             item.put("writeable", entry.isWriteable());
-            item.put("realPath", entry.getRealPath() != null ? entry.getRealPath().toString() : "");
+            item.put("realPath", fileMountRoot(entry) != null ? fileMountRoot(entry).toString() : "");
             item.put("description", entry.getDescription());
 
 
@@ -115,16 +117,16 @@ public class MountSettingsController extends BaseSettingsController {
                 false, true, writeable);
         settings().getMountPools().put(alias, mountDo);
         saveSettings();
-        engine().addMount(MountDir.builder()
+        engine().addMount(Mount.builder()
                 .alias(alias)
                 .description(description)
                 .type(type)
-                .path(path)
+                .source(FileMountSource.of(path))
                 .writeable(writeable)
                 .build());
 
         // 同步注册文件监听
-        MountDir newMount = engine().getMount(alias);
+        Mount newMount = engine().getMount(alias);
         if (newMount != null) {
             registerMountWatch(newMount);
         }
@@ -155,12 +157,10 @@ public class MountSettingsController extends BaseSettingsController {
         }
 
         // 更新运行时挂载
-        for (MountDir entry : engine().getMounts()) {
-            if (alias.equals(entry.getAlias())) {
-                entry.setDescription(description);
-                entry.setWriteable(writeable);
-                break;
-            }
+        Mount current = engine().getMount(alias);
+        if (current != null) {
+            engine().removeMount(alias);
+            engine().addMount(copyMount(current, description, current.isEnabled(), writeable));
         }
 
         saveSettings();
@@ -178,11 +178,12 @@ public class MountSettingsController extends BaseSettingsController {
             return Result.failure("alias is required");
         }
 
-        MountDir mountDir = engine().getMount(alias);
+        Mount mountDir = engine().getMount(alias);
         if (mountDir == null) {
             return Result.failure("挂载池不存在: " + alias);
         } else {
-            mountDir.setEnabled(enabled);
+            engine().removeMount(alias);
+            engine().addMount(copyMount(mountDir, mountDir.getDescription(), Boolean.TRUE.equals(enabled), mountDir.isWriteable()));
         }
 
         // 更新配置
@@ -213,7 +214,7 @@ public class MountSettingsController extends BaseSettingsController {
     @Post
     @Mapping("/web/settings/mounts/remove")
     public Result mountsRemove(@Param("alias") String alias) {
-        MountDir mountDir = engine().getMount(alias);
+        Mount mountDir = engine().getMount(alias);
         if (mountDir == null) {
             return Result.failure("挂载池不存在");
         }
@@ -256,17 +257,17 @@ public class MountSettingsController extends BaseSettingsController {
 
 
     private Result loadSkillsContent(String alias) {
-        Collection<SkillDir> skillDirList = engine().getSkillsByMount(alias);
+        Collection<SkillDescriptor> skillDirList = engine().getSkillsByMount(alias);
         List<Map<String, Object>> skills = new ArrayList<>();
 
-        for (SkillDir subDir : skillDirList) {
+        for (SkillDescriptor subDir : skillDirList) {
             Map<String, Object> skillItem = new LinkedHashMap<>();
             skillItem.put("name", subDir.getName());
             skillItem.put("description", subDir.getDescription());
-            skillItem.put("realPath", subDir.getRealPath() != null ? subDir.getRealPath().toString() : "");
+            skillItem.put("realPath", "");
             skillItem.put("version", subDir.getVersion());
-            skillItem.put("aliasPath", subDir.getAliasPath());
-            skillItem.put("enabled", engine().isSkillDisallowed(subDir.getAliasPath()) == false);
+            skillItem.put("aliasPath", subDir.getId());
+            skillItem.put("enabled", engine().isSkillDisallowed(subDir.getId()) == false);
             skills.add(skillItem);
         }
 
@@ -309,15 +310,17 @@ public class MountSettingsController extends BaseSettingsController {
     @Post
     @Mapping("/web/settings/mounts/skills/remove")
     public Result mountsSkillsRemove(@Param("alias") String alias, @Param("skillName") String skillName) {
-        MountDir mountDir = engine().getMount(alias);
+        Mount mountDir = engine().getMount(alias);
         if (mountDir == null) return Result.failure("挂载池不存在: " + alias);
 
 
-        Path skillDir = mountDir.getRealPath().resolve(skillName);
+        Path mountRoot = fileMountRoot(mountDir);
+        if (mountRoot == null || mountDir.getType() != MountType.SKILLS) return Result.failure("不是本地技能挂载池: " + alias);
+        Path skillDir = mountRoot.resolve(skillName);
         if (!Files.exists(skillDir)) return Result.failure("技能包不存在: " + skillName);
 
         // 安全校验：防止路径穿越
-        if (!skillDir.normalize().startsWith(mountDir.getRealPath())) {
+        if (!skillDir.normalize().startsWith(mountRoot.normalize())) {
             return Result.failure("非法路径");
         }
 
@@ -353,22 +356,43 @@ public class MountSettingsController extends BaseSettingsController {
     /**
      * 注册挂载点的文件监听（根据类型分配不同的处理器）
      */
-    private void registerMountWatch(MountDir mount) {
+    private void registerMountWatch(Mount mount) {
         if (fileWatchService() == null || !mount.isEnabled()) return;
+        Path rootPath = fileMountRoot(mount);
+        if (rootPath == null) return;
 
         WorkspaceContext wsContext = currentContext();
-        FileWatchService.WatchRoot root = fileWatchService().addRoot(mount.getAlias(), mount.getRealPath());
+        FileWatchService.WatchRoot root = fileWatchService().addRoot(mount.getAlias(), rootPath);
 
         switch (mount.getType()) {
             case FILES:
                 root.addHandler(changes -> webGate().broadcastRaw(wsContext, FileWatchService.buildFrontendJson(changes)));
                 break;
             case SKILLS:
-                root.addHandler(changes -> engine().getSkillProvider().refreshByGroup(mount.getAlias()));
+                root.addHandler(changes -> engine().getSkillCatalog().refreshByMount(mount.getAlias()));
                 break;
             case AGENTS:
-                root.addHandler(changes -> engine().getAgentManager().refreshByMountAlias(mount.getAlias()));
+                root.addHandler(changes -> engine().getAgentCatalog().refreshByMount(mount.getAlias()));
                 break;
         }
+    }
+
+    private static Path fileMountRoot(Mount mount) {
+        if (mount == null || !(mount.getSource() instanceof FileMountSource)) {
+            return null;
+        }
+        return ((FileMountSource) mount.getSource()).getRootPath();
+    }
+
+    private static Mount copyMount(Mount mount, String description, boolean enabled, boolean writeable) {
+        return Mount.builder()
+                .alias(mount.getAlias())
+                .description(description)
+                .type(mount.getType())
+                .primary(mount.isPrimary())
+                .enabled(enabled)
+                .writeable(writeable)
+                .source(mount.getSource())
+                .build();
     }
 }

@@ -63,7 +63,7 @@ class WebGateRejectedInputTest {
     void disposedStreamHandleIsRemovedFromSharedSlot() throws Exception {
         AgentSession session = InMemoryAgentSession.of();
         reactor.core.Disposable.Composite composite = Disposables.composite();
-        reactor.core.Disposable child = Disposables.disposable();
+        reactor.core.Disposable child = Disposables.disposed();
         composite.add(child);
         session.attrs().put("disposable", composite);
 

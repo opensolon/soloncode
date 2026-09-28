@@ -27,7 +27,8 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -382,8 +383,8 @@ public class PrintMode {
      */
     private void applyBareMode() {
         // 移除 SKILLS 和 AGENTS 类型的挂载
-        for (MountDir mount : new ArrayList<>(engine.getMounts())) {
-            if (mount.getType() == MountType.SKILLS || mount.getType() == MountType.AGENTS) {
+        for (Mount mount : new ArrayList<>(engine.getMounts())) {
+            if ((mount.getType() == MountType.SKILLS || mount.getType() == MountType.AGENTS) && !mount.isPrimary()) {
                 engine.removeMount(mount.getAlias());
                 LOG.debug("Bare mode: removed mount {}", mount.getAlias());
             }
@@ -408,10 +409,10 @@ public class PrintMode {
         for (String dir : options.getAddDirs()) {
             String alias = "@add-dir-" + idx++;
             try {
-                MountDir mount = MountDir.builder()
+                Mount mount = Mount.builder()
                         .alias(alias)
                         .type(MountType.FILES)
-                        .path(dir)
+                        .source(FileMountSource.of(dir))
                         .writeable(true)
                         .enabled(true)
                         .build();

@@ -4,7 +4,8 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.talents.lsp.LspManager;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -263,7 +264,7 @@ public class BaseSettingsController {
                 continue;
             }
             try {
-                ctx.getEngine().getAgentManager().refreshByMountAlias(alias);
+                ctx.getEngine().getAgentCatalog().refreshByMount(alias);
             } catch (Exception e) {
                 LOG.warn("[Settings] refresh agents {} in workspace {} failed: {}",
                         alias, ctx.getMeta().getId(), e.getMessage());
@@ -637,7 +638,7 @@ public class BaseSettingsController {
                     continue;
                 }
                 try {
-                    MountDir current = engine.getMount(alias);
+                    Mount current = engine.getMount(alias);
                     if (current != null && current.isPrimary()) {
                         continue; // 系统挂载池不可移除
                     }
@@ -654,11 +655,11 @@ public class BaseSettingsController {
                 MountDo old = oldMap.get(alias);
                 try {
                     if (old == null) {
-                        engine.addMount(toMountDir(alias, mount));
+                        engine.addMount(toMount(alias, mount));
                         any = true;
                     } else if (!configFingerprint(old).equals(configFingerprint(mount))) {
                         engine.removeMount(alias);
-                        engine.addMount(toMountDir(alias, mount));
+                        engine.addMount(toMount(alias, mount));
                         any = true;
                     }
                 } catch (Exception ex) {
@@ -673,12 +674,12 @@ public class BaseSettingsController {
         }
     }
 
-    private static MountDir toMountDir(String alias, MountDo mount) {
-        return MountDir.builder()
+    private static Mount toMount(String alias, MountDo mount) {
+        return Mount.builder()
                 .alias(alias)
                 .description(mount.getDescription())
                 .type(mount.getType())
-                .path(mount.getPath())
+                .source(FileMountSource.of(mount.getPath()))
                 .primary(mount.isPrimary())
                 .enabled(mount.isEnabled())
                 .writeable(mount.isWriteable())

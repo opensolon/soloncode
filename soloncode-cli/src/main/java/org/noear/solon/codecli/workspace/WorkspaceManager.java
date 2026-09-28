@@ -9,7 +9,8 @@ import org.noear.solon.ai.chat.CacheControl;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.config.AgentFlags;
@@ -670,24 +671,24 @@ public class WorkspaceManager {
 
         for (Map.Entry<String, MountDo> entry : wsSettings.getMountPools().entrySet()) {
             MountDo mount = entry.getValue();
-            engine.addMount(MountDir.builder()
+            engine.addMount(Mount.builder()
                     .alias(entry.getKey())
                     .description(mount.getDescription())
                     .type(mount.getType())
-                    .path(mount.getPath())
+                    .source(FileMountSource.of(mount.getPath()))
                     .primary(mount.isPrimary())
                     .enabled(mount.isEnabled())
                     .writeable(mount.isWriteable())
                     .build());
         }
 
-        engine.addMount(MountDir.builder().alias("@agent-skills").type(MountType.SKILLS).path("~/.agents/skills/").primary(true).build());
+        engine.addMount(Mount.builder().alias("@agent-skills").type(MountType.SKILLS).source(FileMountSource.of(("~/.agents/skills/"))).primary(true).build());
 
-        engine.addMount(MountDir.builder().alias("@user-skills").type(MountType.SKILLS).path("~/" + engine.getHarnessSkills()).primary(true).build());
-        engine.addMount(MountDir.builder().alias("@workspace-skills").type(MountType.SKILLS).path("./" + engine.getHarnessSkills()).primary(true).build());
+        engine.addMount(Mount.builder().alias("@user-skills").type(MountType.SKILLS).source(FileMountSource.of("~/" + engine.getHarnessSkills())).primary(true).build());
+        engine.addMount(Mount.builder().alias("@workspace-skills").type(MountType.SKILLS).source(FileMountSource.of("./" + engine.getHarnessSkills())).primary(true).build());
 
-        engine.addMount(MountDir.builder().alias("@user-agents").type(MountType.AGENTS).path("~/" + engine.getHarnessAgents()).primary(true).build());
-        engine.addMount(MountDir.builder().alias("@workspace-agents").type(MountType.AGENTS).path("./" + engine.getHarnessAgents()).primary(true).build());
+        engine.addMount(Mount.builder().alias("@user-agents").type(MountType.AGENTS).source(FileMountSource.of("~/" + engine.getHarnessAgents())).primary(true).build());
+        engine.addMount(Mount.builder().alias("@workspace-agents").type(MountType.AGENTS).source(FileMountSource.of("./" + engine.getHarnessAgents())).primary(true).build());
 
         // 灌入技能禁用清单
         engine.disallowSkillReset(wsSettings.getPermission().getDisallowedSkills());
@@ -760,9 +761,18 @@ public class WorkspaceManager {
                     }
                 });
 
-        for (MountDir mount : engine.getMounts()) {
-            if (!mount.isEnabled()) continue;
-            FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mount.getRealPath());
+        for (Mount mount : engine.getMounts()) {
+            if (!mount.isEnabled()) {
+                continue;
+            }
+
+            if(mount.getSource() instanceof FileMountSource == false){
+                continue;
+            }
+
+            FileMountSource mountSource = (FileMountSource)mount.getSource();
+
+            FileWatchService.WatchRoot root = fileWatchService.addRoot(mount.getAlias(), mountSource.getRootPath());
             switch (mount.getType()) {
                 case FILES:
                     root.addHandler(changes -> {
@@ -773,10 +783,10 @@ public class WorkspaceManager {
                     });
                     break;
                 case SKILLS:
-                    root.addHandler(changes -> engine.getSkillProvider().refreshByGroup(mount.getAlias()));
+                    root.addHandler(changes -> engine.getSkillCatalog().refreshByMount(mount.getAlias()));
                     break;
                 case AGENTS:
-                    root.addHandler(changes -> engine.getAgentManager().refreshByMountAlias(mount.getAlias()));
+                    root.addHandler(changes -> engine.getAgentCatalog().refreshByMount(mount.getAlias()));
                     break;
             }
         }

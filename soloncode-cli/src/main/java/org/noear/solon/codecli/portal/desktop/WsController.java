@@ -4,7 +4,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -106,7 +106,7 @@ public class WsController {
             return Result.failure("alias is required");
         }
 
-        MountDir mountDir = engine.getMount(alias);
+        Mount mountDir = engine.getMount(alias);
         if (mountDir == null) {
             return Result.failure("挂载池不存在: " + alias);
         }

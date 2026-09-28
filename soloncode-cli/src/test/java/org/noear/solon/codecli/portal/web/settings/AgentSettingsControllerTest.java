@@ -6,7 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -41,8 +42,10 @@ class AgentSettingsControllerTest {
         System.setProperty("user.dir", workspace.toString());
 
         engine = HarnessEngine.of(workspace.toString(), ".soloncode/")
-                .mountAdd(MountDir.builder().alias(AgentSettingsController.USER_ALIAS).type(MountType.AGENTS).path("~/.soloncode/agents/").primary(true).build())
-                .mountAdd(MountDir.builder().alias(AgentSettingsController.WORKSPACE_ALIAS).type(MountType.AGENTS).path("./.soloncode/agents/").primary(true).build())
+                .mountAdd(Mount.builder().alias(AgentSettingsController.USER_ALIAS).type(MountType.AGENTS)
+                        .source(FileMountSource.of("~/.soloncode/agents/")).primary(true).build())
+                .mountAdd(Mount.builder().alias(AgentSettingsController.WORKSPACE_ALIAS).type(MountType.AGENTS)
+                        .source(FileMountSource.of("./.soloncode/agents/")).primary(true).build())
                 .build();
 
         /* 多工作区改造后，控制器不再构造注入引擎，而是经 currentContext() 按当前工作区动态取。
@@ -285,7 +288,7 @@ class AgentSettingsControllerTest {
         Path root = java.nio.file.Paths.get(engine.getWorkspace(), ".soloncode/agents").toAbsolutePath().normalize();
         Files.createDirectories(root);
         Files.write(root.resolve("general.md"), "---\nname: general\ndescription: override\ntools: [\"read\"]\n---\n\nOverride.\n".getBytes(StandardCharsets.UTF_8));
-        engine.getAgentManager().refreshByMountAlias(AgentSettingsController.WORKSPACE_ALIAS);
+        engine.getAgentCatalog().refreshByMount(AgentSettingsController.WORKSPACE_ALIAS);
 
         Result builtin = controller.agentsGet("general", "user");
         assertEquals(200, builtin.getCode());

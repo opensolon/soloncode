@@ -23,7 +23,7 @@ import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.talents.mount.SkillDir;
+import org.noear.solon.ai.talents.cli.SkillDescriptor;
 
 import java.util.HashSet;
 import java.util.List;
@@ -81,7 +81,7 @@ public class CliCompleter implements Completer {
         if (line.word().startsWith("$")) {
             Set<String> added = new HashSet<>();
             String prefix = line.word().substring(1).toLowerCase();
-            for (SkillDir skill : engine.getSkills()) {
+            for (SkillDescriptor skill : engine.getSkills()) {
                 if (skill.getName().startsWith(prefix)) {
                     if (added.contains(skill.getName())) {
                         continue;

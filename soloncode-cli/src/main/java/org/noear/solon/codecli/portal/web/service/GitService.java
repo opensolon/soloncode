@@ -19,7 +19,8 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.agent.react.ReActAgent;
-import org.noear.solon.ai.talents.mount.MountDir;
+import org.noear.solon.ai.talents.mount.FileMountSource;
+import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.portal.web.WebController;
 import org.noear.solon.core.handle.Result;
@@ -95,14 +96,14 @@ public class GitService {
         if (workspaceId == null || workspaceId.isEmpty() || "workspace".equals(workspaceId)) {
             return defaultWorkspaceDir;
         }
-        MountDir mount = engine.getMount(workspaceId);
+        Mount mount = engine.getMount(workspaceId);
         if (mount == null) {
             throw new IllegalArgumentException("Mount not found: " + workspaceId);
         }
-        if (mount.getType() != MountType.FILES) {
-            throw new IllegalArgumentException("Mount is not FILES type: " + workspaceId);
+        if (mount.getType() != MountType.FILES || !(mount.getSource() instanceof FileMountSource)) {
+            throw new IllegalArgumentException("Mount is not a local FILES mount: " + workspaceId);
         }
-        return mount.getRealPath().toFile();
+        return ((FileMountSource) mount.getSource()).getRootPath().toFile();
     }
 
     // ==================== 内部基础设施 ====================
