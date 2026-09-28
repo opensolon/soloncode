@@ -10,8 +10,8 @@ import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.MountDo;
+import org.noear.solon.codecli.util.MountPathUtil;
 import org.noear.solon.codecli.portal.FileWatchService;
 import org.noear.solon.codecli.util.OsOpenUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -62,7 +62,9 @@ public class MountSettingsController extends BaseSettingsController {
             item.put("alias", entry.getAlias());
             item.put("type", entry.getType());
             Path entryRoot = fileMountRoot(entry);
-            item.put("path", entryRoot != null ? entryRoot.toString() : "");
+            MountDo configured = settings().getMountPools().get(entry.getAlias());
+            item.put("path", configured != null && configured.getPath() != null
+                    ? configured.getPath() : (entryRoot != null ? entryRoot.toString() : ""));
             item.put("enabled", entry.isEnabled());
             item.put("system", entry.isPrimary());
             item.put("writeable", entry.isWriteable());
@@ -120,7 +122,7 @@ public class MountSettingsController extends BaseSettingsController {
                 .alias(alias)
                 .description(description)
                 .type(type)
-                .source(FileMountSource.of(path))
+                .source(FileMountSource.of(MountPathUtil.resolve(path, engine().getWorkspace())))
                 .writeable(writeable)
                 .build());
 

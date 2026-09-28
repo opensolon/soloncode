@@ -26,6 +26,7 @@ import org.noear.solon.codecli.portal.web.service.GitService;
 import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.util.JdkHomeUtil;
+import org.noear.solon.codecli.util.MountPathUtil;
 import org.noear.solon.codecli.util.LogDirUtil;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.util.Assert;
@@ -675,20 +676,20 @@ public class WorkspaceManager {
                     .alias(entry.getKey())
                     .description(mount.getDescription())
                     .type(mount.getType())
-                    .source(FileMountSource.of(mount.getPath()))
+                    .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), workspacePath)))
                     .primary(mount.isPrimary())
                     .enabled(mount.isEnabled())
                     .writeable(mount.isWriteable())
                     .build());
         }
 
-        engine.addMount(Mount.builder().alias("@agent-skills").type(MountType.SKILLS).source(FileMountSource.of(("~/.agents/skills/"))).primary(true).build());
+        engine.addMount(Mount.builder().alias("@agent-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/.agents/skills/", workspacePath))).primary(true).build());
 
-        engine.addMount(Mount.builder().alias("@user-skills").type(MountType.SKILLS).source(FileMountSource.of("~/" + engine.getHarnessSkills())).primary(true).build());
-        engine.addMount(Mount.builder().alias("@workspace-skills").type(MountType.SKILLS).source(FileMountSource.of("./" + engine.getHarnessSkills())).primary(true).build());
+        engine.addMount(Mount.builder().alias("@user-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessSkills(), workspacePath))).primary(true).build());
+        engine.addMount(Mount.builder().alias("@workspace-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessSkills(), workspacePath))).primary(true).build());
 
-        engine.addMount(Mount.builder().alias("@user-agents").type(MountType.AGENTS).source(FileMountSource.of("~/" + engine.getHarnessAgents())).primary(true).build());
-        engine.addMount(Mount.builder().alias("@workspace-agents").type(MountType.AGENTS).source(FileMountSource.of("./" + engine.getHarnessAgents())).primary(true).build());
+        engine.addMount(Mount.builder().alias("@user-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessAgents(), workspacePath))).primary(true).build());
+        engine.addMount(Mount.builder().alias("@workspace-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessAgents(), workspacePath))).primary(true).build());
 
         // 灌入技能禁用清单
         engine.disallowSkillReset(wsSettings.getPermission().getDisallowedSkills());

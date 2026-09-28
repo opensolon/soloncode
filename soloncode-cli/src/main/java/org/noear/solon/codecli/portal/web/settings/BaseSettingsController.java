@@ -18,6 +18,7 @@ import org.noear.solon.codecli.config.models.ModelSpecService;
 import org.noear.solon.codecli.config.models.ModelsAdapterManager;
 import org.noear.solon.codecli.portal.FileWatchService;
 import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.util.MountPathUtil;
 import org.noear.solon.codecli.market.MarketManager;
 import org.noear.solon.codecli.portal.web.service.SkinService;
 
@@ -655,11 +656,11 @@ public class BaseSettingsController {
                 MountDo old = oldMap.get(alias);
                 try {
                     if (old == null) {
-                        engine.addMount(toMount(alias, mount));
+                        engine.addMount(toMount(engine, alias, mount));
                         any = true;
                     } else if (!configFingerprint(old).equals(configFingerprint(mount))) {
                         engine.removeMount(alias);
-                        engine.addMount(toMount(alias, mount));
+                        engine.addMount(toMount(engine, alias, mount));
                         any = true;
                     }
                 } catch (Exception ex) {
@@ -674,12 +675,12 @@ public class BaseSettingsController {
         }
     }
 
-    private static Mount toMount(String alias, MountDo mount) {
+    private static Mount toMount(HarnessEngine engine, String alias, MountDo mount) {
         return Mount.builder()
                 .alias(alias)
                 .description(mount.getDescription())
                 .type(mount.getType())
-                .source(FileMountSource.of(mount.getPath()))
+                .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), engine.getWorkspace())))
                 .primary(mount.isPrimary())
                 .enabled(mount.isEnabled())
                 .writeable(mount.isWriteable())

@@ -39,6 +39,7 @@ import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
+import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.portal.web.service.FileService;
 import org.noear.solon.codecli.portal.web.service.GitService;
@@ -249,7 +250,10 @@ public class WebController {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("alias", entry.getAlias());
                 Path root = ((FileMountSource) entry.getSource()).getRootPath();
-                item.put("path", root != null ? root.toString() : "");
+                MountDo configured = currentContext().getSettings().getMountPools().get(entry.getAlias());
+                item.put("path", configured != null && configured.getPath() != null
+                        ? configured.getPath() : (root != null ? root.toString() : ""));
+                item.put("realPath", root != null ? root.toString() : "");
                 mounts.add(item);
             }
         } catch (Exception e) {
