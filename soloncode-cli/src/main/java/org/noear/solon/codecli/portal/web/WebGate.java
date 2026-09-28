@@ -1193,7 +1193,9 @@ public class WebGate extends SimpleWebSocketListener {
                         //防重入：会话已有流在跑（含上一轮 doFinally 尚未归还槽位的瞬时窗口）时，
                         //再开一条流会与在跑流共享同一 ReActTrace —— 旧流把 route 置 END 后
                         //新流立即空转结束，表现为「点了没反应、马上结束」。故忙碌时忽略并提示
-                        if (isSessionBusy(session)) {
+                        // 当前输入可能仍持有 input.admitting 占位；这里已经是该输入派生出的 Agent 任务，
+                        // 只能用真实流句柄判断是否有其它任务运行，避免 /continue、/rerun 被自身拦截。
+                        if (hasActiveStream(session)) {
                             LOG.warn("[WebGate] Session {} agent task via /{} skipped: another task in progress", session.getSessionId(), cmdName);
                             emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand("当前有任务正在执行，本次触发已忽略"));
                             return;
