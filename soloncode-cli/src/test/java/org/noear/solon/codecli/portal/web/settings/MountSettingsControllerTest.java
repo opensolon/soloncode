@@ -92,10 +92,11 @@ class MountSettingsControllerTest {
                 && ((Map<?, ?>) item.get("actions")).get("openLocal").equals(Boolean.TRUE)));
         assertTrue(mounts.stream().anyMatch(item -> "@workspace-skills".equals(item.get("alias"))
                 && "workspace".equals(item.get("scope"))));
-        // 内置挂载可见但非文件目录，无真实路径
+        // 内置挂载可见但非文件目录，无真实路径；displayLocation 来自 classpath 来源位置
         assertTrue(mounts.stream().anyMatch(item -> "@harness-agents".equals(item.get("alias"))
                 && Boolean.FALSE.equals(item.get("writeable"))
                 && "classpath".equals(item.get("scheme"))
+                && "META-INF/solon/ai/harness/agents/".equals(item.get("displayLocation"))
                 && Boolean.FALSE.equals(((Map<?, ?>) item.get("actions")).get("openLocal"))));
         assertFalse(mounts.stream().anyMatch(item -> "@global-skills".equals(item.get("alias"))));
     }
