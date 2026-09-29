@@ -2,9 +2,10 @@
 ### v2026.9.29
 
 * 添加 soloncode web `插话`与`排队`支持
+* 添加 soloncode classpath 挂载支持
 * 细节优化
 
-### v2026.9.25
+### v2026.9.29
 
 * 添加 soloncode web 管理控制台
 * 添加 soloncode web 多用户管理（之前有，开放出来）
