@@ -1,5 +1,6 @@
 package org.noear.solon.codecli.portal.web.settings;
 
+import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.talents.mount.catalog.AgentDescriptor;
 import org.noear.solon.ai.talents.mount.catalog.SkillDescriptor;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
@@ -392,6 +393,7 @@ public class MountSettingsController extends BaseSettingsController {
         for (AgentDescriptor agent : agentList) {
             Map<String, Object> agentItem = new LinkedHashMap<>();
             agentItem.put("name", agent.getName());
+            agentItem.put("description", agent.getDescription());
             Mount mount = engine().getMount(alias);
             boolean openLocal = mount != null && mount.getSource().capabilities().isLocalPathAccessible()
                     && agent.getFilePath() != null;

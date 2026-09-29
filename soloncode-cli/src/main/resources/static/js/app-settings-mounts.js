@@ -229,10 +229,12 @@
             + ' (' + items.length + ')</div>';
         items.forEach(function (item) {
             var name = item.name || item.path || '';
-            var kind = item.directory ? 'DIR' : 'FILE';
             var size = item.directory ? '' : formatFileSize(item.size);
+            var icon = item.directory
+                ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
             html += '<div class="settings-list-item mounts-skill-item mounts-file-item">'
-                + '<div class="settings-list-icon">' + kind + '</div>'
+                + '<div class="mounts-file-icon">' + icon + '</div>'
                 + '<div class="settings-list-info">'
                 + '<div class="settings-list-title">' + escapeHtml(name) + '</div>'
                 + (item.path && item.path !== name ? '<div class="settings-list-desc">' + escapeHtml(item.path) + '</div>' : '')
@@ -289,6 +291,7 @@
                     + '<div class="settings-list-info">'
                     + '<div class="settings-list-title">' + escapeHtml(name) + '</div>'
                     + (filePath ? '<div class="settings-list-desc">' + escapeHtml(filePath) + '</div>' : '')
+                    + (agent.description ? '<div class="settings-list-desc">' + escapeHtml(agent.description) + '</div>' : '')
                     + '</div></div>';
             });
         }

@@ -1164,6 +1164,9 @@ select[disabled] {
 /* ===== Settings common overrides ===== */
 .mcp-tool-item { cursor: default; }
 .mounts-skill-item { cursor: pointer; }
+.mounts-file-item .mounts-file-icon { width: 16px; height: 16px; flex: 0 0 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-secondary); opacity: 0.65; }
+.mounts-file-item .mounts-file-icon svg { display: block; }
+.mounts-file-item .settings-list-title { font-size: var(--fs-base); }
 
 /* LLM 默认模型方块勾选框 */
 .llm-default-checkbox {
