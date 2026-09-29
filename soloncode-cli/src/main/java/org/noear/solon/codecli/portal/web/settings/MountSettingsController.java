@@ -80,15 +80,22 @@ public class MountSettingsController extends BaseSettingsController {
         }
 
         for (Mount entry : uniqueMounts.values()) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("alias", entry.getAlias());
-            item.put("type", entry.getType());
-            Path entryRoot = fileMountRoot(entry);
             MountDo configured = settings().getMountPools().get(entry.getAlias());
             MountSource source = entry.getSource();
             MountCapabilities capabilities = source.capabilities();
+            Path entryRoot = fileMountRoot(entry);
+            // 优先用户配置的原始路径；否则用来源自述位置（file→目录、classpath→资源根）。
+            // getLocation() 仅用于展示诊断，不代表可解析的文件路径。
             String displayLocation = configured != null && configured.getPath() != null
-                    ? configured.getPath() : (entryRoot != null ? entryRoot.toString() : source.getScheme());
+                    ? configured.getPath() : source.getLocation();
+            if (entryRoot != null && displayLocation != null && displayLocation.trim().isEmpty()) {
+                displayLocation = entryRoot.toString();
+            }
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("alias", entry.getAlias());
+            item.put("type", entry.getType());
+
             item.put("path", displayLocation); // 兼容旧客户端；新客户端使用 displayLocation
             item.put("displayLocation", displayLocation);
             item.put("scheme", source.getScheme());
