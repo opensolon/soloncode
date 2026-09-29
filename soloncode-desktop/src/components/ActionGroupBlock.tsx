@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react';
-import type { UIEvent, WheelEvent } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
+import type { WheelEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -12,7 +12,6 @@ interface ActionGroupBlockProps {
   items: ContentItem[];
   theme?: Theme;
   onFileClick?: (filePath: string) => void;
-  autoExpanded?: boolean;
   title?: string;
 }
 
@@ -125,25 +124,7 @@ function shouldLockParentScroll(element: HTMLDivElement, deltaY: number): boolea
   return !atBottom;
 }
 
-function AutoScrollContent({ children, watchKey, autoFollow }: { children: ReactNode; watchKey: string; autoFollow: boolean }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const shouldAutoScrollRef = useRef(true);
-
-  useEffect(() => {
-    if (!ref.current || !autoFollow || !shouldAutoScrollRef.current) return;
-    const frameId = requestAnimationFrame(() => {
-      if (!ref.current) return;
-      ref.current.scrollTop = ref.current.scrollHeight;
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [watchKey, autoFollow]);
-
-  function handleScroll(event: UIEvent<HTMLDivElement>) {
-    const element = event.currentTarget;
-    const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
-    shouldAutoScrollRef.current = remaining <= 12;
-  }
-
+function LockedContent({ children }: { children: ReactNode }) {
   function handleWheel(event: WheelEvent<HTMLDivElement>) {
     if (shouldLockParentScroll(event.currentTarget, event.deltaY)) {
       event.stopPropagation();
@@ -151,25 +132,15 @@ function AutoScrollContent({ children, watchKey, autoFollow }: { children: React
   }
 
   return (
-    <div
-      className="action-group-item-content"
-      ref={ref}
-      onScroll={handleScroll}
-      onWheelCapture={handleWheel}
-    >
+    <div className="action-group-item-content" onWheelCapture={handleWheel}>
       {children}
     </div>
   );
 }
 
-export function ActionGroupBlock({ toolName, items, theme, onFileClick, autoExpanded = false, title }: ActionGroupBlockProps) {
+export function ActionGroupBlock({ toolName, items, theme, onFileClick, title }: ActionGroupBlockProps) {
   const [groupExpanded, setGroupExpanded] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    setGroupExpanded(autoExpanded);
-    setExpandedIndex(autoExpanded ? Math.max(0, items.length - 1) : null);
-  }, [autoExpanded, items.length]);
 
   const name = title || formatToolName(toolName);
   const mixedTools = new Set(items.map(item => item.toolName || '').filter(Boolean)).size > 1;
@@ -270,11 +241,11 @@ export function ActionGroupBlock({ toolName, items, theme, onFileClick, autoExpa
                   {itemLine && <span className="action-group-item-lines">{itemLine}</span>}
                 </div>
                 {isOpen && (
-                  <AutoScrollContent watchKey={item.text || ''} autoFollow={autoExpanded && idx === items.length - 1}>
+                  <LockedContent>
                     <ReactMarkdown remarkPlugins={[remarkBreaks]} components={markdownComponents}>
                       {item.text || '执行完成'}
                     </ReactMarkdown>
-                  </AutoScrollContent>
+                  </LockedContent>
                 )}
               </div>
             );

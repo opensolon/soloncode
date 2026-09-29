@@ -2,7 +2,7 @@ import { Icon } from '../common/Icon';
 import type { Theme } from '../../types';
 import './ActivityBar.css';
 
-export type ActivityType = 'explorer' | 'git' | 'extensions' | 'sessions' | 'automation' | 'memory' | 'settings' | 'skills' | 'agents';
+export type ActivityType = 'explorer' | 'git' | 'extensions' | 'sessions' | 'automation' | 'memory' | 'settings' | 'skills' | 'agents' | 'audit';
 
 interface ActivityBarProps {
   activeActivity: ActivityType;
@@ -13,7 +13,7 @@ interface ActivityBarProps {
 
 interface ActivityItem {
   id: ActivityType;
-  icon: 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'automation' | 'memory' | 'settings' | 'skills' | 'agents';
+  icon: 'explorer' | 'search' | 'git' | 'extensions' | 'sessions' | 'automation' | 'memory' | 'settings' | 'skills' | 'agents' | 'audit';
   title: string;
 }
 
@@ -23,6 +23,7 @@ const activities: ActivityItem[] = [
   { id: 'memory', icon: 'memory', title: '长期记忆' },
   { id: 'skills', icon: 'skills', title: 'Skills' },
   { id: 'agents', icon: 'agents', title: 'Agents' },
+  { id: 'audit', icon: 'audit', title: '审计日志' },
 ];
 
 export function ActivityBar({ activeActivity, theme, onActivityChange, onToggleTheme }: ActivityBarProps) {

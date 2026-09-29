@@ -1,16 +1,19 @@
 mod credentials;
 mod desktop_ops;
+mod process_utils;
+
+use process_utils::silent_command;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read as IoRead, Seek as IoSeek, SeekFrom, Write as IoWrite};
 use base64::Engine;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::Child;
 use std::sync::Mutex;
 use std::net::TcpStream;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use portable_pty::{native_pty_system, PtySize, CommandBuilder as PtyCommandBuilder};
 
 /// 应用日志文件
@@ -264,13 +267,8 @@ pub struct GitLogEntry {
 
 /// 执行 git 命令的辅助函数
 fn run_git(args: &[&str], cwd: &str) -> Result<String, String> {
-    let mut command = Command::new("git");
+    let mut command = silent_command("git");
     command.args(args).current_dir(cwd);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
     let output = command.output()
         .map_err(|e| format!("执行 git 命令失败: {}", e))?;
 
@@ -1257,6 +1255,10 @@ enum BackendLaunchMethod {
     Jar { path: std::path::PathBuf },
 }
 
+fn bundled_cli_jar_path(resource_dir: &Path) -> PathBuf {
+    resource_dir.join("soloncode-cli.jar")
+}
+
 fn user_home_dir() -> String {
     if cfg!(windows) {
         std::env::var("USERPROFILE").unwrap_or_default()
@@ -1360,8 +1362,14 @@ fn maybe_prepare_legacy_cli_settings() {
     }
 }
 
-/// 检测启动方式：优先 soloncode 命令，回退到 JAR
-fn detect_launch_method() -> BackendLaunchMethod {
+/// 检测启动方式：优先安装包内置 JAR，缺失时使用系统已安装的 CLI。
+fn detect_launch_method(resource_dir: &Path) -> BackendLaunchMethod {
+    let bundled_jar = bundled_cli_jar_path(resource_dir);
+    if bundled_jar.exists() {
+        app_log(&format!("[soloncode] Found bundled JAR: {:?}", bundled_jar));
+        return BackendLaunchMethod::Jar { path: bundled_jar };
+    }
+
     if cfg!(windows) {
         if let Ok(home) = std::env::var("USERPROFILE") {
             let bin_dir = Path::new(&home).join(".soloncode").join("bin");
@@ -1381,7 +1389,7 @@ fn detect_launch_method() -> BackendLaunchMethod {
         }
     }
     // 1. 优先检查 soloncode 命令是否在 PATH 中
-    let check = Command::new(if cfg!(windows) { "where" } else { "which" })
+    let check = silent_command(if cfg!(windows) { "where" } else { "which" })
         .arg("soloncode")
         .output();
     if let Ok(output) = check {
@@ -1515,15 +1523,13 @@ fn terminate_reused_backend(pid: u32, port: u16) {
     }
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        let mut command = Command::new("taskkill");
+        let mut command = silent_command("taskkill");
         command.args(["/PID", &pid.to_string(), "/T", "/F"]);
-        command.creation_flags(0x08000000);
         let _ = command.output();
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).output();
+        let _ = silent_command("kill").args(["-TERM", &pid.to_string()]).output();
     }
 }
 
@@ -1531,10 +1537,8 @@ fn terminate_managed_backend(managed: &mut ManagedBackendProcess) {
     let pid = managed.child.id();
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        let mut command = Command::new("taskkill");
+        let mut command = silent_command("taskkill");
         command.args(["/PID", &pid.to_string(), "/T", "/F"]);
-        command.creation_flags(0x08000000);
         let _ = command.output();
     }
     #[cfg(not(target_os = "windows"))]
@@ -1609,6 +1613,39 @@ async fn detect_backend(port: u16) -> Result<bool, String> {
     })
     .await
     .map_err(|e| format!("检测后端线程失败: {}", e))?
+}
+
+#[cfg(test)]
+mod bundled_cli_tests {
+    use super::{bundled_cli_jar_path, detect_launch_method, BackendLaunchMethod};
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn resolves_bundled_cli_jar_from_tauri_resource_directory() {
+        assert_eq!(
+            bundled_cli_jar_path(Path::new("/app/resources")),
+            Path::new("/app/resources").join("soloncode-cli.jar")
+        );
+    }
+
+    #[test]
+    fn prefers_existing_bundled_cli_jar() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let resource_dir = std::env::temp_dir().join(format!("soloncode-bundled-cli-{unique}"));
+        fs::create_dir_all(&resource_dir).unwrap();
+        let bundled_jar = bundled_cli_jar_path(&resource_dir);
+        fs::write(&bundled_jar, b"test jar").unwrap();
+
+        let launch = detect_launch_method(&resource_dir);
+
+        match launch {
+            BackendLaunchMethod::Jar { path } => assert_eq!(path, bundled_jar),
+            BackendLaunchMethod::Command { cmd } => panic!("expected bundled jar, got command {cmd}"),
+        }
+        fs::remove_dir_all(resource_dir).unwrap();
+    }
 }
 
 /// 启动后端 CLI 进程（如果已在运行则复用）
@@ -1689,14 +1726,40 @@ fn fetch_current_backend_version(backend_port: Option<u16>) -> Option<String> {
 }
 
 fn fetch_latest_desktop_release(client: &reqwest::blocking::Client) -> Result<Option<DesktopReleaseInfo>, String> {
-    let mut releases: Vec<RemoteRelease> = client
-        .get("https://gitee.com/api/v5/repos/opensolon/soloncode/releases?page=1&per_page=100")
-        .send()
-        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
-        .error_for_status()
-        .map_err(|e| format!("读取桌面发行版列表失败: {}", e))?
-        .json()
-        .map_err(|e| format!("解析桌面发行版列表失败: {}", e))?;
+    // Gitee 接口按创建时间分页返回，仅拉取第一页会漏掉较新的发行版（如 v2026.8.11-desktop 曾落在第二页），
+    // 因此按从新到旧逐页拉取，直到不足一页或达到安全上限
+    const PER_PAGE: usize = 100;
+    const MAX_PAGES: usize = 10;
+
+    let mut releases: Vec<RemoteRelease> = Vec::new();
+    for page in 1..=MAX_PAGES {
+        let url = format!(
+            "https://gitee.com/api/v5/repos/opensolon/soloncode/releases?page={}&per_page={}&direction=desc",
+            page, PER_PAGE
+        );
+
+        let fetched: Vec<RemoteRelease> = match client
+            .get(&url)
+            .send()
+            .map_err(|e| format!("读取桌面发行版列表失败: {}", e))
+            .and_then(|resp| {
+                resp.error_for_status()
+                    .map_err(|e| format!("读取桌面发行版列表失败: {}", e))
+            })
+            .and_then(|resp| resp.json().map_err(|e| format!("解析桌面发行版列表失败: {}", e)))
+        {
+            Ok(list) => list,
+            // 首页失败视为接口不可用直接报错；后续分页失败时降级使用已拉取数据（首页已含最新发行版）
+            Err(_) if page > 1 => break,
+            Err(err) => return Err(err),
+        };
+
+        let reached_last_page = fetched.len() < PER_PAGE;
+        releases.extend(fetched);
+        if reached_last_page {
+            break;
+        }
+    }
 
     releases.sort_by(|left, right| compare_version_text(&right.tag_name, &left.tag_name));
 
@@ -1788,8 +1851,6 @@ fn install_updates(app: tauri::AppHandle, backend_port: Option<u16>) -> Result<S
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-
         let script_path = std::env::temp_dir().join(format!(
             "soloncode-updater-{}.ps1",
             SystemTime::now()
@@ -1837,7 +1898,7 @@ try {{\n\
         fs::write(&script_path, script).map_err(|e| format!("写入更新脚本失败: {}", e))?;
 
         let script_path_str = script_path.to_string_lossy().to_string();
-        let mut command = Command::new("powershell");
+        let mut command = silent_command("powershell");
         command
             .args([
                 "-NoProfile",
@@ -1847,8 +1908,7 @@ try {{\n\
                 "Hidden",
                 "-File",
                 script_path_str.as_str(),
-            ])
-            .creation_flags(0x08000000);
+            ]);
 
         command.spawn().map_err(|e| format!("启动更新进程失败: {}", e))?;
 
@@ -1870,7 +1930,10 @@ try {{\n\
 }
 
 #[tauri::command]
-fn start_backend(workspace_path: String, port: u16) -> Result<u32, String> {
+fn start_backend(app: tauri::AppHandle, workspace_path: String, port: u16) -> Result<u32, String> {
+    let resource_dir = app.path().resource_dir()
+        .map_err(|error| format!("无法定位桌面应用资源目录: {}", error))?;
+
     {
         let mut task = BACKEND_START_TASK.lock().map_err(|e| format!("锁错误: {}", e))?;
         if let Some(existing) = task.as_ref() {
@@ -1899,7 +1962,7 @@ fn start_backend(workspace_path: String, port: u16) -> Result<u32, String> {
     ));
 
     std::thread::spawn(move || {
-        let result = start_backend_blocking(workspace_path.clone(), port);
+        let result = start_backend_blocking(workspace_path.clone(), port, resource_dir);
         match result {
             Ok(pid) => app_log(&format!(
                 "[soloncode] Background backend start finished for port {}, pid={}",
@@ -1924,7 +1987,7 @@ fn start_backend(workspace_path: String, port: u16) -> Result<u32, String> {
     Ok(0)
 }
 
-fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, String> {
+fn start_backend_blocking(workspace_path: String, port: u16, resource_dir: PathBuf) -> Result<u32, String> {
     // 空路径时使用用户主目录；项目路径则作为 CLI 的工作目录，以加载项目级配置与 Agent。
     let requested_work_dir = if workspace_path.is_empty() {
         let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
@@ -2025,7 +2088,7 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
     }
 
     // 检测启动方式
-    let launch = detect_launch_method();
+    let launch = detect_launch_method(&resource_dir);
     let port_str = port.to_string();
     if let BackendLaunchMethod::Jar { .. } = &launch {
         maybe_prepare_legacy_cli_settings();
@@ -2048,20 +2111,20 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
                     .unwrap_or("")
                     .to_ascii_lowercase();
                 if ext == "ps1" {
-                    let mut c = Command::new("powershell");
+                    let mut c = silent_command("powershell");
                     c.args(["-ExecutionPolicy", "Bypass", "-File", cmd_path, "serve", &port_str]);
                     c
                 } else if ext == "bat" || ext == "cmd" {
-                    let mut c = Command::new("cmd");
+                    let mut c = silent_command("cmd");
                     c.args(["/C", cmd_path, "serve", &port_str]);
                     c
                 } else {
-                    let mut c = Command::new(cmd_path);
+                    let mut c = silent_command(cmd_path);
                     c.args(["serve", &port_str]);
                     c
                 }
             } else {
-                let mut c = Command::new(cmd_path);
+                let mut c = silent_command(cmd_path);
                 c.args(["serve", &port_str]);
                 c
             }
@@ -2074,7 +2137,7 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
             }
             let jar_str = jar_path.to_string_lossy().to_string();
             app_log(&format!("[soloncode] Starting: java -jar {} serve {}", jar_str, port_str));
-            let mut c = Command::new("java");
+            let mut c = silent_command("java");
             c.args([
                 "-Dfile.encoding=UTF-8",
                 "-Dstdout.encoding=UTF-8",
@@ -2092,13 +2155,6 @@ fn start_backend_blocking(workspace_path: String, port: u16) -> Result<u32, Stri
         .env("SOLONCODE_DESKTOP_MANAGED", "1")
         .stdout(log_file)
         .stderr(log_file_clone);
-
-    // Windows 下隐藏控制台窗口
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
 
     let child = cmd.spawn()
         .map_err(|e| {

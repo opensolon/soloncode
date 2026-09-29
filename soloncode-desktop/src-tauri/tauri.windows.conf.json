@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "target/installer-hooks/windows/install-cli.nsh"
+      },
+      "wix": {
+        "template": "wix/main.wxs",
+        "fragmentPaths": [
+          "target/installer-hooks/windows/install-cli.wxs"
+        ],
+        "componentRefs": [
+          "SolonCodeVersionedCliJar"
+        ]
+      }
+    }
+  }
+}

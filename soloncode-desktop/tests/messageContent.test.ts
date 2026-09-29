@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildUserMessageContents, isSafeImageDataUrl, mergeStreamingMessage } from '../src/utils/messageContent.ts';
+import { buildUserMessageContents, isSafeImageDataUrl, mergeStreamingMessage, sumReportedTokens } from '../src/utils/messageContent.ts';
 import type { Message } from '../src/types/index.ts';
 
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
@@ -58,4 +58,15 @@ test('late streaming snapshot cannot erase final response metadata', () => {
     timestamp: '19:13:21',
     metadata: finalMessage.metadata,
   });
+});
+
+test('reported zero token usage is not replaced with a text-length estimate', () => {
+  const messages: Message[] = [{
+    id: 8,
+    role: 'ASSISTANT',
+    timestamp: '19:13:23',
+    contents: [{ type: 'TEXT', text: '这段回复有内容，但模型明确报告本轮 token 为零' }],
+    metadata: { totalTokens: 0 },
+  }];
+  assert.equal(sumReportedTokens(messages), 0);
 });

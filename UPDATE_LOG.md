@@ -11,6 +11,14 @@
 * 细节优化
 
 
+### v2026.9.26
+
+* 优化 soloncode desktop 「自动编辑」模式完全免审批（write/edit/bash 一律直接放行，不再弹确认）
+* 新增 soloncode desktop 「完全访问」执行模式（任何工具调用都不进入审批流程，全自动免打扰；执行模式现为四个：审批执行 / 自动编辑 / 完全访问 / 仅规划）
+* 优化 soloncode desktop 编辑总结页文件列表行间距减半，多文件展示更紧凑
+* 修复 soloncode-cli MountSettingsControllerTest 因构造器变更导致模块测试无法编译的问题
+* 细节优化
+
 ### v2026.9.15
 
 * 添加 soloncode web 输入草案隔离

@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import { Icon } from '../common/Icon';
 import { startWindowDrag } from '../../hooks/useWindowDrag';
+import { formatDesktopVersion } from '../../services/updateService';
 import './StatusBar.css';
 
 export type BackendStatus = 'connecting' | 'connected' | 'disconnected';
@@ -35,6 +38,22 @@ export function StatusBar({
   hasUnsavedChanges = false,
   onReconnect,
 }: StatusBarProps) {
+  const [desktopVersion, setDesktopVersion] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getVersion()
+      .then(version => {
+        if (!cancelled) setDesktopVersion(formatDesktopVersion(version));
+      })
+      .catch(error => {
+        console.warn('[StatusBar] read desktop version failed:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const backendTitle = backendStatus === 'connected'
     ? '后端已连接'
     : backendStatus === 'connecting'
@@ -114,6 +133,12 @@ export function StatusBar({
         {language && (
           <span className="status-item status-language" title="语言类型">
             <span>{language}</span>
+          </span>
+        )}
+
+        {desktopVersion && (
+          <span className="status-item status-version" title={`SolonCode Desktop ${desktopVersion}`}>
+            <span>{desktopVersion}</span>
           </span>
         )}
       </div>

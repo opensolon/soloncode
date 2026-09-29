@@ -16,6 +16,12 @@ function normalizeBackendPort(backendPort?: number | null): number | null {
   return typeof backendPort === 'number' && backendPort > 0 ? backendPort : null;
 }
 
+export function formatDesktopVersion(version: string): string {
+  const normalized = version.trim();
+  if (!normalized) return '';
+  return /^v/i.test(normalized) ? normalized : `v${normalized}`;
+}
+
 export const updateService = {
   async checkForUpdates(backendPort?: number | null): Promise<UpdateInfo> {
     return await invoke<UpdateInfo>('check_updates', {
