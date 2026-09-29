@@ -10,6 +10,7 @@ import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.util.MountPathUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMeta;
 import org.noear.solon.core.handle.Result;
@@ -42,10 +43,11 @@ class AgentSettingsControllerTest {
         System.setProperty("user.dir", workspace.toString());
 
         engine = HarnessEngine.of(workspace.toString(), ".soloncode/")
+                .sessionProvider(new org.noear.solon.codecli.session.SessionManager(workspace.toString()))
                 .mountAdd(Mount.builder().alias(AgentSettingsController.USER_ALIAS).type(MountType.AGENTS)
-                        .source(FileMountSource.of("~/.soloncode/agents/")).primary(true).build())
+                        .source(FileMountSource.of(MountPathUtil.resolve("~/.soloncode/agents/", workspace.toString()))).primary(true).build())
                 .mountAdd(Mount.builder().alias(AgentSettingsController.WORKSPACE_ALIAS).type(MountType.AGENTS)
-                        .source(FileMountSource.of("./.soloncode/agents/")).primary(true).build())
+                        .source(FileMountSource.of(MountPathUtil.resolve("./.soloncode/agents/", workspace.toString()))).primary(true).build())
                 .build();
 
         /* 多工作区改造后，控制器不再构造注入引擎，而是经 currentContext() 按当前工作区动态取。
@@ -401,6 +403,50 @@ class AgentSettingsControllerTest {
         assertEquals(200, controller.agentsUpdate(ONode.ofBean(body).toJson()).getCode());
         String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertFalse(markdown.contains("model:"));
+    }
+
+    @Test
+    void extensionMountAgentsAreListedReadableAndCopyable() throws Exception {
+        // 模拟扩展方通过 engine.addMount 注册的 ClasspathMountSource 型 AGENTS 挂载
+        org.noear.solon.ai.talents.mount.source.ClasspathMountSource extensionSource =
+                org.noear.solon.ai.talents.mount.source.ClasspathMountSource.of("test-agents/");
+        engine.addMount(org.noear.solon.ai.talents.mount.Mount.builder()
+                .alias("@ext-agents")
+                .description("Extension agents")
+                .type(org.noear.solon.ai.talents.mount.MountType.AGENTS)
+                .enabled(true)
+                .writeable(false)
+                .visible(true)
+                .source(extensionSource)
+                .build());
+
+        // 1) 列表可见
+        String listJson = ONode.ofBean(controller.agentsList().getData()).toJson();
+        assertTrue(listJson.contains("db-writer"), "extension mount agent should be listed");
+        assertTrue(listJson.contains("Database expert provided by an extension classpath mount"));
+
+        // 2) 可读取详情（无用户覆盖文件时，回退到挂载目录读取）
+        Result detail = controller.agentsGet("db-writer", "user");
+        assertEquals(200, detail.getCode());
+        String detailJson = ONode.ofBean(detail.getData()).toJson();
+        assertTrue(detailJson.contains("database migration expert from an extension mount"));
+        assertTrue(detailJson.contains("\"builtin\":true"));
+
+        // 3) 可复制：sourceBuiltin=true 时从挂载目录读原文
+        Map<String, Object> copy = new LinkedHashMap<>();
+        copy.put("name", "db-writer-custom");
+        copy.put("scope", "user");
+        copy.put("sourceName", "db-writer");
+        copy.put("sourceScope", "user");
+        copy.put("sourceBuiltin", true);
+        copy.put("description", "copied desc");
+        copy.put("tools", Arrays.asList("read"));
+        copy.put("systemPrompt", "Copied prompt.");
+        assertEquals(200, controller.agentsAdd(ONode.ofBean(copy).toJson()).getCode());
+        Path copied = tempDir.resolve("home/.soloncode/agents/db-writer-custom.md");
+        assertTrue(Files.exists(copied));
+
+        extensionSource.close();
     }
 
     private String formJson(String name, String scope, String description, String systemPrompt) {

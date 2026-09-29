@@ -1,22 +1,21 @@
 package org.noear.solon.codecli.portal.web.settings;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
+import org.noear.solon.ai.talents.mount.catalog.AgentDescriptor;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.IoUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -46,8 +45,6 @@ public class AgentSettingsController extends BaseSettingsController {
     private static final int MAX_DESCRIPTION_LENGTH = 1000;
     private static final int MAX_PROMPT_LENGTH = 256 * 1024;
     private static final int MAX_FILE_SIZE = 512 * 1024;
-    private static final String BUILTIN_RESOURCE_BASE = "META-INF/solon/ai/harness/";
-    private static final String[] BUILTIN_NAMES = {"general", "explore", "bash", "plan", "git-summary"};
     private static final Pattern TOP_LEVEL_KEY_PATTERN = Pattern.compile("^[A-Za-z_][A-Za-z0-9_-]*\\s*:.*$");
     private static final Logger LOG = LoggerFactory.getLogger(AgentSettingsController.class);
 
@@ -58,7 +55,7 @@ public class AgentSettingsController extends BaseSettingsController {
     @Get
     @Mapping("/web/settings/agents")
     public Result agentsList() {
-        Map<String, AgentDefinition> builtinMap = loadBuiltinDefinitions();
+        Map<String, AgentDefinition> builtinMap = loadCatalogAgentDefinitions();
         Map<String, Map<String, Object>> candidatesByName = new LinkedHashMap<>();
         for (AgentDefinition definition : builtinMap.values()) {
             Map<String, Object> item = toItem(definition, AgentFlags.SCOPE_USER, true);
@@ -192,7 +189,7 @@ public class AgentSettingsController extends BaseSettingsController {
                 markdown = new String(Files.readAllBytes(target), StandardCharsets.UTF_8);
                 parseAndValidate(markdown, name);
             } else if (AgentFlags.SCOPE_USER.equals(scope)) {
-                markdown = loadBuiltinMarkdown(name);
+                markdown = readCatalogAgentMarkdown(name, null);
             } else {
                 return Result.failure("智能体不存在: " + name);
             }
@@ -277,7 +274,7 @@ public class AgentSettingsController extends BaseSettingsController {
                     String sourceInvalid = validateName(sourceName);
                     if (sourceInvalid != null) return Result.failure(sourceInvalid);
                     if (sourceBuiltin) {
-                        originalMarkdown = loadBuiltinMarkdown(sourceName);
+                        originalMarkdown = readCatalogAgentMarkdown(sourceName, null);
                     } else {
                         Path source = resolveFile(sourceScope, sourceName);
                         if (Files.isRegularFile(source) && !Files.isSymbolicLink(source) && Files.size(source) <= MAX_FILE_SIZE) {
@@ -394,26 +391,56 @@ public class AgentSettingsController extends BaseSettingsController {
     }
 
     private AgentDefinition findBuiltin(String name) {
-        return loadBuiltinDefinitions().get(name);
+        return loadCatalogAgentDefinitions().get(name);
     }
 
-    private String loadBuiltinMarkdown(String name) throws Exception {
-        try (InputStream input = AgentSettingsController.class.getClassLoader()
-                .getResourceAsStream(BUILTIN_RESOURCE_BASE + name + ".md")) {
-            if (input == null) throw new IllegalArgumentException("内置智能体不存在: " + name);
-            return readUtf8(input);
+    /**
+     * 从引擎挂载目录读取智能体 Markdown 原文。
+     * <p>内置智能体位于 {@code @harness-agents} 挂载（ClasspathMountSource），扩展方也可能注册
+     * 自定义 AGENTS 挂载（如 JdbcMountSource），因此必须统一经 {@code AgentCatalog} 挂载接口读取，
+     * 不能绕过挂载体系直接读 classpath。</p>
+     *
+     * @param mountAlias 来源挂载别名；null 表示在所有非文件挂载中按名查找
+     */
+    private String readCatalogAgentMarkdown(String name, String mountAlias) throws Exception {
+        AgentDescriptor descriptor = null;
+        if (mountAlias != null) {
+            for (AgentDescriptor item : engine().getAgentCatalog().getAgentsByMount(mountAlias)) {
+                if (name.equals(item.getName())) {
+                    descriptor = item;
+                    break;
+                }
+            }
+        } else {
+            descriptor = engine().getAgentCatalog().getAgent(name);
+        }
+
+        if (descriptor == null) {
+            throw new IllegalArgumentException("内置智能体不存在: " + name);
+        }
+        
+        try (InputStream input = descriptor.open()) {
+            return IoUtil.transferToString(input);
         }
     }
 
-    private Map<String, AgentDefinition> loadBuiltinDefinitions() {
+    /** 挂载目录中的智能体（内置 + 扩展注册的 AGENTS 挂载），按名索引。 */
+    private Map<String, AgentDefinition> loadCatalogAgentDefinitions() {
         Map<String, AgentDefinition> result = new LinkedHashMap<>();
-        for (String name : BUILTIN_NAMES) {
+        for (AgentDescriptor descriptor : engine().getAgentCatalog().getAgents()) {
+            String name = descriptor.getName();
+            if (name == null || result.containsKey(name)) continue;
+            // @user-agents / @workspace-agents 属于文件型用户数据，由 addFileAgents 扫描，不在此列
+            if (USER_ALIAS.equals(descriptor.getMountAlias()) || WORKSPACE_ALIAS.equals(descriptor.getMountAlias())) continue;
             try {
-                String markdown = loadBuiltinMarkdown(name);
+                String markdown;
+                try (InputStream input = descriptor.open()) {
+                    markdown = IoUtil.transferToString(input);
+                }
                 AgentDefinition definition = parseAndValidate(markdown, name);
                 result.put(name, definition);
             } catch (Exception e) {
-                LOG.debug("[Settings] Failed to load builtin agent {}: {}", name, e.getMessage());
+                LOG.debug("[Settings] Failed to load catalog agent {}: {}", name, e.getMessage());
             }
         }
         return result;
@@ -527,16 +554,6 @@ public class AgentSettingsController extends BaseSettingsController {
         if (second < 0) return "";
         int start = normalized.indexOf('\n', second + 1);
         return start < 0 ? "" : normalized.substring(start + 1).trim();
-    }
-
-    private String readUtf8(InputStream input) throws Exception {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        byte[] buffer = new byte[4096];
-        int len;
-        while ((len = input.read(buffer)) >= 0) {
-            output.write(buffer, 0, len);
-        }
-        return new String(output.toByteArray(), StandardCharsets.UTF_8);
     }
 
     private AgentDefinition parseAndValidate(String markdown, String expectedName) {

@@ -72,7 +72,8 @@
             });
             sorted.forEach(function (item) {
                 var alias = item.alias || '';
-                var path = item.path || '';
+                var path = item.displayLocation || item.path || '';
+                var scheme = item.scheme || '';
                 var isSystem = item.system === true;
                 var typeMap = { SKILLS: 'S', FILES: 'F', AGENTS: 'A' };
                 var iconText = typeMap[item.type] || (item.type ? item.type.charAt(0).toUpperCase() : 'M');
@@ -85,9 +86,9 @@
                     + (item.writeable ? ' <span class="mounts-writeable-badge">' + I18n.t('mounts.writeableBadge') + '</span>' : '')
                     + '</div>'
                     + (item.description ? '<div class="settings-list-desc settings-muted-text">' + escapeHtml(item.description) + '</div>' : '')
-                    + (path ? '<div class="settings-list-desc">' + escapeHtml(path) + '</div>' : '')
+                    + '<div class="settings-list-desc">' + escapeHtml(scheme ? scheme + ' · ' : '') + escapeHtml(path) + '</div>'
                     + '</div><div class="settings-list-actions">'
-                    + '<button class="settings-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="' + I18n.t('mounts.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                    + (isSystem ? '' : '<button class="settings-action-btn edit mounts-edit-btn" data-alias="' + escapeAttr(alias) + '" title="' + I18n.t('mounts.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>')
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? I18n.t('mounts.toggle.disable') : I18n.t('mounts.toggle.enable')) + '">'
                     + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-alias="' + escapeAttr(alias) + '" class="mounts-toggle"/> '
                     + '<span class="toggle-slider"></span>'
@@ -179,7 +180,9 @@
 
         // 从缓存列表中查找 realPath
         var mountItem = mountsCachedList.find(function (m) { return m.alias === alias; });
-        mountsCurrentRealPath = mountItem ? (mountItem.realPath || '') : '';
+        mountsCurrentRealPath = mountItem && mountItem.actions && mountItem.actions.openLocal
+            ? (mountItem.realPath || '') : '';
+        $('#mountsOpenDirBtn').toggle(!!(mountItem && mountItem.actions && mountItem.actions.openLocal));
 
         var titleMap = { SKILLS: I18n.t('mounts.skillsListTitle'), AGENTS: I18n.t('mounts.agentsListTitle'), FILES: I18n.t('mounts.filesListTitle') };
         $mountsSkillsTitle.text(alias + ' - ' + (titleMap[mountsCurrentType] || I18n.t('mounts.contentListTitle')));
@@ -198,16 +201,53 @@
         });
     }
 
-    function renderMountsContent(list, type) {
-        if (type === 'AGENTS') { renderAgentsList(list); return; }
-        if (type === 'FILES') {
+    function renderMountsContent(data, type) {
+        if (type === 'AGENTS') { renderAgentsList(data); return; }
+        if (type === 'FILES') { renderFilesList(data); return; }
+        renderSkillsList(data);
+    }
+
+    function formatFileSize(size) {
+        if (size === null || size === undefined || size < 0) return '';
+        if (size < 1024) return size + ' B';
+        if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB';
+        if (size < 1024 * 1024 * 1024) return (size / (1024 * 1024)).toFixed(1) + ' MB';
+        return (size / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    }
+
+    function renderFilesList(data) {
+        var items = data && Array.isArray(data.items) ? data.items : [];
+        if (items.length === 0) {
             $mountsSkillsList.html('<div class="mcp-empty-state">'
                 + '<div class="mcp-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>'
                 + '<div class="mcp-empty-title">' + I18n.t('mounts.filesNotShown') + '</div>'
                 + '<div class="mcp-empty-desc">' + I18n.t('mounts.filesNotShownDesc') + '</div></div>');
             return;
         }
-        renderSkillsList(list);
+
+        var html = '<div class="mounts-skills-count">' + escapeHtml(I18n.t('mounts.filesListTitle'))
+            + ' (' + items.length + ')</div>';
+        items.forEach(function (item) {
+            var name = item.name || item.path || '';
+            var kind = item.directory ? 'DIR' : 'FILE';
+            var size = item.directory ? '' : formatFileSize(item.size);
+            html += '<div class="settings-list-item mounts-skill-item mounts-file-item">'
+                + '<div class="settings-list-icon">' + kind + '</div>'
+                + '<div class="settings-list-info">'
+                + '<div class="settings-list-title">' + escapeHtml(name) + '</div>'
+                + (item.path && item.path !== name ? '<div class="settings-list-desc">' + escapeHtml(item.path) + '</div>' : '')
+                + (size ? '<div class="settings-list-desc">' + escapeHtml(size) + '</div>' : '')
+                + '</div></div>';
+        });
+        if (data && data.truncated) {
+            var limit = data.limit || 50;
+            var truncatedText = I18n.t('mounts.filesTruncated', { n: limit });
+            // 旧语言包尚未包含新 key 时，至少显示可理解的降级文案。
+            if (truncatedText === 'mounts.filesTruncated') truncatedText = 'Showing the first ' + limit + ' items';
+            html += '<div class="settings-list-desc mounts-files-truncated">'
+                + escapeHtml(truncatedText) + '</div>';
+        }
+        $mountsSkillsList.html(html);
     }
 
     function renderSkillsList(list) {
@@ -220,13 +260,13 @@
         } else {
             html += '<div class="mounts-skills-count">' + I18n.t('mounts.skillCount', { n: list.length }) + '</div>';
             list.forEach(function (skill) {
-                html += '<div class="settings-list-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '">'
+                html += '<div class="settings-list-item mounts-skill-item" data-real-path="' + escapeAttr(skill.realPath || '') + '" data-open-local="' + ((skill.actions && skill.actions.openLocal) ? 'true' : 'false') + '">'
                     + '<div class="settings-list-info">'
                     + '<div class="settings-list-title">' + escapeHtml(skill.name) + '</div>'
                     + (skill.realPath ? '<div class="settings-list-desc">' + escapeHtml(skill.realPath) + '</div>' : '')
                     + (skill.description ? '<div class="settings-list-desc">' + escapeHtml(skill.description) + '</div>' : '')
                     + '</div><div class="settings-list-actions">'
-                    + '<button class="settings-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="' + I18n.t('mounts.deleteSkillTitle') + '">' + SVG_TRASH + '</button>'
+                    + ((skill.actions && skill.actions.delete) ? '<button class="settings-action-btn delete" data-skill="' + escapeAttr(skill.name) + '" title="' + I18n.t('mounts.deleteSkillTitle') + '">'+ SVG_TRASH + '</button>' : '')
                     + '</div></div>';
             });
         }
@@ -245,7 +285,7 @@
             list.forEach(function (agent) {
                 var name = agent.name || '';
                 var filePath = agent.filePath || '';
-                html += '<div class="settings-list-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '">'
+                html += '<div class="settings-list-item mounts-skill-item" data-real-path="' + escapeAttr(filePath) + '" data-open-local="' + ((agent.actions && agent.actions.openLocal) ? 'true' : 'false') + '">'
                     + '<div class="settings-list-info">'
                     + '<div class="settings-list-title">' + escapeHtml(name) + '</div>'
                     + (filePath ? '<div class="settings-list-desc">' + escapeHtml(filePath) + '</div>' : '')
@@ -272,8 +312,8 @@
     $mountsSkillsList.on('click', '.mounts-skill-item', function (e) {
         if ($(e.target).closest('.settings-action-btn').length) return;
         var realPath = $(this).data('real-path') || '';
-        if (realPath) {
-            $.get('/web/settings/mounts/open', { path: realPath }, function (resp) {
+        if (realPath && $(this).attr('data-open-local') === 'true') {
+            $.get('/web/settings/mounts/open', { alias: mountsCurrentAlias }, function (resp) {
                 if (resp && resp.code !== 200) {
                     layer.msg(resp.message || I18n.t('mounts.openDirFailed'), { icon: 2, time: 3000, offset: '120px' });
                 }
@@ -286,7 +326,7 @@
     // 打开挂载根目录按钮
     $('#mountsOpenDirBtn').on('click', function () {
         if (mountsCurrentRealPath) {
-            $.get('/web/settings/mounts/open', { path: mountsCurrentRealPath }, function (resp) {
+            $.get('/web/settings/mounts/open', { alias: mountsCurrentAlias }, function (resp) {
                 if (resp && resp.code !== 200) {
                     layer.msg(resp.message || I18n.t('mounts.openDirFailed'), { icon: 2, time: 3000, offset: '120px' });
                 }
