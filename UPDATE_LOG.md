@@ -1,18 +1,18 @@
 
 ### v2026.9.29
 
-* 添加 soloncode web `插话`与`排队`支持
+* 添加 soloncode im `插话`与`排队`支持
 * 添加 soloncode classpath 挂载支持
 * 细节优化
 
-### v2026.9.29
+### v2026.9.25
 
 * 添加 soloncode web 管理控制台
 * 添加 soloncode web 多用户管理（之前有，开放出来）
 * 细节优化
 
 
-### v2026.9.26
+### v2026.9.23
 
 * 优化 soloncode desktop 「自动编辑」模式完全免审批（write/edit/bash 一律直接放行，不再弹确认）
 * 新增 soloncode desktop 「完全访问」执行模式（任何工具调用都不进入审批流程，全自动免打扰；执行模式现为四个：审批执行 / 自动编辑 / 完全访问 / 仅规划）
