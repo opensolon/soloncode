@@ -1,6 +1,6 @@
 ---
 name: spring-to-solon-skill
-description: "Expert guidance for migrating Java projects from Spring Boot / Spring Cloud to the Solon framework. Provides annotation mapping, dependency replacement, architecture differences, and step-by-step migration for IoC, Web, Data, Security, Scheduling, Validation, Cloud, and Testing. Use when migrating Spring Boot/Cloud projects to Solon, replacing Spring annotations/dependencies, rewriting application.yml → app.yml, Feign→Nami, @SpringBootTest→@SolonTest, Spring Security→solon-security-auth, validation→solon-security-validation, or when the user says 迁移/Spring转Solon/替换starter/去Spring依赖. Not for greenfield Solon apps (use solon-development-skill)."
+description: "Expert guidance for migrating Java projects from Spring Boot / Spring Cloud to the Solon framework. Provides annotation mapping, dependency replacement, architecture differences, and step-by-step migration for IoC, Web, Data, Security, Scheduling, Validation, Cloud, and Testing. TRIGGER ONLY when the user explicitly requests a framework migration to Solon — e.g. when the user says 迁移/Spring转Solon/替换starter/去Spring依赖, or asks to rewrite application.yml → app.yml, Feign→Nami, @SpringBootTest→@SolonTest, Spring Security→solon-security-auth, validation→solon-security-validation. DO NOT TRIGGER when developing, debugging, refactoring, reviewing, or adding features to a Spring project the user intends to keep: a Spring project's mere existence (Spring annotations/dependencies/config present) is NOT a migration request — never convert, fix, or Solon-ify a project's framework without the user's explicit request; if intent is unclear, ask first and keep the project on Spring. Not for greenfield Solon apps (use solon-development-skill)."
 ---
 
 # Spring to Solon Migration Skill
@@ -16,8 +16,9 @@ description: "Expert guidance for migrating Java projects from Spring Boot / Spr
 
 ## Critical Migration Rules
 
-1. **Solon 不是 Spring。** 禁止混用 Spring 注解与 Solon 注解。替换全部 Spring import。
-2. **禁止 Spring 依赖。** 移除所有 `spring-boot-starter-*`、`spring-*`。Solon 使用 `org.noear` groupId。
+0. **意图闸门（优先于一切）**：本 skill 仅在用户**明确要求**将 Spring 项目迁移到 Solon 时适用（明确表述：迁移 / Spring转Solon / 替换 starter / 去 Spring 依赖等，或明确要求换框架）。用户未明确要求时：保持项目现有框架（Spring），禁止修改 pom 依赖、启动类、配置文件名与注解体系；不要把「项目里存在 Spring 依赖」当作迁移请求；意图不明确时先询问，不得动手。其他规则均以此条为前提。
+1. **Solon 不是 Spring。** 禁止混用 Spring 注解与 Solon 注解。替换全部 Spring import。（仅在 Rule 0 确认后执行）
+2. **禁止 Spring 依赖。** 移除所有 `spring-boot-starter-*`、`spring-*`。Solon 使用 `org.noear` groupId。（仅在 Rule 0 确认后执行；未确认前任何 Spring 依赖都不是“待清理项”）
 3. **配置文件**是 `app.yml`（或 `app.properties`），**不是** `application.yml`。
 4. **入口**是 `Solon.start(App.class, args)`，不是 `SpringApplication.run()`。
 5. **Parent POM** 是 `solon-parent`（`groupId=org.noear`）。
@@ -34,12 +35,14 @@ description: "Expert guidance for migrating Java projects from Spring Boot / Spr
 
 | 场景 | 使用 skill |
 |------|------------|
-| Spring → Solon 对照、替换、迁移步骤 | **本 skill** |
+| 用户明确要求 Spring → Solon 对照、替换、迁移步骤 | **本 skill** |
 | 纯 Solon 新功能 / AI / Flow / 最佳实践 | **solon-development-skill** |
 | 两边都提及时 | 先按本 skill 完成迁移对照，再链开发 skill 补原生写法 |
+| 用户未要求迁移，只是在 Spring 项目里干活 | **都不用**；保持 Spring 现状，意图不明先问 |
 
 ## 执行流程
 
+0. **确认迁移意图（Step 0，必须最先做）**：仅当用户明确要求迁移时才进入本流程；若意图不明（如只是提到 Spring、依赖报错、想优化性能），先向用户确认，未确认前禁止改动 pom / 启动类 / 配置文件。本项目确属 Spring 且用户要继续用 → 不适用本 skill，直接按 Spring 方式干活。
 1. **扫项目**：父 POM、starter 列表、配置文件名、启动类、测试入口、是否有 Security / Validation / Scheduling / Cloud。
 2. **按 Checklist Step 1→12** 推进；每步只 `read` 1～2 个 reference，避免一次加载全部。
 3. **生成代码前**核对 Critical Migration Rules（尤其：`app.yml`、无 Spring 混用、`@Component`/`@Inject`、校验坐标）。
@@ -114,6 +117,8 @@ description: "Expert guidance for migrating Java projects from Spring Boot / Spr
 | 切面 / 条件 / 生命周期 / 数据层 / 陷阱（接 basics） | `references/test_advanced_migration.md` | `@Rollback`, `@SolonTest`, `@EnableAutoConfiguration` |
 
 ## Quick Migration Checklist
+
+> 本 Checklist 仅在 Rule 0 / Step 0 确认用户明确要求迁移后执行；否则任何一步都不应发生。
 
 ### Step 1: POM 改造
 - Replace `spring-boot-starter-parent` → `solon-parent`（**4.0.3**）

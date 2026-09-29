@@ -1,6 +1,6 @@
 ---
 name: solon-development-skill
-description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solon AI (ChatModel/RAG/MCP/Agent/Harness/Talent), Solon Flow, Solon Cloud, Nami RPC, SqlUtils/MyBatis, and Solon annotations (@Mapping, @Inject, @SolonMain, @Component). Independent IoC/AOP and plugins — never use Spring annotations or spring-boot dependencies."
+description: "Solon Java framework expert (NOT Spring). Use ONLY for projects already using or being newly built with the Solon framework. DO NOT USE for projects the user is keeping on Spring/Spring Boot — if the workspace is a Spring project (spring-boot-starter-*, @SpringBootApplication, application.yml) and the user has not explicitly requested Solon or a migration, keep it on Spring and do not load this skill. Use for Solon apps, Solon AI (ChatModel/RAG/MCP/Agent/Harness/Talent), Solon Flow, Solon Cloud, Nami RPC, SqlUtils/MyBatis, and Solon annotations (@Mapping, @Inject, @SolonMain, @Component). Independent IoC/AOP and plugins — never use Spring annotations or spring-boot dependencies in Solon code."
 ---
 
 # Solon Development Skill
@@ -15,8 +15,9 @@ description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solo
 
 ## Critical Rules
 
-1. **Solon 不是 Spring。** 禁止混用 Spring 注解（`@Autowired`、`@SpringBootApplication`、`@RestController`、`@RequestMapping`、`@Service`、`@Repository`、`@Value`、`@ComponentScan` 等）。
-2. **禁止 Spring 依赖。** 不要引入 `spring-boot-starter-*`、`spring-*`。Solon 坐标 groupId 为 `org.noear`。
+0. **框架守卫（优先于一切）**：本 skill 的规则只适用于「Solon 项目」或「用户明确要用 Solon 的新项目」。若当前项目实际是 Spring 项目且用户未明确要求迁移或改用 Solon：保持项目现有框架，禁止移除 Spring 依赖、改写启动类/注解/配置文件名，禁止把下面的「禁 Spring」规则反向套用到 Spring 项目上；意图不明时先询问用户。确属 Solon 项目时才适用下列规则。
+1. **Solon 不是 Spring。** 禁止混用 Spring 注解（`@Autowired`、`@SpringBootApplication`、`@RestController`、`@RequestMapping`、`@Service`、`@Repository`、`@Value`、`@ComponentScan` 等）。（仅在 Rule 0 判定为 Solon 项目后适用）
+2. **禁止 Spring 依赖。** 不要引入 `spring-boot-starter-*`、`spring-*`。Solon 坐标 groupId 为 `org.noear`。（仅在 Rule 0 判定为 Solon 项目后适用；Spring 项目里的 Spring 依赖不归本 skill 管）
 3. **配置文件是 `app.yml`**（或 `app.properties`），**不是** `application.yml`。
 4. **入口**是 `Solon.start(App.class, args)`，不是 `SpringApplication.run()`。
 5. **组件注解用 `@Component`**，不要用 `@Service` / `@Repository`。
@@ -27,6 +28,7 @@ description: "Solon Java framework expert (NOT Spring). Use for Solon apps, Solo
 
 ## 执行流程
 
+0. **判定框架归属（优先）**：确认当前项目是 Solon 项目（`solon-parent`、`org.noear` 依赖、`app.yml`、`@SolonMain`）或用户明确要用 Solon；否则按 Rule 0 处理（保持 Spring 现状 / 先问）。Spring 项目仅“顺带提到 Solon”不算。
 1. **判定场景** → 只 `read` 下表中对应的 1～2 个 reference（**禁止一次加载全部**）。
 2. **生成代码前**核对 Critical Rules（尤其：`app.yml`、`@Component`、`@Inject`、无 Spring 依赖）。
 3. **数据访问**优先读 `references/data_access.md`。
