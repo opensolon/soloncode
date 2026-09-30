@@ -705,6 +705,7 @@ public class WorkspaceManager {
         engine.getCommandRegistry().load(Paths.get(workspacePath, engine.getHarnessCommands()));
 
         engine.getCommandRegistry().register(new ExitCommand());
+        engine.getCommandRegistry().register(new HelpCommand());
         engine.getCommandRegistry().register(new ClearCommand());
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
