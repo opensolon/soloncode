@@ -128,7 +128,7 @@ class AgentSettingsControllerTest {
     }
 
     @Test
-    void rejectInvalidNameAndMissingFormFields {
+    void rejectInvalidNameAndMissingFormFields() {
         Result invalidName = controller.agentsAdd(formJson("../bad", "user", "bad", "bad"));
         assertNotEquals(200, invalidName.getCode());
 
