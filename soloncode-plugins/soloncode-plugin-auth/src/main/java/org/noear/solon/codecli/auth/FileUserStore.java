@@ -53,13 +53,16 @@ public class FileUserStore implements UserStore {
         Path root = userHome.resolve(".soloncode").toAbsolutePath();
         this.usersFilePath = root.resolve("auth").resolve(USERS_FILE);
         userMap.clear();
+
+        // 早期版本的 ~/.soloncode/users.json 只包含假数据。
+        // 必须在读取任何旧用户数据前清理，且不能把它迁移到 auth/users.json。
+        Path legacyPlaceholder = root.resolve(USERS_FILE);
+        if (Files.deleteIfExists(legacyPlaceholder)) {
+            LOG.warning("[SolonCode] 已删除早期版本生成的无效用户文件: " + legacyPlaceholder);
+        }
+
         if (Files.exists(usersFilePath)) {
             loadFromFile();
-        } else if (Files.exists(root.resolve(USERS_FILE))) {
-            // 旧文件损坏时不得视为空存储触发 bootstrap；验证后才迁移。
-            Path legacy = root.resolve(USERS_FILE);
-            loadUsers(legacy);
-            saveToFile();
         }
 
         // 有效历史用户是已初始化证据；损坏文件会在上面直接失败关闭。

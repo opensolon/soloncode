@@ -93,23 +93,41 @@ class AuthPersistenceTest {
         });
     }
 
-    @Test void migratesUsersAndRejectsDamagedOldAndNewFiles() throws Exception {
+    @Test void ignoresAndDeletesLegacyUsersFileAndRejectsDamagedCurrentFile() throws Exception {
         withHome(() -> {
             Path root = temp.resolve(".soloncode");
             Files.createDirectories(root);
-            Path old = root.resolve("users.json");
-            Files.write(old, "broken".getBytes(StandardCharsets.UTF_8));
-            assertThrows(Exception.class, () -> new FileUserStore().init(new UserAuthConfig()));
-            assertFalse(Files.exists(root.resolve("auth/users.json")));
-            Files.write(old, ("[{\"id\":\"1\",\"username\":\"admin\",\"passwordHash\":\"hash\","
-                    + "\"role\":\"admin\",\"enabled\":true,\"createdAt\":1,\"updatedAt\":1}]").getBytes(StandardCharsets.UTF_8));
-            FileUserStore store = new FileUserStore();
+            Path legacy = root.resolve("users.json");
+            Files.write(legacy, "broken".getBytes(StandardCharsets.UTF_8));
+
+            FileUserStore store = new FileUserStore(temp);
             store.init(new UserAuthConfig());
-            assertEquals(1, store.listUsers().size());
+
+            assertTrue(store.listUsers().isEmpty(), "早期占位数据不能迁移为用户");
+            assertFalse(Files.exists(legacy), "启动时应删除早期占位文件");
+            assertFalse(Files.exists(root.resolve("auth/users.json")), "占位数据不能生成新的用户文件");
+
             Path current = root.resolve("auth/users.json");
-            assertTrue(Files.exists(current));
+            Files.createDirectories(current.getParent());
             Files.write(current, "corrupt".getBytes(StandardCharsets.UTF_8));
-            assertThrows(Exception.class, () -> new FileUserStore().init(new UserAuthConfig()));
+            assertThrows(Exception.class, () -> new FileUserStore(temp).init(new UserAuthConfig()));
+        });
+    }
+
+    @Test void ignoresLegacyUsersFileEvenWhenItLooksLikeAUserList() throws Exception {
+        withHome(() -> {
+            Path root = temp.resolve(".soloncode");
+            Files.createDirectories(root);
+            Files.write(root.resolve("users.json"), ("[{\"id\":\"1\",\"username\":\"fake\",\"passwordHash\":\"hash\","
+                    + "\"role\":\"admin\",\"enabled\":true,\"createdAt\":1,\"updatedAt\":1}]")
+                    .getBytes(StandardCharsets.UTF_8));
+
+            FileUserStore store = new FileUserStore(temp);
+            store.init(new UserAuthConfig());
+
+            assertTrue(store.listUsers().isEmpty(), "旧 users.json 中的数据不能迁移为用户");
+            assertFalse(Files.exists(root.resolve("users.json")));
+            assertFalse(Files.exists(root.resolve("auth/users.json")));
         });
     }
 
