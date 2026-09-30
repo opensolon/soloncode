@@ -1,7 +1,7 @@
 
 ### v2026.9.29
 
-* 添加 soloncode im `插话`与`排队`支持
+* 添加 soloncode web im `插话`与`排队`支持
 * 添加 soloncode classpath 挂载支持
 * 细节优化
 
