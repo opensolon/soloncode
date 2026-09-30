@@ -80,6 +80,11 @@ public class UserAuthFilter implements Filter {
         }
     }
 
+    /** 配置可能残留为 enabled，但没有用户就没有可执行的登录验证。 */
+    private boolean hasNoUsers() {
+        return AuthRuntimeState.hasNoLocalUsers(userAuthConfig, userStore);
+    }
+
     private static boolean isLocalRequest(Context ctx) {
         if (ctx == null) return false;
         String ip = ctx.remoteIp();
@@ -110,6 +115,12 @@ public class UserAuthFilter implements Filter {
             return;
         }
         if (isAdminPath(path)) {
+            // 没有任何本地用户时不存在可登录身份，不能把请求重定向到必然失败的登录页。
+            // 这也覆盖升级后 enabled=true、users.json 为空的历史状态。
+            if (hasNoUsers()) {
+                chain.doFilter(ctx);
+                return;
+            }
             // 登录入口统一为 /web/login；管理台登录页也只通过目标地址表达跳转意图。
             if ("POST".equalsIgnoreCase(ctx.method()) && "/web/login".equals(path)) {
                 chain.doFilter(ctx);
@@ -147,7 +158,7 @@ public class UserAuthFilter implements Filter {
             return;
         }
 
-        if (!userAuthConfig.isEnabled() || isPublicPath(path)) {
+        if (!userAuthConfig.isEnabled() || hasNoUsers() || isPublicPath(path)) {
             if (userAuthConfig.isEnabled() && "/web/user/me".equals(path)
                     && BasicAuthAuthenticator.isBasic(ctx)) {
                 BasicAuthAuthenticator.AuthResult basic = BasicAuthAuthenticator.authenticate(ctx, userStore);

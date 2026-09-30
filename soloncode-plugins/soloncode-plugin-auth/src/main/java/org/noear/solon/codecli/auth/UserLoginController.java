@@ -39,13 +39,19 @@ public class UserLoginController {
     @Mapping("/web/login")
     public Result<Map<String, Object>> login(Context ctx, String username, String password) {
         if (!config.isEnabled()) return Result.failure("用户认证未启用");
+        if (hasNoUsers()) return Result.failure("当前没有用户记录，无需登录");
         return authenticate(username, password, ctx);
     }
 
     // 保留无 Context 的调用入口，供非 HTTP 单测和内部调用使用。
     public Result<Map<String, Object>> login(String username, String password) {
         if (!config.isEnabled()) return Result.failure("用户认证未启用");
+        if (hasNoUsers()) return Result.failure("当前没有用户记录，无需登录");
         return authenticate(username, password, null);
+    }
+
+    private boolean hasNoUsers() {
+        return AuthRuntimeState.hasNoLocalUsers(config, userStore);
     }
 
     private Result<Map<String, Object>> authenticate(String username, String password, Context ctx) {
@@ -147,8 +153,9 @@ public class UserLoginController {
     @Get
     @Mapping("/web/user/me")
     public Result<Map<String, Object>> me(Context ctx) {
+        boolean noUsers = hasNoUsers();
         // WebView 注入 Basic 头时无持久会话，使用过滤器已校验的本次请求身份。
-        if (config.isEnabled() && "basic".equals(ctx.attr("auth_scheme"))) {
+        if (config.isEnabled() && !noUsers && ctx != null && "basic".equals(ctx.attr("auth_scheme"))) {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("authEnabled", true);
             data.put("authenticated", true);
@@ -161,9 +168,20 @@ public class UserLoginController {
         String token = extractToken(ctx);
         UserSessionManager.UserSession session = token == null ? null : sessionManager.getSession(token);
         boolean bootstrapRequired = bootstrapRequired();
+        if (noUsers) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("authEnabled", config.isEnabled());
+            data.put("authRequired", false);
+            data.put("hasUsers", false);
+            data.put("authenticated", false);
+            data.put("bootstrapRequired", bootstrapRequired);
+            return Result.succeed(data);
+        }
         if (!config.isEnabled()) {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("authEnabled", false);
+            data.put("authRequired", false);
+            data.put("hasUsers", true);
             data.put("authenticated", session != null);
             // 认证关闭不意味着管理台匿名可访问；仍向管理台提供管理员会话身份。
             if (session != null) {
@@ -179,6 +197,8 @@ public class UserLoginController {
         if (session == null) {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("authEnabled", true);
+            data.put("authRequired", true);
+            data.put("hasUsers", true);
             data.put("authenticated", false);
             data.put("bootstrapRequired", bootstrapRequired);
             return Result.succeed(data);
@@ -186,6 +206,8 @@ public class UserLoginController {
         
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("authEnabled", true);
+        data.put("authRequired", true);
+        data.put("hasUsers", true);
         data.put("authenticated", true);
         data.put("bootstrapRequired", bootstrapRequired);
         data.put("userId", session.getUserId());

@@ -169,8 +169,13 @@
             .then(function (resp) {
                 if (!resp || resp.code !== 200 || !resp.data) throw new Error('Invalid user response');
                 var d = resp.data;
-                if (d.bootstrapRequired === true && d.authEnabled === false) {
-                    renderBootstrap();
+                if (d.hasUsers === false) {
+                    if (d.bootstrapRequired === true && d.authEnabled === false) {
+                        renderBootstrap();
+                    } else {
+                        // 升级后可能有旧初始化状态但用户记录为空；此时后端允许匿名访问。
+                        loadModules();
+                    }
                     return;
                 }
                 if (!d.authenticated) {
