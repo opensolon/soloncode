@@ -23,7 +23,8 @@
             [
                 { id: 'codesearch', name: 'codesearch', desc: I18n.t('permission.tool.codesearch'), risk: 'low' },
                 { id: 'websearch', name: 'websearch', desc: I18n.t('permission.tool.websearch'), risk: 'low' },
-                { id: 'webfetch', name: 'webfetch', desc: I18n.t('permission.tool.webfetch'), risk: 'low' }
+                { id: 'webfetch', name: 'webfetch', desc: I18n.t('permission.tool.webfetch'), risk: 'low' },
+                { id: 'mcp', name: 'mcp', desc: I18n.t('permission.tool.mcp'), risk: 'low' }
             ],
             // 第三列：任务管理
             [
@@ -143,11 +144,8 @@
         // 从复选框获取禁用的工具列表
         var disallowedTools = getDisallowedTools();
 
-        // 后端API需要tools字段，留空表示允许所有
-        var bodyObj = {
-            tools: ['**'],  // 允许所有工具
-            disallowedTools: disallowedTools
-        };
+        // 保留现有白名单；这里只修改全局禁用工具。
+        var bodyObj = { disallowedTools: disallowedTools };
 
         return $.ajax({ url: '/web/settings/permission/save', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .then(function (resp) {

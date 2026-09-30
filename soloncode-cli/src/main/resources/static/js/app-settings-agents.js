@@ -26,7 +26,8 @@
         [
             { id: 'codesearch', name: 'codesearch', get desc() { return I18n.t('agents.tool.codesearch'); } },
             { id: 'websearch', name: 'websearch', get desc() { return I18n.t('agents.tool.websearch'); } },
-            { id: 'webfetch', name: 'webfetch', get desc() { return I18n.t('agents.tool.webfetch'); } }
+            { id: 'webfetch', name: 'webfetch', get desc() { return I18n.t('agents.tool.webfetch'); } },
+            { id: 'mcp', name: 'mcp', get desc() { return I18n.t('agents.tool.mcp'); } }
         ],
         [
             { id: 'code', name: 'code', get desc() { return I18n.t('agents.tool.code'); } },

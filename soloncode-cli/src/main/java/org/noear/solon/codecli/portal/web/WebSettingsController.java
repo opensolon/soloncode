@@ -834,8 +834,9 @@ public class WebSettingsController extends BaseSettingsController {
 
     /**
      * 保存全局工具权限配置。
-     * <p>tools 为允许白名单（支持通配，如 {@code **}、{@code mcp__*}），留空等价于放开全部；
-     * disallowedTools 为禁用黑名单。保存后通过 engine.allowToolReset / disallowToolReset 热更新，
+     * <p>tools 为可选的允许白名单（支持通配，如 {@code **}、{@code mcp__*}）；
+     * 未传时保留现有白名单，传入空数组时按 {@code **} 处理。
+     * disallowedTools 为禁用黑名单（包括 {@code mcp}）。保存后通过工具权限重置热更新，
      * 引擎会重建主 Agent 即时生效，无需重启。</p>
      */
     @Post
@@ -846,26 +847,41 @@ public class WebSettingsController extends BaseSettingsController {
             return Result.failure("invalid body");
         }
 
-        List<String> disallowedTools = new ArrayList<>();
-        if (root.hasKey("disallowedTools") && root.get("disallowedTools").isArray()) {
-            for (ONode item : root.get("disallowedTools").getArray()) {
-                String v = item.getString();
-                if (Assert.isNotEmpty(v) && disallowedTools.contains(v) == false) {
-                    disallowedTools.add(v.trim());
-                }
-            }
+        if (root.hasKey("tools") && root.get("tools").isArray() == false) {
+            return Result.failure("tools must be an array");
         }
-
-        // 先清空再写入，避免 final List 叠加导致重复
-        settings().getPermission().getDisallowedTools().clear();
-        settings().getPermission().getDisallowedTools().addAll(disallowedTools);
-
+        if (root.hasKey("disallowedTools") && root.get("disallowedTools").isArray() == false) {
+            return Result.failure("disallowedTools must be an array");
+        }
+        List<String> tools = root.hasKey("tools") ? readPermissionTools(root.get("tools")) : null;
+        List<String> disallowedTools = root.hasKey("disallowedTools")
+                ? readPermissionTools(root.get("disallowedTools")) : null;
+        // 未提交的字段保持原值，避免通用页面覆盖高级白名单或技能权限。
+        if (tools != null) {
+            settings().getPermission().getTools().clear();
+            settings().getPermission().getTools().addAll(tools.isEmpty()
+                    ? java.util.Collections.singletonList("**") : tools);
+        }
+        if (disallowedTools != null) {
+            settings().getPermission().getDisallowedTools().clear();
+            settings().getPermission().getDisallowedTools().addAll(disallowedTools);
+        }
         // 先写盘（global settings.json），再广播到所有已加载工作区的引擎（重建各自主 Agent 即时生效）：
         // 其他工作区 reloadInPlace 需读到最新的磁盘全局值，才能正确叠加各自 local 覆盖
         saveSettings();
         applyPermissionToAllEngines(new ArrayList<>(), new ArrayList<>());
-
-        LOG.info("[Settings] Permission updated: disallowedTools={}", disallowedTools);
+        LOG.info("[Settings] Permission updated: tools={}, disallowedTools={}",
+                settings().getPermission().getTools(), settings().getPermission().getDisallowedTools());
         return Result.succeed();
+    }
+    private List<String> readPermissionTools(ONode node) {
+        List<String> values = new ArrayList<>();
+        for (ONode item : node.getArray()) {
+            String raw = item.getString();
+            if (Assert.isEmpty(raw)) continue;
+            String value = raw.trim();
+            if (!value.isEmpty() && !values.contains(value)) values.add(value);
+        }
+        return values;
     }
 }

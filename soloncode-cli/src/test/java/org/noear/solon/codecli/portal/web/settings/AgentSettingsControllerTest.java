@@ -107,7 +107,28 @@ class AgentSettingsControllerTest {
     }
 
     @Test
-    void rejectInvalidNameAndMissingFormFields() {
+    void agentMcpPermissionRoundTrips() throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", "mcp-agent");
+        body.put("scope", "workspace");
+        body.put("description", "MCP assistant");
+        body.put("tools", Arrays.asList("read", "mcp"));
+        body.put("systemPrompt", "Use MCP tools.");
+        assertEquals(200, controller.agentsAdd(ONode.ofBean(body).toJson()).getCode());
+        Path file = java.nio.file.Paths.get(engine.getWorkspace(), ".soloncode/agents/mcp-agent.md").toAbsolutePath().normalize();
+        assertTrue(new String(Files.readAllBytes(file), StandardCharsets.UTF_8).contains("tools: [\"read\",\"mcp\"]"));
+        Result detail = controller.agentsGet("mcp-agent", "workspace");
+        assertEquals(200, detail.getCode());
+        assertTrue(ONode.ofBean(detail.getData()).toJson().contains("\"mcp\""));
+        body.put("tools", Arrays.asList("read"));
+        body.put("originalName", "mcp-agent");
+        body.put("originalScope", "workspace");
+        assertEquals(200, controller.agentsUpdate(ONode.ofBean(body).toJson()).getCode());
+        assertFalse(new String(Files.readAllBytes(file), StandardCharsets.UTF_8).contains("\"mcp\""));
+    }
+
+    @Test
+    void rejectInvalidNameAndMissingFormFields {
         Result invalidName = controller.agentsAdd(formJson("../bad", "user", "bad", "bad"));
         assertNotEquals(200, invalidName.getCode());
 
