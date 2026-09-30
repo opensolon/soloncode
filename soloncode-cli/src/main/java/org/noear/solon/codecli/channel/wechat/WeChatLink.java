@@ -575,12 +575,21 @@ public class WeChatLink implements Channel, Runnable {
      * 把消息交给 AI（测试可覆写）
      */
     protected boolean dispatchToAgent(String sessionId, String text) {
-        return wsContext.getWebGate().safeChatInput(wsContext, sessionId, text, "WeChat");
+        return dispatchToAgent(sessionId, text, null, null);
     }
 
     protected boolean dispatchToAgent(String sessionId, String text, String sourceUserId, String replyTarget) {
         // 保留测试/嵌入式实现对旧 dispatchToAgent(session,text) 的覆写兼容。
-        if (wsContext == null) return dispatchToAgent(sessionId, text);
+        if (wsContext == null) {
+            return dispatchToAgent(sessionId, text);
+        }
+
+        // WebGate 仅在 web 模式下初始化，判空防 NPE 静默吞消息（与飞书通道一致）
+        if (wsContext.getWebGate() == null) {
+            LOG.warn("[WeChat] WebGate not ready, drop message for session {}", sessionId);
+            return false;
+        }
+
         return wsContext.getWebGate().safeChatInput(wsContext, sessionId, text, "WeChat", sourceUserId, replyTarget, null);
     }
 

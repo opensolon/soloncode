@@ -506,6 +506,11 @@ public class DingTalkLink implements Channel, Runnable {
 
         RunUtil.async(() -> {
             try {
+                // WebGate 仅在 web 模式下初始化，判空防 NPE 静默吞消息（与飞书通道一致）
+                if (wsContext.getWebGate() == null) {
+                    LOG.warn("[DingTalk] WebGate not ready, drop message from {}", finalUserId);
+                    return;
+                }
                 boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, finalSessionId, finalText, "DingTalk", finalUserId, null, finalMsgId);
                 if (accepted) {
                     // 消息被接受后才记录 lastMessageId，避免重连重推时被去重丢弃

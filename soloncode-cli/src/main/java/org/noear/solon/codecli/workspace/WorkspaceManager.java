@@ -112,8 +112,15 @@ public class WorkspaceManager {
         sweeper.scheduleWithFixedDelay(this::releaseIdleWorkspaces, 10, 10, java.util.concurrent.TimeUnit.MINUTES);
     }
 
-    public void setWebGate(WebGate webGate) {
+    public synchronized void setWebGate(WebGate webGate) {
         this.webGate = webGate;
+        // WebGate 就绪后才拉起默认工作区的 IM 长连接：acp/cli 等无 WebGate 的模式下
+        // 不启动 IM 连接，避免抢走飞书 WS 路由却无处投递消息（createWorkspaceContext
+        // 里已按 gate 是否就绪拦截过早期拉起，此处补拉起就绪前创建的默认工作区）。
+        if (webGate != null && defaultContext != null) {
+            RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(defaultContext.getMeta().getPath(),
+                    defaultContext.getChannelHub()::start));
+        }
     }
 
     public WebGate getWebGate() {
@@ -801,7 +808,11 @@ public class WorkspaceManager {
 
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
         // Link.run() 内部有 running CAS 幂等保护，重复调用安全。
-        RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, context.getChannelHub()::start));
+        // 仅 web 模式（WebGate 已就绪）才拉起：acp/cli 模式无 WebGate，连接收到消息后
+        // 无法投递（safeChatInput 会 NPE），且会抢走飞书/钉钉服务端的消息路由。
+        if (getWebGate() != null) {
+            RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, context.getChannelHub()::start));
+        }
 
         // 上下文完整建成：retention 由 EPHEMERAL 提升为 PERSISTENT（失败不回滚，见方案 7.4）
         promoteWorkspaceMeta(workspacePath);
