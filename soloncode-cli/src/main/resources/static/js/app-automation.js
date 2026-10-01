@@ -190,6 +190,12 @@
     function actionBtn(cls, title, svg) {
         return '<button class="' + cls + '" type="button" title="' + esc(title) + '" aria-label="' + esc(title) + '">' + svg + '</button>';
     }
+    function isAutomationTask(t) { return t && t.automation !== false; }
+    function taskRef(t) {
+        return isAutomationTask(t)
+            ? {type: 'AUTOMATION', id: t.id}
+            : {type: 'SESSION_LOOP', id: t.taskId || t.id, sessionId: t.sessionId};
+    }
     function rowHtml(t, isNew) {
         var open = expandedId === (isNew ? NEW_ID : t.id);
         var state = t.running ? I18n.t('automation.status.running') : (t.enabled ? I18n.t('automation.status.enabled') : I18n.t('automation.status.paused'));
@@ -243,13 +249,17 @@
                 row.querySelector('.auto-save').onclick = function () { save(row, id); };
                 row.querySelector('.auto-cancel').onclick = function () { expandedId = null; renderList(); };
                 var del = row.querySelector('.auto-delete');
-                if (del) del.onclick = function () { remove(id); };
+                if (del) del.onclick = function () { removeTask(t); };
             }
             if (id === NEW_ID) return;
+            var task = tasks.find(function (x) { return x.id === id; }) || {};
             var rowSession = row.getAttribute('data-session') || '';
+            // 自动任务和会话循环任务共用列表，但后端定位键不同：
+            // 自动任务用 automation id，会话任务用 sessionId + LoopTask taskId。
+            var ref = taskRef(task);
             // 行内右侧图标按钮：阻止冒泡，避免误触发行展开/收起
-            row.querySelector('.auto-toggle').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/toggle', {type: 'AUTOMATION', id: id}).then(load).catch(fail); };
-            row.querySelector('.auto-trigger').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/trigger', {type: 'AUTOMATION', id: id}).then(function () { toast(I18n.t('automation.triggered')); load(); }).catch(fail); };
+            row.querySelector('.auto-toggle').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/toggle', ref).then(load).catch(fail); };
+            row.querySelector('.auto-trigger').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/trigger', ref).then(function () { toast(I18n.t('automation.triggered')); load(); }).catch(fail); };
             row.querySelector('.auto-session').onclick = function (e) { e.stopPropagation(); showSession(rowSession); };
         });
     }
@@ -268,14 +278,18 @@
         if (!isCron && !(parseInt(data.intervalMinutes, 10) > 0)) { toast(I18n.t('automation.intervalInvalid'), 'error'); return; }
         var button = row.querySelector('.auto-save');
         button.disabled = true;
-        if (id !== NEW_ID) data.id = id;
+        var current = id === NEW_ID ? null : (tasks.find(function (x) { return x.id === id; }) || null);
+        if (id !== NEW_ID) {
+            var ref = taskRef(current);
+            Object.keys(ref).forEach(function (key) { data[key] = ref[key]; });
+        }
         api('POST', id === NEW_ID ? '/web/tasks/create' : '/web/tasks/update', data)
             .then(function () { toast(I18n.t('toast.saveSuccess'), 'success'); expandedId = null; load(); })
             .catch(fail).finally(function () { button.disabled = false; });
     }
-    function remove(id) {
+    function removeTask(t) {
         if (!confirm(I18n.t('automation.confirmDelete'))) return;
-        api('POST', '/web/tasks/delete', {type:'AUTOMATION', id:id}).then(function () { expandedId = null; load(); }).catch(fail);
+        api('POST', '/web/tasks/delete', taskRef(t)).then(function () { expandedId = null; load(); }).catch(fail);
     }
     function populateSelectors(row, t) {
         // 输入面板风格选择器：选中值存 row 的 data-agent/data-model 属性，避免 DOM 重建丢失
@@ -325,14 +339,14 @@
             if (typeof scheduleMsgNavRebuild === 'function') scheduleMsgNavRebuild();
         }
     }
-    function load() {
+    function load(silent) {
         var version = viewVersion;
         api('GET', '/web/tasks/list?type=AUTOMATION').then(function (data) {
             if (version !== viewVersion) return;
             tasks = Array.isArray(data) ? data : [];
             renderList();
             updateBadge();
-        }).catch(fail);
+        }).catch(silent ? function () {} : fail);
     }
     // 任务数徽标（对齐 memoryBadge 模式：列表条数，0 个隐藏）
     function updateBadge() {
@@ -360,4 +374,6 @@
         }
     });
     window.openAutomationViewer = show;
+    // 页面加载即静默拉取任务列表，徽标初始化对齐心智记忆（无需先打开面板；失败不打扰）
+    load(true);
 })();
