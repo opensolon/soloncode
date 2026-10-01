@@ -81,18 +81,107 @@
         return t.name && t.name !== '自动任务' ? t.name : (t.prompt || '自动任务');
     }
     function formHtml(t) {
+        var cronVal = t.cron || '';
+        // 调度方式：对齐定时心跳表单（radio 单选 + 输入联动），radio 按行内唯一表单命名，避免多任务 DOM 冲突
         return '<div class="mem-row-body"><div class="automation-form mem-form">' +
+            '<label class="automation-field"><span>任务描述 <b>*</b></span><textarea class="auto-prompt" rows="2" placeholder="描述自动任务需要完成的事情">' + esc(t.prompt || '') + '</textarea></label>' +
+            '<div class="automation-field"><span>调度方式</span><div class="automation-schedule">' +
+            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="interval"' + (cronVal ? '' : ' checked') + '/> 固定间隔</label>' +
+            '<input type="number" class="loop-input loop-input-sm auto-interval" min="1" value="' + esc(t.intervalMinutes || 5) + '" placeholder="5" title="分钟"/>' +
+            '<span class="automation-schedule-unit">分钟</span></div>' +
+            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="cron"' + (cronVal ? ' checked' : '') + '/> Cron 表达式</label>' +
+            '<input type="text" class="loop-input loop-input-sm auto-cron" value="' + esc(cronVal) + '" placeholder="0 */5 * * * ? *"/>' +
+            '<a class="loop-cron-link" data-cron="0 0 */2 * * ? *">每2小时</a>' +
+            '<a class="loop-cron-link" data-cron="0 0 22 * * ? *">每天22点</a>' +
+            '</div></div></div>' +
             '<div class="automation-form-grid">' +
-            '<label class="automation-field"><span>子代理</span><select class="auto-agent"><option value="">main（主代理）</option>' + (t.agentName ? '<option value="' + esc(t.agentName) + '" selected>' + esc(t.agentName) + '</option>' : '') + '</select><small>留空时使用主代理。</small></label>' +
-            '<label class="automation-field"><span>模型</span><select class="auto-model"><option value="">跟随默认模型</option>' + (t.modelName ? '<option value="' + esc(t.modelName) + '" selected>' + esc(t.modelName) + '</option>' : '') + '</select><small>留空时跟随默认模型。</small></label>' +
-            '<label class="automation-field"><span>固定间隔（分钟）</span><input class="auto-interval" type="number" min="1" value="' + esc(t.intervalMinutes || 5) + '" placeholder="5"></label>' +
-            '<label class="automation-field"><span>Cron 表达式 <em>可选</em></span><input class="auto-cron" value="' + esc(t.cron || '') + '" placeholder="0 */5 * * * ? *"></label>' +
-            '</div><label class="automation-field"><span>执行提示词 <b>*</b></span><textarea class="auto-prompt" rows="5" placeholder="描述自动任务需要完成的事情">' + esc(t.prompt || '') + '</textarea><small>任务在专用会话中执行，不会出现在普通会话列表。</small></label>' +
+            '<label class="automation-field"><span>智能体</span>' + selHtml('agent', t.agentName || '', 'main（主代理）') + '</label>' +
+            '<label class="automation-field"><span>模型</span>' + selHtml('model', t.modelName || '', '跟随默认模型') + '</label>' +
+            '</div>' +
             '<div class="mem-actions"><button class="memory-btn memory-btn-primary auto-save" type="button">保存任务</button>' +
             '<button class="memory-btn auto-cancel" type="button">取消</button>' +
             (t.id ? '<button class="memory-btn memory-btn-danger auto-delete" type="button">删除</button>' : '') +
             '</div></div></div>';
     }
+    // 输入面板风格的下拉选择器（复用 agents-model-selector 全宽向下弹出样式：搜索框 + active 高亮）
+    // getModelItem/getAgentItem：row 私有数据（存 data-* 属性，行重建不丢失）；setXxx 同步回写
+    function selHtml(kind, value, placeholder) {
+        var shown = value ? esc(value) : esc(placeholder);
+        return '<div class="model-selector agents-model-selector auto-select" data-kind="' + kind + '">' +
+            '<div class="model-selector-current auto-select-current" tabindex="0" role="button">' +
+            '<span class="model-name">' + shown + '</span>' +
+            '<i class="layui-icon layui-icon-down model-arrow"></i></div>' +
+            '<div class="model-dropdown">' +
+            '<div class="model-search-wrap"><input type="text" class="model-search-input" placeholder="搜索..."/></div>' +
+            '<div class="model-dropdown-items"></div></div></div>';
+    }
+    function setSel(row, kind, value, placeholder) {
+        row.setAttribute('data-' + kind, value || '');
+        var box = row.querySelector('.auto-select[data-kind=' + kind + ']');
+        if (box) box.querySelector('.model-name').textContent = value || placeholder;
+    }
+    function getSel(row, kind) {
+        return row.getAttribute('data-' + kind) || '';
+    }
+    // 渲染下拉项：items=[{value,label,desc}]，空值项始终在首位
+    function renderSelItems(box, items, selected, emptyLabel, emptyDesc) {
+        var html = '<div class="model-dropdown-item' + (selected ? '' : ' active') + '" data-value="">' +
+            '<span class="model-item-name">' + esc(emptyLabel) + '</span>' +
+            (emptyDesc ? '<span class="model-item-desc">' + esc(emptyDesc) + '</span>' : '') + '</div>';
+        items.forEach(function (it) {
+            var cls = it.value === selected ? ' active' : '';
+            html += '<div class="model-dropdown-item' + cls + '" data-value="' + esc(it.value) + '">' +
+                '<span class="model-item-name">' + esc(it.label) + '</span>' +
+                (it.desc ? '<span class="model-item-desc">' + esc(it.desc) + '</span>' : '') + '</div>';
+        });
+        if (selected && !items.some(function (x) { return x.value === selected; })) {
+            html += '<div class="model-dropdown-item active" data-value="' + esc(selected) + '">' +
+                '<span class="model-item-name">' + esc(selected) + '</span></div>';
+        }
+        box.querySelector('.model-dropdown-items').innerHTML = html;
+        var search = box.querySelector('.model-search-input');
+        if (search) search.value = '';
+    }
+    // 绑定触发器/搜索/选择；onChange 在选择后回调（row 内数据由 setSel 维护）
+    function bindSel(row, kind, placeholder, onChange) {
+        var box = row.querySelector('.auto-select[data-kind=' + kind + ']');
+        if (!box) return;
+        var current = box.querySelector('.auto-select-current');
+        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) o.classList.remove('open'); }); }
+        current.onclick = function (e) {
+            e.stopPropagation();
+            var opening = !box.classList.contains('open');
+            closeOthers();
+            box.classList.toggle('open', opening);
+            if (opening) {
+                requestAnimationFrame(function () {
+                    var active = box.querySelector('.model-dropdown-item.active');
+                    if (active) active.scrollIntoView({ block: 'nearest' });
+                    var input = box.querySelector('.model-search-input');
+                    if (input) { input.value = ''; filterSelItems(box, ''); input.focus(); }
+                });
+            }
+        };
+        current.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); current.onclick(e); } };
+        var search = box.querySelector('.model-search-input');
+        if (search) search.oninput = function () { filterSelItems(box, this.value); };
+        box.querySelector('.model-dropdown').onclick = function (e) {
+            var item = e.target.closest('.model-dropdown-item');
+            if (!item) return;
+            e.stopPropagation();
+            setSel(row, kind, item.getAttribute('data-value') || '', placeholder);
+            closeOthers();
+            if (onChange) onChange(getSel(row, kind));
+        };
+    }
+    function filterSelItems(box, query) {
+        var q = (query || '').toLowerCase().trim();
+        box.querySelectorAll('.model-dropdown-item').forEach(function (item) {
+            item.style.display = !q || (item.textContent || '').toLowerCase().indexOf(q) !== -1 ? '' : 'none';
+        });
+    }
+    // 点击行内其它区域关闭所有下拉
+    function closeAllSels(row) { row.querySelectorAll('.auto-select.open').forEach(function (o) { o.classList.remove('open'); }); }
     // 行内右侧图标按钮（对齐循环任务列表的 loop-item-actions 样式：图标 + title 提示）
     var SVG_PAUSE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
     var SVG_PLAY = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
@@ -130,12 +219,23 @@
         box.querySelectorAll('.automation-row').forEach(function (row) {
             var id = row.getAttribute('data-id');
             var head = row.querySelector('.automation-row-head');
-            function toggle() { expandedId = expandedId === id ? null : id; renderList(); }
+            function toggle() { closeAllSels(row); expandedId = expandedId === id ? null : id; renderList(); }
             head.onclick = toggle;
             head.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } };
             if (row.classList.contains('open')) {
                 var t = tasks.find(function (x) { return x.id === id; }) || {};
                 populateSelectors(row, t);
+                // 调度方式 radio 联动：对齐定时心跳表单（选中另一种时禁用无关输入）
+                row.querySelectorAll('input[name=autoScheduleType]').forEach(function (radio) {
+                    radio.onchange = function () {
+                        var isCron = row.querySelector('input[name=autoScheduleType]:checked').value === 'cron';
+                        row.querySelector('.auto-interval').disabled = isCron;
+                        row.querySelector('.auto-cron').disabled = !isCron;
+                    };
+                });
+                row.querySelectorAll('.loop-cron-link').forEach(function (link) {
+                    link.onclick = function (e) { e.preventDefault(); row.querySelector('.auto-cron').value = link.getAttribute('data-cron'); };
+                });
                 row.querySelector('.auto-save').onclick = function () { save(row, id); };
                 row.querySelector('.auto-cancel').onclick = function () { expandedId = null; renderList(); };
                 var del = row.querySelector('.auto-delete');
@@ -149,13 +249,18 @@
         });
     }
     function save(row, id) {
+        // 调度方式与后端契约一致：cron 或 intervalMinutes 必须提供一个（后端 validate：另一个可为空）
+        var isCron = row.querySelector('input[name=autoScheduleType]:checked').value === 'cron';
         var data = {type: 'AUTOMATION', prompt: row.querySelector('.auto-prompt').value.trim(),
-            intervalMinutes: row.querySelector('.auto-interval').value, cron: row.querySelector('.auto-cron').value.trim(),
+            intervalMinutes: isCron ? '' : row.querySelector('.auto-interval').value,
+            cron: isCron ? row.querySelector('.auto-cron').value.trim() : '',
             // 自动任务统一按定时任务创建；不传 taskType，创建走默认、更新时保留旧任务的底层类型。
             // 不传 name：新建时后端自动取提示词前 20 字作为名称，编辑时保留旧名称。
             runNow: 'false',
-            modelName: row.querySelector('.auto-model').value, agentName: row.querySelector('.auto-agent').value};
-        if (!data.prompt) { toast('请填写执行提示词', 'error'); return; }
+            modelName: getSel(row, 'model'), agentName: getSel(row, 'agent')};
+        if (!data.prompt) { toast('请填写任务描述', 'error'); return; }
+        if (isCron && !data.cron) { toast('请填写 Cron 表达式', 'error'); return; }
+        if (!isCron && !(parseInt(data.intervalMinutes, 10) > 0)) { toast('请填写有效的固定间隔（分钟）', 'error'); return; }
         var button = row.querySelector('.auto-save');
         button.disabled = true;
         if (id !== NEW_ID) data.id = id;
@@ -168,32 +273,32 @@
         api('POST', '/web/tasks/delete', {type:'AUTOMATION', id:id}).then(function () { expandedId = null; load(); }).catch(fail);
     }
     function populateSelectors(row, t) {
-        var model = row.querySelector('.auto-model');
-        var agent = row.querySelector('.auto-agent');
+        // 输入面板风格选择器：选中值存 row 的 data-agent/data-model 属性，避免 DOM 重建丢失
+        var agentBox = row.querySelector('.auto-select[data-kind=agent]');
+        var modelBox = row.querySelector('.auto-select[data-kind=model]');
+        if (!agentBox || !modelBox) return;
+        row.setAttribute('data-agent', t.agentName || '');
+        row.setAttribute('data-model', t.modelName || '');
+        bindSel(row, 'agent', 'main（主代理）');
+        bindSel(row, 'model', '跟随默认模型');
         api('GET', '/web/chat/models').then(function (data) {
-            if (!model.isConnected) return;
-            var list = data && data.list || [];
-            var selected = model.value;
-            model.innerHTML = '<option value="">跟随默认模型</option>' + list.map(function (x) {
-                var v = x.name || x.model; return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
-            }).join('');
-            if (selected && !Array.prototype.some.call(model.options, function (o) { return o.value === selected; })) {
-                model.add(new Option(selected, selected));
-            }
-            model.value = selected;
+            if (!modelBox.isConnected) return;
+            var list = (data && data.list) || [];
+            var items = list.map(function (x) {
+                var v = x.name || x.model;
+                return {value: v, label: v, desc: x.desc || ''};
+            }).filter(function (x) { return x.value; });
+            renderSelItems(modelBox, items, getSel(row, 'model'), '跟随默认模型', '任务执行时使用默认模型');
         }).catch(fail);
         api('GET', '/web/settings/agents').then(function (data) {
-            if (!agent.isConnected) return;
+            if (!agentBox.isConnected) return;
             var list = data && (data.list || data) || [];
             if (!Array.isArray(list)) list = [];
-            var selected = agent.value;
-            agent.innerHTML = '<option value="">main（主代理）</option>' + list.map(function (x) {
-                var v = x.name || x.id || x; return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
-            }).join('');
-            if (selected && !Array.prototype.some.call(agent.options, function (o) { return o.value === selected; })) {
-                agent.add(new Option(selected, selected));
-            }
-            agent.value = selected;
+            var items = list.map(function (x) {
+                var v = x.name || x.id || x;
+                return {value: v, label: v, desc: (x && x.description) || ''};
+            }).filter(function (x) { return x.value; });
+            renderSelItems(agentBox, items, getSel(row, 'agent'), 'main（主代理）', '留空时使用主代理');
         }).catch(fail);
     }
     function showSession(id) {
@@ -234,5 +339,11 @@
     }
     if (nav) nav.addEventListener('click', show);
     if (closeBtn) closeBtn.addEventListener('click', hide);
+    // 点击选择器外部时关闭下拉（全局仅注册一次，避免 renderList 重复挂监听）
+    document.addEventListener('click', function (e) {
+        if (e.target.closest && !e.target.closest('.auto-select')) {
+            document.querySelectorAll('.auto-select.open').forEach(function (o) { o.classList.remove('open'); });
+        }
+    });
     window.openAutomationViewer = show;
 })();

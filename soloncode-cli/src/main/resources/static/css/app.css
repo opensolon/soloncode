@@ -3533,17 +3533,30 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 /* 展开表单时按钮隐藏，避免与表单底部操作重复 */
 .automation-row.open .automation-row-actions { display: none; }
 .automation-form { gap: 16px; }
-.automation-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.automation-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .automation-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .automation-field > span { color: var(--text-secondary); font-size: var(--fs-sm); font-weight: 600; }
 .automation-field b { color: var(--color-danger); font-weight: 500; }
 .automation-field em { color: var(--text-tertiary); font-style: normal; font-weight: 400; }
 .automation-field input, .automation-field select, .automation-field textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--fs-md); outline: none; }
 .automation-field input, .automation-field select { height: 34px; padding: 0 11px; }
-.automation-field textarea { min-height: 120px; padding: 10px 11px; line-height: 1.6; resize: vertical; }
+/* 任务描述：两行高度，可手动拉高 */
+.automation-field textarea.auto-prompt { min-height: 0; height: calc(2 * 1.6em + 20px); padding: 10px 11px; line-height: 1.6; resize: vertical; }
 .automation-field input:focus, .automation-field select:focus, .automation-field textarea:focus { border-color: var(--accent); }
 .automation-field small { color: var(--text-tertiary); font-size: var(--fs-xs); }
+/* 调度输入框：对齐定时心跳的 loop-input-sm 长度（不拉满） */
+.automation-schedule .auto-interval { max-width: 90px; }
+.automation-schedule .auto-cron { max-width: 170px; }
+/* 输入面板风格下拉选择器：agent-dropdown 项带两行（名称+描述），复用 agents-model-selector 全宽样式 */
+.automation-field .auto-select { width: 100%; }
+.auto-select .agent-item-name, .auto-select .model-item-name { font-weight: 500; }
+.auto-select .agent-item-desc { font-size: var(--fs-xs); color: var(--text-secondary); }
 .automation-form .memory-btn:disabled { opacity: .6; cursor: wait; }
+/* 调度方式：复用 loop-radio / loop-cron-link 全局样式，仅需补充容器间距与单位文案 */
+.automation-schedule { display: flex; flex-direction: column; gap: 4px; }
+.automation-schedule .loop-interval-row { margin-bottom: 0; }
+.automation-schedule-unit { color: var(--text-tertiary); font-size: var(--fs-sm); white-space: nowrap; }
+.automation-form .loop-cron-link { font-size: var(--fs-xs); }
 .automation-empty { padding: 36px 16px; text-align: center; color: var(--text-secondary); font-size: var(--fs-md); line-height: 1.8; }
 .automation-empty span { color: var(--text-tertiary); font-size: var(--fs-sm); }
 @media (max-width: 700px) {
