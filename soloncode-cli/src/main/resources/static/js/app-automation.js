@@ -24,12 +24,12 @@
         if (window.showToast) window.showToast(msg, type || 'info');
         else if (window.layer && layer.msg) layer.msg(msg);
     }
-    function fail(e) { toast(e.message || '操作失败', 'error'); }
+    function fail(e) { toast(e.message || I18n.t('toast.operateFailed'), 'error'); }
     function api(method, path, data) {
         var options = {method: method, headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'}};
         if (data) options.body = new URLSearchParams(data).toString();
         return fetch(path, options).then(function (r) { return r.json(); }).then(function (res) {
-            if (!res || res.code !== 200) throw new Error((res && res.description) || '操作失败');
+            if (!res || res.code !== 200) throw new Error((res && res.description) || I18n.t('toast.operateFailed'));
             return res.data;
         });
     }
@@ -42,8 +42,8 @@
         document.body.classList.add('memory-active');
         viewer.classList.add('mem-overlay');
         viewer.style.display = 'flex';
-        if (label) label.textContent = '自动任务';
-        if (file) file.textContent = '按计划执行任务，每个任务使用独立的专用会话';
+        if (label) label.textContent = I18n.t('loop.title');
+        if (file) file.textContent = I18n.t('automation.subtitle');
         if (autoNewBtn) autoNewBtn.style.display = '';
         ['gitViewerMdToggle','gitViewerCopyBtn','gitViewerMemNew','gitViewerMemClear','gitViewerMemOrganize'].forEach(function (id) {
             var el = document.getElementById(id); if (el) el.style.display = 'none';
@@ -69,7 +69,7 @@
         if (chatView && chatView.classList.contains('active') && newView) newView.style.display = 'none';
     }
     function scheduleText(t) {
-        return t.cron ? 'cron: ' + t.cron : ('每 ' + (t.intervalMinutes || 5) + ' 分钟');
+        return t.cron ? 'cron: ' + t.cron : I18n.t('loop.every', {n: t.intervalMinutes || 5});
     }
     function render() {
         if (!content) return;
@@ -78,29 +78,29 @@
     }
     function displayTitle(t) {
         // 无任务名称：行内标题直接用提示词（CSS ellipsis 截断 + title 悬停全文，与循环任务列表一致）
-        return t.name && t.name !== '自动任务' ? t.name : (t.prompt || '自动任务');
+        return t.name && t.name !== '自动任务' ? t.name : (t.prompt || I18n.t('automation.defaultName'));
     }
     function formHtml(t) {
         var cronVal = t.cron || '';
         // 调度方式：对齐定时心跳表单（radio 单选 + 输入联动），radio 按行内唯一表单命名，避免多任务 DOM 冲突
         return '<div class="mem-row-body"><div class="automation-form mem-form">' +
-            '<label class="automation-field"><span>任务描述 <b>*</b></span><textarea class="auto-prompt" rows="2" placeholder="描述自动任务需要完成的事情">' + esc(t.prompt || '') + '</textarea></label>' +
-            '<div class="automation-field"><span>调度方式</span><div class="automation-schedule">' +
-            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="interval"' + (cronVal ? '' : ' checked') + '/> 固定间隔</label>' +
-            '<input type="number" class="loop-input loop-input-sm auto-interval" min="1" value="' + esc(t.intervalMinutes || 5) + '" placeholder="5" title="分钟"/>' +
-            '<span class="automation-schedule-unit">分钟</span></div>' +
-            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="cron"' + (cronVal ? ' checked' : '') + '/> Cron 表达式</label>' +
+            '<label class="automation-field"><span>' + I18n.t('loop.taskDesc') + ' <b>*</b></span><textarea class="auto-prompt" rows="2" placeholder="' + I18n.t('automation.promptPlaceholder') + '">' + esc(t.prompt || '') + '</textarea></label>' +
+            '<div class="automation-field"><span>' + I18n.t('loop.scheduleMethod') + '</span><div class="automation-schedule">' +
+            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="interval"' + (cronVal ? '' : ' checked') + '/> ' + I18n.t('loop.fixedInterval') + '</label>' +
+            '<input type="number" class="loop-input loop-input-sm auto-interval" min="1" value="' + esc(t.intervalMinutes || 5) + '" placeholder="5" title="' + I18n.t('automation.minutes') + '"/>' +
+            '<span class="automation-schedule-unit">' + I18n.t('automation.minutes') + '</span></div>' +
+            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="cron"' + (cronVal ? ' checked' : '') + '/> ' + I18n.t('loop.cronExpression') + '</label>' +
             '<input type="text" class="loop-input loop-input-sm auto-cron" value="' + esc(cronVal) + '" placeholder="0 */5 * * * ? *"/>' +
-            '<a class="loop-cron-link" data-cron="0 0 */2 * * ? *">每2小时</a>' +
-            '<a class="loop-cron-link" data-cron="0 0 22 * * ? *">每天22点</a>' +
+            '<a class="loop-cron-link" data-cron="0 0 */2 * * ? *">' + I18n.t('loop.cronEvery2h') + '</a>' +
+            '<a class="loop-cron-link" data-cron="0 0 22 * * ? *">' + I18n.t('loop.cronDaily22') + '</a>' +
             '</div></div></div>' +
             '<div class="automation-form-grid">' +
-            '<label class="automation-field"><span>智能体</span>' + selHtml('agent', t.agentName || '', 'main（主代理）') + '</label>' +
-            '<label class="automation-field"><span>模型</span>' + selHtml('model', t.modelName || '', '跟随默认模型') + '</label>' +
+            '<label class="automation-field"><span>' + I18n.t('automation.agent') + '</span>' + selHtml('agent', t.agentName || '', I18n.t('automation.agentPlaceholder')) + '</label>' +
+            '<label class="automation-field"><span>' + I18n.t('automation.model') + '</span>' + selHtml('model', t.modelName || '', I18n.t('automation.modelPlaceholder')) + '</label>' +
             '</div>' +
-            '<div class="mem-actions"><button class="memory-btn memory-btn-primary auto-save" type="button">保存任务</button>' +
-            '<button class="memory-btn auto-cancel" type="button">取消</button>' +
-            (t.id ? '<button class="memory-btn memory-btn-danger auto-delete" type="button">删除</button>' : '') +
+            '<div class="mem-actions"><button class="memory-btn memory-btn-primary auto-save" type="button">' + I18n.t('automation.saveTask') + '</button>' +
+            '<button class="memory-btn auto-cancel" type="button">' + I18n.t('common.cancel') + '</button>' +
+            (t.id ? '<button class="memory-btn memory-btn-danger auto-delete" type="button">' + I18n.t('common.delete') + '</button>' : '') +
             '</div></div></div>';
     }
     // 输入面板风格的下拉选择器（复用 agents-model-selector 全宽向下弹出样式：搜索框 + active 高亮）
@@ -112,7 +112,7 @@
             '<span class="model-name">' + shown + '</span>' +
             '<i class="layui-icon layui-icon-down model-arrow"></i></div>' +
             '<div class="model-dropdown">' +
-            '<div class="model-search-wrap"><input type="text" class="model-search-input" placeholder="搜索..."/></div>' +
+            '<div class="model-search-wrap"><input type="text" class="model-search-input" placeholder="' + I18n.t('automation.search') + '"/></div>' +
             '<div class="model-dropdown-items"></div></div></div>';
     }
     function setSel(row, kind, value, placeholder) {
@@ -192,23 +192,23 @@
     }
     function rowHtml(t, isNew) {
         var open = expandedId === (isNew ? NEW_ID : t.id);
-        var state = t.running ? '执行中' : (t.enabled ? '已启用' : '已暂停');
+        var state = t.running ? I18n.t('automation.status.running') : (t.enabled ? I18n.t('automation.status.enabled') : I18n.t('automation.status.paused'));
         var stateClass = t.running ? 'running' : (t.enabled ? 'enabled' : 'paused');
         // 会话任务（会话内 /loop 或循环表单创建）与自动任务同页展示，用来源徽标区分
         var isAuto = t.automation !== false;
-        var badgeHtml = isNew ? '' : '<span class="automation-source' + (isAuto ? '' : ' session') + '">' + (isAuto ? '自动' : '会话') + '</span>';
+        var badgeHtml = isNew ? '' : '<span class="automation-source' + (isAuto ? '' : ' session') + '">' + (isAuto ? I18n.t('automation.source.auto') : I18n.t('automation.source.session')) + '</span>';
         var actions = '';
         if (!isNew) {
             actions = '<div class="automation-row-actions">' +
-                actionBtn('auto-toggle', t.enabled ? '暂停' : '恢复', t.enabled ? SVG_PAUSE : SVG_PLAY) +
-                actionBtn('auto-trigger', '立即执行', SVG_RUN) +
-                actionBtn('auto-session', '查看对话', SVG_CHAT) +
+                actionBtn('auto-toggle', t.enabled ? I18n.t('automation.pause') : I18n.t('automation.resume'), t.enabled ? SVG_PAUSE : SVG_PLAY) +
+                actionBtn('auto-trigger', I18n.t('automation.trigger'), SVG_RUN) +
+                actionBtn('auto-session', I18n.t('automation.viewSession'), SVG_CHAT) +
                 '</div>';
         }
         return '<div class="mem-row automation-row' + (open ? ' open' : '') + '" data-id="' + esc(isNew ? NEW_ID : t.id) + '" data-session="' + esc(t.sessionId || '') + '">' +
             '<div class="mem-row-head automation-row-head" role="button" tabindex="0" aria-expanded="' + open + '">' +
             '<span class="mem-caret"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"></polyline></svg></span>' +
-            (isNew ? '<span class="mem-row-key">新建自动任务</span>' :
+            (isNew ? '<span class="mem-row-key">' + I18n.t('automation.new') + '</span>' :
                 '<span class="automation-status-dot ' + stateClass + '"></span><span class="mem-row-key automation-row-title" title="' + esc(t.prompt || '') + '">' + esc(displayTitle(t)) + '</span>' +
                 badgeHtml +
                 '<span class="automation-row-schedule">' + esc(scheduleText(t)) + '</span><span class="automation-state ' + stateClass + '">' + state + '</span>') +
@@ -219,7 +219,7 @@
         var box = document.getElementById('autoList'); if (!box) return;
         var html = expandedId === NEW_ID ? rowHtml({}, true) : '';
         html += tasks.map(function (t) { return rowHtml(t, false); }).join('');
-        box.innerHTML = html || '<div class="automation-empty">还没有任务<br><span>创建一个自动任务，让它按计划替你工作</span></div>';
+        box.innerHTML = html || '<div class="automation-empty">' + I18n.t('automation.empty.title') + '<br><span>' + I18n.t('automation.empty.desc') + '</span></div>';
         box.querySelectorAll('.automation-row').forEach(function (row) {
             var id = row.getAttribute('data-id');
             var head = row.querySelector('.automation-row-head');
@@ -249,7 +249,7 @@
             var rowSession = row.getAttribute('data-session') || '';
             // 行内右侧图标按钮：阻止冒泡，避免误触发行展开/收起
             row.querySelector('.auto-toggle').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/toggle', {type: 'AUTOMATION', id: id}).then(load).catch(fail); };
-            row.querySelector('.auto-trigger').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/trigger', {type: 'AUTOMATION', id: id}).then(function () { toast('已触发'); load(); }).catch(fail); };
+            row.querySelector('.auto-trigger').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/trigger', {type: 'AUTOMATION', id: id}).then(function () { toast(I18n.t('automation.triggered')); load(); }).catch(fail); };
             row.querySelector('.auto-session').onclick = function (e) { e.stopPropagation(); showSession(rowSession); };
         });
     }
@@ -263,18 +263,18 @@
             // 不传 name：新建时后端自动取提示词前 20 字作为名称，编辑时保留旧名称。
             runNow: 'false',
             modelName: getSel(row, 'model'), agentName: getSel(row, 'agent')};
-        if (!data.prompt) { toast('请填写任务描述', 'error'); return; }
-        if (isCron && !data.cron) { toast('请填写 Cron 表达式', 'error'); return; }
-        if (!isCron && !(parseInt(data.intervalMinutes, 10) > 0)) { toast('请填写有效的固定间隔（分钟）', 'error'); return; }
+        if (!data.prompt) { toast(I18n.t('automation.promptRequired'), 'error'); return; }
+        if (isCron && !data.cron) { toast(I18n.t('automation.cronRequired'), 'error'); return; }
+        if (!isCron && !(parseInt(data.intervalMinutes, 10) > 0)) { toast(I18n.t('automation.intervalInvalid'), 'error'); return; }
         var button = row.querySelector('.auto-save');
         button.disabled = true;
         if (id !== NEW_ID) data.id = id;
         api('POST', id === NEW_ID ? '/web/tasks/create' : '/web/tasks/update', data)
-            .then(function () { toast('保存成功', 'success'); expandedId = null; load(); })
+            .then(function () { toast(I18n.t('toast.saveSuccess'), 'success'); expandedId = null; load(); })
             .catch(fail).finally(function () { button.disabled = false; });
     }
     function remove(id) {
-        if (!confirm('确定删除这个任务吗？任务对话会保留归档。')) return;
+        if (!confirm(I18n.t('automation.confirmDelete'))) return;
         api('POST', '/web/tasks/delete', {type:'AUTOMATION', id:id}).then(function () { expandedId = null; load(); }).catch(fail);
     }
     function populateSelectors(row, t) {
@@ -284,8 +284,8 @@
         if (!agentBox || !modelBox) return;
         row.setAttribute('data-agent', t.agentName || '');
         row.setAttribute('data-model', t.modelName || '');
-        bindSel(row, 'agent', 'main（主代理）');
-        bindSel(row, 'model', '跟随默认模型');
+        bindSel(row, 'agent', I18n.t('automation.agentPlaceholder'));
+        bindSel(row, 'model', I18n.t('automation.modelPlaceholder'));
         api('GET', '/web/chat/models').then(function (data) {
             if (!modelBox.isConnected) return;
             var list = (data && data.list) || [];
@@ -293,7 +293,7 @@
                 var v = x.name || x.model;
                 return {value: v, label: v, desc: x.desc || ''};
             }).filter(function (x) { return x.value; });
-            renderSelItems(modelBox, items, getSel(row, 'model'), '跟随默认模型', '任务执行时使用默认模型');
+            renderSelItems(modelBox, items, getSel(row, 'model'), I18n.t('automation.modelPlaceholder'), I18n.t('automation.modelDefaultDesc'));
         }).catch(fail);
         api('GET', '/web/settings/agents').then(function (data) {
             if (!agentBox.isConnected) return;
@@ -303,13 +303,13 @@
                 var v = x.name || x.id || x;
                 return {value: v, label: v, desc: (x && x.description) || ''};
             }).filter(function (x) { return x.value; });
-            renderSelItems(agentBox, items, getSel(row, 'agent'), 'main（主代理）', '留空时使用主代理');
+            renderSelItems(agentBox, items, getSel(row, 'agent'), I18n.t('automation.agentPlaceholder'), I18n.t('automation.agentDefaultDesc'));
         }).catch(fail);
     }
     function showSession(sessionId) {
         // 完全复用现有聊天消息列表：列表数据直接携带 sessionId，关闭面板后把该会话激活为当前聊天会话。
         // 历史与流式均走原有管线（loadMessages / WebSocket 按 sessionId 路由），不另建渲染逻辑。
-        if (!sessionId) { toast('未找到任务会话', 'error'); return; }
+        if (!sessionId) { toast(I18n.t('automation.sessionNotFound'), 'error'); return; }
         hide();
         var sess = getOrCreateSession(sessionId);
         // 任务会话可能不在左侧历史栏：进入时清空历史高亮，
@@ -346,6 +346,13 @@
     }
     if (nav) nav.addEventListener('click', show);
     if (closeBtn) closeBtn.addEventListener('click', hide);
+    // 语言切换时若面板正打开，重渲染以应用新文案（列表数据已在内存，无需重新拉取）
+    document.addEventListener('i18n:switched', function () {
+        if (!viewer || viewer.style.display === 'none' || !content.querySelector('.automation-page')) return;
+        if (label) label.textContent = I18n.t('loop.title');
+        if (file) file.textContent = I18n.t('automation.subtitle');
+        renderList();
+    });
     // 点击选择器外部时关闭下拉（全局仅注册一次，避免 renderList 重复挂监听）
     document.addEventListener('click', function (e) {
         if (e.target.closest && !e.target.closest('.auto-select')) {

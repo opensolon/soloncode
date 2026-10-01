@@ -48,11 +48,11 @@
             <span class="sidebar-nav-label" data-i18n="sidebar.memory">心智记忆</span>
             <span class="sidebar-nav-badge" id="memoryBadge" style="display:none">0</span>
         </button>
-        <button class="sidebar-nav-item" id="automationNavBtn" title="自动任务">
+        <button class="sidebar-nav-item" id="automationNavBtn" title="自动任务" data-i18n-title="sidebar.automation">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.7 1.7-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2h-2.4v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-1.7-1.7.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H6v-2.4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1L9 5.9l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5v-.2h2.4v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.7 1.7-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2V13h-.2a1.7 1.7 0 0 0-1.5 1z"/>
             </svg>
-            <span class="sidebar-nav-label">自动任务</span>
+            <span class="sidebar-nav-label" data-i18n="sidebar.automation">自动任务</span>
             <span class="sidebar-nav-badge" id="automationBadge" style="display:none">0</span>
         </button>
         <button class="sidebar-nav-item" id="wsOpenBtn" title="工作区" data-i18n-title="sidebar.workspace">
@@ -167,7 +167,7 @@
                             <button type="button" id="newChatAgentBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg><span data-i18n="toolbar.addAgent">添加子代理单次引用</span><span class="more-menu-hint" data-i18n="toolbar.addAgentHint">或输入 "@"</span></button>
                             <div class="more-menu-separator"></div>
                             <button type="button" id="newChatMemoryBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-2.5 2.5A2.5 2.5 0 0 1 7 19.5V17H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5-2.5V17h2a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2"/></svg><span data-i18n="toolbar.organizeMemory">整理记忆</span></button>
-                            <button type="button" id="newChatLoopBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span data-i18n="toolbar.loopTask">循环任务</span><span class="more-menu-hint">或输入 <svg class="more-menu-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="16" y1="12" x2="8" y2="12"/><polyline points="12 8 8 12 12 16"/></svg></span></button>
+                            <button type="button" id="newChatLoopBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span data-i18n="toolbar.loopTask">自动任务</span><span class="more-menu-hint">或输入 <svg class="more-menu-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="16" y1="12" x2="8" y2="12"/><polyline points="12 8 8 12 12 16"/></svg></span></button>
                         </div>
                     </div>
 
@@ -300,7 +300,7 @@
                                 <button type="button" id="chatAgentBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg><span data-i18n="toolbar.addAgent">添加子代理单次引用</span><span class="more-menu-hint" data-i18n="toolbar.addAgentHint">或输入 "@"</span></button>
                                 <div class="more-menu-separator"></div>
                                 <button type="button" id="chatMemoryBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-2.5 2.5A2.5 2.5 0 0 1 7 19.5V17H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5-2.5V17h2a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2"/></svg><span data-i18n="toolbar.organizeMemory">整理记忆</span></button>
-                                <button type="button" id="chatLoopBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span data-i18n="toolbar.loopTask">循环任务</span><span class="more-menu-hint">或输入 <svg class="more-menu-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="16" y1="12" x2="8" y2="12"/><polyline points="12 8 8 12 12 16"/></svg></span></button>
+                                <button type="button" id="chatLoopBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span data-i18n="toolbar.loopTask">自动任务</span><span class="more-menu-hint">或输入 <svg class="more-menu-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="16" y1="12" x2="8" y2="12"/><polyline points="12 8 8 12 12 16"/></svg></span></button>
                                 <button type="button" id="chatHistoryBtn"><svg class="more-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span data-i18n="toolbar.historyMessages">历史消息</span><span class="more-menu-hint">或输入 <svg class="more-menu-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="12" y1="16" x2="12" y2="8"/><polyline points="8 12 12 8 16 12"/></svg></span></button>
                             </div>
                         </div>
@@ -388,7 +388,7 @@
                 <button class="git-viewer-action-btn" id="gitViewerMemNew" title="新建记忆" data-i18n-title="gitViewer.newMemory" style="display:none">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </button>
-                <button class="git-viewer-action-btn" id="gitViewerAutoNew" title="新建自动任务" aria-label="新建自动任务" style="display:none">
+                <button class="git-viewer-action-btn" id="gitViewerAutoNew" title="新建自动任务" data-i18n-title="gitViewer.newAutomation" aria-label="新建自动任务" data-i18n-aria="gitViewer.newAutomation" style="display:none">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </button>
                 <button class="git-viewer-action-btn" id="gitViewerMemOrganize" title="整理记忆" data-i18n-title="toolbar.organizeMemory" style="display:none">
@@ -960,7 +960,7 @@
                                     <div class="general-toggle-row settings-gap-top-md">
                                         <div class="general-toggle-info">
                                             <span class="general-toggle-name" data-i18n="general.features.loopName">Loop 定时任务支持</span>
-                                             <span class="general-toggle-desc" data-i18n="general.features.loopDesc">开启后允许 AI 管理定时/循环任务（查询、暂停、停止、指定时刻执行等）；关闭可减少上下文消耗</span>
+                                             <span class="general-toggle-desc" data-i18n="general.features.loopDesc">开启后允许 AI 管理定时/自动任务（查询、暂停、停止、指定时刻执行等）；关闭可减少上下文消耗</span>
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="generalLoopEnabled"/>
