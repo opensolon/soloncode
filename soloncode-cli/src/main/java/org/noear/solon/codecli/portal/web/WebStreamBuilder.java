@@ -46,10 +46,28 @@ public class WebStreamBuilder {
         @SuppressWarnings("unchecked")
         java.util.Map<String, String> route = session == null ? null
                 : (java.util.Map<String, String>) session.attrs().get("session.replyRoute");
-        if (route != null) {
-            replyToBoundChannel(wsContext, sessionId, text, isFinal, route.get("source"),
-                    route.get("sourceUserId"), route.get("replyTarget"), route.get("messageId"));
-            if (isFinal) session.attrs().remove("session.replyRoute", route);
+
+        // 多终端（web/im）同步：无论本轮由谁发起（IM / WEB / Loop），都把回复广播到
+        // 所有绑定该会话的 IM 通道。入站来源通道带上定向参数（群聊/消息线程回复），
+        // 其它通道（含 WEB/Loop 发起时 route 为空的情况）退回到绑定用户（binding.openId）。
+        String routeSource = route == null ? null : route.get("source");
+        String sourceUserId = route == null ? null : route.get("sourceUserId");
+        String replyTarget = route == null ? null : route.get("replyTarget");
+        String messageId = route == null ? null : route.get("messageId");
+
+        for (Channel link : wsContext.getChannelHub().getImLinks()) {
+            if (!link.isBound(sessionId)) {
+                continue;
+            }
+            if (routeSource != null && routeSource.equalsIgnoreCase(link.getChannelName())) {
+                link.sendReply(sessionId, text, isFinal, sourceUserId, replyTarget, messageId);
+            } else {
+                link.sendReply(sessionId, text, isFinal);
+            }
+        }
+
+        if (isFinal && route != null && session != null) {
+            session.attrs().remove("session.replyRoute", route);
         }
     }
 

@@ -1409,12 +1409,14 @@ public class WebGate extends SimpleWebSocketListener {
     private void setReplyRoute(AgentSession session, String source, String sourceUserId, String replyTarget, String messageId) {
         if (session == null) return;
         boolean imSource = false;
-        // WEB/Loop 等输入不应向任何绑定的 IM 广播。
         if (source != null) {
             imSource = "wechat".equalsIgnoreCase(source) || "feishu".equalsIgnoreCase(source)
                     || "dingtalk".equalsIgnoreCase(source);
         }
         if (!imSource) {
+            // WEB/Loop 等来源没有 IM 定向目标：清掉上一轮残留的路由即可。
+            // 回复仍会广播到所有绑定该会话的 IM 通道（见 WebStreamBuilder.replyToBoundChannel），
+            // 以实现多终端（web/im）内容同步，各通道退回到绑定用户（binding.openId）。
             session.attrs().remove("session.replyRoute");
             return;
         }
