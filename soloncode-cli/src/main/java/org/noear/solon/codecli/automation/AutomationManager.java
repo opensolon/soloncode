@@ -68,6 +68,13 @@ public class AutomationManager {
         return task == null ? null : toMap(task);
     }
 
+    /** 空名称时取提示词前 20 字作为展示名（首个换行处截断），避免多个任务同名不可辨。 */
+    private static String displayName(String name, String prompt) {
+        if (name != null && !name.trim().isEmpty()) return name.trim();
+        String base = prompt == null ? "" : prompt.trim().split("\r?\n", 2)[0];
+        return base.length() > 20 ? base.substring(0, 20) : (base.isEmpty() ? "自动任务" : base);
+    }
+
     public synchronized AutomationTask create(String name, String prompt, Integer intervalMinutes,
                                               String cron, String type, Boolean runNow,
                                                Long maxTokens, Long maxDurationMs, String modelName,
@@ -79,7 +86,7 @@ public class AutomationManager {
 
         LoopTask.TaskType taskType = parseType(type);
         AutomationTask automation = new AutomationTask(
-                name == null || name.trim().isEmpty() ? "自动任务" : name.trim(),
+                displayName(name, prompt),
                 prompt.trim(), intervalMinutes == null ? 5 : intervalMinutes,
                 emptyToNull(cron), taskType, Boolean.TRUE.equals(runNow), maxTokens, maxDurationMs,
                 modelName, agentName);

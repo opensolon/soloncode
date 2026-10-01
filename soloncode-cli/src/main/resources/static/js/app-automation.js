@@ -2,6 +2,7 @@
 (function () {
     'use strict';
     var nav = document.getElementById('automationNavBtn');
+    var badge = document.getElementById('automationBadge');
     var viewer = document.getElementById('gitViewer');
     var content = document.getElementById('gitViewerContent');
     var label = document.getElementById('gitViewerLabel');
@@ -50,7 +51,7 @@
         if (autoNewBtn) autoNewBtn.onclick = function () {
             expandedId = NEW_ID;
             renderList();
-            var input = document.querySelector('#autoList .auto-name');
+            var input = document.querySelector('#autoList .auto-prompt');
             if (input) input.focus();
         };
         render();
@@ -75,10 +76,13 @@
         content.innerHTML = '<div class="automation-page"><div id="autoList" class="automation-list"></div></div>';
         renderList();
     }
+    function displayTitle(t) {
+        // 无任务名称：行内标题直接用提示词（CSS ellipsis 截断 + title 悬停全文，与循环任务列表一致）
+        return t.name && t.name !== '自动任务' ? t.name : (t.prompt || '自动任务');
+    }
     function formHtml(t) {
         return '<div class="mem-row-body"><div class="automation-form mem-form">' +
             '<div class="automation-form-grid">' +
-            '<label class="automation-field"><span>任务名称 <b>*</b></span><input class="auto-name" value="' + esc(t.name || '') + '" placeholder="例如：每日代码检查"></label>' +
             '<label class="automation-field"><span>子代理</span><select class="auto-agent"><option value="">main（主代理）</option>' + (t.agentName ? '<option value="' + esc(t.agentName) + '" selected>' + esc(t.agentName) + '</option>' : '') + '</select><small>留空时使用主代理。</small></label>' +
             '<label class="automation-field"><span>模型</span><select class="auto-model"><option value="">跟随默认模型</option>' + (t.modelName ? '<option value="' + esc(t.modelName) + '" selected>' + esc(t.modelName) + '</option>' : '') + '</select><small>留空时跟随默认模型。</small></label>' +
             '<label class="automation-field"><span>固定间隔（分钟）</span><input class="auto-interval" type="number" min="1" value="' + esc(t.intervalMinutes || 5) + '" placeholder="5"></label>' +
@@ -113,7 +117,7 @@
             '<div class="mem-row-head automation-row-head" role="button" tabindex="0" aria-expanded="' + open + '">' +
             '<span class="mem-caret"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"></polyline></svg></span>' +
             (isNew ? '<span class="mem-row-key">新建自动任务</span>' :
-                '<span class="automation-status-dot ' + stateClass + '"></span><span class="mem-row-key automation-row-title">' + esc(t.name || '自动任务') + '</span>' +
+                '<span class="automation-status-dot ' + stateClass + '"></span><span class="mem-row-key automation-row-title" title="' + esc(t.prompt || '') + '">' + esc(displayTitle(t)) + '</span>' +
                 '<span class="automation-row-schedule">' + esc(scheduleText(t)) + '</span><span class="automation-state ' + stateClass + '">' + state + '</span>') +
             actions +
             '</div>' + (open ? formHtml(t) : '') + '</div>';
@@ -145,12 +149,13 @@
         });
     }
     function save(row, id) {
-        var data = {type: 'AUTOMATION', name: row.querySelector('.auto-name').value.trim(), prompt: row.querySelector('.auto-prompt').value.trim(),
+        var data = {type: 'AUTOMATION', prompt: row.querySelector('.auto-prompt').value.trim(),
             intervalMinutes: row.querySelector('.auto-interval').value, cron: row.querySelector('.auto-cron').value.trim(),
             // 自动任务统一按定时任务创建；不传 taskType，创建走默认、更新时保留旧任务的底层类型。
+            // 不传 name：新建时后端自动取提示词前 20 字作为名称，编辑时保留旧名称。
             runNow: 'false',
             modelName: row.querySelector('.auto-model').value, agentName: row.querySelector('.auto-agent').value};
-        if (!data.name || !data.prompt) { toast('请填写任务名称和执行提示词', 'error'); return; }
+        if (!data.prompt) { toast('请填写执行提示词', 'error'); return; }
         var button = row.querySelector('.auto-save');
         button.disabled = true;
         if (id !== NEW_ID) data.id = id;
@@ -214,7 +219,18 @@
             if (version !== viewVersion) return;
             tasks = Array.isArray(data) ? data : [];
             renderList();
+            updateBadge();
         }).catch(fail);
+    }
+    // 任务数徽标（对齐 memoryBadge 模式：列表条数，0 个隐藏）
+    function updateBadge() {
+        if (!badge) return;
+        if (tasks.length > 0) {
+            badge.textContent = tasks.length;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
     }
     if (nav) nav.addEventListener('click', show);
     if (closeBtn) closeBtn.addEventListener('click', hide);
